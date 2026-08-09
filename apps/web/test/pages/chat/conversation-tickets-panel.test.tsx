@@ -241,6 +241,24 @@ describe("ConversationTicketsPanel", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("shows ordinary ticket action failures in a toast", async () => {
+    api.updateTicket.mockRejectedValueOnce(new Error("工单操作失败"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: "更多工单操作" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "标记为已解决" }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("工单操作失败");
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("does not show a previous response after the filter changes", async () => {
     let resolveFirst!: (value: ReturnType<typeof response>) => void;
     api.getConversationTickets

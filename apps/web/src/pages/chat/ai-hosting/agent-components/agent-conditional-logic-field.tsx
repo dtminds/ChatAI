@@ -16,6 +16,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
+  HistoryPlugin,
+  HistoryResetPlugin,
+} from "@/pages/chat/components/lexical-history";
+import {
   INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
   INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
 } from "./agent-conditional-logic-lexical-commands";
@@ -42,12 +46,14 @@ import "./agent-conditional-logic.css";
 
 export function AgentConditionalLogicField({
   disabled = false,
+  historyKey,
   knowledgeBases,
   onChange,
   segments,
   skills,
 }: {
   disabled?: boolean;
+  historyKey: string;
   knowledgeBases: KnowledgeBaseOption[];
   onChange: (value: ConditionalLogicSegment[]) => void;
   segments: ConditionalLogicSegment[];
@@ -203,8 +209,11 @@ export function AgentConditionalLogicField({
                 ) : null
               }
             />
+            <HistoryPlugin />
+            <HistoryResetPlugin resetKey={historyKey} />
             <ConditionalLogicRuntimePlugin
               disabled={disabled}
+              historyKey={historyKey}
               maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
               onChange={onChange}
               registerEditor={registerEditor}

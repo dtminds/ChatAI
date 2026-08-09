@@ -7,6 +7,10 @@ import { AGENT_SKILL_CONTENT_MAX_LENGTH } from "@chatai/contracts";
 import type { LexicalEditor } from "lexical";
 import { cn } from "@/lib/utils";
 import {
+  HistoryPlugin,
+  HistoryResetPlugin,
+} from "@/pages/chat/components/lexical-history";
+import {
   getSkillContentCharacterCount,
   getSkillContentResourceReferenceKey,
   getSkillResourceReferenceKey,
@@ -29,6 +33,7 @@ import "./agent-components/agent-conditional-logic.css";
 export function AiSkillDescriptionField({
   disabled = false,
   editorRef,
+  historyKey,
   knowledgeBases,
   onChange,
   onSelectResource,
@@ -38,6 +43,7 @@ export function AiSkillDescriptionField({
 }: {
   disabled?: boolean;
   editorRef?: MutableRefObject<LexicalEditor | null>;
+  historyKey: string;
   knowledgeBases: readonly SkillResourceItem[];
   onChange: (value: SkillContentSegment[]) => void;
   onSelectResource: (item: SkillResourceItem) => void;
@@ -139,8 +145,11 @@ export function AiSkillDescriptionField({
               ) : null
             }
           />
+          <HistoryPlugin />
+          <HistoryResetPlugin resetKey={historyKey} />
           <SkillDescriptionRuntimePlugin
             disabled={disabled}
+            historyKey={historyKey}
             maxLength={AGENT_SKILL_CONTENT_MAX_LENGTH}
             onChange={onChange}
             registerEditor={registerEditor}

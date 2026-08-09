@@ -18,6 +18,7 @@ import {
   setTicketReminderDisplayMode,
   useTicketCountStore,
 } from "@/pages/chat/tickets/ticket-count-store";
+import { useAuthStore } from "@/store/auth-store";
 
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children, ...props }: ComponentProps<"span">) => (
@@ -83,6 +84,7 @@ describe("AccountRail", () => {
     delete document.documentElement.dataset.appearanceTheme;
     window.localStorage.clear();
     resetTicketCountStore();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     useTicketCountStore.setState({
       counts: { assignedToMeActive: 3 },
       initialStatus: "ready",
@@ -93,6 +95,131 @@ describe("AccountRail", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+  });
+
+  it("reveals the authorized problem investigation entry for the current menu after a modifier key press", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "main",
+      canStartSupportInvestigation: true,
+      displayName: "平台观测",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "owner",
+      subUserId: "1",
+      uid: 272,
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "问题排查" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    expect(
+      screen.getByRole("menuitem", { name: "问题排查" }),
+    ).toBeInTheDocument();
+
+    fireEvent.keyUp(window, { key: "Meta" });
+    expect(
+      screen.getByRole("menuitem", { name: "问题排查" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "问题排查" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "Control" });
+    await user.click(screen.getByRole("menuitem", { name: "问题排查" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "问题排查" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps all navigation available and places the diagnosis notice below broadcast protection", async () => {
+    const user = userEvent.setup();
+    const onLogout = vi.fn();
+    const status = {
+      degradeCallbackCnt: 1800,
+      degradeCallbackRate: 120,
+      normalCallbackCnt: 8,
+      normalCallbackRate: 600,
+    };
+    useAuthStore.getState().setSession({
+      accessMode: "support_readonly",
+      accountType: "sub",
+      canStartSupportInvestigation: false,
+      displayName: "目标客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "201",
+      uid: 9001,
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        broadcastProtectionStatus={status}
+        currentEmployee={currentEmployee}
+        currentEmployeeId="emp-001"
+        canTakeOverAccount={false}
+        onRefreshBroadcastProtection={vi.fn().mockResolvedValue({
+          kind: "active",
+          status,
+        })}
+        onLogout={onLogout}
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /工单/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "客户" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "洞察" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "智能体" })).toBeInTheDocument();
+
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
+    expect(screen.getByRole("button", { name: "接管账号" })).toBeDisabled();
+    await user.unhover(screen.getByRole("button", { name: "选择 support" }));
+
+    const footer = screen.getByTestId("account-rail-footer");
+    const broadcastNotice = within(footer).getByRole("button", {
+      name: "群发保护已激活，查看详情",
+    });
+    const readonlyNotice = within(footer).getByRole("status");
+    const exitInvestigation = within(readonlyNotice).getByRole("button", {
+      name: "点此退出",
+    });
+    const accountMenu = within(footer).getByRole("button", {
+      name: "打开账号菜单",
+    });
+    expect(
+      broadcastNotice.compareDocumentPosition(readonlyNotice)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      readonlyNotice.compareDocumentPosition(accountMenu)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(exitInvestigation);
+    expect(onLogout).toHaveBeenCalledOnce();
+
+    await user.click(accountMenu);
+    expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
   it("shows only the signed-in sub user name in the footer menu", async () => {
@@ -485,11 +612,15 @@ describe("AccountRail", () => {
     const confirmDialog = await screen.findByRole("alertdialog", {
       name: "是否确认接管：support",
     });
+    expect(within(confirmDialog).getByRole("img", { name: "support" })).toHaveAttribute(
+      "src",
+      "https://example.com/avatar-support.png",
+    );
     expect(
-      within(confirmDialog).getByText(
-        "接管后，将由你负责处理对话，其他子账号将无权发送消息",
-      ),
-    ).toBeInTheDocument();
+      within(confirmDialog).getByRole("heading", {
+        name: "是否确认接管：support",
+      }),
+    ).toHaveTextContent("support");
 
     await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 

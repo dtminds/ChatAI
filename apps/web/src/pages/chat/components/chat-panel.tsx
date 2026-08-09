@@ -650,6 +650,7 @@ export function ChatPanel({
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
+                      historyKey={activeConversation.id}
                       shouldShowConversationAIHostingControl={
                         shouldShowConversationAIHostingControl
                       }

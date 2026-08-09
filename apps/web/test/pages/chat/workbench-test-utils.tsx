@@ -79,6 +79,7 @@ vi.mock("sonner", async (importOriginal) => {
     ...actual,
     toast: {
       ...actual.toast,
+      error: vi.fn(),
       success: vi.fn(),
       warning: vi.fn(),
     },
@@ -94,8 +95,9 @@ vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
   };
 });
 
-export const workbenchToastWarningMock = vi.mocked(toast.warning);
+export const workbenchToastErrorMock = vi.mocked(toast.error);
 export const workbenchToastSuccessMock = vi.mocked(toast.success);
+export const workbenchToastWarningMock = vi.mocked(toast.warning);
 
 export function renderWithChatWorkbenchRouter(ui: ReactElement) {
   return render(<MemoryRouter initialEntries={["/chat"]}>{ui}</MemoryRouter>);
@@ -224,6 +226,7 @@ export function resetChatWorkbenchTestState() {
       url: `https://b5.bokr.com.cn/chat-images/conv-001/${file.name}`,
     }),
   );
+  workbenchToastErrorMock.mockClear();
   workbenchToastSuccessMock.mockClear();
   workbenchToastWarningMock.mockClear();
   useAuthStore.setState(useAuthStore.getInitialState(), true);

@@ -90,6 +90,10 @@ import {
   ComposerMaxLengthPlugin,
   ComposerRuntimePlugin,
 } from "@/pages/chat/components/composer/lexical-plugins";
+import {
+  HistoryPlugin,
+  HistoryResetPlugin,
+} from "@/pages/chat/components/lexical-history";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
@@ -144,6 +148,7 @@ type ChatComposerProps = {
   /** 当前会话的 AI 托管开关配置状态 */
   conversationAIHostingConfigured?: boolean;
   fullAutoSwitch?: boolean;
+  historyKey: string;
   semiAutoSwitch?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -222,6 +227,7 @@ export function ChatComposer({
   conversationAIHostingConfigured = false,
   fullAutoSwitch = false,
   semiAutoSwitch = false,
+  historyKey,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
@@ -1482,6 +1488,8 @@ export function ChatComposer({
               }
               ErrorBoundary={LexicalErrorBoundary}
             />
+            <HistoryPlugin />
+            <HistoryResetPlugin resetKey={historyKey} />
             <ComposerRuntimePlugin
               canSendMessage={canEditComposer}
               inputEnterBehavior={inputEnterBehavior}

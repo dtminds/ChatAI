@@ -3,6 +3,8 @@ import {
   apiSuccess,
   AuthLoginRequestSchema,
   type AuthLoginRequest,
+  SupportInvestigationStartRequestSchema,
+  type SupportInvestigationStartRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -18,13 +20,26 @@ import {
   readAuthCookie,
   REFRESH_TOKEN_COOKIE_NAME,
   setAuthCookies,
+  setSupportAuthCookie,
 } from "./auth-cookies.js";
+import {
+  listSupportInvestigationAccounts,
+  startSupportInvestigation,
+} from "./support-investigation.service.js";
 
 const AltchaVerifyBodySchema = Type.Object({
   altcha: Type.String(),
 });
 
 type AltchaVerifyBody = Static<typeof AltchaVerifyBodySchema>;
+
+const SupportInvestigationAccountsQuerySchema = Type.Object({
+  uid: Type.String({ pattern: "^[1-9]\\d*$" }),
+});
+
+type SupportInvestigationAccountsQuery = Static<
+  typeof SupportInvestigationAccountsQuerySchema
+>;
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.get("/api/auth/altcha/challenge", async () => createAltchaChallenge());
@@ -112,6 +127,48 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     apiSuccess({
       subUser: await getCurrentSession(app, request.user),
     }),
+  );
+  app.get<{ Querystring: SupportInvestigationAccountsQuery }>(
+    "/api/auth/support-investigation/accounts",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: SupportInvestigationAccountsQuerySchema,
+      },
+    },
+    async (request) => apiSuccess({
+      accounts: await listSupportInvestigationAccounts(
+        app,
+        request.user,
+        Number(request.query.uid),
+      ),
+    }),
+  );
+  app.post<{ Body: SupportInvestigationStartRequest }>(
+    "/api/auth/support-investigation/start",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SupportInvestigationStartRequestSchema,
+      },
+    },
+    async (request, reply) => {
+      const investigation = await startSupportInvestigation(
+        app,
+        request.user,
+        request.body,
+      );
+
+      setSupportAuthCookie(reply, {
+        accessToken: investigation.accessToken,
+        accessTokenMaxAgeSeconds: investigation.expiresIn,
+      });
+
+      return apiSuccess({
+        expiresIn: investigation.expiresIn,
+        subUser: investigation.subUser,
+      });
+    },
   );
   app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request, reply) => {
     const result = await revokeSession(app, request.user);

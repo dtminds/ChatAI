@@ -999,3 +999,21 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
   PRIMARY KEY (id),
   UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
 ) COMMENT='用户记忆Worker运行状态';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_support_investigation_log (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  actor_uid BIGINT UNSIGNED NOT NULL COMMENT '发起排查的租户UID',
+  actor_sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '发起排查的子账号ID',
+  target_uid BIGINT UNSIGNED NOT NULL COMMENT '目标租户UID',
+  target_sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '目标子账号ID',
+  investigation_reason VARCHAR(64) NOT NULL COMMENT '排查原因',
+  started_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '排查开始时间',
+  PRIMARY KEY (id),
+  KEY idx_support_investigation_actor_started (
+    actor_uid, actor_sub_user_id, started_at
+  ),
+  KEY idx_support_investigation_target_started (
+    target_uid, target_sub_user_id, started_at
+  )
+) COMMENT='问题排查启动记录';

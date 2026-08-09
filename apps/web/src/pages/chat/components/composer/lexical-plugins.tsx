@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $restoreEditorState } from "@lexical/utils";
+import { updateEditorWithoutHistory } from "@/pages/chat/components/lexical-history";
 import {
   $getSelection,
   $isRangeSelection,
@@ -206,7 +207,7 @@ export function ComposerRuntimePlugin({
     return editor.registerCommand(
       CLEAR_COMPOSER_COMMAND,
       () => {
-        editor.update(() => {
+        updateEditorWithoutHistory(editor, () => {
           $clearComposer();
         });
         return true;
@@ -219,7 +220,7 @@ export function ComposerRuntimePlugin({
     return editor.registerCommand(
       RESTORE_COMPOSER_COMMAND,
       (payload) => {
-        editor.update(() => {
+        updateEditorWithoutHistory(editor, () => {
           $restoreComposerFromSegments(payload.segments);
           $trimComposerTextToMaxLength(maxTextLength);
         });

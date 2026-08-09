@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
 
@@ -29,13 +28,13 @@ export function QuickReplyCategoryDialog({
   variant = "category",
 }: QuickReplyCategoryDialogProps) {
   const [title, setTitle] = useState(initialTitle);
-  const [error, setError] = useState("");
+  const [titleError, setTitleError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setTitle(initialTitle);
-      setError("");
+      setTitleError("");
       setIsSubmitting(false);
     }
   }, [initialTitle, open]);
@@ -46,12 +45,12 @@ export function QuickReplyCategoryDialog({
     const normalizedTitle = title.trim();
 
     if (!normalizedTitle) {
-      setError(copy.emptyError);
+      setTitleError(copy.emptyError);
       return;
     }
 
     if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
-      setError(copy.maxLengthError);
+      setTitleError(copy.maxLengthError);
       return;
     }
 
@@ -60,8 +59,8 @@ export function QuickReplyCategoryDialog({
     try {
       await onSubmit(normalizedTitle);
       onOpenChange(false);
-    } catch (submitError) {
-      setError(resolveErrorMessage(submitError, "保存失败，请稍后重试").trim());
+    } catch {
+      // The mutation owner reports the request failure.
     } finally {
       setIsSubmitting(false);
     }
@@ -78,12 +77,20 @@ export function QuickReplyCategoryDialog({
         </DialogHeader>
         <div className="space-y-2">
           <Input
+            aria-invalid={titleError ? true : undefined}
             maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setTitleError("");
+            }}
             placeholder={copy.placeholder}
             value={title}
           />
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {titleError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {titleError}
+            </p>
+          ) : null}
         </div>
         <DialogFooter>
           <Button

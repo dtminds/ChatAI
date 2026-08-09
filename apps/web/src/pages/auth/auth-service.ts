@@ -3,6 +3,9 @@ import type {
   AuthLoginResponse,
   AuthRefreshResponse,
   AuthSessionResponse,
+  SupportInvestigationAccountListResponse,
+  SupportInvestigationStartRequest,
+  SupportInvestigationStartResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 
@@ -32,6 +35,26 @@ export async function getAuthSession() {
   });
 }
 
+export async function getSupportInvestigationAccounts(uid: number) {
+  return http.get<{ data: SupportInvestigationAccountListResponse }>(
+    "/auth/support-investigation/accounts",
+    { params: { uid } },
+  );
+}
+
+export async function startSupportInvestigation(
+  payload: SupportInvestigationStartRequest,
+) {
+  return http.post<
+    { data: SupportInvestigationStartResponse },
+    SupportInvestigationStartRequest
+  >("/auth/support-investigation/start", payload);
+}
+
 export async function logout() {
-  return http.post<{ data: { revoked: boolean } }>("/auth/logout");
+  return http.post<{ data: { revoked: boolean } }>(
+    "/auth/logout",
+    undefined,
+    { supportReadonlyAllowed: true },
+  );
 }

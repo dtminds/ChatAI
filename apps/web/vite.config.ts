@@ -8,20 +8,20 @@ import {
   type ServerOptions,
   type UserConfig,
 } from "vite";
-import { resolveOcrRuntimeUrls } from "./src/pages/chat/lib/ocr-runtime-manifest";
+import { resolveOcrRuntimeUrls } from "./src/pages/chat/lib/ocr-runtime-manifest.ts";
 import {
   cosDevProxyPlugin,
   parseCosDevProxyRequest,
   resolveCosDevProxyTarget,
   rewriteCosDevProxyPath,
-} from "./vite.cos-dev-proxy";
+} from "./vite.cos-dev-proxy.ts";
 
 type ViteDevEnv = Record<string, string | undefined>;
 
 const paddleOcrPackageName = "@paddleocr/paddleocr-js";
 
 export function getRepoRoot() {
-  return path.resolve(__dirname, "../..");
+  return path.resolve(import.meta.dirname, "../..");
 }
 
 function parsePort(rawPort: string | undefined, fallback: number) {
@@ -87,7 +87,7 @@ export function createViteConfig(mode = "development"): UserConfig {
 
   return {
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         external: [paddleOcrPackageName],
         output: {
           paths: {
@@ -102,7 +102,7 @@ export function createViteConfig(mode = "development"): UserConfig {
     resolve: {
       dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(import.meta.dirname, "./src"),
         "@chatai/contracts": path.resolve(
           repoRoot,
           "packages/contracts/src/index.ts",

@@ -103,8 +103,8 @@ export function ChatUserMemoryPopover({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
 }) {
-  const role = useAuthStore((state) => state.subUser?.role);
-  const canMaintain = canMaintainUserMemory(role);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canMaintain = canMaintainUserMemory(subUser);
   const externalId = conversation.thirdExternalUserId?.trim() ?? "";
   const customerKey = `${conversation.id}:${externalId}`;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);

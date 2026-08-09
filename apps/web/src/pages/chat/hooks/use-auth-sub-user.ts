@@ -39,11 +39,3 @@ export function useAuthSubUser() {
 
   return subUser;
 }
-
-export function isChatReadOnlySubUser(subUser: AuthSubUser | undefined) {
-  if (!subUser) {
-    return true;
-  }
-
-  return subUser.role === "viewer" || !subUser.permissions?.includes("chat.send");
-}

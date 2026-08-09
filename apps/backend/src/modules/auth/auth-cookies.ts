@@ -26,6 +26,11 @@ type AuthCookieInput = {
   refreshTokenMaxAgeSeconds: number;
 };
 
+type SupportAuthCookieInput = {
+  accessToken: string;
+  accessTokenMaxAgeSeconds: number;
+};
+
 export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
   reply
     .setCookie(ACCESS_TOKEN_COOKIE_NAME, input.accessToken, {
@@ -36,6 +41,22 @@ export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
     .setCookie(REFRESH_TOKEN_COOKIE_NAME, input.refreshToken, {
       ...refreshTokenCookieOptions,
       maxAge: input.refreshTokenMaxAgeSeconds,
+      secure: isSecureCookieEnabled(),
+    });
+}
+
+export function setSupportAuthCookie(
+  reply: FastifyReply,
+  input: SupportAuthCookieInput,
+) {
+  reply
+    .setCookie(ACCESS_TOKEN_COOKIE_NAME, input.accessToken, {
+      ...accessTokenCookieOptions,
+      maxAge: input.accessTokenMaxAgeSeconds,
+      secure: isSecureCookieEnabled(),
+    })
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      ...refreshTokenCookieOptions,
       secure: isSecureCookieEnabled(),
     });
 }

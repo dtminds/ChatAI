@@ -10,6 +10,7 @@ import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchToastErrorMock,
 } from "./workbench-test-utils";
 
 function createDeferred<T = void>() {
@@ -234,7 +235,10 @@ describe("ChatWorkbenchPage sidebar flows", () => {
     await user.type(screen.getByPlaceholderText("请输入话术内容"), "您好");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByText("保存失败")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(workbenchToastErrorMock).toHaveBeenCalledWith("保存失败");
+    });
+    expect(screen.queryByText("保存失败")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("请输入话术内容")).toHaveValue("您好");
   });
 });

@@ -3202,6 +3202,34 @@ export interface XyWapEmbedTicketActivity {
   uid: number;
 }
 
+export interface XyWapEmbedSupportInvestigationLog {
+  /**
+   * 发起排查的子账号ID
+   */
+  actor_sub_user_id: number;
+  /**
+   * 发起排查的租户UID
+   */
+  actor_uid: number;
+  id: Generated<number>;
+  /**
+   * 排查原因
+   */
+  investigation_reason: string;
+  /**
+   * 排查开始时间
+   */
+  started_at: Generated<Date>;
+  /**
+   * 目标子账号ID
+   */
+  target_sub_user_id: number;
+  /**
+   * 目标租户UID
+   */
+  target_uid: number;
+}
+
 export interface XyWapEmbedSubUser {
   /**
    * 登录用户名
@@ -3577,6 +3605,7 @@ export interface DB {
   xy_wap_embed_session_tag: XyWapEmbedSessionTag;
   xy_wap_embed_sessionization_config: XyWapEmbedSessionizationConfig;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
+  xy_wap_embed_support_investigation_log: XyWapEmbedSupportInvestigationLog;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;
   xy_wap_embed_ticket_activity: XyWapEmbedTicketActivity;

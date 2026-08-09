@@ -7,6 +7,7 @@ import type {
   AiHostingSettingsAgentOption,
 } from "@chatai/contracts";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -130,7 +131,7 @@ export function GroupChatSettingsDialog({
         semiAutoAuth,
       });
     } catch (error) {
-      setValidationMessage(getErrorMessage(error, "群聊设置保存失败"));
+      toast.error(getErrorMessage(error, "群聊设置保存失败"));
     } finally {
       setSaving(false);
     }

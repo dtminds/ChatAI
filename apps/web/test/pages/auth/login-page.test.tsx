@@ -30,6 +30,7 @@ vi.mock("altcha/lib", () => ({
 describe("LoginPage", () => {
   afterEach(() => {
     mock.reset();
+    vi.restoreAllMocks();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
     setSecureContext(true);
     window.localStorage.clear();
@@ -58,14 +59,58 @@ describe("LoginPage", () => {
       hideFooter: true,
       hideLogo: true,
     });
+    const backgroundVideo = document.querySelector("video");
+    expect(backgroundVideo).toHaveProperty("autoplay", true);
+    expect(backgroundVideo).toHaveProperty("loop", true);
+    expect(backgroundVideo).toHaveProperty("muted", true);
+    expect(backgroundVideo).toHaveProperty("playsInline", true);
+    expect(backgroundVideo?.querySelector("source")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/0808/leaves.mp4",
+    );
     expect(screen.getByAltText("登录页占位图")).toHaveAttribute(
       "src",
-      "https://b5.bokr.com.cn/dist/login_bg_2.png",
+      "https://b5.bokr.com.cn/dist/ui/0808/login_bg_5.png",
     );
     expect(screen.queryByText("注册")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Or continue with|快捷登录|Apple|Google|Meta/i),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "浙公网安备 33010902003191号" })).toHaveAttribute(
+      "href",
+      "http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33010902003191",
+    );
+    expect(screen.getByRole("link", { name: "浙ICP备2020043436号-1" })).toHaveAttribute(
+      "href",
+      "https://beian.miit.gov.cn/",
+    );
+    expect(screen.queryByText(/点击继续，即表示你同意/)).not.toBeInTheDocument();
+  });
+
+  it("pauses the background video while the page is hidden", async () => {
+    const visibilityState = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => undefined);
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+
+    renderLoginRoute();
+
+    await screen.findByRole("heading", { name: "欢迎回来" });
+    expect(pause).toHaveBeenCalled();
+    const initialPauseCount = pause.mock.calls.length;
+
+    visibilityState.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(play).toHaveBeenCalledTimes(1);
+
+    visibilityState.mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(pause).toHaveBeenCalledTimes(initialPauseCount + 1);
   });
 
   it("uses a fallback ALTCHA control outside secure browser contexts", async () => {

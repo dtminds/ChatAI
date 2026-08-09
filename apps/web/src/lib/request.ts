@@ -64,11 +64,26 @@ export const requestInstance = axios.create({
 type AuthRetryConfig = AxiosRequestConfig & {
   _skipAuthRetry?: boolean;
   _authRetry?: boolean;
+  supportReadonlyAllowed?: boolean;
 };
 
 let refreshRequest: Promise<AuthRefreshResponse> | null = null;
 
 requestInstance.interceptors.request.use((config) => {
+  const requestConfig = config as typeof config & AuthRetryConfig;
+
+  if (
+    isSupportReadOnlySession()
+    && isMutatingMethod(requestConfig.method)
+    && !requestConfig.supportReadonlyAllowed
+  ) {
+    return Promise.reject(new RequestNormalizedError({
+      code: "SUPPORT_READ_ONLY",
+      message: "诊断模式无法执行该操作",
+      status: 403,
+    }));
+  }
+
   const headers = AxiosHeaders.from(config.headers);
 
   headers.set("X-Workbench-Client", "chat-ai-ui");
@@ -202,16 +217,41 @@ export async function request<TResponse = unknown, TPayload = unknown>(
       }
     }
 
+    if (shouldEndSupportSession(error, config)) {
+      notifyAuthSessionChanged();
+    }
+
     return Promise.reject(toRequestError(normalizeError(error), error));
   }
 }
 
 function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {
-  if (config._skipAuthRetry || config._authRetry) {
+  if (
+    config._skipAuthRetry
+    || config._authRetry
+    || isSupportReadOnlySession()
+  ) {
     return false;
   }
 
   return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
+function shouldEndSupportSession(error: unknown, config: AuthRetryConfig) {
+  return !config._skipAuthRetry
+    && isSupportReadOnlySession()
+    && axios.isAxiosError(error)
+    && error.response?.status === 401;
+}
+
+function isSupportReadOnlySession() {
+  return useAuthStore.getState().subUser?.accessMode === "support_readonly";
+}
+
+function isMutatingMethod(method: string | undefined) {
+  return !new Set(["GET", "HEAD", "OPTIONS"]).has(
+    (method ?? "GET").toUpperCase(),
+  );
 }
 
 export const http = {

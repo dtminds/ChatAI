@@ -151,7 +151,7 @@ function RefreshListButton({
 
 export function AgentOptimizationSuggestionsPage() {
   const { agentId = "" } = useParams();
-  const role = useAuthStore((state) => state.subUser?.role);
+  const subUser = useAuthStore((state) => state.subUser);
   const knowledgeBaseSelectRef = useRef<HTMLButtonElement>(null);
   const [activeStatus, setActiveStatus] = useState<SuggestionStatus>("pending");
   const [batchMode, setBatchMode] = useState(false);
@@ -182,7 +182,7 @@ export function AgentOptimizationSuggestionsPage() {
     pageSize: PAGE_SIZE,
     total,
   });
-  const canManage = canManageAiHostingAgents(role);
+  const canManage = canManageAiHostingAgents(subUser);
   const canBatchOperate = canManage && activeStatus !== "adopted";
   const canSelect = canBatchOperate && batchMode;
   const ingestPreviewCandidate =

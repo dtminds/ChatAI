@@ -108,6 +108,37 @@ describe("auth routes", () => {
     });
   });
 
+  it("allows support sessions to access settings routes", async () => {
+    const supportSubUser: AuthSubUser = {
+      ...operatorSubUser,
+      accessMode: "support_readonly",
+    };
+    mock.onGet("/auth/session").reply(200, {
+      data: { subUser: supportSubUser },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            { path: "chat", element: <div>聊天页占位</div> },
+            { path: "chat/settings", element: <div>设置页占位</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/chat/settings"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat/settings");
+    });
+    expect(await screen.findByText("设置页占位")).toBeInTheDocument();
+  });
+
   it("shows a not-found page for an unknown route and returns to the workbench", async () => {
     const user = userEvent.setup();
     mock.onGet("/auth/session").reply(200, {

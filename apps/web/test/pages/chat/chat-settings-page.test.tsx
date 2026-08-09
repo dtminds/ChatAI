@@ -26,6 +26,7 @@ vi.mock("sonner", async (importOriginal) => {
 const mock = new MockAdapter(requestInstance);
 const groupChatReceptionUpdateGates = new Map<string, Promise<void>>();
 const groupChatReceptionUpdateStatuses = new Map<string, number>();
+let groupChatsListStatus = 200;
 
 function createDomRect(rect: Partial<DOMRect>): DOMRect {
   return {
@@ -90,6 +91,7 @@ describe("Chat settings pages", () => {
     vi.mocked(toast.success).mockClear();
     groupChatReceptionUpdateGates.clear();
     groupChatReceptionUpdateStatuses.clear();
+    groupChatsListStatus = 200;
     resetWorkbenchService();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
@@ -313,6 +315,13 @@ describe("Chat settings pages", () => {
       return [200, { data: { availableManagedAccounts }, success: true }];
     });
     mock.onGet("/server/settings/group-chats").reply((config) => {
+      if (groupChatsListStatus !== 200) {
+        return [
+          groupChatsListStatus,
+          { error: { message: "群聊列表刷新失败" }, success: false },
+        ];
+      }
+
       const keyword = config.params?.keyword as string | undefined;
       const managedAccountId = config.params?.managedAccountId as string | undefined;
       const page = Number(config.params?.page ?? 1);
@@ -704,6 +713,31 @@ describe("Chat settings pages", () => {
     ]);
   });
 
+  it("reports a list refresh failure separately after group chat settings are saved", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 护肤交流群" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "群聊接待设置" });
+    const submitButton = within(dialog).getByRole("button", { name: "确认提交" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    groupChatsListStatus = 500;
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("加载失败，请稍后重试");
+    });
+    expect(
+      mock.history.put.filter(
+        (request) => request.url === "/server/settings/group-chats/reception",
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByRole("dialog", { name: "群聊接待设置" })).not.toBeInTheDocument();
+  });
+
   it("stops batch updates after a failure and reports completed progress", async () => {
     const user = userEvent.setup();
     groupChatReceptionUpdateStatuses.set("502", 500);
@@ -719,9 +753,13 @@ describe("Chat settings pages", () => {
     await waitFor(() => expect(submitButton).toBeEnabled());
     await user.click(submitButton);
 
-    expect(await within(dialog).findByText(/已完成 1\/2 个群聊/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/已完成 1\/2 个群聊/),
+      );
+    });
     expect(within(dialog).getByText("1/2")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认提交" })).toBeEnabled();
     expect(
       mock.history.put.filter(
         (request) => request.url === "/server/settings/group-chats/reception",
@@ -1247,6 +1285,11 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
     expect(mock.history.post).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("页面名称"));
+    await user.type(screen.getByLabelText("页面名称"), "页面名");
+
+    expect(screen.queryByText("页面名称最多 8 个字符")).not.toBeInTheDocument();
   });
 
   it("shows sidebar item api error messages returned by success false envelopes", async () => {
@@ -1442,6 +1485,24 @@ describe("Chat settings pages", () => {
     await waitFor(() => {
       expect(mock.history.post).toHaveLength(1);
     });
+  });
+
+  it("clears sub-account field errors when the related fields change", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "新增子账号" }));
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(screen.getByText("请填写登录用户名")).toBeInTheDocument();
+    expect(screen.getByText("请填写姓名")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("登录用户名"), "agent003");
+    expect(screen.queryByText("请填写登录用户名")).not.toBeInTheDocument();
+    expect(screen.getByText("请填写姓名")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("姓名"), "客服三号");
+    expect(screen.queryByText("请填写姓名")).not.toBeInTheDocument();
   });
 
   it("validates optional password changes when editing sub-accounts", async () => {

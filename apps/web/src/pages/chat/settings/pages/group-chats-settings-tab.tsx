@@ -240,8 +240,8 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
         pageSize,
       });
       setData(response);
-    } catch (error) {
-      setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
+    } catch {
+      toast.error("加载失败，请稍后重试");
     }
     setSelectedGroupChats([]);
   }

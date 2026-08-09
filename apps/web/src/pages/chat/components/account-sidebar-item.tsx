@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
 import { UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
@@ -54,6 +59,7 @@ export function AccountSidebarItem({
   takeoverStatus: "idle" | "taking-over";
   variant?: "default" | "compact";
 }) {
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const closePopoverTimerRef = useRef<number | null>(null);
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
   const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
@@ -153,6 +159,15 @@ export function AccountSidebarItem({
 
     setIsTakeoverConfirmOpen(open);
   };
+  const handleTakeoverPopoverPointerDownOutside: NonNullable<
+    ComponentPropsWithoutRef<typeof PopoverContent>["onPointerDownOutside"]
+  > = (event) => {
+    const target = event.detail.originalEvent.target;
+
+    if (target instanceof Node && accountButtonRef.current?.contains(target)) {
+      event.preventDefault();
+    }
+  };
   const handleConfirmTakeover = async (
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
@@ -200,6 +215,7 @@ export function AccountSidebarItem({
         onKeyDown={handleCardKeyDown}
         onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
         onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
+        ref={accountButtonRef}
         type="button"
       >
         <Avatar className="size-7 rounded-[8px]">
@@ -259,6 +275,7 @@ export function AccountSidebarItem({
             onEscapeKeyDown={closeTakeoverPopoverImmediately}
             onMouseEnter={openTakeoverPopover}
             onMouseLeave={closeTakeoverPopover}
+            onPointerDownOutside={handleTakeoverPopoverPointerDownOutside}
             side="right"
             sideOffset={2}
           >
@@ -311,35 +328,13 @@ export function AccountSidebarItem({
             </Button>
           </PopoverContent>
         ) : null}
-        <AlertDialog
+        <TakeoverConfirmationDialog
+          account={account}
+          isPending={isTakeoverConfirmPending}
           onOpenChange={handleTakeoverConfirmOpenChange}
           open={isTakeoverConfirmOpen}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
-              <AlertDialogDescription>
-                接管后，将由你负责处理对话，其他子账号将无权发送消息
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isTakeoverConfirmPending}>
-                取消
-              </AlertDialogCancel>
-              <AlertDialogAction
-                aria-busy={isTakeoverConfirmPending}
-                disabled={isTakeoverConfirmPending}
-                onClick={handleConfirmTakeover}
-                variant="default"
-              >
-                {isTakeoverConfirmPending ? (
-                  <Spinner variant="classic" size={16} className="text-current" />
-                ) : null}
-                <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          onConfirm={handleConfirmTakeover}
+        />
       </Popover>
     );
   }
@@ -365,6 +360,7 @@ export function AccountSidebarItem({
           onKeyDown={handleCardKeyDown}
           onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
           onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
+          ref={accountButtonRef}
           title={account.name}
           type="button"
         >
@@ -413,6 +409,7 @@ export function AccountSidebarItem({
           onEscapeKeyDown={closeTakeoverPopoverImmediately}
           onMouseEnter={openTakeoverPopover}
           onMouseLeave={closeTakeoverPopover}
+          onPointerDownOutside={handleTakeoverPopoverPointerDownOutside}
           side="right"
           sideOffset={2}
         >
@@ -460,36 +457,69 @@ export function AccountSidebarItem({
           </Button>
         </PopoverContent>
       ) : null}
-      <AlertDialog
+      <TakeoverConfirmationDialog
+        account={account}
+        isPending={isTakeoverConfirmPending}
         onOpenChange={handleTakeoverConfirmOpenChange}
         open={isTakeoverConfirmOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
-            <AlertDialogDescription>
-              接管后，将由你负责处理对话，其他子账号将无权发送消息
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isTakeoverConfirmPending}>
-              取消
-            </AlertDialogCancel>
-            <AlertDialogAction
-              aria-busy={isTakeoverConfirmPending}
-              disabled={isTakeoverConfirmPending}
-              onClick={handleConfirmTakeover}
-              variant="default"
-            >
-              {isTakeoverConfirmPending ? (
-                <Spinner variant="classic" size={16} className="text-current" />
-              ) : null}
-              <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={handleConfirmTakeover}
+      />
     </Popover>
+  );
+}
+
+function TakeoverConfirmationDialog({
+  account,
+  isPending,
+  onConfirm,
+  onOpenChange,
+  open,
+}: {
+  account: Account;
+  isPending: boolean;
+  onConfirm: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={open}>
+      <AlertDialogContent className="max-w-md gap-0 overflow-hidden p-0">
+        <AlertDialogHeader className="primary-grid-fade-background items-center space-y-0 px-18 pb-6 pt-16 text-center sm:text-center">
+          <Avatar className="size-14">
+            <AvatarImage alt={account.name} src={account.avatarUrl} />
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              {account.name.slice(0, 1)}
+            </AvatarFallback>
+          </Avatar>
+          <AlertDialogTitle
+            aria-label={`是否确认接管：${account.name}`}
+            className="mt-3 max-w-full truncate"
+          >
+            {account.name}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="mt-2 max-w-sm leading-6">
+            接管账号后，将由你负责处理对话，其他子账号无权发送消息。确认要接管吗？
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-row justify-center gap-2 px-6 pb-6 pt-4 sm:justify-center sm:space-x-0">
+          <AlertDialogCancel className="mt-0 min-w-24" disabled={isPending}>
+            取消
+          </AlertDialogCancel>
+          <AlertDialogAction
+            aria-busy={isPending}
+            className="min-w-24"
+            disabled={isPending}
+            onClick={onConfirm}
+            variant="default"
+          >
+            {isPending ? (
+              <Spinner variant="classic" size={16} className="text-current" />
+            ) : null}
+            <span>{isPending ? "接管中" : "确认接管"}</span>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

@@ -19,6 +19,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AGENT_SKILL_APPLY_SCENE_MAX_LENGTH,
+  AGENT_SKILL_CONTENT_MAX_LENGTH,
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
   AGENT_SKILL_TOOL_CATALOG,
@@ -120,6 +121,7 @@ import {
   removeResourceFromSkillContent,
   replaceResourceInSkillContent,
   serializeSkillContentSegments,
+  trimSkillContentSegmentsToMaxLength,
   toSkillContentResourceSegment,
   type SkillContentSegment,
   type SkillRecommendBinding,
@@ -281,8 +283,8 @@ export function AiSkillSettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { skillId } = useParams<{ skillId?: string }>();
-  const role = useAuthStore((state) => state.subUser?.role);
-  const canManage = canManageAiHostingAgents(role);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const isEditMode = Boolean(skillId);
   const descriptionEditorRef = useRef<LexicalEditor | null>(null);
   const [createDraft] = useState(() =>
@@ -412,7 +414,12 @@ export function AiSkillSettingsPage() {
 
         setName(detail.name);
         setApplicationScenario(detail.applyScene);
-        setSkillContentSegments(parseSkillContentSegments(detail.content));
+        setSkillContentSegments(
+          trimSkillContentSegmentsToMaxLength(
+            parseSkillContentSegments(detail.content),
+            AGENT_SKILL_CONTENT_MAX_LENGTH,
+          ),
+        );
         setSelectedResources(buildSelectedResources(detail.resources));
       } catch {
         if (!cancelled) {
@@ -904,6 +911,7 @@ export function AiSkillSettingsPage() {
               <AiSkillDescriptionField
                 disabled={controlsDisabled}
                 editorRef={descriptionEditorRef}
+                historyKey={skillId ?? "new-skill"}
                 knowledgeBases={selectedResources["knowledge-bases"]}
                 onChange={setSkillContentSegments}
                 onSelectResource={handleInsertReferencedResource}

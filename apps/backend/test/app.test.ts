@@ -3347,6 +3347,15 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/download",
     });
+    const downloadStatus = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 1,
+      },
+      url: "/api/server/messages/download-status",
+    });
     const revoke = await app.inject({
       headers: { authorization },
       method: "POST",
@@ -3397,6 +3406,7 @@ describe("backend app", () => {
       takeOver,
       markRead,
       uploadCredential,
+      downloadStatus,
       revoke,
       retry,
       smartReplySendAnswer,

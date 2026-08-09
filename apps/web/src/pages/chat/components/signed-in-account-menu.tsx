@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Bug01Icon,
   LogoutSquare01Icon,
   ModernTvIcon,
   MoreVerticalIcon,
@@ -34,6 +35,7 @@ import { logout } from "@/pages/auth/auth-service";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAppearanceStore } from "@/store/appearance-store";
 import { useAuthStore } from "@/store/auth-store";
+import { SupportInvestigationDialog } from "@/pages/chat/components/support-investigation-dialog";
 
 const themeModeOptions = [
   { value: "light", label: "浅色", icon: Sun02Icon },
@@ -66,6 +68,9 @@ export function SignedInAccountMenu({
   const location = useLocation();
   const navigate = useNavigate();
   const authDisplayName = useAuthStore((state) => state.subUser?.displayName);
+  const canStartSupportInvestigation = useAuthStore(
+    (state) => state.subUser?.canStartSupportInvestigation === true,
+  );
   const appearanceTheme = useAppearanceStore((state) => state.appearanceTheme);
   const setAppearanceTheme = useAppearanceStore(
     (state) => state.setAppearanceTheme,
@@ -77,11 +82,32 @@ export function SignedInAccountMenu({
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isThemeColorMenuOpen, setIsThemeColorMenuOpen] = useState(false);
   const [isAppearanceModeMenuOpen, setIsAppearanceModeMenuOpen] = useState(false);
+  const [isSupportInvestigationOpen, setIsSupportInvestigationOpen] = useState(false);
+  const [isSupportInvestigationEntryVisible, setIsSupportInvestigationEntryVisible] =
+    useState(false);
   const signedInName = displayName?.trim() || authDisplayName?.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const activeThemeMode =
     themeModeOptions.find((option) => option.value === themePreference) ??
     themeModeOptions[2];
+
+  useEffect(() => {
+    if (!isAccountMenuOpen || !canStartSupportInvestigation) {
+      return;
+    }
+
+    const handleModifierKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Meta" || event.key === "Control") {
+        setIsSupportInvestigationEntryVisible(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleModifierKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleModifierKeyDown);
+    };
+  }, [canStartSupportInvestigation, isAccountMenuOpen]);
 
   const handleAppearanceThemeChange = (nextTheme: string) => {
     if (!isAppearanceThemeId(nextTheme)) {
@@ -105,6 +131,7 @@ export function SignedInAccountMenu({
     if (!isOpen) {
       setIsThemeColorMenuOpen(false);
       setIsAppearanceModeMenuOpen(false);
+      setIsSupportInvestigationEntryVisible(false);
     }
   };
 
@@ -135,7 +162,8 @@ export function SignedInAccountMenu({
   };
 
   return (
-    <DropdownMenu
+    <>
+      <DropdownMenu
       onOpenChange={handleAccountMenuOpenChange}
       open={isAccountMenuOpen}
     >
@@ -320,6 +348,19 @@ export function SignedInAccountMenu({
         <DropdownMenuSeparator />
 
         <div className="space-y-1 py-1">
+          {canStartSupportInvestigation && isSupportInvestigationEntryVisible ? (
+            <DropdownMenuItem
+              className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
+              onSelect={() => setIsSupportInvestigationOpen(true)}
+            >
+              <HugeiconsIcon
+                color="currentColor"
+                icon={Bug01Icon}
+                size={16}
+              />
+              <span>问题排查</span>
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
             onSelect={handleOpenSettings}
@@ -345,8 +386,15 @@ export function SignedInAccountMenu({
             <span>退出登录</span>
           </DropdownMenuItem>
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {canStartSupportInvestigation ? (
+        <SupportInvestigationDialog
+          onOpenChange={setIsSupportInvestigationOpen}
+          open={isSupportInvestigationOpen}
+        />
+      ) : null}
+    </>
   );
 }
 

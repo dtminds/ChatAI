@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import type {
   Ticket,
   TicketContextOptionsResponse,
@@ -65,7 +66,8 @@ export function TicketCreateDialog({
   const [sessions, setSessions] = useState<TicketContextOptionsResponse["sessions"]>([]);
   const [isOptionsLoading, setIsOptionsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string>();
+  const [optionsError, setOptionsError] = useState<string>();
+  const [titleError, setTitleError] = useState<string>();
   const scopeRef = useRef("");
   const scopeKey = `${conversationId}:${open ? "open" : "closed"}`;
   scopeRef.current = scopeKey;
@@ -85,7 +87,8 @@ export function TicketCreateDialog({
     setContextValue("current");
     setAssignees([]);
     setSessions([]);
-    setError(undefined);
+    setOptionsError(undefined);
+    setTitleError(undefined);
     setIsOptionsLoading(true);
 
     void getTicketContextOptions({ conversationId })
@@ -99,7 +102,7 @@ export function TicketCreateDialog({
       })
       .catch((cause: unknown) => {
         if (active && scopeRef.current === requestScope) {
-          setError(errorMessage(cause, "工单选项加载失败"));
+          setOptionsError(errorMessage(cause, "工单选项加载失败"));
         }
       })
       .finally(() => {
@@ -116,13 +119,13 @@ export function TicketCreateDialog({
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
     if (!normalizedTitle) {
-      setError("请输入工单标题");
+      setTitleError("请输入工单标题");
       return;
     }
 
     const requestScope = scopeRef.current;
     setIsSubmitting(true);
-    setError(undefined);
+    setTitleError(undefined);
     try {
       const result = await createTicket({
         ...(assigneeSubUserId === undefined
@@ -143,7 +146,7 @@ export function TicketCreateDialog({
       onOpenChange(false);
     } catch (cause) {
       if (scopeRef.current === requestScope) {
-        setError(errorMessage(cause, "工单创建失败"));
+        toast.error(errorMessage(cause, "工单创建失败"));
       }
     } finally {
       if (scopeRef.current === requestScope) {
@@ -171,9 +174,13 @@ export function TicketCreateDialog({
             <div className="relative">
               <Input
                 aria-label="标题"
+                aria-invalid={titleError ? true : undefined}
                 className="pr-16"
                 maxLength={120}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  setTitleError(undefined);
+                }}
                 placeholder="请输入工单标题"
                 value={title}
               />
@@ -181,6 +188,11 @@ export function TicketCreateDialog({
                 {title.length}/120
               </span>
             </div>
+            {titleError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {titleError}
+              </p>
+            ) : null}
           </Field>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="负责人">
@@ -283,9 +295,9 @@ export function TicketCreateDialog({
               <span className="shrink-0">{description.length}/2000</span>
             </div>
           </Field>
-          {error ? (
+          {optionsError ? (
             <p className="text-sm text-destructive" role="alert">
-              {error}
+              {optionsError}
             </p>
           ) : null}
         </div>

@@ -8,7 +8,10 @@ import {
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
-import { mediaUploadMocks } from "./workbench-test-utils";
+import {
+  mediaUploadMocks,
+  workbenchToastErrorMock,
+} from "./workbench-test-utils";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
@@ -1534,6 +1537,10 @@ describe("QuickReplyPanel", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(screen.getByText("请填写话术内容或添加附件")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("请输入话术内容"), "您好");
+
+    expect(screen.queryByText("请填写话术内容或添加附件")).not.toBeInTheDocument();
   });
 
   it("uses shared quick reply payload validation before saving", async () => {
@@ -2074,7 +2081,10 @@ describe("QuickReplyPanel", () => {
     await user.type(screen.getByPlaceholderText("请输入话术内容"), "您好");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByText("图片上传失败，请重试")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(workbenchToastErrorMock).toHaveBeenCalledWith("图片上传失败，请重试");
+    });
+    expect(screen.queryByText("图片上传失败，请重试")).not.toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

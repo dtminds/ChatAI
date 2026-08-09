@@ -7,6 +7,7 @@ import {
   type SupportInvestigationTargetAccount,
 } from "@chatai/contracts";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -53,7 +54,7 @@ export function SupportInvestigationDialog({
   );
   const queryIdRef = useRef(0);
   const [accounts, setAccounts] = useState<SupportInvestigationTargetAccount[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string>();
+  const [uidError, setUidError] = useState<string>();
   const [keyword, setKeyword] = useState("");
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [reason, setReason] = useState<SupportInvestigationReason>();
@@ -76,7 +77,7 @@ export function SupportInvestigationDialog({
   const reset = () => {
     queryIdRef.current += 1;
     setAccounts([]);
-    setErrorMessage(undefined);
+    setUidError(undefined);
     setKeyword("");
     setLoadingAccounts(false);
     setReason(undefined);
@@ -97,14 +98,14 @@ export function SupportInvestigationDialog({
     const uid = Number(uidInput.trim());
 
     if (!/^[1-9]\d*$/.test(uidInput.trim()) || !Number.isSafeInteger(uid)) {
-      setErrorMessage("请输入有效的 UID");
+      setUidError("请输入有效的 UID");
       return;
     }
 
     const queryId = queryIdRef.current + 1;
     queryIdRef.current = queryId;
     setAccounts([]);
-    setErrorMessage(undefined);
+    setUidError(undefined);
     setKeyword("");
     setLoadingAccounts(true);
     setSelectedSubUserId("");
@@ -119,7 +120,7 @@ export function SupportInvestigationDialog({
       setAccounts(response.data.accounts);
     } catch (error) {
       if (queryIdRef.current === queryId) {
-        setErrorMessage(getErrorMessage(error, "查询失败，请稍后重试"));
+        toast.error(getErrorMessage(error, "查询失败，请稍后重试"));
       }
     } finally {
       if (queryIdRef.current === queryId) {
@@ -135,7 +136,6 @@ export function SupportInvestigationDialog({
       return;
     }
 
-    setErrorMessage(undefined);
     setStarting(true);
 
     try {
@@ -151,7 +151,7 @@ export function SupportInvestigationDialog({
       navigate("/chat", { replace: true });
       notifyAuthSessionChanged();
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "开始排查失败，请稍后重试"));
+      toast.error(getErrorMessage(error, "开始排查失败，请稍后重试"));
       setStarting(false);
     }
   };
@@ -172,11 +172,15 @@ export function SupportInvestigationDialog({
             <Label htmlFor="support-investigation-uid">租户 UID</Label>
             <div className="flex gap-2">
               <Input
+                aria-invalid={uidError ? true : undefined}
                 autoComplete="off"
                 disabled={loadingAccounts || starting}
                 id="support-investigation-uid"
                 inputMode="numeric"
-                onChange={(event) => setUidInput(event.target.value)}
+                onChange={(event) => {
+                  setUidInput(event.target.value);
+                  setUidError(undefined);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -198,6 +202,11 @@ export function SupportInvestigationDialog({
                 <span>查询</span>
               </Button>
             </div>
+            {uidError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {uidError}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -295,11 +304,6 @@ export function SupportInvestigationDialog({
             </Select>
           </div>
 
-          {errorMessage ? (
-            <p className="text-sm text-destructive" role="alert">
-              {errorMessage}
-            </p>
-          ) : null}
         </div>
 
         <DialogFooter>

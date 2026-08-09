@@ -130,7 +130,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         }
         await loadQuickReplies();
       } catch (error) {
-        toast.warning(getErrorMessage(error));
+        toast.error(getErrorMessage(error));
         throw error;
       } finally {
         setIsMutating(false);

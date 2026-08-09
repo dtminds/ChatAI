@@ -173,7 +173,6 @@ export function AgentManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [removeErrorMessage, setRemoveErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
@@ -262,7 +261,7 @@ export function AgentManagementPage() {
       notifyAiHostingQuotaChanged();
     } catch (error) {
       setRemoveTarget(null);
-      setRemoveErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
+      toast.error(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
     }
@@ -414,25 +413,6 @@ export function AgentManagementPage() {
             <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm} variant="destructive">
               确认删除
             </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setRemoveErrorMessage("");
-          }
-        }}
-        open={Boolean(removeErrorMessage)}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除 Agent 失败</AlertDialogTitle>
-            <AlertDialogDescription>{removeErrorMessage}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction>知道了</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

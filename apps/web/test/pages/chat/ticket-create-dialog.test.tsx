@@ -10,9 +10,11 @@ const api = vi.hoisted(() => ({
 const ticketCounts = vi.hoisted(() => ({
   refreshTicketCounts: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
 vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
+vi.mock("sonner", () => ({ toast }));
 
 const contextOptions = {
   assignees: [
@@ -31,6 +33,7 @@ const contextOptions = {
 } as const;
 
 beforeEach(() => {
+  toast.error.mockReset();
   api.getTicketContextOptions.mockReset().mockResolvedValue(contextOptions);
   api.createTicket.mockReset().mockResolvedValue({
     ticket: { ticketId: "501" },
@@ -143,7 +146,7 @@ describe("TicketCreateDialog", () => {
     expect(screen.queryByRole("button", { name: /消息/ })).not.toBeInTheDocument();
   });
 
-  it("keeps entered values after a failed submission", async () => {
+  it("keeps entered values and toasts after a failed submission", async () => {
     const user = userEvent.setup();
     api.createTicket.mockRejectedValueOnce(new Error("创建失败"));
 
@@ -161,7 +164,8 @@ describe("TicketCreateDialog", () => {
     await user.type(title, "需要保留的内容");
     await user.click(screen.getByRole("button", { name: "创建" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("创建失败");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("创建失败"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(title).toHaveValue("需要保留的内容");
   });
 

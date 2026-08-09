@@ -11,8 +11,10 @@ const authServiceMocks = vi.hoisted(() => ({
   getSupportInvestigationAccounts: vi.fn(),
   startSupportInvestigation: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("@/pages/auth/auth-service", () => authServiceMocks);
+vi.mock("sonner", () => ({ toast }));
 
 const supportSubUser: AuthSubUser = {
   accessMode: "support_readonly",
@@ -123,5 +125,46 @@ describe("SupportInvestigationDialog", () => {
       bootstrapStatus: "idle",
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("clears an invalid UID error when the UID changes", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <SupportInvestigationDialog onOpenChange={vi.fn()} open />
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("租户 UID"), "abc");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("租户 UID"));
+    await user.type(screen.getByLabelText("租户 UID"), "9001");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("toasts UID query failures", async () => {
+    const user = userEvent.setup();
+    authServiceMocks.getSupportInvestigationAccounts.mockRejectedValueOnce(
+      new Error("query failed"),
+    );
+
+    render(
+      <MemoryRouter>
+        <SupportInvestigationDialog onOpenChange={vi.fn()} open />
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("租户 UID"), "9001");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("query failed");
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

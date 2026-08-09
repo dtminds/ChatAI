@@ -11,6 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -523,7 +524,7 @@ function SingleChatHostingSettingsDialog({
         semiAutoAuth,
       });
     } catch (error) {
-      setValidationMessage(getErrorMessage(error, "托管设置保存失败"));
+      toast.error(getErrorMessage(error, "托管设置保存失败"));
     } finally {
       setSaving(false);
     }

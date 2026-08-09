@@ -241,7 +241,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       });
       setData(response);
     } catch (error) {
-      setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     }
     setSelectedGroupChats([]);
   }

@@ -904,7 +904,8 @@ function SubAccountDialog({
     role: "operator",
     seatIds: [],
   });
-  const [formError, setFormError] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [nameError, setNameError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [seatQuery, setSeatQuery] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -937,7 +938,8 @@ function SubAccountDialog({
         state.subAccount?.seats.map((seat: SettingsWeComSeat) => seat.seatId) ??
         [],
     });
-    setFormError("");
+    setAccountError("");
+    setNameError("");
     setPasswordError("");
     setSeatQuery("");
     setShowPassword(false);
@@ -951,6 +953,10 @@ function SubAccountDialog({
 
     if (field === "password") {
       setPasswordError("");
+    } else if (field === "account") {
+      setAccountError("");
+    } else if (field === "name") {
+      setNameError("");
     }
   }
 
@@ -971,11 +977,17 @@ function SubAccountDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setFormError("");
+    setAccountError("");
+    setNameError("");
     setPasswordError("");
 
-    if (!formValues.account.trim() || !formValues.name.trim()) {
-      setFormError("请完整填写子账号信息");
+    const nextAccountError = formValues.account.trim() ? "" : "请填写登录用户名";
+    const nextNameError = formValues.name.trim() ? "" : "请填写姓名";
+
+    setAccountError(nextAccountError);
+    setNameError(nextNameError);
+
+    if (nextAccountError || nextNameError) {
       return;
     }
 
@@ -1019,16 +1031,24 @@ function SubAccountDialog({
           <div className="grid gap-8 pt-2 md:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
             <section aria-label="账号信息" className="space-y-5" role="group">
               <Field htmlFor={accountId} label="登录用户名">
-                <Input
-                  autoComplete="username"
-                  disabled={mode === "edit"}
-                  id={accountId}
-                  onChange={(event) =>
-                    updateField("account", event.target.value)
-                  }
-                  placeholder="请输入"
-                  value={formValues.account}
-                />
+                <>
+                  <Input
+                    aria-invalid={accountError ? true : undefined}
+                    autoComplete="username"
+                    disabled={mode === "edit"}
+                    id={accountId}
+                    onChange={(event) =>
+                      updateField("account", event.target.value)
+                    }
+                    placeholder="请输入"
+                    value={formValues.account}
+                  />
+                  {accountError ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {accountError}
+                    </p>
+                  ) : null}
+                </>
               </Field>
 
               <div className="space-y-2">
@@ -1102,13 +1122,21 @@ function SubAccountDialog({
               </div>
 
               <Field htmlFor={nameId} label="姓名">
-                <Input
-                  autoComplete="name"
-                  id={nameId}
-                  onChange={(event) => updateField("name", event.target.value)}
-                  placeholder="请输入"
-                  value={formValues.name}
-                />
+                <>
+                  <Input
+                    aria-invalid={nameError ? true : undefined}
+                    autoComplete="name"
+                    id={nameId}
+                    onChange={(event) => updateField("name", event.target.value)}
+                    placeholder="请输入"
+                    value={formValues.name}
+                  />
+                  {nameError ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {nameError}
+                    </p>
+                  ) : null}
+                </>
               </Field>
 
               <Field label="角色">
@@ -1156,10 +1184,6 @@ function SubAccountDialog({
               />
             </section>
           </div>
-
-          {formError ? (
-            <p className="text-sm text-destructive">{formError}</p>
-          ) : null}
 
           <DialogFooter>
             <DialogClose asChild>

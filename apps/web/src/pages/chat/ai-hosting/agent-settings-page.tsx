@@ -155,11 +155,6 @@ type ModelOption = {
   model: string;
 };
 
-type OperationErrorDialogState = {
-  message: string;
-  title: string;
-} | null;
-
 type InvalidResourceBlockedAction = "save" | "publish";
 
 type InvalidResourceDialogState = {
@@ -212,9 +207,9 @@ export function AgentSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [operationErrorDialog, setOperationErrorDialog] =
-    useState<OperationErrorDialogState>(null);
+  const [nameError, setNameError] = useState("");
+  const [modelError, setModelError] = useState("");
+  const [renameError, setRenameError] = useState("");
   const [invalidResourceDialog, setInvalidResourceDialog] =
     useState<InvalidResourceDialogState>(null);
   const initialLoadRequestVersionRef = useRef(0);
@@ -254,7 +249,6 @@ export function AgentSettingsPage() {
   const loadInitialData = useCallback(async () => {
     const requestVersion = ++initialLoadRequestVersionRef.current;
     setLoading(true);
-    setErrorMessage("");
 
     try {
       const [modelsResponse, detailResponse] = await Promise.all([
@@ -305,13 +299,15 @@ export function AgentSettingsPage() {
     }
 
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === "name") {
+      setNameError("");
+    } else if (key === "model") {
+      setModelError("");
+    }
   }
 
-  function showOperationError(title: string, error: unknown, fallback: string) {
-    setOperationErrorDialog({
-      message: isRequestError(error) ? error.message : fallback,
-      title,
-    });
+  function showOperationError(error: unknown, fallback: string) {
+    toast.error(isRequestError(error) ? error.message : fallback);
   }
 
   function showInvalidResourceBlock(
@@ -389,12 +385,12 @@ export function AgentSettingsPage() {
       );
 
       if (!payload) {
-        setErrorMessage("请填写 Agent 名称并选择大模型");
+        setModelError("请选择大模型");
         return null;
       }
 
       setSubmitting(true);
-      setErrorMessage("");
+      setModelError("");
 
       try {
         const saved = await updateAiHostingAgent(agentId, payload);
@@ -410,7 +406,7 @@ export function AgentSettingsPage() {
         return saved;
       } catch (error) {
         if (!handleInvalidResourceRequestError(blockedAction, error)) {
-          showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+          showOperationError(error, "保存 Agent 失败");
         }
         return null;
       } finally {
@@ -425,12 +421,14 @@ export function AgentSettingsPage() {
     );
 
     if (!payload) {
-      setErrorMessage("请填写 Agent 名称并选择大模型");
+      setNameError(form.name.trim() ? "" : "请输入 Agent 名称");
+      setModelError(form.model.trim() ? "" : "请选择大模型");
       return null;
     }
 
     setSubmitting(true);
-    setErrorMessage("");
+    setNameError("");
+    setModelError("");
 
     try {
       const saved = await createAiHostingAgent(payload);
@@ -446,7 +444,7 @@ export function AgentSettingsPage() {
       return saved;
     } catch (error) {
       if (!handleInvalidResourceRequestError(blockedAction, error)) {
-        showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+        showOperationError(error, "保存 Agent 失败");
       }
       return null;
     } finally {
@@ -470,7 +468,6 @@ export function AgentSettingsPage() {
     }
 
     setSubmitting(true);
-    setErrorMessage("");
 
     try {
       const published = await publishAiHostingAgent(saved.id);
@@ -483,7 +480,7 @@ export function AgentSettingsPage() {
     } catch (error) {
       setPublishDialogOpen(false);
       if (!handleInvalidResourceRequestError("publish", error)) {
-        showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+        showOperationError(error, "发布 Agent 失败");
       }
     } finally {
       setSubmitting(false);
@@ -500,7 +497,6 @@ export function AgentSettingsPage() {
     }
 
     setSubmitting(true);
-    setErrorMessage("");
 
     try {
       const published = await publishAiHostingAgent(createdDraftAgentId);
@@ -515,7 +511,7 @@ export function AgentSettingsPage() {
     } catch (error) {
       setCreatedDraftDialogOpen(false);
       if (!handleInvalidResourceRequestError("publish", error)) {
-        showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+        showOperationError(error, "发布 Agent 失败");
       }
     } finally {
       setSubmitting(false);
@@ -534,6 +530,7 @@ export function AgentSettingsPage() {
     }
 
     setRenameValue(agentDetail?.name ?? form.name);
+    setRenameError("");
     setRenameDialogOpen(true);
   }
 
@@ -545,12 +542,12 @@ export function AgentSettingsPage() {
     const name = renameValue.trim();
 
     if (!name) {
-      setErrorMessage("请输入 Agent 名称");
+      setRenameError("请输入 Agent 名称");
       return;
     }
 
     setSubmitting(true);
-    setErrorMessage("");
+    setRenameError("");
 
     try {
       const renamed = await renameAiHostingAgent(agentId, { name });
@@ -561,7 +558,7 @@ export function AgentSettingsPage() {
       setRenameDialogOpen(false);
     } catch (error) {
       setRenameDialogOpen(false);
-      showOperationError("保存 Agent 名称失败", error, "保存 Agent 名称失败");
+      showOperationError(error, "保存 Agent 名称失败");
     } finally {
       setSubmitting(false);
     }
@@ -573,7 +570,6 @@ export function AgentSettingsPage() {
     }
 
     setSubmitting(true);
-    setErrorMessage("");
 
     try {
       const restored = await restoreAiHostingAgent(agentId);
@@ -584,7 +580,7 @@ export function AgentSettingsPage() {
       setRestoreDialogOpen(false);
     } catch (error) {
       setRestoreDialogOpen(false);
-      showOperationError("还原正式版失败", error, "还原正式版失败");
+      showOperationError(error, "还原正式版失败");
     } finally {
       setSubmitting(false);
     }
@@ -867,8 +863,12 @@ export function AgentSettingsPage() {
 
         <RenameAgentDialog
           disabled={submitting}
+          error={renameError}
           name={renameValue}
-          onChange={setRenameValue}
+          onChange={(value) => {
+            setRenameValue(value);
+            setRenameError("");
+          }}
           onConfirm={handleRename}
           onOpenChange={setRenameDialogOpen}
           open={renameDialogOpen}
@@ -879,25 +879,6 @@ export function AgentSettingsPage() {
           open={generateDialogOpen}
         />
 
-        <AlertDialog
-          onOpenChange={(open) => {
-            if (!open) {
-              setOperationErrorDialog(null);
-            }
-          }}
-          open={operationErrorDialog !== null}
-        >
-          <AlertDialogContent size="sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>{operationErrorDialog?.title}</AlertDialogTitle>
-              <AlertDialogDescription>{operationErrorDialog?.message}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogAction>知道了</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
         <InvalidResourceBlockedDialog
           onOpenChange={(open) => {
             if (!open) {
@@ -907,11 +888,6 @@ export function AgentSettingsPage() {
           state={invalidResourceDialog}
         />
 
-        {errorMessage ? (
-          <p className="text-sm text-destructive" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
         {!canManage ? (
           <p className="rounded-[8px] border border-border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
             当前账号仅可查看 Agent，保存、发布和还原操作需管理员权限
@@ -925,6 +901,7 @@ export function AgentSettingsPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
                   <Input
+                    aria-invalid={nameError ? true : undefined}
                     disabled={isEditing || controlsDisabled}
                     id="agent-settings-name"
                     maxLength={agentNameMaxLength}
@@ -932,6 +909,11 @@ export function AgentSettingsPage() {
                     placeholder="请输入 Agent 名称"
                     value={form.name}
                   />
+                  {nameError ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {nameError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -941,7 +923,11 @@ export function AgentSettingsPage() {
                     onValueChange={(value) => updateForm("model", value)}
                     value={form.model}
                   >
-                    <SelectTrigger className="w-full" id="agent-settings-model">
+                    <SelectTrigger
+                      aria-invalid={modelError ? true : undefined}
+                      className="w-full"
+                      id="agent-settings-model"
+                    >
                       {selectedModel ? (
                         <div className="min-w-0" data-agent-model-trigger-value>
                           <AgentModelBadge
@@ -967,6 +953,11 @@ export function AgentSettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {modelError ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {modelError}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </AgentSettingsSection>
@@ -1808,6 +1799,7 @@ function CreatedDraftDialog({
 
 function RenameAgentDialog({
   disabled,
+  error,
   name,
   onChange,
   onConfirm,
@@ -1815,6 +1807,7 @@ function RenameAgentDialog({
   open,
 }: {
   disabled: boolean;
+  error?: string;
   name: string;
   onChange: (value: string) => void;
   onConfirm: () => void;
@@ -1839,6 +1832,7 @@ function RenameAgentDialog({
           <div>
             <Input
               aria-label="Agent 名称"
+              aria-invalid={error ? true : undefined}
               disabled={disabled}
               id="agent-rename-name"
               maxLength={agentNameMaxLength}
@@ -1847,6 +1841,11 @@ function RenameAgentDialog({
               value={name}
             />
             <TextCounter maxLength={agentNameMaxLength} value={name} />
+            {error ? (
+              <p className="text-xs text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
           </div>
         </div>
 

@@ -719,9 +719,13 @@ describe("Chat settings pages", () => {
     await waitFor(() => expect(submitButton).toBeEnabled());
     await user.click(submitButton);
 
-    expect(await within(dialog).findByText(/已完成 1\/2 个群聊/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/已完成 1\/2 个群聊/),
+      );
+    });
     expect(within(dialog).getByText("1/2")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认提交" })).toBeEnabled();
     expect(
       mock.history.put.filter(
         (request) => request.url === "/server/settings/group-chats/reception",
@@ -1247,6 +1251,11 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
     expect(mock.history.post).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("页面名称"));
+    await user.type(screen.getByLabelText("页面名称"), "页面名");
+
+    expect(screen.queryByText("页面名称最多 8 个字符")).not.toBeInTheDocument();
   });
 
   it("shows sidebar item api error messages returned by success false envelopes", async () => {
@@ -1442,6 +1451,24 @@ describe("Chat settings pages", () => {
     await waitFor(() => {
       expect(mock.history.post).toHaveLength(1);
     });
+  });
+
+  it("clears sub-account field errors when the related fields change", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "新增子账号" }));
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(screen.getByText("请填写登录用户名")).toBeInTheDocument();
+    expect(screen.getByText("请填写姓名")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("登录用户名"), "agent003");
+    expect(screen.queryByText("请填写登录用户名")).not.toBeInTheDocument();
+    expect(screen.getByText("请填写姓名")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("姓名"), "客服三号");
+    expect(screen.queryByText("请填写姓名")).not.toBeInTheDocument();
   });
 
   it("validates optional password changes when editing sub-accounts", async () => {

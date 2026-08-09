@@ -100,7 +100,6 @@ function ConversationTicketsPanelContent({
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string>();
-  const [actionError, setActionError] = useState<string>();
   const [pendingTicketId, setPendingTicketId] = useState<string>();
   const [selectedTicketId, setSelectedTicketId] = useState<string>();
   const requestScopeRef = useRef("");
@@ -116,7 +115,6 @@ function ConversationTicketsPanelContent({
     setPage(1);
     setResult(undefined);
     setError(undefined);
-    setActionError(undefined);
     setSelectedTicketId(undefined);
     detailChangedRef.current = false;
     selectedTicketIdRef.current = undefined;
@@ -176,7 +174,6 @@ function ConversationTicketsPanelContent({
   const runAction = async (ticket: TicketListItem, action: TicketStatus) => {
     const mutationScope = mutationScopeRef.current;
     setPendingTicketId(ticket.ticketId);
-    setActionError(undefined);
     try {
       await updateTicket(ticket.ticketId, {
         expectedStatus: ticket.status,
@@ -190,12 +187,10 @@ function ConversationTicketsPanelContent({
     } catch (cause) {
       if (mutationScopeRef.current === mutationScope) {
         const message = errorMessage(cause, "工单操作失败");
+        toast.error(message);
         if (isErrorCode(cause, "TICKET_STATE_CONFLICT")) {
-          toast.error(message);
           setPage(1);
           setReloadKey((current) => current + 1);
-        } else {
-          setActionError(message);
         }
       }
     } finally {
@@ -229,7 +224,6 @@ function ConversationTicketsPanelContent({
               setFilter(value as ConversationTicketFilter);
               setPage(1);
               setResult(undefined);
-              setActionError(undefined);
             }}
             value={filter}
           >
@@ -273,12 +267,6 @@ function ConversationTicketsPanelContent({
           ) : null}
         </div>
       </div>
-
-      {actionError ? (
-        <p className="border-b border-destructive/15 px-4 py-2 text-sm text-destructive" role="alert">
-          {actionError}
-        </p>
-      ) : null}
 
       {isLoading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">

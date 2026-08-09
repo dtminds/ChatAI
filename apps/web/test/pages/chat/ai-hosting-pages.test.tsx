@@ -4241,7 +4241,7 @@ describe("AI hosting pages", () => {
     });
   });
 
-  it("shows a delete failure dialog when an agent is referenced by hosting settings", async () => {
+  it("toasts when an agent cannot be deleted", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.removeAiHostingAgent).mockRejectedValueOnce(
       {
@@ -4258,10 +4258,10 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
 
-    expect(
-      await screen.findByRole("alertdialog", { name: "删除 Agent 失败" }),
-    ).toHaveTextContent("Agent 已被托管设置引用，不能删除");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 已被托管设置引用，不能删除");
+    });
+    expect(screen.queryByRole("alertdialog", { name: "删除 Agent 失败" })).not.toBeInTheDocument();
   });
 
   it("renders the hosting settings page", async () => {
@@ -4368,6 +4368,26 @@ describe("AI hosting pages", () => {
       });
     });
     expect(screen.queryByRole("dialog", { name: "群聊设置" })).not.toBeInTheDocument();
+  });
+
+  it("toasts group chat save errors while keeping the dialog open", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.updateAiHostingGroupSettings).mockRejectedValueOnce(
+      new Error("保存失败"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getByRole("button", { name: "打开 小助理2 托管设置菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "群聊设置" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(screen.getByRole("dialog", { name: "群聊设置" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("保存失败");
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("keeps the hosting settings table header visible while loading", async () => {
@@ -4513,7 +4533,7 @@ describe("AI hosting pages", () => {
     expect(enabledSwitch).toBeChecked();
   });
 
-  it("keeps save errors inside the hosting settings dialog", async () => {
+  it("toasts save errors while keeping the hosting settings dialog open", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.updateAiHostingSettings).mockRejectedValueOnce(
       new Error("保存失败，请稍后重试"),
@@ -4531,7 +4551,10 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("dialog", { name: "单聊设置" });
 
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("保存失败，请稍后重试");
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("保存失败，请稍后重试");
+    });
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("disables hosting settings submit while saving", async () => {
@@ -4598,6 +4621,23 @@ describe("AI hosting pages", () => {
 
     await user.hover(clearButton);
     expect(await screen.findByRole("tooltip")).toHaveTextContent("清空上下文");
+  });
+
+  it("clears Agent field errors when the related field changes", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByText("请输入 Agent 名称")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("aria-invalid", "true");
+
+    await user.type(screen.getByLabelText("Agent 名称"), "护肤助理");
+
+    expect(screen.queryByText("请输入 Agent 名称")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 名称")).not.toHaveAttribute("aria-invalid");
   });
 
   it("clears preview chat messages and input draft", async () => {
@@ -5167,7 +5207,7 @@ describe("AI hosting pages", () => {
     expect(agentService.publishAiHostingAgent).not.toHaveBeenCalled();
   });
 
-  it("shows save failures in an operation dialog instead of the page alert", async () => {
+  it("toasts Agent save failures", async () => {
     const user = userEvent.setup();
 
     vi.mocked(agentService.updateAiHostingAgent).mockRejectedValueOnce({
@@ -5183,13 +5223,13 @@ describe("AI hosting pages", () => {
     await user.type(screen.getByLabelText("角色描述"), "你是资深护肤顾问");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(
-      await screen.findByRole("alertdialog", { name: "保存 Agent 失败" }),
-    ).toHaveTextContent("请选择有效的大模型");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("请选择有效的大模型");
+    });
+    expect(screen.queryByRole("alertdialog", { name: "保存 Agent 失败" })).not.toBeInTheDocument();
   });
 
-  it("shows publish failures in an operation dialog instead of the page alert", async () => {
+  it("toasts Agent publish failures", async () => {
     const user = userEvent.setup();
 
     vi.mocked(agentService.publishAiHostingAgent).mockRejectedValueOnce({
@@ -5206,13 +5246,13 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "发布正式版" }));
     await user.click(screen.getByRole("button", { name: "发布" }));
 
-    expect(
-      await screen.findByRole("alertdialog", { name: "发布 Agent 失败" }),
-    ).toHaveTextContent("Agent 未发布");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 未发布");
+    });
+    expect(screen.queryByRole("alertdialog", { name: "发布 Agent 失败" })).not.toBeInTheDocument();
   });
 
-  it("shows rename failures in an operation dialog instead of the page alert", async () => {
+  it("toasts Agent rename failures", async () => {
     const user = userEvent.setup();
 
     vi.mocked(agentService.renameAiHostingAgent).mockRejectedValueOnce({
@@ -5232,13 +5272,13 @@ describe("AI hosting pages", () => {
     await user.type(within(dialog).getByLabelText("Agent 名称"), "护肤专家");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
-    expect(
-      await screen.findByRole("alertdialog", { name: "保存 Agent 名称失败" }),
-    ).toHaveTextContent("Agent 名称已存在");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 名称已存在");
+    });
+    expect(screen.queryByRole("alertdialog", { name: "保存 Agent 名称失败" })).not.toBeInTheDocument();
   });
 
-  it("shows restore failures in an operation dialog instead of the page alert", async () => {
+  it("toasts Agent restore failures", async () => {
     const user = userEvent.setup();
 
     vi.mocked(agentService.restoreAiHostingAgent).mockRejectedValueOnce({
@@ -5253,10 +5293,10 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "还原为正式版" }));
     await user.click(screen.getByRole("button", { name: "还原" }));
 
-    expect(
-      await screen.findByRole("alertdialog", { name: "还原正式版失败" }),
-    ).toHaveTextContent("暂无正式版内容");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("暂无正式版内容");
+    });
+    expect(screen.queryByRole("alertdialog", { name: "还原正式版失败" })).not.toBeInTheDocument();
   });
 
   it("enables publishing when local model or prompt config differs from the latest published version", async () => {

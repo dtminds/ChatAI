@@ -80,11 +80,30 @@ describe("MysqlWorkflowRepository", () => {
         edges: [{ id: "edge-start-end", source: "start", sourceOutletId: "default", target: "end" }],
         entryNodeId: "start",
         nodes: [
-          { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
-          { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+          {
+            config: startConfig(),
+            id: "start",
+            kind: "start",
+            nodeSchemaVersion: 1,
+            requiredCapabilities: [{
+              capabilityKey: "event.contact.friend_added",
+              contractVersion: 1,
+            }],
+          },
+          {
+            config: {},
+            id: "end",
+            kind: "end",
+            nodeSchemaVersion: 1,
+            requiredCapabilities: [],
+          },
         ],
+        requiredCapabilities: [{
+          capabilityKey: "event.contact.friend_added",
+          contractVersion: 1,
+        }],
         revision: 1,
-        schemaVersion: 1,
+        schemaVersion: 2,
         terminalNodeId: "end",
         workflowId: "42",
       },
@@ -92,14 +111,21 @@ describe("MysqlWorkflowRepository", () => {
       opSubUserId: "19",
       specHash: "a".repeat(64),
       triggerBindings: [
-        { eventType: "contact.friend_added", filter: startConfig() },
+        {
+          eventType: "contact.friend_added",
+          filter: startConfig(),
+          subjectType: "chatai_contact",
+        },
         {
           eventType: "message.received",
           filter: { ...startConfig(), triggers: [{ match: "any", type: "message.received" }] },
+          subjectType: "chatai_contact",
         },
       ],
+      subjectType: "chatai_contact",
       uid: 8,
       workflowId: "42",
+      workflowType: "chatai_sop",
     });
 
     expect(result.kind).toBe("success");
@@ -126,9 +152,11 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
     op_sub_uid: 19,
     published_revision: null,
     runtime_status: "inactive",
+    status_reason: null,
     uid: 8,
     update_time: new Date("2026-07-10T00:00:01.000Z"),
     validated_draft_version: null,
+    workflow_type: 1,
   };
   const db = {
     deleteFromCalls: 0,
@@ -188,9 +216,11 @@ function createPublicationDbMock() {
     op_sub_uid: 19,
     published_revision: null,
     runtime_status: "inactive",
+    status_reason: null,
     uid: 8,
     update_time: now,
     validated_draft_version: 4,
+    workflow_type: 1,
   };
   const db = {
     definitionUpdate: {} as Record<string, unknown>,

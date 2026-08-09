@@ -19,9 +19,11 @@ export interface WorkflowDefinitionTable {
   op_sub_uid: DatabaseId;
   published_revision: number | null;
   runtime_status: string;
+  status_reason: string | null;
   uid: number;
   update_time: GeneratedDate;
   validated_draft_version: number | null;
+  workflow_type: number;
 }
 
 export interface WorkflowRevisionTable {
@@ -34,9 +36,11 @@ export interface WorkflowRevisionTable {
   publish_time: DatabaseDate;
   revision: number;
   spec_hash: string;
+  subject_type: number;
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
+  workflow_type: number;
 }
 
 export interface WorkflowTriggerBindingTable {
@@ -46,6 +50,7 @@ export interface WorkflowTriggerBindingTable {
   id: Generated<DatabaseId>;
   revision: number;
   status: number;
+  subject_type: number;
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
@@ -65,6 +70,7 @@ export interface WorkflowRunTable {
   shard_id: number;
   status: string;
   subject_id: string;
+  subject_type: number;
   terminal_reason: string | null;
   uid: number;
   update_time: GeneratedDate;
@@ -75,6 +81,7 @@ export interface WorkflowEntryGuardTable {
   create_time: GeneratedDate;
   id: Generated<DatabaseId>;
   subject_id: string;
+  subject_type: number;
   total_entries: number;
   uid: number;
   update_time: GeneratedDate;

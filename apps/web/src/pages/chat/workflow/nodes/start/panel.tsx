@@ -28,6 +28,7 @@ import {
 } from "./fixture-options";
 
 export function StartConfig({
+  allowedEntryEventTypes = [],
   accounts = getWorkflowStartFixtureAccounts(),
   node,
   onNodeChange,
@@ -37,6 +38,7 @@ export function StartConfig({
   tags?: ReturnType<typeof getWorkflowStartFixtureTags>;
 }) {
   const { accountIds, entryPolicy, triggers } = node.data;
+  const allowedEventTypes = new Set(allowedEntryEventTypes);
   const updateStartConfig = (patch: {
     accountIds?: string[];
     entryPolicy?: WorkflowEntryPolicy;
@@ -87,61 +89,69 @@ export function StartConfig({
         </AccordionTrigger>
         <AccordionContent className="space-y-3 pb-3">
           <div className="space-y-3 rounded-[8px] border bg-card p-3">
-            <TriggerCheckbox
-              checked={hasTrigger(triggers, "contact.friend_added")}
-              label="添加好友"
-              onCheckedChange={(checked) => updateStartConfig({
-                triggers: toggleTrigger(triggers, "contact.friend_added", checked),
-              })}
-            />
-            <TriggerCheckbox
-              checked={hasTrigger(triggers, "customer.tag_added")}
-              disabled={tags.length === 0 && !hasTrigger(triggers, "customer.tag_added")}
-              label="添加标签"
-              onCheckedChange={(checked) => updateStartConfig({
-                triggers: toggleTrigger(triggers, "customer.tag_added", checked),
-              })}
-            >
-              <div className="ml-6 space-y-2">
-                {tags.map(tag => (
-                  <CheckboxRow
-                    checked={getTagIds(triggers).includes(tag.id)}
-                    key={tag.id}
-                    label={tag.label}
-                    onCheckedChange={(checked) => updateStartConfig({
-                      triggers: updateTagTrigger(triggers, tag.id, checked),
-                    })}
-                  />
-                ))}
-                {tags.length === 0 ? (
-                  <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用标签</p>
-                ) : null}
-              </div>
-            </TriggerCheckbox>
-            <TriggerCheckbox
-              checked={hasMessageTrigger(triggers, "any")}
-              label="用户发送消息"
-              onCheckedChange={(checked) => updateStartConfig({
-                triggers: toggleMessageTrigger(triggers, "any", checked),
-              })}
-            />
-            <TriggerCheckbox
-              checked={hasMessageTrigger(triggers, "keywords")}
-              label="消息包含关键词"
-              onCheckedChange={(checked) => updateStartConfig({
-                triggers: toggleMessageTrigger(triggers, "keywords", checked),
-              })}
-            >
-              <Input
-                aria-label="消息关键词"
-                className="ml-6 w-[calc(100%-1.5rem)]"
-                onChange={(event) => updateStartConfig({
-                  triggers: updateKeywords(triggers, event.target.value),
+            {allowedEventTypes.has("contact.friend_added") ? (
+              <TriggerCheckbox
+                checked={hasTrigger(triggers, "contact.friend_added")}
+                label="添加好友"
+                onCheckedChange={(checked) => updateStartConfig({
+                  triggers: toggleTrigger(triggers, "contact.friend_added", checked),
                 })}
-                placeholder="多个关键词用逗号分隔"
-                value={getKeywords(triggers).join(", ")}
               />
-            </TriggerCheckbox>
+            ) : null}
+            {allowedEventTypes.has("contact.tag_added") ? (
+              <TriggerCheckbox
+                checked={hasTrigger(triggers, "contact.tag_added")}
+                disabled={tags.length === 0 && !hasTrigger(triggers, "contact.tag_added")}
+                label="添加标签"
+                onCheckedChange={(checked) => updateStartConfig({
+                  triggers: toggleTrigger(triggers, "contact.tag_added", checked),
+                })}
+              >
+                <div className="ml-6 space-y-2">
+                  {tags.map(tag => (
+                    <CheckboxRow
+                      checked={getTagIds(triggers).includes(tag.id)}
+                      key={tag.id}
+                      label={tag.label}
+                      onCheckedChange={(checked) => updateStartConfig({
+                        triggers: updateTagTrigger(triggers, tag.id, checked),
+                      })}
+                    />
+                  ))}
+                  {tags.length === 0 ? (
+                    <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用标签</p>
+                  ) : null}
+                </div>
+              </TriggerCheckbox>
+            ) : null}
+            {allowedEventTypes.has("message.received") ? (
+              <>
+                <TriggerCheckbox
+                  checked={hasMessageTrigger(triggers, "any")}
+                  label="用户发送消息"
+                  onCheckedChange={(checked) => updateStartConfig({
+                    triggers: toggleMessageTrigger(triggers, "any", checked),
+                  })}
+                />
+                <TriggerCheckbox
+                  checked={hasMessageTrigger(triggers, "keywords")}
+                  label="消息包含关键词"
+                  onCheckedChange={(checked) => updateStartConfig({
+                    triggers: toggleMessageTrigger(triggers, "keywords", checked),
+                  })}
+                >
+                  <Input
+                    aria-label="消息关键词"
+                    className="ml-6 w-[calc(100%-1.5rem)]"
+                    onChange={(event) => updateStartConfig({
+                      triggers: updateKeywords(triggers, event.target.value),
+                    })}
+                    placeholder="多个关键词用逗号分隔"
+                    value={getKeywords(triggers).join(", ")}
+                  />
+                </TriggerCheckbox>
+              </>
+            ) : null}
           </div>
         </AccordionContent>
       </AccordionItem>
@@ -319,7 +329,7 @@ function hasTrigger(triggers: WorkflowStartTrigger[], type: WorkflowStartTrigger
 
 function toggleTrigger(
   triggers: WorkflowStartTrigger[],
-  type: "contact.friend_added" | "customer.tag_added",
+  type: "contact.friend_added" | "contact.tag_added",
   checked: boolean,
 ) {
   const remaining = triggers.filter(trigger => trigger.type !== type);
@@ -330,13 +340,13 @@ function toggleTrigger(
 }
 
 function getTagIds(triggers: WorkflowStartTrigger[]) {
-  return triggers.find(trigger => trigger.type === "customer.tag_added")?.tagIds ?? [];
+  return triggers.find(trigger => trigger.type === "contact.tag_added")?.tagIds ?? [];
 }
 
 function updateTagTrigger(triggers: WorkflowStartTrigger[], tagId: string, checked: boolean) {
   const tagIds = toggleValue(getTagIds(triggers), tagId, checked);
-  const remaining = triggers.filter(trigger => trigger.type !== "customer.tag_added");
-  return tagIds.length ? [...remaining, { tagIds, type: "customer.tag_added" as const }] : remaining;
+  const remaining = triggers.filter(trigger => trigger.type !== "contact.tag_added");
+  return tagIds.length ? [...remaining, { tagIds, type: "contact.tag_added" as const }] : remaining;
 }
 
 function hasMessageTrigger(triggers: WorkflowStartTrigger[], match: "any" | "keywords") {

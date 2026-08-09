@@ -5,7 +5,7 @@ import {
   createInitialNodes,
   createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
-import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
+import { createDefaultNodeData, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
 import {
   createWorkflowRenderElements,
   useWorkflowRenderElements,
@@ -14,6 +14,7 @@ import {
 describe("createWorkflowRenderElements", () => {
   it("projects canvas interaction state into node and edge render data", () => {
     const handlers = {
+      allowedInsertableNodeKinds: insertableNodeKinds,
       onDeleteNode: vi.fn(),
       onDuplicateNode: vi.fn(),
       onInsertNodeAfter: vi.fn(),
@@ -88,6 +89,7 @@ describe("createWorkflowRenderElements", () => {
 
   it("preserves unchanged node render objects while a single node position changes", () => {
     const handlers = {
+      allowedInsertableNodeKinds: insertableNodeKinds,
       onDeleteNode: vi.fn(),
       onDuplicateNode: vi.fn(),
       onInsertNodeAfter: vi.fn(),
@@ -142,6 +144,7 @@ describe("createWorkflowRenderElements", () => {
 
   it("projects hovered edge ids into edge highlight state", () => {
     const handlers = {
+      allowedInsertableNodeKinds: insertableNodeKinds,
       onDeleteNode: vi.fn(),
       onDuplicateNode: vi.fn(),
       onInsertNodeAfter: vi.fn(),
@@ -176,6 +179,7 @@ describe("createWorkflowRenderElements", () => {
 
   it("derives warning status when an AI intent input becomes unavailable", () => {
     const handlers = {
+      allowedInsertableNodeKinds: insertableNodeKinds,
       onDeleteNode: vi.fn(),
       onDuplicateNode: vi.fn(),
       onInsertNodeAfter: vi.fn(),

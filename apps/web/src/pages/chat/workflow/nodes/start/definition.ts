@@ -66,7 +66,7 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       issues.push(createCatalogIssue("start-trigger-required", "开始节点需要选择触发条件"));
     }
     if (node.data.triggers.some(trigger =>
-      trigger.type === "customer.tag_added" && trigger.tagIds.length === 0,
+      trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
       issues.push(createCatalogIssue("start-tag-required", "标签触发需要选择至少一个标签"));
     }

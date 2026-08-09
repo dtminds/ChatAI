@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
-import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
+import { createDefaultNodeData, getNodeDefinition, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
 import { MessageQueryConfig } from "@/pages/chat/workflow/nodes/message-query/panel";
 import { messageQueryNodeUi } from "@/pages/chat/workflow/nodes/message-query/ui";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
@@ -49,6 +49,7 @@ describe("workflow message query", () => {
     };
     const rendered = createWorkflowRenderElements({
       activeEdgeInsertMenuId: null,
+      allowedInsertableNodeKinds: insertableNodeKinds,
       edges: [createEdge("start", waitNode.id), createEdge(waitNode.id, queryNode.id)],
       nodes: [createStartNode(), waitNode, queryNode],
       onDeleteNode: vi.fn(),

@@ -1,9 +1,9 @@
 import type { WorkflowEntryCommand } from "@chatai/contracts";
 import { WorkflowRuntimeError, type WorkflowTriggerBindingRecord } from "@chatai/workflow-runtime";
 import { describe, expect, it, vi } from "vitest";
-import { FakeWorkflowBroker } from "../src/broker/fake.js";
 import { createEntryConsumerHandler, startEntryConsumer } from "../src/entry-consumer.js";
 import { createBrokerMessage } from "./helpers/broker-message.js";
+import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 
 describe("workflow entry consumer", () => {
   it("fans one event out to every matching active workflow and ACKs after admission", async () => {
@@ -22,6 +22,7 @@ describe("workflow entry consumer", () => {
       entryEventId: "event-1",
       expectedRevision: 2,
       subjectId: "external-user-1",
+      subjectType: "chatai_contact",
       workflowId: "31",
     }));
     expect(message.ack).toHaveBeenCalledTimes(1);
@@ -106,6 +107,7 @@ function command(overrides: Partial<WorkflowEntryCommand> = {}): WorkflowEntryCo
     eventType: "contact.friend_added",
     occurredAt: "2026-07-11T00:00:00.000Z",
     subjectId: "external-user-1",
+    subjectType: "chatai_contact",
     thirdUserId: "external-user-1",
     triggerPayload: {},
     uid: "9",
@@ -130,6 +132,7 @@ function binding(
     id: workflowId,
     revision: 2,
     status: 1,
+    subjectType: "chatai_contact",
     uid: 9,
     updatedAt: now,
     workflowId,

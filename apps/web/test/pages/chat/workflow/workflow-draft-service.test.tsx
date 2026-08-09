@@ -70,12 +70,18 @@ describe("workflow draft service", () => {
 
   it("creates independent workflow documents with idempotent request keys", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const newDocument = repository.createDocument({ clientRequestId: "create-request-1" });
-    const repeatedResult = repository.createDocument({ clientRequestId: "create-request-1" });
+    const newDocument = repository.createDocument({
+      clientRequestId: "create-request-1",
+      workflowType: "chatai_sop",
+    });
+    const repeatedResult = repository.createDocument({
+      clientRequestId: "create-request-1",
+      workflowType: "chatai_sop",
+    });
 
     expect(newDocument.id).toBe("workflow-1");
     expect(newDocument.name).toBe("未命名 Workflow");
-    expect(newDocument.draft.nodes.map((node) => node.data.kind)).toEqual(["start", "wait", "branch", "message", "end"]);
+    expect(newDocument.draft.nodes.map((node) => node.data.kind)).toEqual(["start", "end"]);
     expect(repeatedResult.id).toBe(newDocument.id);
     expect(repository.listDocuments().map((workflow) => workflow.id)).toEqual([
       "workflow-1",
@@ -94,17 +100,22 @@ describe("workflow draft service", () => {
   it("validates workflow metadata when creating in-memory documents", () => {
     const repository = createInMemoryWorkflowDraftRepository();
 
-    expect(() => repository.createDocument({ name: " " })).toThrow(WorkflowRepositoryError);
-    expect(() => repository.createDocument({ name: "名".repeat(101) })).toThrow(WorkflowRepositoryError);
+    expect(() => repository.createDocument({ name: " ", workflowType: "chatai_sop" }))
+      .toThrow(WorkflowRepositoryError);
+    expect(() => repository.createDocument({
+      name: "名".repeat(101),
+      workflowType: "chatai_sop",
+    })).toThrow(WorkflowRepositoryError);
     expect(() => repository.createDocument({
       description: "描".repeat(1001),
       name: "有效名称",
+      workflowType: "chatai_sop",
     })).toThrow(WorkflowRepositoryError);
   });
 
   it("renames and deletes workflow documents through the repository boundary", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const createdDocument = repository.createDocument();
+    const createdDocument = repository.createDocument({ workflowType: "chatai_sop" });
 
     expect(repository.updateDocumentMetadata(createdDocument.id, {
       description: "召回沉默客户",
@@ -1269,7 +1280,7 @@ function getStartKeyword(draft: WorkflowDraft) {
 function getStartTagIds(draft: WorkflowDraft) {
   const start = draft.nodes.find(node => node.data.kind === "start");
   if (start?.data.kind !== "start") return [];
-  return start.data.triggers.find(item => item.type === "customer.tag_added")?.tagIds ?? [];
+  return start.data.triggers.find(item => item.type === "contact.tag_added")?.tagIds ?? [];
 }
 
 function createDraftWithBranchPaths(): WorkflowDraft {
@@ -1286,7 +1297,7 @@ function createDraftWithBranchPaths(): WorkflowDraft {
                   conditions: [{
                     id: "condition-vip",
                     operator: "equals",
-                    selector: ["customer", "name"],
+                    selector: ["subject", "id"],
                     value: "VIP",
                   }],
                   id: "branch-vip",
@@ -1297,7 +1308,7 @@ function createDraftWithBranchPaths(): WorkflowDraft {
                   conditions: [{
                     id: "condition-regular",
                     operator: "equals",
-                    selector: ["customer", "name"],
+                    selector: ["subject", "id"],
                     value: "普通客户",
                   }],
                   id: "branch-regular",

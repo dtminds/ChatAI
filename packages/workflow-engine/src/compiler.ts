@@ -3,24 +3,52 @@ import {
   type WorkflowDraft,
   type WorkflowExecutionSpec,
   type WorkflowNodeKind,
+  type WorkflowType,
 } from "@chatai/contracts";
+import {
+  getWorkflowAggregateCapabilityRequirements,
+  getWorkflowNodeCapabilityRequirements,
+} from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
 import { getWorkflowSourceOutletId, validateWorkflowGraph } from "./graph.js";
+import { validateWorkflowTypePolicy } from "./type-policy.js";
 
 export function compileWorkflowDraft({
   draft,
   revision,
   workflowId,
+  workflowType,
 }: {
   draft: WorkflowDraft;
   revision: number;
   workflowId: string;
+  workflowType: WorkflowType;
 }): WorkflowExecutionSpec {
   const normalizedDraft = normalizeWorkflowDraft(draft);
+  const typePolicyIssues = validateWorkflowTypePolicy(workflowType, normalizedDraft);
+  if (typePolicyIssues.length > 0) {
+    throw new WorkflowCompilationError(typePolicyIssues.map((issue) => ({
+      code: "type-policy-violation",
+      message: `Workflow type policy rejected ${issue.code}`,
+      nodeId: issue.nodeId,
+    })));
+  }
   const validation = validateWorkflowGraph(normalizedDraft);
   if (validation.issues.length > 0) {
     throw new WorkflowCompilationError(validation.issues);
   }
+
+  const nodes = validation.topologicalNodeIds.map((nodeId) => {
+    const node = normalizedDraft.nodes.find((item) => item.id === nodeId)!;
+    const config = createExecutionConfig(node.data.kind, node.data);
+    return {
+      config,
+      id: node.id,
+      kind: node.data.kind,
+      nodeSchemaVersion: node.data.schemaVersion,
+      requiredCapabilities: getWorkflowNodeCapabilityRequirements(node.data.kind, config),
+    };
+  });
 
   return {
     edges: normalizedDraft.edges.map((edge) => ({
@@ -30,17 +58,10 @@ export function compileWorkflowDraft({
       target: edge.target,
     })),
     entryNodeId: validation.entryNode.id,
-    nodes: validation.topologicalNodeIds.map((nodeId) => {
-      const node = normalizedDraft.nodes.find((item) => item.id === nodeId)!;
-      return {
-        config: createExecutionConfig(node.data.kind, node.data),
-        id: node.id,
-        kind: node.data.kind,
-        nodeSchemaVersion: node.data.schemaVersion,
-      };
-    }),
+    nodes,
+    requiredCapabilities: getWorkflowAggregateCapabilityRequirements(nodes),
     revision,
-    schemaVersion: 1,
+    schemaVersion: 2,
     terminalNodeId: validation.terminalNode.id,
     workflowId,
   };

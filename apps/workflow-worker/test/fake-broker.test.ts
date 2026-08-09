@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { FakeWorkflowBroker } from "../src/broker/fake.js";
+import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 
 describe("FakeWorkflowBroker", () => {
   it("delivers messages through independent Shared subscriptions and closes gracefully", async () => {

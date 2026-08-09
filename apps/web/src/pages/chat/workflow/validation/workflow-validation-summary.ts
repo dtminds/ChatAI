@@ -1,4 +1,7 @@
-import { WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS } from "@chatai/contracts";
+import type {
+  WorkflowEntryEventType,
+  WorkflowNodeKind,
+} from "@chatai/contracts";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -27,17 +30,25 @@ export type WorkflowValidationSummary = {
   validation: WorkflowValidationResult;
 };
 
+export type WorkflowValidationPolicy = {
+  allowedEntryEventTypes: readonly WorkflowEntryEventType[];
+  allowedNodeKinds: readonly WorkflowNodeKind[];
+  runtimeSupportedNodeKinds: readonly WorkflowNodeKind[];
+};
+
 export function buildWorkflowValidationSummary(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
   const validation = validateWorkflowDraft(nodes, edges);
-  return buildWorkflowValidationSummaryFromResult(nodes, validation);
+  return buildWorkflowValidationSummaryFromResult(nodes, validation, policy);
 }
 
 export function buildWorkflowValidationSummaryFromResult(
   nodes: WorkflowNode[],
   validation: WorkflowValidationResult,
+  policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const startIssue = validation.nodeIssues.find(
@@ -56,10 +67,21 @@ export function buildWorkflowValidationSummaryFromResult(
       node,
     }))
     .filter((item) => item.issues.length > 0);
+  const allowedNodeKinds = new Set<WorkflowNodeKind>(policy.allowedNodeKinds);
+  const runtimeSupportedNodeKinds = new Set<WorkflowNodeKind>(policy.runtimeSupportedNodeKinds);
+  const unsupportedTypeNodeIssues: WorkflowValidationNodeIssue[] = nodes
+    .filter((node) => !allowedNodeKinds.has(node.data.kind))
+    .map((node) => ({
+      issues: [{
+        code: "workflow-type-node-unsupported",
+        message: "当前 Workflow 类型不支持该节点",
+        severity: "warning",
+        source: "catalog",
+      }],
+      node,
+    }));
   const unsupportedRuntimeNodeIssues: WorkflowValidationNodeIssue[] = nodes
-    .filter((node) => !WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.some(
-      (kind) => kind === node.data.kind,
-    ))
+    .filter((node) => !runtimeSupportedNodeKinds.has(node.data.kind))
     .map((node) => ({
       issues: [{
         code: "runtime-node-unsupported",
@@ -71,11 +93,24 @@ export function buildWorkflowValidationSummaryFromResult(
     }));
   const publishConfigIssues = mergeNodeIssues(
     nodeConfigIssues,
+    unsupportedTypeNodeIssues,
     unsupportedRuntimeNodeIssues,
   );
-  const startConfigIssues = startIssue?.issues.filter(
-    (issue) => issue.source !== "graph",
-  ) ?? [];
+  const allowedEntryEventTypes = new Set(policy.allowedEntryEventTypes);
+  const unsupportedEntryEventIssues = validation.startNode?.data.kind === "start"
+    ? validation.startNode.data.triggers
+        .filter((trigger) => !allowedEntryEventTypes.has(trigger.type))
+        .map(() => ({
+          code: "workflow-type-entry-event-unsupported",
+          message: "当前 Workflow 类型不支持该触发事件",
+          severity: "warning" as const,
+          source: "catalog" as const,
+        }))
+    : [];
+  const startConfigIssues = [
+    ...startIssue?.issues.filter((issue) => issue.source !== "graph") ?? [],
+    ...unsupportedEntryEventIssues,
+  ];
   const hasDisconnectedNode = validation.disconnectedNodes.length > 0 || disconnectedIssues.length > 0;
   const hasGraphStructureIssue = validation.graphIssues.some((issue) =>
     issue.code !== "node-disconnected" && issue.code !== "end-unreachable",

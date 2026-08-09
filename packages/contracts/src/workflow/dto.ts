@@ -1,4 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
+import {
+  WorkflowCapabilityRequirementSchema,
+  WorkflowSubjectTypeSchema,
+  WorkflowTypeSchema,
+} from "./policy.js";
 
 export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
 
@@ -21,12 +26,6 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("ai-intent"),
   Type.Literal("end"),
 ]);
-
-export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
-  "start",
-  "wait",
-  "end",
-] as const satisfies readonly WorkflowNodeKind[];
 
 export const WorkflowRuntimeStatusSchema = Type.Union([
   Type.Literal("inactive"),
@@ -88,7 +87,19 @@ export const WorkflowPermissionsSchema = Type.Object({
   canView: Type.Boolean(),
 });
 
+export const WorkflowStatusReasonSchema = Type.Union([
+  Type.Literal("entitlement_revoked"),
+  Type.Null(),
+]);
+
+export const WorkflowCapabilitySummarySchema = Type.Object({
+  deploymentCapabilities: Type.Array(WorkflowCapabilityRequirementSchema),
+  deploymentFingerprint: Type.String({ pattern: "^[a-f0-9]{64}$" }),
+  runtimeSupportedNodeKinds: Type.Array(WorkflowNodeKindSchema, { uniqueItems: true }),
+});
+
 export const WorkflowDefinitionSchema = Type.Object({
+  capabilitySummary: WorkflowCapabilitySummarySchema,
   createdAt: Type.String(),
   description: Type.String({ maxLength: 1000 }),
   draft: WorkflowDraftSchema,
@@ -98,8 +109,10 @@ export const WorkflowDefinitionSchema = Type.Object({
   permissions: WorkflowPermissionsSchema,
   publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   runtimeStatus: WorkflowRuntimeStatusSchema,
+  statusReason: WorkflowStatusReasonSchema,
   updatedAt: Type.String(),
   validatedDraftVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  workflowType: WorkflowTypeSchema,
 });
 
 export const WorkflowDefinitionSummarySchema = Type.Omit(WorkflowDefinitionSchema, ["draft"]);
@@ -109,6 +122,8 @@ export const WorkflowRevisionSchema = Type.Object({
   id: WorkflowIdSchema,
   publishedAt: Type.String(),
   revision: Type.Integer({ minimum: 1 }),
+  subjectType: WorkflowSubjectTypeSchema,
+  workflowType: WorkflowTypeSchema,
   workflowId: WorkflowIdSchema,
 });
 
@@ -116,6 +131,7 @@ export const WorkflowCreateRequestSchema = Type.Object({
   clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   description: Type.Optional(Type.String({ maxLength: 1000 })),
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+  workflowType: WorkflowTypeSchema,
 });
 
 export const WorkflowSaveDraftRequestSchema = Type.Object({
@@ -182,6 +198,7 @@ export const WorkflowEntryRecordSchema = Type.Object({
   recordId: WorkflowIdSchema,
   revision: Type.Integer({ minimum: 1 }),
   status: WorkflowEntryRecordStatusSchema,
+  subjectType: WorkflowSubjectTypeSchema,
   updatedAt: Type.String(),
 });
 
@@ -210,14 +227,15 @@ export const WorkflowEntryRecordDetailSchema = Type.Object({
   recordId: WorkflowIdSchema,
   revision: Type.Integer({ minimum: 1 }),
   status: WorkflowEntryRecordStatusSchema,
+  subjectType: WorkflowSubjectTypeSchema,
   steps: Type.Array(WorkflowEntryRecordStepSchema),
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
-export type WorkflowRuntimeSupportedNodeKind =
-  (typeof WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS)[number];
 export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
+export type WorkflowStatusReason = Static<typeof WorkflowStatusReasonSchema>;
+export type WorkflowCapabilitySummary = Static<typeof WorkflowCapabilitySummarySchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;
 export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;
 export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;

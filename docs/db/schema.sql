@@ -583,9 +583,11 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
   name VARCHAR(100) NOT NULL COMMENT 'Workflow名称',
   description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述',
   runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive' COMMENT '运行状态：inactive、active、paused、stopped',
+  status_reason VARCHAR(64) NULL COMMENT '系统状态原因',
   biz_status TINYINT NOT NULL DEFAULT 1 COMMENT '业务状态：1正常，0已删除',
   draft_schema_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿DSL Schema版本',
   draft_json JSON NOT NULL COMMENT '画布草稿JSON',
@@ -598,13 +600,16 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_definition_uid_request (uid, client_request_id),
-  KEY idx_workflow_definition_uid_status_update (uid, biz_status, update_time, id)
+  KEY idx_workflow_definition_uid_status_update (uid, biz_status, update_time, id),
+  KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id)
 ) COMMENT='营销Workflow定义表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员',
   revision INT UNSIGNED NOT NULL COMMENT '发布Revision',
   dsl_schema_version INT UNSIGNED NOT NULL COMMENT 'DSL Schema版本',
   draft_json JSON NOT NULL COMMENT '发布时画布草稿快照',
@@ -622,6 +627,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员',
   event_type VARCHAR(128) NOT NULL COMMENT '标准化触发事件类型',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   revision INT UNSIGNED NOT NULL COMMENT '绑定Revision',
@@ -630,20 +636,21 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, event_type),
-  KEY idx_workflow_trigger_binding_match (uid, event_type, status, workflow_id)
+  UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
+  KEY idx_workflow_trigger_binding_match (uid, subject_type, event_type, status, workflow_id)
 ) COMMENT='营销Workflow触发绑定表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员',
   subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
   total_entries INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '历史累计成功进入次数',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_id)
+  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id)
 ) COMMENT='营销Workflow客户进入串行化守卫表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
@@ -651,6 +658,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员',
   subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
   entry_event_id VARCHAR(128) NOT NULL COMMENT '入口事件幂等ID',
   shard_id SMALLINT UNSIGNED NOT NULL COMMENT '逻辑分片ID，0至255',
@@ -670,7 +678,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),
   KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id),
   KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),
-  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),
+  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),
   KEY idx_workflow_run_status_reconcile (status, id),
   KEY idx_workflow_run_history_cleanup (status, completed_at, id)
 ) COMMENT='营销Workflow运行实例表';

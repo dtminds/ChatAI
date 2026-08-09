@@ -232,6 +232,8 @@ NODE_ENV=production
 LOG_LEVEL=info
 WORKFLOW_ENVIRONMENT=dev
 WORKFLOW_BROKER=pulsar
+WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
+WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
 WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
 WORKFLOW_ENTRY_TOPIC=topic-workflow-entry-dev
@@ -266,9 +268,14 @@ WORKFLOW_SHARD_IDS=
 
 ```text
 DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
+JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
+
+`WORKFLOW_DEPLOYMENT_CAPABILITIES` 只声明当前环境真实可用的 Entry Event 契约。发布和运行都会校验 Workflow Revision 所需能力是否包含在该集合中；部署尚未接通某类 Java 事件时，不要提前写入对应能力。当前可用值为 `event.message.received@1`、`event.contact.friend_added@1` 和 `event.contact.tag_added@1`。
+
+`WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
 
 环境映射：
 
@@ -309,9 +316,9 @@ corepack pnpm --filter @chatai/workflow-worker smoke:entry -- \
   --subject-id <test-subject-id>
 ```
 
-命令输出仅包含 `eventId`、`messageId` 和 `workflowId`。`subjectId` 会进入测试消息但不会打印。Smoke 必须由人工在已配置真实 Secret 的受控环境执行，普通 CI 只能使用 Fake Broker。
+命令输出仅包含 `eventId`、`messageId` 和 `workflowId`。`subjectId` 会进入测试消息但不会打印。Smoke 必须由人工在已配置真实 Secret 的受控环境执行。
 
-GitHub Actions 的 Workflow Worker 测试步骤固定设置 `WORKFLOW_BROKER=fake`，且不注入 Pulsar 地址或 Token。CI 会构建 Debian Worker 镜像，但不运行 Worker 进程或 Entry Smoke，因此不会访问 TDMQ。
+正常 Worker 入口只接受 Pulsar 配置，不提供 Fake Broker 运行模式。单元测试和组合测试直接注入 `test/support` 中的 Fake Broker，不启动正常 Worker 进程，也不访问 TDMQ。
 
 ## Backend 环境变量
 
@@ -331,6 +338,8 @@ REDIS_COMMAND_TIMEOUT_MS=500
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
+WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
+WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 ```
 
 敏感配置必须放 Secret：
@@ -362,7 +371,8 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
 - 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
-- `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作；`JAVA_INTERNAL_API_TOKEN` 目前仍是可选项。
+- `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作。代码允许 `JAVA_INTERNAL_API_TOKEN` 为空，但接入 Workflow Entitlement 后，测试和生产部署应配置 Token。
+- Backend 与 Workflow Worker 必须使用相同的 `WORKFLOW_DEPLOYMENT_CAPABILITIES` 和 `WORKFLOW_ENTITLEMENT_API_URL`。前者决定哪些 Revision 可以发布，后者用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。

@@ -155,7 +155,7 @@ describe("database schema document", () => {
       "  KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),",
       "  KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id),",
       "  KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),",
-      "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),",
+      "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
       "  KEY idx_workflow_run_status_reconcile (status, id),",
       "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",
     ]);

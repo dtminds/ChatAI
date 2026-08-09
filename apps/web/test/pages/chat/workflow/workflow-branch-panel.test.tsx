@@ -16,7 +16,7 @@ function createBranchNode(): WorkflowNode<"branch"> {
           conditions: [{
             id: "condition-high",
             operator: "equals",
-            selector: ["customer", "name"],
+            selector: ["subject", "id"],
             value: "高意向",
           }],
           id: "branch-high",
@@ -27,7 +27,7 @@ function createBranchNode(): WorkflowNode<"branch"> {
           conditions: [{
             id: "condition-normal",
             operator: "equals",
-            selector: ["customer", "name"],
+            selector: ["subject", "id"],
             value: "普通客户",
           }],
           id: "branch-normal",
@@ -119,7 +119,7 @@ describe("BranchConfig", () => {
         {
           id: "condition-second",
           operator: "is-not-empty",
-          selector: ["customer", "id"],
+          selector: ["subject", "id"],
         },
       ],
     };

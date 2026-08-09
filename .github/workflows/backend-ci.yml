@@ -87,8 +87,6 @@ jobs:
         run: pnpm --filter @chatai/workflow-runtime test
 
       - name: Test workflow worker
-        env:
-          WORKFLOW_BROKER: fake
         run: pnpm --filter @chatai/workflow-worker test
 
       - name: Test backend

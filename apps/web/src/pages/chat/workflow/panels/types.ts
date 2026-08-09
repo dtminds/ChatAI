@@ -1,4 +1,7 @@
 import type {
+  WorkflowEntryEventType,
+} from "@chatai/contracts";
+import type {
   WorkflowEdge,
   WorkflowNodeConfigPatch,
   WorkflowNode,
@@ -6,6 +9,7 @@ import type {
 } from "../types";
 
 export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
+  allowedEntryEventTypes?: readonly WorkflowEntryEventType[];
   edges: WorkflowEdge[];
   node: WorkflowNode<TKind>;
   nodes: WorkflowNode[];

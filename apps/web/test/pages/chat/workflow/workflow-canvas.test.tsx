@@ -1,10 +1,15 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { getWorkflowCapabilityProfile } from "@chatai/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   createInitialNodes,
 } from "@/pages/chat/workflow/graph";
 import { WorkflowCanvas } from "@/pages/chat/workflow/canvas/workflow-canvas";
+import {
+  canInsertNodeKind,
+  insertableNodeKinds,
+} from "@/pages/chat/workflow/node-definitions";
 import { useAppearanceStore } from "@/store/appearance-store";
 
 const reactFlowProps = vi.hoisted(() => ({
@@ -36,6 +41,7 @@ vi.mock("@xyflow/react", async () => {
 
 function renderWorkflowCanvas(overrides: Partial<ComponentProps<typeof WorkflowCanvas>> = {}) {
   const props: ComponentProps<typeof WorkflowCanvas> = {
+    allowedInsertableNodeKinds: insertableNodeKinds,
     canRedo: false,
     canUndo: false,
     edges: [],
@@ -191,5 +197,22 @@ describe("WorkflowCanvas", () => {
     expect(onAddNode).toHaveBeenCalledWith("wait", { x: 414, y: 220 });
     expect(onPaletteOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: "节点库" })).toBeInTheDocument();
+  });
+
+  it("only exposes node kinds allowed by the Workflow capability profile", () => {
+    const allowedInsertableNodeKinds = getWorkflowCapabilityProfile("wecom_sop")
+      .allowedNodeKinds
+      .filter(canInsertNodeKind);
+
+    renderWorkflowCanvas({
+      allowedInsertableNodeKinds,
+      paletteOpen: true,
+    });
+
+    expect(screen.getByRole("button", { name: "添加 等待节点" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 消息发送节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 转人工节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 转 Agent节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 等待事件节点" })).not.toBeInTheDocument();
   });
 });

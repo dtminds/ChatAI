@@ -157,7 +157,7 @@ describe("core node executors", () => {
 });
 
 function node(kind: "branch" | "end" | "message" | "start" | "wait", config: Record<string, unknown> = {}) {
-  return { config, id: kind, kind, nodeSchemaVersion: 1 };
+  return { config, id: kind, kind, nodeSchemaVersion: 1, requiredCapabilities: [] };
 }
 
 function context(
@@ -168,7 +168,15 @@ function context(
     matchingPathIds: new Set<string>(),
     now: new Date("2026-07-10T00:00:00.000Z"),
     outputs: {},
-    run: { id: "1", revision: 1, sequence: 1, subjectId: "customer-1", uid: "8" },
+    run: {
+      id: "1",
+      revision: 1,
+      sequence: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: "8",
+      workflowType: "chatai_sop",
+    },
     trigger: {},
     ...overrides,
   };

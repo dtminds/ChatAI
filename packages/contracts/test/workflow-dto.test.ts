@@ -1,7 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
-  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowDefinitionSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
@@ -11,6 +10,11 @@ import {
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
 } from "../src/workflow/dto.js";
+import {
+  getEnabledWorkflowTypes,
+  getWorkflowCapabilityProfile,
+  WorkflowTypeEntitlementResultSchema,
+} from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
   WorkflowEntryCommandSchema,
@@ -46,18 +50,38 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowDraftSchema, createDraft("action"))).toBe(false);
   });
 
-  it("exposes the node kinds currently supported by the runtime", () => {
-    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toEqual([
-      "start",
-      "wait",
-      "end",
-    ]);
-    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toContain("wait");
-    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).not.toContain("message");
+  it("keeps workflow type policy separate from runtime implementation", () => {
+    expect(getEnabledWorkflowTypes()).toEqual(["chatai_sop", "wecom_sop"]);
+    expect(getWorkflowCapabilityProfile("chatai_sop")).toMatchObject({
+      allowedEntryEventTypes: [
+        "message.received",
+        "contact.friend_added",
+        "contact.tag_added",
+      ],
+      availability: "enabled",
+      subjectType: "chatai_contact",
+    });
+    expect(getWorkflowCapabilityProfile("wecom_sop")).toMatchObject({
+      allowedEntryEventTypes: ["contact.friend_added", "contact.tag_added"],
+      availability: "enabled",
+      subjectType: "wecom_contact",
+    });
+    expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
+    expect(getWorkflowCapabilityProfile("member_sop")).toMatchObject({
+      allowedEntryEventTypes: [],
+      allowedNodeKinds: [],
+      availability: "reserved",
+      subjectType: "miniapp_member",
+    });
   });
 
   it("keeps database identifiers as decimal strings", () => {
     const definition = {
+      capabilitySummary: {
+        deploymentCapabilities: [],
+        deploymentFingerprint: "a".repeat(64),
+        runtimeSupportedNodeKinds: ["start", "wait", "end"],
+      },
       createdAt: "2026-07-10T00:00:00.000Z",
       description: "引导新客完成首购",
       draft: createDraft("branch"),
@@ -73,8 +97,10 @@ describe("workflow contracts", () => {
       },
       publishedRevision: null,
       runtimeStatus: "inactive",
+      statusReason: null,
       updatedAt: "2026-07-10T00:00:00.000Z",
       validatedDraftVersion: null,
+      workflowType: "chatai_sop",
     };
 
     expect(Value.Check(WorkflowDefinitionSchema, definition)).toBe(true);
@@ -97,10 +123,30 @@ describe("workflow contracts", () => {
       clientRequestId: "create-workflow-1",
       description: "添加客户后发送欢迎消息",
       name: "新客欢迎旅程",
+      workflowType: "chatai_sop",
     })).toBe(true);
     expect(Value.Check(WorkflowCreateRequestSchema, {
       description: "描".repeat(1001),
       name: "新客欢迎旅程",
+      workflowType: "chatai_sop",
+    })).toBe(false);
+    expect(Value.Check(WorkflowCreateRequestSchema, {
+      name: "未选择类型",
+    })).toBe(false);
+  });
+
+  it("requires coherent entitlement results", () => {
+    expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      entitled: true,
+      unentitledSince: null,
+    })).toBe(true);
+    expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      entitled: false,
+      unentitledSince: "2026-08-01T00:00:00+08:00",
+    })).toBe(true);
+    expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      entitled: false,
+      unentitledSince: null,
     })).toBe(false);
   });
 
@@ -115,7 +161,7 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [
         { type: "contact.friend_added" },
-        { tagIds: ["tag-vip"], type: "customer.tag_added" },
+        { tagIds: ["tag-vip"], type: "contact.tag_added" },
         { keywords: ["优惠"], match: "keywords", type: "message.received" },
       ],
     })).toBe(true);
@@ -230,12 +276,13 @@ describe("workflow contracts", () => {
       eventId: "event-1",
       occurredAt: "2026-07-11T00:00:00.000Z",
       subjectId: "external-user-1",
+      subjectType: "chatai_contact",
       thirdUserId: "account-a",
       uid: "9",
     };
     expect(Value.Check(WorkflowEntryCommandSchema, {
       ...base,
-      eventType: "customer.tag_added",
+      eventType: "contact.tag_added",
       triggerPayload: { tagId: "tag-vip" },
     })).toBe(true);
     expect(Value.Check(WorkflowEntryCommandSchema, {
@@ -246,7 +293,7 @@ describe("workflow contracts", () => {
     })).toBe(false);
     expect(Value.Check(WorkflowEntryCommandSchema, {
       ...base,
-      eventType: "customer.tag_added",
+      eventType: "contact.tag_added",
       triggerPayload: {},
     })).toBe(false);
     expect(Value.Check(WorkflowEntryCommandSchema, {
@@ -275,6 +322,7 @@ describe("workflow contracts", () => {
         recordId: "31",
         revision: 3,
         status: "waiting",
+        subjectType: "chatai_contact",
         updatedAt: "2026-07-12T10:00:00.000Z",
       }],
       nextCursor: null,
@@ -285,6 +333,7 @@ describe("workflow contracts", () => {
       recordId: "31",
       revision: 3,
       status: "waiting",
+      subjectType: "chatai_contact",
       steps: [{
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "start",
@@ -300,6 +349,7 @@ describe("workflow contracts", () => {
       recordId: "31",
       revision: 3,
       status: "waiting",
+      subjectType: "chatai_contact",
       steps: [{
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "future-action",

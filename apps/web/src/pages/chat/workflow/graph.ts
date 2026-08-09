@@ -27,6 +27,27 @@ export function createInitialDraft(): WorkflowDraft {
   };
 }
 
+export function createNewWorkflowDraft(): WorkflowDraft {
+  return {
+    edges: [createEdge("start", "end")],
+    nodes: [
+      {
+        data: createDefaultNodeData("start"),
+        id: "start",
+        position: { x: 120, y: 240 },
+        type: WORKFLOW_NODE_TYPE,
+      },
+      {
+        data: createDefaultNodeData("end"),
+        id: "end",
+        position: { x: 560, y: 240 },
+        type: WORKFLOW_NODE_TYPE,
+      },
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
 export function createInitialNodes(): WorkflowNode[] {
   return [
     {
@@ -38,7 +59,7 @@ export function createInitialNodes(): WorkflowNode[] {
         title: "新人入会触发",
         triggers: [
           { type: "contact.friend_added" },
-          { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
+          { tagIds: ["tag-new-customer"], type: "contact.tag_added" },
         ],
       },
       id: "start",
@@ -65,8 +86,8 @@ export function createInitialNodes(): WorkflowNode[] {
             conditions: [{
               id: "condition-high-intent",
               operator: "contains",
-              selector: ["customer", "name"],
-              value: "会员",
+              selector: ["subject", "id"],
+              value: "10001",
             }],
             id: "branch-high",
             label: "如果",

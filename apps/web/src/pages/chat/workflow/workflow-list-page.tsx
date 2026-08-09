@@ -32,6 +32,10 @@ import {
   WorkflowListState,
   WorkflowStopDialog,
 } from "./workflow-list-components";
+import {
+  WorkflowCreateDialog,
+  type WorkflowCreateInput,
+} from "./workflow-create-dialog";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
@@ -85,7 +89,7 @@ export function WorkflowListPage({
     setMetadataTarget(workflow);
   };
 
-  const createWorkflow = async (metadata: WorkflowMetadata) => {
+  const createWorkflow = async (input: WorkflowCreateInput) => {
     if (operationPending) return false;
 
     setOperationPending(true);
@@ -95,7 +99,7 @@ export function WorkflowListPage({
     try {
       const document = await Promise.resolve(repository.createDocument({
         clientRequestId: createRequestIdRef.current,
-        ...metadata,
+        ...input,
       }));
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
@@ -309,9 +313,9 @@ export function WorkflowListPage({
         pending={operationPending}
       />
 
-      <WorkflowMetadataDialog
+      <WorkflowCreateDialog
         error={operationError}
-        metadata={{ description: "", name: "" }}
+        onCreate={createWorkflow}
         onOpenChange={(open) => {
           if (!operationPending) {
             setCreateDialogOpen(open);
@@ -321,11 +325,8 @@ export function WorkflowListPage({
             }
           }
         }}
-        onSave={createWorkflow}
         open={createDialogOpen}
         pending={operationPending}
-        submitLabel="创建"
-        title="新建 Workflow"
       />
 
       <WorkflowDeleteDialog

@@ -3,6 +3,8 @@ import type {
   WorkflowExecutionSpec,
   WorkflowNodeKind,
   WorkflowStartConfig,
+  WorkflowSubjectType,
+  WorkflowType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -11,12 +13,21 @@ import {
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
+  createWorkflowDeploymentCapabilities,
   createWorkflowActionIdempotencyKey,
+  hasWorkflowDeploymentCapability,
   isWorkflowActionNodeKind,
   WorkflowActionExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
+  type WorkflowDeploymentCapabilities,
 } from "@chatai/workflow-engine";
+import {
+  decideWorkflowEntitlement,
+  UnavailableWorkflowEntitlementPort,
+  WorkflowEntitlementUnavailableError,
+  type WorkflowEntitlementPort,
+} from "./entitlement.js";
 import { WorkflowRuntimeError } from "./errors.js";
 import {
   assertWorkflowRuntimeValue,
@@ -41,6 +52,9 @@ export class WorkflowRuntimeService {
   private readonly executors: WorkflowNodeExecutorRegistry;
   private readonly maxTaskAttempts: number;
   private readonly taskLeaseDurationMs: number;
+  private readonly deferredTaskDelayMs: number;
+  private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
+  private readonly entitlementPort: WorkflowEntitlementPort;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
@@ -51,6 +65,9 @@ export class WorkflowRuntimeService {
       actionRetryDelayMs?: number;
       actionTimeoutMs?: number;
       clock?: () => Date;
+      deferredTaskDelayMs?: number;
+      deploymentCapabilities?: WorkflowDeploymentCapabilities;
+      entitlementPort?: WorkflowEntitlementPort;
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
       taskLeaseDurationMs?: number;
@@ -63,6 +80,11 @@ export class WorkflowRuntimeService {
     this.executors = options.executors ?? createCoreNodeExecutorRegistry();
     this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
+    this.deferredTaskDelayMs = options.deferredTaskDelayMs ?? 60_000;
+    this.deploymentCapabilities = options.deploymentCapabilities
+      ?? createWorkflowDeploymentCapabilities([]);
+    this.entitlementPort = options.entitlementPort
+      ?? new UnavailableWorkflowEntitlementPort();
     if (!Number.isSafeInteger(this.actionTimeoutMs) || this.actionTimeoutMs <= 0) {
       throw new Error("Workflow action timeout must be a positive integer");
     }
@@ -75,6 +97,7 @@ export class WorkflowRuntimeService {
     entryEventId: string;
     expectedRevision: number;
     subjectId: string;
+    subjectType: WorkflowSubjectType;
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
@@ -91,6 +114,15 @@ export class WorkflowRuntimeService {
       definition.publishedRevision,
     );
     if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
+    if (revision.workflowType !== definition.workflowType
+      || revision.subjectType !== input.subjectType) {
+      throw staleDefinitionError();
+    }
+    await this.requireEntitlement(input.uid, revision.workflowType);
+    if (!revision.executionSpec.requiredCapabilities.every((requirement) =>
+      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
+      throw deploymentCapabilityDisabledError();
+    }
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
     const startConfig = requireStartConfig(entryNode);
 
@@ -115,10 +147,12 @@ export class WorkflowRuntimeService {
       initialNodeKind: entryNode.kind,
       occurredAt: parseOccurredAt(input.trigger),
       revision: revision.revision,
-      shardId: getWorkflowShardId(input.uid, input.subjectId),
+      shardId: getWorkflowShardId(input.uid, input.subjectType, input.subjectId),
       subjectId: input.subjectId,
+      subjectType: input.subjectType,
       uid: input.uid,
       workflowId: input.workflowId,
+      workflowType: revision.workflowType,
     });
     if (created.kind === "workflow-unavailable") {
       throw created.action === "defer"
@@ -144,6 +178,24 @@ export class WorkflowRuntimeService {
     if (!run) throw new WorkflowRuntimeError("WORKFLOW_RUN_NOT_FOUND", "Workflow Run 不存在", 404);
     const revision = await this.controlRepository.findRevision(input.uid, run.workflowId, run.revision);
     if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
+    if (revision.subjectType !== run.subjectType) throw staleDefinitionError();
+    const node = requireExecutionNode(revision.executionSpec, task.nodeId);
+
+    try {
+      await this.requireEntitlement(input.uid, revision.workflowType);
+    } catch (error) {
+      if (error instanceof WorkflowRuntimeError
+        && (error.code === "WORKFLOW_ENTITLEMENT_UNAVAILABLE"
+          || error.code === "WORKFLOW_RUNTIME_PAUSED")) {
+        await this.deferTaskOrThrowStale(task, input.now);
+      }
+      throw error;
+    }
+    if (!node.requiredCapabilities.every((requirement) =>
+      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
+      await this.deferTaskOrThrowStale(task, input.now);
+      throw deploymentCapabilityDisabledError();
+    }
 
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
@@ -159,7 +211,6 @@ export class WorkflowRuntimeService {
     }
     if (claimed.kind !== "success") throw staleTaskError();
 
-    const node = requireExecutionNode(revision.executionSpec, claimed.task.nodeId);
     const actionIdempotencyKey = createWorkflowActionIdempotencyKey({
       nodeId: node.id,
       runId: run.id,
@@ -301,6 +352,43 @@ export class WorkflowRuntimeService {
     if (committed.kind !== "success") throw staleTaskError();
     return committed;
   }
+
+  private async requireEntitlement(uid: number, workflowType: WorkflowType) {
+    try {
+      const decision = await decideWorkflowEntitlement(this.entitlementPort, {
+        now: this.clock(),
+        uid,
+        workflowType,
+      });
+      if (decision.action === "allow") return decision.result;
+      await this.controlRepository.applyEntitlementLoss({
+        opSubUserId: "0",
+        transition: decision.action,
+        uid,
+        workflowType,
+      });
+      throw runtimeStatusError(decision.action === "pause" ? "paused" : "stopped");
+    } catch (error) {
+      if (error instanceof WorkflowEntitlementUnavailableError) {
+        throw new WorkflowRuntimeError(
+          "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+          "暂时无法确认 Workflow 产品权益",
+          503,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async deferTaskOrThrowStale(task: { id: string; taskVersion: number; uid: number }, now: Date) {
+    const deferred = await this.runtimeRepository.deferTask({
+      dueAt: new Date(now.getTime() + this.deferredTaskDelayMs),
+      expectedTaskVersion: task.taskVersion,
+      taskId: task.id,
+      uid: task.uid,
+    });
+    if (deferred.kind !== "success") throw staleTaskError();
+  }
 }
 
 function createExecutionContext(
@@ -331,6 +419,7 @@ function createExecutionContext(
       revision: run.revision,
       sequence: run.sequence,
       subjectId: run.subjectId,
+      subjectType: run.subjectType,
       uid: String(run.uid),
     },
     trigger,
@@ -505,9 +594,13 @@ function parseOccurredAt(trigger: Record<string, unknown>) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-function getWorkflowShardId(uid: number, subjectId: string) {
+function getWorkflowShardId(
+  uid: number,
+  subjectType: WorkflowSubjectType,
+  subjectId: string,
+) {
   let hash = 2166136261;
-  const value = `${uid}:${subjectId}`;
+  const value = `${uid}:${subjectType}:${subjectId}`;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
@@ -527,6 +620,14 @@ function runtimeStatusError(status: "active" | "inactive" | "paused" | "stopped"
 
 function workflowUnavailable() {
   return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
+}
+
+function deploymentCapabilityDisabledError() {
+  return new WorkflowRuntimeError(
+    "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED",
+    "Workflow 依赖的部署能力未开启",
+    503,
+  );
 }
 
 function staleTaskError() {

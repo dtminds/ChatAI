@@ -330,7 +330,7 @@ function mockSession() {
   });
 }
 
-function renderWorkflowPage(initialEntry = "/chat/workflows/new") {
+function renderWorkflowPage(initialEntry = "/chat/workflows/newcomer-conversion") {
   const router = createMemoryRouter(
     [
       {
@@ -531,6 +531,7 @@ describe("Agent workflow page", () => {
     expect(createDocumentSpy).not.toHaveBeenCalled();
     const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
     const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
+    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.type(nameInput, "新客欢迎旅程");
     await user.type(descriptionInput, "添加客户后发送欢迎消息");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -539,6 +540,7 @@ describe("Agent workflow page", () => {
       expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
         description: "添加客户后发送欢迎消息",
         name: "新客欢迎旅程",
+        workflowType: "chatai_sop",
       }));
       expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1");
     });
@@ -597,8 +599,8 @@ describe("Agent workflow page", () => {
   it("filters workflows by user-facing status", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
-    await repository.createDocument({ name: "普通草稿流程" });
-    const stopped = await repository.createDocument({ name: "已停止流程" });
+    await repository.createDocument({ name: "普通草稿流程", workflowType: "chatai_sop" });
+    const stopped = await repository.createDocument({ name: "已停止流程", workflowType: "chatai_sop" });
     await repository.stopDocument?.(stopped.id);
     renderWorkflowPage("/chat/workflows");
 
@@ -638,7 +640,7 @@ describe("Agent workflow page", () => {
   it("moves an inactive workflow from draft to ready after publishing", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
-    const draft = await repository.createDocument({ name: "待发布流程" });
+    const draft = await repository.createDocument({ name: "待发布流程", workflowType: "chatai_sop" });
     await repository.publishDraft(draft.id, draft.draft);
     renderWorkflowPage("/chat/workflows");
 
@@ -655,6 +657,7 @@ describe("Agent workflow page", () => {
     await getWorkflowDraftRepository().createDocument({
       clientRequestId: "empty-description-workflow",
       name: "未填写描述的流程",
+      workflowType: "chatai_sop",
     });
 
     renderWorkflowPage("/chat/workflows");
@@ -663,12 +666,23 @@ describe("Agent workflow page", () => {
     expect(within(card).getByText("暂无描述")).toBeInTheDocument();
   });
 
-  it("renders the direct editor route as a fullscreen canvas without a list back link", async () => {
+  it("requires an explicit workflow type before the direct create route creates a document", async () => {
+    const user = userEvent.setup();
     const createDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "createDocument");
     const { router } = renderWorkflowPage("/chat/workflows/new");
 
+    expect(await screen.findByRole("dialog", { name: "新建 Workflow" })).toBeInTheDocument();
+    expect(createDocumentSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("radio", { name: /会员 SOP/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /企微客户 SOP/ }));
+    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "企微新客旅程");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
-    expect(createDocumentSpy).toHaveBeenCalledTimes(1);
+    expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
+      workflowType: "wecom_sop",
+    }));
     expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1");
     expect(screen.queryByRole("region", { name: "节点库" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
@@ -778,7 +792,10 @@ describe("Agent workflow page", () => {
 
   it("does not offer activation for an unpublished draft", async () => {
     const user = userEvent.setup();
-    await getWorkflowDraftRepository().createDocument({ name: "未发布草稿" });
+    await getWorkflowDraftRepository().createDocument({
+      name: "未发布草稿",
+      workflowType: "chatai_sop",
+    });
     renderWorkflowPage("/chat/workflows");
 
     await user.click(await screen.findByRole("button", { name: "操作 未发布草稿" }));
@@ -997,17 +1014,17 @@ describe("Agent workflow page", () => {
 
     const operatorSection = operatorMessage.closest("section")!;
     await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
 
     const customerSection = customerMessage.closest("section")!;
     await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
 
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服提示：{客户昵称}");
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("对客话术：{客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服提示：{主体ID}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("对客话术：{主体ID}");
     });
     expect(within(panel).queryByText("0/100")).not.toBeInTheDocument();
   });
@@ -1215,14 +1232,14 @@ describe("Agent workflow page", () => {
       expect(within(panel).getByText("生成营销文案.output")).toBeInTheDocument();
     });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
 
     await waitFor(() => {
-      expect(within(panel).getByText("客户昵称")).toBeInTheDocument();
+      expect(within(panel).getByText("主体ID")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.output} {客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.output} {主体ID}");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });

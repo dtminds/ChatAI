@@ -49,6 +49,7 @@ type WorkflowRenderElementState = {
 export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   & WorkflowRenderElementState
   & {
+    allowedInsertableNodeKinds: readonly InsertableWorkflowNodeKind[];
     edges: WorkflowEdge[];
     readOnly?: boolean;
     nodes: WorkflowNode[];
@@ -79,6 +80,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
   const nodeRenderCacheRef = useRef(new Map<string, WorkflowRenderNodeCacheEntry>());
   const edges = useMemo(() => createWorkflowRenderEdges(options), [
     options.activeEdgeInsertMenuId,
+    options.allowedInsertableNodeKinds,
     options.edges,
     options.hoveredEdgeIds,
     options.nodes,
@@ -110,6 +112,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
 
 export function createWorkflowRenderElements({
   activeEdgeInsertMenuId,
+  allowedInsertableNodeKinds,
   edges,
   hoveredEdgeIds,
   nodes,
@@ -133,6 +136,7 @@ export function createWorkflowRenderElements({
   return {
     edges: createWorkflowRenderEdges({
       activeEdgeInsertMenuId,
+      allowedInsertableNodeKinds,
       edges,
       hoveredEdgeIds,
       nodes,
@@ -152,6 +156,7 @@ export function createWorkflowRenderElements({
     }),
     nodes: createWorkflowRenderNodes({
       activeEdgeInsertMenuId,
+      allowedInsertableNodeKinds,
       edges,
       nodes,
       onDeleteNode,
@@ -173,6 +178,7 @@ export function createWorkflowRenderElements({
 
 function createWorkflowRenderEdges({
   activeEdgeInsertMenuId,
+  allowedInsertableNodeKinds,
   edges,
   hoveredEdgeIds = null,
   nodes,
@@ -182,6 +188,7 @@ function createWorkflowRenderEdges({
   selectedEdgeId,
 }: CreateWorkflowRenderElementsOptions): WorkflowRenderEdge[] {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const allowedKindSet = new Set(allowedInsertableNodeKinds);
 
   return edges.map((edge) => {
     const sourceNode = nodeById.get(edge.source);
@@ -200,6 +207,7 @@ function createWorkflowRenderEdges({
         highlightState,
         insertableNodeKinds: !readOnly && sourceNode && targetNode
           ? getInsertableNodeKindsBetween(sourceNode.data.kind, targetNode.data.kind)
+              .filter((kind) => allowedKindSet.has(kind))
           : [],
         insertMenuOpen: !readOnly && edge.id === activeEdgeInsertMenuId,
         onInsertBetween: readOnly ? undefined : onInsertNodeBetween,

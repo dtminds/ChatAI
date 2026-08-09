@@ -2,7 +2,6 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   InputCursorTextIcon,
   Search01Icon,
-  Settings03Icon,
   UserIcon,
   ZapIcon,
 } from "@hugeicons/core-free-icons";
@@ -98,8 +97,7 @@ function VariableOptions({ variables, onSelect }: {
 
   const contextScopes: Exclude<WorkflowVariableScope, "node">[] = [
     "input",
-    "system",
-    "customer",
+    "subject",
     "trigger",
   ];
   const nodeVariableGroups = groupNodeVariables(
@@ -150,7 +148,7 @@ function VariableGroupSubMenu({
   onSelect,
   variables,
 }: {
-  icon?: typeof Settings03Icon;
+  icon?: typeof UserIcon;
   iconAccentRgb?: string;
   label: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
@@ -237,15 +235,13 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 }
 
 const scopeLabels: Record<Exclude<WorkflowVariableScope, "node">, string> = {
-  customer: "客户变量",
   input: "输入参数",
-  system: "系统变量",
+  subject: "主体变量",
   trigger: "触发变量",
 };
 
 const scopeIcons = {
-  customer: UserIcon,
   input: InputCursorTextIcon,
-  system: Settings03Icon,
+  subject: UserIcon,
   trigger: ZapIcon,
-} satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof Settings03Icon>;
+} satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof UserIcon>;

@@ -6,8 +6,11 @@ import type {
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
   WorkflowStartConfig,
+  WorkflowStatusReason,
+  WorkflowSubjectType,
   WorkflowTaskStatus,
   WorkflowTaskMessage,
+  WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowActionFailureKind } from "@chatai/workflow-engine";
 
@@ -15,14 +18,24 @@ export type WorkflowRuntimeDefinitionRecord = {
   bizStatus: 0 | 1;
   publishedRevision: number | null;
   runtimeStatus: WorkflowRuntimeStatus;
+  statusReason: WorkflowStatusReason;
+  workflowType: WorkflowType;
 };
 
 export type WorkflowRuntimeRevisionRecord = {
   executionSpec: WorkflowExecutionSpec;
   revision: number;
+  subjectType: WorkflowSubjectType;
+  workflowType: WorkflowType;
 };
 
 export type WorkflowRuntimeControlReader = {
+  applyEntitlementLoss(input: {
+    opSubUserId: string;
+    transition: "pause" | "stop";
+    uid: number;
+    workflowType: WorkflowType;
+  }): Promise<{ affectedDefinitions: number }>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowRuntimeDefinitionRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRuntimeRevisionRecord | null>;
 };
@@ -34,6 +47,7 @@ export type WorkflowTriggerBindingRecord = {
   id: string;
   revision: number;
   status: 0 | 1;
+  subjectType: WorkflowSubjectType;
   uid: number;
   updatedAt: Date;
   workflowId: string;
@@ -42,6 +56,7 @@ export type WorkflowTriggerBindingRecord = {
 export type WorkflowTriggerBindingReader = {
   listActiveTriggerBindings(
     uid: number,
+    subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
   ): Promise<WorkflowTriggerBindingRecord[]>;
 };
@@ -59,6 +74,7 @@ export type WorkflowRunRecord = {
   shardId: number;
   status: WorkflowRunStatus;
   subjectId: string;
+  subjectType: WorkflowSubjectType;
   uid: number;
   workflowId: string;
 };
@@ -177,8 +193,10 @@ export type WorkflowCreateRunInput = {
   revision: number;
   shardId: number;
   subjectId: string;
+  subjectType: WorkflowSubjectType;
   uid: number;
   workflowId: string;
+  workflowType: WorkflowType;
 };
 
 export type WorkflowCommitNodeResultInput = {
@@ -291,6 +309,12 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
       }
     | WorkflowRuntimeFailure
   >;
+  deferTask(input: {
+    dueAt: Date;
+    expectedTaskVersion: number;
+    taskId: string;
+    uid: number;
+  }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
   listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;

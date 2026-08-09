@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { WorkflowIdSchema } from "./dto.js";
+import { WorkflowSubjectTypeSchema } from "./policy.js";
 import {
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
@@ -7,7 +8,7 @@ import {
 
 export const WorkflowEntryEventTypeSchema = Type.Union([
   Type.Literal("contact.friend_added"),
-  Type.Literal("customer.tag_added"),
+  Type.Literal("contact.tag_added"),
   Type.Literal("message.received"),
 ]);
 
@@ -39,7 +40,7 @@ export const WorkflowStartTriggerSchema = Type.Union([
       minItems: 1,
       uniqueItems: true,
     }),
-    type: Type.Literal("customer.tag_added"),
+    type: Type.Literal("contact.tag_added"),
   }, { additionalProperties: false }),
   Type.Object({
     match: Type.Literal("any"),
@@ -101,6 +102,7 @@ const WorkflowEntryCommandBaseSchema = Type.Object({
   eventId: Type.String({ minLength: 1, maxLength: 128 }),
   occurredAt: Type.String({ minLength: 1, maxLength: 64 }),
   subjectId: Type.String({ minLength: 1, maxLength: 256 }),
+  subjectType: WorkflowSubjectTypeSchema,
   thirdUserId: Type.String({ minLength: 1, maxLength: 128 }),
   uid: WorkflowIdSchema,
 });
@@ -126,7 +128,7 @@ export const WorkflowEntryCommandSchema = Type.Union([
   Type.Composite([
     WorkflowEntryCommandBaseSchema,
     Type.Object({
-      eventType: Type.Literal("customer.tag_added"),
+      eventType: Type.Literal("contact.tag_added"),
       triggerPayload: Type.Object({
         tagId: Type.String({ minLength: 1, maxLength: 128 }),
       }, { additionalProperties: false }),

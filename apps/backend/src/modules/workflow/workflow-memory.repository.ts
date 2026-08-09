@@ -18,6 +18,26 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   private nextRevisionId = 1n;
   private nextTriggerBindingId = 1n;
 
+  async applyEntitlementLoss(input: Parameters<WorkflowRepository["applyEntitlementLoss"]>[0]) {
+    let affectedDefinitions = 0;
+    for (const definition of this.definitions) {
+      if (definition.uid !== input.uid
+        || definition.workflowType !== input.workflowType
+        || definition.bizStatus !== 1) continue;
+      if (input.transition === "pause") {
+        if (definition.runtimeStatus !== "active") continue;
+        definition.runtimeStatus = "paused";
+      } else {
+        if (definition.runtimeStatus === "stopped") continue;
+        definition.runtimeStatus = "stopped";
+      }
+      definition.statusReason = "entitlement_revoked";
+      touch(definition, input.opSubUserId);
+      affectedDefinitions += 1;
+    }
+    return { affectedDefinitions };
+  }
+
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     const existing = input.clientRequestId
       ? this.definitions.find((item) =>
@@ -42,9 +62,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       opSubUserId: input.opSubUserId,
       publishedRevision: null,
       runtimeStatus: "inactive",
+      statusReason: null,
       uid: input.uid,
       updatedAt: now,
       validatedDraftVersion: null,
+      workflowType: input.workflowType,
     };
     this.definitions.push(definition);
     return clone(definition);
@@ -80,10 +102,14 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async listActiveTriggerBindings(
     uid: number,
+    subjectType: WorkflowTriggerBindingRecord["subjectType"],
     eventType: WorkflowEntryEventType,
   ) {
     return this.triggerBindings.filter((binding) => {
-      if (binding.uid !== uid || binding.eventType !== eventType || binding.status !== 1) return false;
+      if (binding.uid !== uid
+        || binding.subjectType !== subjectType
+        || binding.eventType !== eventType
+        || binding.status !== 1) return false;
       const definition = this.findActive(uid, binding.workflowId);
       return definition?.runtimeStatus === "active"
         && definition.publishedRevision === binding.revision;
@@ -163,6 +189,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     this.replaceTriggerBindings(definition, revision.revision, input.triggerBindings);
     definition.publishedRevision = 1;
     definition.runtimeStatus = "active";
+    definition.statusReason = null;
     touch(definition, input.opSubUserId);
     return success({ definition: clone(definition), revision: clone(revision) });
   }
@@ -173,6 +200,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
         return invalidStatus(definition.runtimeStatus);
       }
       definition.runtimeStatus = input.status;
+      definition.statusReason = input.statusReason;
       touch(definition, input.opSubUserId);
       return success(definition);
     });
@@ -200,6 +228,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       executionSpec: WorkflowRevisionRecord["executionSpec"];
       opSubUserId: string;
       specHash: string;
+      subjectType: WorkflowRevisionRecord["subjectType"];
     },
   ) {
     const now = new Date();
@@ -212,8 +241,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       publishSubUserId: input.opSubUserId,
       revision: input.executionSpec.revision,
       specHash: input.specHash,
+      subjectType: input.subjectType,
       uid: definition.uid,
       workflowId: definition.id,
+      workflowType: definition.workflowType,
     };
     this.revisions.push(revision);
     return revision;
@@ -239,6 +270,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
         id: String(this.nextTriggerBindingId++),
         revision,
         status: 1,
+        subjectType: spec.subjectType,
         uid: definition.uid,
         updatedAt: now,
         workflowId: definition.id,

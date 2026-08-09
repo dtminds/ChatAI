@@ -2,6 +2,40 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-08-10
+
+- Added immutable Workflow Type and Subject Type identity to control-plane and Runtime records.
+- Database codes are append-only: Workflow Type `1=chatai_sop`, `2=wecom_sop`, `3=member_sop`; Subject Type `1=chatai_contact`, `2=wecom_contact`, `3=miniapp_member`.
+- No production Workflow data exists, so this migration intentionally has no default values or legacy backfill.
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL AFTER uid,
+  ADD COLUMN status_reason VARCHAR(64) NULL AFTER runtime_status,
+  ADD KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id);
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL AFTER uid,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER workflow_type;
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER uid,
+  DROP KEY uk_workflow_trigger_binding_revision,
+  DROP KEY idx_workflow_trigger_binding_match,
+  ADD UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
+  ADD KEY idx_workflow_trigger_binding_match (uid, subject_type, event_type, status, workflow_id);
+
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER workflow_id,
+  DROP KEY uk_workflow_entry_guard_subject,
+  ADD UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id);
+
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER revision,
+  DROP KEY idx_workflow_run_entry_window,
+  ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id);
+```
+
 ## 2026-08-09
 
 - Add the append-only problem-investigation start log. The short-lived support

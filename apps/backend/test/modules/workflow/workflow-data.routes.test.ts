@@ -252,6 +252,7 @@ function createRecordDbMock(options: {
               revision: 3,
               status: options.runStatus ?? "waiting",
               subject_id: "customer-1",
+              subject_type: 1,
               update_time: now,
             };
           }

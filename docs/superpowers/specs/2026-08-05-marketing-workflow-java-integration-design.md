@@ -12,8 +12,12 @@
 | 术语 | 所有者 | 通俗解释 |
 | --- | --- | --- |
 | Workflow | Node | 用户在营销画布中配置的一条营销主体旅程，由 Start、Wait、Branch、Action、End 等节点组成。 |
-| Workflow Type | Node | 新建 Workflow 时选择的稳定业务类型，例如客户 SOP、会员 SOP、ChatAI SOP。它决定主 Subject Type、可选 Start 事件、允许的节点、系统变量和业务能力边界，不是单纯的前端分类。 |
-| Workflow Capability Profile | Node 定义，双方遵守 | Workflow Type 对应的能力策略，描述允许的事件、节点、变量和 Java operation。最终可用能力还要与租户产品权益和已配置资源取交集。 |
+| Workflow Type | Node | 新建 Workflow 时选择的稳定业务类型，例如 WeCom SOP、ChatAI SOP，以及后续开放的 Member SOP。它决定主 Subject Type、可选 Start 事件、允许的节点、系统变量和业务能力边界，不是单纯的前端分类。 |
+| Workflow Capability Profile | Node 定义，双方遵守 | Workflow Type 对应的语义能力策略，描述允许的事件、节点和用户变量。它不表达 Runtime 实现进度、部署能力或租户产品权益。 |
+| Workflow Runtime Support | Node | 当前 Node Runtime 是否已经完整实现某种节点语义，包括 Schema、Compiler、Executor、输出、失败处理、恢复和测试。它不代表 Java 或当前环境已经接通。 |
+| Workflow Deployment Capability | Node/运维配置 | 某个环境是否明确接通并启用了事件源或 Java operation。它是环境级生产开关，不表示瞬时健康状态，也不承载租户权限。 |
+| Workflow Capability Requirement | Node Compiler 生成 | Revision 冻结的带版本事件源或业务 operation 依赖，例如 `event.message.received@1`。当前环境必须满足全部 Requirement 才能生产执行。 |
+| Workflow Production Availability | Node 权威判断 | Workflow Capability Profile、Runtime Support、Deployment Capability、Product Entitlement 和业务资源状态的最终交集。 |
 | Workflow Draft | Node | 当前可编辑的画布草稿，包含节点配置、连线和画布位置。Draft 可以反复修改，不能被 Worker 直接执行。 |
 | Node Workflow Kernel | Node | Workflow 的持久化编排内核，负责 Revision、Binding、Run、Task、等待、分支、变量、重试、恢复和执行历史。 |
 | Java Workflow Business Capability Layer | Java | Java 向 Workflow 提供的业务能力边界，负责消息、订单、标签、客户、优惠券、人工接管等查询、校验和实际业务动作。 |
@@ -63,7 +67,7 @@ Java 业务事实
 2. 为什么业务事件由 Java 产生，而 Workflow 语义继续由 Node 负责。
 3. Java 如何在不理解 Workflow 图的情况下，减少无效事件投递。
 4. 在 Java 与 Node 共用一个 MySQL 实例的前提下，如何直接读表，不建设额外的兴趣同步服务。
-5. 客户 SOP、会员 SOP 和 ChatAI SOP 如何使用不同主体身份、Start 事件和节点能力。
+5. WeCom SOP 和 ChatAI SOP 如何使用不同主体身份、Start 事件和节点能力，以及如何为后续 Member SOP 保留稳定类型。
 6. Start 触发和 Wait Event 唤醒分别如何工作。
 7. Java 业务接口和 Node 执行引擎如何实现幂等、重试和错误分类。
 8. 会后 Java、Node、产品和测试分别可以立即推进什么。
@@ -74,7 +78,7 @@ Java 业务事实
 
 本方案的核心结论如下：
 
-1. **新建 Workflow 时必须选择 Workflow Type。** 1.0 首批为客户 SOP、会员 SOP、ChatAI SOP；类型决定主 Subject Type、可选事件、节点目录和变量目录。
+1. **新建 Workflow 时必须选择 Workflow Type。** 本期开放 WeCom SOP 和 ChatAI SOP；`member_sop` 只提前进入稳定枚举，不可创建、配置或发布。类型决定主 Subject Type、可选事件、节点目录和变量目录。
 2. **Workflow Type 是不可变执行契约，不是 UI 筛选。** 创建后不允许转换类型；选错时通过新建或复制创建另一类型，避免已有节点、Revision 和 Run 语义失效。
 3. **不建设强制统一的跨域客户 ID。** Runtime 身份统一使用 `subjectType + subjectId`，其中 `subjectId` 只需在 `uid + subjectType` 内稳定。
 4. **Java 是全部业务事件的权威生产方。** 包括新增好友、客户打标、新消息、订单、人群进入等外部或 ChatAI 自有事件。
@@ -86,8 +90,8 @@ Java 业务事实
 10. **Java 的读表结果只是流量优化，不是最终正确性判断。** Java 只判断“有没有可能需要这个事件”；Node 收到事件后仍按当前有效 Trigger Binding 或 Wait Event Subscription 做权威匹配。
 11. **读表异常必须 fail-open。** 无法判断时仍写入 Java Outbox 并投递事件，不能因为优化组件故障而静默丢失营销事件。
 12. **事件和动作都采用 at-least-once + 幂等。** Java 使用 Transactional Outbox 发布事件；Node 用事件 ID 防止重复进入，用稳定 `idempotencyKey` 调用 Java 动作接口。
-13. **节点可用性是三者交集。** Workflow Type 的语义能力、租户 Product Entitlement、已配置业务资源必须同时满足；不能把席位和套餐差异编码成更多 Workflow Type。
-14. **当前真正可执行的节点只有 `start / wait / end`。** 其他节点虽然已经完成较多前端配置，但在 Compiler、Executor 或类型化 Java Capability Adapter 完成前仍必须禁止启用。
+13. **生产可用性是五层交集。** Workflow Type 语义、Runtime 完整实现、环境 Deployment Capability、租户 Product Entitlement 和已配置业务资源必须同时满足；不能把实现进度、环境开关或套餐差异编码成更多 Workflow Type。
+14. **Runtime 实现完成不等于生产启用。** 当前真正可执行的节点只有 `start / wait / end`；其他节点即使完成前端配置或 Node Runtime，也必须等所需事件源或 Java operation 在当前环境明确启用后才能发布。
 15. **Node 不再承载平台业务规则。** Node 只解析变量、形成类型化业务命令、调用 Java 并保存受控输出；Java 完成业务查询、权限与资源校验、身份解析和实际副作用。
 16. **不能建设接收原始节点配置的万能 Java 执行器。** Java 能力可以共用信封和错误格式，但每种 operation 必须有独立、可验证的输入输出契约。
 
@@ -166,7 +170,7 @@ Workflow 是 `apps/web/src/pages/chat/workflow` 下的独立大型模块，菜�
 
 ```text
 Pulsar Entry Event
-  -> 校验 WorkflowEntryCommand
+  -> 校验 WorkflowEntryEvent
   -> 按 uid + subjectType + eventType 读取 Active Trigger Binding
   -> 执行结构化触发规则匹配
   -> 对每个命中的 Workflow 独立创建 Run
@@ -181,7 +185,7 @@ Pulsar Entry Event
 - 其余节点不能因为 UI 已完成就直接加入运行白名单。
 - 当前真实业务事件尚未由 Java 接入 `workflow-entry` Topic。
 - Workflow Worker 环境配置当前只接受 `dev / test01`，生产环境枚举、Topic 和部署参数尚未接入。
-- 当前入口契约只覆盖 `contact.friend_added`、`customer.tag_added` 和 `message.received`，并强制所有事件携带 `accountId`、`thirdUserId`，无法自然表达订单和人群事件。
+- 当前入口契约只覆盖 `contact.friend_added`、`contact.tag_added` 和 `message.received`，并强制所有事件携带 `accountId`、`thirdUserId`，无法自然表达订单和人群事件。
 - 当前 Definition、Revision、Trigger Binding 没有 Workflow Type，前端节点目录也没有统一的类型能力策略。
 - 当前 Run、Entry Guard 和 Wait Event 设计只有 `subject_id`，无法区分不同主体域中的同值 ID。
 - 当前运行记录查询固定把 `subject_id` 当作 `third_external_userid` 回填客户信息，无法展示会员或其他主体。
@@ -303,8 +307,8 @@ Java 粗过滤允许误报，即多发一条事件；不允许因为缓存、SQL
 
 | 产品名称 | `workflowType` | 主 `subjectType` | 主体 ID 示例 |
 | --- | --- | --- | --- |
-| 客户 SOP | `customer_sop` | `wecom_contact` | 企微客户 ID |
-| 会员 SOP | `member_sop` | `miniapp_member` | 小程序会员 ID |
+| WeCom SOP | `wecom_sop` | `wecom_contact` | 企微客户 ID |
+| Member SOP（本期不可用） | `member_sop` | `miniapp_member` | 小程序会员 ID |
 | ChatAI SOP | `chatai_sop` | `chatai_contact` | `external_third_userid` 或后续确认的 ChatAI 联系人 ID |
 
 表中的 ID 只是当前业务示例，不写入 Workflow Runtime 的解析规则。Runtime 只认可：
@@ -324,7 +328,20 @@ uid + subjectType + subjectId
 
 不要求同一个自然人在客户域、会员域和 ChatAI 域中使用相同 ID，也不要求 Workflow 1.0 先建设统一身份图谱。
 
-Workflow Type 创建后不可修改。它必须同时写入 Definition，并在发布时固化到不可变 Revision 或 Execution Spec。已经运行的 Run 始终使用进入时 Revision 中的类型和主体语义。
+Workflow Type 创建后不可修改。Definition 只保存 Workflow Type；发布时将 Workflow Type 和由 Capability Profile 得到的 Subject Type 固化到不可变 Revision 的普通列。Execution Spec 继续只表达执行图，Runtime Revision Record 将两个类型字段与 Execution Spec 一起返回。已经运行的 Run 始终使用进入时 Revision 中的类型和主体语义。
+
+领域契约、Java 事件信封和 DTO 使用可读的字符串值；MySQL 普通列使用稳定的 `TINYINT UNSIGNED` 编码，减少 Run、Entry Guard、Subscription 和联合索引中的重复存储：
+
+| 数据库字段 | 编码 | 领域值 |
+| --- | --- | --- |
+| `workflow_type` | `1` | `chatai_sop` |
+| `workflow_type` | `2` | `wecom_sop` |
+| `workflow_type` | `3` | `member_sop`，本期不可用 |
+| `subject_type` | `1` | `chatai_contact` |
+| `subject_type` | `2` | `wecom_contact` |
+| `subject_type` | `3` | `miniapp_member` |
+
+`0` 保留为非法值，编码只允许追加且永久不得复用。Repository 是数字编码与领域字符串之间唯一的转换位置，读到未知编码时直接按数据契约错误处理。`spec_hash` 使用领域字符串计算，并覆盖 Revision 的 Workflow Type、Subject Type 和 Execution Spec。
 
 建议显式落库或固化以下字段：
 
@@ -338,7 +355,7 @@ workflow_entry_guard.subject_type
 workflow_event_subscription.subject_type
 ```
 
-当前尚无生产历史数据，应该在业务接入前一次性调整模型，不保留把所有主体误当成 ChatAI 客户的兼容分支。
+当前尚无生产历史数据，应该在业务接入前一次性调整模型，不提供默认类型、旧数据回退或把所有主体误当成 ChatAI 客户的兼容分支。Subject ID 始终是区分大小写的不透明字符串，Node 不执行 trim、大小写转换或数字转换。
 
 ### 5.3 Workflow Capability Profile
 
@@ -346,48 +363,169 @@ workflow_event_subscription.subject_type
 
 ```ts
 type WorkflowCapabilityProfile = {
-  workflowType: "customer_sop" | "member_sop" | "chatai_sop";
+  availability: "enabled" | "reserved";
+  workflowType: "wecom_sop" | "member_sop" | "chatai_sop";
   subjectType: "wecom_contact" | "miniapp_member" | "chatai_contact";
   allowedEntryEventTypes: string[];
   allowedNodeKinds: string[];
-  systemVariableCatalog: string[];
-  allowedJavaOperations: string[];
+  variableCatalog: string[];
 };
 ```
 
-首批能力方向建议为：
+本期最小事件矩阵已经确定：
 
-| Workflow Type | 典型 Start 事件 | 典型节点能力 | 明确不提供的当前能力 |
-| --- | --- | --- | --- |
-| 客户 SOP | 添加好友、进入客户人群、客户打标 | Wait、Branch、客户标签、客户资料、Coupon 等 | 当前 ChatAI Message、Message Query、Wait Message、Handoff、Agent |
-| 会员 SOP | 会员注册、进入会员人群、订单创建/支付 | Wait、Branch、Order Query、会员标签、Coupon 等 | 当前 ChatAI Message、Message Query、Wait Message、Handoff、Agent |
-| ChatAI SOP | 新消息、进入 ChatAI 人群，以及能稳定映射到 ChatAI Subject 的业务事件 | 全部流程控制、消息、会话、Agent、AI 和已支持的营销动作 | 仍受租户权益、资源配置和 Runtime 白名单限制 |
+| Workflow Type | 允许的 Start eventType |
+| --- | --- |
+| ChatAI SOP | `message.received`、`contact.friend_added`、`contact.tag_added` |
+| WeCom SOP | `contact.friend_added`、`contact.tag_added` |
+| Member SOP | 无；Profile 状态为 `reserved` |
 
-这里描述的是能力边界，不是最终字段清单。产品和业务团队仍需冻结每种类型的首批事件、节点和系统变量。
+本期最小节点矩阵已经确定：
 
-当前 `message`、`message-query`、`wait-event`、`handoff` 和 `agent` 节点表达的是 ChatAI 会话能力。未来如果客户 SOP 支持企微触达，应增加明确的企微消息 operation 或节点能力，不能复用同一个名称后在 Java 内部猜测渠道。
+| Workflow Type | 语义上允许的 Node Kind |
+| --- | --- |
+| ChatAI SOP | 当前目录全部节点：`start`、`wait`、`wait-event`、`branch`、`message`、`message-query`、`handoff`、`agent`、`llm`、`ai-collect`、`ai-intent`、`order-query`、`tag-query`、`tag`、`customer-update`、`coupon`、`end` |
+| WeCom SOP | `start`、`wait`、`branch`、`llm`、`order-query`、`tag-query`、`tag`、`customer-update`、`coupon`、`end` |
+| Member SOP | 无；不可创建、配置或发布 |
 
-### 5.4 最终可用能力计算
+WeCom SOP 明确不允许当前依赖 ChatAI 会话语义的 `wait-event`、`message`、`message-query`、`handoff`、`agent`、`ai-collect` 和 `ai-intent`。其中 `ai-intent` 当前接收消息内容或消息 ID，不作为通用文本分类节点开放。
 
-前端节点目录和 Start 事件列表都必须按以下规则计算：
+本期公共用户变量目录只包含：
+
+```text
+subject.id
+trigger.eventType
+trigger.occurredAt
+```
+
+前序节点输出和节点 `enteredAt / exitedAt` 由图结构动态生成，不写入静态 Profile。选择器 scope 从 `customer` 统一为 `subject`；删除当前无法跨类型保证的 `system.employeeId` 和 `customer.name`。`eventId` 保留在 Runtime Context 用于幂等，不进入用户变量选择器。事件 payload 字段以后由具体事件契约注册，本期系统变量目录允许为空。
+
+当前 `message`、`message-query`、`wait-event`、`handoff` 和 `agent` 节点表达的是 ChatAI 会话能力。未来如果 WeCom SOP 支持企微触达，应增加明确的企微消息 operation 或节点能力，不能复用同一个名称后在 Java 内部猜测渠道。
+
+### 5.4 Runtime 实现与生产启用的双重门槛
+
+最终 Production Availability 按以下规则计算：
 
 ```text
 Workflow Capability Profile
-  INTERSECT 租户 Product Entitlement
-  INTERSECT 当前已配置且可用的业务资源
-  INTERSECT 当前 Runtime 支持白名单
+  INTERSECT Workflow Runtime Support
+  INTERSECT Workflow Deployment Capability
+  INTERSECT Product Entitlement
+  INTERSECT required business resources
 ```
 
-各层责任：
+这五层分别回答不同问题：
 
-- 前端只展示当前可使用的事件和节点，并对缺少权益或资源给出产品可理解的状态。
-- Node Backend 在创建、保存、发布时再次校验 Workflow Type、事件和节点兼容性，不能只依赖前端隐藏。
-- Java 在发布资源校验和执行时权威检查套餐权益、资源权限及业务状态。
-- Workflow Type 只表达主体域和语义能力，不能为了不同套餐、席位或资源状态持续增加类型。
+| 层 | 回答的问题 | 权威来源 |
+| --- | --- | --- |
+| Capability Profile | 该事件、节点或变量是否属于这个 Workflow Type | 共享 contracts 中的唯一只读 Type Policy |
+| Runtime Support | 当前 Node 版本是否能完整编译和执行该节点 | Workflow Engine 的可执行节点注册表 |
+| Deployment Capability | 当前环境是否明确接通并启用了所需事件源或 Java operation | Backend 与 Worker 共用的环境配置 |
+| Product Entitlement | 当前租户是否有权创建和运行该 Workflow Type | Java 同步查询接口 |
+| Business Resource | 节点引用的账号、Agent、标签、优惠券等是否可用 | Java 资源校验与执行时权威检查 |
 
-这允许未开通 ChatAI 席位的租户继续使用客户 SOP 或会员 SOP，同时保证 ChatAI 消息、转人工和转 Agent 等能力不会被错误加入这些流程。
+#### Runtime Support
 
-### 5.5 跨主体域边界
+`packages/contracts` 只定义节点类型和交换 DTO，不再拥有“节点已经实现”的事实。Workflow Engine 维护唯一的可执行节点注册表，Backend、Compiler 和 Worker 通过同一模块读取；Web 不直接维护或导入运行白名单。
+
+一个节点只有同时完成正式 Schema、Compiler、Executor、输出契约、配置与变量校验、失败分类、重试或恢复语义以及关键回归测试后，才能进入 Runtime Support。1.0 不允许只开放一个节点的部分产品模式：只要编辑器当前暴露的任一模式尚未闭环，整个 Node Kind 仍为 Runtime Unsupported。
+
+#### Deployment Capability
+
+Runtime Support 只证明 Node 会执行，不证明外部依赖已经接通。Deployment Capability 使用稳定的 `capabilityKey + contractVersion` 声明当前环境有意开放的能力，例如：
+
+```text
+event.message.received@1
+operation.chatai.message.send@1
+```
+
+Start 和 Wait Event 声明所需事件能力，依赖 Java 的查询或 Action 节点声明所需 operation。Compiler 将这些依赖生成为 Revision 内不可变的 `requiredCapabilities`；Publish、Enable 和 Runtime 必须确认当前环境支持其全部键和版本。
+
+Deployment Capability 是环境级配置，不是服务健康检查、租户权限或普通灰度名单。1.0 不建设数据库能力表、配置中心、Node 投影或租户 allowlist；紧急关闭通过修改部署配置并重启相关 Backend/Worker 完成。Backend 与 Worker 使用同一个配置解析模块和同一组部署参数，并暴露低基数能力清单指纹用于发现配置漂移。配置格式非法时进程启动失败，未知键、未知版本和未声明能力一律 fail-closed。
+
+#### 统一判断入口与阻断结果
+
+Node Workflow Kernel 提供唯一的 Production Availability 判断模块，发布、启用、恢复、Entry 和 Task 都通过该模块组合各层门槛。Web 只消费 Backend 返回的 Runtime/Deployment 摘要和最终校验结果，不自行成为权威判断者，也不在打开编辑器时调用 Java Entitlement 或资源接口。
+
+校验一次返回完整 `blockers[]`，每项至少包含阻断维度、`nodeId`、`nodeKind` 和内部 `capabilityKey`。用户界面只展示简短业务原因，例如“该节点尚未开放”“当前无对应产品权益”“所选资源不可用”；Java 接口名称、部署配置和契约版本只进入受控日志。
+
+语义上允许但 Runtime 或 Java 尚未就绪的节点仍可进入 Draft 并完成配置。前端只隐藏 Type Policy 明确禁止的节点；能力摘要请求失败不影响编辑和保存，但 Publish 仍由 Backend fail-closed。
+
+#### 生命周期检查时机
+
+| 边界 | 检查规则 |
+| --- | --- |
+| Save Draft | 权威执行 Type Policy 和基本数据安全检查；允许配置不完整或尚未生产开放的节点 |
+| Publish | 重新检查 Type Policy、配置完整性、Runtime Support、Deployment Capability、Entitlement 和资源状态 |
+| Enable / Resume | 不复用旧校验结论，重新执行全部生产门槛 |
+| Active Workflow 发布新 Revision | 在写入新 Revision 前重新执行全部生产门槛 |
+| Entry | 检查候选 Revision 的全部 Capability Requirement 及当前 Entitlement，再决定是否创建 Run |
+| Task / Retry / Wait 到期 | 检查当前节点所需 Deployment Capability 及 Entitlement，再决定是否推进或调用 Java |
+
+Revision 只持久化不可变的 Capability Requirement，不持久化“当前已可用”的布尔结果。`validatedDraftVersion` 可以证明草稿自上次校验后未变化，但不能替代 Enable 时对 Deployment、Entitlement 和资源的实时复查。
+
+#### 紧急关闭与恢复
+
+Deployment Capability 被关闭时不修改 Workflow 的 `active` 状态，也不复用权益暂停或停止语义：
+
+- 依赖该能力的 Revision 不再创建新 Run；同一事件仍可正常匹配不依赖该能力的其他 Workflow。
+- 已有 Run 到达受影响节点时保持 Task Pending 并延后调度，不消耗业务失败重试次数，也不新增 Workflow 或 Task 状态。
+- Wait Event 能力关闭期间不触发受影响 Subscription 的 CAS，事件处理后正常 ACK 且不补跑；对应超时 Task 同样保持 Pending。能力恢复后重新调度，若届时已超过截止时间，再走超时出口。
+- 配置恢复后 Pending Task 自动继续，不要求用户重新启用 Workflow。
+
+这类开关表示有意停止自动化，不承诺补偿关闭期间本应触发的新 Run。瞬时 Java 或网络故障不修改 Deployment Capability，而是继续使用既有 Retry 和幂等机制处理。
+
+#### 版本兼容与下线
+
+Capability Requirement 必须带契约版本。环境升级期间可以同时支持 v1/v2；只要仍有 Active Revision 或未完成 Run 引用旧 Node Kind 或旧 contract version，对应 Runtime handler 就不得删除。正常下线先禁止新发布，再等待或迁移存量；安全事故先关闭 Deployment Capability，不能直接部署一个无法读取旧 Revision 的 Worker。
+
+Runtime 对新入口仍校验事件 Subject Type 与 Revision/Binding 一致，但已发布 Revision 和运行中的 Run 不重新套用当前 Type Policy。新增允许能力是兼容扩展；普通版本禁止直接删除或收紧已开放的 Type Policy。收紧必须作为独立迁移处理受影响 Workflow。1.0 不增加 `capabilityPolicyVersion`。
+
+这套门槛允许前端和 Node 提前完成节点模型，同时保证仅修改 UI、共享枚举或 Runtime 注册表都无法单独把 Java 依赖能力开放到生产。
+
+### 5.5 Product Entitlement 失效语义
+
+本期只把“租户是否有权使用某个 Workflow Type”视为 Workflow Type Entitlement，例如是否有权创建和运行 `chatai_sop` 或 `wecom_sop`。节点所需席位、优惠券、账号和其他资源仍是独立发布与执行门槛，不因为某个节点资源失效就停止同类型的全部 Workflow。
+
+Java 是 Product Entitlement 的唯一权威来源。Node 不接收权益事件，不建立租户类型级权益投影，也不运行定时权益扫描任务。Java 提供同步检查接口，至少返回：
+
+```ts
+type WorkflowTypeEntitlementResult = {
+  entitled: boolean;
+  unentitledSince: string | null;
+};
+```
+
+`unentitledSince` 是当前连续失去该类型权益的权威起点，使用 RFC 3339 时间；恢复后必须变为 `null`，以后再次失效时使用新的起点。Node 不使用 Workflow `update_time` 或本地首次查询时间推算权益周期。
+
+Node 只在真正要使用 Workflow 时惰性查询 Java：
+
+- 创建、发布、启用或恢复 Workflow。
+- Entry Event 已找到候选 Binding、准备创建 Run 之前。
+- Task、Retry、Wait 到期或其他节点准备继续推进之前。
+
+同一次请求或调度批次内，相同 `uid + workflowType` 只查询一次。Java 可以提供批量接口以减少候选 Workflow 或 Task 较多时的调用次数，但 Node 不持久化查询结果作为第二权威源。
+
+检查结果按以下规则处理：
+
+| Java 结果 | Workflow 处理 | 当前操作 |
+| --- | --- | --- |
+| `entitled = true` | 不自动修改状态 | 按原状态继续；已因权益失效暂停的 Workflow 仍需用户手动或批量恢复 |
+| 无权益且失效不足 7 天 | 同租户、同 Workflow Type 的 `active` Workflow 改为 `paused`；已有 `paused` 保持暂停，`inactive` 保持不变；记录 `statusReason = entitlement_revoked` 和系统审计 | Entry 不创建 Run；Task 不继续执行并保持可重试 |
+| 无权益且失效已满 7 天 | 同租户、同 Workflow Type 的全部 `inactive / paused` Workflow 改为永久 `stopped`；已停止的保持原状态和原因 | 取消未完成 Run、Task、Outbox 和 Wait Subscription |
+| Java 查询超时或不可用 | 不修改任何 Workflow 状态 | 创建、发布、启用、恢复失败；Entry 或 Task 暂缓并重试，不在无法确认权益时执行业务动作 |
+
+权益失效不足 7 天时，已有 Run、Task 和 Wait Subscription 全部保留。Wait Event 可以记录事件命中并形成待执行 Task，但 Workflow 处于暂停状态时不得执行后续节点。权益恢复后不自动恢复运行，避免过期任务集中执行；用户明确恢复时再次查询 Java，确认有权益后才能恢复。
+
+七天是惰性状态边界，不要求精确计时任务：
+
+> 当 Java 返回的 `unentitledSince` 已满 7 天时，Node 在下一次 Entry、Task 推进或用户操作边界把对应 Workflow 转为 `stopped`。
+
+如果一个 Workflow 没有 Entry、没有到期 Task、也没有用户操作，它可以继续以 `inactive` 或 `paused` 状态只保留配置，不为追求准时停止而产生后台扫描。下一次真正使用时仍会先完成权益检查。满七天后转为 `stopped` 的 Workflow 不可原地恢复；权益恢复后只能复制或新建。
+
+任意一个 Workflow 的检查发现权益失效时，状态变更按 `uid + workflowType` 批量作用于同类型 Workflow，避免同一类型出现部分可运行、部分已暂停。Java 返回的 `unentitledSince` 同时作为本轮权益失效审计标识：每条受影响 Workflow 写系统审计，同一租户、Workflow Type 和失效起点只发送一次汇总通知；重复查询只做条件更新，不重复通知。
+
+### 5.6 跨主体域边界
 
 一个 Run 只绑定一个主 `subjectType + subjectId`。跨域能力不能通过拼接 ID 或让 Runtime 猜测关联关系完成。
 
@@ -404,11 +542,20 @@ Workflow Capability Profile
 
 现有 `WorkflowEntryCommand` 需要改为可扩展的标准事件信封。当前功能尚未发布，不需要保留无实际数据依据的旧格式兼容代码。
 
-建议契约：
+冻结契约：
 
 ```ts
-type WorkflowDomainEvent<TPayload extends Record<string, unknown>> = {
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+type WorkflowEntryEvent = {
   schemaVersion: 1;
+  payloadVersion: 1;
   eventId: string;
   eventType: string;
   uid: number;
@@ -416,12 +563,7 @@ type WorkflowDomainEvent<TPayload extends Record<string, unknown>> = {
   subjectId: string;
   occurredAt: string;
   source: string;
-  context?: {
-    accountId?: string;
-    conversationId?: number;
-    channelId?: string;
-  };
-  payload: TPayload;
+  payload: Record<string, JsonValue>;
 };
 ```
 
@@ -429,16 +571,27 @@ type WorkflowDomainEvent<TPayload extends Record<string, unknown>> = {
 
 | 字段 | 责任方 | 规则 |
 | --- | --- | --- |
-| `schemaVersion` | 双方 | 从 1 开始；不兼容变更才升级 |
-| `eventId` | Java | 同一业务事实重试时必须稳定，最长 128 字符 |
-| `eventType` | 双方 | 由事件目录统一管理，禁止临时自由拼接 |
-| `uid` | Java | 租户 ID |
+| `schemaVersion` | 双方 | 公共信封版本，从 1 开始；信封发生不兼容变更时才升级 |
+| `payloadVersion` | 双方 | 当前 `eventType` 的 payload 版本，从 1 开始；与信封版本独立演进 |
+| `eventId` | Java | 大小写敏感，1-128 字符，在租户内全局唯一；同一业务事实重试时必须稳定 |
+| `eventType` | 双方 | 1-128 字符，匹配 `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`，由 Event Catalog 统一管理 |
+| `uid` | Java | 租户 ID，必须是 JavaScript 安全整数范围内的正整数 |
 | `subjectType` | Java | 事件主体身份命名空间，必须与 Start Binding 或 Wait Event Subscription 的主体类型兼容 |
-| `subjectId` | Java | 在 `uid + subjectType` 内稳定、不透明；Node 不解析其组成 |
-| `occurredAt` | Java | RFC 3339，必须包含 `Z` 或显式偏移，例如 `+08:00` |
-| `source` | Java | 权威事件来源，例如 `chat-message`、`order`、`cdp` |
-| `context` | Java | 事件所需的账号、会话或渠道上下文；不得用来替代 Subject 身份 |
-| `payload` | 双方 | 由具体 `eventType` 定义的受控字段 |
+| `subjectId` | Java | 1-256 字符，在 `uid + subjectType` 内稳定、不透明且大小写敏感；Node 不解析其组成 |
+| `occurredAt` | Java | UTC RFC 3339 毫秒格式，例如 `2026-08-09T10:30:15.123Z` |
+| `source` | Java | 必填，1-64 字符；表示权威事件来源，只用于审计和指标，不参与路由 |
+| `payload` | 双方 | 由具体 `eventType + payloadVersion` 定义的受控对象 |
+
+公共信封采用关闭对象规则，`additionalProperties: false`，不提供自由扩展的公共 `context`。账号、会话、渠道等非公共字段如果是某种事件所必需，必须进入该事件专属 `payload` 并由对应 Schema 校验。
+
+大小和结构限制：
+
+- `payload` JSON 编码后最大 32 KiB。
+- 完整信封 JSON 编码后最大 64 KiB。
+- JSON 嵌套深度最大 16。
+- 超限或结构非法的事件进入 Workflow Entry DLQ，禁止截断后继续处理。
+
+Java 用 `Instant` 生成和解析 `occurredAt`，Node 用 `Date` 解析。写入 MySQL `DATETIME` 时继续依靠双方 UTC+8 Session 和 Node `timezone: "+08:00"` 的部署契约，业务代码禁止手工加减 8 小时。
 
 禁止在事件中携带：
 
@@ -451,25 +604,25 @@ type WorkflowDomainEvent<TPayload extends Record<string, unknown>> = {
 
 同一个 Subject 投影事件只投递一次，由 Node 决定它命中零个、一个还是多个兼容 Workflow。一个源业务事实如果明确映射到多个 Subject Type，可以生成多个稳定投影事件，但不能让 Node 在消费时猜测跨域身份。
 
-### 6.2 建议的首批事件目录
+### 6.2 本期最小事件目录
 
-产品方向已经收敛为两种 Start 方式：发生事件、进入人群。事件目录必须同时声明适用的 Subject Type，建议会议确认首批最小目录：
+公共 Schema 只校验 `eventType` 是长度合法的小写点分机器名；是否支持由 Workflow Event Catalog 判断。Catalog 中每个条目必须声明 `eventType + payloadVersion`、适用 Subject Type、payload Schema 和受控投影。未知 `eventType` 或不支持的 `payloadVersion` 都进入 Entry DLQ，不能当作“无 Workflow 命中”静默丢弃。
+
+事件目录必须同时声明适用的 Subject Type。本期 Capability Policy 只冻结以下最小目录，具体 payload 仍由后续事件契约决定：
 
 | eventType | 类型 | 首批 Subject Type | 权威生产方 | 说明 |
 | --- | --- | --- | --- | --- |
-| `audience.entered` | 进入人群 | 由人群所属业务域决定 | Java CDP | 某个 Subject 由不在人群变为进入指定人群 |
 | `message.received` | 发生事件 | `chatai_contact` | Java 消息域 | ChatAI 联系人产生一条新消息 |
-| `order.created` | 发生事件 | 首批建议 `miniapp_member` | Java 订单域 | 会员创建订单，可重复发生；其他 Subject 投影需明确身份映射后再开放 |
+| `contact.friend_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 联系人完成添加好友；Java 必须产生对应 Subject 投影 |
+| `contact.tag_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 联系人被添加标签；具体标签字段稍后冻结 |
 
-当前代码中的 `contact.friend_added` 和 `customer.tag_added` 需要产品确认：
+`audience.entered`、订单等事件是后续兼容扩展，本期不进入最小 Policy。无论后续增加哪种事件，Java 都只生产标准事件，不负责匹配具体 Workflow。
 
-- 如果它们只用于形成客户人群，可以由 CDP 转化为 `wecom_contact` 的 `audience.entered`。
-- 如果业务确实要对每次事实独立触发，则继续保留为直接事件。
-- 无论选择哪种方式，Java 都只是生产标准事件，不负责匹配具体 Workflow。
+`miniapp_member` 是公共 Subject Type 的合法值，因此信封基础校验可以通过；但 `member_sop` 本期不可用，不会存在可命中的 Active Binding 或 Wait Event Subscription。
 
 ### 6.3 事件 ID 生成
 
-`eventId` 必须来自稳定业务事实，不能在每次 MQ 重试时重新生成 UUID。
+`eventId` 必须来自稳定业务事实，不能在每次 MQ 重试时重新生成 UUID。Java Event Outbox 首次写入时固化 `eventId` 和完整事件内容，后续重发必须复用二者。
 
 示例：
 
@@ -477,12 +630,14 @@ type WorkflowDomainEvent<TPayload extends Record<string, unknown>> = {
 message.received:<messageId>
 order.created:<orderId>:<subjectType>:<subjectId-or-hash>
 audience.entered:<audienceMembershipEventId>:<subjectType>
-customer.tag_added:<tagChangeEventId>
+contact.tag_added:<tagChangeEventId>
 ```
 
-当同一源事实只产生一个 Subject 投影时，可以继续使用更短的天然业务 ID。只有一个事实映射到多个 Subject Type 时，才需要把投影维度加入稳定事件 ID 或生成等价稳定哈希。
+当同一源事实只产生一个 Subject 投影时，可以继续使用更短的天然业务 ID。一个事实映射到多个 Subject 时，每个投影必须使用不同且稳定的 `eventId`；具体生成算法本期不冻结。
 
 如果源系统没有天然事件 ID，应在 Java 业务事务中先生成并持久化 Outbox ID，后续所有重试复用该值。
+
+Pulsar Message ID 只用于识别一次传输，不能代替业务 `eventId`。Pulsar 重投、Java Outbox 重发和人工重放都必须保留原 `eventId`，除非产品明确要求产生一个新的业务事件。
 
 ### 6.4 Pulsar 约定
 
@@ -494,6 +649,26 @@ customer.tag_added:<tagChangeEventId>
 - Java Outbox 发送成功后再标记已发送。
 - Node 完成数据库事务后再 ACK。
 - Pulsar 不承担最终状态和业务幂等。
+- 同一事件允许同时命中 Start Binding 和 Wait Event Subscription。
+- Partition Key 只优化同一 Subject 的顺序，不作为正确性条件；Start、Wait Event 和 Run 推进仍依赖数据库唯一约束、CAS 和幂等。
+
+### 6.5 版本演进
+
+- 公共信封字段发生不兼容变化时升级 `schemaVersion`；某个事件 payload 发生不兼容变化时只升级该事件的 `payloadVersion`。
+- 新版本按 consumer-first 顺序发布：Node 先支持新版本并保持旧版本兼容，Java Producer 再开始发送新版本。
+- 旧版本只有在对应 Java Outbox、Pulsar backlog 和 Entry DLQ 均已排空或完成处置后才能移除。
+- 当前没有已发布 v0 数据，不保留 `WorkflowEntryCommand` 或其他历史信封兼容分支。
+
+### 6.6 消费结果分类
+
+| 结果 | 处理 |
+| --- | --- |
+| 非法 JSON、信封或 payload 超限、未知 `schemaVersion`、未知 `eventType`、未知 `payloadVersion`、payload Schema 校验失败 | 持久化或发布到 Entry DLQ 后 ACK 原消息；DLQ 暂时不可用时按临时错误重试 |
+| 没有 Start Binding 或 Wait Event Subscription 命中 | 正常 no-op 并 ACK |
+| `eventId` 已处理，或 Wait Event Subscription 已被同一事件/超时抢占 | 成功去重并 ACK |
+| MySQL、Pulsar 或其他基础设施临时错误 | NACK 或不 ACK，由 Pulsar 按策略重试 |
+
+指标使用低基数结果码，例如 `invalid_json`、`envelope_too_large`、`unsupported_schema_version`、`unknown_event_type`、`unsupported_payload_version`、`payload_invalid`、`no_match`、`deduplicated` 和 `temporary_failure`，禁止把原始异常文案或业务 ID 放进 label。
 
 ## 7. Java 直接读表的兴趣判断
 
@@ -529,7 +704,7 @@ INNER JOIN xy_wap_embed_workflow_definition AS definition
  AND definition.id = binding.workflow_id
  AND definition.published_revision = binding.revision
 WHERE binding.uid = :uid
-  AND binding.subject_type = :subjectType
+  AND binding.subject_type = :subjectTypeCode
   AND binding.event_type = :eventType
   AND binding.status = 1
   AND definition.biz_status = 1
@@ -541,7 +716,7 @@ LIMIT 1;
 
 ```text
 workflow_trigger_binding:
-  (uid, subject_type, event_type, status, workflow_id)
+  (uid, subject_type, event_type, status, workflow_id, revision)
 
 workflow_definition:
   PRIMARY KEY (id)
@@ -578,8 +753,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   task_id BIGINT UNSIGNED NOT NULL COMMENT '对应Wait Event任务ID',
   node_id VARCHAR(128) NOT NULL COMMENT 'Wait Event节点ID',
   event_type VARCHAR(128) NOT NULL COMMENT '等待的标准事件类型',
-  subject_type VARCHAR(64) NOT NULL COMMENT '主体身份命名空间',
-  subject_id VARCHAR(256) NOT NULL COMMENT '主体类型内不透明ID',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体身份命名空间稳定编码',
+  subject_id VARCHAR(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主体类型内不透明ID',
   account_id VARCHAR(128) NULL COMMENT '可选托管账号约束',
   status VARCHAR(32) NOT NULL COMMENT 'waiting、triggered、timed_out、cancelled',
   effective_from DATETIME NOT NULL COMMENT '订阅生效时间',
@@ -613,7 +788,7 @@ INNER JOIN xy_wap_embed_workflow_definition AS definition
   ON definition.uid = subscription.uid
  AND definition.id = subscription.workflow_id
 WHERE subscription.uid = :uid
-  AND subscription.subject_type = :subjectType
+  AND subscription.subject_type = :subjectTypeCode
   AND subscription.event_type = :eventType
   AND subscription.subject_id = :subjectId
   AND subscription.status = 'waiting'
@@ -642,7 +817,7 @@ SELECT
      AND definition.id = binding.workflow_id
      AND definition.published_revision = binding.revision
     WHERE binding.uid = :uid
-      AND binding.subject_type = :subjectType
+      AND binding.subject_type = :subjectTypeCode
       AND binding.event_type = :eventType
       AND binding.status = 1
       AND definition.biz_status = 1
@@ -655,7 +830,7 @@ SELECT
       ON definition.uid = subscription.uid
      AND definition.id = subscription.workflow_id
     WHERE subscription.uid = :uid
-      AND subscription.subject_type = :subjectType
+      AND subscription.subject_type = :subjectTypeCode
       AND subscription.event_type = :eventType
       AND subscription.subject_id = :subjectId
       AND subscription.status = 'waiting'
@@ -736,7 +911,7 @@ Java 不能在业务事务中直接调用 Pulsar 并假设发送成功。推荐�
 
 ```java
 void recordWorkflowEvent(DomainFact fact) {
-    WorkflowDomainEvent event = workflowEventMapper.map(fact);
+    WorkflowEntryEvent event = workflowEventMapper.map(fact);
 
     boolean interested;
     try {
@@ -762,23 +937,24 @@ void recordWorkflowEvent(DomainFact fact) {
 
 ### 8.3 不同事件的 payload 示例
 
+以下示例只说明公共信封结构；具体 payload 字段尚未冻结，不构成本期事件业务契约。`audience.entered` 和 `order.created` 也不在本期最小 Event Catalog 中。
+
 新消息：
 
 ```json
 {
   "schemaVersion": 1,
+  "payloadVersion": 1,
   "eventId": "message.received:938271",
   "eventType": "message.received",
   "uid": 10001,
   "subjectType": "chatai_contact",
   "subjectId": "external-third-user-123",
-  "occurredAt": "2026-08-05T10:30:15+08:00",
+  "occurredAt": "2026-08-05T02:30:15.000Z",
   "source": "chat-message",
-  "context": {
-    "accountId": "managed-account-1",
-    "conversationId": 90001
-  },
   "payload": {
+    "accountId": "managed-account-1",
+    "conversationId": 90001,
     "messageId": 938271,
     "messageType": "text",
     "text": "我想了解一下活动"
@@ -791,12 +967,13 @@ void recordWorkflowEvent(DomainFact fact) {
 ```json
 {
   "schemaVersion": 1,
+  "payloadVersion": 1,
   "eventId": "audience.entered:720019",
   "eventType": "audience.entered",
   "uid": 10001,
   "subjectType": "miniapp_member",
   "subjectId": "miniapp-member-123",
-  "occurredAt": "2026-08-05T10:31:00+08:00",
+  "occurredAt": "2026-08-05T02:31:00.000Z",
   "source": "cdp",
   "payload": {
     "audienceId": 301,
@@ -810,12 +987,13 @@ void recordWorkflowEvent(DomainFact fact) {
 ```json
 {
   "schemaVersion": 1,
+  "payloadVersion": 1,
   "eventId": "order.created:880012",
   "eventType": "order.created",
   "uid": 10001,
   "subjectType": "miniapp_member",
   "subjectId": "miniapp-member-123",
-  "occurredAt": "2026-08-05T10:32:00+08:00",
+  "occurredAt": "2026-08-05T02:32:00.000Z",
   "source": "order",
   "payload": {
     "orderId": 880012,
@@ -825,7 +1003,7 @@ void recordWorkflowEvent(DomainFact fact) {
 }
 ```
 
-消息正文属于敏感数据。Java 和 Node 的正常日志不得输出完整 payload；只有节点明确需要时才把受控字段写入 Run Context，并继续受 128 KiB 上限约束。
+消息正文属于敏感数据。Java 和 Node 的正常日志不得输出完整 payload；只有 Event Catalog 明确投影且节点需要的受控字段才能写入 Runtime 状态，并继续受 128 KiB Run Context 上限约束。
 
 上述例子中的 Subject ID 都只是示意。Java Mapper 必须基于事件所属业务域选择 Subject Type，不能为了复用事件格式而把会员 ID 填入 `chatai_contact`，也不能依赖 Node 再做身份修正。
 
@@ -863,7 +1041,18 @@ void recordWorkflowEvent(DomainFact fact) {
 
 Start Binding 和 Wait Event Subscription 可以同时命中。同一条新消息既可能创建新 Run，也可能唤醒一个或多个已经等待中的 Run，这是允许的业务语义。
 
-### 9.3 最终正确性仍在 Node
+### 9.3 Run 触发快照
+
+Start 匹配器可以读取已通过 Schema 校验的完整事件 payload，但创建 Run 时不永久复制原始 payload。Workflow Event Catalog 为每个 `eventType + payloadVersion` 声明受控 projection：
+
+- Run 保存 `eventId`、`eventType`、`payloadVersion`、`occurredAt`、`source` 等公共触发字段，以及允许用户引用的 payload 投影。
+- `subjectType` 和 `subjectId` 已是 Run 普通列，不在 Run Context 中重复保存。
+- 投影字段必须经过事件专属 Schema 和敏感数据审查，并计入现有 128 KiB Run Context 上限。
+- Wait Event 唤醒时也只把 Event Catalog 声明的投影写入该节点输出，不复制完整事件。
+
+这样 Start 和 Wait Event 的规则仍能使用完整事件完成即时匹配，同时避免消息正文、客户资料或订单详情被无边界地复制到长期运行状态。
+
+### 9.4 最终正确性仍在 Node
 
 即使 Java 粗过滤返回 true，Node 仍可能不创建或不推进 Run，例如：
 
@@ -1013,7 +1202,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - Node Backend 和 Workflow Worker 的 mysql2 连接保持 `timezone: "+08:00"`。
 - Java 连接 Workflow 表时也必须明确使用 UTC+8 Session。
 - MySQL `DATETIME` 表示 UTC+8 wall-clock time。
-- MQ 的 `occurredAt` 必须使用带偏移的 RFC 3339 字符串。
+- MQ 的 `occurredAt` 必须使用 UTC RFC 3339 毫秒格式，例如 `2026-08-09T10:30:15.123Z`。
 - 业务代码不得在 mysql2 或 JDBC 已完成转换后再手工加减 8 小时。
 
 ### 11.2 顺序
@@ -1040,7 +1229,9 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | 兴趣 SQL 超时或异常 | fail-open，Java 仍写 Outbox并告警 |
 | Java 业务事务回滚 | 业务事实和对应 Outbox 一起回滚 |
 | Pulsar 不可用 | Java Outbox 积压，恢复后补投 |
-| Node 收到非法事件 | NACK，达到上限后进入 Entry DLQ |
+| Java Workflow Type Entitlement 接口不可用 | 不改变 Workflow 状态；创建、发布、启用和恢复失败，Entry 或 Task 暂缓重试 |
+| Node 收到非法 JSON、超限、未知版本或 payload 校验失败事件 | 写入 Entry DLQ 后 ACK 原消息；DLQ 临时不可用时不 ACK |
+| Node 未找到任何 Binding 或 Subscription | 正常 no-op 并 ACK |
 | Node 数据库不可用 | 不 ACK，由 Pulsar 重投 |
 | 事件重复投递 | Node 入口幂等或 Subscription CAS 吸收 |
 | Workflow 投递后暂停/停止 | Node 按当前状态拒绝新进入或取消运行 |
@@ -1061,7 +1252,13 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 ### 13.2 Node 指标
 
+- `workflow_entitlement_check_total{workflowType,resultCode}`
+- `workflow_entitlement_transition_total{workflowType,targetStatus,reason}`
+- `workflow_production_availability_check_total{phase,dimension,resultCode}`
+- `workflow_deployment_capability_block_total{capabilityKey,phase}`
+- Backend 与 Worker 在健康信息和启动日志中输出相同格式的 Deployment Capability 清单指纹。
 - `workflow_entry_received_total{subjectType,eventType}`
+- `workflow_entry_processed_total{eventType,resultCode}`，其中 `resultCode` 仅使用 6.6 定义的低基数结果码
 - `workflow_entry_binding_matched_total{workflowType,eventType}`
 - `workflow_entry_run_started_total`
 - `workflow_entry_deduplicated_total`
@@ -1086,12 +1283,13 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 | 任务 | 主责 | 配合 | 产出与验收 |
 | --- | --- | --- | --- |
-| 冻结 Workflow Type | 产品、Node | Java | 确认 `customer_sop`、`member_sop`、`chatai_sop` 的产品名称、主 Subject Type 和不可转换规则 |
-| 冻结 Capability Profile | 产品、Node | Java | 每种类型明确 Start 事件、节点、系统变量和 Java operation，不把套餐差异编码成类型 |
-| 确认 Product Entitlement | 产品、Java | Node | 明确席位、发券等权益的权威来源以及创建、发布、执行时校验方式 |
-| 确认首批事件目录 | 产品 | Java、Node | 按 Subject Type 明确 `audience.entered`、`message.received`、`order.created` 及好友/标签去留 |
+| 冻结 Workflow Type | 产品、Node | Java | 本期使用 `wecom_sop`、`chatai_sop`；`member_sop` 只保留稳定枚举且不可用，并确认主 Subject Type 和不可转换规则 |
+| 冻结 Capability Profile | 产品、Node | Java | 每种类型明确语义上允许的 Start 事件、节点和用户变量，不把 Runtime 进度、Java operation 或套餐差异编码成类型 |
+| 冻结 Deployment Capability 键与版本 | Node、Java | 运维 | 每个事件源和 operation 使用稳定 `capabilityKey + contractVersion`，明确各环境启用集合和 Backend/Worker 共用配置 |
+| 对接 Workflow Type Entitlement | Java | Node、产品 | Java 接口按 `uid + workflowType` 返回 `entitled + unentitledSince`；Node 按本文定义的惰性边界执行暂停、七天后停止和恢复检查 |
+| 确认首批事件目录 | 产品 | Java、Node | 本期固定 `message.received`、`contact.friend_added`、`contact.tag_added` 及其适用 Subject Type |
 | 确认 Subject 映射 | Java | Node | 每种事件都能得到稳定的 `subjectType + subjectId`，并明确同一事实多 Subject 投影规则 |
-| 冻结事件 Schema v1 | Node | Java | TypeBox 和 Java DTO 使用相同 `subjectType`、字段限制和 JSON Fixture |
+| 冻结事件 Schema v1 | Node | Java | TypeBox 和 Java DTO 使用相同信封、版本、大小限制、时间格式、消费结果和 JSON Fixture |
 | 确认 Business Capability Layer | Java | Node | 确认能力目录、统一信封以及禁止传递原始 nodeConfig |
 | 冻结错误码分类 | Java | Node | 每个动作接口明确 success/retryable/terminal/unknown |
 | 冻结资源校验边界 | Java | Node、产品 | 明确哪些资源发布时批量校验、执行时再次权威校验 |
@@ -1099,6 +1297,13 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | 确认 Pulsar 环境参数 | 运维 | Java、Node | Topic、Token、Namespace、分区和订阅可联调 |
 
 ### 14.2 Java 任务包
+
+**J0：Workflow Type Entitlement 查询**
+
+- 提供单个或批量 `uid + workflowType` 权益检查接口。
+- 返回当前是否有权益，以及当前连续失效周期的稳定 `unentitledSince`。
+- 恢复权益后返回 `unentitledSince = null`；再次失效时返回新的起点。
+- 验收：Node 重复查询得到稳定结果，Java 超时不会被误解释为无权益。
 
 **J1：WorkflowInterestReader**
 
@@ -1126,7 +1331,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 **J4：首批业务事件接入**
 
-- 按会议确认的 Subject Type 和顺序接入 `message.received`、`audience.entered`、`order.created`。
+- 按本期 Capability Policy 接入 `message.received`、`contact.friend_added`、`contact.tag_added`。
 - 每个事件接入 Interest Reader 和 Outbox。
 - 验收：无兴趣时不投递，有兴趣或查询异常时投递。
 
@@ -1144,13 +1349,18 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 **N1：Workflow Type 与 Capability Profile**
 
-- 在共享契约中定义 `customer_sop / member_sop / chatai_sop` 和对应 Subject Type。
-- 建立唯一的 Capability Profile 注册表，包含允许的事件、节点、系统变量和 Java operation。
+- 在共享契约中定义 `wecom_sop / member_sop / chatai_sop` 和对应 Subject Type，并保证 `member_sop` 本期不可使用。
+- 建立唯一的 Capability Profile 注册表，包含 availability、Subject Type、允许的事件、节点和用户变量。
 - 新建 Workflow 时先选择类型，并将 `workflow_type` 持久化到 Definition。
 - 类型创建后不可修改；复制 Workflow 时允许选择目标类型，但必须重新校验并移除不兼容配置。
-- 前端按 Profile、Product Entitlement、资源状态和 Runtime 白名单展示事件及节点。
+- 前端按 Profile 展示语义目录，并读取 Backend 的 Runtime/Deployment 摘要提前提示；打开编辑器不查询 Java Entitlement 或资源状态。
 - Backend 在创建、保存和发布时执行同一语义校验，拒绝绕过前端写入的不兼容节点。
-- 验收：客户/会员 SOP 无法保存 ChatAI 消息或 Agent 节点，ChatAI SOP 在权益满足时可以使用。
+- 创建、发布、启用和恢复时调用 Java Workflow Type Entitlement 接口；保存 Draft 不要求权益仍有效。
+- 在 Entry 和 Task 推进边界惰性检查权益；失效不足七天批量暂停同类型 Workflow，满七天后批量停止并取消未完成运行数据。
+- 记录系统状态原因、审计和按失效周期去重的租户级汇总通知，不新增权益事件、Node 权益投影或定时扫描任务。
+- 将 Runtime Support 从共享 contracts 迁入 Workflow Engine 可执行节点注册表，并建立统一 Production Availability 模块、Deployment 配置解析和完整 blockers。
+- 本轮不增加 Runtime Node Kind，支持集合保持 `start / wait / end`；Fake Entitlement Adapter 只允许由测试组合根直接注入，不能进入正常 Worker 或 Backend 配置。
+- 验收：WeCom SOP 无法保存 ChatAI 消息或 Agent 节点，`member_sop` 无法创建，ChatAI SOP 在权益满足时可以使用。
 
 **N2：Subject 模型和标准事件契约升级**
 
@@ -1175,24 +1385,29 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 增加带 `subject_type` 的 Event Subscription DDL、Kysely 类型、Node 可写表白名单和 Repository。
 - 实现进入等待、事件触发、超时、暂停、停止和恢复语义。
 - 实现 Triggered / Timed Out 两个出口的原子竞争。
+- 将前端旧标识 `customer.message.received` 直接统一为公共事件 `message.received`，不保留不存在历史数据的别名。
+- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出 `messageIds`、`textContent`、`messageCount` 和 `lastMessageAt`。
+- Runtime 只消费 Event Catalog 产出的 Trigger Projection；Java 原始 payload 未冻结期间由 Fake Event Catalog 提供测试投影。
+- Compiler 将事件源的 `capabilityKey + contractVersion` 冻结到 Revision；能力关闭时不触发 Subscription，超时 Task 保持 Pending，恢复后重新调度。
 - 仅允许 Capability Profile 中声明的事件和主体类型进入等待。
 - 验收：重复事件、不同主体类型同值 ID、事件和超时并发、Worker 崩溃后恢复都只推进正确 Run 一次。
 
-**N5：Java Capability Adapter Port**
+**N5：Branch 执行闭环**
 
-- 定义与 Java operation 一一对应的类型化查询和动作 Adapter，并携带明确 Subject Type。
-- 将变量和节点配置解析为业务命令，禁止把原始 nodeConfig 透传给 Java。
-- 实现超时、AbortSignal、错误分类和输出裁剪。
-- 保持 4 KiB 节点输出和 128 KiB Run Context 上限。
-- 发布时校验 operation 是否属于 Workflow Capability Profile，并通过 Java 批量校验领域资源。
-- 验收：不兼容的 Subject Type 在 Node 调用前被拦截，Java 超时走同一幂等键的数据库 Retry Task。
+- 将 Branch Condition Schema、Selector、Value Type 和 Operator 语义移出 Web 私有实现，供 Compiler、发布校验和 Runtime 共用。
+- Compiler 冻结完整有序 Branch Path、`all / any` 逻辑和条件；Runtime 直接解析 Subject、Trigger、前序输出和节点时间变量。
+- 覆盖字符串、数字、布尔、日期、空值及全部当前产品操作符，按顺序选择首个匹配分支，最终由不可删除的默认分支兜底。
+- Branch 保持 routing-only，不写 `matchedPathId` 等伪输出；删除当前依赖不存在 `run.context.branchMatches` 的占位机制。
+- 验收：Compiler 到 Runtime 的真实 Execution Spec 可以在无外部 Adapter 的情况下稳定路由，并通过全部操作符、默认分支、输出上限和恢复测试。
 
-**N6：按节点逐个开放 Runtime**
+**N6：Java Capability Port 准备**
 
-- 每个节点依次完成：正式 Schema、Compiler、Executor、Adapter、输出变量、类型兼容、发布校验和测试。
-- 完成一个节点后才加入 `WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS`。
-- 禁止一次性放开所有 UI 节点。
-- 推荐顺序：Branch -> ChatAI Message Query -> ChatAI Message -> Wait Event -> Tag/Order Query -> 其他动作 -> AI 节点。
+- 建立类型化 `CapabilityDefinition<TCommand, TResult>`，每个 operation 独立声明 `capabilityKey + contractVersion`、`query / action`、Command Schema 和 Result Schema。
+- Java Capability Port 只接收已校验的类型化命令、明确 `uid + subjectType + subjectId` 和执行元数据；禁止接收 Node、nodeConfig、变量表达式或任意 operation 字符串。
+- Action 强制稳定 `idempotencyKey`，Query 不要求；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
+- 使用测试专属 Capability Definition 和 Fake Adapter 覆盖命令/结果校验、超时、幂等、三类错误、4 KiB 节点输出和 128 KiB Run Context 上限。
+- 从 Core Executor Registry 移除当前 `message / tag / coupon / handoff` 通用 Action 注册；真实 Action 以后按独立 Execution Definition 和 Adapter 逐个开放。
+- 本轮不增加任何 Action Runtime Support 或生产 Deployment Capability。
 
 **N7：生产可观测性和 Entry DLQ 恢复**
 
@@ -1204,78 +1419,168 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 ### 14.4 测试任务包
 
 - 建立 Java 事件 DTO 与 Node TypeBox 的共享 JSON Fixture。
-- 覆盖三种 Workflow Type 的允许/禁止事件、节点、变量和 operation 矩阵。
+- 覆盖 WeCom SOP、ChatAI SOP 的本期最小允许/禁止规则，以及 `member_sop` 始终不可用。
 - 覆盖 Workflow Type 创建后不可修改，以及绕过前端保存不兼容节点时 Backend 拒绝。
 - 覆盖不同 Subject Type 使用相同 `subjectId` 时的 Binding、Run、Entry Guard 和 Subscription 隔离。
 - 覆盖 Interest Reader 的 Active、Paused、Stopped、删除和 fail-open。
 - 覆盖 Java Outbox 重发与 Node 入口幂等。
 - 覆盖一个事件命中多个 Workflow。
 - 覆盖 Wait Event 事件/超时竞争和暂停恢复。
+- 覆盖固定 10 秒收集窗口内多消息乱序、重复投递、首事件与超时竞争，以及 Trigger Projection 的输出上限。
+- 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
+- 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 无幂等要求，Fake Adapter 不进入生产注册。
+- 覆盖 Runtime 已实现但 Deployment 未启用时无法 Publish/Enable，以及只修改 Runtime 注册表不能开放 Java 依赖节点。
+- 覆盖 `requiredCapabilities` 版本冻结、Backend/Worker 未知能力 fail-closed、配置格式非法启动失败和清单漂移时 Worker 不误执行。
+- 覆盖紧急关闭后不创建新 Run、受影响 Task 不消耗业务重试、Wait Event 不触发且恢复后重新调度。
+- 覆盖旧 Capability 版本仍被 Active Revision 或未完成 Run 引用时对应 Runtime handler 不得移除。
+- 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。
-- 使用 Fake Broker 跑 CI，使用 test01 TDMQ 做手动 Smoke。
+- CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test01 TDMQ 和真实 Java 入口做手动 Smoke。
 
-## 15. 推荐迭代顺序
+### 14.5 Java 未就绪期间的验证边界
 
-### Iteration A：Workflow Type 与 Subject 基础模型
+Java 未就绪时可以完成的是 **Node Workflow 子系统验收**，不是 Java 与 Node 的真实端到端验收，也不能据此开启生产 Deployment Capability。测试范围从公共契约开始，覆盖 Node 的控制面、事件消费、持久化、调度和执行结果；Java 的业务事实生成、身份解析、权益判断、资源规则和真实副作用不在 Fake 中复制。
 
-目标：先建立客户 SOP、会员 SOP、ChatAI SOP 的稳定语义，避免真实事件接入后再迁移身份和运行数据。
+验证分为四层：
+
+| 层 | 依赖与入口 | 证明什么 | 不能证明什么 |
+| --- | --- | --- | --- |
+| 共享契约 Fixture | 版本化原始 JSON 和期望结果清单 | Java DTO 与 Node TypeBox 对公共信封、Subject 和错误分类理解一致 | 真实业务 payload 来源和 Java 内部业务规则正确 |
+| Package 行为测试 | 确定性 Clock/ID、内存 Repository、测试专属 Executor/Adapter | Compiler、Executor、输出、失败、Retry、幂等和状态机契约正确 | MySQL 事务、Pulsar 传输和进程组合正确 |
+| Worker 组合测试 | 测试组合根直接注入 Fake Broker、Fake Event Producer 和测试 Adapter | Consumer 到 Repository、Run/Task/Subscription、路由和恢复的 Node 子系统闭环 | 真实 TDMQ、Java Producer/API、鉴权和环境配置正确 |
+| test01 联调 Smoke | 真实 Java 入口、TDMQ Pulsar、Node Worker、MySQL、隔离测试租户 | 当前环境具备真实 Deployment Capability | 不能由任何 Fake 或直投 MQ 工具替代 |
+
+#### 共享 JSON Fixture
+
+语言无关的 Fixture 放在 `packages/contracts/test/fixtures/workflow/`，按契约和版本分目录，至少包含：
+
+```text
+entry/v1/valid/*.json
+entry/v1/invalid/*.json
+trigger-projection/v1/*.json
+capability/v1/command/*.json
+capability/v1/result/*.json
+capability/v1/error/*.json
+manifest.json
+```
+
+`manifest.json` 为每个输入记录稳定 `fixtureId`、文件路径、预期接受/拒绝结果和低基数结果码。Entry 非法样例至少覆盖 `invalid_json`、`envelope_too_large`、`unsupported_schema_version`、`unknown_event_type`、`unsupported_payload_version` 和 `payload_invalid`；合法样例覆盖不同 Subject Type、时间格式、幂等 `eventId` 和 Trigger Projection 上限。
+
+Fixture 只冻结公共 Entry Event Envelope、Subject 语义、受控 Projection 和 Capability Port 信封。真实 `message.received`、标签、订单等 payload 未经双方确认前，不在 Fixture 中臆造其业务字段。Node 测试可以注册 `test.*` Event Type 和测试专属 Capability Definition，但这些定义只能存在于测试代码，不能进入 Workflow Capability Profile、Runtime Support 或 Deployment Capability。Java 后续通过固定版本的仓库检出直接运行同一批 JSON，不允许手工复制后形成两套样例。
+
+#### Package 与 Repository 验证
+
+- Contracts 测试读取原始 JSON，验证 Schema、版本、大小限制和预期结果码；不要用 TypeScript Builder 生成输入后再证明自身正确。
+- Workflow Engine 测试从真实 Draft 编译 Execution Spec，并以固定 Clock、ID 和 Runtime Context 验证路由、输出和错误。
+- Workflow Runtime 使用内存 Repository 覆盖确定性状态流转，并通过同一 Repository Contract Suite 验证 MySQL 实现的唯一约束、事务、Lease、CAS、Inbox/Outbox 和重试行为。
+- 并发测试使用可控屏障触发 Entry 去重、事件/超时竞争和 Worker 接管，不依赖任意 `sleep` 猜测时序。
+- 只有通过真实 MySQL 临时 Schema 的 Repository Contract 才能证明数据库语义；Mock Kysely/SQL 结构测试可以保留，但不能替代这一层。
+
+#### Fake 依赖隔离
+
+正常 Backend 和 Worker 组合根只能装配真实 Adapter。Fake 的约束如下：
+
+- `WorkflowWorkerConfig` 不提供 `fake` Broker 运行模式；正常 Worker 入口始终要求完整 Pulsar 配置，缺失时启动失败。
+- Fake Broker、Fake Event Producer、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 放在对应 package 的 `test/support` 或测试专属私有 package，只作为 `devDependency` 使用。
+- 生产 `src/index.ts`、package exports、Worker Docker 构建和正常配置解析不得 import、export 或按环境变量选择 Fake；CI 增加生产入口依赖图检查保护这一点。
+- CI 不通过 `WORKFLOW_BROKER=fake` 启动正常 Worker。测试直接调用可注入依赖的 Worker 组合函数，并显式传入 Fake。
+- Fake Event Producer 只读取共享 Fixture 并发布到注入的 Fake Broker，不查询 Binding、不生成真实业务 payload，也不实现 Java Interest Reader。
+- Fake Entitlement Adapter 只按测试脚本返回 `entitled + unentitledSince` 或超时；Fake Capability Adapter 只返回预设的 success、retryable、terminal、unknown、timeout 和非法结果。
+- Fake 不实现消息、订单、标签、权益、身份、资源或副作用规则。测试需要命中某个 Workflow 时直接准备 Binding/Subscription 状态，由 Node 权威匹配逻辑决定结果。
+
+Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中移除 Fake Broker；测试只从 `test/support` 直接注入 Fake，不经过生产组合根。
+
+#### 鉴权与试运行边界
+
+- 不增加 `DISABLE_AUTH`、开发用户、测试专属公开路由或绕过 Session 校验的环境开关。
+- Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
+- 不增加 Workflow“试运行”按钮、公开 API 或持久化 Mock Run。测试通过模块接口和测试组合根驱动；测试产生的 Run 只能存在于隔离测试数据库。
+- 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test01 联调和后续生产 Deployment Capability 验收中。
+
+#### Smoke 工具边界
+
+当前 `smoke-entry.ts` 会读取 Binding 并由 Node 拼接联系人、标签和消息 payload，这会重复未来 Java Event Catalog 的业务语义。迭代实施时应删除该生成逻辑：
+
+- Java 接通后的真实端到端 Smoke 必须从 Java 的受支持测试入口触发，让 Java 生成 Event、写 Outbox 并投递 TDMQ。
+- 如保留 Node 直投工具，它只能在 test01 的隔离 Topic 上发布一份已校验的共享 Fixture，且强制使用真实 Pulsar；该工具只验证 Broker 传输和 Node Consumer，不计入 Java 联调或 Deployment Capability 开启条件。
+- Smoke 不是客户功能，不出现在 Web，也不接受 Workflow ID 后替用户生成业务事件。
+
+#### 三次迭代的最低验证集
+
+| 迭代 | Java 缺席时必须通过的 Node 验证 |
+| --- | --- |
+| Iteration 1 | 正式鉴权下的 Create/Save/Publish/Enable；Workflow Type 不可转换；Member SOP 禁用；跨 Subject Type 隔离；Entitlement success/失效/超时；Runtime/Deployment 双门槛；MySQL Repository Contract |
+| Iteration 2 | JSON Fixture -> Fake Event Catalog -> Fake Broker -> Entry Consumer -> Run/Wait Subscription -> Event/Timeout -> End；非法事件 DLQ、重复投递、扇出、CAS、暂停/停止、Outbox 重投和崩溃接管 |
+| Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、错误分类和输出上限 |
+
+三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/Capability、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开启对应 Deployment Capability。
+
+## 15. Java 未就绪期间的 Node 三迭代顺序
+
+三次迭代按顺序累积，但每次都必须形成可独立合并、可回滚且不依赖长期并行分支的完整变更。Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 只允许由测试组合根直接注入，不能进入正常 Backend/Worker 配置，也不能写入生产 Deployment Capability。
+
+### Iteration 1：Workflow Type、Subject 与生产门槛底座
+
+目标：先固定所有后续事件、Run 和节点执行依赖的身份及能力语义，不在旧模型上继续叠加 Runtime 节点。
 
 范围：
 
-- Workflow Type 和 Capability Profile 共享契约。
-- 新建 Workflow 先选类型，类型创建后不可转换。
-- Definition、Revision、Trigger Binding、Run、Entry Guard 的类型字段和索引。
-- 前端节点/事件目录过滤，以及 Backend 保存/发布校验。
-- 运行记录按 Subject Type 展示主体信息。
+- `wecom_sop / chatai_sop / member_sop` 与对应 Subject Type 的共享契约；`member_sop` 只保留枚举且不可使用。
+- Definition、Revision、Trigger Binding、Run、Entry Guard 的稳定 TINYINT 类型字段、索引和 Repository 转换。
+- Workflow Type 不可转换、Capability Profile 唯一注册表、Web 目录和 Backend Save/Publish 校验。
+- Java Entitlement Port 及 Fake Adapter；创建、Publish、Enable、Resume、Entry 和 Task 的惰性权益边界。
+- Runtime Support 迁入 Workflow Engine 注册表；Production Availability、Deployment 配置解析、完整 blockers 和 Web 只读摘要。
+- 删除无生产数据依据的默认类型、旧类型别名和 Subject 回退逻辑。
 
-### Iteration B：事件入口闭环
+开放结果：Runtime Support 仍只有 `start / wait / end`。没有真实 Java Entry Deployment Capability 时，本轮不形成新的生产端到端链路。
 
-目标：Java 能可靠投递第一个真实事件，Node 能创建真实 Run。
+合并验收：contracts、workflow-engine、workflow-runtime、backend、workflow-worker 和 web 的受影响 CI 全部通过；类型不可转换、Member SOP 禁用、跨 Subject Type 隔离、权益 fail-closed、Production Availability 各边界以及当前 Wait 兼容行为均有回归保护。
 
-范围：
+### Iteration 2：标准 Entry 与 Wait Event Kernel
 
-- 带 `subjectType + subjectId` 的事件 Schema v1。
-- Java Interest Reader 按 `subjectType + eventType` 静态查询。
-- Java Event Outbox/Pulsar Producer。
-- 一个首批事件，建议 `message.received`。
-- Node Entry Consumer 和真实 Trigger Binding 联调。
-- Observe -> Enforce 灰度。
+目标：在没有 Java 真实 Producer 的情况下，用稳定事件接口验证 Node 的事件入口、动态等待和恢复模型。
 
-### Iteration C：第一个业务动作闭环
+实施顺序：
 
-目标：建立 Java Business Capability Layer 的公共边界，并让真实事件进入后完成一次实际业务动作。
+1. 版本化 Workflow Entry Event Envelope、Event Catalog、Trigger Projection 和消费结果分类。
+2. `uid + subjectType + subjectId` 的 Binding、Run、Entry Guard、Partition Key、Inbox 与扇出。
+3. Event Subscription 持久化、事件/超时 CAS、暂停/停止/恢复和 Reconciler。
+4. Wait Event Compiler、Executor、固定 10 秒消息收集及 Triggered/Timeout 路由。
 
-范围：
+开放结果：`wait-event` 在全部当前产品模式完成后加入 Runtime Support；`event.message.received@1` 等真实 Deployment Capability 默认关闭，因此 Java Producer 未接通时仍禁止生产发布。旧 `customer.message.received` 直接删除，不做兼容。
 
-- 优先选择 Message 或 Tag 作为第一个 Action。
-- Java 统一命令信封、错误契约和幂等基础能力。
-- 第一个类型化查询/动作 API，不能接收原始节点配置。
-- Node Action Adapter、错误分类和 Retry Task。
-- Start -> Wait -> Action -> End 端到端验证。
+合并验收：Fake Broker 与 Fake Event Catalog 覆盖非法事件、DLQ、重复投递、一个事件扇出多个 Workflow、跨 Subject Type 同值 ID、Entry 幂等、Subscription CAS、10 秒收集窗口、输出上限、暂停/停止/恢复和 Worker 崩溃恢复；MySQL Repository 行为与内存实现一致。
 
-### Iteration D：等待事件闭环
+### Iteration 3：Branch 闭环与 Java Capability Port
 
-目标：ChatAI SOP 可以等待联系人新消息，并从事件到达或超时出口继续。
+目标：交付第一个不依赖 Java 的新生产 Runtime 节点，并为后续 Query/Action 提供不会泄漏 Workflow 内部模型的类型化接缝。
 
-范围：
+实施顺序：
 
-- 带 `subject_type` 的 Event Subscription 表。
-- Java 动态兴趣查询。
-- Node Wait Event Executor、竞争和恢复。
-- Pause、Stop、重复消息和超时联调。
+1. 将 Branch 条件契约从 Web 收敛到共享 Runtime 定义。
+2. Compiler 冻结完整条件，Runtime 完成变量解析、操作符求值、顺序匹配和默认兜底。
+3. 建立类型化 Capability Definition、Java Capability Port 和测试专属 Fake Adapter。
+4. 移除 Core Registry 中现有通用 Action Executor，不开放任何真实业务 Action。
 
-### Iteration E：按业务优先级开放其他节点
+开放结果：`branch` 完整闭环后加入 Runtime Support；它不产生 Java Capability Requirement，在 Workflow 其他门槛满足时可生产发布。Message、Message Query、Tag、Coupon、Handoff 等 Java 依赖节点全部保持 Runtime Unsupported 和 Deployment Disabled。
 
-按产品字段冻结程度逐个接入 Branch、Query、Action 和 AI 节点。每个节点独立通过发布门槛，不把 UI 完成误认为 Runtime 完成。
+合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
+
+### 合并与生产启用分离
+
+- 迭代合并门槛是 Fake 依赖下的完整 CI、数据库 Repository 测试和行为回归。
+- Runtime Support 门槛是对应 Node Kind 已满足本节的完整实现与测试要求。
+- Production Deployment 门槛是 Java 真实事件源或 operation 接通后，另行完成 test01 Pulsar/API Smoke，再开启对应 Deployment Capability。
+- Java 未就绪不能阻止三次 Node 迭代合并，但 Fake 测试绝不能替代生产启用验收。
 
 ## 16. 明天会议必须确认的事项
 
 会议结束前至少形成以下明确结论：
 
-1. 正式确认客户 SOP、会员 SOP、ChatAI SOP 的产品名称和稳定 `workflowType`。
-2. 确认三种类型各自的主 `subjectType`、Subject ID 来源、唯一性和解析责任方。
-3. 冻结首版 Capability Profile：每种类型允许的 Start 事件、节点、系统变量和 Java operation。
-4. 确认 Workflow Type 与 Product Entitlement 分离，以及无 ChatAI 席位时允许使用的自动化能力。
+1. 正式确认 WeCom SOP、ChatAI SOP 的产品名称和稳定 `workflowType`，以及 `member_sop` 本期只保留枚举。
+2. 确认两种本期可用类型的主 `subjectType`、Subject ID 来源、唯一性和解析责任方。
+3. 冻结首版 Capability Profile：每种类型语义上允许的 Start 事件、节点和用户变量，并与 Runtime、Deployment 和 Entitlement 门槛分离。
+4. 确认 Java Workflow Type Entitlement 查询接口能够返回稳定的 `entitled + unentitledSince`，并支持 Node 所需批量查询。
 5. 首批真实事件及其权威 Java 模块，并明确每个事件适用的 Subject Type。
 6. 新增好友、客户打标是直接事件还是统一转化为对应 Subject Type 的 `audience.entered`。
 7. 同一个业务事实映射到多个 Subject Type 时的事件投影和稳定 `eventId` 规则。
@@ -1287,14 +1592,22 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 13. 第一个 Java Capability 选择 `chatai.message.*` 还是 customer/member Tag，并冻结 operation DTO 和 Subject Type。
 14. Java Capability 的统一信封、幂等、错误码、权益和资源校验格式。
 15. 明确禁止 Java 接收原始 nodeConfig，禁止 Node 复制 Java 业务规则。
-16. Iteration A 的 Java、Node、产品、测试负责人和完成日期。
+16. Node Iteration 1 与 Java 对接任务的负责人和完成日期。
 
 ## 17. 上线验收线
 
 真实事件入口进入生产灰度前必须满足：
 
 - 新建 Workflow 必须选择 Workflow Type，类型已固化到 Definition 和不可变 Revision，不能原地转换。
-- Start 事件、节点、变量和 Java operation 已按 Capability Profile 校验，Backend 能拒绝绕过前端的不兼容配置。
+- Start 事件、节点和变量已按 Capability Profile 校验；Java operation 按 Node Execution Definition 和 Operation Descriptor 校验，Backend 能拒绝绕过前端的不兼容配置。
+- Runtime Support 由 Workflow Engine 的可执行节点注册表提供；共享 contracts 和 Web 不再独立拥有运行白名单。
+- Revision 冻结全部带版本 Capability Requirement；Publish、Enable、Resume、再次 Publish、Entry 和 Task 均按规定边界执行 Production Availability 检查。
+- Backend 与 Worker 使用同一 Deployment Capability 配置解析器和部署参数；非法配置启动失败，未知能力或版本 fail-closed，清单指纹可用于排查漂移。
+- Java 依赖节点只有在 Runtime 完整实现且当前环境明确启用对应事件源或 operation 后才能发布；仅加入 Runtime 注册表不能生产开放。
+- Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 不会被生产配置加载，也不能产生生产 Deployment Capability。
+- Wait Event 完整实现后仍需真实事件源和 Event Catalog v1 的 test01 Smoke 才能开启对应 Deployment Capability；Branch 完整实现后无需 Java operation 即可进入 Runtime Support。
+- Java Capability Port 不能接收原始 Node、nodeConfig 或变量表达式；仅完成 Port 不会开放任何 Message、Query、Tag、Coupon 或 Handoff 节点。
+- 创建、发布、启用、恢复、Entry 和 Task 推进均执行 Workflow Type Entitlement 检查；Java 查询失败不会被当作无权益，也不会继续执行业务动作。
 - Event、Binding、Run、Entry Guard、Wait Event Subscription 和 Partition Key 都使用明确的 `subjectType + subjectId` 语义。
 - 不同 Subject Type 的同值 ID 已通过隔离测试，运行记录可按 Subject Type 正确展示主体信息。
 - Java 事件生产使用 Outbox，不在业务事务中裸发 MQ。
@@ -1307,8 +1620,9 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - Node 最终匹配仍校验 Active Definition 和当前 Revision Binding。
 - Java 和 Node 的 MySQL Session 均满足 UTC+8 契约。
 - test01 完成真实 Pulsar、重复投递、暂停/停止和数据库短暂异常 Smoke。
+- test01 完成 Deployment Capability 关闭与恢复 Smoke，确认不创建受影响的新 Run、Pending Task 可恢复且未产生额外业务重试。
 - 至少有 Interest、Java Outbox、Pulsar Backlog、Entry Consumer 和 Run 创建指标。
-- 仅正式接通 Compiler、Executor 和类型化 Java Capability Adapter 的节点可以启用。
+- 旧 Runtime handler 和 capability contract version 在仍被 Active Revision 或未完成 Run 引用时不会被移除。
 
 ## 18. 代码定位
 
@@ -1320,7 +1634,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | 发布和 Trigger Binding 生成 | `apps/backend/src/modules/workflow/workflow.service.ts` |
 | Revision/Binding 事务写入 | `apps/backend/src/modules/workflow/workflow-mysql.repository.ts` |
 | 当前事件契约 | `packages/contracts/src/workflow/trigger.ts` |
-| 当前运行节点白名单 | `packages/contracts/src/workflow/dto.ts` |
+| 当前运行节点白名单（待迁移） | `packages/contracts/src/workflow/dto.ts` |
+| 目标 Runtime Support 注册表 | `packages/workflow-engine`（实施时新增） |
 | 图编译与运行校验 | `packages/workflow-engine/src/compiler.ts`、`graph.ts` |
 | 节点执行器 | `packages/workflow-engine/src/node-executor.ts` |
 | Run/Task/Outbox/Inbox | `packages/workflow-runtime` |

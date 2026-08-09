@@ -3,12 +3,14 @@ import type {
   WorkflowEntryEventType,
   WorkflowStartConfig,
   WorkflowStartTrigger,
+  WorkflowSubjectType,
 } from "@chatai/contracts";
 import { normalizeWorkflowEntryPolicy } from "@chatai/contracts";
 
 export type WorkflowTriggerBindingSpec = {
   eventType: WorkflowEntryEventType;
   filter: WorkflowStartConfig;
+  subjectType: WorkflowSubjectType;
 };
 
 export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): WorkflowStartConfig {
@@ -19,7 +21,10 @@ export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): Workf
   };
 }
 
-export function getWorkflowTriggerBindings(config: WorkflowStartConfig): WorkflowTriggerBindingSpec[] {
+export function getWorkflowTriggerBindings(
+  config: WorkflowStartConfig,
+  subjectType: WorkflowSubjectType,
+): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   const eventTypes = unique(normalized.triggers.map(trigger => trigger.type));
   return eventTypes.map(eventType => ({
@@ -28,6 +33,7 @@ export function getWorkflowTriggerBindings(config: WorkflowStartConfig): Workflo
       ...structuredClone(normalized),
       triggers: normalized.triggers.filter(trigger => trigger.type === eventType),
     },
+    subjectType,
   }));
 }
 
@@ -41,7 +47,7 @@ export function matchWorkflowTrigger(
 }
 
 function normalizeTrigger(trigger: WorkflowStartTrigger): WorkflowStartTrigger {
-  if (trigger.type === "customer.tag_added") {
+  if (trigger.type === "contact.tag_added") {
     return { ...trigger, tagIds: unique(trigger.tagIds.map(value => value.trim()).filter(Boolean)) };
   }
   if (trigger.type === "message.received" && trigger.match === "keywords") {
@@ -53,7 +59,7 @@ function normalizeTrigger(trigger: WorkflowStartTrigger): WorkflowStartTrigger {
 function matchTrigger(trigger: WorkflowStartTrigger, command: WorkflowEntryCommand) {
   if (trigger.type !== command.eventType) return false;
   if (trigger.type === "contact.friend_added") return true;
-  if (trigger.type === "customer.tag_added" && command.eventType === "customer.tag_added") {
+  if (trigger.type === "contact.tag_added" && command.eventType === "contact.tag_added") {
     return trigger.tagIds.includes(command.triggerPayload.tagId);
   }
   if (trigger.type !== "message.received" || command.eventType !== "message.received") return false;

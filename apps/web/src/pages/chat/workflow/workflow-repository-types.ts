@@ -1,3 +1,7 @@
+import type {
+  WorkflowCapabilitySummary,
+  WorkflowType,
+} from "@chatai/contracts";
 import type { WorkflowDraft } from "./types";
 
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
@@ -5,6 +9,7 @@ export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped
 export type WorkflowListItem = {
   activationReady: boolean;
   canOperate: boolean;
+  capabilitySummary: WorkflowCapabilitySummary;
   conversion: string;
   description: string;
   entered: string;
@@ -16,6 +21,7 @@ export type WorkflowListItem = {
   status: WorkflowDocumentStatus;
   trigger: string;
   updatedAt: string;
+  workflowType: WorkflowType;
 };
 
 export type WorkflowPublishedVersion = {
@@ -127,10 +133,11 @@ export type WorkflowDraftReader = {
 };
 
 export type WorkflowDraftWriter = {
-  createDocument: (input?: {
+  createDocument: (input: {
     clientRequestId?: string;
     description?: string;
     name?: string;
+    workflowType: WorkflowType;
   }) => Promise<WorkflowDocument> | WorkflowDocument;
   deleteDocument: (workflowId: string) => Promise<void> | void;
   importDraft: (
@@ -163,7 +170,12 @@ export type WorkflowDraftWriter = {
 export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = {
-  createDocument: (input?: { clientRequestId?: string; description?: string; name?: string }) => WorkflowDocument;
+  createDocument: (input: {
+    clientRequestId?: string;
+    description?: string;
+    name?: string;
+    workflowType: WorkflowType;
+  }) => WorkflowDocument;
   deleteDocument: (workflowId: string) => void;
   getDocument: (workflowId: string) => WorkflowDocument;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;

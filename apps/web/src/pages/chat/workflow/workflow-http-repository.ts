@@ -65,7 +65,7 @@ export function createHttpWorkflowDraftRepository(
       }
     },
 
-    async createDocument(input = {}) {
+    async createDocument(input) {
       try {
         const definition = unwrap<ApiWorkflowDefinition>(await client.post("/server/workflows", input));
         definitions.set(definition.id, definition);
@@ -309,6 +309,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
   return {
     activationReady,
     canOperate: definition.permissions.canOperate,
+    capabilitySummary: definition.capabilitySummary,
     conversion: getWorkflowConversion(draft) ?? "-",
     description: definition.description,
     entered: "-",
@@ -326,6 +327,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
           : activationReady ? "Published" : "Draft",
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
+    workflowType: definition.workflowType,
   };
 }
 

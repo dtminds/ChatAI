@@ -1,22 +1,31 @@
 import {
   WorkflowEntryEventType,
-  WorkflowExecutionSpec,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
   WorkflowStartConfig,
+  WorkflowStatusReason,
   WorkflowTaskMessageSchema,
   WorkflowTaskStatus,
+  WorkflowStoredExecutionSpec,
+  WorkflowSubjectType,
   type WorkflowTaskMessage,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import {
   getWorkflowExecutionBoundaryDecision,
+  normalizeWorkflowExecutionSpec,
   transitionRun,
   transitionTask,
 } from "@chatai/workflow-engine";
 import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
+import {
+  decodeWorkflowSubjectType,
+  decodeWorkflowType,
+  encodeWorkflowSubjectType,
+  encodeWorkflowType,
+} from "./persistence-codecs.js";
 import type {
   DatabaseId,
   WorkflowDatabase,
@@ -60,9 +69,80 @@ export class MysqlWorkflowRuntimeRepository implements
   WorkflowTriggerBindingReader {
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
 
+  async applyEntitlementLoss(
+    input: Parameters<WorkflowRuntimeControlReader["applyEntitlementLoss"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const targetStatuses = input.transition === "pause"
+        ? ["active"]
+        : ["active", "inactive", "paused"];
+      const definitions = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select("id")
+        .where("uid", "=", input.uid)
+        .where("workflow_type", "=", encodeWorkflowType(input.workflowType))
+        .where("biz_status", "=", 1)
+        .where("runtime_status", "in", targetStatuses)
+        .forUpdate()
+        .execute();
+      if (definitions.length === 0) return { affectedDefinitions: 0 };
+
+      const workflowIds = definitions.map((definition) => definition.id);
+      await trx.updateTable("xy_wap_embed_workflow_definition").set({
+        op_sub_uid: input.opSubUserId,
+        runtime_status: input.transition === "pause" ? "paused" : "stopped",
+        status_reason: "entitlement_revoked",
+      }).where("id", "in", workflowIds).executeTakeFirstOrThrow();
+      if (input.transition === "stop") {
+        const runs = await trx.selectFrom(RUN_TABLE).select("id")
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "in", workflowIds)
+          .where("status", "in", ACTIVE_RUN_STATUSES)
+          .forUpdate()
+          .execute();
+        const runIds = runs.map((run) => run.id);
+        if (runIds.length > 0) {
+          const now = new Date();
+          await trx.updateTable(RUN_TABLE).set({
+            completed_at: now,
+            lock_version: sql<number>`lock_version + 1`,
+            next_execute_at: null,
+            status: "cancelled",
+            terminal_reason: "entitlement_revoked",
+          }).where("id", "in", runIds).executeTakeFirstOrThrow();
+          await trx.updateTable(TASK_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "cancelled",
+            task_version: sql<number>`task_version + 1`,
+          }).where("run_id", "in", runIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .executeTakeFirstOrThrow();
+          await failRunningNodeExecutions(
+            trx,
+            runIds,
+            now,
+            "WORKFLOW_ENTITLEMENT_REVOKED",
+            "Workflow entitlement was revoked",
+          );
+          await trx.updateTable(OUTBOX_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "dead",
+          }).where("aggregate_type", "=", "workflow_task")
+            .where("aggregate_id", "in", trx.selectFrom(TASK_TABLE)
+              .select("id")
+              .where("run_id", "in", runIds))
+            .where("status", "in", ["pending", "leased", "republished"])
+            .executeTakeFirstOrThrow();
+        }
+      }
+      return { affectedDefinitions: definitions.length };
+    });
+  }
+
   async findDefinition(uid: number, workflowId: string) {
     const row = await this.db.selectFrom("xy_wap_embed_workflow_definition")
-      .select(["biz_status", "published_revision", "runtime_status"])
+      .select(["biz_status", "published_revision", "runtime_status", "status_reason", "workflow_type"])
       .where("uid", "=", uid)
       .where("id", "=", workflowId)
       .executeTakeFirst();
@@ -70,23 +150,33 @@ export class MysqlWorkflowRuntimeRepository implements
       bizStatus: row.biz_status === 1 ? 1 as const : 0 as const,
       publishedRevision: row.published_revision,
       runtimeStatus: parseRuntimeStatus(row.runtime_status),
+      statusReason: parseStatusReason(row.status_reason),
+      workflowType: decodeWorkflowType(row.workflow_type),
     } : null;
   }
 
   async findRevision(uid: number, workflowId: string, revision: number) {
     const row = await this.db.selectFrom(REVISION_TABLE)
-      .select(["execution_spec_json", "revision"])
+      .select(["execution_spec_json", "revision", "subject_type", "workflow_type"])
       .where("uid", "=", uid)
       .where("workflow_id", "=", workflowId)
       .where("revision", "=", revision)
       .executeTakeFirst();
     return row ? {
-      executionSpec: parseJson(row.execution_spec_json) as WorkflowExecutionSpec,
+      executionSpec: normalizeWorkflowExecutionSpec(
+        parseJson(row.execution_spec_json) as WorkflowStoredExecutionSpec,
+      ),
       revision: row.revision,
+      subjectType: decodeWorkflowSubjectType(row.subject_type),
+      workflowType: decodeWorkflowType(row.workflow_type),
     } : null;
   }
 
-  async listActiveTriggerBindings(uid: number, eventType: WorkflowEntryEventType) {
+  async listActiveTriggerBindings(
+    uid: number,
+    subjectType: WorkflowSubjectType,
+    eventType: WorkflowEntryEventType,
+  ) {
     const rows = await this.db.selectFrom(`${TRIGGER_BINDING_TABLE} as binding`)
       .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
         .onRef("definition.uid", "=", "binding.uid")
@@ -99,11 +189,13 @@ export class MysqlWorkflowRuntimeRepository implements
         "binding.id",
         "binding.revision",
         "binding.status",
+        "binding.subject_type",
         "binding.uid",
         "binding.update_time",
         "binding.workflow_id",
       ])
       .where("binding.uid", "=", uid)
+      .where("binding.subject_type", "=", encodeWorkflowSubjectType(subjectType))
       .where("binding.event_type", "=", eventType)
       .where("binding.status", "=", 1)
       .where("definition.biz_status", "=", 1)
@@ -116,7 +208,7 @@ export class MysqlWorkflowRuntimeRepository implements
     try {
       return await this.db.transaction().execute(async (trx) => {
         const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
-          .select(["biz_status", "published_revision", "runtime_status"])
+          .select(["biz_status", "published_revision", "runtime_status", "workflow_type"])
           .where("uid", "=", input.uid).where("id", "=", input.workflowId)
           .forShare().executeTakeFirst();
         const boundaryDecision = definition
@@ -129,6 +221,9 @@ export class MysqlWorkflowRuntimeRepository implements
           return { action: boundaryDecision, kind: "workflow-unavailable" as const };
         }
         if (definition?.published_revision !== input.revision) {
+          return { kind: "conflict" as const };
+        }
+        if (decodeWorkflowType(definition.workflow_type) !== input.workflowType) {
           return { kind: "conflict" as const };
         }
 
@@ -145,6 +240,7 @@ export class MysqlWorkflowRuntimeRepository implements
         const admittedAt = await getDatabaseNow(trx);
         await trx.insertInto(ENTRY_GUARD_TABLE).values({
           subject_id: input.subjectId,
+          subject_type: encodeWorkflowSubjectType(input.subjectType),
           total_entries: 0,
           uid: input.uid,
           workflow_id: input.workflowId,
@@ -155,6 +251,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .select(["id", "total_entries"])
           .where("uid", "=", input.uid)
           .where("workflow_id", "=", input.workflowId)
+          .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
           .where("subject_id", "=", input.subjectId)
           .forUpdate()
           .executeTakeFirstOrThrow();
@@ -184,6 +281,7 @@ export class MysqlWorkflowRuntimeRepository implements
           shard_id: input.shardId,
           status: "queued",
           subject_id: input.subjectId,
+          subject_type: encodeWorkflowSubjectType(input.subjectType),
           terminal_reason: null,
           uid: input.uid,
           update_time: admittedAt,
@@ -341,6 +439,30 @@ export class MysqlWorkflowRuntimeRepository implements
         },
       };
     });
+  }
+
+  async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
+    const dueAt = floorToMinute(input.dueAt);
+    const result = await this.db.updateTable(TASK_TABLE).set({
+      bucket_time: dueAt,
+      due_at: input.dueAt,
+      lease_expires_at: null,
+      lease_owner: null,
+      status: "pending",
+      task_version: sql<number>`task_version + 1`,
+    }).where("uid", "=", input.uid)
+      .where("id", "=", input.taskId)
+      .where("task_version", "=", input.expectedTaskVersion)
+      .where("status", "in", ["pending", "leased", "dispatched"])
+      .executeTakeFirst();
+    if (result.numUpdatedRows === 0n) {
+      const task = await this.findTask(input.uid, input.taskId);
+      return task ? { kind: "conflict" as const } : { kind: "not-found" as const };
+    }
+    return {
+      kind: "success" as const,
+      task: (await this.findTask(input.uid, input.taskId))!,
+    };
   }
 
   async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
@@ -1877,6 +1999,7 @@ function createRunRecord(id: string, input: WorkflowCreateRunInput, admittedAt: 
     shardId: input.shardId,
     status: "queued",
     subjectId: input.subjectId,
+    subjectType: input.subjectType,
     uid: input.uid,
     workflowId: input.workflowId,
   };
@@ -1896,6 +2019,7 @@ function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
     shardId: row.shard_id,
     status: parseRunStatus(row.status),
     subjectId: row.subject_id,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
     uid: normalizeTenantId(row.uid),
     workflowId: normalizeId(row.workflow_id),
   };
@@ -1924,6 +2048,7 @@ async function canEnterWorkflow(
     .select(({ fn }) => fn.countAll<number>().as("entry_count"))
     .where("uid", "=", input.uid)
     .where("workflow_id", "=", input.workflowId)
+    .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
     .where("subject_id", "=", input.subjectId)
     .where("create_time", ">=", cutoff)
     .executeTakeFirstOrThrow();
@@ -2118,6 +2243,7 @@ function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBinding
     id: normalizeId(row.id),
     revision: Number(row.revision),
     status: Number(row.status) === 1 ? 1 : 0,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
     uid: normalizeTenantId(row.uid),
     updatedAt: toDate(row.update_time),
     workflowId: normalizeId(row.workflow_id),
@@ -2180,8 +2306,13 @@ function parseRuntimeStatus(value: string): WorkflowRuntimeStatus {
   throw new Error(`Unknown workflow runtime status: ${value}`);
 }
 
+function parseStatusReason(value: string | null): WorkflowStatusReason {
+  if (value === null || value === "entitlement_revoked") return value;
+  throw new Error(`Unknown workflow status reason: ${value}`);
+}
+
 function parseEntryEventType(value: unknown): WorkflowEntryEventType {
-  if (value === "contact.friend_added" || value === "customer.tag_added" || value === "message.received") {
+  if (value === "contact.friend_added" || value === "contact.tag_added" || value === "message.received") {
     return value;
   }
   throw new Error(`Unknown workflow entry event type: ${String(value)}`);

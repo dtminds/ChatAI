@@ -10,15 +10,28 @@ import type {
   WorkflowRevision,
   WorkflowSaveDraftRequest,
   WorkflowStartConfig,
+  WorkflowType,
+  WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
-import { WorkflowStartConfigSchema } from "@chatai/contracts";
+import { getWorkflowCapabilityProfile, WorkflowStartConfigSchema } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
+  createWorkflowDeploymentCapabilities,
+  evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
   normalizeWorkflowDraft,
+  validateWorkflowTypePolicy,
+  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCompilationError,
+  type WorkflowDeploymentCapabilities,
 } from "@chatai/workflow-engine";
+import {
+  decideWorkflowEntitlement,
+  UnavailableWorkflowEntitlementPort,
+  WorkflowEntitlementUnavailableError,
+  type WorkflowEntitlementPort,
+} from "@chatai/workflow-runtime";
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import type {
   WorkflowDefinitionRecord,
@@ -29,35 +42,60 @@ import type {
 
 export type WorkflowOperatorScope = { roles: string[]; subUserId: string; uid: number };
 
+export type WorkflowServiceOptions = {
+  clock?: () => Date;
+  deploymentCapabilities?: WorkflowDeploymentCapabilities;
+  entitlementPort?: WorkflowEntitlementPort;
+};
+
 export class WorkflowService {
-  constructor(private readonly repository: WorkflowRepository) {}
+  private readonly clock: () => Date;
+  private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
+  private readonly entitlementPort: WorkflowEntitlementPort;
+
+  constructor(
+    private readonly repository: WorkflowRepository,
+    options: WorkflowServiceOptions = {},
+  ) {
+    this.clock = options.clock ?? (() => new Date());
+    this.deploymentCapabilities = options.deploymentCapabilities
+      ?? createWorkflowDeploymentCapabilities([]);
+    this.entitlementPort = options.entitlementPort
+      ?? new UnavailableWorkflowEntitlementPort();
+  }
 
   async list(scope: WorkflowOperatorScope) {
     assertWorkflowAccess(scope);
-    return (await this.repository.listDefinitions(scope.uid)).map(toDefinition);
+    return (await this.repository.listDefinitions(scope.uid)).map((record) => this.toDefinition(record));
   }
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
-    return toDefinition(await this.requireDefinition(scope.uid, workflowId));
+    return this.toDefinition(await this.requireDefinition(scope.uid, workflowId));
   }
 
   async create(scope: WorkflowOperatorScope, input: WorkflowCreateRequest) {
     assertWorkflowAccess(scope);
-    return toDefinition(await this.repository.createDefinition({
+    assertWorkflowTypeEnabled(input.workflowType);
+    await this.requireEntitlement(scope.uid, input.workflowType, scope.subUserId);
+    return this.toDefinition(await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
       description: input.description?.trim() || "",
       draft: createInitialWorkflowDraft(),
       name: input.name?.trim() || "未命名 Workflow",
       opSubUserId: scope.subUserId,
       uid: scope.uid,
+      workflowType: input.workflowType,
     }));
   }
 
   async saveDraft(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowSaveDraftRequest) {
     assertWorkflowAccess(scope);
-    return toDefinition(this.unwrapMutation(await this.repository.saveDraft({
-      draft: normalizeWorkflowDraft(input.draft),
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const draft = normalizeWorkflowDraft(input.draft);
+    assertWorkflowTypePolicy(definition.workflowType, draft);
+    return this.toDefinition(this.unwrapMutation(await this.repository.saveDraft({
+      draft,
       expectedDraftVersion: input.expectedDraftVersion,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -69,7 +107,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const normalizedName = name.trim();
     if (!normalizedName) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
-    return toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
+    return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
       name: normalizedName,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -89,7 +127,7 @@ export class WorkflowService {
     if (description.length > 1000) {
       throw new BadRequestError("WORKFLOW_DESCRIPTION_TOO_LONG", "Workflow 描述不能超过 1000 字");
     }
-    return toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
+    return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
       description,
       name,
       opSubUserId: scope.subUserId,
@@ -116,29 +154,41 @@ export class WorkflowService {
       ...definition,
       draft: normalizeWorkflowDraft(definition.draft),
     };
+    const entitlement = await this.requireEntitlement(
+      scope.uid,
+      definition.workflowType,
+      scope.subUserId,
+    );
+    const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
 
     if (definition.publishedRevision === null) {
-      this.compile(normalizedDefinition, 1);
+      const executionSpec = this.compile(normalizedDefinition, 1);
+      this.assertProductionAvailability(executionSpec, entitlement);
       const validated = this.unwrapMutation(await this.repository.markValidated({
         expectedDraftVersion: input.expectedDraftVersion,
         opSubUserId: scope.subUserId,
         uid: scope.uid,
         workflowId,
       }));
-      return { definition: toDefinition(validated), revision: null, validatedOnly: true };
+      return { definition: this.toDefinition(validated), revision: null, validatedOnly: true };
     }
 
     const nextRevision = definition.publishedRevision + 1;
     const executionSpec = this.compile(normalizedDefinition, nextRevision);
-    const specHash = hashExecutionSpec(executionSpec);
+    this.assertProductionAvailability(executionSpec, entitlement);
+    const specHash = hashExecutionSpec({
+      executionSpec,
+      subjectType,
+      workflowType: definition.workflowType,
+    });
     const currentRevision = await this.repository.findRevision(
       scope.uid,
       workflowId,
       definition.publishedRevision,
     );
-    if (currentRevision && hashExecutionSpec(currentRevision.executionSpec) === specHash) {
+    if (currentRevision && currentRevision.specHash === specHash) {
       return {
-        definition: toDefinition(normalizedDefinition),
+        definition: this.toDefinition(normalizedDefinition),
         revision: toRevision(currentRevision),
         validatedOnly: false,
       };
@@ -150,12 +200,14 @@ export class WorkflowService {
       expectedPublishedRevision: definition.publishedRevision,
       opSubUserId: scope.subUserId,
       specHash,
-      triggerBindings: createTriggerBindings(executionSpec),
+      subjectType,
+      triggerBindings: createTriggerBindings(executionSpec, subjectType),
       uid: scope.uid,
       workflowId,
+      workflowType: definition.workflowType,
     }));
     return {
-      definition: toDefinition(published.definition),
+      definition: this.toDefinition(published.definition),
       revision: toRevision(published.revision),
       validatedOnly: false,
     };
@@ -171,18 +223,31 @@ export class WorkflowService {
       throw new AppError("WORKFLOW_DRAFT_NOT_VALIDATED", "请先发布检查当前草稿", 409);
     }
     const normalizedDraft = normalizeWorkflowDraft(definition.draft);
+    const entitlement = await this.requireEntitlement(
+      scope.uid,
+      definition.workflowType,
+      scope.subUserId,
+    );
+    const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
     const executionSpec = this.compile({ ...definition, draft: normalizedDraft }, 1);
+    this.assertProductionAvailability(executionSpec, entitlement);
     const enabled = this.unwrapMutation(await this.repository.enable({
       draft: normalizedDraft,
       executionSpec,
       expectedDraftVersion: definition.draftVersion,
       opSubUserId: scope.subUserId,
-      specHash: hashExecutionSpec(executionSpec),
-      triggerBindings: createTriggerBindings(executionSpec),
+      specHash: hashExecutionSpec({
+        executionSpec,
+        subjectType,
+        workflowType: definition.workflowType,
+      }),
+      subjectType,
+      triggerBindings: createTriggerBindings(executionSpec, subjectType),
       uid: scope.uid,
       workflowId,
+      workflowType: definition.workflowType,
     }));
-    return toDefinition(enabled.definition);
+    return this.toDefinition(enabled.definition);
   }
 
   pause(scope: WorkflowOperatorScope, workflowId: string) {
@@ -190,8 +255,24 @@ export class WorkflowService {
     return this.changeStatus(scope, workflowId, ["active"], "paused");
   }
 
-  resume(scope: WorkflowOperatorScope, workflowId: string) {
+  async resume(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    if (definition.runtimeStatus !== "paused" || definition.publishedRevision === null) {
+      throw invalidStatusError(definition.runtimeStatus);
+    }
+    const entitlement = await this.requireEntitlement(
+      scope.uid,
+      definition.workflowType,
+      scope.subUserId,
+    );
+    const revision = await this.repository.findRevision(
+      scope.uid,
+      workflowId,
+      definition.publishedRevision,
+    );
+    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    this.assertProductionAvailability(revision.executionSpec, entitlement);
     return this.changeStatus(scope, workflowId, ["paused"], "active");
   }
 
@@ -219,8 +300,10 @@ export class WorkflowService {
     if (!revisionRecord) {
       throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
     }
-    return toDefinition(this.unwrapMutation(await this.repository.restoreDraft({
-      draft: normalizeWorkflowDraft(revisionRecord.draft),
+    const draft = normalizeWorkflowDraft(revisionRecord.draft);
+    assertWorkflowTypePolicy(definition.workflowType, draft);
+    return this.toDefinition(this.unwrapMutation(await this.repository.restoreDraft({
+      draft,
       expectedDraftVersion: input.expectedDraftVersion,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -234,10 +317,11 @@ export class WorkflowService {
     allowedCurrentStatuses: WorkflowDefinitionRecord["runtimeStatus"][],
     status: WorkflowDefinitionRecord["runtimeStatus"],
   ) {
-    return toDefinition(this.unwrapMutation(await this.repository.setRuntimeStatus({
+    return this.toDefinition(this.unwrapMutation(await this.repository.setRuntimeStatus({
       allowedCurrentStatuses,
       opSubUserId: scope.subUserId,
       status,
+      statusReason: null,
       uid: scope.uid,
       workflowId,
     })));
@@ -245,7 +329,12 @@ export class WorkflowService {
 
   private compile(definition: WorkflowDefinitionRecord, revision: number) {
     try {
-      return compileWorkflowDraft({ draft: definition.draft, revision, workflowId: definition.id });
+      return compileWorkflowDraft({
+        draft: definition.draft,
+        revision,
+        workflowId: definition.id,
+        workflowType: definition.workflowType,
+      });
     } catch (error) {
       if (error instanceof WorkflowCompilationError) {
         throw new BadRequestError("WORKFLOW_VALIDATION_FAILED", "Workflow 校验未通过", { issues: error.issues });
@@ -270,10 +359,75 @@ export class WorkflowService {
   private assertNotStopped(definition: WorkflowDefinitionRecord) {
     if (definition.runtimeStatus === "stopped") throw stoppedError();
   }
+
+  private assertProductionAvailability(
+    executionSpec: ReturnType<typeof compileWorkflowDraft>,
+    entitlement: WorkflowTypeEntitlementResult,
+  ) {
+    const availability = evaluateWorkflowProductionAvailability({
+      deployment: this.deploymentCapabilities,
+      entitlement,
+      spec: executionSpec,
+    });
+    if (!availability.available) {
+      throw new BadRequestError(
+        "WORKFLOW_PRODUCTION_UNAVAILABLE",
+        "Workflow 暂不可发布或运行",
+        { blockers: availability.blockers },
+      );
+    }
+  }
+
+  private async requireEntitlement(
+    uid: number,
+    workflowType: WorkflowType,
+    opSubUserId: string,
+  ): Promise<WorkflowTypeEntitlementResult> {
+    try {
+      const decision = await decideWorkflowEntitlement(this.entitlementPort, {
+        now: this.clock(),
+        uid,
+        workflowType,
+      });
+      if (decision.action === "allow") return decision.result;
+
+      await this.repository.applyEntitlementLoss({
+        opSubUserId,
+        transition: decision.action,
+        uid,
+        workflowType,
+      });
+      throw new ForbiddenError(
+        "WORKFLOW_ENTITLEMENT_REQUIRED",
+        "当前无对应产品权益",
+      );
+    } catch (error) {
+      if (error instanceof WorkflowEntitlementUnavailableError) {
+        throw new AppError(
+          "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+          "暂时无法确认产品权益，请稍后重试",
+          503,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
+    return toDefinition(record, this.deploymentCapabilities);
+  }
 }
 
-function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
+function toDefinition(
+  record: WorkflowDefinitionRecord,
+  deploymentCapabilities: WorkflowDeploymentCapabilities,
+): WorkflowDefinition {
   return {
+    capabilitySummary: {
+      deploymentCapabilities: structuredClone(deploymentCapabilities.capabilities),
+      deploymentFingerprint: deploymentCapabilities.fingerprint,
+      runtimeSupportedNodeKinds: [...WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS],
+    },
     createdAt: record.createdAt.toISOString(),
     description: record.description,
     draft: normalizeWorkflowDraft(record.draft),
@@ -289,8 +443,10 @@ function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
     },
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
+    statusReason: record.statusReason,
     updatedAt: record.updatedAt.toISOString(),
     validatedDraftVersion: record.validatedDraftVersion,
+    workflowType: record.workflowType,
   };
 }
 
@@ -300,7 +456,9 @@ function toRevision(record: WorkflowRevisionRecord): WorkflowRevision {
     id: record.id,
     publishedAt: record.publishedAt.toISOString(),
     revision: record.revision,
+    subjectType: record.subjectType,
     workflowId: record.workflowId,
+    workflowType: record.workflowType,
   };
 }
 
@@ -325,17 +483,45 @@ function createInitialNode(kind: "end" | "start", title: string, position: { x: 
   };
 }
 
-function hashExecutionSpec(spec: { revision: number }) {
-  const { revision: _revision, ...publishSemantics } = spec;
-  return createHash("sha256").update(JSON.stringify(publishSemantics)).digest("hex");
+function hashExecutionSpec(input: {
+  executionSpec: ReturnType<typeof compileWorkflowDraft>;
+  subjectType: WorkflowRevisionRecord["subjectType"];
+  workflowType: WorkflowType;
+}) {
+  const { revision: _revision, ...publishSemantics } = input.executionSpec;
+  return createHash("sha256").update(JSON.stringify({
+    executionSpec: publishSemantics,
+    subjectType: input.subjectType,
+    workflowType: input.workflowType,
+  })).digest("hex");
 }
 
-function createTriggerBindings(spec: ReturnType<typeof compileWorkflowDraft>) {
+function createTriggerBindings(
+  spec: ReturnType<typeof compileWorkflowDraft>,
+  subjectType: WorkflowRevisionRecord["subjectType"],
+) {
   const entryNode = spec.nodes.find(node => node.id === spec.entryNodeId);
   if (!entryNode || entryNode.kind !== "start" || !Value.Check(WorkflowStartConfigSchema, entryNode.config)) {
     throw new Error("Compiled Workflow has an invalid Start configuration");
   }
-  return getWorkflowTriggerBindings(entryNode.config as WorkflowStartConfig);
+  return getWorkflowTriggerBindings(entryNode.config as WorkflowStartConfig, subjectType);
+}
+
+function assertWorkflowTypeEnabled(workflowType: WorkflowType) {
+  if (getWorkflowCapabilityProfile(workflowType).availability !== "enabled") {
+    throw new BadRequestError("WORKFLOW_TYPE_UNAVAILABLE", "该 Workflow 类型暂不可用");
+  }
+}
+
+function assertWorkflowTypePolicy(workflowType: WorkflowType, draft: WorkflowDraft) {
+  const issues = validateWorkflowTypePolicy(workflowType, draft);
+  if (issues.length > 0) {
+    throw new BadRequestError(
+      "WORKFLOW_TYPE_POLICY_VIOLATION",
+      "Workflow 包含当前类型不支持的配置",
+      { issues },
+    );
+  }
 }
 
 function workflowNotFound() {

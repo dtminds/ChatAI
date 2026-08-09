@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AlertDialog,
@@ -37,6 +37,10 @@ import type {
 } from "./workflow-draft-service";
 import { useWorkflowDocumentResource } from "./workflow-resources";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
+import {
+  WorkflowCreateDialog,
+  type WorkflowCreateInput,
+} from "./workflow-create-dialog";
 import "@xyflow/react/dist/style.css";
 import "./workflow-page.css";
 
@@ -88,37 +92,42 @@ function WorkflowDocumentPage({
 function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepository }) {
   const navigate = useNavigate();
   const createRequestIdRef = useRef(createWorkflowCreateRequestId());
-  const createStartedRef = useRef(false);
-  const [createError, setCreateError] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createPending, setCreatePending] = useState(false);
 
-  const createDocument = useCallback(() => {
-    if (createStartedRef.current) {
-      return;
+  const createDocument = async (input: WorkflowCreateInput) => {
+    if (createPending) return false;
+    setCreateError(null);
+    setCreatePending(true);
+    try {
+      const document = await Promise.resolve(repository.createDocument({
+        clientRequestId: createRequestIdRef.current,
+        ...input,
+      }));
+      navigate(`/chat/workflows/${document.id}`, { replace: true });
+      return true;
     }
-
-    createStartedRef.current = true;
-    setCreateError(false);
-
-    void Promise.resolve(repository.createDocument({
-      clientRequestId: createRequestIdRef.current,
-    })).then(
-      (document) => navigate(`/chat/workflows/${document.id}`, { replace: true }),
-      () => {
-        createStartedRef.current = false;
-        setCreateError(true);
-      },
-    );
-  }, [navigate, repository]);
-
-  useEffect(() => {
-    createDocument();
-  }, [createDocument]);
+    catch {
+      setCreateError("操作失败，请重试");
+      return false;
+    }
+    finally {
+      setCreatePending(false);
+    }
+  };
 
   return (
-    <WorkflowEditorResourceState
-      onRetry={createError ? createDocument : undefined}
-      status={createError ? "error" : "loading"}
-    />
+    <main className="fixed inset-0 bg-background">
+      <WorkflowCreateDialog
+        error={createError}
+        onCreate={createDocument}
+        onOpenChange={(open) => {
+          if (!open && !createPending) navigate("/chat/workflows", { replace: true });
+        }}
+        open
+        pending={createPending}
+      />
+    </main>
   );
 }
 
@@ -275,6 +284,7 @@ function WorkflowWorkspaceContent({
         >
           <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
             <WorkflowCanvas
+                allowedInsertableNodeKinds={canvas.allowedInsertableNodeKinds}
                 canRedo={canvas.canRedo}
                 canUndo={canvas.canUndo}
                 edges={canvas.edges}
@@ -316,6 +326,7 @@ function WorkflowWorkspaceContent({
 
           {inspector.isOpen && !versionHistory.isPreviewing ? (
             <NodeConfigPanel
+                allowedEntryEventTypes={inspector.allowedEntryEventTypes}
                 animateOnMount={animateInspectorOnMount}
                 edges={inspector.edges}
                 node={inspector.node}

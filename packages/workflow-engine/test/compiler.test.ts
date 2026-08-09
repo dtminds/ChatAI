@@ -7,6 +7,7 @@ describe("compileWorkflowDraft", () => {
       draft: createDraft(),
       revision: 3,
       workflowId: "42",
+      workflowType: "chatai_sop",
     });
 
     expect(spec).toMatchObject({
@@ -20,12 +21,20 @@ describe("compileWorkflowDraft", () => {
       id: "wait",
       kind: "wait",
       nodeSchemaVersion: 1,
+      requiredCapabilities: [],
     });
     expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
       accountIds: ["account-a"],
       entryPolicy: { mode: "never" },
       triggers: [{ type: "contact.friend_added" }],
     });
+    expect(spec.nodes.find((node) => node.id === "start")?.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+    ]);
+    expect(spec.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+    ]);
+    expect(spec.schemaVersion).toBe(2);
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
@@ -41,7 +50,12 @@ describe("compileWorkflowDraft", () => {
     delete waitNode.data.duration;
     delete waitNode.data.unit;
 
-    const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42" });
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
 
     expect(spec.nodes.find((node) => node.id === "wait")?.config).toEqual({
       dayOffset: 2,
@@ -61,7 +75,12 @@ describe("compileWorkflowDraft", () => {
       },
     });
 
-    const spec = compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
 
     expect(spec.nodes.find(node => node.id === "start")?.config.entryPolicy).toEqual({
       maxEntries: 2,
@@ -80,11 +99,21 @@ describe("compileWorkflowDraft", () => {
       target: "start",
     });
 
-    expect(() => compileWorkflowDraft({ draft, revision: 1, workflowId: "42" }))
+    expect(() => compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    }))
       .toThrowError(WorkflowCompilationError);
 
     try {
-      compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+      compileWorkflowDraft({
+        draft,
+        revision: 1,
+        workflowId: "42",
+        workflowType: "chatai_sop",
+      });
     } catch (error) {
       expect((error as WorkflowCompilationError).issues.map((issue) => issue.code))
         .toEqual(expect.arrayContaining(["cycle", "unreachable-node"]));
@@ -121,7 +150,12 @@ describe("compileWorkflowDraft", () => {
       viewport: { x: 0, y: 0, zoom: 1 },
     };
 
-    expect(() => compileWorkflowDraft({ draft, revision: 1, workflowId: "42" }))
+    expect(() => compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    }))
       .toThrowError(WorkflowCompilationError);
   });
 
@@ -169,7 +203,12 @@ function expectCompilationIssues(
   expectedCodes: string[],
 ) {
   try {
-    compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+    compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
     throw new Error("Expected workflow compilation to fail");
   } catch (error) {
     expect(error).toBeInstanceOf(WorkflowCompilationError);

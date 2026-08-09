@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { getWorkflowCapabilityProfile } from "@chatai/contracts";
 import { toast } from "sonner";
 import type {
   Connection,
@@ -19,7 +20,7 @@ import type {
   WorkflowDraft,
 } from "./types";
 import { useWorkflowController } from "./use-workflow-controller";
-import { hasNodeSettings } from "./node-definitions";
+import { canInsertNodeKind, hasNodeSettings } from "./node-definitions";
 import { useWorkflowRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
@@ -97,6 +98,8 @@ export function useWorkflowWorkspace(
     restoreState,
   });
   const { permissions } = workflowMode;
+  const capabilityProfile = getWorkflowCapabilityProfile(document.workflowType);
+  const allowedInsertableNodeKinds = capabilityProfile.allowedNodeKinds.filter(canInsertNodeKind);
   const controllerResetKey = previewVersion
     ? `version:${previewVersion.id}`
     : `edit:${document.id}`;
@@ -107,7 +110,11 @@ export function useWorkflowWorkspace(
     edges: controller.edges,
     nodes: controller.nodes,
   });
-  const publishChecks = useWorkflowPublishChecks(controller.nodes, controller.edges);
+  const publishChecks = useWorkflowPublishChecks(controller.nodes, controller.edges, {
+    allowedEntryEventTypes: capabilityProfile.allowedEntryEventTypes,
+    allowedNodeKinds: capabilityProfile.allowedNodeKinds,
+    runtimeSupportedNodeKinds: document.capabilitySummary.runtimeSupportedNodeKinds,
+  });
 
   useEffect(() => {
     if (saveState === "saved") {
@@ -392,6 +399,7 @@ export function useWorkflowWorkspace(
     nodes: renderedNodes,
   } = useWorkflowRenderElements({
     activeEdgeInsertMenuId,
+    allowedInsertableNodeKinds,
     edges: controller.edges,
     hoveredEdgeIds,
     nodes: controller.nodes,
@@ -595,6 +603,7 @@ export function useWorkflowWorkspace(
   const checksClose = useCallback(() => dispatchViewState({ type: "close-checks" }), []);
   return {
     canvas: {
+      allowedInsertableNodeKinds,
       canRedo: permissions.canUseHistory && controller.canRedo,
       canUndo: permissions.canUseHistory && controller.canUndo,
       edges: renderedEdges,
@@ -635,6 +644,7 @@ export function useWorkflowWorkspace(
     permissions,
     readOnlyReason: workflowMode.readOnlyReason,
     inspector: {
+      allowedEntryEventTypes: capabilityProfile.allowedEntryEventTypes,
       edges: controller.edges,
       isOpen: viewState.inspectorOpen,
       node: selectedNode,

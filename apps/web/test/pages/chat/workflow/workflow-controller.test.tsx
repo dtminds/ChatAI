@@ -308,7 +308,7 @@ describe("useWorkflowController", () => {
             conditions: [{
               id: "condition-normal",
               operator: "equals",
-              selector: ["customer", "name"],
+              selector: ["subject", "id"],
               value: "普通客户",
             }],
             id: "branch-normal",

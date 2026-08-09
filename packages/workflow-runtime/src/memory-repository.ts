@@ -78,9 +78,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const previousRuns = this.runs.filter(run =>
       run.uid === input.uid
       && run.workflowId === input.workflowId
+      && run.subjectType === input.subjectType
       && run.subjectId === input.subjectId,
     );
-    const entryGuardKey = `${input.uid}:${input.workflowId}:${input.subjectId}`;
+    const entryGuardKey = `${input.uid}:${input.workflowId}:${input.subjectType}:${input.subjectId}`;
     const totalEntries = this.totalEntries.get(entryGuardKey) ?? 0;
     if (!canEnterWorkflow(input.entryPolicy, previousRuns, totalEntries, admittedAt)) {
       return { kind: "entry-policy-rejected" as const };
@@ -99,6 +100,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       shardId: input.shardId,
       status: "queued",
       subjectId: input.subjectId,
+      subjectType: input.subjectType,
       uid: input.uid,
       workflowId: input.workflowId,
     };
@@ -171,6 +173,19 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (run.status !== previousRunStatus || run.currentNodeId !== previousNodeId) {
       this.touchRun(run);
     }
+    return { kind: "success" as const, task: clone(task) };
+  }
+
+  async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
+    const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
+    if (!task) return notFound();
+    if ((task.status !== "pending" && task.status !== "dispatched" && task.status !== "leased")
+      || task.taskVersion !== input.expectedTaskVersion) return conflict();
+    task.dueAt = input.dueAt;
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = "pending";
+    task.taskVersion += 1;
     return { kind: "success" as const, task: clone(task) };
   }
 

@@ -18,6 +18,11 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import {
+  HttpWorkflowEntitlementPort,
+  UnavailableWorkflowEntitlementPort,
+} from "@chatai/workflow-runtime";
+import { parseWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
@@ -54,6 +59,17 @@ export async function registerWorkflowRoutes(
 ) {
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(app.db as unknown as Kysely<WorkflowDatabase>),
+    {
+      deploymentCapabilities: parseWorkflowDeploymentCapabilities(
+        process.env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
+      ),
+      entitlementPort: process.env.WORKFLOW_ENTITLEMENT_API_URL
+        ? new HttpWorkflowEntitlementPort({
+            endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
+            token: process.env.JAVA_INTERNAL_API_TOKEN,
+          })
+        : new UnavailableWorkflowEntitlementPort(),
+    },
   );
   const authenticated = { preHandler: app.authenticate };
   const dataService = options.dataService ?? new WorkflowDataService(

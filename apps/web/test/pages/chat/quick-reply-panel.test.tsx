@@ -1543,6 +1543,33 @@ describe("QuickReplyPanel", () => {
     expect(screen.queryByText("请填写话术内容或添加附件")).not.toBeInTheDocument();
   });
 
+  it("clears empty quick reply validation when adding an attachment", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByText("请填写话术内容或添加附件")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加附件" }));
+    await user.click(screen.getByRole("menuitem", { name: "图片" }));
+    fireEvent.change(screen.getByLabelText("上传图片"), {
+      target: {
+        files: [new File(["image"], "reply.png", { type: "image/png" })],
+      },
+    });
+
+    expect(screen.queryByText("请填写话术内容或添加附件")).not.toBeInTheDocument();
+  });
+
   it("uses shared quick reply payload validation before saving", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();

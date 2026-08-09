@@ -28,6 +28,8 @@ import type {
 } from "@/pages/chat/lib/quick-reply-attachment-types";
 import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
+const QUICK_REPLY_CONTENT_REQUIRED_ERROR = "请填写话术内容或添加附件";
+
 type QuickReplyFormDialogProps = {
   categories: WorkbenchQuickReplyCategoryDto[];
   conversationId?: string;
@@ -91,6 +93,9 @@ export function QuickReplyFormDialog({
     attachmentsRef.current = nextAttachments;
     setAttachments(nextAttachments);
     setAttachmentError("");
+    setContentError((current) =>
+      current === QUICK_REPLY_CONTENT_REQUIRED_ERROR ? "" : current,
+    );
   };
 
   const handleSubmit = async () => {
@@ -98,7 +103,7 @@ export function QuickReplyFormDialog({
     const normalizedLabelText = labelText.trim();
 
     if (!normalizedContentText && attachments.length === 0) {
-      setContentError("请填写话术内容或添加附件");
+      setContentError(QUICK_REPLY_CONTENT_REQUIRED_ERROR);
       return;
     }
 

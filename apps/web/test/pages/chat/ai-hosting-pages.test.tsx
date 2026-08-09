@@ -4241,6 +4241,28 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("reports a list refresh failure separately after an agent is deleted", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("link", { name: "护肤小助理" });
+    vi.mocked(agentService.listAiHostingAgents).mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+    await user.click(screen.getAllByRole("button", { name: /更多操作/ })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(agentService.removeAiHostingAgent).toHaveBeenCalledWith("301");
+    });
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("加载失败，请稍后重试");
+    });
+    expect(toast.error).not.toHaveBeenCalledWith("删除 Agent 失败");
+  });
+
   it("toasts when an agent cannot be deleted", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.removeAiHostingAgent).mockRejectedValueOnce(

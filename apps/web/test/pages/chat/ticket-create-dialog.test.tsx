@@ -99,6 +99,7 @@ describe("TicketCreateDialog", () => {
     expect(screen.getByText("0/2000")).toBeInTheDocument();
     expect(api.getTicketContextOptions).toHaveBeenCalledWith({ conversationId: "301" });
     expect(screen.getByRole("radio", { name: "中" })).toHaveAttribute("data-state", "on");
+    expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
 
     await user.type(screen.getByRole("textbox", { name: "标题" }), " 跟进退款 ");
     await user.click(screen.getByRole("button", { name: "创建" }));

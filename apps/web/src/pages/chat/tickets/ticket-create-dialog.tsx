@@ -67,7 +67,6 @@ export function TicketCreateDialog({
   const [isOptionsLoading, setIsOptionsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [optionsError, setOptionsError] = useState<string>();
-  const [titleError, setTitleError] = useState<string>();
   const scopeRef = useRef("");
   const scopeKey = `${conversationId}:${open ? "open" : "closed"}`;
   scopeRef.current = scopeKey;
@@ -88,7 +87,6 @@ export function TicketCreateDialog({
     setAssignees([]);
     setSessions([]);
     setOptionsError(undefined);
-    setTitleError(undefined);
     setIsOptionsLoading(true);
 
     void getTicketContextOptions({ conversationId })
@@ -119,13 +117,11 @@ export function TicketCreateDialog({
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
     if (!normalizedTitle) {
-      setTitleError("请输入工单标题");
       return;
     }
 
     const requestScope = scopeRef.current;
     setIsSubmitting(true);
-    setTitleError(undefined);
     try {
       const result = await createTicket({
         ...(assigneeSubUserId === undefined
@@ -174,13 +170,9 @@ export function TicketCreateDialog({
             <div className="relative">
               <Input
                 aria-label="标题"
-                aria-invalid={titleError ? true : undefined}
                 className="pr-16"
                 maxLength={120}
-                onChange={(event) => {
-                  setTitle(event.target.value);
-                  setTitleError(undefined);
-                }}
+                onChange={(event) => setTitle(event.target.value)}
                 placeholder="请输入工单标题"
                 value={title}
               />
@@ -188,11 +180,6 @@ export function TicketCreateDialog({
                 {title.length}/120
               </span>
             </div>
-            {titleError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {titleError}
-              </p>
-            ) : null}
           </Field>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="负责人">

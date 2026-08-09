@@ -20,6 +20,7 @@ vi.mock("sonner", async (importOriginal) => {
     ...actual,
     toast: {
       ...actual.toast,
+      error: vi.fn(),
       success: vi.fn(),
       warning: vi.fn(),
     },
@@ -154,7 +155,7 @@ describe("useQuickReplies", () => {
         }),
       ),
     ).rejects.toThrow("保存失败");
-    expect(toast.warning).toHaveBeenCalledWith("保存失败");
+    expect(toast.error).toHaveBeenCalledWith("保存失败");
   });
 
   it("sorts quick reply categories and replies through the service", async () => {

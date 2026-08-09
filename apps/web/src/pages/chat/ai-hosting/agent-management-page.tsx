@@ -251,14 +251,19 @@ export function AgentManagementPage() {
     try {
       await removeAiHostingAgent(removeTarget.id);
       setRemoveTarget(null);
-      const response = await listAiHostingAgents({
-        page: activePage,
-        pageSize: AGENT_PAGE_SIZE,
-        query: debouncedAgentSearchQuery,
-      });
-      setAgents(response.agents);
-      setTotalAgents(response.pagination.total);
       notifyAiHostingQuotaChanged();
+
+      try {
+        const response = await listAiHostingAgents({
+          page: activePage,
+          pageSize: AGENT_PAGE_SIZE,
+          query: debouncedAgentSearchQuery,
+        });
+        setAgents(response.agents);
+        setTotalAgents(response.pagination.total);
+      } catch {
+        toast.error("加载失败，请稍后重试");
+      }
     } catch (error) {
       setRemoveTarget(null);
       toast.error(isRequestError(error) ? error.message : "删除 Agent 失败");

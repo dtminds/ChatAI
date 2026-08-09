@@ -32,6 +32,22 @@ describe("SupportInvestigationDialog", () => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
+  it("shows the account and reason fields before a UID is queried", () => {
+    render(
+      <MemoryRouter>
+        <SupportInvestigationDialog onOpenChange={vi.fn()} open />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByText("选择租户账号后进入只读聊天工作台"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("筛选账号名称或登录账号"),
+    ).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "排查原因" })).toBeDisabled();
+  });
+
   it("queries a UID, filters target accounts, and starts the selected investigation", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
@@ -39,17 +55,17 @@ describe("SupportInvestigationDialog", () => {
       data: {
         accounts: [
           {
-            account: "owner",
             accountType: "main",
             displayName: "主账号",
+            maskedAccount: "ow****er",
             role: "owner",
             subUserId: "1",
             uid: 9001,
           },
           {
-            account: "sales-agent",
             accountType: "sub",
             displayName: "销售客服",
+            maskedAccount: "sa****nt",
             role: "operator",
             subUserId: "201",
             uid: 9001,
@@ -85,7 +101,7 @@ describe("SupportInvestigationDialog", () => {
 
     await user.type(
       screen.getByPlaceholderText("筛选账号名称或登录账号"),
-      "sales",
+      "sa",
     );
 
     expect(screen.queryByRole("radio", { name: /^主账号/ })).not.toBeInTheDocument();

@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Bug01Icon,
   LogoutSquare01Icon,
   ModernTvIcon,
   MoreVerticalIcon,
   Moon02Icon,
   PaintBoardIcon,
   Progress03Icon,
-  Search01Icon,
   Settings03Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
@@ -86,11 +86,31 @@ export function SignedInAccountMenu({
   const [isThemeColorMenuOpen, setIsThemeColorMenuOpen] = useState(false);
   const [isAppearanceModeMenuOpen, setIsAppearanceModeMenuOpen] = useState(false);
   const [isSupportInvestigationOpen, setIsSupportInvestigationOpen] = useState(false);
+  const [isSupportInvestigationEntryVisible, setIsSupportInvestigationEntryVisible] =
+    useState(false);
   const signedInName = displayName?.trim() || authDisplayName?.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const activeThemeMode =
     themeModeOptions.find((option) => option.value === themePreference) ??
     themeModeOptions[2];
+
+  useEffect(() => {
+    if (!isAccountMenuOpen || !canStartSupportInvestigation) {
+      return;
+    }
+
+    const handleModifierKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Meta" || event.key === "Control") {
+        setIsSupportInvestigationEntryVisible(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleModifierKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleModifierKeyDown);
+    };
+  }, [canStartSupportInvestigation, isAccountMenuOpen]);
 
   const handleAppearanceThemeChange = (nextTheme: string) => {
     if (!isAppearanceThemeId(nextTheme)) {
@@ -114,6 +134,7 @@ export function SignedInAccountMenu({
     if (!isOpen) {
       setIsThemeColorMenuOpen(false);
       setIsAppearanceModeMenuOpen(false);
+      setIsSupportInvestigationEntryVisible(false);
     }
   };
 
@@ -330,14 +351,14 @@ export function SignedInAccountMenu({
         <DropdownMenuSeparator />
 
         <div className="space-y-1 py-1">
-          {canStartSupportInvestigation ? (
+          {canStartSupportInvestigation && isSupportInvestigationEntryVisible ? (
             <DropdownMenuItem
               className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
               onSelect={() => setIsSupportInvestigationOpen(true)}
             >
               <HugeiconsIcon
                 color="currentColor"
-                icon={Search01Icon}
+                icon={Bug01Icon}
                 size={16}
               />
               <span>问题排查</span>

@@ -44,6 +44,17 @@ const inactiveTarget = {
   uid: 9001,
 };
 
+const phoneTarget = {
+  account: "15658107700",
+  id: 103,
+  name: "手机号客服",
+  platform: 5,
+  role: "operator",
+  status: 1,
+  type: 0,
+  uid: 9001,
+};
+
 describe("support investigation", () => {
   beforeEach(() => {
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
@@ -87,11 +98,19 @@ describe("support investigation", () => {
       data: {
         accounts: [
           {
-            account: "target-admin",
             accountType: "sub",
             displayName: "目标管理员",
+            maskedAccount: "ta****in",
             role: "admin",
             subUserId: "101",
+            uid: 9001,
+          },
+          {
+            accountType: "sub",
+            displayName: "手机号客服",
+            maskedAccount: "156****7700",
+            role: "operator",
+            subUserId: "103",
             uid: 9001,
           },
         ],
@@ -356,7 +375,7 @@ function createSupportDbMock(options: {
   auditWrites?: Record<string, unknown>[];
   selectedTables?: string[];
 }) {
-  const subUsers = [actorSubUser, activeTarget, inactiveTarget];
+  const subUsers = [actorSubUser, activeTarget, inactiveTarget, phoneTarget];
 
   return {
     insertInto(table: string) {

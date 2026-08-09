@@ -98,7 +98,7 @@ describe("AccountRail", () => {
     useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
-  it("shows the problem investigation entry only for an authorized account", async () => {
+  it("reveals the authorized problem investigation entry for the current menu after a modifier key press", async () => {
     const user = userEvent.setup();
     useAuthStore.getState().setSession({
       accountType: "main",
@@ -119,6 +119,27 @@ describe("AccountRail", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "问题排查" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    expect(
+      screen.getByRole("menuitem", { name: "问题排查" }),
+    ).toBeInTheDocument();
+
+    fireEvent.keyUp(window, { key: "Meta" });
+    expect(
+      screen.getByRole("menuitem", { name: "问题排查" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "问题排查" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "Control" });
     await user.click(screen.getByRole("menuitem", { name: "问题排查" }));
 
     expect(

@@ -119,13 +119,36 @@ function parseSubUserId(value: string) {
 
 function mapTargetAccount(row: SupportTargetRow): SupportInvestigationTargetAccount {
   return {
-    account: row.account,
     accountType: deriveAccountType(row.type),
     displayName: row.name,
+    maskedAccount: maskLoginAccount(row.account),
     role: deriveAccountRole(row),
     subUserId: String(row.id),
     uid: row.uid,
   };
+}
+
+function maskLoginAccount(account: string) {
+  const normalizedAccount = account.trim();
+  const characters = Array.from(normalizedAccount);
+
+  if (/^\d{11}$/.test(normalizedAccount)) {
+    return `${normalizedAccount.slice(0, 3)}****${normalizedAccount.slice(-4)}`;
+  }
+
+  if (characters.length <= 1) {
+    return "****";
+  }
+
+  if (characters.length === 2) {
+    return `${characters[0]}****`;
+  }
+
+  if (characters.length <= 4) {
+    return `${characters[0]}****${characters.at(-1)}`;
+  }
+
+  return `${characters.slice(0, 2).join("")}****${characters.slice(-2).join("")}`;
 }
 
 function mapSupportSubUser(row: SupportTargetRow): AuthSubUser {

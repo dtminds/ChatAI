@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -61,7 +60,6 @@ export function SupportInvestigationDialog({
   const [selectedSubUserId, setSelectedSubUserId] = useState("");
   const [starting, setStarting] = useState(false);
   const [uidInput, setUidInput] = useState("");
-  const [wasQueried, setWasQueried] = useState(false);
 
   const filteredAccounts = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLocaleLowerCase();
@@ -72,7 +70,7 @@ export function SupportInvestigationDialog({
 
     return accounts.filter((account) =>
       account.displayName.toLocaleLowerCase().includes(normalizedKeyword)
-      || account.account.toLocaleLowerCase().includes(normalizedKeyword));
+      || account.maskedAccount.toLocaleLowerCase().includes(normalizedKeyword));
   }, [accounts, keyword]);
 
   const reset = () => {
@@ -85,7 +83,6 @@ export function SupportInvestigationDialog({
     setSelectedSubUserId("");
     setStarting(false);
     setUidInput("");
-    setWasQueried(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -111,7 +108,6 @@ export function SupportInvestigationDialog({
     setKeyword("");
     setLoadingAccounts(true);
     setSelectedSubUserId("");
-    setWasQueried(false);
 
     try {
       const response = await getSupportInvestigationAccounts(uid);
@@ -121,7 +117,6 @@ export function SupportInvestigationDialog({
       }
 
       setAccounts(response.data.accounts);
-      setWasQueried(true);
     } catch (error) {
       if (queryIdRef.current === queryId) {
         setErrorMessage(getErrorMessage(error, "查询失败，请稍后重试"));
@@ -164,15 +159,15 @@ export function SupportInvestigationDialog({
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent
+        aria-describedby={undefined}
         className="flex max-h-[min(760px,calc(100svh-2rem))] flex-col overflow-hidden sm:max-w-[560px]"
         closeButtonDisabled={starting}
       >
         <DialogHeader>
           <DialogTitle>问题排查</DialogTitle>
-          <DialogDescription>选择租户账号后进入只读聊天工作台</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+        <div className="-mx-1 min-h-0 space-y-4 overflow-y-auto px-1 pb-1">
           <div className="space-y-2">
             <Label htmlFor="support-investigation-uid">租户 UID</Label>
             <div className="flex gap-2">
@@ -205,36 +200,36 @@ export function SupportInvestigationDialog({
             </div>
           </div>
 
-          {loadingAccounts ? (
-            <div
-              className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground"
-              role="status"
-            >
-              <Spinner size={16} />
-              <span>正在加载</span>
+          <div className="space-y-2">
+            <Label htmlFor="support-investigation-filter">目标账号</Label>
+            <div className="relative">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                icon={Search01Icon}
+                size={15}
+                strokeWidth={1.8}
+              />
+              <Input
+                className="pl-9"
+                disabled={loadingAccounts || accounts.length === 0 || starting}
+                id="support-investigation-filter"
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="筛选账号名称或登录账号"
+                value={keyword}
+              />
             </div>
-          ) : accounts.length > 0 ? (
-            <div className="space-y-2">
-              <Label htmlFor="support-investigation-filter">目标账号</Label>
-              <div className="relative">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  icon={Search01Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                />
-                <Input
-                  className="pl-9"
-                  disabled={starting}
-                  id="support-investigation-filter"
-                  onChange={(event) => setKeyword(event.target.value)}
-                  placeholder="筛选账号名称或登录账号"
-                  value={keyword}
-                />
-              </div>
-              <ScrollArea className="h-56 rounded-[8px] border">
-                {filteredAccounts.length > 0 ? (
+            <div className="h-56 overflow-hidden rounded-[8px] border">
+              {loadingAccounts ? (
+                <div
+                  className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner size={16} />
+                  <span>正在加载</span>
+                </div>
+              ) : accounts.length > 0 && filteredAccounts.length > 0 ? (
+                <ScrollArea className="h-full">
                   <RadioGroup
                     aria-label="目标账号"
                     className="gap-1 p-2"
@@ -262,7 +257,7 @@ export function SupportInvestigationDialog({
                             {account.displayName}
                           </span>
                           <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                            {account.account}
+                            {account.maskedAccount}
                           </span>
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
@@ -271,40 +266,34 @@ export function SupportInvestigationDialog({
                       </Label>
                     ))}
                   </RadioGroup>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                    无匹配账号
-                  </div>
-                )}
-              </ScrollArea>
+                </ScrollArea>
+              ) : (
+                <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
+                  暂无数据
+                </div>
+              )}
             </div>
-          ) : wasQueried ? (
-            <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-              暂无账号
-            </div>
-          ) : null}
+          </div>
 
-          {accounts.length > 0 ? (
-            <div className="space-y-2">
-              <Label>排查原因</Label>
-              <Select
-                disabled={starting}
-                onValueChange={(value) => setReason(value as SupportInvestigationReason)}
-                value={reason}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择排查原因" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SUPPORT_INVESTIGATION_REASONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor="support-investigation-reason">排查原因</Label>
+            <Select
+              disabled={loadingAccounts || accounts.length === 0 || starting}
+              onValueChange={(value) => setReason(value as SupportInvestigationReason)}
+              value={reason}
+            >
+              <SelectTrigger className="w-full" id="support-investigation-reason">
+                <SelectValue placeholder="选择排查原因" />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORT_INVESTIGATION_REASONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {errorMessage ? (
             <p className="text-sm text-destructive" role="alert">

@@ -83,9 +83,9 @@ export const AuthSessionResponseSchema = Type.Object({
 });
 
 export const SupportInvestigationTargetAccountSchema = Type.Object({
-  account: Type.String(),
   accountType: AccountTypeSchema,
   displayName: Type.String(),
+  maskedAccount: Type.String(),
   role: AccountRoleSchema,
   subUserId: Type.String(),
   uid: Type.Number(),

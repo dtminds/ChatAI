@@ -4,7 +4,8 @@ export default defineConfig({
   test: {
     clearMocks: true,
     environment: "node",
-    exclude: ["test/**/*.integration.test.ts"],
-    include: ["test/**/*.test.ts"],
+    hookTimeout: 60_000,
+    include: ["test/**/*.integration.test.ts"],
+    testTimeout: 30_000,
   },
 });

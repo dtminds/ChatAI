@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeReconciler,
+  type WorkflowCreateRunInput,
 } from "../src/index.js";
 
 describe("workflow runtime repository", () => {
@@ -583,7 +584,7 @@ describe("workflow runtime repository", () => {
   });
 });
 
-function createRunInput() {
+function createRunInput(): WorkflowCreateRunInput {
   return {
     context: { trigger: { eventType: "customer.created" } },
     entryEventId: "event-1",
@@ -594,7 +595,9 @@ function createRunInput() {
     revision: 1,
     shardId: 7,
     subjectId: "customer-1",
+    subjectType: "chatai_contact",
     uid: 9,
     workflowId: "31",
+    workflowType: "chatai_sop",
   };
 }

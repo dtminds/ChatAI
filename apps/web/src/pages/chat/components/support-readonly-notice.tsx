@@ -1,5 +1,7 @@
-import { ViewIcon } from "@hugeicons/core-free-icons";
+import { Bug01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import { logout } from "@/pages/auth/auth-service";
 import {
   Tooltip,
   TooltipContent,
@@ -7,22 +9,40 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export function SupportReadonlyNotice({ compact = false }: { compact?: boolean }) {
+type SupportReadonlyNoticeProps = {
+  compact?: boolean;
+  onExit?: () => void | Promise<void>;
+};
+
+export function SupportReadonlyNotice({ compact = false, onExit }: SupportReadonlyNoticeProps) {
+  const handleExit = async () => {
+    if (onExit) {
+      await onExit();
+      return;
+    }
+
+    try {
+      await logout();
+    } finally {
+      notifyAuthSessionChanged();
+    }
+  };
+
   if (compact) {
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              aria-label="只读排查中"
+              aria-label="诊断模式"
               className="flex size-9 items-center justify-center rounded-[8px] border border-warning/30 bg-warning-muted/35 text-warning"
               role="status"
             >
-              <HugeiconsIcon icon={ViewIcon} size={17} strokeWidth={1.8} />
+              <HugeiconsIcon icon={Bug01Icon} size={17} strokeWidth={1.8} />
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
-            只读排查中
+            诊断模式
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -36,13 +56,22 @@ export function SupportReadonlyNotice({ compact = false }: { compact?: boolean }
     >
       <HugeiconsIcon
         className="mt-0.5 shrink-0 text-warning"
-        icon={ViewIcon}
+        icon={Bug01Icon}
         size={17}
         strokeWidth={1.8}
       />
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">只读排查中</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">仅可查看和下载</p>
+        <p className="text-[13px] font-medium text-foreground">诊断模式</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          请谨慎操作，
+          <button
+            className="text-primary hover:underline"
+            onClick={() => void handleExit()}
+            type="button"
+          >
+            点此退出
+          </button>
+        </p>
       </div>
     </div>
   );

@@ -266,7 +266,7 @@ export function AccountRail({
               status={broadcastProtectionStatus}
             />
           ) : null}
-          {supportReadOnly ? <SupportReadonlyNotice compact /> : null}
+          {supportReadOnly ? <SupportReadonlyNotice compact onExit={onLogout} /> : null}
           <SignedInAccountMenu
             displayName={currentEmployee?.displayName}
             onLogout={onLogout}
@@ -416,7 +416,7 @@ export function AccountRail({
         ) : null}
         {supportReadOnly ? (
           <div className="mb-3">
-            <SupportReadonlyNotice />
+            <SupportReadonlyNotice onExit={onLogout} />
           </div>
         ) : null}
         <SignedInAccountMenu

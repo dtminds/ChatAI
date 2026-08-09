@@ -149,6 +149,7 @@ describe("AccountRail", () => {
 
   it("limits support sessions to chat and places the read-only notice below broadcast protection", async () => {
     const user = userEvent.setup();
+    const onLogout = vi.fn();
     const status = {
       degradeCallbackCnt: 1800,
       degradeCallbackRate: 120,
@@ -176,6 +177,7 @@ describe("AccountRail", () => {
           kind: "active",
           status,
         })}
+        onLogout={onLogout}
         onSelectAccount={vi.fn()}
         onTakeOverAccount={vi.fn()}
       />,
@@ -196,6 +198,9 @@ describe("AccountRail", () => {
       name: "群发保护已激活，查看详情",
     });
     const readonlyNotice = within(footer).getByRole("status");
+    const exitInvestigation = within(readonlyNotice).getByRole("button", {
+      name: "点此退出",
+    });
     const accountMenu = within(footer).getByRole("button", {
       name: "打开账号菜单",
     });
@@ -207,6 +212,9 @@ describe("AccountRail", () => {
       readonlyNotice.compareDocumentPosition(accountMenu)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    await user.click(exitInvestigation);
+    expect(onLogout).toHaveBeenCalledOnce();
 
     await user.click(accountMenu);
     expect(screen.queryByRole("menuitem", { name: "设置" })).not.toBeInTheDocument();

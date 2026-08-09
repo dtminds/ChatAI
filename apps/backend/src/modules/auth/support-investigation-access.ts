@@ -5,6 +5,7 @@ type SupportInvestigatorSubject = Pick<JwtUser, "subUserId" | "uid">;
 // Mirrors the current platform observation account list. Changes are deployed
 // with the backend so this privileged capability has one reviewable boundary.
 const SUPPORT_INVESTIGATOR_SUBJECTS: ReadonlySet<string> = new Set([
+  "101:2",
   "272:1",
 ]);
 

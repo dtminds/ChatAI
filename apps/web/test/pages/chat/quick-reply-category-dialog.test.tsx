@@ -21,5 +21,10 @@ describe("QuickReplyCategoryDialog", () => {
 
     expect(await screen.findByText("分类名称不能超过10字")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByRole("textbox"));
+    await user.type(screen.getByRole("textbox"), "新分类");
+
+    expect(screen.queryByText("分类名称不能超过10字")).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { SettingsGroupChat } from "@chatai/contracts";
 import type { FormEvent } from "react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -71,7 +72,6 @@ export function GroupChatReceptionSettingsDialog({
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<GroupChatReceptionSaveProgress | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
   const pickerAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const groupChats = state?.groupChats ?? [];
@@ -130,7 +130,6 @@ export function GroupChatReceptionSettingsDialog({
     setQuery("");
     setSaving(false);
     setSaveProgress(null);
-    setErrorMessage("");
   }, [open, state]);
 
   function toggleManagedAccount(managedAccountId: string) {
@@ -160,7 +159,6 @@ export function GroupChatReceptionSettingsDialog({
 
     setSaving(true);
     setSaveProgress({ completed: 0, total: groupChats.length });
-    setErrorMessage("");
 
     try {
       await onSave(
@@ -170,7 +168,7 @@ export function GroupChatReceptionSettingsDialog({
       );
       onOpenChange(false);
     } catch (error) {
-      setErrorMessage(resolveErrorMessage(error, "保存失败，请稍后重试"));
+      toast.error(resolveErrorMessage(error, "保存失败，请稍后重试"));
     } finally {
       setSaving(false);
     }
@@ -339,11 +337,6 @@ export function GroupChatReceptionSettingsDialog({
                 {optionsError}
               </p>
             ) : null}
-            {errorMessage ? (
-              <p className="text-sm text-destructive" role="alert">
-                {errorMessage}
-              </p>
-            ) : null}
             {saveProgress ? (
               <SaveProgress progress={saveProgress} saving={saving} />
             ) : null}
@@ -367,7 +360,7 @@ export function GroupChatReceptionSettingsDialog({
                   <span>保存中</span>
                 </>
               ) : (
-                isBatchMode && errorMessage ? "重试" : "确认提交"
+                "确认提交"
               )}
             </Button>
           </DialogFooter>

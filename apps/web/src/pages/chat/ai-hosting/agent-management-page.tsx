@@ -173,7 +173,6 @@ export function AgentManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [removeErrorMessage, setRemoveErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
@@ -252,17 +251,22 @@ export function AgentManagementPage() {
     try {
       await removeAiHostingAgent(removeTarget.id);
       setRemoveTarget(null);
-      const response = await listAiHostingAgents({
-        page: activePage,
-        pageSize: AGENT_PAGE_SIZE,
-        query: debouncedAgentSearchQuery,
-      });
-      setAgents(response.agents);
-      setTotalAgents(response.pagination.total);
       notifyAiHostingQuotaChanged();
+
+      try {
+        const response = await listAiHostingAgents({
+          page: activePage,
+          pageSize: AGENT_PAGE_SIZE,
+          query: debouncedAgentSearchQuery,
+        });
+        setAgents(response.agents);
+        setTotalAgents(response.pagination.total);
+      } catch {
+        toast.error("加载失败，请稍后重试");
+      }
     } catch (error) {
       setRemoveTarget(null);
-      setRemoveErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
+      toast.error(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
     }
@@ -414,25 +418,6 @@ export function AgentManagementPage() {
             <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm} variant="destructive">
               确认删除
             </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setRemoveErrorMessage("");
-          }
-        }}
-        open={Boolean(removeErrorMessage)}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除 Agent 失败</AlertDialogTitle>
-            <AlertDialogDescription>{removeErrorMessage}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction>知道了</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

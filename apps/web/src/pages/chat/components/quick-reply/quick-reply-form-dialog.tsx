@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
   validateQuickReplyPayload,
@@ -26,6 +27,8 @@ import type {
   QuickReplyLocalImageAttachment,
 } from "@/pages/chat/lib/quick-reply-attachment-types";
 import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
+
+const QUICK_REPLY_CONTENT_REQUIRED_ERROR = "请填写话术内容或添加附件";
 
 type QuickReplyFormDialogProps = {
   categories: WorkbenchQuickReplyCategoryDto[];
@@ -55,7 +58,9 @@ export function QuickReplyFormDialog({
     initialValues?.attachments ?? [],
   );
   const attachmentsRef = useRef<QuickReplyDraftAttachment[]>(attachments);
-  const [error, setError] = useState("");
+  const [attachmentError, setAttachmentError] = useState("");
+  const [contentError, setContentError] = useState("");
+  const [labelError, setLabelError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -69,7 +74,9 @@ export function QuickReplyFormDialog({
 
       attachmentsRef.current = nextAttachments;
       setAttachments(nextAttachments);
-      setError("");
+      setAttachmentError("");
+      setContentError("");
+      setLabelError("");
       setIsSubmitting(false);
     }
   }, [initialValues, open]);
@@ -85,6 +92,10 @@ export function QuickReplyFormDialog({
     revokeRemovedLocalImageUrls(attachmentsRef.current, nextAttachments);
     attachmentsRef.current = nextAttachments;
     setAttachments(nextAttachments);
+    setAttachmentError("");
+    setContentError((current) =>
+      current === QUICK_REPLY_CONTENT_REQUIRED_ERROR ? "" : current,
+    );
   };
 
   const handleSubmit = async () => {
@@ -92,57 +103,67 @@ export function QuickReplyFormDialog({
     const normalizedLabelText = labelText.trim();
 
     if (!normalizedContentText && attachments.length === 0) {
-      setError("请填写话术内容或添加附件");
+      setContentError(QUICK_REPLY_CONTENT_REQUIRED_ERROR);
       return;
     }
 
     if (normalizedContentText.length > 1000) {
-      setError("话术内容不能超过1000字");
+      setContentError("话术内容不能超过1000字");
       return;
     }
 
     if (normalizedLabelText.length > 10) {
-      setError("短标题不能超过10个字");
+      setLabelError("短标题不能超过10个字");
       return;
     }
 
     if (attachments.length > QUICK_REPLY_ATTACHMENT_MAX_COUNT) {
-      setError("附件最多添加5个");
+      setAttachmentError("附件最多添加5个");
       return;
     }
 
     if (categoryId === 0) {
-      setError("请选择二级分类");
+      toast.error("请选择二级分类");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const resolvedAttachments = await resolveAttachmentsForSubmit(
-        conversationId,
-        attachments,
-      );
+      let resolvedAttachments: WorkbenchQuickReplyAttachment[];
+
+      try {
+        resolvedAttachments = await resolveAttachmentsForSubmit(
+          conversationId,
+          attachments,
+        );
+      } catch (uploadError) {
+        toast.error(resolveErrorMessage(uploadError, "图片上传失败，请重试").trim());
+        return;
+      }
+
       const validation = validateQuickReplyPayload({
         attachments: resolvedAttachments,
         contentText: normalizedContentText,
       });
 
       if (!validation.ok) {
-        setError(validation.errorMsg);
+        setAttachmentError(validation.errorMsg);
         return;
       }
 
-      await onSubmit({
-        attachments: resolvedAttachments,
-        categoryId,
-        contentText: normalizedContentText,
-        labelColor,
-        labelText: normalizedLabelText,
-      });
-      onOpenChange(false);
-    } catch (submitError) {
-      setError(resolveErrorMessage(submitError, "保存失败，请稍后重试").trim());
+      try {
+        await onSubmit({
+          attachments: resolvedAttachments,
+          categoryId,
+          contentText: normalizedContentText,
+          labelColor,
+          labelText: normalizedLabelText,
+        });
+        onOpenChange(false);
+      } catch {
+        // The mutation owner reports the request failure.
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -194,11 +215,20 @@ export function QuickReplyFormDialog({
               </div>
             </div>
             <Input
+              aria-invalid={labelError ? true : undefined}
               maxLength={10}
-              onChange={(event) => setLabelText(event.target.value)}
+              onChange={(event) => {
+                setLabelText(event.target.value);
+                setLabelError("");
+              }}
               placeholder="请输入短标题，10字以内"
               value={labelText}
             />
+            {labelError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {labelError}
+              </p>
+            ) : null}
           </div>
 
           <div className="min-w-0 space-y-2">
@@ -209,12 +239,21 @@ export function QuickReplyFormDialog({
               </span>
             </div>
             <Textarea
+              aria-invalid={contentError ? true : undefined}
               maxLength={1000}
-              onChange={(event) => setContentText(event.target.value)}
+              onChange={(event) => {
+                setContentText(event.target.value);
+                setContentError("");
+              }}
               placeholder="请输入话术内容"
               rows={5}
               value={contentText}
             />
+            {contentError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {contentError}
+              </p>
+            ) : null}
           </div>
 
           <QuickReplyAttachmentPicker
@@ -222,8 +261,11 @@ export function QuickReplyFormDialog({
             maxCount={QUICK_REPLY_ATTACHMENT_MAX_COUNT}
             onChange={handleAttachmentsChange}
           />
-
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {attachmentError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {attachmentError}
+            </p>
+          ) : null}
         </div>
         <DialogFooter>
           <Button

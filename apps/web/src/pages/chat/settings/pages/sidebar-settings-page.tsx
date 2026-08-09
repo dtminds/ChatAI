@@ -774,7 +774,9 @@ function SidebarItemDialog({
   const [url, setUrl] = useState("");
   const [bindSingle, setBindSingle] = useState(true);
   const [bindGroup, setBindGroup] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [urlError, setUrlError] = useState("");
+  const [bindTypesError, setBindTypesError] = useState("");
 
   useEffect(() => {
     if (!state) {
@@ -785,7 +787,9 @@ function SidebarItemDialog({
     setUrl(state.mode === "edit" ? state.item.url : "");
     setBindSingle(state.mode !== "edit" || state.item.bindTypes.includes("1"));
     setBindGroup(state.mode !== "edit" || state.item.bindTypes.includes("2"));
-    setErrorMessage("");
+    setNameError("");
+    setUrlError("");
+    setBindTypesError("");
   }, [state]);
 
   async function handleSubmit() {
@@ -796,13 +800,17 @@ function SidebarItemDialog({
     const normalizedName = name.trim();
     const normalizedUrl = url.trim();
 
-    if (!normalizedName || !normalizedUrl) {
-      setErrorMessage("请完整填写侧边栏页面信息");
-      return;
-    }
+    const nextNameError = !normalizedName
+      ? "请输入页面名称"
+      : getSidebarItemNameWeight(normalizedName) > maxSidebarItemNameWeight
+        ? "页面名称最多 8 个字符"
+        : "";
+    const nextUrlError = normalizedUrl ? "" : "请输入页面地址";
 
-    if (getSidebarItemNameWeight(normalizedName) > maxSidebarItemNameWeight) {
-      setErrorMessage("页面名称最多 8 个字符");
+    setNameError(nextNameError);
+    setUrlError(nextUrlError);
+
+    if (nextNameError || nextUrlError) {
       return;
     }
 
@@ -817,7 +825,7 @@ function SidebarItemDialog({
     }
 
     if (bindTypes.length === 0) {
-      setErrorMessage("请选择至少一种会话类型");
+      setBindTypesError("请选择至少一种会话类型");
       return;
     }
 
@@ -842,22 +850,44 @@ function SidebarItemDialog({
 
         <div className="space-y-4 py-2">
           <Field label="页面名称">
-            <Input
-              aria-label="页面名称"
-              className="h-10 rounded-[8px]"
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如：企业名片"
-              value={name}
-            />
+            <>
+              <Input
+                aria-invalid={nameError ? true : undefined}
+                aria-label="页面名称"
+                className="h-10 rounded-[8px]"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError("");
+                }}
+                placeholder="例如：企业名片"
+                value={name}
+              />
+              {nameError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {nameError}
+                </p>
+              ) : null}
+            </>
           </Field>
           <Field label="页面地址">
-            <Input
-              aria-label="页面地址"
-              className="h-10 rounded-[8px]"
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://example.com/page"
-              value={url}
-            />
+            <>
+              <Input
+                aria-invalid={urlError ? true : undefined}
+                aria-label="页面地址"
+                className="h-10 rounded-[8px]"
+                onChange={(event) => {
+                  setUrl(event.target.value);
+                  setUrlError("");
+                }}
+                placeholder="https://example.com/page"
+                value={url}
+              />
+              {urlError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {urlError}
+                </p>
+              ) : null}
+            </>
           </Field>
           <Field label="会话类型">
             <div className="flex gap-3 pt-0.5 ">
@@ -868,6 +898,7 @@ function SidebarItemDialog({
                   id="sidebar-settings-bind-single"
                   onCheckedChange={(checked) => {
                     setBindSingle(checked === true);
+                    setBindTypesError("");
                   }}
                 />
                 <span className={cn(isSubmitting ? "opacity-50" : undefined)}>单聊</span>
@@ -879,15 +910,18 @@ function SidebarItemDialog({
                   id="sidebar-settings-bind-group"
                   onCheckedChange={(checked) => {
                     setBindGroup(checked === true);
+                    setBindTypesError("");
                   }}
                 />
                 <span className={cn(isSubmitting ? "opacity-50" : undefined)}>群聊</span>
               </label>
             </div>
+            {bindTypesError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {bindTypesError}
+              </p>
+            ) : null}
           </Field>
-          {errorMessage ? (
-            <p className="text-sm text-destructive">{errorMessage}</p>
-          ) : null}
         </div>
 
         <DialogFooter>

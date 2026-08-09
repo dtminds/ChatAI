@@ -150,8 +150,8 @@ export function SupportInvestigationDialog({
       handleOpenChange(false);
       navigate("/chat", { replace: true });
       notifyAuthSessionChanged();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "开始排查失败，请稍后重试"));
+    } catch {
+      toast.error("操作失败，请稍后重试");
       setStarting(false);
     }
   };

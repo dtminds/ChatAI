@@ -127,6 +127,44 @@ describe("SupportInvestigationDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("uses the generic action failure message when starting an investigation fails", async () => {
+    const user = userEvent.setup();
+    authServiceMocks.getSupportInvestigationAccounts.mockResolvedValue({
+      data: {
+        accounts: [
+          {
+            accountType: "sub",
+            displayName: "销售客服",
+            maskedAccount: "sa****nt",
+            role: "operator",
+            subUserId: "201",
+            uid: 9001,
+          },
+        ],
+      },
+    });
+    authServiceMocks.startSupportInvestigation.mockRejectedValueOnce(
+      new Error("start failed"),
+    );
+
+    render(
+      <MemoryRouter>
+        <SupportInvestigationDialog onOpenChange={vi.fn()} open />
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("租户 UID"), "9001");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(await screen.findByRole("radio", { name: /销售客服/ }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "产品观测" }));
+    await user.click(screen.getByRole("button", { name: "开始排查" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("操作失败，请稍后重试");
+    });
+  });
+
   it("clears an invalid UID error when the UID changes", async () => {
     const user = userEvent.setup();
 

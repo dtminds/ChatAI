@@ -1,7 +1,7 @@
 name: 缺陷反馈 Bug
 description: 反馈影响使用的问题
 title: "[Bug] "
-labels: ["type: bug", "status: needs-triage"]
+labels: ["type: bug", "needs-triage"]
 body:
   - type: markdown
     attributes:

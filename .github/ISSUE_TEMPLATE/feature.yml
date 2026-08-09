@@ -1,7 +1,7 @@
 name: 产品需求 Feature
 description: 提交新能力、流程优化或产品需求
 title: "[Feature] "
-labels: ["type: feature", "status: needs-triage"]
+labels: ["type: feature", "needs-triage"]
 body:
   - type: markdown
     attributes:

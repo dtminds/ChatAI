@@ -7325,7 +7325,7 @@ describe("WorkbenchRepository", () => {
   });
 
   it("keeps revoke event rows visible in historical message pages", async () => {
-    const repository = new WorkbenchRepository(createMessagesDb([
+    const db = createMessagesDb([
       messageRow({
         content: JSON.stringify({ type: "revoke", revokeMsgId: "516" }),
         id: 103,
@@ -7344,7 +7344,8 @@ describe("WorkbenchRepository", () => {
         msgid: "remote-msg-101",
         msgtype: "text",
       }),
-    ]) as never);
+    ]);
+    const repository = new WorkbenchRepository(db as never);
 
     await expect(repository.listMessages("88", { limit: 3 })).resolves.toMatchObject({
       filteredCount: 0,
@@ -7373,6 +7374,7 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+    expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "desc"]]);
   });
 
   it("limits poll message reads to the previous day after the active message sequence", async () => {
@@ -7396,6 +7398,7 @@ describe("WorkbenchRepository", () => {
         ">",
         101,
       ]);
+      expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "asc"]]);
       expect(db.messageQueries[0]?.limits).toEqual([51]);
     } finally {
       vi.useRealTimers();

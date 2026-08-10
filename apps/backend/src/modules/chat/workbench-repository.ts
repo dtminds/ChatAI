@@ -4546,13 +4546,14 @@ export class WorkbenchRepository {
         .where("message.id", ">", options.afterSeq);
     }
 
+    const orderDirection = options.afterSeq != null ? "asc" : "desc";
     const rows = await query
-      .orderBy("message.id", "desc")
+      .orderBy("message.id", orderDirection)
       .limit(options.limit + 1)
       .execute();
 
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
-    const messageRows = [...rawRows].reverse();
+    const messageRows = orderDirection === "desc" ? [...rawRows].reverse() : rawRows;
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(

@@ -629,6 +629,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("uid", "=", input.uid)
         .where("subscription_id", "=", subscription.id)
         .where("event_id", "=", input.eventId)
+        .forShare()
         .executeTakeFirst();
       if (existingEvent) return { kind: "already-processed" as const };
       if ((task.status !== "pending"
@@ -901,6 +902,25 @@ export class MysqlWorkflowRuntimeRepository implements
       return { cancelled: 0, deferred: 0, dispatched: 0 };
     }
     return this.db.transaction().execute(async (trx) => {
+      let deferredQuery = trx.selectFrom(`${TASK_TABLE} as task`)
+        .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+          .onRef("definition.uid", "=", "task.uid")
+          .onRef("definition.id", "=", "task.workflow_id"))
+        .select("task.id")
+        .where("task.status", "=", "pending")
+        .where("task.bucket_time", "<=", floorToMinute(input.now))
+        .where("task.due_at", "<=", input.now)
+        .where("definition.biz_status", "=", 1)
+        .where("definition.runtime_status", "=", "paused")
+        .orderBy("task.bucket_time", "asc")
+        .orderBy("task.due_at", "asc")
+        .orderBy("task.id", "asc")
+        .limit(input.limit);
+      if (input.shardIds) {
+        deferredQuery = deferredQuery.where("task.shard_id", "in", input.shardIds);
+      }
+      const deferred = (await deferredQuery.execute()).length;
+
       let query = trx.selectFrom(`${TASK_TABLE} as task`)
         .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
           .onRef("definition.uid", "=", "task.uid")
@@ -922,7 +942,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .skipLocked();
       if (input.shardIds) query = query.where("task.shard_id", "in", input.shardIds);
       const rows = await query.execute();
-      const result = { cancelled: 0, deferred: 0, dispatched: 0 };
+      const result = { cancelled: 0, deferred, dispatched: 0 };
       for (const row of rows) {
         const task = mapTask(row);
         const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")

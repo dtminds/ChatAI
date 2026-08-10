@@ -1101,7 +1101,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
       const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
       if (decision === "defer") {
-        result.deferred += 1;
+        if (result.deferred < Math.max(0, input.limit)) result.deferred += 1;
         continue;
       }
       task.taskVersion += 1;

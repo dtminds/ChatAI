@@ -72,6 +72,7 @@ const workflowNodePointerThreshold = 4;
 const workflowPaletteNodeGap = 24;
 
 export function WorkflowCanvas({
+  allowedInsertableNodeKinds,
   canRedo,
   canUndo,
   edges,
@@ -101,6 +102,7 @@ export function WorkflowCanvas({
   paletteOpen,
   viewport,
 }: {
+  allowedInsertableNodeKinds: readonly InsertableWorkflowNodeKind[];
   canRedo: boolean;
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
@@ -254,10 +256,16 @@ export function WorkflowCanvas({
         zoomOnScroll
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
-        {activeInsertNode ? <WorkflowCandidateMenuOverlay node={activeInsertNode} /> : null}
+        {activeInsertNode ? (
+          <WorkflowCandidateMenuOverlay
+            allowedInsertableNodeKinds={allowedInsertableNodeKinds}
+            node={activeInsertNode}
+          />
+        ) : null}
         <WorkflowBottomToolbar
           canRedo={canRedo}
           canUndo={canUndo}
+          insertableNodeKinds={allowedInsertableNodeKinds}
           disabled={isReadOnly}
           fitView={() => fitView({ duration: 160, padding: 0.2 })}
           nextRedoLabel={nextRedoLabel}
@@ -340,12 +348,20 @@ function mergeDraggedNodePositions(
   return changed ? nextNodes : nodes;
 }
 
-function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
+function WorkflowCandidateMenuOverlay({
+  allowedInsertableNodeKinds,
+  node,
+}: {
+  allowedInsertableNodeKinds: readonly InsertableWorkflowNodeKind[];
+  node: WorkflowRenderNode;
+}) {
   const sourceHandle = node.data.insertMenuSourceHandle;
   const { x, y, zoom } = useViewport();
   const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;
   const menuTop = getInsertMenuTop(node, sourceHandle) * zoom + y;
-  const candidateKinds = getInsertableNodeKindsForSource(node.data.kind);
+  const allowedKindSet = new Set(allowedInsertableNodeKinds);
+  const candidateKinds = getInsertableNodeKindsForSource(node.data.kind)
+    .filter((kind) => allowedKindSet.has(kind));
 
   return (
     <WorkflowNodePicker
@@ -368,6 +384,7 @@ function WorkflowBottomToolbar({
   canUndo,
   disabled,
   fitView,
+  insertableNodeKinds,
   nextRedoLabel,
   nextUndoLabel,
   onAddNode,
@@ -389,6 +406,7 @@ function WorkflowBottomToolbar({
   canUndo: boolean;
   disabled: boolean;
   fitView: () => void;
+  insertableNodeKinds: readonly InsertableWorkflowNodeKind[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
   onAddNode: (kind: InsertableWorkflowNodeKind, position: { x: number; y: number }) => void;
@@ -582,6 +600,7 @@ function WorkflowBottomToolbar({
           {paletteOpen && !disabled ? (
             <WorkflowNodePicker
               className="workflow-floating-palette absolute bottom-10 right-0 w-[360px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(420px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
+              kinds={[...insertableNodeKinds]}
               onAddNode={(kind, context) => {
                 if (!context) return;
                 onAddNode(

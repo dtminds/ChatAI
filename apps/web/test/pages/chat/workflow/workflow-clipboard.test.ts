@@ -55,7 +55,7 @@ describe("workflow clipboard", () => {
         conditions: [{
           id: "condition-high",
           operator: "equals",
-          selector: ["customer", "name"],
+          selector: ["subject", "id"],
           value: "高意向",
         }],
         id: "branch-high",
@@ -66,7 +66,7 @@ describe("workflow clipboard", () => {
         conditions: [{
           id: "condition-low",
           operator: "equals",
-          selector: ["customer", "name"],
+          selector: ["subject", "id"],
           value: "低意向",
         }],
         id: "branch-low",

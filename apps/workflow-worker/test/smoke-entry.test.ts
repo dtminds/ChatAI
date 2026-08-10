@@ -26,9 +26,9 @@ describe("workflow entry smoke producer", () => {
       trigger: { type: "contact.friend_added" as const },
     },
     {
-      eventType: "customer.tag_added" as const,
+      eventType: "contact.tag_added" as const,
       expectedPayload: { tagId: "tag-1" },
-      trigger: { tagIds: ["tag-1"], type: "customer.tag_added" as const },
+      trigger: { tagIds: ["tag-1"], type: "contact.tag_added" as const },
     },
     {
       eventType: "message.received" as const,
@@ -65,6 +65,7 @@ describe("workflow entry smoke producer", () => {
       eventId: "smoke-event-1",
       now: new Date("2026-07-11T00:00:00.000Z"),
       subjectId: "third-user-1",
+      subjectType: "chatai_contact",
       topic: "topic-workflow-entry-dev",
     });
 
@@ -81,7 +82,7 @@ describe("workflow entry smoke producer", () => {
       uid: "9",
     });
     expect(command).not.toHaveProperty("workflowId");
-    expect(published.key).toBe("third-user-1");
+    expect(published.key).toBe("9:chatai_contact:third-user-1");
   });
 });
 
@@ -101,6 +102,7 @@ function binding(
     id: "3",
     revision: 1,
     status: 1,
+    subjectType: "chatai_contact",
     uid: 9,
     updatedAt: now,
     workflowId: "31",

@@ -46,6 +46,7 @@ describe("workflow start configuration", () => {
     const onNodeChange = vi.fn();
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         edges={[]}
         node={createStartNode()}
         nodes={[createStartNode()]}
@@ -68,11 +69,29 @@ describe("workflow start configuration", () => {
     }));
   });
 
+  it("only exposes entry events allowed by the Workflow capability profile", () => {
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
+        edges={[]}
+        node={createStartNode()}
+        nodes={[createStartNode()]}
+        onNodeChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "添加好友" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "用户发送消息" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "消息包含关键词" })).not.toBeInTheDocument();
+  });
+
   it("supports rolling-window entry limits", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         edges={[]}
         node={createStartNode()}
         nodes={[createStartNode()]}
@@ -100,6 +119,7 @@ describe("workflow start configuration", () => {
     });
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         edges={[]}
         node={node}
         nodes={[node]}
@@ -129,6 +149,7 @@ describe("workflow start configuration", () => {
     });
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         edges={[]}
         node={node}
         nodes={[node]}

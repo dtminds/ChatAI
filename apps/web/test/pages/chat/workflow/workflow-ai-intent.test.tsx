@@ -6,7 +6,7 @@ import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { updateNodeDataOperation } from "@/pages/chat/workflow/graph-operations";
 import { getWorkflowNodeEstimatedHeight } from "@/pages/chat/workflow/layout";
-import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
+import { createDefaultNodeData, getNodeDefinition, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
 import {
   AI_INTENT_DESCRIPTION_MAX_LENGTH,
   AI_INTENT_DESCRIPTION_COUNT_THRESHOLD,
@@ -230,6 +230,7 @@ describe("workflow AI intent", () => {
     const rendered = createWorkflowRenderElements({
       ...createRenderHandlers(),
       activeEdgeInsertMenuId: null,
+      allowedInsertableNodeKinds: insertableNodeKinds,
       edges: [
         createEdge(startNode.id, queryNode.id),
         createEdge(queryNode.id, intentNode.id),

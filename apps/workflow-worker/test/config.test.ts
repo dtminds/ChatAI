@@ -3,8 +3,16 @@ import { loadWorkflowWorkerConfig } from "../src/config.js";
 
 describe("workflow worker config", () => {
   it.each([
-    ["dev", "topic-workflow-entry-dev", "topic-workflow-task-dev"],
-    ["test01", "topic-workflow-entry-test01", "topic-workflow-task-test01"],
+    [
+      "dev",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
+    ],
+    [
+      "test01",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-test01",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-test01",
+    ],
   ] as const)("maps %s to isolated workflow topics", (environment, entryTopic, taskTopic) => {
     const config = loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: environment }));
 
@@ -14,8 +22,12 @@ describe("workflow worker config", () => {
       task: `consumer-chatai-worker-env-${environment}`,
     });
     expect(config.subscriptionType).toBe("Shared");
-    expect(config.deadLetterTopics.entry).toBe(`consumer-chatai-worker-env-${environment}-DLQ`);
-    expect(config.deadLetterTopics.task).toBe(`consumer-chatai-worker-env-${environment}-DLQ`);
+    expect(config.deadLetterTopics.entry).toBe(
+      `persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-${environment}-DLQ`,
+    );
+    expect(config.deadLetterTopics.task).toBe(
+      `persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-${environment}-DLQ`,
+    );
   });
 
   it("allows entry and task subscriptions to be overridden independently", () => {
@@ -63,6 +75,8 @@ describe("workflow worker config", () => {
   it("requires a cluster ID and namespace for the Pulsar broker", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_BROKER: "pulsar",
+      WORKFLOW_PULSAR_CLUSTER_ID: "",
+      WORKFLOW_PULSAR_NAMESPACE: "",
       WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
       WORKFLOW_PULSAR_TOKEN: "secret-token",
     }))).toThrow("Missing required Workflow Pulsar cluster ID or namespace");
@@ -84,7 +98,25 @@ describe("workflow worker config", () => {
 
   it("rejects unknown broker modes instead of falling through to Pulsar", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
-      .toThrow("WORKFLOW_BROKER must be fake or pulsar");
+      .toThrow("WORKFLOW_BROKER must be pulsar");
+  });
+
+  it("loads deployment capabilities and the Java entitlement endpoint", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      JAVA_INTERNAL_API_TOKEN: "internal-token",
+      WORKFLOW_DEPLOYMENT_CAPABILITIES: "event.contact.tag_added@1,event.contact.friend_added@1",
+      WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
+    }));
+
+    expect(config.deploymentCapabilities.capabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
+    ]);
+    expect(config.deploymentCapabilities.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(config.entitlement).toEqual({
+      apiUrl: "https://java.example.com/internal/workflow/entitlement",
+      token: "internal-token",
+    });
   });
 
   it("starts every Phase 3 role by default with bounded runtime settings", () => {
@@ -158,8 +190,12 @@ describe("workflow worker config", () => {
 function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     DATABASE_URL: "mysql://user:password@localhost/workflow",
-    WORKFLOW_BROKER: "fake",
+    WORKFLOW_BROKER: "pulsar",
     WORKFLOW_ENVIRONMENT: "dev",
+    WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
+    WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
+    WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
+    WORKFLOW_PULSAR_TOKEN: "secret-token",
     ...overrides,
   };
 }

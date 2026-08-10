@@ -99,6 +99,7 @@ describe("workflow node outputs", () => {
   it("lets nodes that own output configuration suppress the shared output section", () => {
     render(
       <NodeConfigPanel
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         edges={[]}
         node={createNode("llm", 0)}
         nodes={[createNode("llm", 0)]}

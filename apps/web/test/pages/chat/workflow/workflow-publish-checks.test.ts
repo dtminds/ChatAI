@@ -1,9 +1,10 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { getWorkflowCapabilityProfile } from "@chatai/contracts";
 import {
-  buildPublishChecks,
-  buildPublishChecklist,
-  useWorkflowPublishChecks,
+  buildPublishChecks as buildPublishChecksWithPolicy,
+  buildPublishChecklist as buildPublishChecklistWithPolicy,
+  useWorkflowPublishChecks as useWorkflowPublishChecksWithPolicy,
 } from "@/pages/chat/workflow/checks/publish-checks";
 import {
   createEdge,
@@ -13,13 +14,41 @@ import {
 } from "@/pages/chat/workflow/graph";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
-import type { WorkflowNode } from "@/pages/chat/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@/pages/chat/workflow/types";
 import {
   validateWorkflowDraft,
   validateWorkflowNodeConfig,
   validateWorkflowNodeGraphState,
 } from "@/pages/chat/workflow/validation/workflow-validation";
-import { buildWorkflowValidationSummaryFromResult } from "@/pages/chat/workflow/validation/workflow-validation-summary";
+import {
+  buildWorkflowValidationSummaryFromResult as buildWorkflowValidationSummaryFromResultWithPolicy,
+} from "@/pages/chat/workflow/validation/workflow-validation-summary";
+
+const capabilityProfile = getWorkflowCapabilityProfile("chatai_sop");
+const validationPolicy = {
+  allowedEntryEventTypes: capabilityProfile.allowedEntryEventTypes,
+  allowedNodeKinds: capabilityProfile.allowedNodeKinds,
+  runtimeSupportedNodeKinds: ["start", "wait", "end"] as const,
+};
+
+function buildPublishChecks(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+  return buildPublishChecksWithPolicy(nodes, edges, validationPolicy);
+}
+
+function buildPublishChecklist(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+  return buildPublishChecklistWithPolicy(nodes, edges, validationPolicy);
+}
+
+function buildWorkflowValidationSummaryFromResult(
+  nodes: WorkflowNode[],
+  validation: Parameters<typeof buildWorkflowValidationSummaryFromResultWithPolicy>[1],
+) {
+  return buildWorkflowValidationSummaryFromResultWithPolicy(nodes, validation, validationPolicy);
+}
+
+function useWorkflowPublishChecks(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+  return useWorkflowPublishChecksWithPolicy(nodes, edges, validationPolicy);
+}
 
 describe("buildPublishChecks", () => {
   it("returns only unresolved checklist items while keeping a readiness summary", () => {
@@ -319,7 +348,7 @@ describe("buildPublishChecks", () => {
             conditions: [{
               id: "condition-invalid",
               operator: "greater-than",
-              selector: ["customer", "name"],
+              selector: ["subject", "id"],
               value: "10",
             }],
             id: "branch-high",

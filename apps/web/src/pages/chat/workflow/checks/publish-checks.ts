@@ -6,12 +6,17 @@ import type {
   WorkflowPublishCheckSummaryItem,
 } from "../types";
 import { buildWorkflowValidationSummary } from "../validation/workflow-validation-summary";
+import type { WorkflowValidationPolicy } from "../validation/workflow-validation-summary";
 
 export function useWorkflowPublishChecks(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  policy: WorkflowValidationPolicy,
 ) {
-  const checklist = useMemo(() => buildPublishChecklist(nodes, edges), [edges, nodes]);
+  const checklist = useMemo(
+    () => buildPublishChecklist(nodes, edges, policy),
+    [edges, nodes, policy],
+  );
   const { canPublish, checks, readyChecks, summary, totalSummaryChecks } = checklist;
 
   return {
@@ -28,6 +33,7 @@ export function useWorkflowPublishChecks(
 export function buildPublishChecklist(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  policy: WorkflowValidationPolicy,
 ): {
   checks: WorkflowPublishCheck[];
   canPublish: boolean;
@@ -36,12 +42,13 @@ export function buildPublishChecklist(
   summary: WorkflowPublishCheckSummaryItem[];
   totalSummaryChecks: number;
 } {
-  return buildWorkflowValidationSummary(nodes, edges);
+  return buildWorkflowValidationSummary(nodes, edges, policy);
 }
 
 export function buildPublishChecks(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  policy: WorkflowValidationPolicy,
 ): WorkflowPublishCheck[] {
-  return buildPublishChecklist(nodes, edges).checks;
+  return buildPublishChecklist(nodes, edges, policy).checks;
 }

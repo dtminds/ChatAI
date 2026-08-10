@@ -1,5 +1,6 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
 import {
+  createWorkflowDeploymentCapabilities,
   WorkflowActionExecutionError,
   WorkflowNodeExecutorRegistry,
 } from "@chatai/workflow-engine";
@@ -155,6 +156,7 @@ describe("workflow action reliability", () => {
       entryEventId: "exact-context",
       expectedRevision: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: {
         padding: "x".repeat(128 * 1024 - emptyContextBytes),
       },
@@ -208,6 +210,7 @@ describe("workflow action reliability", () => {
       entryEventId: "large-core-output",
       expectedRevision: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: 9,
       workflowId: "31",
@@ -271,6 +274,7 @@ describe("workflow action reliability", () => {
       entryEventId: "oversized-context",
       expectedRevision: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: { text: "中".repeat(50_000) },
       uid: 9,
       workflowId: "31",
@@ -286,6 +290,7 @@ describe("workflow action reliability", () => {
       entryEventId: "invalid-context",
       expectedRevision: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: { callback: () => undefined },
       uid: 9,
       workflowId: "31",
@@ -303,19 +308,13 @@ describe("workflow action reliability", () => {
       windowSize: 365,
       windowUnit: "day",
     };
-    const service = new WorkflowRuntimeService({
-      findDefinition: vi.fn(async () => ({
-        bizStatus: 1 as const,
-        publishedRevision: 1,
-        runtimeStatus: "active" as const,
-      })),
-      findRevision: vi.fn(async () => ({ executionSpec: spec, revision: 1 })),
-    }, runtime);
+    const service = createService(runtime, async () => ({}), { spec });
 
     await service.startRun({
       entryEventId: "legacy-window",
       expectedRevision: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: 9,
       workflowId: "31",
@@ -787,6 +786,10 @@ function createService(
     actionRetryDelayMs: 5_000,
     actionTimeoutMs: options.actionTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
+    deploymentCapabilities: createWorkflowDeploymentCapabilities([ENTRY_EVENT_CAPABILITY]),
+    entitlementPort: {
+      check: async () => ({ entitled: true, unentitledSince: null }),
+    },
     executors: options.executors,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
@@ -801,6 +804,7 @@ async function startAction(
     entryEventId: "event-1",
     expectedRevision: 1,
     subjectId: "customer-1",
+    subjectType: "chatai_contact",
     trigger,
     uid: 9,
     workflowId: "31",
@@ -818,14 +822,27 @@ async function startAction(
 
 function createControlReader(spec = actionSpec()) {
   return {
+    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,
       runtimeStatus: "active" as const,
+      statusReason: null,
+      workflowType: "chatai_sop" as const,
     })),
-    findRevision: vi.fn(async () => ({ executionSpec: spec, revision: 1 })),
+    findRevision: vi.fn(async () => ({
+      executionSpec: spec,
+      revision: 1,
+      subjectType: "chatai_contact" as const,
+      workflowType: "chatai_sop" as const,
+    })),
   };
 }
+
+const ENTRY_EVENT_CAPABILITY = {
+  capabilityKey: "event.contact.friend_added",
+  contractVersion: 1,
+} as const;
 
 function coreOutputSpec(): WorkflowExecutionSpec {
   return {
@@ -834,11 +851,24 @@ function coreOutputSpec(): WorkflowExecutionSpec {
     ],
     entryNodeId: "start",
     nodes: [
-      { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
-      { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+      {
+        config: startConfig(),
+        id: "start",
+        kind: "start",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
+      },
+      {
+        config: {},
+        id: "end",
+        kind: "end",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
     ],
+    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 1,
+    schemaVersion: 2,
     terminalNodeId: "end",
     workflowId: "31",
   };
@@ -852,12 +882,31 @@ function actionSpec(): WorkflowExecutionSpec {
     ],
     entryNodeId: "start",
     nodes: [
-      { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
-      { config: {}, id: "message", kind: "message", nodeSchemaVersion: 1 },
-      { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+      {
+        config: startConfig(),
+        id: "start",
+        kind: "start",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
+      },
+      {
+        config: {},
+        id: "message",
+        kind: "message",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: {},
+        id: "end",
+        kind: "end",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
     ],
+    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 1,
+    schemaVersion: 2,
     terminalNodeId: "end",
     workflowId: "31",
   };

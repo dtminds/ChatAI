@@ -20,6 +20,7 @@ import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
 import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
+import type { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
 import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
@@ -27,7 +28,11 @@ import { dbPlugin } from "./plugins/db.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
 import { redisPlugin } from "./plugins/redis.js";
 
-export async function buildApp() {
+export type AppBuildOptions = {
+  workflowService?: WorkflowService;
+};
+
+export async function buildApp(options: AppBuildOptions = {}) {
   const { workerObserverSubjects } = validateBackendEnv();
 
   const app = Fastify({
@@ -71,7 +76,7 @@ export async function buildApp() {
   await registerInsightsRoutes(app, workerObserverSubjects);
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
-  await registerWorkflowRoutes(app);
+  await registerWorkflowRoutes(app, { service: options.workflowService });
   await registerTicketsRoutes(app);
 
   return app;

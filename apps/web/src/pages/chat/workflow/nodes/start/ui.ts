@@ -3,7 +3,7 @@ import type { WorkflowNodeUiBinding } from "../ui-types";
 
 const triggerLabels = {
   "contact.friend_added": "添加好友",
-  "customer.tag_added": "添加标签",
+  "contact.tag_added": "添加标签",
   "message.received": "用户消息",
 } as const;
 

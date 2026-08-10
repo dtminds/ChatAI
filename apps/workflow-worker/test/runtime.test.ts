@@ -471,9 +471,11 @@ function reconcilerResult(overrides: {
 
 function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
   return {
-    broker: "fake" as const,
+    broker: "pulsar" as const,
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
+    deploymentCapabilities: { capabilities: [], fingerprint: "test-fingerprint" },
+    entitlement: { apiUrl: null, token: null },
     environment: "dev" as const,
     healthPort: 3002,
     logLevel: "info",

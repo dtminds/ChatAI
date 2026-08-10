@@ -224,6 +224,7 @@ function WorkflowDataOverviewView({
       </section>
       <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
         <WorkflowCanvas
+          allowedInsertableNodeKinds={[]}
           canRedo={false} canUndo={false} edges={draft.edges} isReadOnly nodes={nodes} showEditingTools={false}
           onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
           onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}

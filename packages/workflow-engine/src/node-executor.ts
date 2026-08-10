@@ -3,6 +3,7 @@ import {
   WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
   type WorkflowExecutionNode,
   type WorkflowNodeKind,
+  type WorkflowSubjectType,
 } from "@chatai/contracts";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
@@ -26,6 +27,7 @@ export type WorkflowNodeExecutionContext = {
     revision: number;
     sequence: number;
     subjectId: string;
+    subjectType: WorkflowSubjectType;
     uid: string;
   };
   trigger: Record<string, unknown>;

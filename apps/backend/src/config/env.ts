@@ -31,6 +31,8 @@ export const EnvSchema = Type.Object({
   LOG_LEVEL: Type.Optional(Type.String()),
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
+  WORKFLOW_DEPLOYMENT_CAPABILITIES: Type.Optional(Type.String()),
+  WORKFLOW_ENTITLEMENT_API_URL: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),

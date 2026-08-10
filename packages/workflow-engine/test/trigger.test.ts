@@ -15,7 +15,7 @@ const startConfig = {
   },
   triggers: [
     { type: "contact.friend_added" as const },
-    { tagIds: ["tag-vip", "tag-lead"], type: "customer.tag_added" as const },
+    { tagIds: ["tag-vip", "tag-lead"], type: "contact.tag_added" as const },
     { keywords: [" 优惠 ", "VIP"], match: "keywords" as const, type: "message.received" as const },
   ],
 };
@@ -23,7 +23,7 @@ const startConfig = {
 describe("workflow trigger matching", () => {
   it("matches account-scoped events with OR semantics", () => {
     expect(matchWorkflowTrigger(startConfig, command({
-      eventType: "customer.tag_added",
+      eventType: "contact.tag_added",
       triggerPayload: { tagId: "tag-vip" },
     }))).toBe(true);
     expect(matchWorkflowTrigger(startConfig, command({
@@ -52,11 +52,13 @@ describe("workflow trigger matching", () => {
   it("normalizes keywords and creates one canonical binding per event type", () => {
     const normalized = normalizeWorkflowStartConfig(startConfig);
     expect(normalized.triggers.at(-1)).toMatchObject({ keywords: ["优惠", "VIP"] });
-    expect(getWorkflowTriggerBindings(startConfig).map(binding => binding.eventType)).toEqual([
+    const bindings = getWorkflowTriggerBindings(startConfig, "chatai_contact");
+    expect(bindings.map(binding => binding.eventType)).toEqual([
       "contact.friend_added",
-      "customer.tag_added",
+      "contact.tag_added",
       "message.received",
     ]);
+    expect(bindings.every(binding => binding.subjectType === "chatai_contact")).toBe(true);
   });
 });
 
@@ -67,6 +69,7 @@ function command(overrides: Record<string, unknown>) {
     eventType: "contact.friend_added" as const,
     occurredAt: "2026-07-11T00:00:00.000Z",
     subjectId: "external-user-1",
+    subjectType: "chatai_contact" as const,
     thirdUserId: "external-user-1",
     triggerPayload: {},
     uid: "9",

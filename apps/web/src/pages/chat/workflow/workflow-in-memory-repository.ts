@@ -1,7 +1,12 @@
+import type {
+  WorkflowCapabilitySummary,
+  WorkflowType,
+} from "@chatai/contracts";
 import {
   createInitialDraft,
   createInitialEdges,
   createInitialNodes,
+  createNewWorkflowDraft,
 } from "./graph";
 import { isWorkflowGraphEqual } from "./workflow-draft-normalizer";
 import {
@@ -42,11 +47,11 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
 
   return {
     createDocument: (input) => {
-      const clientRequestId = input?.clientRequestId?.trim();
-      const name = input?.name?.trim();
-      const description = input?.description?.trim() ?? "";
+      const clientRequestId = input.clientRequestId?.trim();
+      const name = input.name?.trim();
+      const description = input.description?.trim() ?? "";
 
-      if (input?.name !== undefined && !name) {
+      if (input.name !== undefined && !name) {
         throw new WorkflowRepositoryError("validation", "Workflow name is required");
       }
       if (name && name.length > 100) {
@@ -60,9 +65,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         : undefined;
 
       if (existingDocumentId) {
-        return cloneWorkflowDocument(
-          workflowDocuments[getWorkflowDocumentIndex(existingDocumentId)],
-        );
+        const existingDocument = workflowDocuments[getWorkflowDocumentIndex(existingDocumentId)];
+        if (existingDocument.workflowType !== input.workflowType) {
+          throw new WorkflowRepositoryError(
+            "conflict",
+            "Create request id is already bound to another Workflow type",
+          );
+        }
+        return cloneWorkflowDocument(existingDocument);
       }
 
       workflowIdSequence += 1;
@@ -70,6 +80,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         `workflow-${workflowIdSequence.toString(36)}`,
         name,
         description,
+        input.workflowType,
       );
       workflowDocuments = [document, ...workflowDocuments];
 
@@ -349,7 +360,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
               ...node.data,
               triggers: [{
                 tagIds: ["tag-repurchase"],
-                type: "customer.tag_added" as const,
+                type: "contact.tag_added" as const,
               }],
               title: "复购唤醒触发",
             },
@@ -383,6 +394,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
     {
       activationReady: true,
       canOperate: true,
+      capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "18.4%",
       currentVersion: null,
       description: "引导新客户完成首次购买",
@@ -405,10 +417,12 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       updatedAt: "今天 18:20",
       validatedDraftVersion: 1,
       versionHistory: [],
+      workflowType: "chatai_sop",
     },
     {
       activationReady: false,
       canOperate: true,
+      capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "23.1%",
       currentVersion: createWorkflowPublishedVersion("vip-reactivation", 1, "昨天 21:04"),
       description: "唤醒长期未复购的会员客户",
@@ -433,10 +447,12 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       versionHistory: [
         createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
       ],
+      workflowType: "chatai_sop",
     },
     {
       activationReady: false,
       canOperate: true,
+      capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "9.7%",
       currentVersion: null,
       description: "直播结束后继续跟进高意向客户",
@@ -459,16 +475,23 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       updatedAt: "7月4日 16:12",
       validatedDraftVersion: 1,
       versionHistory: [],
+      workflowType: "chatai_sop",
     },
   ];
 }
 
-function createNewWorkflowDocument(id: string, name?: string, description?: string): WorkflowDocument {
-  const draft = createInitialDraft();
+function createNewWorkflowDocument(
+  id: string,
+  name: string | undefined,
+  description: string | undefined,
+  workflowType: WorkflowType,
+): WorkflowDocument {
+  const draft = createNewWorkflowDraft();
 
   return {
     activationReady: false,
     canOperate: true,
+    capabilitySummary: createInMemoryCapabilitySummary(),
     conversion: "0%",
     currentVersion: null,
     description: description?.trim() || "",
@@ -491,6 +514,15 @@ function createNewWorkflowDocument(id: string, name?: string, description?: stri
     updatedAt: "刚刚",
     validatedDraftVersion: null,
     versionHistory: [],
+    workflowType,
+  };
+}
+
+function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
+  return {
+    deploymentCapabilities: [],
+    deploymentFingerprint: "0".repeat(64),
+    runtimeSupportedNodeKinds: ["start", "wait", "end"],
   };
 }
 

@@ -1,3 +1,4 @@
+import type { WorkflowEntryEventType } from "@chatai/contracts";
 import type { WorkflowEdge, WorkflowNodeConfigPatch, WorkflowNode } from "../types";
 import { BasePanel } from "./base-panel";
 import { getNodeDefinition } from "../node-definitions";
@@ -6,6 +7,7 @@ import { NodeOutputsSection } from "./node-outputs-section";
 import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
 
 export function NodeConfigPanel({
+  allowedEntryEventTypes,
   animateOnMount,
   edges,
   node,
@@ -14,6 +16,7 @@ export function NodeConfigPanel({
   onNodeChange,
   onRenameNode,
 }: {
+  allowedEntryEventTypes: readonly WorkflowEntryEventType[];
   animateOnMount?: boolean;
   edges: WorkflowEdge[];
   node?: WorkflowNode;
@@ -38,7 +41,13 @@ export function NodeConfigPanel({
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
         <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
-          <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
+          <NodeSettingsForm
+            allowedEntryEventTypes={allowedEntryEventTypes}
+            edges={edges}
+            node={node}
+            nodes={nodes}
+            onNodeChange={onNodeChange}
+          />
           {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
             ? <NodeOutputsSection node={node} />
             : null}
@@ -48,12 +57,13 @@ export function NodeConfigPanel({
   );
 }
 
-function NodeSettingsForm({ edges, node, nodes, onNodeChange }: NodeSettingsProps) {
+function NodeSettingsForm(props: NodeSettingsProps) {
+  const { node } = props;
   const SettingsPanel = getNodeDefinition(node.data.kind).settings;
 
   if (!SettingsPanel) {
     return null;
   }
 
-  return <SettingsPanel edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />;
+  return <SettingsPanel {...props} />;
 }

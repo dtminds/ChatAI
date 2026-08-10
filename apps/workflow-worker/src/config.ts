@@ -2,13 +2,22 @@ import {
   WORKFLOW_RUN_RETENTION_DAYS,
   WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
 } from "@chatai/contracts";
+import {
+  parseWorkflowDeploymentCapabilities,
+  type WorkflowDeploymentCapabilities,
+} from "@chatai/workflow-engine";
 
 export type WorkflowEnvironment = "dev" | "test01";
 export type WorkflowWorkerRole = "entry-consumer" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
 export type WorkflowWorkerConfig = {
-  broker: "fake" | "pulsar";
+  broker: "pulsar";
   databaseUrl: string;
+  deploymentCapabilities: WorkflowDeploymentCapabilities;
+  entitlement: {
+    apiUrl: string | null;
+    token: string | null;
+  };
   environment: WorkflowEnvironment;
   healthPort: number;
   logLevel: string;
@@ -69,6 +78,9 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   const databaseUrl = requireValue(env, "DATABASE_URL");
   const environment = parseEnvironment(env.WORKFLOW_ENVIRONMENT);
   const broker = parseBroker(env.WORKFLOW_BROKER);
+  const deploymentCapabilities = parseWorkflowDeploymentCapabilities(
+    env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
+  );
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
   const pulsarClusterId = optionalValue(env.WORKFLOW_PULSAR_CLUSTER_ID);
@@ -84,9 +96,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     ?? `consumer-chatai-worker-env-${environment}`;
   const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? subscription;
   const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? subscription;
-  const qualifyTopic = (topic: string) => broker === "pulsar"
-    ? qualifyPulsarTopic(topic, pulsarClusterId!, pulsarNamespace!)
-    : topic;
+  const qualifyTopic = (topic: string) => qualifyPulsarTopic(
+    topic,
+    pulsarClusterId!,
+    pulsarNamespace!,
+  );
   const actionTimeoutMs = parseDurationMs(
     env.WORKFLOW_ACTION_TIMEOUT_MS,
     15_000,
@@ -103,6 +117,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   return {
     broker,
     databaseUrl,
+    deploymentCapabilities,
+    entitlement: {
+      apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
+      token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
+    },
     environment,
     healthPort: parsePort(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
     logLevel: optionalValue(env.LOG_LEVEL) ?? "info",
@@ -214,8 +233,8 @@ function qualifyPulsarTopic(topic: string, clusterId: string, namespace: string)
 }
 
 function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] {
-  if (value === "fake" || value === "pulsar") return value;
-  throw new Error("WORKFLOW_BROKER must be fake or pulsar");
+  if (value === "pulsar") return value;
+  throw new Error("WORKFLOW_BROKER must be pulsar");
 }
 
 function parseEnvironment(value: string | undefined): WorkflowEnvironment {

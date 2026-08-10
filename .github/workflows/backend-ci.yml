@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+      - "integration/**"
   pull_request:
     branches:
       - main
@@ -12,6 +13,7 @@ on:
       - "codex/**"
       - "feat/**"
       - "feature/**"
+      - "integration/**"
   workflow_dispatch:
 
 concurrency:
@@ -58,6 +60,20 @@ jobs:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_ROOT_PASSWORD: workflow-test
+          TZ: Asia/Shanghai
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pworkflow-test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -86,9 +102,15 @@ jobs:
       - name: Test workflow runtime
         run: pnpm --filter @chatai/workflow-runtime test
 
-      - name: Test workflow worker
+      - name: Test workflow runtime MySQL repository
+        run: pnpm --filter @chatai/workflow-runtime test:repository:mysql
         env:
-          WORKFLOW_BROKER: fake
+          WORKFLOW_TEST_MYSQL_HOST: 127.0.0.1
+          WORKFLOW_TEST_MYSQL_PASSWORD: workflow-test
+          WORKFLOW_TEST_MYSQL_PORT: 3306
+          WORKFLOW_TEST_MYSQL_USER: root
+
+      - name: Test workflow worker
         run: pnpm --filter @chatai/workflow-worker test
 
       - name: Test backend

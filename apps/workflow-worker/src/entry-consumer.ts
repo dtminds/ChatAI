@@ -20,6 +20,7 @@ type WorkflowEntryRuntimeService = {
     entryEventId: string;
     expectedRevision: number;
     subjectId: string;
+    subjectType: WorkflowEntryCommand["subjectType"];
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
@@ -39,7 +40,11 @@ export function createEntryConsumerHandler(input: {
 
     try {
       const uid = parseSafeDatabaseId(command.uid);
-      const bindings = await input.bindingReader.listActiveTriggerBindings(uid, command.eventType);
+      const bindings = await input.bindingReader.listActiveTriggerBindings(
+        uid,
+        command.subjectType,
+        command.eventType,
+      );
       for (const binding of bindings) {
         if (!matchWorkflowTrigger(binding.filter, command)) continue;
         try {
@@ -84,6 +89,7 @@ async function admitWorkflow(
     entryEventId: command.eventId,
     expectedRevision: binding.revision,
     subjectId: command.subjectId,
+    subjectType: command.subjectType,
     trigger: {
       accountId: command.accountId,
       eventType: command.eventType,

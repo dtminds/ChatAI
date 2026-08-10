@@ -38,7 +38,7 @@ describe("workflow DSL", () => {
                   ...node.data,
                   content: [
                     { type: "text", value: "你好，" },
-                    { selector: ["customer", "name"], type: "variable" },
+                    { selector: ["subject", "id"], type: "variable" },
                   ],
                   attachments: [
                     {
@@ -116,7 +116,7 @@ describe("workflow DSL", () => {
       ],
       content: [
         { type: "text", value: "你好，" },
-        { selector: ["customer", "name"], type: "variable" },
+        { selector: ["subject", "id"], type: "variable" },
       ],
       contentMode: "custom",
     });
@@ -433,7 +433,7 @@ describe("workflow DSL", () => {
           customerMessage: [{ type: "text", value: "正在为您转接客服" }],
           operatorMessage: [
             { type: "text", value: "客户 " },
-            { selector: ["customer", "name"], type: "variable" },
+            { selector: ["subject", "id"], type: "variable" },
             { type: "text", value: " 需要人工处理" },
           ],
           title: "会员运营接管",
@@ -455,7 +455,7 @@ describe("workflow DSL", () => {
     expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.title).toBe("会员运营接管");
     expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.operatorMessage).toEqual([
       { type: "text", value: "客户 " },
-      { selector: ["customer", "name"], type: "variable" },
+      { selector: ["subject", "id"], type: "variable" },
       { type: "text", value: " 需要人工处理" },
     ]);
   });
@@ -481,7 +481,7 @@ describe("workflow DSL", () => {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [
         { type: "contact.friend_added" },
-        { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
+        { tagIds: ["tag-new-customer"], type: "contact.tag_added" },
       ],
     });
     expect(configByKind.get("wait")).toEqual({

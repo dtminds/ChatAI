@@ -11,6 +11,7 @@ export type WorkflowCompilationIssue = {
     | "max-depth"
     | "source-outlet-unconnected"
     | "source-outlet-used-multiple-times"
+    | "type-policy-violation"
     | "unsupported-runtime-node"
     | "unreachable-node";
   edgeId?: string;

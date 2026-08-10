@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowRepository,
   InMemoryWorkflowRuntimeRepository,
@@ -14,13 +15,14 @@ describe("WorkflowRuntimeService", () => {
     const runtime = createRuntimeRepository(control);
     const claimTask = vi.spyOn(runtime, "claimTask");
     const definition = await createEnabledWorkflow(control, createDraft());
-    const service = new WorkflowRuntimeService(control, runtime, undefined, {
+    const service = createRuntimeService(control, runtime, {
       taskLeaseDurationMs: 120_000,
     });
     const started = await service.startRun({
       entryEventId: "event-lease",
       expectedRevision: 1,
       subjectId: "customer-lease",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: owner.uid,
       workflowId: definition.id,
@@ -43,11 +45,12 @@ describe("WorkflowRuntimeService", () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWorkflow(control, createDraft());
-    const service = new WorkflowRuntimeService(control, runtime);
+    const service = createRuntimeService(control, runtime);
 
     const first = await service.startRun({
       entryEventId: "event-1",
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: { source: "member-created" },
       uid: owner.uid,
       expectedRevision: 1,
@@ -56,6 +59,7 @@ describe("WorkflowRuntimeService", () => {
     const duplicate = await service.startRun({
       entryEventId: "event-1",
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       trigger: { source: "member-created" },
       uid: owner.uid,
       expectedRevision: 1,
@@ -89,10 +93,11 @@ describe("WorkflowRuntimeService", () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWaitWorkflow(control);
-    const service = new WorkflowRuntimeService(control, runtime);
+    const service = createRuntimeService(control, runtime);
     const started = await service.startRun({
       entryEventId: "event-wait",
       subjectId: "customer-2",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: owner.uid,
       expectedRevision: 1,
@@ -126,11 +131,12 @@ describe("WorkflowRuntimeService", () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWorkflow(control, createDraft());
-    const workflow = new WorkflowService(control);
-    const service = new WorkflowRuntimeService(control, runtime);
+    const workflow = createWorkflowService(control);
+    const service = createRuntimeService(control, runtime);
     const started = await service.startRun({
       entryEventId: "event-fence",
       subjectId: "customer-3",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: owner.uid,
       expectedRevision: 1,
@@ -170,11 +176,12 @@ describe("WorkflowRuntimeService", () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWorkflow(control, createDraft());
-    const workflow = new WorkflowService(control);
-    const service = new WorkflowRuntimeService(control, runtime);
+    const workflow = createWorkflowService(control);
+    const service = createRuntimeService(control, runtime);
     const started = await service.startRun({
       entryEventId: "event-delete",
       subjectId: "customer-deleted",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: owner.uid,
       expectedRevision: 1,
@@ -198,12 +205,13 @@ describe("WorkflowRuntimeService", () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWorkflow(control, createDraft());
-    const service = new WorkflowRuntimeService(control, runtime);
+    const service = createRuntimeService(control, runtime);
 
     await expect(service.startRun({
       entryEventId: "event-stale-binding",
       expectedRevision: 2,
       subjectId: "customer-stale",
+      subjectType: "chatai_contact",
       trigger: {},
       uid: owner.uid,
       workflowId: definition.id,
@@ -237,11 +245,41 @@ async function createEnabledWorkflow(
   repository: InMemoryWorkflowRepository,
   draft: ReturnType<typeof createDraft>,
 ) {
-  const service = new WorkflowService(repository);
-  const created = await service.create(owner, {});
+  const service = createWorkflowService(repository);
+  const created = await service.create(owner, { workflowType: "chatai_sop" });
   const saved = await service.saveDraft(owner, created.id, { draft, expectedDraftVersion: 1 });
   await service.publish(owner, created.id, { expectedDraftVersion: saved.draftVersion });
   return service.enable(owner, created.id);
+}
+
+function createWorkflowService(repository: InMemoryWorkflowRepository) {
+  return new WorkflowService(repository, {
+    deploymentCapabilities: deploymentCapabilities(),
+    entitlementPort: entitledPort(),
+  });
+}
+
+function createRuntimeService(
+  control: InMemoryWorkflowRepository,
+  runtime: InMemoryWorkflowRuntimeRepository,
+  options: { taskLeaseDurationMs?: number } = {},
+) {
+  return new WorkflowRuntimeService(control, runtime, undefined, {
+    ...options,
+    deploymentCapabilities: deploymentCapabilities(),
+    entitlementPort: entitledPort(),
+  });
+}
+
+function deploymentCapabilities() {
+  return createWorkflowDeploymentCapabilities([{
+    capabilityKey: "event.contact.friend_added",
+    contractVersion: 1,
+  }]);
+}
+
+function entitledPort() {
+  return { check: async () => ({ entitled: true as const, unentitledSince: null }) };
 }
 
 function createDraft() {

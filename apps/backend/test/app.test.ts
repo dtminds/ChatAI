@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
-import { buildApp } from "../src/app";
+import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
+import { buildApp, type AppBuildOptions } from "../src/app";
 import { createMemoryWorkbenchService } from "./fixtures/workbench-memory.service";
 import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
 } from "../src/modules/auth/auth-cookies";
+import {
+  InMemoryWorkflowRepository,
+  WorkflowService,
+} from "../src/modules/workflow";
 import { shouldDisableRequestLogging } from "../src/app";
 
 async function createAuthenticatedApp() {
@@ -33,8 +38,11 @@ async function createAuthenticatedApp() {
   };
 }
 
-async function createAuthenticatedAppWithRole(role: "admin" | "operator" | "viewer") {
-  const app = await buildApp();
+async function createAuthenticatedAppWithRole(
+  role: "admin" | "operator" | "viewer",
+  options: AppBuildOptions = {},
+) {
+  const app = await buildApp(options);
   const token = app.jwt.sign({
     roles: [role],
     sessionId: "501",
@@ -145,6 +153,101 @@ describe("backend app", () => {
       },
       success: false,
     });
+
+    await app.close();
+  });
+
+  it("serves the workflow control-plane lifecycle through formal authentication", async () => {
+    const workflowService = new WorkflowService(new InMemoryWorkflowRepository(), {
+      deploymentCapabilities: createWorkflowDeploymentCapabilities([{
+        capabilityKey: "event.contact.friend_added",
+        contractVersion: 1,
+      }]),
+      entitlementPort: {
+        check: async () => ({ entitled: true, unentitledSince: null }),
+      },
+    });
+    const { app, authorization } = await createAuthenticatedAppWithRole("admin", {
+      workflowService,
+    });
+
+    const unauthenticated = await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const createdResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    expect(createdResponse.statusCode).toBe(200);
+    const created = createdResponse.json().data;
+    const draft = {
+      ...created.draft,
+      nodes: created.draft.nodes.map((node: { data: Record<string, unknown>; id: string }) =>
+        node.id === "start"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                accountIds: ["account-a"],
+                entryPolicy: { mode: "never" },
+                triggers: [{ type: "contact.friend_added" }],
+              },
+            }
+          : node),
+    };
+
+    const saved = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: { draft, expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().data.draftVersion).toBe(2);
+
+    const published = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: { expectedDraftVersion: 2 },
+      url: `/api/server/workflows/${created.id}/publish`,
+    });
+    expect(published.statusCode).toBe(200);
+    expect(published.json().data).toMatchObject({ revision: null, validatedOnly: true });
+
+    const enabled = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: `/api/server/workflows/${created.id}/enable`,
+    });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().data).toMatchObject({ publishedRevision: 1, runtimeStatus: "active" });
+
+    const sessionDb = app.db;
+    app.db = createMissingSessionDbMock();
+    const invalidSession = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/workflows/${created.id}`,
+    });
+    expect(invalidSession.statusCode).toBe(401);
+    app.db = sessionDb;
+
+    const foreign = await workflowService.create(
+      { roles: ["admin"], subUserId: "202", uid: 9002 },
+      { workflowType: "chatai_sop" },
+    );
+    const crossTenant = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/workflows/${foreign.id}`,
+    });
+    expect(crossTenant.statusCode).toBe(404);
 
     await app.close();
   });
@@ -3673,6 +3776,24 @@ function createSessionDbMock(session: {
           };
         },
         orderBy: () => builder,
+        select: () => builder,
+        where: () => builder,
+      };
+
+      return builder;
+    },
+  } as never;
+}
+
+function createMissingSessionDbMock() {
+  return {
+    selectFrom(table: string) {
+      if (table !== "xy_wap_embed_sub_user_session") {
+        throw new Error(`Unexpected select table: ${table}`);
+      }
+
+      const builder = {
+        executeTakeFirst: async () => undefined,
         select: () => builder,
         where: () => builder,
       };

@@ -26,6 +26,21 @@ describe("HTTP workflow draft repository", () => {
     });
   });
 
+  it("sends the selected workflow type when creating a definition", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await repository.createDocument({
+      name: "企微客户旅程",
+      workflowType: "wecom_sop",
+    });
+
+    expect(client.post).toHaveBeenCalledWith("/server/workflows", {
+      name: "企微客户旅程",
+      workflowType: "wecom_sop",
+    });
+  });
+
   it("does not replace the cached draft version with a stale metadata response", async () => {
     const initialDefinition = createDefinition();
     const client = createClient({ definition: initialDefinition, revisions: [] });
@@ -70,6 +85,8 @@ describe("HTTP workflow draft repository", () => {
         id: "revision-1",
         publishedAt: "2026-07-11T07:12:06.000Z",
         revision: 1,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
         workflowId: "42",
       }],
     });
@@ -300,6 +317,11 @@ function envelope<T>(data: T): ApiSuccessEnvelope<T> {
 
 function createDefinition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
+    capabilitySummary: {
+      deploymentCapabilities: [],
+      deploymentFingerprint: "0".repeat(64),
+      runtimeSupportedNodeKinds: ["start", "wait", "end"],
+    },
     createdAt: "2026-07-10T00:00:00.000Z",
     description: "",
     draft: {
@@ -319,8 +341,10 @@ function createDefinition(overrides: Partial<WorkflowDefinition> = {}): Workflow
     },
     publishedRevision: null,
     runtimeStatus: "inactive",
+    statusReason: null,
     updatedAt: "2026-07-10T00:00:00.000Z",
     validatedDraftVersion: null,
+    workflowType: "chatai_sop",
     ...overrides,
   };
 }

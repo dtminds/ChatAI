@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
 import {
@@ -18,7 +19,7 @@ describe("workflow routes", () => {
     const app = await createApp("owner");
     const created = (await app.inject({
       method: "POST",
-      payload: {},
+      payload: { workflowType: "chatai_sop" },
       url: "/api/server/workflows",
     })).json().data;
 
@@ -48,7 +49,7 @@ describe("workflow routes", () => {
     const app = await createApp("owner");
     const created = (await app.inject({
       method: "POST",
-      payload: {},
+      payload: { workflowType: "chatai_sop" },
       url: "/api/server/workflows",
     })).json().data;
     const messageQueryNode = {
@@ -100,7 +101,7 @@ describe("workflow routes", () => {
     const app = await createApp("owner");
     const created = (await app.inject({
       method: "POST",
-      payload: {},
+      payload: { workflowType: "chatai_sop" },
       url: "/api/server/workflows",
     })).json().data;
     const waitEventNode = {
@@ -167,7 +168,7 @@ describe("workflow routes", () => {
 
     const created = await app.inject({
       method: "POST",
-      payload: { name: "新客培育" },
+      payload: { name: "新客培育", workflowType: "chatai_sop" },
       url: "/api/server/workflows",
     });
     expect(created.statusCode).toBe(200);
@@ -209,7 +210,11 @@ describe("workflow routes", () => {
     expect(forbidden.statusCode).toBe(403);
 
     const ownerApp = await createApp("admin");
-    const created = await ownerApp.inject({ method: "POST", payload: {}, url: "/api/server/workflows" });
+    const created = await ownerApp.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
     const workflowId = created.json().data.id;
     expect((await ownerApp.inject({
       method: "DELETE",
@@ -235,7 +240,15 @@ describe("workflow routes", () => {
       };
     });
     await registerWorkflowRoutes(app, {
-      service: new WorkflowService(new InMemoryWorkflowRepository()),
+      service: new WorkflowService(new InMemoryWorkflowRepository(), {
+        deploymentCapabilities: createWorkflowDeploymentCapabilities([{
+          capabilityKey: "event.contact.friend_added",
+          contractVersion: 1,
+        }]),
+        entitlementPort: {
+          check: async () => ({ entitled: true, unentitledSince: null }),
+        },
+      }),
     });
     return app;
   }

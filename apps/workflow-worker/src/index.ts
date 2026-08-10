@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import {
   assertDatabaseUtc8Timezone,
+  HttpWorkflowEntitlementPort,
   MysqlWorkflowRuntimeRepository,
+  UnavailableWorkflowEntitlementPort,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
 } from "@chatai/workflow-runtime";
@@ -24,10 +26,18 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const logger = createWorkflowWorkerLogger(config.logLevel);
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
+  const entitlementPort = config.entitlement.apiUrl
+    ? new HttpWorkflowEntitlementPort({
+        endpoint: config.entitlement.apiUrl,
+        token: config.entitlement.token ?? undefined,
+      })
+    : new UnavailableWorkflowEntitlementPort();
   const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
     actionMaxRetryDelayMs: config.runtime.actionMaxRetryDelayMs,
     actionRetryDelayMs: config.runtime.actionRetryDelayMs,
     actionTimeoutMs: config.runtime.actionTimeoutMs,
+    deploymentCapabilities: config.deploymentCapabilities,
+    entitlementPort,
     maxTaskAttempts: config.runtime.maxTaskAttempts,
     taskLeaseDurationMs: config.runtime.leaseDurationMs,
   });
@@ -36,7 +46,6 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   try {
     await assertDatabaseUtc8Timezone(database);
     broker = await createWorkflowBroker({
-      broker: config.broker,
       serviceUrl: config.pulsar.serviceUrl,
       token: config.pulsar.token,
     });

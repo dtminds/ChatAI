@@ -9,11 +9,11 @@ describe("workflow variable content", () => {
   it("limits persisted content by the displayed token length", () => {
     const content = truncateVariableContent([
       { type: "text", value: "前置说明" },
-      { selector: ["customer", "name"], type: "variable" },
+      { selector: ["subject", "id"], type: "variable" },
       { type: "text", value: "后续".repeat(50) },
     ], workflowContextVariables, 100);
 
     expect(getVariableContentText(content, workflowContextVariables)).toHaveLength(100);
-    expect(content).toContainEqual({ selector: ["customer", "name"], type: "variable" });
+    expect(content).toContainEqual({ selector: ["subject", "id"], type: "variable" });
   });
 });

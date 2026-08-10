@@ -9,7 +9,7 @@ function createStartNode(): WorkflowNode<"start"> {
   return {
     data: {
       ...createDefaultNodeData("start"),
-      triggers: [{ tagIds: [], type: "customer.tag_added" }],
+      triggers: [{ tagIds: [], type: "contact.tag_added" }],
     },
     id: "start",
     position: { x: 0, y: 0 },
@@ -26,6 +26,7 @@ describe("StartConfig", () => {
   it("renders the formal start node settings sections", async () => {
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         accounts={[]}
         edges={[]}
         node={createStartNode()}
@@ -51,6 +52,7 @@ describe("StartConfig", () => {
     const node = createStartNodeWithoutTagTrigger();
     render(
       <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
         accounts={[]}
         edges={[]}
         node={node}

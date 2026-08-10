@@ -4,7 +4,7 @@ import type {
   WorkflowBrokerPublishInput,
   WorkflowBrokerSubscribeInput,
   WorkflowBrokerSubscription,
-} from "./types.js";
+} from "../../src/broker/types.js";
 
 type StoredMessage = WorkflowBrokerPublishInput & {
   id: string;

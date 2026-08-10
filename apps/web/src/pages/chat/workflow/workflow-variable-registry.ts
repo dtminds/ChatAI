@@ -4,14 +4,13 @@ import type {
 } from "./types";
 
 export const workflowContextVariables: WorkflowVariableDefinition[] = [
-  createContextVariable("system", "employeeId", "员工ID", "string"),
-  createContextVariable("customer", "id", "客户ID", "string"),
-  createContextVariable("customer", "name", "客户昵称", "string"),
+  createContextVariable("subject", "id", "主体ID", "string"),
+  createContextVariable("trigger", "eventType", "事件类型", "string"),
   createContextVariable("trigger", "occurredAt", "触发时间", "datetime"),
 ];
 
 function createContextVariable(
-  scope: "customer" | "system" | "trigger",
+  scope: "subject" | "trigger",
   key: string,
   label: string,
   type: "datetime" | "string",

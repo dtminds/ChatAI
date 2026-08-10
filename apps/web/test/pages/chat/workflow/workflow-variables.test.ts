@@ -22,9 +22,8 @@ import {
 describe("workflow variables", () => {
   it("registers stable context selectors by scope", () => {
     expect(workflowContextVariables.map((variable) => variable.selector)).toEqual([
-      ["system", "employeeId"],
-      ["customer", "id"],
-      ["customer", "name"],
+      ["subject", "id"],
+      ["trigger", "eventType"],
       ["trigger", "occurredAt"],
     ]);
   });
@@ -92,10 +91,10 @@ describe("workflow variables", () => {
   it("resolves stable selectors and rejects unavailable message references", () => {
     const variables = getAvailableVariablesForNode("end", createInitialNodes(), createInitialEdges());
 
-    expect(getWorkflowVariableSelectorKey(["customer", "name"])).toBe("customer.name");
-    expect(resolveWorkflowVariable(variables, ["customer", "name"])).toEqual(expect.objectContaining({
-      label: "客户昵称",
-      scope: "customer",
+    expect(getWorkflowVariableSelectorKey(["subject", "id"])).toBe("subject.id");
+    expect(resolveWorkflowVariable(variables, ["subject", "id"])).toEqual(expect.objectContaining({
+      label: "主体ID",
+      scope: "subject",
     }));
     expect(resolveWorkflowVariable(variables, ["node", "missing", "result"])).toBeUndefined();
     expect(resolveWorkflowVariable(variables, ["node", "message-welcome", "sentAt"]))
@@ -111,10 +110,10 @@ describe("workflow variables", () => {
     )!)).toBe("发送欢迎消息.发送成功时间");
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
-      ["customer", "name"],
-    )!)).toBe("客户昵称");
+      ["subject", "id"],
+    )!)).toBe("主体ID");
     expect(getInvalidVariableContentSelectors([
-      { selector: ["customer", "name"], type: "variable" },
+      { selector: ["subject", "id"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
     ], variables)).toEqual([["node", "missing", "result"]]);
   });

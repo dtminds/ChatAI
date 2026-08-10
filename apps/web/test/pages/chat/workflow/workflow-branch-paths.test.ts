@@ -24,7 +24,7 @@ function createPath(id: string, value = id): WorkflowBranchPath {
     conditions: [{
       id: `condition-${id}`,
       operator: "equals",
-      selector: ["customer", "name"],
+      selector: ["subject", "id"],
       value,
     }],
     id,
@@ -178,7 +178,7 @@ describe("workflow branch paths", () => {
     expect(isWorkflowBranchConditionLocallyComplete({
       id: "valid-string",
       operator: "equals",
-      selector: ["customer", "name"],
+      selector: ["subject", "id"],
       value: "foo",
       valueType: "string",
     })).toBe(true);
@@ -193,7 +193,7 @@ describe("workflow branch paths", () => {
     const data = { branchPaths: paths };
 
     expect(getBranchConditionSummary(paths[0], workflowContextVariables))
-      .toBe("客户昵称 等于 会员");
+      .toBe("主体ID 等于 会员");
     expect(getBranchConditionSummary(paths[2], workflowContextVariables))
       .toBe("不满足以上条件");
     expect(getBranchPathTop(data, "first")).toBe(WORKFLOW_BRANCH_FIRST_HANDLE_TOP);

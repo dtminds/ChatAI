@@ -254,8 +254,10 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       revision: 1,
       shardId: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       uid: 8,
       workflowId: "42",
+      workflowType: "chatai_sop",
     });
 
     expect(result).toEqual({ action: "cancel", kind: "workflow-unavailable" });
@@ -277,8 +279,10 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       revision: 1,
       shardId: 1,
       subjectId: "customer-1",
+      subjectType: "chatai_contact",
       uid: 8,
       workflowId: "42",
+      workflowType: "chatai_sop",
     });
 
     expect(result).toMatchObject({ deduplicated: true, kind: "success" });
@@ -428,7 +432,11 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const db = createTriggerBindingDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
-    const result = await repository.listActiveTriggerBindings(8, "contact.friend_added");
+    const result = await repository.listActiveTriggerBindings(
+      8,
+      "chatai_contact",
+      "contact.friend_added",
+    );
 
     expect(result).toMatchObject([{
       eventType: "contact.friend_added",
@@ -452,7 +460,11 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const db = createTriggerBindingDbMock({ uid: "8" });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
-    const [binding] = await repository.listActiveTriggerBindings(8, "contact.friend_added");
+    const [binding] = await repository.listActiveTriggerBindings(
+      8,
+      "chatai_contact",
+      "contact.friend_added",
+    );
 
     expect(binding?.uid).toBe(8);
   });
@@ -552,6 +564,7 @@ function createActionExecutionDbMock(options: {
     shard_id: 7,
     status: "running",
     subject_id: "customer-1",
+    subject_type: 1,
     terminal_reason: null,
     uid: 9,
     update_time: new Date("2026-07-13T00:00:00.000Z"),
@@ -698,6 +711,7 @@ function createConcurrentDuplicateRunDbMock() {
     shard_id: 1,
     status: "queued",
     subject_id: "customer-1",
+    subject_type: 1,
     terminal_reason: null,
     uid: 8,
     update_time: admittedAt,
@@ -752,7 +766,12 @@ function createConcurrentDuplicateRunDbMock() {
         where() { return builder; },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_definition") {
-            return { biz_status: 1, published_revision: 1, runtime_status: "active" };
+            return {
+              biz_status: 1,
+              published_revision: 1,
+              runtime_status: "active",
+              workflow_type: 1,
+            };
           }
           if (table === "xy_wap_embed_workflow_run") {
             db.runReadCount += 1;
@@ -882,6 +901,7 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
             id: "9",
             revision: 2,
             status: 1,
+            subject_type: 1,
             uid: options.uid ?? 8,
             update_time: now,
             workflow_id: "42",

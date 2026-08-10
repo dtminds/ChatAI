@@ -2,6 +2,51 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
+  it("rejects an idempotent create request bound to another Workflow type", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.createDefinition({
+      clientRequestId: "request-1",
+      description: "",
+      draft: createDraft(),
+      name: "企微客户旅程",
+      opSubUserId: "19",
+      uid: 8,
+      workflowType: "wecom_sop",
+    });
+
+    expect(result).toEqual({ kind: "idempotency-conflict" });
+  });
+
+  it("cancels active runtime state when entitlement loss stops workflows", async () => {
+    const db = createEntitlementLossDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await expect(repository.applyEntitlementLoss({
+      opSubUserId: "19",
+      transition: "stop",
+      uid: 8,
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ affectedDefinitions: 1 });
+
+    const updates = Object.fromEntries(db.updates.map(update => [update.table, update.sets]));
+    expect(updates.xy_wap_embed_workflow_definition).toMatchObject({
+      runtime_status: "stopped",
+      status_reason: "entitlement_revoked",
+    });
+    expect(updates.xy_wap_embed_workflow_run).toMatchObject({
+      status: "cancelled",
+      terminal_reason: "entitlement_revoked",
+    });
+    expect(updates.xy_wap_embed_workflow_task).toMatchObject({ status: "cancelled" });
+    expect(updates.xy_wap_embed_workflow_node_execution).toMatchObject({
+      error_code: "WORKFLOW_ENTITLEMENT_REVOKED",
+      status: "failed",
+    });
+    expect(updates.xy_wap_embed_workflow_outbox).toMatchObject({ status: "dead" });
+  });
+
   it("updates workflow metadata without changing the draft", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -80,11 +125,30 @@ describe("MysqlWorkflowRepository", () => {
         edges: [{ id: "edge-start-end", source: "start", sourceOutletId: "default", target: "end" }],
         entryNodeId: "start",
         nodes: [
-          { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
-          { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+          {
+            config: startConfig(),
+            id: "start",
+            kind: "start",
+            nodeSchemaVersion: 1,
+            requiredCapabilities: [{
+              capabilityKey: "event.contact.friend_added",
+              contractVersion: 1,
+            }],
+          },
+          {
+            config: {},
+            id: "end",
+            kind: "end",
+            nodeSchemaVersion: 1,
+            requiredCapabilities: [],
+          },
         ],
+        requiredCapabilities: [{
+          capabilityKey: "event.contact.friend_added",
+          contractVersion: 1,
+        }],
         revision: 1,
-        schemaVersion: 1,
+        schemaVersion: 2,
         terminalNodeId: "end",
         workflowId: "42",
       },
@@ -92,14 +156,21 @@ describe("MysqlWorkflowRepository", () => {
       opSubUserId: "19",
       specHash: "a".repeat(64),
       triggerBindings: [
-        { eventType: "contact.friend_added", filter: startConfig() },
+        {
+          eventType: "contact.friend_added",
+          filter: startConfig(),
+          subjectType: "chatai_contact",
+        },
         {
           eventType: "message.received",
           filter: { ...startConfig(), triggers: [{ match: "any", type: "message.received" }] },
+          subjectType: "chatai_contact",
         },
       ],
+      subjectType: "chatai_contact",
       uid: 8,
       workflowId: "42",
+      workflowType: "chatai_sop",
     });
 
     expect(result.kind).toBe("success");
@@ -126,9 +197,11 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
     op_sub_uid: 19,
     published_revision: null,
     runtime_status: "inactive",
+    status_reason: null,
     uid: 8,
     update_time: new Date("2026-07-10T00:00:01.000Z"),
     validated_draft_version: null,
+    workflow_type: 1,
   };
   const db = {
     deleteFromCalls: 0,
@@ -174,6 +247,60 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
   return db;
 }
 
+function createEntitlementLossDbMock() {
+  const updates: Array<{
+    sets: Record<string, unknown>;
+    table: string;
+    wheres: unknown[][];
+  }> = [];
+  const db = {
+    updates,
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() { return builder; },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
+          if (table === "xy_wap_embed_workflow_run") return [{ id: "101" }];
+          return [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute(operation: (transaction: typeof db) => unknown) {
+          return operation(db);
+        },
+      };
+    },
+    updateTable(table: string) {
+      const state = {
+        sets: {} as Record<string, unknown>,
+        table,
+        wheres: [] as unknown[][],
+      };
+      updates.push(state);
+      const builder = {
+        set(values: Record<string, unknown>) {
+          state.sets = values;
+          return builder;
+        },
+        where(...args: unknown[]) {
+          state.wheres.push(args);
+          return builder;
+        },
+        async executeTakeFirstOrThrow() {
+          return { numUpdatedRows: 1n };
+        },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
 function createPublicationDbMock() {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const definition = {
@@ -188,9 +315,11 @@ function createPublicationDbMock() {
     op_sub_uid: 19,
     published_revision: null,
     runtime_status: "inactive",
+    status_reason: null,
     uid: 8,
     update_time: now,
     validated_draft_version: 4,
+    workflow_type: 1,
   };
   const db = {
     definitionUpdate: {} as Record<string, unknown>,

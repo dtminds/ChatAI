@@ -32,6 +32,10 @@ import {
   WorkflowListState,
   WorkflowStopDialog,
 } from "./workflow-list-components";
+import {
+  WorkflowCreateDialog,
+  type WorkflowCreateInput,
+} from "./workflow-create-dialog";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
@@ -85,7 +89,7 @@ export function WorkflowListPage({
     setMetadataTarget(workflow);
   };
 
-  const createWorkflow = async (metadata: WorkflowMetadata) => {
+  const createWorkflow = async (input: WorkflowCreateInput) => {
     if (operationPending) return false;
 
     setOperationPending(true);
@@ -95,7 +99,7 @@ export function WorkflowListPage({
     try {
       const document = await Promise.resolve(repository.createDocument({
         clientRequestId: createRequestIdRef.current,
-        ...metadata,
+        ...input,
       }));
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
@@ -170,7 +174,7 @@ export function WorkflowListPage({
     }[action];
 
     if (!operation) {
-      toast.error("操作失败，请重试");
+      toast.error("操作失败，请稍后重试");
       return false;
     }
 
@@ -309,9 +313,9 @@ export function WorkflowListPage({
         pending={operationPending}
       />
 
-      <WorkflowMetadataDialog
+      <WorkflowCreateDialog
         error={operationError}
-        metadata={{ description: "", name: "" }}
+        onCreate={createWorkflow}
         onOpenChange={(open) => {
           if (!operationPending) {
             setCreateDialogOpen(open);
@@ -321,11 +325,11 @@ export function WorkflowListPage({
             }
           }
         }}
-        onSave={createWorkflow}
+        onWorkflowTypeChange={() => {
+          createRequestIdRef.current = null;
+        }}
         open={createDialogOpen}
         pending={operationPending}
-        submitLabel="创建"
-        title="新建 Workflow"
       />
 
       <WorkflowDeleteDialog
@@ -375,7 +379,7 @@ function getWorkflowOperationErrorMessage(error: unknown) {
     return "该 Workflow 已不存在";
   }
 
-  return "操作失败，请重试";
+  return "操作失败，请稍后重试";
 }
 
 function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
@@ -397,5 +401,5 @@ function getWorkflowLifecycleErrorMessage(
   }
   if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
   if (repositoryError.code === "forbidden") return "没有操作权限";
-  return "操作失败，请重试";
+  return "操作失败，请稍后重试";
 }

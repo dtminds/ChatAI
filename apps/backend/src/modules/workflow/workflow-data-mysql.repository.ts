@@ -8,7 +8,10 @@ import {
   type WorkflowNodeKind,
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import {
+  decodeWorkflowSubjectType,
+  type WorkflowDatabase,
+} from "@chatai/workflow-runtime";
 import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
 import { CURRENT_WORKBENCH_PLATFORM } from "../workbench-platform-scope.js";
@@ -57,7 +60,17 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
 
   async listRecords(input: Parameters<WorkflowDataReader["listRecords"]>[0]): Promise<WorkflowEntryRecordPage> {
     let query = this.db.selectFrom("xy_wap_embed_workflow_run")
-      .select(["create_time", "current_node_id", "id", "next_execute_at", "revision", "status", "subject_id", "update_time"])
+      .select([
+        "create_time",
+        "current_node_id",
+        "id",
+        "next_execute_at",
+        "revision",
+        "status",
+        "subject_id",
+        "subject_type",
+        "update_time",
+      ])
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
       .where("revision", "=", input.revision)
@@ -72,16 +85,23 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     if (input.status) query = query.where("status", "=", input.status);
     const rows = await query.execute();
     const pageRows = rows.slice(0, input.limit);
-    const customers = await this.loadCustomers(input.uid, pageRows.map(row => row.subject_id));
+    const subjects = await this.loadSubjects(input.uid, pageRows.map((row) => ({
+      subjectId: row.subject_id,
+      subjectType: decodeWorkflowSubjectType(row.subject_type),
+    })));
     return {
       items: pageRows.map(row => ({
         createdAt: toDate(row.create_time).toISOString(),
         currentNodeId: row.current_node_id,
-        customer: customers.get(row.subject_id) ?? { avatar: null, name: "未知客户" },
+        customer: subjects.get(subjectKey(
+          decodeWorkflowSubjectType(row.subject_type),
+          row.subject_id,
+        )) ?? { avatar: null, name: "未知客户" },
         nextExecuteAt: row.next_execute_at ? toDate(row.next_execute_at).toISOString() : null,
         recordId: String(row.id),
         revision: row.revision,
         status: parseStatus(row.status),
+        subjectType: decodeWorkflowSubjectType(row.subject_type),
         updatedAt: toDate(row.update_time).toISOString(),
       })),
       nextCursor: rows.length > pageRows.length ? String(pageRows.at(-1)!.id) : null,
@@ -90,7 +110,16 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
 
   async getRecord(input: Parameters<WorkflowDataReader["getRecord"]>[0]): Promise<WorkflowEntryRecordDetail> {
     const run = await this.db.selectFrom("xy_wap_embed_workflow_run")
-      .select(["create_time", "current_node_id", "id", "revision", "status", "subject_id", "update_time"])
+      .select([
+        "create_time",
+        "current_node_id",
+        "id",
+        "revision",
+        "status",
+        "subject_id",
+        "subject_type",
+        "update_time",
+      ])
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
       .where("id", "=", input.recordId)
@@ -114,7 +143,10 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         .where("workflow_id", "=", input.workflowId)
         .where("revision", "=", run.revision)
         .executeTakeFirst(),
-      this.loadCustomers(input.uid, [run.subject_id]),
+      this.loadSubjects(input.uid, [{
+        subjectId: run.subject_id,
+        subjectType: decodeWorkflowSubjectType(run.subject_type),
+      }]),
     ]);
     const titles = readNodeTitles(revision?.draft_json);
     const steps: WorkflowEntryRecordDetail["steps"] = executions.map(row => {
@@ -147,16 +179,29 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     }
     return {
       createdAt: toDate(run.create_time).toISOString(),
-      customer: customers.get(run.subject_id) ?? { avatar: null, name: "未知客户" },
+      customer: customers.get(subjectKey(
+        decodeWorkflowSubjectType(run.subject_type),
+        run.subject_id,
+      )) ?? { avatar: null, name: "未知客户" },
       recordId: String(run.id),
       revision: run.revision,
       status: parseStatus(run.status),
+      subjectType: decodeWorkflowSubjectType(run.subject_type),
       steps,
     };
   }
 
-  private async loadCustomers(uid: number, subjectIds: string[]) {
-    const ids = [...new Set(subjectIds)];
+  private async loadSubjects(
+    uid: number,
+    subjects: Array<{
+      subjectId: string;
+      subjectType: ReturnType<typeof decodeWorkflowSubjectType>;
+    }>,
+  ) {
+    // TODO: Resolve wecom_contact through the Java subject resolver once that contract is available.
+    const ids = [...new Set(subjects
+      .filter((subject) => subject.subjectType === "chatai_contact")
+      .map((subject) => subject.subjectId))];
     if (ids.length === 0) return new Map<string, { avatar: string | null; name: string }>();
     const rows = await this.db.selectFrom("xy_wap_embed_contact")
       .select(["avatar", "name", "real_name", "third_external_userid"])
@@ -165,11 +210,15 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .where("third_external_userid", "in", ids)
       .where("biz_status", "=", 1)
       .execute();
-    return new Map(rows.map(row => [row.third_external_userid, {
+    return new Map(rows.map(row => [subjectKey("chatai_contact", row.third_external_userid), {
       avatar: row.avatar?.trim() || null,
       name: row.real_name?.trim() || row.name?.trim() || "未知客户",
     }]));
   }
+}
+
+function subjectKey(subjectType: ReturnType<typeof decodeWorkflowSubjectType>, subjectId: string) {
+  return `${subjectType}:${subjectId}`;
 }
 
 function parseStatus(value: string): WorkflowEntryRecordStatus {

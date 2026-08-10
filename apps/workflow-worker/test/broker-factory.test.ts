@@ -1,20 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("pulsar-client", () => {
-  throw new Error("pulsar-client must not load for the fake broker");
-});
+import { describe, expect, it } from "vitest";
+import { createWorkflowBroker } from "../src/broker/index.js";
 
 describe("workflow broker factory", () => {
-  it("creates the fake broker without loading the native Pulsar client", async () => {
-    const { createWorkflowBroker } = await import("../src/broker/index.js");
-    const broker = await createWorkflowBroker({
-      broker: "fake",
+  it("rejects startup without the required Pulsar connection", async () => {
+    await expect(createWorkflowBroker({
       serviceUrl: null,
       token: null,
-    });
-
-    await expect(broker.publish({ data: Buffer.from("ok"), topic: "entry" }))
-      .resolves.toMatchObject({ messageId: "1" });
-    await broker.close();
+    })).rejects.toThrow("Missing required Workflow Pulsar configuration");
   });
 });

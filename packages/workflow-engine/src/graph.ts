@@ -1,7 +1,6 @@
 import {
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
-  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   type WorkflowStartConfig,
   type WorkflowWaitConfig,
   WorkflowDraft,
@@ -10,6 +9,7 @@ import {
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import type { WorkflowCompilationIssue } from "./errors.js";
+import { isWorkflowRuntimeSupportedNodeKind } from "./runtime-support.js";
 
 const MAX_GRAPH_DEPTH = 20;
 const DEFAULT_OUTLET_ID = "default";
@@ -105,9 +105,7 @@ function validateNodeConfig(
   node: WorkflowDraftNode,
   issues: WorkflowCompilationIssue[],
 ) {
-  if (!WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.some(
-    (kind) => kind === node.data.kind,
-  )) {
+  if (!isWorkflowRuntimeSupportedNodeKind(node.data.kind)) {
     issues.push({
       code: "unsupported-runtime-node",
       message: `Node kind is not available in Phase 3: ${node.data.kind}`,

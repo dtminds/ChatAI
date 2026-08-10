@@ -7,6 +7,7 @@ import type {
   WorkflowDatabase,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
+import { decodeWorkflowSubjectType } from "@chatai/workflow-runtime";
 import type { Kysely } from "kysely";
 import { createWorkflowBroker } from "./broker/index.js";
 import type { WorkflowBroker } from "./broker/types.js";
@@ -30,7 +31,7 @@ export async function publishWorkflowEntrySmoke(input: {
   });
   const published = await input.broker.publish({
     data: Buffer.from(JSON.stringify(command)),
-    key: input.subjectId,
+    key: `${input.binding.uid}:${input.binding.subjectType}:${input.subjectId}`,
     properties: { eventType: command.eventType, smoke: "true" },
     topic: input.topic,
   });
@@ -49,7 +50,6 @@ export async function runWorkflowEntrySmoke(
     const binding = await findActiveWorkflowBinding(database, workflowId);
     if (!binding) throw new Error("Workflow has no active trigger binding");
     broker = await createWorkflowBroker({
-      broker: config.broker,
       serviceUrl: config.pulsar.serviceUrl,
       token: config.pulsar.token,
     });
@@ -104,6 +104,7 @@ async function findActiveWorkflowBinding(
       "binding.id",
       "binding.revision",
       "binding.status",
+      "binding.subject_type",
       "binding.uid",
       "binding.update_time",
       "binding.workflow_id",
@@ -123,6 +124,7 @@ async function findActiveWorkflowBinding(
     id: normalizeId(row.id),
     revision: row.revision,
     status: 1,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
     uid: normalizeUid(row.uid),
     updatedAt: toDate(row.update_time),
     workflowId: normalizeId(row.workflow_id),
@@ -143,6 +145,7 @@ function createMatchingEntryCommand(input: {
     eventType: trigger.type,
     occurredAt: input.now.toISOString(),
     subjectId: input.subjectId,
+    subjectType: input.binding.subjectType,
     thirdUserId: input.subjectId,
     triggerPayload: createTriggerPayload(trigger, input.eventId),
     uid: String(input.binding.uid),
@@ -155,7 +158,7 @@ function createMatchingEntryCommand(input: {
 
 function createTriggerPayload(trigger: WorkflowStartTrigger, eventId: string) {
   if (trigger.type === "contact.friend_added") return { source: "workflow-smoke" };
-  if (trigger.type === "customer.tag_added") return { tagId: trigger.tagIds[0] };
+  if (trigger.type === "contact.tag_added") return { tagId: trigger.tagIds[0] };
   return {
     messageId: `smoke-message-${eventId}`,
     messageType: "text" as const,
@@ -174,7 +177,7 @@ function parseJson(value: unknown) {
 }
 
 function parseEventType(value: string): WorkflowTriggerBindingRecord["eventType"] {
-  if (value === "contact.friend_added" || value === "customer.tag_added" || value === "message.received") {
+  if (value === "contact.friend_added" || value === "contact.tag_added" || value === "message.received") {
     return value;
   }
   throw new Error("Workflow binding contains an unknown event type");

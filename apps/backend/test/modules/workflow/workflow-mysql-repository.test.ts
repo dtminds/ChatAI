@@ -2,6 +2,51 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
+  it("rejects an idempotent create request bound to another Workflow type", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.createDefinition({
+      clientRequestId: "request-1",
+      description: "",
+      draft: createDraft(),
+      name: "企微客户旅程",
+      opSubUserId: "19",
+      uid: 8,
+      workflowType: "wecom_sop",
+    });
+
+    expect(result).toEqual({ kind: "idempotency-conflict" });
+  });
+
+  it("cancels active runtime state when entitlement loss stops workflows", async () => {
+    const db = createEntitlementLossDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await expect(repository.applyEntitlementLoss({
+      opSubUserId: "19",
+      transition: "stop",
+      uid: 8,
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ affectedDefinitions: 1 });
+
+    const updates = Object.fromEntries(db.updates.map(update => [update.table, update.sets]));
+    expect(updates.xy_wap_embed_workflow_definition).toMatchObject({
+      runtime_status: "stopped",
+      status_reason: "entitlement_revoked",
+    });
+    expect(updates.xy_wap_embed_workflow_run).toMatchObject({
+      status: "cancelled",
+      terminal_reason: "entitlement_revoked",
+    });
+    expect(updates.xy_wap_embed_workflow_task).toMatchObject({ status: "cancelled" });
+    expect(updates.xy_wap_embed_workflow_node_execution).toMatchObject({
+      error_code: "WORKFLOW_ENTITLEMENT_REVOKED",
+      status: "failed",
+    });
+    expect(updates.xy_wap_embed_workflow_outbox).toMatchObject({ status: "dead" });
+  });
+
   it("updates workflow metadata without changing the draft", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -197,6 +242,60 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
           return operation(db);
         },
       };
+    },
+  };
+  return db;
+}
+
+function createEntitlementLossDbMock() {
+  const updates: Array<{
+    sets: Record<string, unknown>;
+    table: string;
+    wheres: unknown[][];
+  }> = [];
+  const db = {
+    updates,
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() { return builder; },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
+          if (table === "xy_wap_embed_workflow_run") return [{ id: "101" }];
+          return [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute(operation: (transaction: typeof db) => unknown) {
+          return operation(db);
+        },
+      };
+    },
+    updateTable(table: string) {
+      const state = {
+        sets: {} as Record<string, unknown>,
+        table,
+        wheres: [] as unknown[][],
+      };
+      updates.push(state);
+      const builder = {
+        set(values: Record<string, unknown>) {
+          state.sets = values;
+          return builder;
+        },
+        where(...args: unknown[]) {
+          state.wheres.push(args);
+          return builder;
+        },
+        async executeTakeFirstOrThrow() {
+          return { numUpdatedRows: 1n };
+        },
+      };
+      return builder;
     },
   };
   return db;

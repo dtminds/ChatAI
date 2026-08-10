@@ -198,6 +198,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       subjectType: ReturnType<typeof decodeWorkflowSubjectType>;
     }>,
   ) {
+    // TODO: Resolve wecom_contact through the Java subject resolver once that contract is available.
     const ids = [...new Set(subjects
       .filter((subject) => subject.subjectType === "chatai_contact")
       .map((subject) => subject.subjectId))];

@@ -93,7 +93,7 @@ describe("workflow production availability", () => {
     }]);
   });
 
-  it("normalizes legacy execution specs without inventing deployment requirements", () => {
+  it("derives deployment requirements when normalizing legacy execution specs", () => {
     const legacy: WorkflowLegacyExecutionSpec = {
       edges: [
         { id: "start-wait", source: "start", sourceOutletId: "default", target: "wait" },
@@ -101,7 +101,19 @@ describe("workflow production availability", () => {
       ],
       entryNodeId: "start",
       nodes: [
-        { config: {}, id: "start", kind: "start", nodeSchemaVersion: 1 },
+        {
+          config: {
+            accountIds: ["account-1"],
+            entryPolicy: { mode: "never" },
+            triggers: [
+              { type: "contact.friend_added" },
+              { match: "any", type: "message.received" },
+            ],
+          },
+          id: "start",
+          kind: "start",
+          nodeSchemaVersion: 1,
+        },
         { config: { duration: 46, unit: "day" }, id: "wait", kind: "wait", nodeSchemaVersion: 1 },
         { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
       ],
@@ -113,11 +125,20 @@ describe("workflow production availability", () => {
 
     expect(normalizeWorkflowExecutionSpec(legacy)).toMatchObject({
       nodes: [
-        { id: "start", requiredCapabilities: [] },
+        {
+          id: "start",
+          requiredCapabilities: [
+            { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+            { capabilityKey: "event.message.received", contractVersion: 1 },
+          ],
+        },
         { config: { duration: 46, unit: "day" }, id: "wait", requiredCapabilities: [] },
         { id: "end", requiredCapabilities: [] },
       ],
-      requiredCapabilities: [],
+      requiredCapabilities: [
+        { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+        { capabilityKey: "event.message.received", contractVersion: 1 },
+      ],
       schemaVersion: 2,
     });
   });

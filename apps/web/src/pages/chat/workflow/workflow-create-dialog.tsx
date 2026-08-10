@@ -39,12 +39,14 @@ export function WorkflowCreateDialog({
   error,
   onCreate,
   onOpenChange,
+  onWorkflowTypeChange,
   open,
   pending = false,
 }: {
   error?: string | null;
   onCreate: (input: WorkflowCreateInput) => Promise<boolean>;
   onOpenChange: (open: boolean) => void;
+  onWorkflowTypeChange?: () => void;
   open: boolean;
   pending?: boolean;
 }) {
@@ -95,7 +97,11 @@ export function WorkflowCreateDialog({
             <legend className="text-sm font-medium">Workflow 类型</legend>
             <RadioGroup
               className="grid gap-2"
-              onValueChange={(value) => setWorkflowType(value as WorkflowCreateInput["workflowType"])}
+              onValueChange={(value) => {
+                const nextWorkflowType = value as WorkflowCreateInput["workflowType"];
+                if (nextWorkflowType !== workflowType) onWorkflowTypeChange?.();
+                setWorkflowType(nextWorkflowType);
+              }}
               value={workflowType ?? undefined}
             >
               {workflowTypeOptions.map((option) => (

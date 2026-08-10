@@ -83,6 +83,10 @@ describe("workflow draft service", () => {
     expect(newDocument.name).toBe("未命名 Workflow");
     expect(newDocument.draft.nodes.map((node) => node.data.kind)).toEqual(["start", "end"]);
     expect(repeatedResult.id).toBe(newDocument.id);
+    expect(() => repository.createDocument({
+      clientRequestId: "create-request-1",
+      workflowType: "wecom_sop",
+    })).toThrow(expect.objectContaining({ code: "conflict" }));
     expect(repository.listDocuments().map((workflow) => workflow.id)).toEqual([
       "workflow-1",
       "newcomer-conversion",

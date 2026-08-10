@@ -65,9 +65,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         : undefined;
 
       if (existingDocumentId) {
-        return cloneWorkflowDocument(
-          workflowDocuments[getWorkflowDocumentIndex(existingDocumentId)],
-        );
+        const existingDocument = workflowDocuments[getWorkflowDocumentIndex(existingDocumentId)];
+        if (existingDocument.workflowType !== input.workflowType) {
+          throw new WorkflowRepositoryError(
+            "conflict",
+            "Create request id is already bound to another Workflow type",
+          );
+        }
+        return cloneWorkflowDocument(existingDocument);
       }
 
       workflowIdSequence += 1;

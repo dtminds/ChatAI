@@ -91,7 +91,7 @@ function WorkflowDocumentPage({
 
 function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepository }) {
   const navigate = useNavigate();
-  const createRequestIdRef = useRef(createWorkflowCreateRequestId());
+  const createRequestIdRef = useRef<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
 
@@ -99,6 +99,7 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
     if (createPending) return false;
     setCreateError(null);
     setCreatePending(true);
+    createRequestIdRef.current ??= createWorkflowCreateRequestId();
     try {
       const document = await Promise.resolve(repository.createDocument({
         clientRequestId: createRequestIdRef.current,
@@ -108,7 +109,7 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
       return true;
     }
     catch {
-      setCreateError("操作失败，请重试");
+      setCreateError("操作失败，请稍后重试");
       return false;
     }
     finally {
@@ -123,6 +124,9 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
         onCreate={createDocument}
         onOpenChange={(open) => {
           if (!open && !createPending) navigate("/chat/workflows", { replace: true });
+        }}
+        onWorkflowTypeChange={() => {
+          createRequestIdRef.current = null;
         }}
         open
         pending={createPending}

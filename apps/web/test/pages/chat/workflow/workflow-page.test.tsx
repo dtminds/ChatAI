@@ -330,24 +330,27 @@ function mockSession() {
   });
 }
 
-function renderWorkflowPage(initialEntry = "/chat/workflows/newcomer-conversion") {
+function renderWorkflowPage(
+  initialEntry = "/chat/workflows/newcomer-conversion",
+  repository = getWorkflowDraftRepository(),
+) {
   const router = createMemoryRouter(
     [
       {
         path: "/chat/workflows",
-        element: <WorkflowPage />,
+        element: <WorkflowPage repository={repository} />,
       },
       {
         path: "/chat/workflows/new",
-        element: <WorkflowEditorPage />,
+        element: <WorkflowEditorPage repository={repository} />,
       },
       {
         path: "/chat/workflows/:workflowId",
-        element: <WorkflowEditorPage />,
+        element: <WorkflowEditorPage repository={repository} />,
       },
       {
         path: "/chat/workflows/:workflowId/data",
-        element: <WorkflowEditorPage />,
+        element: <WorkflowEditorPage repository={repository} />,
       },
     ],
     { initialEntries: [initialEntry] },
@@ -560,6 +563,35 @@ describe("Agent workflow page", () => {
 
     expect(screen.getByRole("textbox", { name: "Workflow 名称" })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: "Workflow 描述" })).toHaveValue("");
+  });
+
+  it("keeps the create request id for retries and rotates it after the Workflow type changes", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const createDocument = vi.fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockImplementation((input) => baseRepository.createDocument(input));
+    const repository = { ...baseRepository, createDocument };
+    const { router } = renderWorkflowPage("/chat/workflows", repository);
+
+    await user.click(screen.getByRole("button", { name: "新建 Workflow" }));
+    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
+    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "新客欢迎旅程");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+    await screen.findByText("操作失败，请稍后重试");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(createDocument).toHaveBeenCalledTimes(2));
+
+    const firstRequestId = createDocument.mock.calls[0]?.[0].clientRequestId;
+    expect(createDocument.mock.calls[1]?.[0].clientRequestId).toBe(firstRequestId);
+
+    await user.click(screen.getByRole("radio", { name: /企微客户 SOP/ }));
+    await user.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1"));
+
+    expect(createDocument.mock.calls[2]?.[0]).toMatchObject({ workflowType: "wecom_sop" });
+    expect(createDocument.mock.calls[2]?.[0].clientRequestId).not.toBe(firstRequestId);
   });
 
   it("renders workflows as cards with their descriptions and direct open links", async () => {

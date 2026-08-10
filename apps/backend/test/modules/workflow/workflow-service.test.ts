@@ -450,6 +450,22 @@ describe("WorkflowService", () => {
     expect(recreated.id).not.toBe(first.id);
   });
 
+  it("rejects an idempotent create request reused for another Workflow type", async () => {
+    const service = createService();
+    await service.create(operator, {
+      clientRequestId: "request-1",
+      workflowType: "chatai_sop",
+    });
+
+    await expect(service.create(operator, {
+      clientRequestId: "request-1",
+      workflowType: "wecom_sop",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_CREATE_REQUEST_CONFLICT",
+      statusCode: 409,
+    });
+  });
+
   it("restores an immutable revision into a new draft version", async () => {
     const service = createService();
     const created = await createConfigured(service);

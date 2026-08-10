@@ -174,7 +174,7 @@ export function WorkflowListPage({
     }[action];
 
     if (!operation) {
-      toast.error("操作失败，请重试");
+      toast.error("操作失败，请稍后重试");
       return false;
     }
 
@@ -325,6 +325,9 @@ export function WorkflowListPage({
             }
           }
         }}
+        onWorkflowTypeChange={() => {
+          createRequestIdRef.current = null;
+        }}
         open={createDialogOpen}
         pending={operationPending}
       />
@@ -376,7 +379,7 @@ function getWorkflowOperationErrorMessage(error: unknown) {
     return "该 Workflow 已不存在";
   }
 
-  return "操作失败，请重试";
+  return "操作失败，请稍后重试";
 }
 
 function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
@@ -398,5 +401,5 @@ function getWorkflowLifecycleErrorMessage(
   }
   if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
   if (repositoryError.code === "forbidden") return "没有操作权限";
-  return "操作失败，请重试";
+  return "操作失败，请稍后重试";
 }

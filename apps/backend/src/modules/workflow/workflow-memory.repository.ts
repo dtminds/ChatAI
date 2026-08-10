@@ -46,7 +46,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
           && item.clientRequestId === input.clientRequestId,
         )
       : undefined;
-    if (existing) return clone(existing);
+    if (existing) {
+      return existing.workflowType === input.workflowType
+        ? { kind: "success" as const, value: clone(existing) }
+        : { kind: "idempotency-conflict" as const };
+    }
 
     const now = new Date();
     const definition: MemoryDefinition = {
@@ -69,7 +73,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       workflowType: input.workflowType,
     };
     this.definitions.push(definition);
-    return clone(definition);
+    return { kind: "success" as const, value: clone(definition) };
   }
 
   async findDefinition(uid: number, workflowId: string) {

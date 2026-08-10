@@ -112,7 +112,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     if (input.clientRequestId) {
       const existing = await this.findDefinitionByRequestId(input.uid, input.clientRequestId);
-      if (existing) return existing;
+      if (existing) return toCreateResult(existing, input.workflowType);
     }
 
     try {
@@ -133,11 +133,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         workflow_type: encodeWorkflowType(input.workflowType),
       }).executeTakeFirstOrThrow();
 
-      return this.requireDefinitionById(input.uid, normalizeId(result.insertId));
+      return {
+        kind: "success" as const,
+        value: await this.requireDefinitionById(input.uid, normalizeId(result.insertId)),
+      };
     } catch (error) {
       if (input.clientRequestId && isDuplicateEntryError(error)) {
         const existing = await this.findDefinitionByRequestId(input.uid, input.clientRequestId);
-        if (existing) return existing;
+        if (existing) return toCreateResult(existing, input.workflowType);
       }
       throw error;
     }
@@ -488,6 +491,15 @@ function isDuplicateEntryError(error: unknown) {
 
 function success<T>(value: T): WorkflowMutationResult<T> {
   return { kind: "success", value };
+}
+
+function toCreateResult(
+  definition: WorkflowDefinitionRecord,
+  workflowType: WorkflowDefinitionRecord["workflowType"],
+) {
+  return definition.workflowType === workflowType
+    ? { kind: "success" as const, value: definition }
+    : { kind: "idempotency-conflict" as const };
 }
 
 function conflict<T>(): WorkflowMutationResult<T> {

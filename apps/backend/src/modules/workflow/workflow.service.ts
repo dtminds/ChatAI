@@ -78,7 +78,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     assertWorkflowTypeEnabled(input.workflowType);
     await this.requireEntitlement(scope.uid, input.workflowType, scope.subUserId);
-    return this.toDefinition(await this.repository.createDefinition({
+    const result = await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
       description: input.description?.trim() || "",
       draft: createInitialWorkflowDraft(),
@@ -86,7 +86,15 @@ export class WorkflowService {
       opSubUserId: scope.subUserId,
       uid: scope.uid,
       workflowType: input.workflowType,
-    }));
+    });
+    if (result.kind === "idempotency-conflict") {
+      throw new AppError(
+        "WORKFLOW_CREATE_REQUEST_CONFLICT",
+        "创建请求与已有 Workflow 类型不一致",
+        409,
+      );
+    }
+    return this.toDefinition(result.value);
   }
 
   async saveDraft(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowSaveDraftRequest) {

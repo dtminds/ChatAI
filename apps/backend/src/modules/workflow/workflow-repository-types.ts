@@ -48,6 +48,10 @@ export type WorkflowMutationResult<T> =
   | { kind: "invalid-status"; status: WorkflowRuntimeStatus }
   | { kind: "not-found" };
 
+export type WorkflowCreateResult =
+  | { kind: "success"; value: WorkflowDefinitionRecord }
+  | { kind: "idempotency-conflict" };
+
 export type WorkflowRepository = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
@@ -63,7 +67,7 @@ export type WorkflowRepository = {
     opSubUserId: string;
     uid: number;
     workflowType: WorkflowType;
-  }): Promise<WorkflowDefinitionRecord>;
+  }): Promise<WorkflowCreateResult>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowDefinitionRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRevisionRecord | null>;
   listDefinitions(uid: number): Promise<WorkflowDefinitionRecord[]>;

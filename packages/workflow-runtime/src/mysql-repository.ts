@@ -325,12 +325,42 @@ export class MysqlWorkflowRuntimeRepository implements
         };
       });
     } catch (error) {
-      if (!isDuplicateEntryError(error)) throw error;
+      if (!isDuplicateKeyError(error)) throw error;
       const run = await this.findRunByEntryEvent(input.uid, input.workflowId, input.entryEventId);
       if (!run) throw error;
       const task = await this.findInitialTask(input.uid, run.id);
       if (!task) throw new Error("Deduplicated workflow run has no initial task");
       return { deduplicated: true, kind: "success" as const, run, task };
+    }
+  }
+
+  async hasProcessedInboxMessage(input: { consumer: string; messageId: string }) {
+    const row = await this.db.selectFrom(INBOX_TABLE).select("id")
+      .where("consumer", "=", input.consumer)
+      .where("message_id", "=", input.messageId)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  async recordProcessedInboxMessage(input: {
+    consumer: string;
+    expiresAt: Date;
+    messageId: string;
+    processedAt: Date;
+    uid: number;
+  }) {
+    try {
+      await this.db.insertInto(INBOX_TABLE).values({
+        consumer: input.consumer,
+        expires_at: input.expiresAt,
+        message_id: input.messageId,
+        processed_at: input.processedAt,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      return true;
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      return false;
     }
   }
 
@@ -2345,6 +2375,6 @@ function toDate(value: unknown) {
   if (Number.isNaN(date.getTime())) throw new Error("Database returned an invalid DATETIME value");
   return date;
 }
-function isDuplicateEntryError(error: unknown) {
+function isDuplicateKeyError(error: unknown) {
   return !!error && typeof error === "object" && "code" in error && error.code === "ER_DUP_ENTRY";
 }

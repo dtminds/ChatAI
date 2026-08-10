@@ -227,6 +227,22 @@ export type WorkflowCommitNodeResultInput = {
   uid: number;
 };
 
+export type WorkflowInboxMessageInput = {
+  consumer: string;
+  expiresAt: Date;
+  messageId: string;
+  processedAt: Date;
+  uid: number;
+};
+
+export type WorkflowInboxRepository = {
+  hasProcessedInboxMessage(input: Pick<
+    WorkflowInboxMessageInput,
+    "consumer" | "messageId"
+  >): Promise<boolean>;
+  recordProcessedInboxMessage(input: WorkflowInboxMessageInput): Promise<boolean>;
+};
+
 export type WorkflowActionExecutionFailureInput = {
   errorCode: string;
   errorMessage: string;
@@ -254,7 +270,9 @@ type WorkflowRuntimeFailure =
   | { kind: "entry-policy-rejected" }
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
-export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSchedulerRepository & {
+export type WorkflowRuntimeRepository = WorkflowInboxRepository
+  & WorkflowOutboxRepository
+  & WorkflowSchedulerRepository & {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;

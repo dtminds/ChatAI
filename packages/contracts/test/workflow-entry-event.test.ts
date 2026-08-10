@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  createWorkflowEntryPartitionKey,
   WORKFLOW_ENTRY_EVENT_MAX_BYTES,
   validateWorkflowEntryEvent,
   type WorkflowEntryEnvelopeValidationCode,
@@ -24,6 +25,12 @@ const fixtureRoot = new URL("./fixtures/workflow/", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", fixtureRoot), "utf8")) as FixtureManifest;
 
 describe("workflow entry event envelope", () => {
+  it("derives the transport partition key from the complete Subject identity", () => {
+    expect(createWorkflowEntryPartitionKey(event())).toBe("9:chatai_contact:contact-1");
+    expect(createWorkflowEntryPartitionKey(event({ subjectType: "wecom_contact" })))
+      .toBe("9:wecom_contact:contact-1");
+  });
+
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "envelope"))(
     "$fixtureId follows the shared fixture result",
     (fixture) => {

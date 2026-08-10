@@ -43,6 +43,12 @@ export type WorkflowJsonValue = Static<typeof WorkflowJsonValueSchema>;
 export type WorkflowJsonObject = Static<typeof WorkflowJsonObjectSchema>;
 export type WorkflowEntryEvent = Static<typeof WorkflowEntryEventSchema>;
 
+export function createWorkflowEntryPartitionKey(
+  event: Pick<WorkflowEntryEvent, "subjectId" | "subjectType" | "uid">,
+) {
+  return `${event.uid}:${event.subjectType}:${event.subjectId}`;
+}
+
 export type WorkflowEntryEnvelopeValidationCode =
   | "envelope_invalid"
   | "envelope_too_large"

@@ -24,6 +24,21 @@ export function runWorkflowRuntimeRepositoryContract(
     harness = await createHarness();
   });
 
+  it("records one stable Entry Inbox message across concurrent deliveries", async () => {
+    const input = {
+      consumer: "workflow-entry",
+      expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+      messageId: "9:event-1",
+      processedAt: new Date("2099-01-01T00:00:00.000Z"),
+      uid: 9,
+    };
+    const recorded = await Promise.all(Array.from({ length: 8 }, () =>
+      harness.repository.recordProcessedInboxMessage(input)));
+
+    expect(recorded.filter(Boolean)).toHaveLength(1);
+    await expect(harness.repository.hasProcessedInboxMessage(input)).resolves.toBe(true);
+  });
+
   it("deduplicates concurrent entry creation with one initial task and outbox event", async () => {
     const results = await Promise.all(
       Array.from({ length: 8 }, () => harness.repository.createRunWithInitialTask(createRunInput())),

@@ -124,6 +124,29 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { deduplicated: false, kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
+  async hasProcessedInboxMessage(input: { consumer: string; messageId: string }) {
+    return this.inbox.some(item => item.consumer === input.consumer
+      && item.messageId === input.messageId);
+  }
+
+  async recordProcessedInboxMessage(input: {
+    consumer: string;
+    expiresAt: Date;
+    messageId: string;
+    processedAt: Date;
+    uid: number;
+  }) {
+    if (this.inbox.some(item => item.consumer === input.consumer
+      && item.messageId === input.messageId)) return false;
+    this.inbox.push({
+      consumer: input.consumer,
+      expiresAt: clone(input.expiresAt),
+      messageId: input.messageId,
+      uid: input.uid,
+    });
+    return true;
+  }
+
   async claimTask(input: Parameters<WorkflowRuntimeRepository["claimTask"]>[0]) {
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!task) return notFound();

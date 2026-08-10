@@ -9,6 +9,7 @@ import type {
 import { Value } from "@sinclair/typebox/value";
 import {
   normalizeWorkflowEntryPolicy,
+  WORKFLOW_INBOX_RETENTION_DAYS,
   WorkflowStartConfigSchema,
 } from "@chatai/contracts";
 import {
@@ -519,7 +520,7 @@ function formatRuntimeValueDiagnostic(error: WorkflowRuntimeValueError) {
 function createInbox(messageId: string | undefined, taskId: string, taskVersion: number, now: Date) {
   return {
     consumer: "workflow-task",
-    expiresAt: new Date(now.getTime() + 31 * 86_400_000),
+    expiresAt: new Date(now.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000),
     messageId: messageId ?? `task:${taskId}:v${taskVersion}`,
   };
 }

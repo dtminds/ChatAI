@@ -1,4 +1,5 @@
 import {
+  WORKFLOW_INBOX_RETENTION_DAYS,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
   validateWorkflowEntryEvent,
@@ -10,6 +11,7 @@ import {
   type WorkflowTriggerProjection,
 } from "@chatai/workflow-engine";
 import type {
+  WorkflowInboxRepository,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
@@ -58,6 +60,8 @@ export type WorkflowEntryConsumeResult = {
 export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
   eventCatalog: WorkflowEventCatalog;
+  inboxRepository: WorkflowInboxRepository;
+  now?: () => Date;
   publishToDeadLetter?: (
     message: WorkflowBrokerMessage,
     code: WorkflowEntryConsumeResultCode,
@@ -75,6 +79,14 @@ export function createEntryConsumerHandler(input: {
     }
 
     try {
+      const inboxMessageId = createEntryInboxMessageId(parsed.event);
+      if (await input.inboxRepository.hasProcessedInboxMessage({
+        consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+        messageId: inboxMessageId,
+      })) {
+        await message.ack();
+        return { code: "deduplicated", disposition: "ack" };
+      }
       const bindings = await input.bindingReader.listActiveTriggerBindings(
         parsed.event.uid,
         parsed.event.subjectType,
@@ -103,6 +115,16 @@ export function createEntryConsumerHandler(input: {
           runtimeRejected += 1;
         }
       }
+      const processedAt = input.now?.() ?? new Date();
+      await input.inboxRepository.recordProcessedInboxMessage({
+        consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+        expiresAt: new Date(
+          processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
+        ),
+        messageId: inboxMessageId,
+        processedAt,
+        uid: parsed.event.uid,
+      });
       await message.ack();
       if (admitted > 0) return { code: "admitted", disposition: "ack" };
       if (deduplicated > 0) return { code: "deduplicated", disposition: "ack" };
@@ -123,8 +145,10 @@ export function startEntryConsumer(input: {
   broker: WorkflowBroker;
   deadLetterTopic?: string;
   eventCatalog: WorkflowEventCatalog;
+  inboxRepository: WorkflowInboxRepository;
   logger?: WorkflowWorkerLogger;
   maxRedeliverCount?: number;
+  now?: () => Date;
   runtimeService: WorkflowEntryRuntimeService;
   subscription: string;
   topic: string;
@@ -133,6 +157,8 @@ export function startEntryConsumer(input: {
   const handler = createEntryConsumerHandler({
     bindingReader: input.bindingReader,
     eventCatalog: input.eventCatalog,
+    inboxRepository: input.inboxRepository,
+    now: input.now,
     publishToDeadLetter: deadLetterTopic
       ? async (message, code) => {
           await input.broker.publish({
@@ -160,6 +186,12 @@ export function startEntryConsumer(input: {
     topic: input.topic,
     type: "Shared",
   });
+}
+
+const WORKFLOW_ENTRY_INBOX_CONSUMER = "workflow-entry";
+
+function createEntryInboxMessageId(event: Pick<WorkflowEntryEvent, "eventId" | "uid">) {
+  return `${event.uid}:${event.eventId}`;
 }
 
 async function admitWorkflow(

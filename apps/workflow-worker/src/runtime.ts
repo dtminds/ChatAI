@@ -1,4 +1,7 @@
-import type { WorkflowTriggerBindingReader } from "@chatai/workflow-runtime";
+import type {
+  WorkflowInboxRepository,
+  WorkflowTriggerBindingReader,
+} from "@chatai/workflow-runtime";
 import {
   EMPTY_WORKFLOW_EVENT_CATALOG,
   type WorkflowEventCatalog,
@@ -67,6 +70,7 @@ export async function startWorkflowWorkerRuntime(input: {
   database: { destroy(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   eventCatalog?: WorkflowEventCatalog;
+  inboxRepository: WorkflowInboxRepository;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
@@ -102,8 +106,10 @@ export async function startWorkflowWorkerRuntime(input: {
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.entry ?? undefined,
         eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
+        inboxRepository: input.inboxRepository,
         logger: input.logger,
         maxRedeliverCount: input.config.maxRedeliverCount,
+        now,
         runtimeService: input.runtimeService,
         subscription: input.config.subscriptions.entry,
         topic: input.config.topics.entry,

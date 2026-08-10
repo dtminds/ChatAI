@@ -65,6 +65,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       database,
       entryConsumer: startEntryConsumer,
       eventCatalog: EMPTY_WORKFLOW_EVENT_CATALOG,
+      inboxRepository: repository,
       logger,
       outboxPublisher: publishWorkflowOutboxBatch,
       outboxRepository: repository,

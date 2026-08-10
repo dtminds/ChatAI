@@ -1,5 +1,10 @@
 import type { WorkflowEntryEvent } from "@chatai/contracts";
-import { WorkflowRuntimeError, type WorkflowTriggerBindingRecord } from "@chatai/workflow-runtime";
+import {
+  InMemoryWorkflowRuntimeRepository,
+  WorkflowRuntimeError,
+  type WorkflowInboxRepository,
+  type WorkflowTriggerBindingRecord,
+} from "@chatai/workflow-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { createEntryConsumerHandler, startEntryConsumer } from "../src/entry-consumer.js";
 import { createBrokerMessage } from "./helpers/broker-message.js";
@@ -16,6 +21,7 @@ describe("workflow entry consumer", () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => bindings) },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
     });
 
@@ -54,6 +60,7 @@ describe("workflow entry consumer", () => {
         ]),
       },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
     });
 
@@ -74,6 +81,7 @@ describe("workflow entry consumer", () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31"), binding("32")]) },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
     });
 
@@ -93,6 +101,7 @@ describe("workflow entry consumer", () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       publishToDeadLetter,
       runtimeService: { startRun: vi.fn(async () => { throw new Error("database unavailable"); }) },
     });
@@ -118,6 +127,7 @@ describe("workflow entry consumer", () => {
       broker,
       deadLetterTopic: "entry-dlq",
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       logger,
       maxRedeliverCount: 2,
       runtimeService: { startRun: vi.fn() },
@@ -151,6 +161,7 @@ describe("workflow entry consumer", () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       publishToDeadLetter: vi.fn(async () => { throw new Error("broker unavailable"); }),
       runtimeService: { startRun: vi.fn() },
     });
@@ -170,6 +181,7 @@ describe("workflow entry consumer", () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
       eventCatalog,
+      inboxRepository: createInboxRepository(),
       publishToDeadLetter,
       runtimeService: {
         startRun: vi.fn(async () => ({ deduplicated: true, kind: "success" as const })),
@@ -186,7 +198,89 @@ describe("workflow entry consumer", () => {
     });
     expect(publishToDeadLetter).toHaveBeenCalledWith(unknown, "unknown_event_type");
   });
+
+  it("ACKs an Entry event already recorded in the Inbox without loading bindings", async () => {
+    const listActiveTriggerBindings = vi.fn(async () => [binding("31")]);
+    const inboxRepository = createInboxRepository({
+      hasProcessedInboxMessage: vi.fn(async () => true),
+    });
+    const message = createBrokerMessage(event());
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings },
+      eventCatalog,
+      inboxRepository,
+      runtimeService: { startRun: vi.fn() },
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+    expect(listActiveTriggerBindings).not.toHaveBeenCalled();
+    expect(inboxRepository.recordProcessedInboxMessage).not.toHaveBeenCalled();
+    expect(message.ack).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a previously completed no-match event from entering a later binding", async () => {
+    const inboxRepository = new InMemoryWorkflowRuntimeRepository();
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const bindings: WorkflowTriggerBindingRecord[] = [];
+    const listActiveTriggerBindings = vi.fn(async () => bindings);
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings },
+      eventCatalog,
+      inboxRepository,
+      now: () => new Date("2026-08-10T00:00:00.000Z"),
+      runtimeService: { startRun },
+    });
+
+    await expect(handler(createBrokerMessage(event()))).resolves.toEqual({
+      code: "no_match",
+      disposition: "ack",
+    });
+    bindings.push(binding("31"));
+    await expect(handler(createBrokerMessage(event()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+
+    expect(listActiveTriggerBindings).toHaveBeenCalledTimes(1);
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("NACKs after admission when the Entry Inbox cannot be completed", async () => {
+    const message = createBrokerMessage(event());
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
+      eventCatalog,
+      inboxRepository: createInboxRepository({
+        recordProcessedInboxMessage: vi.fn(async () => {
+          throw new Error("database unavailable");
+        }),
+      }),
+      runtimeService: {
+        startRun: vi.fn(async () => ({ deduplicated: false, kind: "success" as const })),
+      },
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      code: "temporary_failure",
+      disposition: "nack",
+    });
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.negativeAck).toHaveBeenCalledTimes(1);
+  });
 });
+
+function createInboxRepository(
+  overrides: Partial<WorkflowInboxRepository> = {},
+): WorkflowInboxRepository {
+  return {
+    hasProcessedInboxMessage: vi.fn(async () => false),
+    recordProcessedInboxMessage: vi.fn(async () => true),
+    ...overrides,
+  };
+}
 
 function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {
   return {

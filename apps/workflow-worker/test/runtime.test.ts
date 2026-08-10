@@ -18,6 +18,7 @@ describe("workflow worker runtime", () => {
       type: "Shared",
     }));
     expect(resources.dependencies.entryConsumer).toHaveBeenCalledWith(expect.objectContaining({
+      inboxRepository: resources.dependencies.inboxRepository,
       logger: resources.dependencies.logger,
     }));
     expect(resources.broker.subscribe).toHaveBeenCalledWith(expect.objectContaining({
@@ -380,6 +381,10 @@ function createResources() {
         topic: input.topic,
         type: "Shared",
       })),
+      inboxRepository: {
+        hasProcessedInboxMessage: vi.fn(async () => false),
+        recordProcessedInboxMessage: vi.fn(async () => true),
+      },
       pingDatabase: vi.fn(async () => {
         if (!databaseReady) throw new Error("database unavailable");
       }),

@@ -4,6 +4,7 @@ export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
   "start",
   "wait",
   "wait-event",
+  "branch",
   "end",
 ] as const satisfies readonly WorkflowNodeKind[];
 

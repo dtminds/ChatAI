@@ -118,6 +118,46 @@ describe("compileWorkflowDraft", () => {
     ]);
   });
 
+  it("freezes complete ordered Branch paths without adding a capability", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("branch", "branch", {
+      branchPaths: [
+        {
+          conditions: [{
+            id: "condition-1",
+            operator: "equals",
+            selector: ["subject", "id"],
+            value: "vip-1",
+            valueType: "string",
+          }],
+          id: "vip",
+          label: "如果",
+          logic: "all",
+        },
+        { conditions: [], id: "default", isDefault: true, label: "否则", logic: "all" },
+      ],
+    }));
+    draft.edges = [
+      { id: "start-branch", source: "start", target: "branch" },
+      { id: "branch-vip", source: "branch", sourceHandle: "vip", target: "end" },
+      { id: "branch-default", source: "branch", sourceHandle: "default", target: "end" },
+    ];
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 4,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find((item) => item.id === "branch")).toMatchObject({
+      config: expect.objectContaining({ branchPaths: expect.any(Array) }),
+      kind: "branch",
+      requiredCapabilities: [],
+    });
+    expect(spec.edges.map((edge) => edge.sourceOutletId)).toEqual(["default", "vip", "default"]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

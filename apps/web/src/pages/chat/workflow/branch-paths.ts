@@ -9,11 +9,15 @@ import type {
   WorkflowVariableValueType,
 } from "./types";
 import {
+  WORKFLOW_BRANCH_OPERATORS_BY_VALUE_TYPE,
+  isWorkflowBranchConditionValueComplete,
+  workflowBranchOperatorNeedsValue,
+} from "@chatai/contracts";
+import {
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
 import { workflowContextVariables } from "./workflow-variable-registry";
-import { isValidLocalDateTime } from "@/lib/local-date-time";
 
 export const WORKFLOW_BRANCH_PATH_MIN = 1;
 export const WORKFLOW_BRANCH_PATH_MAX = 10;
@@ -26,54 +30,38 @@ export const WORKFLOW_BRANCH_NODE_BASE_HEIGHT = 62;
 let workflowBranchPathIdSequence = 0;
 let workflowBranchConditionIdSequence = 0;
 
-export const branchOperatorOptionsByType: Record<
-  Exclude<WorkflowVariableValueType, "object">,
-  Array<{ label: string; value: WorkflowBranchOperator }>
-> = {
-  boolean: [
-    { label: "为真", value: "is-true" },
-    { label: "为假", value: "is-false" },
-    { label: "为空", value: "is-empty" },
-    { label: "不为空", value: "is-not-empty" },
-  ],
-  datetime: [
-    { label: "早于", value: "datetime-before" },
-    { label: "早于或等于", value: "datetime-before-or-equal" },
-    { label: "晚于", value: "datetime-after" },
-    { label: "晚于或等于", value: "datetime-after-or-equal" },
-    { label: "等于", value: "equals" },
-    { label: "介于", value: "datetime-between" },
-    { label: "为空", value: "is-empty" },
-    { label: "不为空", value: "is-not-empty" },
-  ],
-  "message-id-list": [
-    { label: "为空", value: "is-empty" },
-    { label: "不为空", value: "is-not-empty" },
-  ],
-  number: [
-    { label: "等于", value: "equals" },
-    { label: "不等于", value: "not-equals" },
-    { label: "大于", value: "greater-than" },
-    { label: "大于等于", value: "greater-than-or-equal" },
-    { label: "小于", value: "less-than" },
-    { label: "小于等于", value: "less-than-or-equal" },
-    { label: "为空", value: "is-empty" },
-    { label: "不为空", value: "is-not-empty" },
-  ],
-  string: [
-    { label: "等于", value: "equals" },
-    { label: "不等于", value: "not-equals" },
-    { label: "包含", value: "contains" },
-    { label: "不包含", value: "not-contains" },
-    { label: "为空", value: "is-empty" },
-    { label: "不为空", value: "is-not-empty" },
-    { label: "开头为", value: "starts-with" },
-    { label: "结尾为", value: "ends-with" },
-  ],
+const branchOperatorLabels: Record<WorkflowBranchOperator, string> = {
+  contains: "包含",
+  "datetime-after": "晚于",
+  "datetime-after-or-equal": "晚于或等于",
+  "datetime-before": "早于",
+  "datetime-before-or-equal": "早于或等于",
+  "datetime-between": "介于",
+  "ends-with": "结尾为",
+  equals: "等于",
+  "greater-than": "大于",
+  "greater-than-or-equal": "大于等于",
+  "is-empty": "为空",
+  "is-false": "为假",
+  "is-not-empty": "不为空",
+  "is-true": "为真",
+  "less-than": "小于",
+  "less-than-or-equal": "小于等于",
+  "not-contains": "不包含",
+  "not-equals": "不等于",
+  "starts-with": "开头为",
 };
-const workflowBranchOperators = new Set(Object.values(branchOperatorOptionsByType)
-  .flat()
-  .map((option) => option.value));
+
+export const branchOperatorOptionsByType = Object.fromEntries(
+  Object.entries(WORKFLOW_BRANCH_OPERATORS_BY_VALUE_TYPE).map(([valueType, operators]) => [
+    valueType,
+    operators.map((value) => ({ label: branchOperatorLabels[value], value })),
+  ]),
+) as Record<Exclude<WorkflowVariableValueType, "object">, Array<{
+  label: string;
+  value: WorkflowBranchOperator;
+}>>;
+const workflowBranchOperators = new Set(Object.values(WORKFLOW_BRANCH_OPERATORS_BY_VALUE_TYPE).flat());
 
 export function createDefaultBranchPaths(): WorkflowBranchPath[] {
   return [
@@ -328,7 +316,7 @@ export function getDefaultBranchOperator(type: WorkflowVariableValueType) {
 }
 
 export function branchOperatorNeedsValue(operator: WorkflowBranchOperator) {
-  return !["is-empty", "is-false", "is-not-empty", "is-true"].includes(operator);
+  return workflowBranchOperatorNeedsValue(operator);
 }
 
 export function getBranchConditionSummary(
@@ -355,22 +343,10 @@ export function isWorkflowBranchConditionComplete(
   if (!variable || variable.type === "object") return false;
   const operators = getBranchOperatorOptions(variable.type).map((item) => item.value);
   if (!operators.includes(condition.operator)) return false;
-  if (!branchOperatorNeedsValue(condition.operator)) return true;
-  if (condition.operator === "datetime-between") {
-    return Array.isArray(condition.value)
-      && condition.value.length === 2
-      && condition.value.every(isValidLocalDateTime)
-      && condition.value[0] <= condition.value[1];
-  }
-  if (variable.type === "number") {
-    return typeof condition.value === "number" && Number.isFinite(condition.value);
-  }
-  if (variable.type === "datetime") {
-    return typeof condition.value === "string" && isValidLocalDateTime(condition.value);
-  }
-  return variable.type === "string"
-    && typeof condition.value === "string"
-    && condition.value.trim().length > 0;
+  return isWorkflowBranchConditionValueComplete({
+    ...condition,
+    valueType: variable.type,
+  });
 }
 
 export function isWorkflowBranchConditionLocallyComplete(
@@ -384,22 +360,7 @@ export function isWorkflowBranchConditionLocallyComplete(
   if (!getBranchOperatorOptions(valueType).some((option) => option.value === condition.operator)) {
     return false;
   }
-  if (!branchOperatorNeedsValue(condition.operator)) return true;
-  if (condition.operator === "datetime-between") {
-    return Array.isArray(condition.value)
-      && condition.value.length === 2
-      && condition.value.every(isValidLocalDateTime)
-      && condition.value[0] <= condition.value[1];
-  }
-  if (valueType === "number") {
-    return typeof condition.value === "number" && Number.isFinite(condition.value);
-  }
-  if (valueType === "datetime") {
-    return typeof condition.value === "string" && isValidLocalDateTime(condition.value);
-  }
-  return valueType === "string"
-    && typeof condition.value === "string"
-    && condition.value.trim().length > 0;
+  return isWorkflowBranchConditionValueComplete({ ...condition, valueType });
 }
 
 function getBranchConditionValueLabel(

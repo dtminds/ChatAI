@@ -1,5 +1,6 @@
 export * from "./db.js";
 export * from "./database-timezone.js";
+export * from "./capability-port.js";
 export * from "./errors.js";
 export * from "./entitlement.js";
 export * from "./memory-repository.js";

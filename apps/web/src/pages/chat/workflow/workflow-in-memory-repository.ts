@@ -522,7 +522,7 @@ function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
   return {
     deploymentCapabilities: [],
     deploymentFingerprint: "0".repeat(64),
-    runtimeSupportedNodeKinds: ["start", "wait", "end"],
+    runtimeSupportedNodeKinds: ["start", "wait", "wait-event", "branch", "end"],
   };
 }
 

@@ -84,6 +84,7 @@ const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
 const MAX_POLL_CONVERSATION_CHANGE_LIMIT = 500;
+const POLL_MESSAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HISTORY_MESSAGE_LIMIT = 30;
 const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const DEFAULT_CUSTOMER_LIST_LIMIT = 50;
@@ -4540,16 +4541,19 @@ export class WorkbenchRepository {
     }
 
     if (options.afterSeq != null) {
-      query = query.where("message.id", ">", options.afterSeq);
+      query = query
+        .where("message.msgtime", ">=", Date.now() - POLL_MESSAGE_LOOKBACK_MS)
+        .where("message.id", ">", options.afterSeq);
     }
 
+    const orderDirection = options.afterSeq != null ? "asc" : "desc";
     const rows = await query
-      .orderBy("message.id", "desc")
+      .orderBy("message.id", orderDirection)
       .limit(options.limit + 1)
       .execute();
 
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
-    const messageRows = [...rawRows].reverse();
+    const messageRows = orderDirection === "desc" ? [...rawRows].reverse() : rawRows;
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
@@ -4603,7 +4607,7 @@ export class WorkbenchRepository {
       messages: hydratedMessageRows.map((row) =>
         mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
       ),
-      nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
+      nextBeforeSeq: messageRows.length > 0 ? toNumber(messageRows[0]?.id) : undefined,
       scannedCount: rawRows.length,
       smartReplyScope,
     };

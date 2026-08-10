@@ -61,6 +61,42 @@ export type WorkflowTriggerBindingReader = {
   ): Promise<WorkflowTriggerBindingRecord[]>;
 };
 
+export type WorkflowEventSubscriptionStatus =
+  | "waiting"
+  | "triggered"
+  | "timed_out"
+  | "cancelled";
+
+export type WorkflowEventSubscriptionRecord = {
+  accountId: string | null;
+  collectUntil: Date | null;
+  createdAt: Date;
+  effectiveFrom: Date;
+  eventType: WorkflowEntryEventType;
+  expiresAt: Date;
+  id: string;
+  nodeId: string;
+  revision: number;
+  runId: string;
+  status: WorkflowEventSubscriptionStatus;
+  subjectId: string;
+  subjectType: WorkflowSubjectType;
+  taskId: string;
+  triggerEventId: string | null;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
+export type WorkflowEventSubscriptionReader = {
+  listMatchingEventSubscriptions(
+    uid: number,
+    subjectType: WorkflowSubjectType,
+    eventType: WorkflowEntryEventType,
+    subjectId: string,
+  ): Promise<WorkflowEventSubscriptionRecord[]>;
+};
+
 export type WorkflowRunRecord = {
   createdAt: Date;
   context: Record<string, unknown>;
@@ -199,6 +235,28 @@ export type WorkflowCreateRunInput = {
   workflowType: WorkflowType;
 };
 
+export type WorkflowBeginEventWaitInput = {
+  accountId: string | null;
+  effectiveFrom: Date;
+  eventType: WorkflowEntryEventType;
+  expectedRunLockVersion: number;
+  expectedTaskVersion: number;
+  expiresAt: Date;
+  inbox: WorkflowCommitNodeResultInput["inbox"];
+  now: Date;
+  runId: string;
+  taskId: string;
+  uid: number;
+};
+
+export type WorkflowTriggerEventSubscriptionInput = {
+  collectUntil: Date;
+  eventId: string;
+  subscriptionId: string;
+  triggeredAt: Date;
+  uid: number;
+};
+
 export type WorkflowCommitNodeResultInput = {
   context?: Record<string, unknown>;
   expectedRunLockVersion: number;
@@ -271,6 +329,7 @@ type WorkflowRuntimeFailure =
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
 export type WorkflowRuntimeRepository = WorkflowInboxRepository
+  & WorkflowEventSubscriptionReader
   & WorkflowOutboxRepository
   & WorkflowSchedulerRepository & {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
@@ -318,6 +377,15 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     | { kind: "success"; nextTask: WorkflowTaskRecord | null; run: WorkflowRunRecord }
     | WorkflowRuntimeFailure
   >;
+  beginEventWait(input: WorkflowBeginEventWaitInput): Promise<
+    | {
+        kind: "success";
+        run: WorkflowRunRecord;
+        subscription: WorkflowEventSubscriptionRecord;
+        task: WorkflowTaskRecord;
+      }
+    | WorkflowRuntimeFailure
+  >;
   createRunWithInitialTask(input: WorkflowCreateRunInput): Promise<
     | {
         deduplicated: boolean;
@@ -334,6 +402,10 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     uid: number;
   }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
+  findEventSubscriptionByTask(
+    uid: number,
+    taskId: string,
+  ): Promise<WorkflowEventSubscriptionRecord | null>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
   listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;
   recoverExpiredLeases(input: {
@@ -358,9 +430,35 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;
+  reconcileEventSubscriptions(input: {
+    afterSubscriptionId?: string;
+    limit: number;
+  }): Promise<{
+    cancelled: number;
+    checked: number;
+    hasMore: boolean;
+    lastSubscriptionId: string | null;
+  }>;
   republishStalledDispatchedTasks(input: {
     dispatchedBefore: Date;
     limit: number;
     now: Date;
   }): Promise<number>;
+  timeoutEventSubscription(input: {
+    subscriptionId: string;
+    timedOutAt: Date;
+    uid: number;
+  }): Promise<
+    | { kind: "success"; subscription: WorkflowEventSubscriptionRecord }
+    | WorkflowRuntimeFailure
+  >;
+  triggerEventSubscription(input: WorkflowTriggerEventSubscriptionInput): Promise<
+    | {
+        kind: "success";
+        run: WorkflowRunRecord;
+        subscription: WorkflowEventSubscriptionRecord;
+        task: WorkflowTaskRecord;
+      }
+    | WorkflowRuntimeFailure
+  >;
 };

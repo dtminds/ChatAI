@@ -99,6 +99,13 @@ describe("MySQL workflow runtime repository contract", () => {
           .where("id", "=", runId)
           .executeTakeFirstOrThrow();
       },
+      async setWorkflowRuntimeStatus(status) {
+        await contractDatabase.updateTable("xy_wap_embed_workflow_definition")
+          .set({ runtime_status: status })
+          .where("uid", "=", 9)
+          .where("id", "=", "31")
+          .executeTakeFirstOrThrow();
+      },
     };
   });
 });

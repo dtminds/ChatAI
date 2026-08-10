@@ -153,6 +153,7 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("reconciler")) {
+      let afterEventSubscriptionId: string | undefined;
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
       let afterConsistencyTaskId: string | undefined;
@@ -170,6 +171,7 @@ export async function startWorkflowWorkerRuntime(input: {
             }
           : undefined;
         const result = await input.reconciler({
+          afterEventSubscriptionId,
           afterRunId,
           afterConsistencyRunId,
           afterConsistencyTaskId,
@@ -183,6 +185,7 @@ export async function startWorkflowWorkerRuntime(input: {
           now: currentTime,
           reconciler: input.reconcilerService,
         });
+        afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
         afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;

@@ -1,7 +1,9 @@
 import type {
   WorkflowActionExecutionFailureInput,
+  WorkflowBeginEventWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowEventSubscriptionRecord,
   WorkflowNodeExecutionRecord,
   WorkflowOutboxRecord,
   WorkflowRunRecord,
@@ -41,6 +43,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeExecutions: WorkflowNodeExecutionRecord[] = [];
   readonly nodeMetricEvents: NodeMetricEvent[] = [];
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
+  readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
@@ -147,6 +150,165 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return true;
   }
 
+  async beginEventWait(input: WorkflowBeginEventWaitInput) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || task.nodeKind !== "wait-event"
+      || input.expiresAt <= input.effectiveFrom) return conflict();
+    if (this.eventSubscriptions.some(item => item.uid === input.uid
+      && item.taskId === task.id
+      && item.eventType === input.eventType)) return conflict();
+
+    const subscription: WorkflowEventSubscriptionRecord = {
+      accountId: input.accountId,
+      collectUntil: null,
+      createdAt: clone(input.now),
+      effectiveFrom: clone(input.effectiveFrom),
+      eventType: input.eventType,
+      expiresAt: clone(input.expiresAt),
+      id: this.createId(),
+      nodeId: task.nodeId,
+      revision: run.revision,
+      runId: run.id,
+      status: "waiting",
+      subjectId: run.subjectId,
+      subjectType: run.subjectType,
+      taskId: task.id,
+      triggerEventId: null,
+      uid: input.uid,
+      updatedAt: clone(input.now),
+      workflowId: run.workflowId,
+    };
+    this.eventSubscriptions.push(subscription);
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    task.dueAt = clone(input.expiresAt);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "pending");
+    task.taskType = "wait-event";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.expiresAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return {
+      kind: "success" as const,
+      run: clone(run),
+      subscription: clone(subscription),
+      task: clone(task),
+    };
+  }
+
+  async listMatchingEventSubscriptions(
+    uid: number,
+    subjectType: WorkflowEventSubscriptionRecord["subjectType"],
+    eventType: WorkflowEventSubscriptionRecord["eventType"],
+    subjectId: string,
+  ) {
+    const matches: WorkflowEventSubscriptionRecord[] = [];
+    for (const subscription of this.eventSubscriptions) {
+      if (subscription.uid !== uid
+        || subscription.subjectType !== subjectType
+        || subscription.eventType !== eventType
+        || subscription.subjectId !== subjectId
+        || (subscription.status !== "waiting" && subscription.status !== "triggered")) continue;
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid, workflowId: subscription.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") continue;
+      matches.push(subscription);
+    }
+    return clone(matches);
+  }
+
+  async findEventSubscriptionByTask(uid: number, taskId: string) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === uid && item.taskId === taskId);
+    return subscription ? clone(subscription) : null;
+  }
+
+  async triggerEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["triggerEventSubscription"]>[0],
+  ) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === input.uid
+      && item.id === input.subscriptionId);
+    if (!subscription) return notFound();
+    if (subscription.status !== "waiting") {
+      return subscription.status === "triggered" && subscription.triggerEventId === input.eventId
+        ? alreadyProcessed()
+        : conflict();
+    }
+    const run = this.runs.find(item => item.uid === input.uid && item.id === subscription.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === subscription.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: subscription.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (decision === "cancel") {
+      subscription.status = "cancelled";
+      subscription.updatedAt = clone(input.triggeredAt);
+      return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+    }
+    if (subscription.status !== "waiting") {
+      return subscription.status === "triggered" && subscription.triggerEventId === input.eventId
+        ? alreadyProcessed()
+        : conflict();
+    }
+    if ((task.status !== "pending"
+        && task.status !== "leased"
+        && task.status !== "dispatched"
+        && task.status !== "running")
+      || (run.status !== "waiting" && run.status !== "running")
+      || run.currentNodeId !== subscription.nodeId
+      || task.nodeId !== subscription.nodeId
+      || task.nodeKind !== "wait-event"
+      || task.taskType !== "wait-event"
+      || task.dueAt.getTime() !== subscription.expiresAt.getTime()
+      || input.triggeredAt.getTime() < subscription.effectiveFrom.getTime()
+      || input.triggeredAt.getTime() >= subscription.expiresAt.getTime()
+      || input.collectUntil.getTime() <= input.triggeredAt.getTime()) return conflict();
+
+    subscription.collectUntil = clone(input.collectUntil);
+    subscription.status = "triggered";
+    subscription.triggerEventId = input.eventId;
+    subscription.updatedAt = clone(input.triggeredAt);
+    task.dueAt = clone(input.collectUntil);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    if (task.status !== "pending") task.status = transitionTask(task.status, "pending");
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.collectUntil);
+    if (run.status === "running") run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return {
+      kind: "success" as const,
+      run: clone(run),
+      subscription: clone(subscription),
+      task: clone(task),
+    };
+  }
+
+  async timeoutEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["timeoutEventSubscription"]>[0],
+  ) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === input.uid
+      && item.id === input.subscriptionId);
+    if (!subscription) return notFound();
+    if (subscription.status === "timed_out") return alreadyProcessed();
+    if (subscription.status !== "waiting") return conflict();
+    subscription.status = "timed_out";
+    subscription.updatedAt = clone(input.timedOutAt);
+    return { kind: "success" as const, subscription: clone(subscription) };
+  }
+
   async claimTask(input: Parameters<WorkflowRuntimeRepository["claimTask"]>[0]) {
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!task) return notFound();
@@ -168,6 +330,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
         return { action: decision, kind: "workflow-unavailable" as const };
       }
+    }
+    if ((task.status !== "dispatched" && task.status !== "pending")
+      || task.taskVersion !== input.expectedTaskVersion
+      || (run.status !== "queued" && run.status !== "running" && run.status !== "waiting")) {
+      return conflict();
     }
     const previousRunStatus = run.status;
     const previousNodeId = run.currentNodeId;
@@ -243,6 +410,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.cancelEventSubscriptions(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -285,6 +453,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.cancelEventSubscriptions(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -606,7 +775,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.shardId !== run.shardId
         || (run.status !== "waiting" && authoritativeTask.nodeId !== run.currentNodeId)
         || (run.status === "waiting" && (
-          authoritativeTask.taskType !== "wait"
+          (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event")
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
@@ -658,6 +827,47 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       staleTasksCancelled,
       tasksChecked: selectedTasks.length,
       terminalRunTasksCancelled,
+    };
+  }
+
+  async reconcileEventSubscriptions(
+    input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
+  ) {
+    const candidates = this.eventSubscriptions
+      .filter(item => (item.status === "waiting" || item.status === "triggered")
+        && (!input.afterSubscriptionId || BigInt(item.id) > BigInt(input.afterSubscriptionId)))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selected = candidates.slice(0, Math.max(0, input.limit));
+    let cancelled = 0;
+    for (const subscription of selected) {
+      const run = this.runs.find(item => item.uid === subscription.uid && item.id === subscription.runId);
+      const task = this.tasks.find(item => item.uid === subscription.uid && item.id === subscription.taskId);
+      const consistent = run
+        && (run.status === "queued" || run.status === "running" || run.status === "waiting")
+        && run.currentNodeId === subscription.nodeId
+        && task
+        && task.runId === run.id
+        && task.nodeId === subscription.nodeId
+        && task.nodeKind === "wait-event"
+        && task.taskType === "wait-event"
+        && (task.status === "pending"
+          || task.status === "leased"
+          || task.status === "dispatched"
+          || task.status === "running")
+        && task.dueAt.getTime() === (subscription.status === "triggered"
+          ? subscription.collectUntil?.getTime()
+          : subscription.expiresAt.getTime());
+      if (consistent) continue;
+      subscription.status = "cancelled";
+      subscription.updatedAt = this.now();
+      cancelled += 1;
+    }
+    return {
+      cancelled,
+      checked: selected.length,
+      hasMore: candidates.length > selected.length,
+      lastSubscriptionId: selected.at(-1)?.id ?? null,
     };
   }
 
@@ -843,6 +1053,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       task.taskVersion += 1;
       if (decision === "cancel") {
         task.status = "cancelled";
+        this.cancelEventSubscriptions(new Set([task.runId]));
         result.cancelled += 1;
         continue;
       }
@@ -941,6 +1152,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
+      eventSubscriptions: this.eventSubscriptions,
       inbox: this.inbox,
       nodeExecutions: this.nodeExecutions,
       nodeMetricEvents: this.nodeMetricEvents,
@@ -963,6 +1175,15 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       execution.errorMessage = errorMessage;
       execution.failureKind = null;
       execution.status = "failed";
+    }
+  }
+
+  private cancelEventSubscriptions(runIds: Set<string>) {
+    for (const subscription of this.eventSubscriptions) {
+      if (!runIds.has(subscription.runId)
+        || (subscription.status !== "waiting" && subscription.status !== "triggered")) continue;
+      subscription.status = "cancelled";
+      subscription.updatedAt = this.now();
     }
   }
 

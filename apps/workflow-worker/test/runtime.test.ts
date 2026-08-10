@@ -85,11 +85,13 @@ describe("workflow worker runtime", () => {
     const resources = createResources();
     resources.reconciler
       .mockResolvedValueOnce(reconcilerResult({
+        nextEventSubscriptionCursor: "15",
         nextConsistencyRunCursor: "10",
         nextConsistencyTaskCursor: null,
         nextCursor: "5",
       }))
       .mockResolvedValueOnce(reconcilerResult({
+        nextEventSubscriptionCursor: null,
         nextConsistencyRunCursor: null,
         nextConsistencyTaskCursor: "20",
         nextCursor: null,
@@ -111,21 +113,25 @@ describe("workflow worker runtime", () => {
     await resources.runRole("reconciler");
 
     expect(resources.reconciler).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      afterEventSubscriptionId: undefined,
       afterConsistencyRunId: undefined,
       afterConsistencyTaskId: undefined,
       afterRunId: undefined,
     }));
     expect(resources.reconciler).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      afterEventSubscriptionId: "15",
       afterConsistencyRunId: "10",
       afterConsistencyTaskId: undefined,
       afterRunId: "5",
     }));
     expect(resources.reconciler).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      afterEventSubscriptionId: undefined,
       afterConsistencyRunId: undefined,
       afterConsistencyTaskId: "20",
       afterRunId: undefined,
     }));
     expect(resources.reconciler).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      afterEventSubscriptionId: undefined,
       afterConsistencyRunId: undefined,
       afterConsistencyTaskId: undefined,
       afterRunId: undefined,
@@ -451,6 +457,7 @@ function createResources() {
 
 function reconcilerResult(overrides: {
   historyCleanupHasMore?: boolean;
+  nextEventSubscriptionCursor?: string | null;
   nextConsistencyRunCursor?: string | null;
   nextConsistencyTaskCursor?: string | null;
   nextCursor?: string | null;
@@ -460,9 +467,12 @@ function reconcilerResult(overrides: {
     historyCleanupHasMore: false,
     inboxDeleted: 0,
     inconsistentRunsFailed: 0,
+    eventSubscriptionsCancelled: 0,
+    eventSubscriptionsChecked: 0,
     nextConsistencyRunCursor: null,
     nextConsistencyTaskCursor: null,
     nextCursor: null,
+    nextEventSubscriptionCursor: null,
     nodeMetricEventsAggregated: 0,
     nodeMetricEventsDeleted: 0,
     outboxLeasesRecovered: 0,

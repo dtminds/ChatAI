@@ -121,6 +121,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_trigger_binding",
       "xy_wap_embed_workflow_run",
       "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_event_subscription",
       "xy_wap_embed_workflow_node_execution",
       "xy_wap_embed_workflow_outbox",
       "xy_wap_embed_workflow_inbox",

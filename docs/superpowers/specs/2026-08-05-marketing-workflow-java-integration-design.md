@@ -759,6 +759,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   status VARCHAR(32) NOT NULL COMMENT 'waiting、triggered、timed_out、cancelled',
   effective_from DATETIME NOT NULL COMMENT '订阅生效时间',
   expires_at DATETIME NOT NULL COMMENT '最长等待截止时间',
+  collect_until DATETIME NULL COMMENT '事件触发后的消息收集截止时间',
   trigger_event_id VARCHAR(128) NULL COMMENT '命中的入口事件ID',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -767,7 +768,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   KEY idx_workflow_event_subscription_lookup
     (uid, subject_type, event_type, subject_id, status, expires_at, id),
   KEY idx_workflow_event_subscription_run
-    (uid, run_id, status, id)
+    (uid, run_id, status, id),
+  KEY idx_workflow_event_subscription_reconcile (status, id)
 ) COMMENT='营销Workflow动态事件等待订阅表';
 ```
 

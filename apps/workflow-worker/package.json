@@ -14,7 +14,8 @@
     "dev": "pnpm build && NODE_ENV=development node --env-file-if-exists=.env.local --enable-source-maps dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc --noEmit"
+    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc --noEmit",
+    "verify:production-imports": "node scripts/verify-production-import-graph.mjs"
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",

@@ -132,6 +132,44 @@ export function runWorkflowRuntimeRepositoryContract(
     });
   });
 
+  it("rejects beginning a Wait Event when the Workflow boundary is unavailable", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      initialNodeId: "wait-event-1",
+      initialNodeKind: "wait-event",
+    })));
+    const claimed = await harness.repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("Expected Wait Event task claim to succeed");
+    await harness.setWorkflowRuntimeStatus("stopped");
+
+    const inbox = {
+      consumer: "workflow-task",
+      expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+      messageId: `wait-event:${created.task.id}`,
+    };
+    await expect(harness.repository.beginEventWait({
+      accountId: null,
+      effectiveFrom: OUTBOX_READY_AT,
+      eventType: "message.received",
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      expiresAt: EVENT_WAIT_EXPIRES_AT,
+      inbox,
+      now: OUTBOX_READY_AT,
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    })).resolves.toEqual({ action: "cancel", kind: "workflow-unavailable" });
+    await expect(harness.repository.findEventSubscriptionByTask(9, created.task.id))
+      .resolves.toBeNull();
+    await expect(harness.repository.hasProcessedInboxMessage(inbox)).resolves.toBe(false);
+  });
+
   it("allows only one event or timeout claimant to win a Wait Event subscription", async () => {
     const waiting = await createEventWait(harness.repository);
     const [triggered, timedOut] = await Promise.all([

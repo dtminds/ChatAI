@@ -164,6 +164,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.status !== "running"
       || task.nodeKind !== "wait-event"
       || input.expiresAt <= input.effectiveFrom) return conflict();
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({
+        uid: input.uid,
+        workflowId: run.workflowId,
+      });
+      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+    }
     if (this.eventSubscriptions.some(item => item.uid === input.uid
       && item.taskId === task.id
       && item.eventType === input.eventType)) return conflict();

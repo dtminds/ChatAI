@@ -84,6 +84,7 @@ const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
 const MAX_POLL_CONVERSATION_CHANGE_LIMIT = 500;
+const POLL_MESSAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HISTORY_MESSAGE_LIMIT = 30;
 const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const DEFAULT_CUSTOMER_LIST_LIMIT = 50;
@@ -4540,7 +4541,9 @@ export class WorkbenchRepository {
     }
 
     if (options.afterSeq != null) {
-      query = query.where("message.id", ">", options.afterSeq);
+      query = query
+        .where("message.msgtime", ">=", Date.now() - POLL_MESSAGE_LOOKBACK_MS)
+        .where("message.id", ">", options.afterSeq);
     }
 
     const rows = await query

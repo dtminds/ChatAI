@@ -7375,20 +7375,31 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("limits poll message reads to rows after the active message sequence", async () => {
+  it("limits poll message reads to the previous day after the active message sequence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-10T12:00:00.000Z"));
     const db = createMessagesDb([
       messageRow({ id: 102, msgid: "remote-msg-102" }),
     ]);
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessages("88", { afterSeq: 101, limit: 50 });
+    try {
+      await repository.listMessages("88", { afterSeq: 101, limit: 50 });
 
-    expect(db.messageQueries[0]?.wheres).toContainEqual([
-      "message.id",
-      ">",
-      101,
-    ]);
-    expect(db.messageQueries[0]?.limits).toEqual([51]);
+      expect(db.messageQueries[0]?.wheres).toContainEqual([
+        "message.msgtime",
+        ">=",
+        Date.now() - 24 * 60 * 60 * 1000,
+      ]);
+      expect(db.messageQueries[0]?.wheres).toContainEqual([
+        "message.id",
+        ">",
+        101,
+      ]);
+      expect(db.messageQueries[0]?.limits).toEqual([51]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("loads shadow group messages with the opening seat third user id", async () => {

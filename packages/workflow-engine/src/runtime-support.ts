@@ -3,6 +3,7 @@ import type { WorkflowNodeKind } from "@chatai/contracts";
 export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
   "start",
   "wait",
+  "wait-event",
   "end",
 ] as const satisfies readonly WorkflowNodeKind[];
 

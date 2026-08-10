@@ -7,6 +7,29 @@ export type WorkflowWorkerLogger = {
   warn(value: unknown, message?: string): void;
 };
 
+export function logWorkflowEntryConsumeResult(
+  logger: WorkflowWorkerLogger,
+  result: { code: string; disposition: "ack" | "nack" },
+) {
+  const fields = {
+    code: result.code,
+    disposition: result.disposition,
+    event: result.disposition === "nack"
+      ? "workflow.entry.consume.failed"
+      : isRejectedEntryCode(result.code)
+        ? "workflow.entry.consume.rejected"
+        : "workflow.entry.consume.completed",
+    role: "entry-consumer",
+  };
+  if (result.disposition === "nack" || isRejectedEntryCode(result.code)) {
+    logger.warn(fields, result.disposition === "nack"
+      ? "workflow entry message processing failed"
+      : "workflow entry message rejected");
+    return;
+  }
+  logger.debug(fields, "workflow entry message consumed");
+}
+
 type RoleHeartbeat = {
   completedAt: Date;
   durationMs: number;
@@ -115,4 +138,11 @@ function isReady(readiness: WorkflowReadiness) {
   return readiness.broker
     && readiness.database
     && Object.values(readiness.roles).every(Boolean);
+}
+
+function isRejectedEntryCode(code: string) {
+  return code !== "admitted"
+    && code !== "deduplicated"
+    && code !== "entry_policy_rejected"
+    && code !== "no_match";
 }

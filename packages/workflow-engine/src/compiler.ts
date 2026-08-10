@@ -1,5 +1,6 @@
 import {
   normalizeWorkflowEntryPolicy,
+  WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   type WorkflowDraft,
   type WorkflowExecutionSpec,
   type WorkflowNodeKind,
@@ -96,6 +97,17 @@ function createExecutionConfig(kind: WorkflowNodeKind, data: Record<string, unkn
     return data.mode === "fixed-time"
       ? cloneJsonValue({ dayOffset: data.dayOffset, mode: data.mode, time: data.time }) as Record<string, unknown>
       : cloneJsonValue({ duration: data.duration, mode: data.mode, unit: data.unit }) as Record<string, unknown>;
+  }
+  if (kind === "wait-event") {
+    return cloneJsonValue({
+      event: {
+        capabilityKey: "event.message.received",
+        collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
+        contractVersion: 1,
+        type: "message.received",
+      },
+      timeout: data.timeout,
+    }) as Record<string, unknown>;
   }
   if (kind === "end") return {};
   return {};

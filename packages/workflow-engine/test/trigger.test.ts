@@ -22,30 +22,28 @@ const startConfig = {
 
 describe("workflow trigger matching", () => {
   it("matches account-scoped events with OR semantics", () => {
-    expect(matchWorkflowTrigger(startConfig, command({
+    expect(matchWorkflowTrigger(startConfig, projection({
       eventType: "contact.tag_added",
-      triggerPayload: { tagId: "tag-vip" },
+      match: { accountId: "account-a", tagId: "tag-vip" },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, command({
+    expect(matchWorkflowTrigger(startConfig, projection({
       eventType: "message.received",
-      triggerPayload: { messageId: "message-1", messageType: "text", text: "A vip OFFER" },
+      match: { accountId: "account-a", messageType: "text", text: "A vip OFFER" },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, command({
-      accountId: "account-c",
+    expect(matchWorkflowTrigger(startConfig, projection({
       eventType: "message.received",
-      thirdUserId: "external-user-2",
-      triggerPayload: { messageId: "message-2", messageType: "text", text: "VIP" },
+      match: { accountId: "account-c", messageType: "text", text: "VIP" },
     }))).toBe(false);
   });
 
   it("uses literal keyword matching and ignores non-text messages", () => {
-    expect(matchWorkflowTrigger(startConfig, command({
+    expect(matchWorkflowTrigger(startConfig, projection({
       eventType: "message.received",
-      triggerPayload: { messageId: "message-3", messageType: "text", text: "[VIP] customer" },
+      match: { accountId: "account-a", messageType: "text", text: "[VIP] customer" },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, command({
+    expect(matchWorkflowTrigger(startConfig, projection({
       eventType: "message.received",
-      triggerPayload: { messageId: "message-4", messageType: "image", text: "VIP" },
+      match: { accountId: "account-a", messageType: "image", text: "VIP" },
     }))).toBe(false);
   });
 
@@ -62,17 +60,11 @@ describe("workflow trigger matching", () => {
   });
 });
 
-function command(overrides: Record<string, unknown>) {
+function projection(overrides: Record<string, unknown>) {
   return {
-    accountId: "account-a",
-    eventId: "event-1",
     eventType: "contact.friend_added" as const,
-    occurredAt: "2026-07-11T00:00:00.000Z",
-    subjectId: "external-user-1",
-    subjectType: "chatai_contact" as const,
-    thirdUserId: "external-user-1",
-    triggerPayload: {},
-    uid: "9",
+    match: { accountId: "account-a" },
+    variables: {},
     ...overrides,
   };
 }

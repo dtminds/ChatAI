@@ -31,6 +31,12 @@ export class WorkflowRuntimeReconciler {
     return this.repository.reconcileRunTaskConsistency(input);
   }
 
+  reconcileEventSubscriptions(
+    input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
+  ) {
+    return this.repository.reconcileEventSubscriptions(input);
+  }
+
   aggregateNodeMetricEvents(input: { limit: number }) {
     return this.repository.aggregateNodeMetricEvents(input);
   }

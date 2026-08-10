@@ -1,10 +1,12 @@
 import {
   WORKFLOW_WAIT_DAY_OFFSET_MAX,
   WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
+  WorkflowWaitEventConfigSchema,
   type WorkflowExecutionNode,
   type WorkflowNodeKind,
   type WorkflowSubjectType,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
@@ -35,6 +37,7 @@ export type WorkflowNodeExecutionContext = {
 
 export type WorkflowNodeExecutionResult =
   | { output: Record<string, unknown>; sourceOutletId: string; type: "advance" }
+  | { eventType: "message.received"; expiresAt: string; type: "event-wait" }
   | { dueAt: string; output: Record<string, unknown>; type: "wait" }
   | { output: Record<string, unknown>; type: "complete" };
 
@@ -84,6 +87,7 @@ export function createCoreNodeExecutorRegistry() {
     execute: () => ({ output: {}, type: "complete" }),
   });
   registry.register("wait", { execute: executeWait });
+  registry.register("wait-event", { execute: executeWaitEvent });
   registry.register("branch", { execute: executeBranch });
 
   const actionExecutor: WorkflowNodeExecutor = {
@@ -128,6 +132,27 @@ function executeWait(
     ? getFixedTimeWaitDueAt(node.config, context.now)
     : getDurationWaitDueAt(node.config, context.now);
   return { dueAt, output: { dueAt }, type: "wait" };
+}
+
+function executeWaitEvent(
+  node: WorkflowExecutionNode,
+  context: WorkflowNodeExecutionContext,
+): WorkflowNodeExecutionResult {
+  if (!Value.Check(WorkflowWaitEventConfigSchema, node.config)) {
+    throw new WorkflowNodeExecutionError("Wait Event node requires a supported event and timeout");
+  }
+  const unitMilliseconds = node.config.timeout.unit === "minute"
+    ? 60_000
+    : node.config.timeout.unit === "hour"
+      ? 3_600_000
+      : 86_400_000;
+  return {
+    eventType: node.config.event.type,
+    expiresAt: new Date(
+      context.now.getTime() + node.config.timeout.duration * unitMilliseconds,
+    ).toISOString(),
+    type: "event-wait",
+  };
 }
 
 function getDurationWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {

@@ -75,6 +75,49 @@ describe("workflow production availability", () => {
     });
   });
 
+  it("treats Wait Event as runtime-supported while keeping its deployment capability closed", () => {
+    const spec = executionSpec();
+    spec.nodes.splice(1, 0, {
+      config: {
+        event: {
+          capabilityKey: "event.message.received",
+          collectWindowSeconds: 10,
+          contractVersion: 1,
+          type: "message.received",
+        },
+        timeout: { duration: 15, unit: "minute" },
+      },
+      id: "wait-event",
+      kind: "wait-event",
+      nodeSchemaVersion: 1,
+      requiredCapabilities: [
+        { capabilityKey: "event.message.received", contractVersion: 1 },
+      ],
+    });
+    spec.requiredCapabilities.push({
+      capabilityKey: "event.message.received",
+      contractVersion: 1,
+    });
+
+    expect(evaluateWorkflowProductionAvailability({
+      deployment: createWorkflowDeploymentCapabilities([
+        { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      ]),
+      entitlement: { entitled: true, unentitledSince: null },
+      spec,
+    })).toEqual({
+      available: false,
+      blockers: [{
+        capabilityKey: "event.message.received",
+        code: "deployment-capability-disabled",
+        contractVersion: 1,
+        dimension: "deployment",
+        nodeId: "wait-event",
+        nodeKind: "wait-event",
+      }],
+    });
+  });
+
   it("enforces workflow type policy without treating runtime progress as product policy", () => {
     const draft = {
       edges: [],

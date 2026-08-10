@@ -18,6 +18,15 @@ type WorkflowReconciler = {
     maxAttempts: number;
     now: Date;
   }): Promise<{ dead: number; recovered: number }>;
+  reconcileEventSubscriptions(input: {
+    afterSubscriptionId?: string;
+    limit: number;
+  }): Promise<{
+    cancelled: number;
+    checked: number;
+    hasMore: boolean;
+    lastSubscriptionId: string | null;
+  }>;
   reconcileRunTaskConsistency(input: {
     afterRunId?: string;
     afterTaskId?: string;
@@ -44,6 +53,7 @@ type WorkflowReconciler = {
 };
 
 export async function reconcileWorkflowRuntime(input: {
+  afterEventSubscriptionId?: string;
   afterRunId?: string;
   afterConsistencyRunId?: string;
   afterConsistencyTaskId?: string;
@@ -69,6 +79,10 @@ export async function reconcileWorkflowRuntime(input: {
   });
   const cancellation = await input.reconciler.cancelUnavailableRuns({
     afterRunId: input.afterRunId,
+    limit: input.limit,
+  });
+  const eventSubscriptions = await input.reconciler.reconcileEventSubscriptions({
+    afterSubscriptionId: input.afterEventSubscriptionId,
     limit: input.limit,
   });
   const consistency = await input.reconciler.reconcileRunTaskConsistency({
@@ -116,6 +130,9 @@ export async function reconcileWorkflowRuntime(input: {
     nextConsistencyRunCursor: consistency.hasMoreRuns ? consistency.lastRunId : null,
     nextConsistencyTaskCursor: consistency.hasMoreTasks ? consistency.lastTaskId : null,
     nextCursor: cancellation.done ? null : cancellation.nextCursor,
+    nextEventSubscriptionCursor: eventSubscriptions.hasMore
+      ? eventSubscriptions.lastSubscriptionId
+      : null,
     nodeMetricEventsAggregated,
     nodeMetricEventsDeleted,
     nodeExecutionsDeleted: history.nodeExecutionsDeleted,
@@ -125,6 +142,8 @@ export async function reconcileWorkflowRuntime(input: {
     runsDeleted: history.runsDeleted,
     runsChecked: consistency.runsChecked,
     staleTasksCancelled: consistency.staleTasksCancelled,
+    eventSubscriptionsCancelled: eventSubscriptions.cancelled,
+    eventSubscriptionsChecked: eventSubscriptions.checked,
     taskLeasesDead: taskLeaseRecovery.dead,
     taskLeasesRecovered: taskLeaseRecovery.recovered,
     tasksChecked: consistency.tasksChecked,

@@ -1,6 +1,4 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { WorkflowIdSchema } from "./dto.js";
-import { WorkflowSubjectTypeSchema } from "./policy.js";
 import {
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
@@ -73,6 +71,12 @@ export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
   minute: 360,
 } as const;
 export const WORKFLOW_WAIT_DAY_OFFSET_MAX = 45;
+export const WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS = 10;
+export const WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
+  day: 15,
+  hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
+  minute: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.minute,
+} as const;
 
 export const WorkflowWaitConfigSchema = Type.Union([
   Type.Object({
@@ -97,59 +101,51 @@ export const WorkflowWaitConfigSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
-const WorkflowEntryCommandBaseSchema = Type.Object({
-  accountId: Type.String({ minLength: 1, maxLength: 128 }),
-  eventId: Type.String({ minLength: 1, maxLength: 128 }),
-  occurredAt: Type.String({ minLength: 1, maxLength: 64 }),
-  subjectId: Type.String({ minLength: 1, maxLength: 256 }),
-  subjectType: WorkflowSubjectTypeSchema,
-  thirdUserId: Type.String({ minLength: 1, maxLength: 128 }),
-  uid: WorkflowIdSchema,
-});
-
-export const WorkflowMessageTypeSchema = Type.Union([
-  Type.Literal("text"),
-  Type.Literal("image"),
-  Type.Literal("voice"),
-  Type.Literal("video"),
-  Type.Literal("file"),
+const WorkflowWaitEventTimeoutSchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.minute,
+    }),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.hour,
+    }),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.day,
+    }),
+    unit: Type.Literal("day"),
+  }, { additionalProperties: false }),
 ]);
 
-export const WorkflowEntryCommandSchema = Type.Union([
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("contact.friend_added"),
-      triggerPayload: Type.Object({
-        source: Type.Optional(Type.String({ maxLength: 128 })),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("contact.tag_added"),
-      triggerPayload: Type.Object({
-        tagId: Type.String({ minLength: 1, maxLength: 128 }),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("message.received"),
-      triggerPayload: Type.Object({
-        messageId: Type.String({ minLength: 1, maxLength: 128 }),
-        messageType: WorkflowMessageTypeSchema,
-        text: Type.Optional(Type.String({ maxLength: 20_000 })),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-]);
+export const WorkflowWaitEventDraftConfigSchema = Type.Object({
+  event: Type.Object({
+    type: Type.Literal("message.received"),
+  }, { additionalProperties: false }),
+  timeout: WorkflowWaitEventTimeoutSchema,
+}, { additionalProperties: false });
 
-export type WorkflowEntryCommand = Static<typeof WorkflowEntryCommandSchema>;
+export const WorkflowWaitEventConfigSchema = Type.Object({
+  event: Type.Object({
+    capabilityKey: Type.Literal("event.message.received"),
+    collectWindowSeconds: Type.Literal(WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS),
+    contractVersion: Type.Literal(1),
+    type: Type.Literal("message.received"),
+  }, { additionalProperties: false }),
+  timeout: WorkflowWaitEventTimeoutSchema,
+}, { additionalProperties: false });
+
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartConfig = Static<typeof WorkflowStartConfigSchema>;
 export type WorkflowStartTrigger = Static<typeof WorkflowStartTriggerSchema>;
 export type WorkflowWaitConfig = Static<typeof WorkflowWaitConfigSchema>;
+export type WorkflowWaitEventDraftConfig = Static<typeof WorkflowWaitEventDraftConfigSchema>;
+export type WorkflowWaitEventConfig = Static<typeof WorkflowWaitEventConfigSchema>;

@@ -1,15 +1,20 @@
 import type {
+  WorkflowEntryEventType,
   WorkflowExecutionNode,
   WorkflowExecutionSpec,
+  WorkflowJsonObject,
   WorkflowNodeKind,
   WorkflowStartConfig,
   WorkflowSubjectType,
   WorkflowType,
+  WorkflowWaitEventConfig,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
   normalizeWorkflowEntryPolicy,
+  WORKFLOW_INBOX_RETENTION_DAYS,
   WorkflowStartConfigSchema,
+  WorkflowWaitEventConfigSchema,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -37,12 +42,22 @@ import {
 } from "./runtime-value-limits.js";
 import type {
   WorkflowCommitNodeResultInput,
+  WorkflowEventSubscriptionRecord,
   WorkflowRuntimeControlReader,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
+  WorkflowTaskRecord,
 } from "./types.js";
 
 type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAction"]>;
+type WorkflowExecuteTaskInput = {
+  messageId?: string;
+  now: Date;
+  taskId: string;
+  taskVersion: number;
+  uid: number;
+  workerId: string;
+};
 
 export class WorkflowRuntimeService {
   private readonly actionMaxRetryDelayMs: number;
@@ -164,14 +179,69 @@ export class WorkflowRuntimeService {
     return created;
   }
 
-  async executeTask(input: {
-    messageId?: string;
-    now: Date;
-    taskId: string;
-    taskVersion: number;
+  async recordWaitEvent(input: {
+    eventId: string;
+    eventOccurredAt: Date;
+    eventType: WorkflowEntryEventType;
+    match: WorkflowJsonObject;
+    projection: WorkflowJsonObject;
+    recordedAt: Date;
+    subscription: WorkflowEventSubscriptionRecord;
+    subjectId: string;
+    subjectType: WorkflowSubjectType;
     uid: number;
-    workerId: string;
   }) {
+    if (input.subscription.uid !== input.uid
+      || input.subscription.eventType !== input.eventType
+      || input.subscription.subjectId !== input.subjectId
+      || input.subscription.subjectType !== input.subjectType) {
+      throw staleDefinitionError();
+    }
+    const definition = await this.controlRepository.findDefinition(
+      input.uid,
+      input.subscription.workflowId,
+    );
+    if (!definition) throw staleDefinitionError();
+    const revision = await this.controlRepository.findRevision(
+      input.uid,
+      input.subscription.workflowId,
+      input.subscription.revision,
+    );
+    if (!revision
+      || revision.workflowType !== definition.workflowType
+      || revision.subjectType !== input.subscription.subjectType) {
+      throw staleDefinitionError();
+    }
+    const node = requireExecutionNode(revision.executionSpec, input.subscription.nodeId);
+    const config = requireWaitEventConfig(node);
+    if (config.event.type !== input.eventType
+      || (input.subscription.accountId !== null
+        && input.match.accountId !== input.subscription.accountId)) {
+      return { kind: "not-matched" as const };
+    }
+    if (!node.requiredCapabilities.every((requirement) =>
+      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
+      throw deploymentCapabilityDisabledError();
+    }
+    const collectUntil = input.subscription.status === "waiting"
+      ? new Date(input.recordedAt.getTime() + config.event.collectWindowSeconds * 1_000)
+      : input.subscription.collectUntil;
+    if (!collectUntil) throw staleTaskError();
+    const recorded = await this.runtimeRepository.recordEventSubscriptionEvent({
+      collectUntil,
+      eventId: input.eventId,
+      eventOccurredAt: input.eventOccurredAt,
+      projection: input.projection,
+      recordedAt: input.recordedAt,
+      subscriptionId: input.subscription.id,
+      uid: input.uid,
+    });
+    if (recorded.kind === "workflow-unavailable") throw workflowUnavailable();
+    if (recorded.kind === "entry-policy-rejected") throw staleTaskError();
+    return recorded;
+  }
+
+  async executeTask(input: WorkflowExecuteTaskInput) {
     const task = await this.runtimeRepository.findTask(input.uid, input.taskId);
     if (!task) throw new WorkflowRuntimeError("WORKFLOW_TASK_NOT_FOUND", "Workflow Task 不存在", 404);
     const run = await this.runtimeRepository.findRun(input.uid, task.runId);
@@ -180,6 +250,12 @@ export class WorkflowRuntimeService {
     if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
     if (revision.subjectType !== run.subjectType) throw staleDefinitionError();
     const node = requireExecutionNode(revision.executionSpec, task.nodeId);
+    const existingEventSubscription = node.kind === "wait-event"
+      ? await this.runtimeRepository.findEventSubscriptionByTask(input.uid, task.id)
+      : null;
+    if (existingEventSubscription && task.dueAt.getTime() > input.now.getTime()) {
+      throw staleTaskError();
+    }
 
     try {
       await this.requireEntitlement(input.uid, revision.workflowType);
@@ -217,6 +293,17 @@ export class WorkflowRuntimeService {
       sequence: claimed.task.sequence,
       uid: String(input.uid),
     });
+    if (node.kind === "wait-event") {
+      return this.executeWaitEventTask({
+        actionIdempotencyKey,
+        claimedTask: claimed.task,
+        existingSubscription: existingEventSubscription,
+        input,
+        node,
+        revision: revision.executionSpec,
+        run,
+      });
+    }
     if (isWorkflowActionNodeKind(node.kind)) {
       const prepared = await this.runtimeRepository.prepareActionExecution({
         expectedRunLockVersion: run.lockVersion,
@@ -246,6 +333,9 @@ export class WorkflowRuntimeService {
             startedAt: this.clock(),
           })
         : await this.executors.execute(node, createExecutionContext(run, input.now));
+      if (executionResult.type === "event-wait") {
+        throw new Error(`Unexpected Wait Event result for ${node.kind}`);
+      }
       assertWorkflowRuntimeValue(
         executionResult.output,
         "node-output",
@@ -255,32 +345,14 @@ export class WorkflowRuntimeService {
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
       if (!actionNode && error instanceof WorkflowRuntimeValueError) {
-        const nodeFailure = toCoreNodeRuntimeFailure(error);
-        const committed = await this.runtimeRepository.commitNodeResult({
-          expectedRunLockVersion: run.lockVersion,
-          expectedTaskVersion: claimed.task.taskVersion,
-          inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
-          nodeExecution: {
-            errorCode: nodeFailure.errorCode,
-            errorMessage: nodeFailure.errorMessage,
-            idempotencyKey: actionIdempotencyKey,
-            input: createNodeInputSnapshot(run),
-            output: {},
-          },
-          runId: run.id,
-          taskId: task.id,
-          uid: input.uid,
+        return this.commitCoreNodeFailure({
+          actionIdempotencyKey,
+          error,
+          input,
+          node,
+          run,
+          task: claimed.task,
         });
-        if (committed.kind === "already-processed") throw alreadyProcessedError();
-        if (committed.kind !== "success") throw staleTaskError();
-        return {
-          ...nodeFailure,
-          diagnosticMessage: nodeFailure.diagnosticMessage.slice(0, 1_024),
-          kind: "node-failed" as const,
-          nodeId: node.id,
-          nodeKind: node.kind,
-          run: committed.run,
-        };
       }
       const actionError = actionNode ? toActionExecutionError(error) : null;
       if (!actionError) throw error;
@@ -351,6 +423,172 @@ export class WorkflowRuntimeService {
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
     return committed;
+  }
+
+  private async executeWaitEventTask(input: {
+    actionIdempotencyKey: string;
+    claimedTask: WorkflowTaskRecord;
+    existingSubscription: WorkflowEventSubscriptionRecord | null;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    revision: WorkflowExecutionSpec;
+    run: WorkflowRunRecord;
+  }) {
+    if (!input.existingSubscription) {
+      const executionResult = await this.executors.execute(
+        input.node,
+        createExecutionContext(input.run, input.input.now),
+      );
+      if (executionResult.type !== "event-wait") {
+        throw new Error(`Wait Event executor returned ${executionResult.type}`);
+      }
+      const waiting = await this.runtimeRepository.beginEventWait({
+        accountId: null,
+        effectiveFrom: input.input.now,
+        eventType: executionResult.eventType,
+        expectedRunLockVersion: input.run.lockVersion,
+        expectedTaskVersion: input.claimedTask.taskVersion,
+        expiresAt: new Date(executionResult.expiresAt),
+        inbox: createInbox(
+          input.input.messageId,
+          input.claimedTask.id,
+          input.input.taskVersion,
+          input.input.now,
+        ),
+        now: input.input.now,
+        runId: input.run.id,
+        taskId: input.claimedTask.id,
+        uid: input.input.uid,
+      });
+      if (waiting.kind === "already-processed") throw alreadyProcessedError();
+      if (waiting.kind === "workflow-unavailable") {
+        throw waiting.action === "defer"
+          ? runtimeStatusError("paused")
+          : workflowUnavailable();
+      }
+      if (waiting.kind !== "success") throw staleTaskError();
+      return {
+        kind: "waiting" as const,
+        run: waiting.run,
+        subscription: waiting.subscription,
+        task: waiting.task,
+      };
+    }
+
+    let collectedEvents: Awaited<ReturnType<WorkflowRuntimeRepository[
+      "listEventSubscriptionEvents"
+    ]>> | null = null;
+    let sourceOutletId: "timeout" | "triggered";
+    if (input.existingSubscription.status === "waiting") {
+      const timedOut = await this.runtimeRepository.timeoutEventSubscription({
+        subscriptionId: input.existingSubscription.id,
+        timedOutAt: input.input.now,
+        uid: input.input.uid,
+      });
+      if (timedOut.kind !== "success" && timedOut.kind !== "already-processed") {
+        throw staleTaskError();
+      }
+      sourceOutletId = "timeout";
+    } else if (input.existingSubscription.status === "timed_out") {
+      sourceOutletId = "timeout";
+    } else if (input.existingSubscription.status === "triggered") {
+      collectedEvents = await this.runtimeRepository.listEventSubscriptionEvents(
+        input.input.uid,
+        input.existingSubscription.id,
+      );
+      sourceOutletId = "triggered";
+    } else {
+      throw staleTaskError();
+    }
+
+    let output: Record<string, unknown>;
+    let nextContext: Record<string, unknown>;
+    try {
+      output = collectedEvents ? aggregateWaitEventOutput(collectedEvents) : {};
+      assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
+      nextContext = appendNodeOutput(input.run.context, input.node.id, output);
+      assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+    } catch (error) {
+      if (!(error instanceof WorkflowRuntimeValueError)) throw error;
+      return this.commitCoreNodeFailure({
+        actionIdempotencyKey: input.actionIdempotencyKey,
+        error,
+        input: input.input,
+        node: input.node,
+        run: input.run,
+        task: input.claimedTask,
+      });
+    }
+
+    const nextTask = createNextTask(input.revision, input.node, {
+      output,
+      sourceOutletId,
+      type: "advance",
+    }, input.input.now);
+    const committed = await this.runtimeRepository.commitNodeResult({
+      context: nextContext,
+      expectedRunLockVersion: input.run.lockVersion,
+      expectedTaskVersion: input.claimedTask.taskVersion,
+      inbox: createInbox(
+        input.input.messageId,
+        input.claimedTask.id,
+        input.input.taskVersion,
+        input.input.now,
+      ),
+      nextTask,
+      nodeExecution: {
+        idempotencyKey: input.actionIdempotencyKey,
+        input: createNodeInputSnapshot(input.run),
+        output,
+      },
+      runId: input.run.id,
+      taskId: input.claimedTask.id,
+      uid: input.input.uid,
+    });
+    if (committed.kind === "already-processed") throw alreadyProcessedError();
+    if (committed.kind !== "success") throw staleTaskError();
+    return committed;
+  }
+
+  private async commitCoreNodeFailure(input: {
+    actionIdempotencyKey: string;
+    error: WorkflowRuntimeValueError;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    run: WorkflowRunRecord;
+    task: WorkflowTaskRecord;
+  }) {
+    const nodeFailure = toCoreNodeRuntimeFailure(input.error);
+    const committed = await this.runtimeRepository.commitNodeResult({
+      expectedRunLockVersion: input.run.lockVersion,
+      expectedTaskVersion: input.task.taskVersion,
+      inbox: createInbox(
+        input.input.messageId,
+        input.task.id,
+        input.input.taskVersion,
+        input.input.now,
+      ),
+      nodeExecution: {
+        errorCode: nodeFailure.errorCode,
+        errorMessage: nodeFailure.errorMessage,
+        idempotencyKey: input.actionIdempotencyKey,
+        input: createNodeInputSnapshot(input.run),
+        output: {},
+      },
+      runId: input.run.id,
+      taskId: input.task.id,
+      uid: input.input.uid,
+    });
+    if (committed.kind === "already-processed") throw alreadyProcessedError();
+    if (committed.kind !== "success") throw staleTaskError();
+    return {
+      ...nodeFailure,
+      diagnosticMessage: nodeFailure.diagnosticMessage.slice(0, 1_024),
+      kind: "node-failed" as const,
+      nodeId: input.node.id,
+      nodeKind: input.node.kind,
+      run: committed.run,
+    };
   }
 
   private async requireEntitlement(uid: number, workflowType: WorkflowType) {
@@ -519,7 +757,7 @@ function formatRuntimeValueDiagnostic(error: WorkflowRuntimeValueError) {
 function createInbox(messageId: string | undefined, taskId: string, taskVersion: number, now: Date) {
   return {
     consumer: "workflow-task",
-    expiresAt: new Date(now.getTime() + 31 * 86_400_000),
+    expiresAt: new Date(now.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000),
     messageId: messageId ?? `task:${taskId}:v${taskVersion}`,
   };
 }
@@ -531,6 +769,9 @@ function createNextTask(
   now: Date,
 ) {
   if (result.type === "complete") return undefined;
+  if (result.type === "event-wait") {
+    throw new Error("Wait Event must establish its subscription before routing");
+  }
   const sourceOutletId = result.type === "wait" ? "default" : result.sourceOutletId;
   const edge = spec.edges.find((item) =>
     item.source === node.id && item.sourceOutletId === sourceOutletId,
@@ -586,6 +827,52 @@ function requireStartConfig(node: WorkflowExecutionNode): WorkflowStartConfig {
     throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
   }
   return structuredClone(normalizedConfig) as WorkflowStartConfig;
+}
+
+function requireWaitEventConfig(node: WorkflowExecutionNode): WorkflowWaitEventConfig {
+  if (node.kind !== "wait-event" || !Value.Check(WorkflowWaitEventConfigSchema, node.config)) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_WAIT_EVENT_CONFIG_INVALID",
+      "Workflow Wait Event 配置无效",
+      500,
+    );
+  }
+  return structuredClone(node.config) as WorkflowWaitEventConfig;
+}
+
+function aggregateWaitEventOutput(
+  events: Awaited<ReturnType<WorkflowRuntimeRepository["listEventSubscriptionEvents"]>>,
+) {
+  if (events.length === 0) throw invalidWaitEventOutput();
+  const messageIds: number[] = [];
+  const textParts: string[] = [];
+  let lastMessageAt = events[0]!.occurredAt;
+  for (const event of events) {
+    const messageId = event.projection.messageId;
+    if (typeof messageId !== "number" || !Number.isSafeInteger(messageId) || messageId <= 0) {
+      throw invalidWaitEventOutput();
+    }
+    messageIds.push(messageId);
+    if (typeof event.projection.text === "string" && event.projection.text.length > 0) {
+      textParts.push(event.projection.text);
+    }
+    if (event.occurredAt > lastMessageAt) lastMessageAt = event.occurredAt;
+  }
+  return {
+    lastMessageAt: lastMessageAt.toISOString(),
+    messageCount: events.length,
+    messageIds,
+    textContent: textParts.join("\n"),
+  };
+}
+
+function invalidWaitEventOutput() {
+  return new WorkflowRuntimeValueError(
+    "invalid",
+    "node-output",
+    null,
+    WORKFLOW_NODE_OUTPUT_MAX_BYTES,
+  );
 }
 
 function parseOccurredAt(trigger: Record<string, unknown>) {

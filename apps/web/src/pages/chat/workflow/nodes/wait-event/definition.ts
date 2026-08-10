@@ -1,3 +1,6 @@
+import {
+  WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
+} from "@chatai/contracts";
 import { BellDotIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
@@ -17,7 +20,6 @@ import {
 } from "./config";
 import {
   getWorkflowWaitEventDefinition,
-  WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   WAIT_EVENT_TIMEOUT_HANDLE_ID,
   WAIT_EVENT_TRIGGERED_HANDLE_ID,
 } from "./events";
@@ -39,7 +41,9 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
   }),
   createExecutionConfig: (data) => ({
     event: {
-      collectWindowSeconds: WAIT_EVENT_COLLECT_WINDOW_SECONDS,
+      collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
+      capabilityKey: "event.message.received",
+      contractVersion: 1,
       type: normalizeWaitEventType(data.event?.type),
     },
     timeout: normalizeWaitEventTimeout(data.timeout),

@@ -1,7 +1,9 @@
 import {
   WorkflowStartConfigSchema,
+  WorkflowWaitEventDraftConfigSchema,
   WorkflowWaitConfigSchema,
   type WorkflowStartConfig,
+  type WorkflowWaitEventDraftConfig,
   type WorkflowWaitConfig,
   WorkflowDraft,
   WorkflowDraftEdge,
@@ -136,6 +138,17 @@ function validateNodeConfig(
     return;
   }
 
+  if (node.data.kind === "wait-event") {
+    if (!isWorkflowWaitEventDraftConfig(node.data)) {
+      issues.push({
+        code: "invalid-node-config",
+        message: "Wait Event node requires a supported event and timeout",
+        nodeId: node.id,
+      });
+    }
+    return;
+  }
+
 }
 
 function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowStartConfig {
@@ -150,6 +163,15 @@ function isWorkflowWaitConfig(value: Record<string, unknown>): value is Record<s
   return Value.Check(WorkflowWaitConfigSchema, value.mode === "fixed-time"
     ? { dayOffset: value.dayOffset, mode: value.mode, time: value.time }
     : { duration: value.duration, mode: value.mode, unit: value.unit });
+}
+
+function isWorkflowWaitEventDraftConfig(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & WorkflowWaitEventDraftConfig {
+  return Value.Check(WorkflowWaitEventDraftConfigSchema, {
+    event: value.event,
+    timeout: value.timeout,
+  });
 }
 
 export function getWorkflowSourceOutletId(edge: WorkflowDraftEdge) {
@@ -167,7 +189,9 @@ function validateNodeOutlets(
 
   const outletIds = node.data.kind === "branch"
     ? getBranchOutletIds(node)
-    : [DEFAULT_OUTLET_ID];
+    : node.data.kind === "wait-event"
+      ? ["triggered", "timeout"]
+      : [DEFAULT_OUTLET_ID];
   const edgeCountByOutlet = new Map<string, number>();
 
   for (const edge of edges) {

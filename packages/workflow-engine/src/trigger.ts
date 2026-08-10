@@ -1,11 +1,11 @@
 import type {
-  WorkflowEntryCommand,
   WorkflowEntryEventType,
   WorkflowStartConfig,
   WorkflowStartTrigger,
   WorkflowSubjectType,
 } from "@chatai/contracts";
 import { normalizeWorkflowEntryPolicy } from "@chatai/contracts";
+import type { WorkflowTriggerProjection } from "./event-catalog.js";
 
 export type WorkflowTriggerBindingSpec = {
   eventType: WorkflowEntryEventType;
@@ -39,11 +39,12 @@ export function getWorkflowTriggerBindings(
 
 export function matchWorkflowTrigger(
   config: WorkflowStartConfig,
-  command: WorkflowEntryCommand,
+  projection: WorkflowTriggerProjection,
 ) {
   const normalized = normalizeWorkflowStartConfig(config);
-  if (!normalized.accountIds.includes(command.accountId)) return false;
-  return normalized.triggers.some(trigger => matchTrigger(trigger, command));
+  const accountId = projection.match.accountId;
+  if (typeof accountId !== "string" || !normalized.accountIds.includes(accountId)) return false;
+  return normalized.triggers.some(trigger => matchTrigger(trigger, projection));
 }
 
 function normalizeTrigger(trigger: WorkflowStartTrigger): WorkflowStartTrigger {
@@ -56,16 +57,18 @@ function normalizeTrigger(trigger: WorkflowStartTrigger): WorkflowStartTrigger {
   return structuredClone(trigger);
 }
 
-function matchTrigger(trigger: WorkflowStartTrigger, command: WorkflowEntryCommand) {
-  if (trigger.type !== command.eventType) return false;
+function matchTrigger(trigger: WorkflowStartTrigger, projection: WorkflowTriggerProjection) {
+  if (trigger.type !== projection.eventType) return false;
   if (trigger.type === "contact.friend_added") return true;
-  if (trigger.type === "contact.tag_added" && command.eventType === "contact.tag_added") {
-    return trigger.tagIds.includes(command.triggerPayload.tagId);
+  if (trigger.type === "contact.tag_added") {
+    const tagId = projection.match.tagId;
+    return typeof tagId === "string" && trigger.tagIds.includes(tagId);
   }
-  if (trigger.type !== "message.received" || command.eventType !== "message.received") return false;
   if (trigger.match === "any") return true;
-  if (command.triggerPayload.messageType !== "text" || !command.triggerPayload.text) return false;
-  const text = command.triggerPayload.text.toLocaleLowerCase("en-US");
+  if (projection.match.messageType !== "text" || typeof projection.match.text !== "string") {
+    return false;
+  }
+  const text = projection.match.text.toLocaleLowerCase("en-US");
   return trigger.keywords.some(keyword => text.includes(keyword.toLocaleLowerCase("en-US")));
 }
 

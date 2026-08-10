@@ -1,7 +1,10 @@
 import type {
   WorkflowActionExecutionFailureInput,
+  WorkflowBeginEventWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowEventSubscriptionEventRecord,
+  WorkflowEventSubscriptionRecord,
   WorkflowNodeExecutionRecord,
   WorkflowOutboxRecord,
   WorkflowRunRecord,
@@ -41,6 +44,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeExecutions: WorkflowNodeExecutionRecord[] = [];
   readonly nodeMetricEvents: NodeMetricEvent[] = [];
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
+  readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
+  readonly eventSubscriptionEvents: WorkflowEventSubscriptionEventRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
@@ -124,6 +129,237 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { deduplicated: false, kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
+  async hasProcessedInboxMessage(input: { consumer: string; messageId: string }) {
+    return this.inbox.some(item => item.consumer === input.consumer
+      && item.messageId === input.messageId);
+  }
+
+  async recordProcessedInboxMessage(input: {
+    consumer: string;
+    expiresAt: Date;
+    messageId: string;
+    processedAt: Date;
+    uid: number;
+  }) {
+    if (this.inbox.some(item => item.consumer === input.consumer
+      && item.messageId === input.messageId)) return false;
+    this.inbox.push({
+      consumer: input.consumer,
+      expiresAt: clone(input.expiresAt),
+      messageId: input.messageId,
+      uid: input.uid,
+    });
+    return true;
+  }
+
+  async beginEventWait(input: WorkflowBeginEventWaitInput) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || task.nodeKind !== "wait-event"
+      || input.expiresAt <= input.effectiveFrom) return conflict();
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({
+        uid: input.uid,
+        workflowId: run.workflowId,
+      });
+      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+    }
+    if (this.eventSubscriptions.some(item => item.uid === input.uid
+      && item.taskId === task.id
+      && item.eventType === input.eventType)) return conflict();
+
+    const subscription: WorkflowEventSubscriptionRecord = {
+      accountId: input.accountId,
+      collectUntil: null,
+      createdAt: clone(input.now),
+      effectiveFrom: clone(input.effectiveFrom),
+      eventType: input.eventType,
+      expiresAt: clone(input.expiresAt),
+      id: this.createId(),
+      nodeId: task.nodeId,
+      revision: run.revision,
+      runId: run.id,
+      status: "waiting",
+      subjectId: run.subjectId,
+      subjectType: run.subjectType,
+      taskId: task.id,
+      triggerEventId: null,
+      uid: input.uid,
+      updatedAt: clone(input.now),
+      workflowId: run.workflowId,
+    };
+    this.eventSubscriptions.push(subscription);
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    task.dueAt = clone(input.expiresAt);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "pending");
+    task.taskType = "wait-event";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.expiresAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return {
+      kind: "success" as const,
+      run: clone(run),
+      subscription: clone(subscription),
+      task: clone(task),
+    };
+  }
+
+  async listMatchingEventSubscriptions(
+    uid: number,
+    subjectType: WorkflowEventSubscriptionRecord["subjectType"],
+    eventType: WorkflowEventSubscriptionRecord["eventType"],
+    subjectId: string,
+    eventOccurredAt: Date,
+    observedAt: Date,
+  ) {
+    const matches: WorkflowEventSubscriptionRecord[] = [];
+    for (const subscription of this.eventSubscriptions) {
+      if (subscription.uid !== uid
+        || subscription.subjectType !== subjectType
+        || subscription.eventType !== eventType
+        || subscription.subjectId !== subjectId
+        || (subscription.status === "waiting"
+          ? eventOccurredAt < subscription.effectiveFrom
+            || eventOccurredAt >= subscription.expiresAt
+          : subscription.status === "triggered"
+            ? !subscription.collectUntil || observedAt >= subscription.collectUntil
+            : true)) continue;
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid, workflowId: subscription.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") continue;
+      matches.push(subscription);
+    }
+    return clone(matches);
+  }
+
+  async findEventSubscriptionByTask(uid: number, taskId: string) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === uid && item.taskId === taskId);
+    return subscription ? clone(subscription) : null;
+  }
+
+  async listEventSubscriptionEvents(uid: number, subscriptionId: string) {
+    return clone(this.eventSubscriptionEvents
+      .filter(item => item.uid === uid && item.subscriptionId === subscriptionId)
+      .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime()
+        || compareById(left, right)));
+  }
+
+  async recordEventSubscriptionEvent(
+    input: Parameters<WorkflowRuntimeRepository["recordEventSubscriptionEvent"]>[0],
+  ) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === input.uid
+      && item.id === input.subscriptionId);
+    if (!subscription) return notFound();
+    if (subscription.status !== "waiting" && subscription.status !== "triggered") return conflict();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === subscription.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === subscription.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: subscription.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (decision === "cancel") {
+      subscription.status = "cancelled";
+      subscription.updatedAt = clone(input.recordedAt);
+      return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+    }
+    if (this.eventSubscriptionEvents.some(item => item.uid === input.uid
+      && item.subscriptionId === subscription.id
+      && item.eventId === input.eventId)) return alreadyProcessed();
+    if ((task.status !== "pending"
+        && task.status !== "leased"
+        && task.status !== "dispatched"
+        && task.status !== "running")
+      || (run.status !== "waiting" && run.status !== "running")
+      || run.currentNodeId !== subscription.nodeId
+      || task.nodeId !== subscription.nodeId
+      || task.nodeKind !== "wait-event"
+      || task.taskType !== "wait-event") return conflict();
+
+    const firstEvent = subscription.status === "waiting";
+    const expectedDueAt = firstEvent ? subscription.expiresAt : subscription.collectUntil;
+    if (!expectedDueAt
+      || task.dueAt.getTime() !== expectedDueAt.getTime()
+      || (firstEvent && (
+        input.eventOccurredAt.getTime() < subscription.effectiveFrom.getTime()
+        || input.eventOccurredAt.getTime() >= subscription.expiresAt.getTime()
+        || input.collectUntil.getTime() <= input.recordedAt.getTime()
+      ))
+      || (!firstEvent && (
+        input.recordedAt.getTime() >= expectedDueAt.getTime()
+        || input.collectUntil.getTime() !== expectedDueAt.getTime()
+      ))) return conflict();
+
+    this.eventSubscriptionEvents.push({
+      collectedAt: clone(input.recordedAt),
+      eventId: input.eventId,
+      id: this.createId(),
+      occurredAt: clone(input.eventOccurredAt),
+      projection: clone(input.projection),
+      subscriptionId: subscription.id,
+      uid: input.uid,
+    });
+
+    if (!firstEvent) {
+      return {
+        firstEvent,
+        kind: "success" as const,
+        run: clone(run),
+        subscription: clone(subscription),
+        task: clone(task),
+      };
+    }
+
+    subscription.collectUntil = clone(input.collectUntil);
+    subscription.status = "triggered";
+    subscription.triggerEventId = input.eventId;
+    subscription.updatedAt = clone(input.recordedAt);
+    task.dueAt = clone(input.collectUntil);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    if (task.status !== "pending") task.status = transitionTask(task.status, "pending");
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.collectUntil);
+    if (run.status === "running") run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return {
+      firstEvent,
+      kind: "success" as const,
+      run: clone(run),
+      subscription: clone(subscription),
+      task: clone(task),
+    };
+  }
+
+  async timeoutEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["timeoutEventSubscription"]>[0],
+  ) {
+    const subscription = this.eventSubscriptions.find(item => item.uid === input.uid
+      && item.id === input.subscriptionId);
+    if (!subscription) return notFound();
+    if (subscription.status === "timed_out") return alreadyProcessed();
+    if (subscription.status !== "waiting") return conflict();
+    subscription.status = "timed_out";
+    subscription.updatedAt = clone(input.timedOutAt);
+    return { kind: "success" as const, subscription: clone(subscription) };
+  }
+
   async claimTask(input: Parameters<WorkflowRuntimeRepository["claimTask"]>[0]) {
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!task) return notFound();
@@ -145,6 +381,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
         return { action: decision, kind: "workflow-unavailable" as const };
       }
+    }
+    if ((task.status !== "dispatched" && task.status !== "pending")
+      || task.taskVersion !== input.expectedTaskVersion
+      || (run.status !== "queued" && run.status !== "running" && run.status !== "waiting")) {
+      return conflict();
     }
     const previousRunStatus = run.status;
     const previousNodeId = run.currentNodeId;
@@ -220,6 +461,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.cancelEventSubscriptions(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -262,6 +504,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.cancelEventSubscriptions(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -583,7 +826,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.shardId !== run.shardId
         || (run.status !== "waiting" && authoritativeTask.nodeId !== run.currentNodeId)
         || (run.status === "waiting" && (
-          authoritativeTask.taskType !== "wait"
+          (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event")
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
@@ -635,6 +878,47 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       staleTasksCancelled,
       tasksChecked: selectedTasks.length,
       terminalRunTasksCancelled,
+    };
+  }
+
+  async reconcileEventSubscriptions(
+    input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
+  ) {
+    const candidates = this.eventSubscriptions
+      .filter(item => (item.status === "waiting" || item.status === "triggered")
+        && (!input.afterSubscriptionId || BigInt(item.id) > BigInt(input.afterSubscriptionId)))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selected = candidates.slice(0, Math.max(0, input.limit));
+    let cancelled = 0;
+    for (const subscription of selected) {
+      const run = this.runs.find(item => item.uid === subscription.uid && item.id === subscription.runId);
+      const task = this.tasks.find(item => item.uid === subscription.uid && item.id === subscription.taskId);
+      const consistent = run
+        && (run.status === "queued" || run.status === "running" || run.status === "waiting")
+        && run.currentNodeId === subscription.nodeId
+        && task
+        && task.runId === run.id
+        && task.nodeId === subscription.nodeId
+        && task.nodeKind === "wait-event"
+        && task.taskType === "wait-event"
+        && (task.status === "pending"
+          || task.status === "leased"
+          || task.status === "dispatched"
+          || task.status === "running")
+        && task.dueAt.getTime() === (subscription.status === "triggered"
+          ? subscription.collectUntil?.getTime()
+          : subscription.expiresAt.getTime());
+      if (consistent) continue;
+      subscription.status = "cancelled";
+      subscription.updatedAt = this.now();
+      cancelled += 1;
+    }
+    return {
+      cancelled,
+      checked: selected.length,
+      hasMore: candidates.length > selected.length,
+      lastSubscriptionId: selected.at(-1)?.id ?? null,
     };
   }
 
@@ -705,7 +989,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       .map(task => task.id));
     const outboxDeleted = this.outbox.filter(item => taskIds.has(item.payload.taskId)).length;
     const tasksDeleted = this.tasks.filter(task => technicalRunIds.has(task.runId)).length;
+    const subscriptionIds = new Set(this.eventSubscriptions
+      .filter(item => technicalRunIds.has(item.runId))
+      .map(item => item.id));
     this.outbox = this.outbox.filter(item => !taskIds.has(item.payload.taskId));
+    for (let index = this.eventSubscriptionEvents.length - 1; index >= 0; index -= 1) {
+      if (subscriptionIds.has(this.eventSubscriptionEvents[index]!.subscriptionId)) {
+        this.eventSubscriptionEvents.splice(index, 1);
+      }
+    }
+    for (let index = this.eventSubscriptions.length - 1; index >= 0; index -= 1) {
+      if (technicalRunIds.has(this.eventSubscriptions[index]!.runId)) {
+        this.eventSubscriptions.splice(index, 1);
+      }
+    }
     for (let index = this.tasks.length - 1; index >= 0; index -= 1) {
       if (technicalRunIds.has(this.tasks[index]!.runId)) this.tasks.splice(index, 1);
     }
@@ -814,12 +1111,13 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
       const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
       if (decision === "defer") {
-        result.deferred += 1;
+        if (result.deferred < Math.max(0, input.limit)) result.deferred += 1;
         continue;
       }
       task.taskVersion += 1;
       if (decision === "cancel") {
         task.status = "cancelled";
+        this.cancelEventSubscriptions(new Set([task.runId]));
         result.cancelled += 1;
         continue;
       }
@@ -918,6 +1216,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
+      eventSubscriptionEvents: this.eventSubscriptionEvents,
+      eventSubscriptions: this.eventSubscriptions,
       inbox: this.inbox,
       nodeExecutions: this.nodeExecutions,
       nodeMetricEvents: this.nodeMetricEvents,
@@ -940,6 +1240,15 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       execution.errorMessage = errorMessage;
       execution.failureKind = null;
       execution.status = "failed";
+    }
+  }
+
+  private cancelEventSubscriptions(runIds: Set<string>) {
+    for (const subscription of this.eventSubscriptions) {
+      if (!runIds.has(subscription.runId)
+        || (subscription.status !== "waiting" && subscription.status !== "triggered")) continue;
+      subscription.status = "cancelled";
+      subscription.updatedAt = this.now();
     }
   }
 

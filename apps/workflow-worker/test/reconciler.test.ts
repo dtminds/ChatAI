@@ -16,6 +16,12 @@ describe("workflow reconciler", () => {
         tasksDeleted: 13,
       })),
       recoverExpiredLeases: vi.fn(async () => ({ dead: 1, recovered: 2 })),
+      reconcileEventSubscriptions: vi.fn(async () => ({
+        cancelled: 2,
+        checked: 12,
+        hasMore: true,
+        lastSubscriptionId: "77",
+      })),
       reconcileRunTaskConsistency: vi.fn(async () => ({
         hasMoreRuns: true,
         hasMoreTasks: false,
@@ -32,6 +38,7 @@ describe("workflow reconciler", () => {
     };
 
     await expect(reconcileWorkflowRuntime({
+      afterEventSubscriptionId: "70",
       afterRunId: "50",
       afterConsistencyRunId: "80",
       afterConsistencyTaskId: "100",
@@ -51,8 +58,11 @@ describe("workflow reconciler", () => {
       cancelled: 4,
       historyCleanupHasMore: false,
       inboxDeleted: 5,
+      eventSubscriptionsCancelled: 2,
+      eventSubscriptionsChecked: 12,
       nodeExecutionsDeleted: 10,
       nextCursor: "88",
+      nextEventSubscriptionCursor: "77",
       nextConsistencyRunCursor: "91",
       nextConsistencyTaskCursor: null,
       nodeMetricEventsAggregated: 7,
@@ -81,6 +91,10 @@ describe("workflow reconciler", () => {
       inconsistentBefore: new Date("2026-07-10T23:59:00.000Z"),
       limit: 100,
       now: new Date("2026-07-11T00:00:00.000Z"),
+    });
+    expect(reconciler.reconcileEventSubscriptions).toHaveBeenCalledWith({
+      afterSubscriptionId: "70",
+      limit: 100,
     });
     expect(reconciler.cleanupWorkflowHistory).toHaveBeenCalledWith({
       limit: 1_000,

@@ -160,6 +160,38 @@ export interface WorkflowInboxTable {
   update_time: GeneratedDate;
 }
 
+export interface WorkflowEventSubscriptionTable {
+  account_id: string | null;
+  collect_until: NullableDate;
+  create_time: GeneratedDate;
+  effective_from: DatabaseDate;
+  event_type: string;
+  expires_at: DatabaseDate;
+  id: Generated<DatabaseId>;
+  node_id: string;
+  revision: number;
+  run_id: DatabaseId;
+  status: string;
+  subject_id: string;
+  subject_type: number;
+  task_id: DatabaseId;
+  trigger_event_id: string | null;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
+export interface WorkflowEventSubscriptionEventTable {
+  create_time: GeneratedDate;
+  event_id: string;
+  id: Generated<DatabaseId>;
+  occurred_at: DatabaseDate;
+  projection_json: string;
+  subscription_id: DatabaseId;
+  uid: number;
+  update_time: GeneratedDate;
+}
+
 export interface WorkflowNodeMetricEventTable {
   completed_delta: number;
   create_time: GeneratedDate;
@@ -196,6 +228,8 @@ export interface WorkflowNodeMetricTable {
 export interface WorkflowDatabase {
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
+  xy_wap_embed_workflow_event_subscription: WorkflowEventSubscriptionTable;
+  xy_wap_embed_workflow_event_subscription_event: WorkflowEventSubscriptionEventTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
   xy_wap_embed_workflow_node_metric: WorkflowNodeMetricTable;

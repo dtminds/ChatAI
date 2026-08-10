@@ -64,6 +64,60 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
+  it("freezes Wait Event capability and both runtime outlets", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait-event", "wait-event", {
+      event: { type: "message.received" },
+      timeout: { duration: 15, unit: "minute" },
+    }));
+    draft.edges.splice(0, draft.edges.length,
+      { id: "start-wait-event", source: "start", target: "wait-event" },
+      {
+        id: "wait-event-triggered-end",
+        source: "wait-event",
+        sourceHandle: "triggered",
+        target: "end",
+      },
+      {
+        id: "wait-event-timeout-end",
+        source: "wait-event",
+        sourceHandle: "timeout",
+        target: "end",
+      },
+    );
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find((item) => item.id === "wait-event")).toEqual({
+      config: {
+        event: {
+          capabilityKey: "event.message.received",
+          collectWindowSeconds: 10,
+          contractVersion: 1,
+          type: "message.received",
+        },
+        timeout: { duration: 15, unit: "minute" },
+      },
+      id: "wait-event",
+      kind: "wait-event",
+      nodeSchemaVersion: 1,
+      requiredCapabilities: [
+        { capabilityKey: "event.message.received", contractVersion: 1 },
+      ],
+    });
+    expect(spec.edges.filter(edge => edge.source === "wait-event").map(edge => edge.sourceOutletId))
+      .toEqual(["triggered", "timeout"]);
+    expect(spec.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "event.message.received", contractVersion: 1 },
+    ]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

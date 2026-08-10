@@ -1,4 +1,4 @@
-import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
+import { WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT } from "@chatai/contracts";
 import type {
   WaitEventNodeData,
   WorkflowWaitEventTimeoutUnit,
@@ -6,14 +6,11 @@ import type {
 } from "../../types";
 import { getWorkflowWaitEventDefinition } from "./events";
 
-export const DEFAULT_WAIT_EVENT_TYPE: WorkflowWaitEventType = "customer.message.received";
-export const WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
-  ...WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
-  day: 15,
-} as const;
+export const DEFAULT_WAIT_EVENT_TYPE: WorkflowWaitEventType = "message.received";
+export const WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT;
 
 export function normalizeWaitEventType(value: unknown): WorkflowWaitEventType {
-  return value === "customer.message.received"
+  return value === "message.received"
     ? value
     : DEFAULT_WAIT_EVENT_TYPE;
 }

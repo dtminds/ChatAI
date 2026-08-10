@@ -2,6 +2,7 @@ import type {
   WorkflowEntryPolicy,
   WorkflowEntryEventType,
   WorkflowExecutionSpec,
+  WorkflowJsonObject,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
@@ -57,8 +58,56 @@ export type WorkflowTriggerBindingReader = {
   listActiveTriggerBindings(
     uid: number,
     subjectType: WorkflowSubjectType,
-    eventType: WorkflowEntryEventType,
+    eventType: string,
   ): Promise<WorkflowTriggerBindingRecord[]>;
+};
+
+export type WorkflowEventSubscriptionStatus =
+  | "waiting"
+  | "triggered"
+  | "timed_out"
+  | "cancelled";
+
+export type WorkflowEventSubscriptionRecord = {
+  accountId: string | null;
+  collectUntil: Date | null;
+  createdAt: Date;
+  effectiveFrom: Date;
+  eventType: WorkflowEntryEventType;
+  expiresAt: Date;
+  id: string;
+  nodeId: string;
+  revision: number;
+  runId: string;
+  status: WorkflowEventSubscriptionStatus;
+  subjectId: string;
+  subjectType: WorkflowSubjectType;
+  taskId: string;
+  triggerEventId: string | null;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
+export type WorkflowEventSubscriptionEventRecord = {
+  collectedAt: Date;
+  eventId: string;
+  id: string;
+  occurredAt: Date;
+  projection: WorkflowJsonObject;
+  subscriptionId: string;
+  uid: number;
+};
+
+export type WorkflowEventSubscriptionReader = {
+  listMatchingEventSubscriptions(
+    uid: number,
+    subjectType: WorkflowSubjectType,
+    eventType: WorkflowEntryEventType,
+    subjectId: string,
+    eventOccurredAt: Date,
+    observedAt: Date,
+  ): Promise<WorkflowEventSubscriptionRecord[]>;
 };
 
 export type WorkflowRunRecord = {
@@ -199,6 +248,30 @@ export type WorkflowCreateRunInput = {
   workflowType: WorkflowType;
 };
 
+export type WorkflowBeginEventWaitInput = {
+  accountId: string | null;
+  effectiveFrom: Date;
+  eventType: WorkflowEntryEventType;
+  expectedRunLockVersion: number;
+  expectedTaskVersion: number;
+  expiresAt: Date;
+  inbox: WorkflowCommitNodeResultInput["inbox"];
+  now: Date;
+  runId: string;
+  taskId: string;
+  uid: number;
+};
+
+export type WorkflowRecordEventSubscriptionInput = {
+  collectUntil: Date;
+  eventId: string;
+  eventOccurredAt: Date;
+  projection: WorkflowJsonObject;
+  recordedAt: Date;
+  subscriptionId: string;
+  uid: number;
+};
+
 export type WorkflowCommitNodeResultInput = {
   context?: Record<string, unknown>;
   expectedRunLockVersion: number;
@@ -225,6 +298,22 @@ export type WorkflowCommitNodeResultInput = {
   runId: string;
   taskId: string;
   uid: number;
+};
+
+export type WorkflowInboxMessageInput = {
+  consumer: string;
+  expiresAt: Date;
+  messageId: string;
+  processedAt: Date;
+  uid: number;
+};
+
+export type WorkflowInboxRepository = {
+  hasProcessedInboxMessage(input: Pick<
+    WorkflowInboxMessageInput,
+    "consumer" | "messageId"
+  >): Promise<boolean>;
+  recordProcessedInboxMessage(input: WorkflowInboxMessageInput): Promise<boolean>;
 };
 
 export type WorkflowActionExecutionFailureInput = {
@@ -254,7 +343,10 @@ type WorkflowRuntimeFailure =
   | { kind: "entry-policy-rejected" }
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
-export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSchedulerRepository & {
+export type WorkflowRuntimeRepository = WorkflowInboxRepository
+  & WorkflowEventSubscriptionReader
+  & WorkflowOutboxRepository
+  & WorkflowSchedulerRepository & {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
@@ -300,6 +392,15 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
     | { kind: "success"; nextTask: WorkflowTaskRecord | null; run: WorkflowRunRecord }
     | WorkflowRuntimeFailure
   >;
+  beginEventWait(input: WorkflowBeginEventWaitInput): Promise<
+    | {
+        kind: "success";
+        run: WorkflowRunRecord;
+        subscription: WorkflowEventSubscriptionRecord;
+        task: WorkflowTaskRecord;
+      }
+    | WorkflowRuntimeFailure
+  >;
   createRunWithInitialTask(input: WorkflowCreateRunInput): Promise<
     | {
         deduplicated: boolean;
@@ -316,6 +417,14 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
     uid: number;
   }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
+  findEventSubscriptionByTask(
+    uid: number,
+    taskId: string,
+  ): Promise<WorkflowEventSubscriptionRecord | null>;
+  listEventSubscriptionEvents(
+    uid: number,
+    subscriptionId: string,
+  ): Promise<WorkflowEventSubscriptionEventRecord[]>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
   listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;
   recoverExpiredLeases(input: {
@@ -340,9 +449,36 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;
+  reconcileEventSubscriptions(input: {
+    afterSubscriptionId?: string;
+    limit: number;
+  }): Promise<{
+    cancelled: number;
+    checked: number;
+    hasMore: boolean;
+    lastSubscriptionId: string | null;
+  }>;
   republishStalledDispatchedTasks(input: {
     dispatchedBefore: Date;
     limit: number;
     now: Date;
   }): Promise<number>;
+  timeoutEventSubscription(input: {
+    subscriptionId: string;
+    timedOutAt: Date;
+    uid: number;
+  }): Promise<
+    | { kind: "success"; subscription: WorkflowEventSubscriptionRecord }
+    | WorkflowRuntimeFailure
+  >;
+  recordEventSubscriptionEvent(input: WorkflowRecordEventSubscriptionInput): Promise<
+    | {
+        firstEvent: boolean;
+        kind: "success";
+        run: WorkflowRunRecord;
+        subscription: WorkflowEventSubscriptionRecord;
+        task: WorkflowTaskRecord;
+      }
+    | WorkflowRuntimeFailure
+  >;
 };

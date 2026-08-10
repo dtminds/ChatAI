@@ -1,4 +1,12 @@
-import type { WorkflowTriggerBindingReader } from "@chatai/workflow-runtime";
+import type {
+  WorkflowEventSubscriptionReader,
+  WorkflowInboxRepository,
+  WorkflowTriggerBindingReader,
+} from "@chatai/workflow-runtime";
+import {
+  EMPTY_WORKFLOW_EVENT_CATALOG,
+  type WorkflowEventCatalog,
+} from "@chatai/workflow-engine";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "./broker/types.js";
 import type { WorkflowWorkerConfig } from "./config.js";
 import type { startEntryConsumer } from "./entry-consumer.js";
@@ -62,6 +70,9 @@ export async function startWorkflowWorkerRuntime(input: {
   config: WorkflowWorkerConfig;
   database: { destroy(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
+  eventCatalog?: WorkflowEventCatalog;
+  eventSubscriptionReader: WorkflowEventSubscriptionReader;
+  inboxRepository: WorkflowInboxRepository;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
@@ -96,8 +107,13 @@ export async function startWorkflowWorkerRuntime(input: {
         bindingReader: input.triggerBindingReader,
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.entry ?? undefined,
+        eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
+        inboxRepository: input.inboxRepository,
+        logger: input.logger,
         maxRedeliverCount: input.config.maxRedeliverCount,
+        now,
         runtimeService: input.runtimeService,
+        subscriptionReader: input.eventSubscriptionReader,
         subscription: input.config.subscriptions.entry,
         topic: input.config.topics.entry,
       }));
@@ -140,6 +156,7 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("reconciler")) {
+      let afterEventSubscriptionId: string | undefined;
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
       let afterConsistencyTaskId: string | undefined;
@@ -157,6 +174,7 @@ export async function startWorkflowWorkerRuntime(input: {
             }
           : undefined;
         const result = await input.reconciler({
+          afterEventSubscriptionId,
           afterRunId,
           afterConsistencyRunId,
           afterConsistencyTaskId,
@@ -170,6 +188,7 @@ export async function startWorkflowWorkerRuntime(input: {
           now: currentTime,
           reconciler: input.reconcilerService,
         });
+        afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
         afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;

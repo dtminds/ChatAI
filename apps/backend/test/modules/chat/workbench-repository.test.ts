@@ -7382,11 +7382,16 @@ describe("WorkbenchRepository", () => {
     vi.setSystemTime(new Date("2026-08-10T12:00:00.000Z"));
     const db = createMessagesDb([
       messageRow({ id: 102, msgid: "remote-msg-102" }),
+      messageRow({ id: 103, msgid: "remote-msg-103" }),
     ]);
     const repository = new WorkbenchRepository(db as never);
 
     try {
-      await repository.listMessages("88", { afterSeq: 101, limit: 50 });
+      await expect(
+        repository.listMessages("88", { afterSeq: 101, limit: 50 }),
+      ).resolves.toMatchObject({
+        nextBeforeSeq: 102,
+      });
 
       expect(db.messageQueries[0]?.wheres).toContainEqual([
         "message.msgtime",

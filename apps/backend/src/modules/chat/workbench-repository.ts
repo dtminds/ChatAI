@@ -4607,7 +4607,7 @@ export class WorkbenchRepository {
       messages: hydratedMessageRows.map((row) =>
         mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
       ),
-      nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
+      nextBeforeSeq: messageRows.length > 0 ? toNumber(messageRows[0]?.id) : undefined,
       scannedCount: rawRows.length,
       smartReplyScope,
     };

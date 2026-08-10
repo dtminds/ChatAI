@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "unknown-event-1",
+  "eventType": "test.unknown",
+  "uid": 9,
+  "subjectType": "chatai_contact",
+  "subjectId": "chatai-contact-1",
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "contract-fixture",
+  "payload": {}
+}

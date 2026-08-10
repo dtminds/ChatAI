@@ -308,15 +308,9 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 
 ### Entry Smoke
 
-Smoke 只读取已启用 Workflow 的 Trigger Binding 并投递一条标准 Entry 事件，不创建 Run、不修改 Workflow 配置，也不在消息中携带 `workflowId`。先在产品中创建并启用一个只包含 `start -> wait -> end` 的 Workflow，然后执行：
+真实端到端 Smoke 必须从 Java 提供的受支持测试入口触发，由 Java 生成标准 Entry Event、写入 Event Outbox 并投递 TDMQ。Node Worker 不再根据 Trigger Binding 生成联系人、标签或消息 payload，也不提供按 `workflowId` 直投业务事件的命令。
 
-```bash
-corepack pnpm --filter @chatai/workflow-worker smoke:entry -- \
-  --workflow-id <workflow-id> \
-  --subject-id <test-subject-id>
-```
-
-命令输出仅包含 `eventId`、`messageId` 和 `workflowId`。`subjectId` 会进入测试消息但不会打印。Smoke 必须由人工在已配置真实 Secret 的受控环境执行。
+共享 JSON Fixture 和 Fake Event Catalog 只用于 Node 子系统自动化测试。它们不能替代 Java Producer、真实 TDMQ 和隔离测试租户上的 test01 联调，也不能作为开启生产 Deployment Capability 的依据。
 
 正常 Worker 入口只接受 Pulsar 配置，不提供 Fake Broker 运行模式。单元测试和组合测试直接注入 `test/support` 中的 Fake Broker，不启动正常 Worker 进程，也不访问 TDMQ。
 

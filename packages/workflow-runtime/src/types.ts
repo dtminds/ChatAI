@@ -57,7 +57,7 @@ export type WorkflowTriggerBindingReader = {
   listActiveTriggerBindings(
     uid: number,
     subjectType: WorkflowSubjectType,
-    eventType: WorkflowEntryEventType,
+    eventType: string,
   ): Promise<WorkflowTriggerBindingRecord[]>;
 };
 

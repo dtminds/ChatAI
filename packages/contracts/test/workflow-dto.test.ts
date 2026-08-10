@@ -17,7 +17,6 @@ import {
 } from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
-  WorkflowEntryCommandSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
 } from "../src/workflow/trigger.js";
@@ -268,39 +267,6 @@ describe("workflow contracts", () => {
       windowSize: 2_160,
       windowUnit: "hour",
     });
-  });
-
-  it("validates standard entry commands by event payload", () => {
-    const base = {
-      accountId: "account-a",
-      eventId: "event-1",
-      occurredAt: "2026-07-11T00:00:00.000Z",
-      subjectId: "external-user-1",
-      subjectType: "chatai_contact",
-      thirdUserId: "account-a",
-      uid: "9",
-    };
-    expect(Value.Check(WorkflowEntryCommandSchema, {
-      ...base,
-      eventType: "contact.tag_added",
-      triggerPayload: { tagId: "tag-vip" },
-    })).toBe(true);
-    expect(Value.Check(WorkflowEntryCommandSchema, {
-      ...base,
-      accountId: undefined,
-      eventType: "contact.friend_added",
-      triggerPayload: {},
-    })).toBe(false);
-    expect(Value.Check(WorkflowEntryCommandSchema, {
-      ...base,
-      eventType: "contact.tag_added",
-      triggerPayload: {},
-    })).toBe(false);
-    expect(Value.Check(WorkflowEntryCommandSchema, {
-      ...base,
-      eventType: "message.received",
-      triggerPayload: { messageId: "message-1", messageType: "text", text: "咨询优惠" },
-    })).toBe(true);
   });
 
   it("validates user-facing workflow data mode responses", () => {

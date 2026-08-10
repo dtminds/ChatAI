@@ -1,6 +1,4 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { WorkflowIdSchema } from "./dto.js";
-import { WorkflowSubjectTypeSchema } from "./policy.js";
 import {
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
@@ -97,57 +95,6 @@ export const WorkflowWaitConfigSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
-const WorkflowEntryCommandBaseSchema = Type.Object({
-  accountId: Type.String({ minLength: 1, maxLength: 128 }),
-  eventId: Type.String({ minLength: 1, maxLength: 128 }),
-  occurredAt: Type.String({ minLength: 1, maxLength: 64 }),
-  subjectId: Type.String({ minLength: 1, maxLength: 256 }),
-  subjectType: WorkflowSubjectTypeSchema,
-  thirdUserId: Type.String({ minLength: 1, maxLength: 128 }),
-  uid: WorkflowIdSchema,
-});
-
-export const WorkflowMessageTypeSchema = Type.Union([
-  Type.Literal("text"),
-  Type.Literal("image"),
-  Type.Literal("voice"),
-  Type.Literal("video"),
-  Type.Literal("file"),
-]);
-
-export const WorkflowEntryCommandSchema = Type.Union([
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("contact.friend_added"),
-      triggerPayload: Type.Object({
-        source: Type.Optional(Type.String({ maxLength: 128 })),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("contact.tag_added"),
-      triggerPayload: Type.Object({
-        tagId: Type.String({ minLength: 1, maxLength: 128 }),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-  Type.Composite([
-    WorkflowEntryCommandBaseSchema,
-    Type.Object({
-      eventType: Type.Literal("message.received"),
-      triggerPayload: Type.Object({
-        messageId: Type.String({ minLength: 1, maxLength: 128 }),
-        messageType: WorkflowMessageTypeSchema,
-        text: Type.Optional(Type.String({ maxLength: 20_000 })),
-      }, { additionalProperties: false }),
-    }),
-  ]),
-]);
-
-export type WorkflowEntryCommand = Static<typeof WorkflowEntryCommandSchema>;
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartConfig = Static<typeof WorkflowStartConfigSchema>;

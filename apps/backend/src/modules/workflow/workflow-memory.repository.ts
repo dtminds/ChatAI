@@ -1,4 +1,3 @@
-import type { WorkflowEntryEventType } from "@chatai/contracts";
 import type { WorkflowTriggerBindingSpec } from "@chatai/workflow-engine";
 import type {
   WorkflowDefinitionRecord,
@@ -107,7 +106,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async listActiveTriggerBindings(
     uid: number,
     subjectType: WorkflowTriggerBindingRecord["subjectType"],
-    eventType: WorkflowEntryEventType,
+    eventType: string,
   ) {
     return this.triggerBindings.filter((binding) => {
       if (binding.uid !== uid

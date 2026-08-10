@@ -175,7 +175,7 @@ export class MysqlWorkflowRuntimeRepository implements
   async listActiveTriggerBindings(
     uid: number,
     subjectType: WorkflowSubjectType,
-    eventType: WorkflowEntryEventType,
+    eventType: string,
   ) {
     const rows = await this.db.selectFrom(`${TRIGGER_BINDING_TABLE} as binding`)
       .innerJoin("xy_wap_embed_workflow_definition as definition", join => join

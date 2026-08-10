@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "member-change-1",
+  "eventType": "test.member_updated",
+  "uid": 9,
+  "subjectType": "miniapp_member",
+  "subjectId": "member-1",
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "contract-fixture",
+  "payload": {
+    "change": "profile"
+  }
+}

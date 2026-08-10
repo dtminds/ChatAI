@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "fixtureId": "entry-v1-valid-chatai-contact",
+      "kind": "entry",
+      "path": "entry/v1/valid/chatai-contact.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-wecom-contact",
+      "kind": "entry",
+      "path": "entry/v1/valid/wecom-contact.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-miniapp-member",
+      "kind": "entry",
+      "path": "entry/v1/valid/miniapp-member.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-invalid-json",
+      "kind": "entry",
+      "path": "entry/v1/invalid/invalid-json.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "invalid_json" }
+    },
+    {
+      "fixtureId": "entry-v1-envelope-too-large",
+      "kind": "entry",
+      "path": "entry/v1/invalid/envelope-too-large.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_too_large" }
+    },
+    {
+      "fixtureId": "entry-v1-unsupported-schema-version",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unsupported-schema-version.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "unsupported_schema_version" }
+    },
+    {
+      "fixtureId": "entry-v1-envelope-invalid",
+      "kind": "entry",
+      "path": "entry/v1/invalid/envelope-invalid.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_invalid" }
+    },
+    {
+      "fixtureId": "entry-v1-unknown-event-type",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unknown-event-type.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "unknown_event_type" }
+    },
+    {
+      "fixtureId": "entry-v1-unsupported-payload-version",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unsupported-payload-version.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "unsupported_payload_version" }
+    },
+    {
+      "fixtureId": "entry-v1-payload-invalid",
+      "kind": "entry",
+      "path": "entry/v1/invalid/payload-invalid.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "payload_invalid" }
+    },
+    {
+      "fixtureId": "trigger-projection-v1-contact-updated",
+      "kind": "trigger-projection",
+      "path": "trigger-projection/v1/contact-updated.json",
+      "stage": "projection",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    }
+  ]
+}

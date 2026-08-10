@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "payloadVersion": 1,
+  "eventId": "contact-change-2",
+  "eventType": "test.contact_updated",
+  "uid": 9,
+  "subjectType": "chatai_contact",
+  "subjectId": "chatai-contact-1",
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "contract-fixture",
+  "payload": {
+    "accountId": "account-a",
+    "change": "name"
+  }
+}

@@ -1,9 +1,14 @@
 import {
-  WorkflowEntryCommandSchema,
-  type WorkflowEntryCommand,
+  type WorkflowEntryEnvelopeValidationCode,
+  type WorkflowEntryEvent,
+  validateWorkflowEntryEvent,
 } from "@chatai/contracts";
-import { Value } from "@sinclair/typebox/value";
-import { matchWorkflowTrigger } from "@chatai/workflow-engine";
+import {
+  matchWorkflowTrigger,
+  type WorkflowEventCatalog,
+  type WorkflowEventCatalogErrorCode,
+  type WorkflowTriggerProjection,
+} from "@chatai/workflow-engine";
 import type {
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
@@ -20,42 +25,89 @@ type WorkflowEntryRuntimeService = {
     entryEventId: string;
     expectedRevision: number;
     subjectId: string;
-    subjectType: WorkflowEntryCommand["subjectType"];
+    subjectType: WorkflowEntryEvent["subjectType"];
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
-  }): Promise<unknown>;
+  }): Promise<
+    | { deduplicated: boolean; kind: "success" }
+    | { kind: "entry-policy-rejected" }
+  >;
+};
+
+export type WorkflowEntryConsumeResultCode =
+  | WorkflowEntryEnvelopeValidationCode
+  | WorkflowEventCatalogErrorCode
+  | "admitted"
+  | "deduplicated"
+  | "entry_policy_rejected"
+  | "invalid_json"
+  | "no_match"
+  | "runtime_rejected"
+  | "temporary_failure";
+
+export type WorkflowEntryConsumeResult = {
+  code: WorkflowEntryConsumeResultCode;
+  disposition: "ack" | "nack";
 };
 
 export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
+  eventCatalog: WorkflowEventCatalog;
   runtimeService: WorkflowEntryRuntimeService;
 }) {
-  return async (message: WorkflowBrokerMessage) => {
-    const command = parseEntryCommand(message.data);
-    if (!command) {
+  return async (message: WorkflowBrokerMessage): Promise<WorkflowEntryConsumeResult> => {
+    const parsed = parseEntryEvent(message.data);
+    if (parsed.kind === "rejected") {
       message.negativeAck();
-      return;
+      return { code: parsed.code, disposition: "nack" };
+    }
+    const catalogResult = input.eventCatalog.project(parsed.event);
+    if (catalogResult.kind === "rejected") {
+      message.negativeAck();
+      return { code: catalogResult.code, disposition: "nack" };
     }
 
     try {
-      const uid = parseSafeDatabaseId(command.uid);
       const bindings = await input.bindingReader.listActiveTriggerBindings(
-        uid,
-        command.subjectType,
-        command.eventType,
+        parsed.event.uid,
+        parsed.event.subjectType,
+        parsed.event.eventType,
       );
+      let admitted = 0;
+      let deduplicated = 0;
+      let entryPolicyRejected = 0;
+      let matched = 0;
+      let runtimeRejected = 0;
       for (const binding of bindings) {
-        if (!matchWorkflowTrigger(binding.filter, command)) continue;
+        if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
+        matched += 1;
         try {
-          await admitWorkflow(input.runtimeService, binding, command, uid);
+          const result = await admitWorkflow(
+            input.runtimeService,
+            binding,
+            parsed.event,
+            catalogResult.projection,
+          );
+          if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
+          else if (result.deduplicated) deduplicated += 1;
+          else admitted += 1;
         } catch (error) {
           if (classifyEntryError(error) === "nack") throw error;
+          runtimeRejected += 1;
         }
       }
       await message.ack();
-    } catch (error) {
+      if (admitted > 0) return { code: "admitted", disposition: "ack" };
+      if (deduplicated > 0) return { code: "deduplicated", disposition: "ack" };
+      if (entryPolicyRejected > 0) {
+        return { code: "entry_policy_rejected", disposition: "ack" };
+      }
+      if (runtimeRejected > 0) return { code: "runtime_rejected", disposition: "ack" };
+      return { code: "no_match", disposition: "ack" };
+    } catch {
       message.negativeAck();
+      return { code: "temporary_failure", disposition: "nack" };
     }
   };
 }
@@ -64,14 +116,16 @@ export function startEntryConsumer(input: {
   bindingReader: WorkflowTriggerBindingReader;
   broker: WorkflowBroker;
   deadLetterTopic?: string;
+  eventCatalog: WorkflowEventCatalog;
   maxRedeliverCount?: number;
   runtimeService: WorkflowEntryRuntimeService;
   subscription: string;
   topic: string;
 }): Promise<WorkflowBrokerSubscription> {
+  const handler = createEntryConsumerHandler(input);
   return input.broker.subscribe({
     deadLetterTopic: input.deadLetterTopic,
-    handler: createEntryConsumerHandler(input),
+    handler: async message => { await handler(message); },
     maxRedeliverCount: input.maxRedeliverCount,
     subscription: input.subscription,
     topic: input.topic,
@@ -82,39 +136,34 @@ export function startEntryConsumer(input: {
 async function admitWorkflow(
   runtimeService: WorkflowEntryRuntimeService,
   binding: WorkflowTriggerBindingRecord,
-  command: WorkflowEntryCommand,
-  uid: number,
+  event: WorkflowEntryEvent,
+  projection: WorkflowTriggerProjection,
 ) {
-  await runtimeService.startRun({
-    entryEventId: command.eventId,
+  return runtimeService.startRun({
+    entryEventId: event.eventId,
     expectedRevision: binding.revision,
-    subjectId: command.subjectId,
-    subjectType: command.subjectType,
+    subjectId: event.subjectId,
+    subjectType: event.subjectType,
     trigger: {
-      accountId: command.accountId,
-      eventType: command.eventType,
-      occurredAt: command.occurredAt,
-      thirdUserId: command.thirdUserId,
-      triggerPayload: structuredClone(command.triggerPayload),
+      eventId: event.eventId,
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      payload: structuredClone(projection.variables),
+      payloadVersion: event.payloadVersion,
+      source: event.source,
     },
-    uid,
+    uid: event.uid,
     workflowId: binding.workflowId,
   });
 }
 
-function parseEntryCommand(data: Buffer): WorkflowEntryCommand | null {
+function parseEntryEvent(data: Buffer):
+  | { event: WorkflowEntryEvent; kind: "accepted" }
+  | { code: WorkflowEntryEnvelopeValidationCode | "invalid_json"; kind: "rejected" } {
   try {
-    const value = JSON.parse(data.toString("utf8")) as unknown;
-    return Value.Check(WorkflowEntryCommandSchema, value)
-      ? structuredClone(value) as WorkflowEntryCommand
-      : null;
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)) as unknown;
+    return validateWorkflowEntryEvent(value, { encodedByteLength: data.byteLength });
   } catch {
-    return null;
+    return { code: "invalid_json", kind: "rejected" };
   }
-}
-
-function parseSafeDatabaseId(value: string) {
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error("Workflow uid exceeds runtime range");
-  return parsed;
 }

@@ -17,6 +17,9 @@ describe("workflow worker runtime", () => {
       topic: "entry-topic",
       type: "Shared",
     }));
+    expect(resources.dependencies.entryConsumer).toHaveBeenCalledWith(expect.objectContaining({
+      logger: resources.dependencies.logger,
+    }));
     expect(resources.broker.subscribe).toHaveBeenCalledWith(expect.objectContaining({
       subscription: "task-sub",
       topic: "task-topic",

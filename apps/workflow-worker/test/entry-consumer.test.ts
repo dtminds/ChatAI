@@ -34,8 +34,8 @@ describe("workflow entry consumer", () => {
         eventId: "event-1",
         eventType: "contact.friend_added",
         occurredAt: "2026-08-09T10:30:15.123Z",
-        payload: {},
         payloadVersion: 1,
+        projection: {},
         source: "worker-test",
       },
     }));
@@ -83,33 +83,42 @@ describe("workflow entry consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
   });
 
-  it("NACKs malformed messages and transient admission failures", async () => {
-    const malformed = createBrokerMessage(Buffer.from("not-json"));
+  it("moves malformed messages to the Entry DLQ and NACKs transient admission failures", async () => {
+    const dispositionOrder: string[] = [];
+    const malformed = createBrokerMessage(Buffer.from("not-json"), {
+      onAck: () => dispositionOrder.push("ack"),
+    });
     const transient = createBrokerMessage(event());
+    const publishToDeadLetter = vi.fn(async () => { dispositionOrder.push("publish"); });
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
       eventCatalog,
+      publishToDeadLetter,
       runtimeService: { startRun: vi.fn(async () => { throw new Error("database unavailable"); }) },
     });
 
-    await expect(handler(malformed)).resolves.toEqual({ code: "invalid_json", disposition: "nack" });
+    await expect(handler(malformed)).resolves.toEqual({ code: "invalid_json", disposition: "ack" });
     await expect(handler(transient)).resolves.toEqual({
       code: "temporary_failure",
       disposition: "nack",
     });
 
-    expect(malformed.negativeAck).toHaveBeenCalledTimes(1);
+    expect(publishToDeadLetter).toHaveBeenCalledWith(malformed, "invalid_json");
+    expect(dispositionOrder).toEqual(["publish", "ack"]);
+    expect(malformed.ack).toHaveBeenCalledTimes(1);
+    expect(malformed.negativeAck).not.toHaveBeenCalled();
     expect(transient.negativeAck).toHaveBeenCalledTimes(1);
-    expect(malformed.ack).not.toHaveBeenCalled();
   });
 
-  it("routes malformed entry messages to the DLQ after broker redelivery", async () => {
+  it("publishes permanently invalid entry messages to the DLQ before ACKing", async () => {
     const broker = new FakeWorkflowBroker();
+    const logger = { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() };
     await startEntryConsumer({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       broker,
       deadLetterTopic: "entry-dlq",
       eventCatalog,
+      logger,
       maxRedeliverCount: 2,
       runtimeService: { startRun: vi.fn() },
       subscription: "entry-sub",
@@ -119,16 +128,49 @@ describe("workflow entry consumer", () => {
     await broker.publish({ data: Buffer.from("not-json"), topic: "entry" });
     await broker.drain();
 
-    expect(broker.getPublished("entry-dlq")).toHaveLength(1);
+    expect(broker.getPublished("entry-dlq")).toEqual([
+      expect.objectContaining({
+        data: Buffer.from("not-json"),
+        properties: {
+          workflowEntryOriginalTopic: "entry",
+          workflowEntryResultCode: "invalid_json",
+        },
+      }),
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith({
+      code: "invalid_json",
+      disposition: "ack",
+      event: "workflow.entry.consume.rejected",
+      role: "entry-consumer",
+    }, "workflow entry message rejected");
     await broker.close();
   });
 
-  it("NACKs unsupported catalog events and reports deduplicated admission", async () => {
+  it("NACKs when the Entry DLQ publish fails", async () => {
+    const message = createBrokerMessage(Buffer.from("not-json"));
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
+      eventCatalog,
+      publishToDeadLetter: vi.fn(async () => { throw new Error("broker unavailable"); }),
+      runtimeService: { startRun: vi.fn() },
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      code: "temporary_failure",
+      disposition: "nack",
+    });
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.negativeAck).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves unsupported catalog events to the Entry DLQ and reports deduplicated admission", async () => {
     const unknown = createBrokerMessage(event({ eventType: "test.unknown" }));
     const duplicate = createBrokerMessage(event());
+    const publishToDeadLetter = vi.fn(async () => {});
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
       eventCatalog,
+      publishToDeadLetter,
       runtimeService: {
         startRun: vi.fn(async () => ({ deduplicated: true, kind: "success" as const })),
       },
@@ -136,12 +178,13 @@ describe("workflow entry consumer", () => {
 
     await expect(handler(unknown)).resolves.toEqual({
       code: "unknown_event_type",
-      disposition: "nack",
+      disposition: "ack",
     });
     await expect(handler(duplicate)).resolves.toEqual({
       code: "deduplicated",
       disposition: "ack",
     });
+    expect(publishToDeadLetter).toHaveBeenCalledWith(unknown, "unknown_event_type");
   });
 });
 

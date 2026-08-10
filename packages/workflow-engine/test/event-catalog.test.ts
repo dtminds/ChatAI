@@ -1,20 +1,27 @@
 import { readFileSync } from "node:fs";
+import {
+  getWorkflowJsonDepth,
+  getWorkflowJsonEncodedByteLength,
+  WORKFLOW_ENTRY_JSON_MAX_DEPTH,
+  validateWorkflowEntryEvent,
+  type WorkflowEntryEvent,
+} from "@chatai/contracts";
 import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   createWorkflowEventCatalog,
   WORKFLOW_TRIGGER_PROJECTION_MAX_BYTES,
+  WorkflowTriggerProjectionSchema,
 } from "../src/event-catalog.js";
-import {
-  validateWorkflowEntryEvent,
-  type WorkflowEntryEvent,
-} from "@chatai/contracts";
 
 type FixtureManifest = {
   fixtures: Array<{
     expected: { accepted: boolean; resultCode: string };
     fixtureId: string;
+    idempotencyGroup?: string;
     kind: "entry" | "trigger-projection";
+    minimumBytes?: number;
     path: string;
     stage: "catalog" | "envelope" | "projection";
   }>;
@@ -84,6 +91,27 @@ describe("workflow event catalog", () => {
       kind: "rejected",
     });
   });
+
+  it.each(manifest.fixtures.filter(fixture => fixture.stage === "projection"))(
+    "$fixtureId follows the shared projection boundary",
+    (fixture) => {
+      const projection = JSON.parse(readFileSync(
+        new URL(fixture.path, fixtureRoot),
+        "utf8",
+      ));
+      const byteLength = getWorkflowJsonEncodedByteLength(projection);
+      const accepted = byteLength !== null
+        && byteLength <= WORKFLOW_TRIGGER_PROJECTION_MAX_BYTES
+        && getWorkflowJsonDepth(projection) <= WORKFLOW_ENTRY_JSON_MAX_DEPTH
+        && Value.Check(WorkflowTriggerProjectionSchema, projection);
+
+      expect(accepted ? "accepted" : "projection_invalid")
+        .toBe(fixture.expected.resultCode);
+      if (fixture.minimumBytes !== undefined) {
+        expect(byteLength).toBeGreaterThanOrEqual(fixture.minimumBytes);
+      }
+    },
+  );
 
   it("requires closed payload schemas and unique catalog keys", () => {
     expect(() => createWorkflowEventCatalog([{

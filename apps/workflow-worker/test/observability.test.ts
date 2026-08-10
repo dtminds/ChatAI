@@ -1,10 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  logWorkflowEntryConsumeResult,
   logWorkflowReadinessTransition,
   logWorkflowRoleHeartbeat,
 } from "../src/observability.js";
 
 describe("workflow worker observability", () => {
+  it("logs Entry consume results with low-cardinality fields", () => {
+    const logger = createLogger();
+
+    logWorkflowEntryConsumeResult(logger, { code: "admitted", disposition: "ack" });
+    logWorkflowEntryConsumeResult(logger, { code: "invalid_json", disposition: "ack" });
+    logWorkflowEntryConsumeResult(logger, { code: "temporary_failure", disposition: "nack" });
+
+    expect(logger.debug).toHaveBeenCalledWith({
+      code: "admitted",
+      disposition: "ack",
+      event: "workflow.entry.consume.completed",
+      role: "entry-consumer",
+    }, "workflow entry message consumed");
+    expect(logger.warn).toHaveBeenNthCalledWith(1, {
+      code: "invalid_json",
+      disposition: "ack",
+      event: "workflow.entry.consume.rejected",
+      role: "entry-consumer",
+    }, "workflow entry message rejected");
+    expect(logger.warn).toHaveBeenNthCalledWith(2, {
+      code: "temporary_failure",
+      disposition: "nack",
+      event: "workflow.entry.consume.failed",
+      role: "entry-consumer",
+    }, "workflow entry message processing failed");
+  });
+
   it("keeps idle polling at debug level", () => {
     const logger = createLogger();
 

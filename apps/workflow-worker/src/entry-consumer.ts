@@ -19,6 +19,10 @@ import type {
   WorkflowBrokerSubscription,
 } from "./broker/types.js";
 import { classifyEntryError } from "./error-policy.js";
+import {
+  logWorkflowEntryConsumeResult,
+  type WorkflowWorkerLogger,
+} from "./observability.js";
 
 type WorkflowEntryRuntimeService = {
   startRun(input: {
@@ -54,18 +58,20 @@ export type WorkflowEntryConsumeResult = {
 export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
   eventCatalog: WorkflowEventCatalog;
+  publishToDeadLetter?: (
+    message: WorkflowBrokerMessage,
+    code: WorkflowEntryConsumeResultCode,
+  ) => Promise<void>;
   runtimeService: WorkflowEntryRuntimeService;
 }) {
   return async (message: WorkflowBrokerMessage): Promise<WorkflowEntryConsumeResult> => {
     const parsed = parseEntryEvent(message.data);
     if (parsed.kind === "rejected") {
-      message.negativeAck();
-      return { code: parsed.code, disposition: "nack" };
+      return rejectPermanentEntry(message, parsed.code, input.publishToDeadLetter);
     }
     const catalogResult = input.eventCatalog.project(parsed.event);
     if (catalogResult.kind === "rejected") {
-      message.negativeAck();
-      return { code: catalogResult.code, disposition: "nack" };
+      return rejectPermanentEntry(message, catalogResult.code, input.publishToDeadLetter);
     }
 
     try {
@@ -117,15 +123,38 @@ export function startEntryConsumer(input: {
   broker: WorkflowBroker;
   deadLetterTopic?: string;
   eventCatalog: WorkflowEventCatalog;
+  logger?: WorkflowWorkerLogger;
   maxRedeliverCount?: number;
   runtimeService: WorkflowEntryRuntimeService;
   subscription: string;
   topic: string;
 }): Promise<WorkflowBrokerSubscription> {
-  const handler = createEntryConsumerHandler(input);
+  const deadLetterTopic = input.deadLetterTopic;
+  const handler = createEntryConsumerHandler({
+    bindingReader: input.bindingReader,
+    eventCatalog: input.eventCatalog,
+    publishToDeadLetter: deadLetterTopic
+      ? async (message, code) => {
+          await input.broker.publish({
+            data: Buffer.from(message.data),
+            key: message.key ?? undefined,
+            properties: {
+              ...message.properties,
+              workflowEntryOriginalTopic: message.topic,
+              workflowEntryResultCode: code,
+            },
+            topic: deadLetterTopic,
+          });
+        }
+      : undefined,
+    runtimeService: input.runtimeService,
+  });
   return input.broker.subscribe({
-    deadLetterTopic: input.deadLetterTopic,
-    handler: async message => { await handler(message); },
+    deadLetterTopic,
+    handler: async message => {
+      const result = await handler(message);
+      if (input.logger) logWorkflowEntryConsumeResult(input.logger, result);
+    },
     maxRedeliverCount: input.maxRedeliverCount,
     subscription: input.subscription,
     topic: input.topic,
@@ -148,13 +177,32 @@ async function admitWorkflow(
       eventId: event.eventId,
       eventType: event.eventType,
       occurredAt: event.occurredAt,
-      payload: structuredClone(projection.variables),
       payloadVersion: event.payloadVersion,
+      projection: structuredClone(projection.variables),
       source: event.source,
     },
     uid: event.uid,
     workflowId: binding.workflowId,
   });
+}
+
+async function rejectPermanentEntry(
+  message: WorkflowBrokerMessage,
+  code: WorkflowEntryConsumeResultCode,
+  publishToDeadLetter: ((
+    message: WorkflowBrokerMessage,
+    code: WorkflowEntryConsumeResultCode,
+  ) => Promise<void>) | undefined,
+): Promise<WorkflowEntryConsumeResult> {
+  try {
+    if (!publishToDeadLetter) throw new Error("Workflow Entry DLQ is not configured");
+    await publishToDeadLetter(message, code);
+    await message.ack();
+    return { code, disposition: "ack" };
+  } catch {
+    message.negativeAck();
+    return { code: "temporary_failure", disposition: "nack" };
+  }
 }
 
 function parseEntryEvent(data: Buffer):

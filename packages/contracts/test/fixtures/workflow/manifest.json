@@ -23,6 +23,36 @@
       "expected": { "accepted": true, "resultCode": "accepted" }
     },
     {
+      "fixtureId": "entry-v1-valid-time-leap-day",
+      "kind": "entry",
+      "path": "entry/v1/valid/time-leap-day.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-time-end-of-day",
+      "kind": "entry",
+      "path": "entry/v1/valid/time-end-of-day.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-idempotent-a",
+      "idempotencyGroup": "entry-v1-idempotent-pair",
+      "kind": "entry",
+      "path": "entry/v1/valid/idempotent-a.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-idempotent-b",
+      "idempotencyGroup": "entry-v1-idempotent-pair",
+      "kind": "entry",
+      "path": "entry/v1/valid/idempotent-b.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
       "fixtureId": "entry-v1-invalid-json",
       "kind": "entry",
       "path": "entry/v1/invalid/invalid-json.json",
@@ -75,6 +105,14 @@
       "fixtureId": "trigger-projection-v1-contact-updated",
       "kind": "trigger-projection",
       "path": "trigger-projection/v1/contact-updated.json",
+      "stage": "projection",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "trigger-projection-v1-near-limit",
+      "kind": "trigger-projection",
+      "minimumBytes": 31744,
+      "path": "trigger-projection/v1/near-limit.json",
       "stage": "projection",
       "expected": { "accepted": true, "resultCode": "accepted" }
     }

@@ -11,7 +11,9 @@ type FixtureManifest = {
   fixtures: Array<{
     expected: { accepted: boolean; resultCode: string };
     fixtureId: string;
+    idempotencyGroup?: string;
     kind: "entry" | "trigger-projection";
+    minimumBytes?: number;
     path: string;
     stage: "catalog" | "envelope" | "projection";
   }>;
@@ -48,6 +50,24 @@ describe("workflow entry event envelope", () => {
     expect(validateWorkflowEntryEvent(event(), {
       encodedByteLength: WORKFLOW_ENTRY_EVENT_MAX_BYTES + 1,
     })).toMatchObject({ code: "envelope_too_large", kind: "rejected" });
+  });
+
+  it("keeps shared idempotent event pairs byte-for-byte equivalent", () => {
+    const groups = new Map<string, typeof manifest.fixtures>();
+    for (const fixture of manifest.fixtures) {
+      if (!fixture.idempotencyGroup) continue;
+      const fixtures = groups.get(fixture.idempotencyGroup) ?? [];
+      fixtures.push(fixture);
+      groups.set(fixture.idempotencyGroup, fixtures);
+    }
+
+    for (const fixtures of groups.values()) {
+      expect(fixtures.length).toBeGreaterThan(1);
+      const rawEvents = fixtures.map(fixture =>
+        readFileSync(new URL(fixture.path, fixtureRoot), "utf8"));
+      expect(new Set(rawEvents).size).toBe(1);
+      expect(new Set(rawEvents.map(raw => JSON.parse(raw).eventId)).size).toBe(1);
+    }
   });
 
   it("rejects JSON deeper than the public envelope limit", () => {

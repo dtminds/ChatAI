@@ -6,7 +6,7 @@ Manual database changes for the backend should be recorded here.
 
 - Added immutable Workflow Type and Subject Type identity to control-plane and Runtime records.
 - Database codes are append-only: Workflow Type `1=chatai_sop`, `2=wecom_sop`, `3=member_sop`; Subject Type `1=chatai_contact`, `2=wecom_contact`, `3=miniapp_member`.
-- Existing untyped Workflow rows use the legacy ChatAI semantics. `workflow_type` defaults to `1` (`chatai_sop`) and `subject_type` defaults to `1` (`chatai_contact`) so the migration can backfill non-empty tables safely.
+- Existing untyped Workflow rows use the legacy ChatAI semantics. The `ADD COLUMN` statements temporarily default `workflow_type` to `1` (`chatai_sop`) and `subject_type` to `1` (`chatai_contact`) so non-empty tables can be migrated safely; the defaults are removed after the existing rows are backfilled.
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_definition
@@ -34,6 +34,22 @@ ALTER TABLE xy_wap_embed_workflow_run
   ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER revision,
   DROP KEY idx_workflow_run_entry_window,
   ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id);
+
+ALTER TABLE xy_wap_embed_workflow_definition
+  MODIFY COLUMN workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP';
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  MODIFY COLUMN workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
 ```
 
 ## 2026-08-09

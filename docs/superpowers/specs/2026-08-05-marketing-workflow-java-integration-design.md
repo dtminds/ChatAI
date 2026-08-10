@@ -767,18 +767,35 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   UNIQUE KEY uk_workflow_event_subscription_task (uid, task_id, event_type),
   KEY idx_workflow_event_subscription_lookup
     (uid, subject_type, event_type, subject_id, status, expires_at, id),
+  KEY idx_workflow_event_subscription_collect
+    (uid, subject_type, event_type, subject_id, status, collect_until, id),
   KEY idx_workflow_event_subscription_run
     (uid, run_id, status, id),
   KEY idx_workflow_event_subscription_reconcile (status, id)
 ) COMMENT='营销Workflow动态事件等待订阅表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  subscription_id BIGINT UNSIGNED NOT NULL COMMENT 'Wait Event订阅ID',
+  event_id VARCHAR(128) NOT NULL COMMENT 'Workflow入口事件ID',
+  occurred_at DATETIME NOT NULL COMMENT '事件发生时间',
+  projection_json JSON NOT NULL COMMENT 'Event Catalog允许的变量投影',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收集时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id),
+  KEY idx_workflow_event_subscription_event_list (uid, subscription_id, occurred_at, id)
+) COMMENT='营销Workflow等待事件收集记录表';
 ```
 
 这张表由 Node 独占写入：
 
 - Run 进入 Wait Event：在创建等待 Task 的同一事务中插入 `waiting` 订阅。
 - 事件命中：CAS `waiting -> triggered`，记录 `trigger_event_id`。
+- 收集窗口：只保存 Event Catalog 允许的变量投影，并按 `uid + subscription_id + event_id` 去重。
 - 等待超时：CAS `waiting -> timed_out`。
-- Workflow Stop、删除或 Run 取消：`waiting -> cancelled`。
+- Workflow Stop、删除或 Run 取消：`waiting / triggered -> cancelled`。
 - Reconciler 清理状态与 Task 不一致或已过期的订阅。
 
 Java 动态兴趣查询：
@@ -793,15 +810,19 @@ WHERE subscription.uid = :uid
   AND subscription.subject_type = :subjectTypeCode
   AND subscription.event_type = :eventType
   AND subscription.subject_id = :subjectId
-  AND subscription.status = 'waiting'
-  AND subscription.expires_at > CURRENT_TIMESTAMP
+  AND (
+    (subscription.status = 'waiting'
+      AND subscription.expires_at > CURRENT_TIMESTAMP)
+    OR (subscription.status = 'triggered'
+      AND subscription.collect_until > CURRENT_TIMESTAMP)
+  )
   AND (subscription.account_id IS NULL OR subscription.account_id = :accountId)
   AND definition.biz_status = 1
   AND definition.runtime_status IN ('active', 'paused')
 LIMIT 1;
 ```
 
-动态订阅在 Paused 时仍保留兴趣。原因是流程暂停期间发生的主体事件不应在 Java 入口被直接丢弃；Node 可以记录订阅已触发，并将后续执行延迟到恢复后。Stopped 和已删除流程不再保留兴趣。
+动态订阅在 Paused 时仍保留兴趣。原因是流程暂停期间发生的主体事件不应在 Java 入口被直接丢弃；Node 可以记录订阅已触发，并将后续执行延迟到恢复后。首条事件将订阅切换为 `triggered` 后，兴趣继续保留到 `collect_until`，用于收集固定 10 秒窗口内的后续消息。Stopped 和已删除流程不再保留兴趣。
 
 Wait Event 的事件到达与超时可能并发。Node 必须用单条条件更新竞争 `status = 'waiting'`，只有一个分支能够成功推进 Run。1.0 以数据库成功取得订阅的先后作为竞争结果，不依赖两个 Pulsar Topic 之间的顺序。
 
@@ -835,8 +856,12 @@ SELECT
       AND subscription.subject_type = :subjectTypeCode
       AND subscription.event_type = :eventType
       AND subscription.subject_id = :subjectId
-      AND subscription.status = 'waiting'
-      AND subscription.expires_at > CURRENT_TIMESTAMP
+      AND (
+        (subscription.status = 'waiting'
+          AND subscription.expires_at > CURRENT_TIMESTAMP)
+        OR (subscription.status = 'triggered'
+          AND subscription.collect_until > CURRENT_TIMESTAMP)
+      )
       AND (:accountId IS NULL
         OR subscription.account_id IS NULL
         OR subscription.account_id = :accountId)
@@ -1032,13 +1057,15 @@ void recordWorkflowEvent(DomainFact fact) {
 同一条事件还需要查询动态 Subscription：
 
 ```text
-按 uid + subjectType + eventType + subjectId 查询 waiting Subscription
-  -> 校验 account 和事件配置
-  -> CAS 抢占 subscription.status = waiting
-  -> 成功者写 trigger_event_id
-  -> 完成等待 Task
+按 uid + subjectType + eventType + subjectId 查询 waiting / 收集窗口内的 triggered Subscription
+  -> 校验 account、事件配置和事件有效时间
+  -> waiting：首条事件与 Timeout 竞争 subscription.status = waiting
+       - 首条事件成功：写 trigger_event_id，状态改为 triggered
+       - 将等待 Task 的 due_at 改为 recordedAt + 10 秒
+  -> triggered：collect_until 前按 eventId 幂等追加受控 Trigger Projection
+  -> collect_until 到达后由等待 Task 一次聚合消息输出
   -> 根据“事件到达”出口创建下一 Task
-  -> 其他重复消息或超时竞争者直接判定为已处理/过期
+  -> 未被首条事件抢占的 Timeout 根据“等待超时”出口继续
 ```
 
 Start Binding 和 Wait Event Subscription 可以同时命中。同一条新消息既可能创建新 Run，也可能唤醒一个或多个已经等待中的 Run，这是允许的业务语义。

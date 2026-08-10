@@ -25,8 +25,10 @@ describe("workflow wait event", () => {
 
     expect(definition.createExecutionConfig(node.data)).toEqual({
       event: {
+        capabilityKey: "event.message.received",
         collectWindowSeconds: 10,
-        type: "customer.message.received",
+        contractVersion: 1,
+        type: "message.received",
       },
       timeout: { duration: 24, unit: "hour" },
     });

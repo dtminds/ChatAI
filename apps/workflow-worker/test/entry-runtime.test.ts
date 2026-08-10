@@ -60,6 +60,7 @@ describe("Workflow Entry runtime composition", () => {
       inboxRepository: repository,
       now: () => now,
       runtimeService: service,
+      subscriptionReader: repository,
       subscription: "entry-sub",
       topic: "entry",
     });

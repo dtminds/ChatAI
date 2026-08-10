@@ -5,7 +5,7 @@ import type {
   WorkflowNodeKind,
 } from "@chatai/contracts";
 
-const WORKFLOW_ENTRY_EVENT_CAPABILITIES = {
+export const WORKFLOW_ENTRY_EVENT_CAPABILITIES = {
   "contact.friend_added": {
     capabilityKey: "event.contact.friend_added",
     contractVersion: 1,
@@ -28,9 +28,15 @@ export function getWorkflowNodeCapabilityRequirements(
   kind: WorkflowNodeKind,
   config: Record<string, unknown>,
 ): WorkflowCapabilityRequirement[] {
-  if (kind !== "start" || !Array.isArray(config.triggers)) {
-    return [];
+  if (kind === "wait-event") {
+    const event = config.event;
+    if (!event || typeof event !== "object" || !("type" in event)) return [];
+    return typeof event.type === "string" && event.type in WORKFLOW_ENTRY_EVENT_CAPABILITIES
+      ? [WORKFLOW_ENTRY_EVENT_CAPABILITIES[event.type as WorkflowEntryEventType]]
+      : [];
   }
+
+  if (kind !== "start" || !Array.isArray(config.triggers)) return [];
 
   return canonicalizeWorkflowCapabilityRequirements(config.triggers.flatMap((trigger) => {
     if (!trigger || typeof trigger !== "object" || !("type" in trigger)) {

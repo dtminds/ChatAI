@@ -56,6 +56,43 @@ describe("core node executors", () => {
     }), context())).rejects.toThrow("duration exceeds the supported unit limit");
   });
 
+  it("starts a Wait Event with an absolute timeout", async () => {
+    await expect(registry.execute(node("wait-event", {
+      event: {
+        capabilityKey: "event.message.received",
+        collectWindowSeconds: 10,
+        contractVersion: 1,
+        type: "message.received",
+      },
+      timeout: { duration: 2, unit: "hour" },
+    }), context())).resolves.toEqual({
+      eventType: "message.received",
+      expiresAt: "2026-07-10T02:00:00.000Z",
+      type: "event-wait",
+    });
+  });
+
+  it("rejects Wait Event specs that exceed the frozen timeout or collection contract", async () => {
+    await expect(registry.execute(node("wait-event", {
+      event: {
+        capabilityKey: "event.message.received",
+        collectWindowSeconds: 10,
+        contractVersion: 1,
+        type: "message.received",
+      },
+      timeout: { duration: 16, unit: "day" },
+    }), context())).rejects.toThrow("Wait Event node requires a supported event and timeout");
+    await expect(registry.execute(node("wait-event", {
+      event: {
+        capabilityKey: "event.message.received",
+        collectWindowSeconds: 30,
+        contractVersion: 1,
+        type: "message.received",
+      },
+      timeout: { duration: 15, unit: "day" },
+    }), context())).rejects.toThrow("Wait Event node requires a supported event and timeout");
+  });
+
   it("rejects regular waits above the selected unit limit", async () => {
     await expect(registry.execute(node("wait", {
       duration: 361,
@@ -156,7 +193,10 @@ describe("core node executors", () => {
   });
 });
 
-function node(kind: "branch" | "end" | "message" | "start" | "wait", config: Record<string, unknown> = {}) {
+function node(
+  kind: "branch" | "end" | "message" | "start" | "wait" | "wait-event",
+  config: Record<string, unknown> = {},
+) {
   return { config, id: kind, kind, nodeSchemaVersion: 1, requiredCapabilities: [] };
 }
 

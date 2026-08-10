@@ -71,6 +71,12 @@ export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
   minute: 360,
 } as const;
 export const WORKFLOW_WAIT_DAY_OFFSET_MAX = 45;
+export const WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS = 10;
+export const WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
+  day: 15,
+  hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
+  minute: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.minute,
+} as const;
 
 export const WorkflowWaitConfigSchema = Type.Union([
   Type.Object({
@@ -95,8 +101,51 @@ export const WorkflowWaitConfigSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+const WorkflowWaitEventTimeoutSchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.minute,
+    }),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.hour,
+    }),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.day,
+    }),
+    unit: Type.Literal("day"),
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowWaitEventDraftConfigSchema = Type.Object({
+  event: Type.Object({
+    type: Type.Literal("message.received"),
+  }, { additionalProperties: false }),
+  timeout: WorkflowWaitEventTimeoutSchema,
+}, { additionalProperties: false });
+
+export const WorkflowWaitEventConfigSchema = Type.Object({
+  event: Type.Object({
+    capabilityKey: Type.Literal("event.message.received"),
+    collectWindowSeconds: Type.Literal(WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS),
+    contractVersion: Type.Literal(1),
+    type: Type.Literal("message.received"),
+  }, { additionalProperties: false }),
+  timeout: WorkflowWaitEventTimeoutSchema,
+}, { additionalProperties: false });
+
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartConfig = Static<typeof WorkflowStartConfigSchema>;
 export type WorkflowStartTrigger = Static<typeof WorkflowStartTriggerSchema>;
 export type WorkflowWaitConfig = Static<typeof WorkflowWaitConfigSchema>;
+export type WorkflowWaitEventDraftConfig = Static<typeof WorkflowWaitEventDraftConfigSchema>;
+export type WorkflowWaitEventConfig = Static<typeof WorkflowWaitEventConfigSchema>;

@@ -1,5 +1,6 @@
 import {
   WorkflowEntryEventType,
+  WorkflowJsonObjectSchema,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
@@ -29,6 +30,7 @@ import {
 import type {
   DatabaseId,
   WorkflowDatabase,
+  WorkflowEventSubscriptionEventTable,
   WorkflowEventSubscriptionTable,
   WorkflowRunTable,
   WorkflowTaskTable,
@@ -38,6 +40,7 @@ import type {
   WorkflowBeginEventWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowEventSubscriptionEventRecord,
   WorkflowEventSubscriptionRecord,
   WorkflowOutboxRecord,
   WorkflowNodeMetricRecord,
@@ -57,6 +60,7 @@ const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
 const INBOX_TABLE = "xy_wap_embed_workflow_inbox" as const;
 const EVENT_SUBSCRIPTION_TABLE = "xy_wap_embed_workflow_event_subscription" as const;
+const EVENT_SUBSCRIPTION_EVENT_TABLE = "xy_wap_embed_workflow_event_subscription_event" as const;
 const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as const;
@@ -512,6 +516,8 @@ export class MysqlWorkflowRuntimeRepository implements
     subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
     subjectId: string,
+    eventOccurredAt: Date,
+    observedAt: Date,
   ) {
     const rows = await this.db.selectFrom(`${EVENT_SUBSCRIPTION_TABLE} as subscription`)
       .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
@@ -522,7 +528,17 @@ export class MysqlWorkflowRuntimeRepository implements
       .where("subscription.subject_type", "=", encodeWorkflowSubjectType(subjectType))
       .where("subscription.event_type", "=", eventType)
       .where("subscription.subject_id", "=", subjectId)
-      .where("subscription.status", "in", ["waiting", "triggered"])
+      .where(eb => eb.or([
+        eb.and([
+          eb("subscription.status", "=", "waiting"),
+          eb("subscription.effective_from", "<=", eventOccurredAt),
+          eb("subscription.expires_at", ">", eventOccurredAt),
+        ]),
+        eb.and([
+          eb("subscription.status", "=", "triggered"),
+          eb("subscription.collect_until", ">", observedAt),
+        ]),
+      ]))
       .where("definition.biz_status", "=", 1)
       .where("definition.runtime_status", "in", ["active", "paused"])
       .orderBy("subscription.id", "asc")
@@ -538,8 +554,18 @@ export class MysqlWorkflowRuntimeRepository implements
     return row ? mapEventSubscription(row) : null;
   }
 
-  triggerEventSubscription(
-    input: Parameters<WorkflowRuntimeRepository["triggerEventSubscription"]>[0],
+  async listEventSubscriptionEvents(uid: number, subscriptionId: string) {
+    const rows = await this.db.selectFrom(EVENT_SUBSCRIPTION_EVENT_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("subscription_id", "=", subscriptionId)
+      .orderBy("occurred_at", "asc")
+      .orderBy("id", "asc")
+      .execute();
+    return rows.map(mapEventSubscriptionEvent);
+  }
+
+  recordEventSubscriptionEvent(
+    input: Parameters<WorkflowRuntimeRepository["recordEventSubscriptionEvent"]>[0],
   ) {
     return this.db.transaction().execute(async (trx) => {
       const candidateRow = await trx.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
@@ -572,10 +598,8 @@ export class MysqlWorkflowRuntimeRepository implements
       if (subscription.runId !== candidate.runId || subscription.taskId !== candidate.taskId) {
         return { kind: "conflict" as const };
       }
-      if (subscription.status !== "waiting") {
-        return subscription.status === "triggered" && subscription.triggerEventId === input.eventId
-          ? { kind: "already-processed" as const }
-          : { kind: "conflict" as const };
+      if (subscription.status !== "waiting" && subscription.status !== "triggered") {
+        return { kind: "conflict" as const };
       }
       const run = mapRun(runRow);
       const task = mapTask(taskRow);
@@ -594,13 +618,19 @@ export class MysqlWorkflowRuntimeRepository implements
       if (boundaryDecision === "cancel") {
         await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
           status: "cancelled",
-          update_time: input.triggeredAt,
+          update_time: input.recordedAt,
         })
           .where("id", "=", subscription.id)
-          .where("status", "=", "waiting")
+          .where("status", "in", ["waiting", "triggered"])
           .executeTakeFirstOrThrow();
         return { action: "cancel" as const, kind: "workflow-unavailable" as const };
       }
+      const existingEvent = await trx.selectFrom(EVENT_SUBSCRIPTION_EVENT_TABLE).select("id")
+        .where("uid", "=", input.uid)
+        .where("subscription_id", "=", subscription.id)
+        .where("event_id", "=", input.eventId)
+        .executeTakeFirst();
+      if (existingEvent) return { kind: "already-processed" as const };
       if ((task.status !== "pending"
           && task.status !== "leased"
           && task.status !== "dispatched"
@@ -609,19 +639,48 @@ export class MysqlWorkflowRuntimeRepository implements
         || run.currentNodeId !== subscription.nodeId
         || task.nodeId !== subscription.nodeId
         || task.nodeKind !== "wait-event"
-        || task.taskType !== "wait-event"
-        || task.dueAt.getTime() !== subscription.expiresAt.getTime()
-        || input.triggeredAt.getTime() < subscription.effectiveFrom.getTime()
-        || input.triggeredAt.getTime() >= subscription.expiresAt.getTime()
-        || input.collectUntil.getTime() <= input.triggeredAt.getTime()) {
+        || task.taskType !== "wait-event") {
         return { kind: "conflict" as const };
+      }
+
+      const firstEvent = subscription.status === "waiting";
+      const expectedDueAt = firstEvent ? subscription.expiresAt : subscription.collectUntil;
+      if (!expectedDueAt
+        || task.dueAt.getTime() !== expectedDueAt.getTime()
+        || (firstEvent && (
+          input.eventOccurredAt.getTime() < subscription.effectiveFrom.getTime()
+          || input.eventOccurredAt.getTime() >= subscription.expiresAt.getTime()
+          || input.collectUntil.getTime() <= input.recordedAt.getTime()
+        ))
+        || (!firstEvent && (
+          input.recordedAt.getTime() >= expectedDueAt.getTime()
+          || input.collectUntil.getTime() !== expectedDueAt.getTime()
+        ))) return { kind: "conflict" as const };
+
+      await trx.insertInto(EVENT_SUBSCRIPTION_EVENT_TABLE).values({
+        create_time: input.recordedAt,
+        event_id: input.eventId,
+        occurred_at: input.eventOccurredAt,
+        projection_json: stringifyJson(input.projection),
+        subscription_id: subscription.id,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+
+      if (!firstEvent) {
+        return {
+          firstEvent,
+          kind: "success" as const,
+          run,
+          subscription,
+          task,
+        };
       }
 
       await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
         collect_until: input.collectUntil,
         status: "triggered",
         trigger_event_id: input.eventId,
-        update_time: input.triggeredAt,
+        update_time: input.recordedAt,
       }).where("id", "=", subscription.id)
         .where("status", "=", "waiting")
         .executeTakeFirstOrThrow();
@@ -648,6 +707,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .executeTakeFirstOrThrow();
 
       return {
+        firstEvent,
         kind: "success" as const,
         run: {
           ...run,
@@ -660,7 +720,7 @@ export class MysqlWorkflowRuntimeRepository implements
           collectUntil: input.collectUntil,
           status: "triggered" as const,
           triggerEventId: input.eventId,
-          updatedAt: input.triggeredAt,
+          updatedAt: input.recordedAt,
         },
         task: {
           ...task,
@@ -1906,10 +1966,25 @@ export class MysqlWorkflowRuntimeRepository implements
       const deletableTaskIds = tasks
         .filter(task => !blockedRunIds.has(normalizeId(task.run_id)))
         .map(task => task.id);
+      const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
       const outboxDeleted = deletableTaskIds.length === 0 ? 0 : Number((await trx.deleteFrom(OUTBOX_TABLE)
         .where("aggregate_type", "=", "workflow_task")
         .where("aggregate_id", "in", deletableTaskIds)
         .executeTakeFirst()).numDeletedRows);
+      const subscriptions = deletableRunIds.length === 0 ? [] : await trx
+        .selectFrom(EVENT_SUBSCRIPTION_TABLE)
+        .select("id")
+        .where("run_id", "in", deletableRunIds)
+        .execute();
+      const subscriptionIds = subscriptions.map(item => item.id);
+      if (subscriptionIds.length > 0) {
+        await trx.deleteFrom(EVENT_SUBSCRIPTION_EVENT_TABLE)
+          .where("subscription_id", "in", subscriptionIds)
+          .executeTakeFirst();
+        await trx.deleteFrom(EVENT_SUBSCRIPTION_TABLE)
+          .where("id", "in", subscriptionIds)
+          .executeTakeFirst();
+      }
       const tasksDeleted = deletableTaskIds.length === 0 ? 0 : Number((await trx.deleteFrom(TASK_TABLE)
         .where("id", "in", deletableTaskIds)
         .executeTakeFirst()).numDeletedRows);
@@ -2716,6 +2791,24 @@ function mapEventSubscription(
     uid: normalizeTenantId(row.uid),
     updatedAt: toDate(row.update_time),
     workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function mapEventSubscriptionEvent(
+  row: Selectable<WorkflowEventSubscriptionEventTable>,
+): WorkflowEventSubscriptionEventRecord {
+  const projection = parseJson(row.projection_json);
+  if (!Value.Check(WorkflowJsonObjectSchema, projection)) {
+    throw new Error("Invalid Workflow event subscription projection");
+  }
+  return {
+    collectedAt: toDate(row.create_time),
+    eventId: row.event_id,
+    id: normalizeId(row.id),
+    occurredAt: toDate(row.occurred_at),
+    projection: structuredClone(projection),
+    subscriptionId: normalizeId(row.subscription_id),
+    uid: normalizeTenantId(row.uid),
   };
 }
 

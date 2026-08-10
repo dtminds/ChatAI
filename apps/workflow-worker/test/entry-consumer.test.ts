@@ -2,6 +2,7 @@ import type { WorkflowEntryEvent } from "@chatai/contracts";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeError,
+  type WorkflowEventSubscriptionRecord,
   type WorkflowInboxRepository,
   type WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
@@ -23,6 +24,7 @@ describe("workflow entry consumer", () => {
       eventCatalog,
       inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
@@ -49,6 +51,115 @@ describe("workflow entry consumer", () => {
     expect(message.negativeAck).not.toHaveBeenCalled();
   });
 
+  it("fans one message event out to both Start bindings and Wait Event subscriptions", async () => {
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
+    const subscriptionReader = createSubscriptionReader([subscription("subscription-1")]);
+    const message = createBrokerMessage(messageEvent());
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      now: () => new Date("2026-08-10T00:00:05.000Z"),
+      runtimeService: { recordWaitEvent, startRun },
+      subscriptionReader,
+    });
+
+    await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
+
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(recordWaitEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "message-event-1",
+      eventOccurredAt: new Date("2026-08-10T00:00:04.000Z"),
+      eventType: "message.received",
+      projection: { messageId: 101, messageType: "text", text: "你好" },
+      recordedAt: new Date("2026-08-10T00:00:05.000Z"),
+      subscription: expect.objectContaining({ id: "subscription-1" }),
+      subjectId: "external-user-1",
+      subjectType: "chatai_contact",
+    }));
+    expect(subscriptionReader.listMatchingEventSubscriptions).toHaveBeenCalledWith(
+      9,
+      "chatai_contact",
+      "message.received",
+      "external-user-1",
+      new Date("2026-08-10T00:00:04.000Z"),
+      new Date("2026-08-10T00:00:05.000Z"),
+    );
+  });
+
+  it("admits a subscription-only message event and deduplicates an already collected event", async () => {
+    const recordWaitEvent = vi.fn()
+      .mockResolvedValueOnce({ firstEvent: true, kind: "success" })
+      .mockResolvedValueOnce({ kind: "already-processed" });
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { recordWaitEvent, startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(messageEvent({ eventId: "message-event-2" })))).resolves
+      .toEqual({ code: "deduplicated", disposition: "ack" });
+  });
+
+  it("retries partial fan-out and relies on downstream idempotency before completing the Inbox", async () => {
+    const startRun = vi.fn()
+      .mockResolvedValueOnce({ deduplicated: false, kind: "success" })
+      .mockResolvedValueOnce({ deduplicated: true, kind: "success" });
+    const recordWaitEvent = vi.fn()
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockResolvedValueOnce({ firstEvent: true, kind: "success" });
+    const inboxRepository = createInboxRepository();
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository,
+      runtimeService: { recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "temporary_failure",
+      disposition: "nack",
+    });
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+
+    expect(startRun).toHaveBeenCalledTimes(2);
+    expect(recordWaitEvent).toHaveBeenCalledTimes(2);
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("ACKs a subscription event that no longer matches its frozen account filter", async () => {
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: {
+        recordWaitEvent: vi.fn(async () => ({ kind: "not-matched" as const })),
+        startRun: vi.fn(),
+      },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "no_match",
+      disposition: "ack",
+    });
+  });
+
   it("ACKs nonmatching bindings and entry-policy rejection", async () => {
     const startRun = vi.fn(async () => ({ kind: "entry-policy-rejected" as const }));
     const message = createBrokerMessage(event({ payload: { accountId: "account-b" } }));
@@ -62,6 +173,7 @@ describe("workflow entry consumer", () => {
       eventCatalog,
       inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({
@@ -83,6 +195,7 @@ describe("workflow entry consumer", () => {
       eventCatalog,
       inboxRepository: createInboxRepository(),
       runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
@@ -104,6 +217,7 @@ describe("workflow entry consumer", () => {
       inboxRepository: createInboxRepository(),
       publishToDeadLetter,
       runtimeService: { startRun: vi.fn(async () => { throw new Error("database unavailable"); }) },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(malformed)).resolves.toEqual({ code: "invalid_json", disposition: "ack" });
@@ -131,6 +245,7 @@ describe("workflow entry consumer", () => {
       logger,
       maxRedeliverCount: 2,
       runtimeService: { startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
       subscription: "entry-sub",
       topic: "entry",
     });
@@ -164,6 +279,7 @@ describe("workflow entry consumer", () => {
       inboxRepository: createInboxRepository(),
       publishToDeadLetter: vi.fn(async () => { throw new Error("broker unavailable"); }),
       runtimeService: { startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({
@@ -186,6 +302,7 @@ describe("workflow entry consumer", () => {
       runtimeService: {
         startRun: vi.fn(async () => ({ deduplicated: true, kind: "success" as const })),
       },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(unknown)).resolves.toEqual({
@@ -210,6 +327,7 @@ describe("workflow entry consumer", () => {
       eventCatalog,
       inboxRepository,
       runtimeService: { startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({
@@ -232,6 +350,7 @@ describe("workflow entry consumer", () => {
       inboxRepository,
       now: () => new Date("2026-08-10T00:00:00.000Z"),
       runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(createBrokerMessage(event()))).resolves.toEqual({
@@ -261,6 +380,7 @@ describe("workflow entry consumer", () => {
       runtimeService: {
         startRun: vi.fn(async () => ({ deduplicated: false, kind: "success" as const })),
       },
+      subscriptionReader: createSubscriptionReader(),
     });
 
     await expect(handler(message)).resolves.toEqual({
@@ -279,6 +399,12 @@ function createInboxRepository(
     hasProcessedInboxMessage: vi.fn(async () => false),
     recordProcessedInboxMessage: vi.fn(async () => true),
     ...overrides,
+  };
+}
+
+function createSubscriptionReader(subscriptions: WorkflowEventSubscriptionRecord[] = []) {
+  return {
+    listMatchingEventSubscriptions: vi.fn(async () => subscriptions),
   };
 }
 
@@ -319,5 +445,63 @@ function binding(
     uid: 9,
     updatedAt: now,
     workflowId,
+  };
+}
+
+function messageBinding(workflowId: string): WorkflowTriggerBindingRecord {
+  const now = new Date("2026-08-10T00:00:00.000Z");
+  return {
+    createdAt: now,
+    eventType: "message.received",
+    filter: {
+      accountIds: ["account-a"],
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+      triggers: [{ match: "any", type: "message.received" }],
+    },
+    id: workflowId,
+    revision: 1,
+    status: 1,
+    subjectType: "chatai_contact",
+    uid: 9,
+    updatedAt: now,
+    workflowId,
+  };
+}
+
+function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {
+  return event({
+    eventId: "message-event-1",
+    eventType: "message.received",
+    occurredAt: "2026-08-10T00:00:04.000Z",
+    payload: {
+      accountId: "account-a",
+      messageId: 101,
+      messageType: "text",
+      text: "你好",
+    },
+    ...overrides,
+  });
+}
+
+function subscription(id: string): WorkflowEventSubscriptionRecord {
+  return {
+    accountId: "account-a",
+    collectUntil: null,
+    createdAt: new Date("2026-08-10T00:00:00.000Z"),
+    effectiveFrom: new Date("2026-08-10T00:00:00.000Z"),
+    eventType: "message.received",
+    expiresAt: new Date("2026-08-10T00:01:00.000Z"),
+    id,
+    nodeId: "wait-event",
+    revision: 1,
+    runId: "run-1",
+    status: "waiting",
+    subjectId: "external-user-1",
+    subjectType: "chatai_contact",
+    taskId: "task-1",
+    triggerEventId: null,
+    uid: 9,
+    updatedAt: new Date("2026-08-10T00:00:00.000Z"),
+    workflowId: "31",
   };
 }

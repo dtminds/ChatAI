@@ -18,6 +18,7 @@ describe("workflow worker runtime", () => {
       type: "Shared",
     }));
     expect(resources.dependencies.entryConsumer).toHaveBeenCalledWith(expect.objectContaining({
+      subscriptionReader: resources.dependencies.eventSubscriptionReader,
       inboxRepository: resources.dependencies.inboxRepository,
       logger: resources.dependencies.logger,
     }));
@@ -387,6 +388,7 @@ function createResources() {
         topic: input.topic,
         type: "Shared",
       })),
+      eventSubscriptionReader: { listMatchingEventSubscriptions: vi.fn(async () => []) },
       inboxRepository: {
         hasProcessedInboxMessage: vi.fn(async () => false),
         recordProcessedInboxMessage: vi.fn(async () => true),
@@ -409,7 +411,7 @@ function createResources() {
         }));
         return { close: loopClose };
       }),
-      runtimeService: { executeTask: vi.fn(), startRun: vi.fn() },
+      runtimeService: { executeTask: vi.fn(), recordWaitEvent: vi.fn(), startRun: vi.fn() },
       scheduler,
       schedulerRepository: {} as never,
       taskConsumer: vi.fn(async input => input.broker.subscribe({

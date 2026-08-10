@@ -35,6 +35,7 @@ export function createFakeWorkflowEventCatalog() {
       eventType: "message.received",
       payloadSchema: Type.Object({
         accountId: Type.String({ minLength: 1 }),
+        messageId: Type.Integer({ minimum: 1 }),
         messageType: Type.Union([Type.Literal("image"), Type.Literal("text")]),
         text: Type.Optional(Type.String()),
       }, { additionalProperties: false }),
@@ -45,7 +46,11 @@ export function createFakeWorkflowEventCatalog() {
           messageType: event.payload.messageType,
           ...(event.payload.text === undefined ? {} : { text: event.payload.text }),
         },
-        variables: {},
+        variables: {
+          messageId: event.payload.messageId,
+          messageType: event.payload.messageType,
+          ...(event.payload.text === undefined ? {} : { text: event.payload.text }),
+        },
       }),
       subjectTypes: ["chatai_contact"],
     },

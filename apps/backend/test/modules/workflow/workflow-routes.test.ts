@@ -97,7 +97,7 @@ describe("workflow routes", () => {
     ]));
   });
 
-  it("saves drafts containing frontend-only wait event nodes", async () => {
+  it("saves drafts containing wait event nodes", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({
       method: "POST",
@@ -106,7 +106,7 @@ describe("workflow routes", () => {
     })).json().data;
     const waitEventNode = {
       data: {
-        event: { type: "customer.message.received" },
+        event: { type: "message.received" },
         kind: "wait-event",
         label: "等待事件",
         metric: "等待新消息 · 最长 24 小时",

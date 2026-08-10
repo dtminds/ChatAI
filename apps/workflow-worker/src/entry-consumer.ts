@@ -1,9 +1,12 @@
 import {
   WORKFLOW_INBOX_RETENTION_DAYS,
+  WorkflowEntryEventTypeSchema,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
+  type WorkflowEntryEventType,
   validateWorkflowEntryEvent,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
 import {
   matchWorkflowTrigger,
   type WorkflowEventCatalog,
@@ -11,6 +14,8 @@ import {
   type WorkflowTriggerProjection,
 } from "@chatai/workflow-engine";
 import type {
+  WorkflowEventSubscriptionReader,
+  WorkflowEventSubscriptionRecord,
   WorkflowInboxRepository,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
@@ -27,6 +32,27 @@ import {
 } from "./observability.js";
 
 type WorkflowEntryRuntimeService = {
+  recordWaitEvent(input: {
+    eventId: string;
+    eventOccurredAt: Date;
+    eventType: WorkflowEntryEventType;
+    match: WorkflowTriggerProjection["match"];
+    projection: WorkflowTriggerProjection["variables"];
+    recordedAt: Date;
+    subscription: WorkflowEventSubscriptionRecord;
+    subjectId: string;
+    subjectType: WorkflowEntryEvent["subjectType"];
+    uid: number;
+  }): Promise<
+    | { firstEvent: boolean; kind: "success" }
+    | {
+        kind:
+          | "already-processed"
+          | "conflict"
+          | "not-found"
+          | "not-matched";
+      }
+  >;
   startRun(input: {
     entryEventId: string;
     expectedRevision: number;
@@ -67,6 +93,7 @@ export function createEntryConsumerHandler(input: {
     code: WorkflowEntryConsumeResultCode,
   ) => Promise<void>;
   runtimeService: WorkflowEntryRuntimeService;
+  subscriptionReader: WorkflowEventSubscriptionReader;
 }) {
   return async (message: WorkflowBrokerMessage): Promise<WorkflowEntryConsumeResult> => {
     const parsed = parseEntryEvent(message.data);
@@ -79,6 +106,7 @@ export function createEntryConsumerHandler(input: {
     }
 
     try {
+      const observedAt = input.now?.() ?? new Date();
       const inboxMessageId = createEntryInboxMessageId(parsed.event);
       if (await input.inboxRepository.hasProcessedInboxMessage({
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
@@ -87,19 +115,30 @@ export function createEntryConsumerHandler(input: {
         await message.ack();
         return { code: "deduplicated", disposition: "ack" };
       }
-      const bindings = await input.bindingReader.listActiveTriggerBindings(
-        parsed.event.uid,
-        parsed.event.subjectType,
-        parsed.event.eventType,
-      );
+      const subscriptionEventType = getSubscriptionEventType(parsed.event.eventType);
+      const [bindings, subscriptions] = await Promise.all([
+        input.bindingReader.listActiveTriggerBindings(
+          parsed.event.uid,
+          parsed.event.subjectType,
+          parsed.event.eventType,
+        ),
+        subscriptionEventType
+          ? input.subscriptionReader.listMatchingEventSubscriptions(
+              parsed.event.uid,
+              parsed.event.subjectType,
+              subscriptionEventType,
+              parsed.event.subjectId,
+              new Date(parsed.event.occurredAt),
+              observedAt,
+            )
+          : Promise.resolve([]),
+      ]);
       let admitted = 0;
       let deduplicated = 0;
       let entryPolicyRejected = 0;
-      let matched = 0;
       let runtimeRejected = 0;
       for (const binding of bindings) {
         if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
-        matched += 1;
         try {
           const result = await admitWorkflow(
             input.runtimeService,
@@ -115,7 +154,33 @@ export function createEntryConsumerHandler(input: {
           runtimeRejected += 1;
         }
       }
-      const processedAt = input.now?.() ?? new Date();
+      if (subscriptionEventType) {
+        for (const subscription of subscriptions) {
+          try {
+            const result = await input.runtimeService.recordWaitEvent({
+              eventId: parsed.event.eventId,
+              eventOccurredAt: new Date(parsed.event.occurredAt),
+              eventType: subscriptionEventType,
+              match: catalogResult.projection.match,
+              projection: catalogResult.projection.variables,
+              recordedAt: observedAt,
+              subscription,
+              subjectId: parsed.event.subjectId,
+              subjectType: parsed.event.subjectType,
+              uid: parsed.event.uid,
+            });
+            if (result.kind === "success") admitted += 1;
+            else if (result.kind === "already-processed"
+              || result.kind === "conflict"
+              || result.kind === "not-found") deduplicated += 1;
+            else if (result.kind !== "not-matched") runtimeRejected += 1;
+          } catch (error) {
+            if (classifyEntryError(error) === "nack") throw error;
+            runtimeRejected += 1;
+          }
+        }
+      }
+      const processedAt = observedAt;
       await input.inboxRepository.recordProcessedInboxMessage({
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         expiresAt: new Date(
@@ -150,6 +215,7 @@ export function startEntryConsumer(input: {
   maxRedeliverCount?: number;
   now?: () => Date;
   runtimeService: WorkflowEntryRuntimeService;
+  subscriptionReader: WorkflowEventSubscriptionReader;
   subscription: string;
   topic: string;
 }): Promise<WorkflowBrokerSubscription> {
@@ -174,6 +240,7 @@ export function startEntryConsumer(input: {
         }
       : undefined,
     runtimeService: input.runtimeService,
+    subscriptionReader: input.subscriptionReader,
   });
   return input.broker.subscribe({
     deadLetterTopic,
@@ -192,6 +259,12 @@ const WORKFLOW_ENTRY_INBOX_CONSUMER = "workflow-entry";
 
 function createEntryInboxMessageId(event: Pick<WorkflowEntryEvent, "eventId" | "uid">) {
   return `${event.uid}:${event.eventId}`;
+}
+
+function getSubscriptionEventType(eventType: string): WorkflowEntryEventType | null {
+  return Value.Check(WorkflowEntryEventTypeSchema, eventType)
+    ? eventType as WorkflowEntryEventType
+    : null;
 }
 
 async function admitWorkflow(

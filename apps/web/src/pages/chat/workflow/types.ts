@@ -185,7 +185,7 @@ export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & {
   take: "earliest" | "latest";
   timeRange: WorkflowTimeRange;
 };
-export type WorkflowWaitEventType = "customer.message.received";
+export type WorkflowWaitEventType = "message.received";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & {
   event: {

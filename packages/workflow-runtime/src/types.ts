@@ -2,6 +2,7 @@ import type {
   WorkflowEntryPolicy,
   WorkflowEntryEventType,
   WorkflowExecutionSpec,
+  WorkflowJsonObject,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
@@ -88,12 +89,24 @@ export type WorkflowEventSubscriptionRecord = {
   workflowId: string;
 };
 
+export type WorkflowEventSubscriptionEventRecord = {
+  collectedAt: Date;
+  eventId: string;
+  id: string;
+  occurredAt: Date;
+  projection: WorkflowJsonObject;
+  subscriptionId: string;
+  uid: number;
+};
+
 export type WorkflowEventSubscriptionReader = {
   listMatchingEventSubscriptions(
     uid: number,
     subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
     subjectId: string,
+    eventOccurredAt: Date,
+    observedAt: Date,
   ): Promise<WorkflowEventSubscriptionRecord[]>;
 };
 
@@ -249,11 +262,13 @@ export type WorkflowBeginEventWaitInput = {
   uid: number;
 };
 
-export type WorkflowTriggerEventSubscriptionInput = {
+export type WorkflowRecordEventSubscriptionInput = {
   collectUntil: Date;
   eventId: string;
+  eventOccurredAt: Date;
+  projection: WorkflowJsonObject;
+  recordedAt: Date;
   subscriptionId: string;
-  triggeredAt: Date;
   uid: number;
 };
 
@@ -406,6 +421,10 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     uid: number,
     taskId: string,
   ): Promise<WorkflowEventSubscriptionRecord | null>;
+  listEventSubscriptionEvents(
+    uid: number,
+    subscriptionId: string,
+  ): Promise<WorkflowEventSubscriptionEventRecord[]>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
   listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;
   recoverExpiredLeases(input: {
@@ -452,8 +471,9 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     | { kind: "success"; subscription: WorkflowEventSubscriptionRecord }
     | WorkflowRuntimeFailure
   >;
-  triggerEventSubscription(input: WorkflowTriggerEventSubscriptionInput): Promise<
+  recordEventSubscriptionEvent(input: WorkflowRecordEventSubscriptionInput): Promise<
     | {
+        firstEvent: boolean;
         kind: "success";
         run: WorkflowRunRecord;
         subscription: WorkflowEventSubscriptionRecord;

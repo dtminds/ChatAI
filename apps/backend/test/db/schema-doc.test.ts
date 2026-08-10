@@ -122,6 +122,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_run",
       "xy_wap_embed_workflow_task",
       "xy_wap_embed_workflow_event_subscription",
+      "xy_wap_embed_workflow_event_subscription_event",
       "xy_wap_embed_workflow_node_execution",
       "xy_wap_embed_workflow_outbox",
       "xy_wap_embed_workflow_inbox",
@@ -174,6 +175,27 @@ describe("database schema document", () => {
     );
     expect(outboxTable).toContain(
       "KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)",
+    );
+  });
+
+  it("indexes active Wait Event interest and deduplicates collected Entry events", () => {
+    const subscriptionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_event_subscription",
+    );
+    const eventTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_event_subscription_event",
+    );
+
+    expect(subscriptionTable).toContain(
+      "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
+    );
+    expect(subscriptionTable).toContain(
+      "(uid, subject_type, event_type, subject_id, status, collect_until, id)",
+    );
+    expect(eventTable).toContain(
+      "UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id)",
     );
   });
 });

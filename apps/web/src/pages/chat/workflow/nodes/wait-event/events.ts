@@ -5,7 +5,6 @@ import type {
 
 export const WAIT_EVENT_TRIGGERED_HANDLE_ID = "triggered";
 export const WAIT_EVENT_TIMEOUT_HANDLE_ID = "timeout";
-export const WAIT_EVENT_COLLECT_WINDOW_SECONDS = 10;
 
 type WorkflowWaitEventDefinition = {
   label: string;
@@ -14,35 +13,10 @@ type WorkflowWaitEventDefinition = {
   type: WorkflowWaitEventType;
 };
 
-const commonEventOutputs: WorkflowNodeOutputDefinition[] = [
-  {
-    availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-    key: "eventId",
-    label: "事件 ID",
-    usages: ["variable"],
-    valueType: { kind: "string" },
-  },
-  {
-    availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-    key: "eventType",
-    label: "事件类型",
-    usages: ["variable"],
-    valueType: { kind: "string" },
-  },
-  {
-    availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-    key: "occurredAt",
-    label: "事件发生时间",
-    usages: ["time-reference", "variable"],
-    valueType: { kind: "datetime" },
-  },
-];
-
 export const workflowWaitEventDefinitions = {
-  "customer.message.received": {
+  "message.received": {
     label: "客户发送新消息",
     outputDefinitions: [
-      ...commonEventOutputs,
       {
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
         description: "等待期间收到的消息编号列表，可供意图识别等支持多模态消息的节点读取原始消息。",
@@ -74,7 +48,7 @@ export const workflowWaitEventDefinitions = {
       },
     ],
     shortLabel: "新消息",
-    type: "customer.message.received",
+    type: "message.received",
   },
 } satisfies Record<WorkflowWaitEventType, WorkflowWaitEventDefinition>;
 

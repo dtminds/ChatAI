@@ -100,6 +100,8 @@ export function runWorkflowRuntimeRepositoryContract(
       "chatai_contact",
       "message.received",
       "customer-1",
+      OUTBOX_READY_AT,
+      OUTBOX_READY_AT,
     )).resolves.toEqual([
       expect.objectContaining({
         eventType: "message.received",
@@ -115,6 +117,8 @@ export function runWorkflowRuntimeRepositoryContract(
       "wecom_contact",
       "message.received",
       "customer-1",
+      OUTBOX_READY_AT,
+      OUTBOX_READY_AT,
     )).resolves.toEqual([]);
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
       dueAt: EVENT_WAIT_EXPIRES_AT,
@@ -131,11 +135,13 @@ export function runWorkflowRuntimeRepositoryContract(
   it("allows only one event or timeout claimant to win a Wait Event subscription", async () => {
     const waiting = await createEventWait(harness.repository);
     const [triggered, timedOut] = await Promise.all([
-      harness.repository.triggerEventSubscription({
+      harness.repository.recordEventSubscriptionEvent({
         collectUntil: EVENT_COLLECTION_UNTIL,
         eventId: "message-event-1",
+        eventOccurredAt: OUTBOX_READY_AT,
+        projection: messageProjection(101, "第一条消息"),
+        recordedAt: OUTBOX_READY_AT,
         subscriptionId: waiting.subscription.id,
-        triggeredAt: OUTBOX_READY_AT,
         uid: 9,
       }),
       harness.repository.timeoutEventSubscription({
@@ -154,11 +160,13 @@ export function runWorkflowRuntimeRepositoryContract(
   it("rejects Wait Event triggers outside the subscription interval", async () => {
     const waiting = await createEventWait(harness.repository);
 
-    await expect(harness.repository.triggerEventSubscription({
+    await expect(harness.repository.recordEventSubscriptionEvent({
       collectUntil: new Date("2099-01-02T00:00:10.000Z"),
       eventId: "late-message-event",
+      eventOccurredAt: EVENT_WAIT_EXPIRES_AT,
+      projection: messageProjection(102, "迟到消息"),
+      recordedAt: EVENT_WAIT_EXPIRES_AT,
       subscriptionId: waiting.subscription.id,
-      triggeredAt: EVENT_WAIT_EXPIRES_AT,
       uid: 9,
     })).resolves.toEqual({ kind: "conflict" });
     await expect(harness.repository.findEventSubscriptionByTask(9, waiting.task.id))
@@ -169,11 +177,13 @@ export function runWorkflowRuntimeRepositoryContract(
     const waiting = await createEventWait(harness.repository);
     await harness.setWorkflowRuntimeStatus("paused");
 
-    await expect(harness.repository.triggerEventSubscription({
+    await expect(harness.repository.recordEventSubscriptionEvent({
       collectUntil: EVENT_COLLECTION_UNTIL,
       eventId: "message-event-1",
+      eventOccurredAt: OUTBOX_READY_AT,
+      projection: messageProjection(101, "暂停期间消息"),
+      recordedAt: OUTBOX_READY_AT,
       subscriptionId: waiting.subscription.id,
-      triggeredAt: OUTBOX_READY_AT,
       uid: 9,
     })).resolves.toMatchObject({
       kind: "success",
@@ -190,6 +200,69 @@ export function runWorkflowRuntimeRepositoryContract(
       limit: 10,
       now: EVENT_COLLECTION_UNTIL,
     })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 1 });
+  });
+
+  it("collects and deduplicates Wait Event messages within the fixed window", async () => {
+    const waiting = await createEventWait(harness.repository);
+    const first = await harness.repository.recordEventSubscriptionEvent({
+      collectUntil: EVENT_COLLECTION_UNTIL,
+      eventId: "message-event-1",
+      eventOccurredAt: new Date("2099-01-01T00:00:02.000Z"),
+      projection: messageProjection(101, "第一条消息"),
+      recordedAt: OUTBOX_READY_AT,
+      subscriptionId: waiting.subscription.id,
+      uid: 9,
+    });
+    const second = await harness.repository.recordEventSubscriptionEvent({
+      collectUntil: EVENT_COLLECTION_UNTIL,
+      eventId: "message-event-2",
+      eventOccurredAt: new Date("2099-01-01T00:00:01.000Z"),
+      projection: messageProjection(102, "第二条消息"),
+      recordedAt: new Date("2099-01-01T00:00:05.000Z"),
+      subscriptionId: waiting.subscription.id,
+      uid: 9,
+    });
+    const duplicate = await harness.repository.recordEventSubscriptionEvent({
+      collectUntil: EVENT_COLLECTION_UNTIL,
+      eventId: "message-event-2",
+      eventOccurredAt: new Date("2099-01-01T00:00:01.000Z"),
+      projection: messageProjection(102, "第二条消息"),
+      recordedAt: new Date("2099-01-01T00:00:06.000Z"),
+      subscriptionId: waiting.subscription.id,
+      uid: 9,
+    });
+
+    expect(first).toMatchObject({ firstEvent: true, kind: "success" });
+    expect(second).toMatchObject({ firstEvent: false, kind: "success" });
+    expect(duplicate).toEqual({ kind: "already-processed" });
+    await expect(harness.repository.listEventSubscriptionEvents(
+      9,
+      waiting.subscription.id,
+    )).resolves.toMatchObject([
+      { eventId: "message-event-2", projection: messageProjection(102, "第二条消息") },
+      { eventId: "message-event-1", projection: messageProjection(101, "第一条消息") },
+    ]);
+  });
+
+  it("records one Wait Event message across concurrent duplicate deliveries", async () => {
+    const waiting = await createEventWait(harness.repository);
+    const results = await Promise.all(Array.from({ length: 8 }, () =>
+      harness.repository.recordEventSubscriptionEvent({
+        collectUntil: EVENT_COLLECTION_UNTIL,
+        eventId: "message-event-concurrent",
+        eventOccurredAt: OUTBOX_READY_AT,
+        projection: messageProjection(103, "并发消息"),
+        recordedAt: OUTBOX_READY_AT,
+        subscriptionId: waiting.subscription.id,
+        uid: 9,
+      })));
+
+    expect(results.filter(result => result.kind === "success")).toHaveLength(1);
+    expect(results.filter(result => result.kind === "already-processed")).toHaveLength(7);
+    await expect(harness.repository.listEventSubscriptionEvents(
+      9,
+      waiting.subscription.id,
+    )).resolves.toHaveLength(1);
   });
 
   it("cancels Wait Event subscriptions when their Workflow stops", async () => {
@@ -455,4 +528,8 @@ function requireCreatedRun(
     throw new Error(`Expected run creation to succeed, received ${result.kind}`);
   }
   return result;
+}
+
+function messageProjection(messageId: number, text: string) {
+  return { messageId, messageType: "text", text };
 }

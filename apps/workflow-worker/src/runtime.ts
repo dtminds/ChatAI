@@ -1,4 +1,5 @@
 import type {
+  WorkflowEventSubscriptionReader,
   WorkflowInboxRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
@@ -70,6 +71,7 @@ export async function startWorkflowWorkerRuntime(input: {
   database: { destroy(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   eventCatalog?: WorkflowEventCatalog;
+  eventSubscriptionReader: WorkflowEventSubscriptionReader;
   inboxRepository: WorkflowInboxRepository;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
@@ -111,6 +113,7 @@ export async function startWorkflowWorkerRuntime(input: {
         maxRedeliverCount: input.config.maxRedeliverCount,
         now,
         runtimeService: input.runtimeService,
+        subscriptionReader: input.eventSubscriptionReader,
         subscription: input.config.subscriptions.entry,
         topic: input.config.topics.entry,
       }));

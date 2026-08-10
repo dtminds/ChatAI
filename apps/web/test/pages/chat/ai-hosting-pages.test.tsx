@@ -1028,38 +1028,12 @@ describe("AI hosting pages", () => {
     });
     vi.stubGlobal(
       "Image",
-      class {
-        private readonly listeners = new Map<string, Set<(event: Event) => void>>();
-
-        complete = false;
-        naturalWidth = 0;
-        onerror: ((event: Event) => void) | null = null;
-        onload: ((event: Event) => void) | null = null;
-
-        addEventListener(type: string, listener: (event: Event) => void) {
-          const listeners =
-            this.listeners.get(type) ?? new Set<(event: Event) => void>();
-          listeners.add(listener);
-          this.listeners.set(type, listeners);
-        }
-
-        removeEventListener(type: string, listener: (event: Event) => void) {
-          this.listeners.get(type)?.delete(listener);
-        }
-
-        set src(_value: string) {
-          queueMicrotask(() => {
-            this.complete = true;
-            this.naturalWidth = 1;
-            const event = {
-              currentTarget: this,
-              target: this,
-            } as unknown as Event;
-
-            this.onload?.(event);
-            this.listeners.get("load")?.forEach((listener) => listener(event));
-          });
-        }
+      class extends EventTarget {
+        complete = true;
+        crossOrigin: string | null = null;
+        naturalWidth = 1;
+        referrerPolicy = "";
+        src = "";
       },
     );
     readXlsxFileMock.mockResolvedValue([
@@ -1393,7 +1367,8 @@ describe("AI hosting pages", () => {
       pageSize: 10,
       status: "pending",
     });
-    await user.hover(screen.getAllByAltText("客服小王")[0]);
+    const seatAvatar = await screen.findByAltText("客服小王");
+    await user.hover(seatAvatar);
     expect(await screen.findByRole("tooltip", { name: "客服小王" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);

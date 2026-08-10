@@ -6,32 +6,32 @@ Manual database changes for the backend should be recorded here.
 
 - Added immutable Workflow Type and Subject Type identity to control-plane and Runtime records.
 - Database codes are append-only: Workflow Type `1=chatai_sop`, `2=wecom_sop`, `3=member_sop`; Subject Type `1=chatai_contact`, `2=wecom_contact`, `3=miniapp_member`.
-- No production Workflow data exists, so this migration intentionally has no default values or legacy backfill.
+- Existing untyped Workflow rows use the legacy ChatAI semantics. `workflow_type` defaults to `1` (`chatai_sop`) and `subject_type` defaults to `1` (`chatai_contact`) so the migration can backfill non-empty tables safely.
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_definition
-  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL AFTER uid,
-  ADD COLUMN status_reason VARCHAR(64) NULL AFTER runtime_status,
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP' AFTER uid,
+  ADD COLUMN status_reason VARCHAR(64) NULL COMMENT '系统状态原因' AFTER runtime_status,
   ADD KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id);
 
 ALTER TABLE xy_wap_embed_workflow_revision
-  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL AFTER uid,
-  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER workflow_type;
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP' AFTER uid,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER workflow_type;
 
 ALTER TABLE xy_wap_embed_workflow_trigger_binding
-  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER uid,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER uid,
   DROP KEY uk_workflow_trigger_binding_revision,
   DROP KEY idx_workflow_trigger_binding_match,
   ADD UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
   ADD KEY idx_workflow_trigger_binding_match (uid, subject_type, event_type, status, workflow_id);
 
 ALTER TABLE xy_wap_embed_workflow_entry_guard
-  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER workflow_id,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER workflow_id,
   DROP KEY uk_workflow_entry_guard_subject,
   ADD UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id);
 
 ALTER TABLE xy_wap_embed_workflow_run
-  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL AFTER revision,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER revision,
   DROP KEY idx_workflow_run_entry_window,
   ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id);
 ```

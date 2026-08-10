@@ -21,7 +21,7 @@ export const AgentSkillTemplateRecommendItemSchema = Type.Object(
     /** 仅 tool 推荐项可能带；有值时新建技能自动选中该工具 */
     toolId: Type.Optional(Type.String()),
     type: AgentSkillTemplateRecommendTypeSchema,
-    /** 仅 variable 推荐项可能带；无 title 时用于映射展示名 */
+    /** 仅 variable 推荐项可能带；无 name/title 时用于映射展示名 */
     variableType: Type.Optional(AgentSkillTemplateRecommendVariableTypeSchema),
   },
   { additionalProperties: false },

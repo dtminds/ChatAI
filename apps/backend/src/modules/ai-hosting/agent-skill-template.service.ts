@@ -218,9 +218,10 @@ function mapRecommendItem(value: unknown): AgentSkillTemplateRecommendItem | nul
 
   const variableType = normalizeRecommendVariableType(value.variableType);
   const toolId = readString(value.toolId) || readString(value.tool_id);
+  // recommend_resources 新增 name：有 name 优先展示；否则沿用 title / 类型兜底
   const title =
-    readString(value.title)
-    || readString(value.name)
+    readString(value.name)
+    || readString(value.title)
     || (type === "variable" ? recommendVariableTypeTitle(variableType) : "")
     || (type === "tool" ? "工具" : "")
     || (type === "knowledge_base" ? "知识库" : "");

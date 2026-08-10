@@ -98,6 +98,60 @@ describe("parseRecommendResources", () => {
       { type: "knowledge_base", title: "护肤知识库", description: "说明" },
     ]);
   });
+
+  it("prefers name over title and type fallbacks", () => {
+    expect(
+      parseRecommendResources(
+        JSON.stringify([
+          {
+            type: "variable",
+            name: "客户意向标签",
+            title: "旧标题",
+            variableType: "work_tag",
+            description: "优先用 name",
+          },
+          {
+            type: "tool",
+            name: "订单履约查询",
+            description: "只有 name",
+          },
+          {
+            type: "variable",
+            title: "仅 title",
+            description: "无 name 时沿用原逻辑",
+          },
+          {
+            resourceType: "variable",
+            variableType: "mall_tag",
+            description: "无 name/title 时按类型兜底",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        type: "variable",
+        variableType: "work_tag",
+        title: "客户意向标签",
+        description: "优先用 name",
+      },
+      {
+        type: "tool",
+        title: "订单履约查询",
+        description: "只有 name",
+      },
+      {
+        type: "variable",
+        title: "仅 title",
+        description: "无 name 时沿用原逻辑",
+      },
+      {
+        type: "variable",
+        variableType: "mall_tag",
+        title: "小店标签",
+        description: "无 name/title 时按类型兜底",
+      },
+    ]);
+  });
 });
 
 describe("AgentSkillTemplateService", () => {

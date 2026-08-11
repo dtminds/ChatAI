@@ -1,6 +1,9 @@
 import {
   extractWorkflowNodeDraftConfig,
   getWorkflowNodeContract,
+  isWorkflowBranchConfigComplete,
+  isWorkflowNodeDraftConfig,
+  isWorkflowNodeExecutionConfig,
   normalizeWorkflowEntryPolicy,
   WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   type WorkflowNodeKind,
@@ -125,6 +128,40 @@ export function projectWorkflowNodeExecutionConfig({
   }
 
   return cloneJsonRecord(draftConfig);
+}
+
+export function getWorkflowNodeDraftConfigError(
+  kind: WorkflowNodeKind,
+  config: unknown,
+) {
+  return isWorkflowNodeDraftConfig(kind, config)
+    ? null
+    : getWorkflowNodeInvalidConfigMessage(kind);
+}
+
+export function getWorkflowNodeExecutionConfigError(
+  kind: WorkflowNodeKind,
+  config: unknown,
+) {
+  const valid = kind === "branch"
+    ? isWorkflowBranchConfigComplete(config)
+    : isWorkflowNodeExecutionConfig(kind, config);
+  return valid ? null : getWorkflowNodeInvalidConfigMessage(kind);
+}
+
+function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
+  switch (kind) {
+    case "start":
+      return "Start node requires accounts, triggers, and an entry policy";
+    case "wait":
+      return "Wait node requires a valid duration or fixed-time configuration";
+    case "wait-event":
+      return "Wait Event node requires a supported event and timeout";
+    case "branch":
+      return "Branch node requires complete ordered paths and conditions";
+    default:
+      return `Node configuration does not match its registered schema: ${kind}`;
+  }
 }
 
 function cloneJsonRecord(value: Record<string, unknown>): Record<string, unknown> {

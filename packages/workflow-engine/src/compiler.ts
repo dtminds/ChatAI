@@ -1,5 +1,4 @@
 import {
-  isWorkflowNodeExecutionConfig,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
   type WorkflowExecutionSpec,
@@ -11,7 +10,10 @@ import {
 } from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
 import { getWorkflowSourceOutletId, validateWorkflowGraph } from "./graph.js";
-import { projectWorkflowNodeExecutionConfig } from "./node-contract-registry.js";
+import {
+  getWorkflowNodeExecutionConfigError,
+  projectWorkflowNodeExecutionConfig,
+} from "./node-contract-registry.js";
 import { validateWorkflowTypePolicy } from "./type-policy.js";
 
 export function compileWorkflowDraft({
@@ -46,10 +48,11 @@ export function compileWorkflowDraft({
       kind: node.data.kind,
       workflowType,
     });
-    if (!isWorkflowNodeExecutionConfig(node.data.kind, config)) {
+    const executionConfigError = getWorkflowNodeExecutionConfigError(node.data.kind, config);
+    if (executionConfigError) {
       throw new WorkflowCompilationError([{
         code: "invalid-node-config",
-        message: `Node projection does not match its execution schema: ${node.data.kind}`,
+        message: executionConfigError,
         nodeId: node.id,
       }]);
     }

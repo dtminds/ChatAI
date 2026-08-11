@@ -11,7 +11,7 @@ import {
 import { WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS } from "../src/runtime-support.js";
 
 describe("workflow node projection registry", () => {
-  it("keeps runtime support aligned with runtime-ready contracts", () => {
+  it("derives runtime support from runtime-ready contracts", () => {
     const runtimeReadyKinds = Object.entries(workflowNodeContractRegistry)
       .filter(([, contract]) => contract.maturity === "runtime-ready")
       .map(([kind]) => kind)

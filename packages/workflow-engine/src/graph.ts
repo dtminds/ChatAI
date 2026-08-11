@@ -1,12 +1,11 @@
 import {
   extractWorkflowNodeDraftConfig,
-  isWorkflowBranchConfigComplete,
-  isWorkflowNodeDraftConfig,
   WorkflowDraft,
   WorkflowDraftEdge,
   WorkflowDraftNode,
 } from "@chatai/contracts";
 import type { WorkflowCompilationIssue } from "./errors.js";
+import { getWorkflowNodeDraftConfigError } from "./node-contract-registry.js";
 import { isWorkflowRuntimeSupportedNodeKind } from "./runtime-support.js";
 
 const MAX_GRAPH_DEPTH = 20;
@@ -113,24 +112,13 @@ function validateNodeConfig(
   }
 
   const draftConfig = extractWorkflowNodeDraftConfig(node.data.kind, node.data);
-  if (!isWorkflowNodeDraftConfig(node.data.kind, draftConfig)) {
+  const draftConfigError = getWorkflowNodeDraftConfigError(node.data.kind, draftConfig);
+  if (draftConfigError) {
     issues.push({
       code: "invalid-node-config",
-      message: `Node draft does not match its registered schema: ${node.data.kind}`,
+      message: draftConfigError,
       nodeId: node.id,
     });
-    return;
-  }
-
-  if (node.data.kind === "branch") {
-    if (!isWorkflowBranchConfigComplete(draftConfig)) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Branch node requires complete ordered paths and conditions",
-        nodeId: node.id,
-      });
-    }
-    return;
   }
 }
 

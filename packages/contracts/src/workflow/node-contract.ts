@@ -273,12 +273,14 @@ export const WORKFLOW_DRAFT_NODE_BASE_KEYS = [
   "title",
 ] as const;
 
-type WorkflowNodeContractDefinition = {
+type WorkflowNodeContractDefinition<
+  TMaturity extends WorkflowNodeMaturity = WorkflowNodeMaturity,
+> = {
   currentDraftSchemaVersion: number;
   draftConfigKeys: readonly string[];
   draftConfigSchema: TSchema;
   executionConfigSchema: TSchema | null;
-  maturity: WorkflowNodeMaturity;
+  maturity: TMaturity;
 };
 
 export const workflowNodeContractRegistry = {
@@ -386,7 +388,7 @@ export function isWorkflowNodeExecutionConfig(
   return schema !== null && Value.Check(schema, value);
 }
 
-function placeholderContract(): WorkflowNodeContractDefinition {
+function placeholderContract(): WorkflowNodeContractDefinition<"placeholder"> {
   return {
     currentDraftSchemaVersion: 1,
     draftConfigKeys: [],
@@ -401,7 +403,7 @@ function draftReadyContract(
   draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
-): WorkflowNodeContractDefinition {
+): WorkflowNodeContractDefinition<"draft-ready"> {
   return {
     currentDraftSchemaVersion,
     draftConfigKeys,
@@ -416,7 +418,7 @@ function runtimeReadyContract(
   draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
-): WorkflowNodeContractDefinition {
+): WorkflowNodeContractDefinition<"runtime-ready"> {
   return {
     currentDraftSchemaVersion,
     draftConfigKeys,

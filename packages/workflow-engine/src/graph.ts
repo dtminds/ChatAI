@@ -1,17 +1,11 @@
 import {
-  isWorkflowBranchConfigComplete,
-  WorkflowStartConfigSchema,
-  WorkflowWaitEventDraftConfigSchema,
-  WorkflowWaitConfigSchema,
-  type WorkflowStartConfig,
-  type WorkflowWaitEventDraftConfig,
-  type WorkflowWaitConfig,
+  extractWorkflowNodeDraftConfig,
   WorkflowDraft,
   WorkflowDraftEdge,
   WorkflowDraftNode,
 } from "@chatai/contracts";
-import { Value } from "@sinclair/typebox/value";
 import type { WorkflowCompilationIssue } from "./errors.js";
+import { getWorkflowNodeDraftConfigError } from "./node-contract-registry.js";
 import { isWorkflowRuntimeSupportedNodeKind } from "./runtime-support.js";
 
 const MAX_GRAPH_DEPTH = 20;
@@ -117,81 +111,15 @@ function validateNodeConfig(
     return;
   }
 
-  if (node.data.kind === "start") {
-    if (!isWorkflowStartConfig(node.data)) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Start node requires accounts, triggers, and an entry policy",
-        nodeId: node.id,
-      });
-    }
-    return;
+  const draftConfig = extractWorkflowNodeDraftConfig(node.data.kind, node.data);
+  const draftConfigError = getWorkflowNodeDraftConfigError(node.data.kind, draftConfig);
+  if (draftConfigError) {
+    issues.push({
+      code: "invalid-node-config",
+      message: draftConfigError,
+      nodeId: node.id,
+    });
   }
-
-  if (node.data.kind === "wait") {
-    if (!isWorkflowWaitConfig(node.data)) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Wait node requires a valid duration or fixed-time configuration",
-        nodeId: node.id,
-      });
-    }
-    return;
-  }
-
-  if (node.data.kind === "wait-event") {
-    if (!isWorkflowWaitEventDraftConfig(node.data)) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Wait Event node requires a supported event and timeout",
-        nodeId: node.id,
-      });
-    }
-    return;
-  }
-
-  if (node.data.kind === "branch") {
-    if (!isWorkflowBranchConfigComplete({
-      branchPaths: (node.data as Record<string, unknown>).branchPaths,
-    })) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Branch node requires complete ordered paths and conditions",
-        nodeId: node.id,
-      });
-    }
-    return;
-  }
-
-}
-
-function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowStartConfig {
-  return Value.Check(WorkflowStartConfigSchema, "seatIds" in value
-    ? {
-        entryPolicy: value.entryPolicy,
-        seatIds: value.seatIds,
-        triggers: value.triggers,
-      }
-    : {
-        entryPolicy: value.entryPolicy,
-        triggers: value.triggers,
-        workUserIds: value.workUserIds,
-      });
-}
-
-function isWorkflowWaitConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowWaitConfig {
-  return Value.Check(WorkflowWaitConfigSchema, value.mode === "fixed-time"
-    ? { dayOffset: value.dayOffset, mode: value.mode, time: value.time }
-    : { duration: value.duration, mode: value.mode, unit: value.unit });
-}
-
-function isWorkflowWaitEventDraftConfig(
-  value: Record<string, unknown>,
-): value is Record<string, unknown> & WorkflowWaitEventDraftConfig {
-  return Value.Check(WorkflowWaitEventDraftConfigSchema, {
-    event: value.event,
-    timeout: value.timeout,
-  });
 }
 
 export function getWorkflowSourceOutletId(edge: WorkflowDraftEdge) {

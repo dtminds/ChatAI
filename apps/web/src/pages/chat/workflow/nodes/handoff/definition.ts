@@ -27,10 +27,6 @@ export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
     operatorMessage: [],
     status: "warning",
   }),
-  createExecutionConfig: (data) => ({
-    customerMessage: normalizeVariableContent(data.customerMessage),
-    operatorMessage: normalizeVariableContent(data.operatorMessage),
-  }),
   sanitizeData: (data) => ({
     ...data,
     customerMessage: normalizeVariableContent(data.customerMessage),

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
-import { getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import {
   LLM_INPUT_MAX_COUNT,
   LLM_OUTPUT_FIELD_MAX_COUNT,
@@ -90,7 +90,10 @@ describe("workflow LLM node", () => {
     if (node.data.output.format !== "json") return;
     expect(node.data.output.fields.map((field) => field.id)).toEqual(["same", "output-2"]);
 
-    expect(getNodeDefinition("llm").createExecutionConfig(node.data)).toEqual({
+    expect(projectWorkflowNodeExecutionConfig({
+      data: node.data,
+      kind: "llm",
+    })).toEqual({
       inputs: node.data.inputs,
       modelId: "model-1",
       output: node.data.output,

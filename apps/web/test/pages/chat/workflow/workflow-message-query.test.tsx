@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
@@ -15,7 +16,7 @@ describe("workflow message query", () => {
     const definition = getNodeDefinition("message-query");
     const data = definition.createDefaultData();
 
-    expect(definition.createExecutionConfig(data)).toEqual({
+    expect(projectWorkflowNodeExecutionConfig({ data, kind: "message-query" })).toEqual({
       limit: 10,
       take: "latest",
       timeRange: {

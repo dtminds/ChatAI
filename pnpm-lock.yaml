@@ -102,6 +102,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@chatai/workflow-engine':
+        specifier: workspace:*
+        version: link:../../packages/workflow-engine
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

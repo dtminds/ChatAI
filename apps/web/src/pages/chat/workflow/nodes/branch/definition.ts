@@ -31,15 +31,12 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   canInsertAfter: true,
   canRename: true,
   configSections: [],
-  createDefaultData: () => createNodeData("branch", 1, {
+  createDefaultData: () => createNodeData("branch", {
     branchPaths: createDefaultBranchPaths(),
     label: "条件分支",
     metric: "待配置条件分支",
     status: "warning",
     title: "条件分支",
-  }),
-  createExecutionConfig: (data) => ({
-    branchPaths: normalizeWorkflowBranchPaths(data.branchPaths),
   }),
   description: "根据前序变量按顺序匹配分支",
   getEstimatedHeight: getWorkflowBranchEstimatedHeight,
@@ -65,7 +62,6 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
       status: configured ? "ready" : "warning",
     };
   },
-  schemaVersion: 1,
   sort: 20,
   validate: validateBranchNode,
   visual: {

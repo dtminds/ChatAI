@@ -7,6 +7,7 @@ export * from "./event-catalog.js";
 export * from "./execution-spec.js";
 export * from "./graph.js";
 export * from "./node-executor.js";
+export * from "./node-contract-registry.js";
 export * from "./runtime-support.js";
 export * from "./state-machine.js";
 export * from "./trigger.js";

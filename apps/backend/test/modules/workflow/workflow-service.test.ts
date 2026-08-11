@@ -82,10 +82,13 @@ describe("WorkflowService", () => {
         ...startConfigured.nodes.filter(node => node.id !== "end"),
         {
           data: {
+            attachments: [],
+            content: [],
+            contentMode: "custom" as const,
             kind: "message" as const,
             label: "消息发送",
             metric: "",
-            schemaVersion: 1,
+            schemaVersion: 2,
             status: "ready" as const,
             title: "消息发送",
           },
@@ -100,6 +103,48 @@ describe("WorkflowService", () => {
       draft,
       expectedDraftVersion: created.draftVersion,
     })).rejects.toMatchObject({ code: "WORKFLOW_TYPE_POLICY_VIOLATION", statusCode: 400 });
+  });
+
+  it("saves structurally valid drafts before required node configuration is complete", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+
+    await expect(service.saveDraft(operator, created.id, {
+      draft: created.draft,
+      expectedDraftVersion: created.draftVersion,
+    })).resolves.toMatchObject({ draftVersion: created.draftVersion + 1 });
+  });
+
+  it("rejects undeclared node draft fields", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const draft = {
+      ...created.draft,
+      nodes: created.draft.nodes.map(node => node.id === "start"
+        ? { ...node, data: { ...node.data, unexpectedField: true } }
+        : node),
+    };
+
+    await expect(service.saveDraft(operator, created.id, {
+      draft,
+      expectedDraftVersion: created.draftVersion,
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_NODE_CONFIG_INVALID", statusCode: 400 });
+  });
+
+  it("rejects stale node draft schema versions", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const draft = {
+      ...created.draft,
+      nodes: created.draft.nodes.map(node => node.id === "start"
+        ? { ...node, data: { ...node.data, schemaVersion: 0 } }
+        : node),
+    };
+
+    await expect(service.saveDraft(operator, created.id, {
+      draft,
+      expectedDraftVersion: created.draftVersion,
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_NODE_CONFIG_INVALID", statusCode: 400 });
   });
 
   it.each([

@@ -2,7 +2,7 @@
 
 ## Context
 
-The marketing workflow canvas is now treated as a product frontend module, not a disposable demo. Backend execution, database persistence, scheduling, and delivery engines are still mocked, but the frontend must expose a stable graph contract before backend work starts.
+The marketing workflow canvas is a product frontend module, not a disposable demo. The Node control plane, persistence model, compiler and Runtime kernel now exist; Java business events and production Capability Adapters are connected incrementally behind explicit availability gates.
 
 The workflow module lives at:
 
@@ -14,11 +14,11 @@ The current frontend scope covers:
 
 - workflow list and full-screen canvas entry
 - graph editing with nodes, edges, handles, selection, history, auto layout, and validation
-- node definitions, visual metadata, default data, execution config, settings schema, and per-kind UI bindings
-- draft save/publish/version-preview state over an in-memory repository
+- node definitions, visual metadata, default Draft data, settings schema, and per-kind UI bindings
+- draft save/publish/version-preview state through the Workflow repository interface and Backend control plane
 - import/export DSL and backend-facing execution graph projection
 
-The canvas infrastructure and the first marketing node catalog are now represented by production-oriented frontend contracts. Exact business fields are still being defined, so backend payload fields must not be inferred from current placeholder node data.
+The canvas infrastructure and the first marketing node catalog are represented by production-oriented contracts. Placeholder node data must never be inferred as a backend execution payload.
 
 ## Module Boundary
 
@@ -43,15 +43,24 @@ The first product catalog is implemented as:
 type MarketingWorkflowNodeKind =
   | "start"
   | "wait"
+  | "wait-event"
   | "branch"
   | "message"
+  | "message-query"
   | "tag"
   | "coupon"
   | "handoff"
+  | "agent"
+  | "llm"
+  | "order-query"
+  | "tag-query"
+  | "customer-update"
+  | "ai-collect"
+  | "ai-intent"
   | "end";
 ```
 
-Insertable kinds are `wait`, `branch`, `message`, `tag`, `coupon`, and `handoff`. `start` and `end` are structural nodes and are excluded from every insertion surface.
+`start` and `end` are structural nodes and are excluded from every insertion surface. The effective insertion list is further restricted by the selected Workflow Capability Profile.
 
 Confirmed graph semantics:
 
@@ -64,29 +73,29 @@ Confirmed graph semantics:
 - branch fan-out is represented by branch-specific source handles
 - disconnected, cyclic, or otherwise invalid topology remains representable for diagnostics, but cannot be published
 
-Only the eight current kinds are accepted by draft, DSL, and clipboard boundaries. The module has not been released and has no persisted historical graph data, so unsupported experimental kinds are rejected or dropped instead of being migrated into the product catalog.
-
-Exact business fields, required-field rules, and node-specific parameter schemas remain undecided. Those decisions do not block continued frontend architecture work, but they do block declaring the node contract complete.
+All 17 kinds are accepted by Draft, DSL, and clipboard boundaries. Their implementation completeness is explicit through `placeholder`, `draft-ready`, and `runtime-ready`; editor visibility never implies Runtime Support.
 
 Every node kind is registered through `WorkflowNodeDefinition<TKind>` and must provide:
 
 - `kind`
-- `schemaVersion`
 - visual metadata for card and picker rendering
 - layout metrics
 - default persisted data
 - settings schema or custom settings UI binding
 - source/target handle definitions
 - connection capability metadata
-- execution config projection through `createExecutionConfig`
 - optional data migration and sanitization
 - optional validation and output variables
+
+Draft/Execution Schema、当前 Draft Schema Version、持久化字段白名单和成熟度统一由 `packages/contracts/src/workflow/node-contract.ts` 管理。Draft 到 Execution 的唯一投影位于 `packages/workflow-engine/src/node-contract-registry.ts`，Web 节点 Definition 不生成 Execution Config。完整协议见 `docs/superpowers/specs/2026-08-11-workflow-node-contract-registry-design.md`。
 
 Persisted node data always includes `kind` and `schemaVersion`. Runtime-only fields such as selection state, callbacks, hover state, insert menu state, and render z-index are stripped by hydration/export boundaries.
 
 Adding a new node kind requires updating:
 
 - `types.ts` for kind-specific data and config patch typing
+- `packages/contracts/src/workflow/node-contract.ts` for shared Draft/Execution contracts
+- `packages/workflow-engine/src/node-contract-registry.ts` when the kind can be projected
 - `nodes/<kind>/definition.ts`
 - `nodes/<kind>/ui.ts(x)` only when specialized card/settings UI is needed
 - `nodes/registry.ts`
@@ -149,7 +158,7 @@ type WorkflowDslDocument = {
 
 The import boundary accepts only `chatai-workflow`, schema version `1`, and `workflow.draft`. Unsupported product kinds, schema versions, and payload formats are rejected rather than converted through unreleased compatibility code.
 
-Backend execution should consume `workflow.executionGraph`, not raw React Flow render nodes.
+`workflow.executionGraph` is an export and diagnostic representation. Backend publish receives the sanitized Draft and independently compiles it through `@chatai/workflow-engine`; it must not trust a client-supplied execution graph.
 
 Current execution graph shape:
 
@@ -166,10 +175,11 @@ type WorkflowExecutionGraph = {
 };
 
 type WorkflowExecutionNode = {
-  config: Record<string, unknown>;
+  config: Record<string, unknown> | null;
   id: string;
   incomingMode: "any" | "none";
   kind: WorkflowNodeKind;
+  maturity: "placeholder" | "draft-ready" | "runtime-ready";
 };
 
 type WorkflowExecutionEdge = {
@@ -185,6 +195,8 @@ type WorkflowExecutionEdge = {
 Execution graph guarantees:
 
 - `nodes` contains persisted node ids, kinds, and runtime-facing config only
+- placeholder nodes expose `config: null` instead of a misleading empty execution config
+- every node exposes its registered maturity
 - `incomingMode` is `none` for `start` and `any` for other nodes, explicitly encoding OR-merge execution semantics
 - node positions, labels, summaries, metrics, UI status, and callbacks are excluded from `config`
 - `edges` contains source/target ids, handles, and resolved source outlet metadata
@@ -197,32 +209,7 @@ Execution graph guarantees:
 
 Schema v1 is the first public contract and already includes the first marketing kind catalog, execution topology, diagnostics, and explicit incoming merge semantics. Future schema versions should add migrations only after a released or persisted contract creates a real compatibility requirement.
 
-Current execution config examples:
-
-```json
-{
-  "start": {
-    "audience": "近 30 天新入会且未首购客户",
-    "repeatEntryEnabled": true
-  },
-  "wait": {
-    "delayDays": 2
-  },
-  "branch": {
-    "branchPaths": [],
-    "branchRule": "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效"
-  },
-  "message": {
-    "content": []
-  },
-  "tag": {},
-  "coupon": {},
-  "handoff": {},
-  "end": {}
-}
-```
-
-These values are mock product semantics. The important stable contract is that each node definition owns its own `createExecutionConfig` output.
+Execution Config examples and validation are generated from the shared registry. Placeholder kinds do not receive fabricated `{}` configs.
 
 ## Variable Contract
 
@@ -231,7 +218,7 @@ Workflow variables are typed definitions with stable selectors. Display labels a
 Variable scopes are:
 
 - `system.*`: fixed runtime context such as the current employee
-- `customer.*`: customer context
+- `subject.*`: current Workflow Subject context
 - `trigger.*`: data supplied by the event that entered the journey
 - `node.<nodeId>.<outputKey>`: an output declared by a preceding node
 

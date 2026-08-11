@@ -17,17 +17,15 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   canRename: false,
   configSections: [],
   createDefaultData: () =>
-    createNodeData("end", 1, {
+    createNodeData("end", {
       label: "结束",
       metric: "退出营销旅程",
       title: "结束",
     }),
-  createExecutionConfig: () => ({}),
   insertable: false,
   kind: "end",
   layout: terminalNodeLayout,
   role: "terminal",
-  schemaVersion: 1,
   getSourceHandles: createNoSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
   sort: 1000,

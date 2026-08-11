@@ -1,6 +1,7 @@
+import { getWorkflowNodeContract, type WorkflowNodeMaturity } from "@chatai/contracts";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { hydrateWorkflowDraft, sanitizeDraft } from "./workflow-draft-normalizer";
 import {
-  createWorkflowNodeExecutionConfig,
   findWorkflowEntryNode,
   getWorkflowNodeRole,
 } from "./node-catalog";
@@ -53,10 +54,11 @@ export type WorkflowExecutionGraph = {
 };
 
 export type WorkflowExecutionNode = {
-  config: Record<string, unknown>;
+  config: Record<string, unknown> | null;
   id: string;
   incomingMode: "any" | "none";
   kind: WorkflowNode["data"]["kind"];
+  maturity: WorkflowNodeMaturity;
 };
 
 export type WorkflowExecutionEdge = {
@@ -179,11 +181,18 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
     entryNodeId: entryNode?.id ?? null,
     incoming: createWorkflowExecutionEdgeIndex(sanitizedDraft.nodes, edges, "target"),
     nodes: sanitizedDraft.nodes.map((node) => {
+      const contract = getWorkflowNodeContract(node.data.kind);
       return {
-        config: createWorkflowNodeExecutionConfig(node.data),
+        config: contract.maturity === "placeholder"
+          ? null
+          : projectWorkflowNodeExecutionConfig({
+              data: node.data,
+              kind: node.data.kind,
+            }),
         id: node.id,
         incomingMode: node.data.kind === "start" ? "none" : "any",
         kind: node.data.kind,
+        maturity: contract.maturity,
       };
     }),
     outgoing: createWorkflowExecutionEdgeIndex(sanitizedDraft.nodes, edges, "source"),

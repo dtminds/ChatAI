@@ -43,6 +43,14 @@ const WorkflowContactTagAddedTriggerSchema = Type.Object({
   type: Type.Literal("contact.tag_added"),
 }, { additionalProperties: false });
 
+const WorkflowContactTagAddedDraftTriggerSchema = Type.Object({
+  tagIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+    maxItems: 100,
+    uniqueItems: true,
+  }),
+  type: Type.Literal("contact.tag_added"),
+}, { additionalProperties: false });
+
 const WorkflowMessageReceivedTriggerSchema = Type.Object({
   match: Type.Literal("any"),
   type: Type.Literal("message.received"),
@@ -63,6 +71,40 @@ export const WorkflowChatAiStartTriggerSchema = Type.Union([
 export const WorkflowWeComStartTriggerSchema = Type.Union([
   WorkflowContactFriendAddedTriggerSchema,
   WorkflowContactTagAddedTriggerSchema,
+]);
+
+const WorkflowChatAiStartDraftTriggerSchema = Type.Union([
+  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactTagAddedDraftTriggerSchema,
+  WorkflowMessageReceivedTriggerSchema,
+]);
+
+const WorkflowWeComStartDraftTriggerSchema = Type.Union([
+  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactTagAddedDraftTriggerSchema,
+]);
+
+export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
+  entryPolicy: WorkflowEntryPolicySchema,
+  seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+    maxItems: 100,
+    uniqueItems: true,
+  }),
+  triggers: Type.Array(WorkflowChatAiStartDraftTriggerSchema, { maxItems: 100 }),
+}, { additionalProperties: false });
+
+export const WorkflowWeComStartDraftConfigSchema = Type.Object({
+  entryPolicy: WorkflowEntryPolicySchema,
+  triggers: Type.Array(WorkflowWeComStartDraftTriggerSchema, { maxItems: 100 }),
+  workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+    maxItems: 100,
+    uniqueItems: true,
+  }),
+}, { additionalProperties: false });
+
+export const WorkflowStartDraftConfigSchema = Type.Union([
+  WorkflowChatAiStartDraftConfigSchema,
+  WorkflowWeComStartDraftConfigSchema,
 ]);
 
 export const WorkflowChatAiStartConfigSchema = Type.Object({
@@ -205,8 +247,11 @@ export const WorkflowWaitEventConfigSchema = Type.Object({
 
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
+export type WorkflowChatAiStartDraftConfig = Static<typeof WorkflowChatAiStartDraftConfigSchema>;
 export type WorkflowChatAiStartConfig = Static<typeof WorkflowChatAiStartConfigSchema>;
+export type WorkflowWeComStartDraftConfig = Static<typeof WorkflowWeComStartDraftConfigSchema>;
 export type WorkflowWeComStartConfig = Static<typeof WorkflowWeComStartConfigSchema>;
+export type WorkflowStartDraftConfig = Static<typeof WorkflowStartDraftConfigSchema>;
 export type WorkflowStartConfig = Static<typeof WorkflowStartConfigSchema>;
 export type WorkflowStartTrigger = Static<typeof WorkflowStartTriggerSchema>;
 export type WorkflowChatAiStartTrigger = Static<typeof WorkflowChatAiStartTriggerSchema>;

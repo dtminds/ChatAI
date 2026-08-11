@@ -23,7 +23,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   canRename: true,
   configSections: [],
   createDefaultData: () =>
-    createNodeData("wait", 1, {
+    createNodeData("wait", {
       duration: 1,
       label: "等待",
       metric: "1 天后唤醒",
@@ -31,16 +31,12 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
       title: "等待",
       unit: "day",
     }),
-  createExecutionConfig: (data) => data.mode === "fixed-time"
-    ? { dayOffset: data.dayOffset, mode: data.mode, time: data.time }
-    : { duration: data.duration, mode: data.mode, unit: data.unit },
   description: "按天、小时或固定窗口延迟触达",
   insertable: true,
   kind: "wait",
   layout: compactNodeLayout,
   paletteGroup: "flow",
   paletteLabel: "等待",
-  schemaVersion: 1,
   sanitizeData: (data) => {
     const commonData = Object.fromEntries(
       Object.entries(data).filter(([key]) =>

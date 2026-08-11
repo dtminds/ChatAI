@@ -1,10 +1,7 @@
 import {
-  isWorkflowBranchConfigComplete,
   normalizeWorkflowEntryPolicy,
-  WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   type WorkflowDraft,
   type WorkflowExecutionSpec,
-  type WorkflowNodeKind,
   type WorkflowType,
 } from "@chatai/contracts";
 import {
@@ -13,6 +10,10 @@ import {
 } from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
 import { getWorkflowSourceOutletId, validateWorkflowGraph } from "./graph.js";
+import {
+  getWorkflowNodeExecutionConfigError,
+  projectWorkflowNodeExecutionConfig,
+} from "./node-contract-registry.js";
 import { validateWorkflowTypePolicy } from "./type-policy.js";
 
 export function compileWorkflowDraft({
@@ -42,7 +43,19 @@ export function compileWorkflowDraft({
 
   const nodes = validation.topologicalNodeIds.map((nodeId) => {
     const node = normalizedDraft.nodes.find((item) => item.id === nodeId)!;
-    const config = createExecutionConfig(node.data.kind, node.data, workflowType);
+    const config = projectWorkflowNodeExecutionConfig({
+      data: node.data,
+      kind: node.data.kind,
+      workflowType,
+    });
+    const executionConfigError = getWorkflowNodeExecutionConfigError(node.data.kind, config);
+    if (executionConfigError) {
+      throw new WorkflowCompilationError([{
+        code: "invalid-node-config",
+        message: executionConfigError,
+        nodeId: node.id,
+      }]);
+    }
     return {
       config,
       id: node.id,
@@ -84,65 +97,4 @@ export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
       };
     }),
   } as WorkflowDraft;
-}
-
-function createExecutionConfig(
-  kind: WorkflowNodeKind,
-  data: Record<string, unknown>,
-  workflowType: WorkflowType,
-) {
-  if (kind === "start") {
-    return cloneJsonValue(workflowType === "chatai_sop"
-      ? {
-          entryPolicy: data.entryPolicy,
-          seatIds: data.seatIds,
-          triggers: data.triggers,
-        }
-      : {
-          entryPolicy: data.entryPolicy,
-          triggers: data.triggers,
-          workUserIds: data.workUserIds,
-        }) as Record<string, unknown>;
-  }
-  if (kind === "wait") {
-    return data.mode === "fixed-time"
-      ? cloneJsonValue({ dayOffset: data.dayOffset, mode: data.mode, time: data.time }) as Record<string, unknown>
-      : cloneJsonValue({ duration: data.duration, mode: data.mode, unit: data.unit }) as Record<string, unknown>;
-  }
-  if (kind === "wait-event") {
-    return cloneJsonValue({
-      event: {
-        capabilityKey: "event.message.received",
-        collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
-        contractVersion: 1,
-        type: "message.received",
-      },
-      timeout: data.timeout,
-    }) as Record<string, unknown>;
-  }
-  if (kind === "branch") {
-    const config = cloneJsonValue({ branchPaths: data.branchPaths }) as Record<string, unknown>;
-    if (!isWorkflowBranchConfigComplete(config)) {
-      throw new WorkflowCompilationError([{
-        code: "invalid-node-config",
-        message: "Branch node requires complete ordered paths and conditions",
-      }]);
-    }
-    return config;
-  }
-  if (kind === "end") return {};
-  return {};
-}
-
-function cloneJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(cloneJsonValue);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).flatMap(([key, item]) =>
-        typeof item === "function" ? [] : [[key, cloneJsonValue(item)]]),
-    );
-  }
-  return value;
 }

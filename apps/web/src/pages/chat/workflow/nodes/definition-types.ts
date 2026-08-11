@@ -51,7 +51,6 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   canRename: boolean;
   cardClassName?: string;
   configSections: NodeConfigSection<TKind>[];
-  createExecutionConfig: (data: WorkflowNodeData<TKind>) => Record<string, unknown>;
   createDefaultData: () => WorkflowNodeData<TKind>;
   description?: string;
   insertable: boolean;
@@ -64,7 +63,6 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   paletteGroup?: WorkflowNodePaletteGroupId;
   role?: WorkflowNodeRole;
   sanitizeData?: (data: WorkflowNodeData<TKind>) => WorkflowNodeData<TKind>;
-  schemaVersion: number;
   getOutputVariables?: (node: WorkflowNode<TKind>) => WorkflowNodeOutputDefinition[];
   getEstimatedHeight?: (data: WorkflowNodeData<TKind>) => number;
   getSourceHandles: (data: WorkflowNodeData<TKind>) => WorkflowSourceHandleDefinition[];

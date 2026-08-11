@@ -253,23 +253,78 @@ describe("compileWorkflowDraft", () => {
       .toThrowError(WorkflowCompilationError);
   });
 
-  it("rejects node configurations that would fail only at execution time", () => {
+  it("reports specific diagnostics for incomplete or invalid node configurations", () => {
+    const incompleteStart = createDraft();
+    Object.assign(incompleteStart.nodes.find((item) => item.id === "start")!.data, {
+      seatIds: [],
+      triggers: [],
+    });
+
+    expectCompilationIssue(incompleteStart, {
+      code: "invalid-node-config",
+      message: "Start node requires accounts, triggers, and an entry policy",
+      nodeId: "start",
+    });
+
     const invalidWait = createDraft();
     invalidWait.nodes.find((item) => item.id === "wait")!.data.duration = -1;
 
-    expectCompilationIssues(invalidWait, ["invalid-node-config"]);
+    expectCompilationIssue(invalidWait, {
+      code: "invalid-node-config",
+      message: "Wait node requires a valid duration or fixed-time configuration",
+      nodeId: "wait",
+    });
+
+    const invalidWaitEvent = createDraft();
+    invalidWaitEvent.nodes.splice(1, 1, node("wait-event", "wait-event", {
+      event: { type: "message.received" },
+      timeout: { duration: 0, unit: "minute" },
+    }));
+    invalidWaitEvent.edges = [
+      { id: "start-wait-event", source: "start", target: "wait-event" },
+      {
+        id: "wait-event-triggered-end",
+        source: "wait-event",
+        sourceHandle: "triggered",
+        target: "end",
+      },
+      {
+        id: "wait-event-timeout-end",
+        source: "wait-event",
+        sourceHandle: "timeout",
+        target: "end",
+      },
+    ];
+
+    expectCompilationIssue(invalidWaitEvent, {
+      code: "invalid-node-config",
+      message: "Wait Event node requires a supported event and timeout",
+      nodeId: "wait-event",
+    });
 
     const invalidBranch = {
       edges: [
         { id: "start-branch", source: "start", target: "branch" },
         { id: "branch-first-end", source: "branch", sourceHandle: "first", target: "end" },
+        { id: "branch-fallback-end", source: "branch", sourceHandle: "fallback", target: "end" },
       ],
       nodes: [
         node("start", "start", startConfig()),
         node("branch", "branch", {
           branchPaths: [
-            { id: "first", isDefault: false },
-            { id: "first", isDefault: true },
+            {
+              conditions: [{ id: "condition-1", operator: "equals" }],
+              id: "first",
+              label: "If",
+              logic: "all",
+            },
+            {
+              conditions: [],
+              id: "fallback",
+              isDefault: true,
+              label: "Otherwise",
+              logic: "all",
+            },
           ],
         }),
         node("end", "end"),
@@ -277,7 +332,11 @@ describe("compileWorkflowDraft", () => {
       viewport: { x: 0, y: 0, zoom: 1 },
     };
 
-    expectCompilationIssues(invalidBranch, ["invalid-node-config"]);
+    expectCompilationIssue(invalidBranch, {
+      code: "invalid-node-config",
+      message: "Branch node requires complete ordered paths and conditions",
+      nodeId: "branch",
+    });
   });
 
   it("rejects node kinds that Phase 3 cannot execute", () => {
@@ -308,6 +367,24 @@ function expectCompilationIssues(
     expect(error).toBeInstanceOf(WorkflowCompilationError);
     expect((error as WorkflowCompilationError).issues.map((issue) => issue.code))
       .toEqual(expect.arrayContaining(expectedCodes));
+  }
+}
+
+function expectCompilationIssue(
+  draft: Parameters<typeof compileWorkflowDraft>[0]["draft"],
+  expectedIssue: WorkflowCompilationError["issues"][number],
+) {
+  try {
+    compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+    throw new Error("Expected workflow compilation to fail");
+  } catch (error) {
+    expect(error).toBeInstanceOf(WorkflowCompilationError);
+    expect((error as WorkflowCompilationError).issues).toContainEqual(expectedIssue);
   }
 }
 

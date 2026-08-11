@@ -1,15 +1,21 @@
-import type { WorkflowNodeKind } from "@chatai/contracts";
-
-export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
-  "start",
-  "wait",
-  "wait-event",
-  "branch",
-  "end",
-] as const satisfies readonly WorkflowNodeKind[];
+import {
+  workflowNodeContractRegistry,
+  type WorkflowNodeKind,
+} from "@chatai/contracts";
 
 export type WorkflowRuntimeSupportedNodeKind =
-  (typeof WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS)[number];
+  { [TKind in WorkflowNodeKind]:
+    (typeof workflowNodeContractRegistry)[TKind]["maturity"] extends "runtime-ready"
+      ? TKind
+      : never;
+  }[WorkflowNodeKind];
+
+export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = (
+  Object.keys(workflowNodeContractRegistry) as WorkflowNodeKind[]
+).filter(
+  (kind): kind is WorkflowRuntimeSupportedNodeKind =>
+    workflowNodeContractRegistry[kind].maturity === "runtime-ready",
+);
 
 const WORKFLOW_RUNTIME_SUPPORTED_NODE_KIND_SET = new Set<WorkflowNodeKind>(
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,

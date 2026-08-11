@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
@@ -23,7 +24,7 @@ describe("workflow wait event", () => {
     const definition = getNodeDefinition("wait-event");
     const node = createWaitEventNode();
 
-    expect(definition.createExecutionConfig(node.data)).toEqual({
+    expect(projectWorkflowNodeExecutionConfig({ data: node.data, kind: "wait-event" })).toEqual({
       event: {
         capabilityKey: "event.message.received",
         collectWindowSeconds: 10,

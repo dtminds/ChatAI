@@ -316,11 +316,11 @@ describe("workflow DSL", () => {
       id: "start",
       kind: "start",
     }));
-    expect(graph.nodes.find((node) => node.id === "start")?.config.kind).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "start")?.config.title).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "start")?.config.status).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "start")?.config._runtimeStatus).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "start")?.config.onDelete).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config?.kind).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config?.title).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config?.status).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config?._runtimeStatus).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config?.onDelete).toBeUndefined();
     expect(graph.edges.find((edge) => edge.source === "branch-intent" && edge.sourceHandle === "branch-high"))
       .toEqual(expect.objectContaining({
         source: "branch-intent",
@@ -510,6 +510,29 @@ describe("workflow DSL", () => {
       expect(node.config).not.toHaveProperty("metric");
       expect(node.config).not.toHaveProperty("status");
       expect(node.config).not.toHaveProperty("title");
+    });
+  });
+
+  it("marks placeholder nodes without projecting an executable config", () => {
+    const draft = createInitialDraft();
+    const placeholderNode = createNodeFromKind("tag", "tag-customer", draft.nodes.length);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      nodes: [...draft.nodes, placeholderNode],
+    });
+
+    expect(graph.nodes.find((node) => node.id === placeholderNode.id)).toMatchObject({
+      config: null,
+      kind: "tag",
+      maturity: "placeholder",
+    });
+    expect(graph.nodes.find((node) => node.id === "start")).toMatchObject({
+      kind: "start",
+      maturity: "runtime-ready",
+    });
+    expect(graph.nodes.find((node) => node.id === "message-welcome")).toMatchObject({
+      kind: "message",
+      maturity: "draft-ready",
     });
   });
 

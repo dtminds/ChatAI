@@ -38,7 +38,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
   canInsertAfter: true,
   canRename: true,
   configSections: [],
-  createDefaultData: () => createNodeData("llm", 1, {
+  createDefaultData: () => createNodeData("llm", {
     inputs: [],
     label: "大模型",
     metric: "待选择模型",
@@ -50,13 +50,6 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
     systemPrompt: [],
     title: "大模型",
     userPrompt: [],
-  }),
-  createExecutionConfig: (data) => ({
-    inputs: normalizeLlmInputs(data.inputs),
-    modelId: normalizeLlmModelId(data.modelId),
-    output: normalizeLlmOutput(data.output),
-    systemPrompt: normalizeLlmPrompt(data.systemPrompt),
-    userPrompt: normalizeLlmPrompt(data.userPrompt),
   }),
   description: "调用大模型生成文本或结构化结果",
   getOutputVariables: (node) => getLlmOutputDefinitions(node.data.output),
@@ -89,7 +82,6 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
       status: getLlmStatus(nextData),
     };
   },
-  schemaVersion: 1,
   sort: 40,
   validate: (node) => {
     const issues = [];

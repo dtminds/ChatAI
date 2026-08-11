@@ -31,17 +31,6 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   canRename: false,
   configSections: [],
   createDefaultData: () => createStartNodeData("chatai_sop"),
-  createExecutionConfig: (data) => isChatAiStartNodeData(data)
-    ? {
-        entryPolicy: structuredClone(data.entryPolicy),
-        seatIds: [...data.seatIds],
-        triggers: structuredClone(data.triggers),
-      }
-    : {
-        entryPolicy: structuredClone(data.entryPolicy),
-        triggers: structuredClone(data.triggers),
-        workUserIds: [...data.workUserIds],
-      },
   insertable: false,
   kind: "start",
   layout: standardNodeLayout,
@@ -63,7 +52,6 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       },
     };
   },
-  schemaVersion: 1,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createNoTargetHandles,
   sort: 0,
@@ -115,8 +103,8 @@ export function createStartNodeData(
     triggers: [],
   };
   return workflowType === "chatai_sop"
-    ? createNodeData("start", 1, { ...common, seatIds: [] })
-    : createNodeData("start", 1, { ...common, workUserIds: [] });
+    ? createNodeData("start", { ...common, seatIds: [] })
+    : createNodeData("start", { ...common, workUserIds: [] });
 }
 
 function sanitizeStartSource(data: StartNodeData): StartNodeData {

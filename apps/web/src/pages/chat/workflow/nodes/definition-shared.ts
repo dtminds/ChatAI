@@ -1,3 +1,4 @@
+import { getWorkflowNodeContract } from "@chatai/contracts";
 import {
   WORKFLOW_COMPACT_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
@@ -83,13 +84,12 @@ export const terminalNodeLayout: WorkflowNodeLayoutMetrics = {
 
 export function createNodeData<TKind extends WorkflowNodeKind>(
   kind: TKind,
-  schemaVersion: number,
   data: NodeDataInput<TKind>,
 ): WorkflowNodeData<TKind> {
   return {
     ...data,
     kind,
-    schemaVersion,
+    schemaVersion: getWorkflowNodeContract(kind).currentDraftSchemaVersion,
     status: data.status ?? "ready",
   } as WorkflowNodeData<TKind>;
 }

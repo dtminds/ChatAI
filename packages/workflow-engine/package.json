@@ -13,6 +13,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./node-contract-registry": {
+      "types": "./dist/node-contract-registry.d.ts",
+      "default": "./dist/node-contract-registry.js"
     }
   },
   "scripts": {

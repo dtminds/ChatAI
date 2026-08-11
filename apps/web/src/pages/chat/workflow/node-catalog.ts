@@ -1,7 +1,6 @@
 import type {
   InsertableWorkflowNodeKind,
   WorkflowNode,
-  WorkflowNodeData,
   WorkflowNodeKind,
 } from "./types";
 import {
@@ -194,12 +193,6 @@ export function findWorkflowTerminalNode(nodes: WorkflowNode[]) {
 
 export function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
   return typeof value === "string" && Object.hasOwn(workflowNodeCatalog, value);
-}
-
-export function createWorkflowNodeExecutionConfig<TKind extends WorkflowNodeKind>(
-  data: WorkflowNodeData<TKind>,
-) {
-  return getWorkflowNodeCatalogEntry(data.kind).createExecutionConfig(data);
 }
 
 function isInsertableWorkflowNodeCatalogEntry(

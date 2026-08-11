@@ -14,7 +14,14 @@ import type {
   WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
-import { getWorkflowCapabilityProfile, WorkflowStartConfigSchema } from "@chatai/contracts";
+import {
+  extractWorkflowNodeDraftConfig,
+  getUnknownWorkflowNodeDraftDataKeys,
+  getWorkflowCapabilityProfile,
+  getWorkflowNodeContract,
+  isWorkflowNodeDraftConfig,
+  WorkflowStartConfigSchema,
+} from "@chatai/contracts";
 import {
   compileWorkflowDraft,
   createWorkflowDeploymentCapabilities,
@@ -110,6 +117,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireDefinition(scope.uid, workflowId);
     const draft = normalizeWorkflowDraft(input.draft);
+    assertWorkflowDraftNodeContracts(draft);
     assertWorkflowTypePolicy(definition.workflowType, draft);
     return this.toDefinition(this.unwrapMutation(await this.repository.saveDraft({
       draft,
@@ -488,6 +496,24 @@ export class WorkflowService {
 
   private toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
     return toDefinition(record, this.deploymentCapabilities);
+  }
+}
+
+function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
+  for (const node of draft.nodes) {
+    const contract = getWorkflowNodeContract(node.data.kind);
+    const draftConfig = extractWorkflowNodeDraftConfig(node.data.kind, node.data);
+    const unknownKeys = getUnknownWorkflowNodeDraftDataKeys(node.data.kind, node.data);
+    if (
+      node.data.schemaVersion !== contract.currentDraftSchemaVersion
+      || unknownKeys.length > 0
+      || !isWorkflowNodeDraftConfig(node.data.kind, draftConfig)
+    ) {
+      throw new BadRequestError(
+        "WORKFLOW_DRAFT_NODE_CONFIG_INVALID",
+        `Workflow 节点配置不符合当前契约: ${node.id}`,
+      );
+    }
   }
 }
 

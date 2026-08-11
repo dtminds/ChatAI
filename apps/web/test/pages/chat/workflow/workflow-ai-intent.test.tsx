@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { updateNodeDataOperation } from "@/pages/chat/workflow/graph-operations";
@@ -116,9 +117,12 @@ describe("workflow AI intent", () => {
         top: 180,
       }),
     ]);
-    expect(definition.createExecutionConfig({
-      ...node.data,
-      inputSelector: ["node", "message-query", "messageIds"],
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...node.data,
+        inputSelector: ["node", "message-query", "messageIds"],
+      },
+      kind: "ai-intent",
     })).toEqual({
       fallback: { id: "fallback" },
       inputSelector: ["node", "message-query", "messageIds"],
@@ -127,11 +131,14 @@ describe("workflow AI intent", () => {
         { description: "明确拒绝活动", id: "intent-reject", modelCode: "I2" },
       ],
     });
-    expect(definition.createExecutionConfig({
-      ...node.data,
-      advancedEnabled: true,
-      inputSelector: ["node", "message-query", "messageIds"],
-      prompt: "优先参考客户最近一条消息",
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...node.data,
+        advancedEnabled: true,
+        inputSelector: ["node", "message-query", "messageIds"],
+        prompt: "优先参考客户最近一条消息",
+      },
+      kind: "ai-intent",
     })).toEqual(expect.objectContaining({
       prompt: "优先参考客户最近一条消息",
     }));

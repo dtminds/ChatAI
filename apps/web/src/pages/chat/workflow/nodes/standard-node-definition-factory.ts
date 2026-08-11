@@ -1,4 +1,5 @@
 import type { IconSvgElement } from "@hugeicons/react";
+import { getWorkflowNodeContract } from "@chatai/contracts";
 import type { WorkflowNodeData, WorkflowNodeKind } from "../types";
 import type { WorkflowNodeDefinition, WorkflowNodePaletteGroupId } from "./definition-types";
 import {
@@ -49,18 +50,16 @@ export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
       kind,
       label,
       metric,
-      schemaVersion: 1,
+      schemaVersion: getWorkflowNodeContract(kind).currentDraftSchemaVersion,
       status: "ready",
       title: label,
     }) as WorkflowNodeData<TKind>,
-    createExecutionConfig: () => ({}),
     description,
     insertable: true,
     kind,
     layout: compactNodeLayout,
     paletteGroup,
     paletteLabel: label,
-    schemaVersion: 1,
     getSourceHandles: createDefaultSourceHandles,
     getTargetHandles: createDefaultTargetHandles,
     sort,

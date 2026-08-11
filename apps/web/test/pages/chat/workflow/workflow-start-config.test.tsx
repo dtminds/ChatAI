@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
@@ -38,7 +39,11 @@ describe("workflow start configuration", () => {
     const definition = getNodeDefinition("start");
     const data = definition.createDefaultData();
 
-    expect(definition.createExecutionConfig(data)).toEqual({
+    expect(projectWorkflowNodeExecutionConfig({
+      data,
+      kind: "start",
+      workflowType: "chatai_sop",
+    })).toEqual({
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [],
       triggers: data.triggers,

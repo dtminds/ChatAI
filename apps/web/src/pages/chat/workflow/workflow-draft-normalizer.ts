@@ -1,3 +1,4 @@
+import { getWorkflowNodeContract } from "@chatai/contracts";
 import { DEFAULT_WORKFLOW_VIEWPORT } from "./graph";
 import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
@@ -205,23 +206,24 @@ function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
     ? persistableData
     : nonBranchPersistableData;
   const definition = getNodeDefinitionCore(kind);
+  const contract = getWorkflowNodeContract(kind);
   const fromVersion = getNodeSchemaVersion(kindPersistableData.schemaVersion);
   const migrationInput = {
     ...kindPersistableData,
     kind,
   } as unknown as Partial<WorkflowNodeData<TKind>> & Pick<WorkflowNodeData<TKind>, "kind">;
-  const migratedData = fromVersion < definition.schemaVersion
+  const migratedData = fromVersion < contract.currentDraftSchemaVersion
     ? definition.migrateData?.({
         data: migrationInput,
         fromVersion,
-        toVersion: definition.schemaVersion,
+        toVersion: contract.currentDraftSchemaVersion,
       }) ?? migrationInput
     : migrationInput;
   const nextData = {
     ...createDefaultNodeData(kind),
     ...migratedData,
     kind,
-    schemaVersion: Math.max(fromVersion, definition.schemaVersion),
+    schemaVersion: Math.max(fromVersion, contract.currentDraftSchemaVersion),
   } as WorkflowNodeData<TKind>;
 
   return definition.sanitizeData?.(nextData) ?? nextData;

@@ -29,18 +29,13 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
   canInsertAfter: true,
   canRename: true,
   configSections: [],
-  createDefaultData: () => createNodeData("message-query", 1, {
+  createDefaultData: () => createNodeData("message-query", {
     label: "消息查询",
     limit: 10,
     metric: "最新 10 条消息",
     take: "latest",
     timeRange: createDefaultMessageQueryTimeRange(),
     title: "消息查询",
-  }),
-  createExecutionConfig: (data) => ({
-    limit: normalizeMessageQueryLimit(data.limit),
-    take: normalizeMessageQueryTake(data.take),
-    timeRange: normalizeMessageQueryTimeRange(data.timeRange),
   }),
   description: "查询当前客户在指定时间范围内的历史消息",
   getOutputVariables: () => [
@@ -97,7 +92,6 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
       timeRange: normalizeMessageQueryTimeRange(data.timeRange),
     };
   },
-  schemaVersion: 1,
   sort: 105,
   validate: (node) => {
     const issues = [];

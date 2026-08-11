@@ -1,14 +1,32 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
-  WorkflowChatAiStartConfig,
+  WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
+  WorkflowBranchConfig,
   WorkflowBranchConditionValue as SharedWorkflowBranchConditionValue,
   WorkflowBranchLogic as SharedWorkflowBranchLogic,
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
-  WorkbenchQuickReplyAttachment,
-  WorkflowWeComStartConfig,
+  WorkflowDynamicTimeReference as SharedWorkflowDynamicTimeReference,
+  WorkflowIntentOption as SharedWorkflowIntentOption,
+  WorkflowHandoffDraftConfig,
+  WorkflowLlmDraftConfig,
+  WorkflowLlmInputParameter as SharedWorkflowLlmInputParameter,
+  WorkflowLlmInputValue as SharedWorkflowLlmInputValue,
+  WorkflowLlmOutputConfig as SharedWorkflowLlmOutputConfig,
+  WorkflowLlmOutputField as SharedWorkflowLlmOutputField,
+  WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
+  WorkflowMessageDraftConfig,
+  WorkflowMessageQueryConfig,
+  WorkflowNodeKind as SharedWorkflowNodeKind,
+  WorkflowOutputValueType as SharedWorkflowOutputValueType,
+  WorkflowTimeRange as SharedWorkflowTimeRange,
+  WorkflowVariableContentSegment as SharedWorkflowVariableContentSegment,
+  WorkflowVariableSelector as SharedWorkflowVariableSelector,
+  WorkflowChatAiStartDraftConfig,
+  WorkflowWeComStartDraftConfig,
   WorkflowWaitConfig,
+  WorkflowWaitEventDraftConfig,
 } from "@chatai/contracts";
 import type { WorkflowNodeMetric } from "@chatai/contracts";
 import type {
@@ -16,24 +34,7 @@ import type {
   WORKFLOW_NODE_TYPE,
 } from "./constants";
 
-export type WorkflowNodeKind =
-  | "start"
-  | "wait"
-  | "wait-event"
-  | "branch"
-  | "message"
-  | "message-query"
-  | "tag"
-  | "coupon"
-  | "handoff"
-  | "agent"
-  | "llm"
-  | "order-query"
-  | "tag-query"
-  | "customer-update"
-  | "ai-collect"
-  | "ai-intent"
-  | "end";
+export type WorkflowNodeKind = SharedWorkflowNodeKind;
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
 export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "start" | "end">;
 
@@ -52,8 +53,8 @@ type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unkno
   title: string;
 };
 
-export type ChatAiStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowChatAiStartConfig;
-export type WeComStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowWeComStartConfig;
+export type ChatAiStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowChatAiStartDraftConfig;
+export type WeComStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowWeComStartDraftConfig;
 export type StartNodeData = ChatAiStartNodeData | WeComStartNodeData;
 
 export function isChatAiStartNodeData(data: StartNodeData): data is ChatAiStartNodeData {
@@ -72,9 +73,7 @@ export function getStartNodeSourceIds(data: StartNodeData): number[] {
 
 export type WaitNodeData = WorkflowNodeDataBase<"wait"> & WorkflowWaitConfig;
 
-export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
-  branchPaths: WorkflowBranchPath[];
-};
+export type BranchNodeData = WorkflowNodeDataBase<"branch"> & WorkflowBranchConfig;
 
 export type WorkflowVariableScope =
   | "current-node-lifecycle"
@@ -84,57 +83,13 @@ export type WorkflowVariableScope =
   | "subject"
   | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
-export type WorkflowVariableSelector = string[];
+export type WorkflowVariableSelector = SharedWorkflowVariableSelector;
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
-export type WorkflowOutputValueType =
-  | { kind: "boolean" }
-  | { kind: "datetime" }
-  | { kind: "number" }
-  | { kind: "string" }
-  | {
-      kind: "reference";
-      semantic: "customer" | "message" | "order" | "tag";
-    }
-  | {
-      itemType: "bigint" | "number" | "string";
-      kind: "array";
-      semantic?: "message" | "order" | "tag";
-    }
-  | {
-      kind: "object";
-      schemaRef: string;
-    };
+export type WorkflowOutputValueType = SharedWorkflowOutputValueType;
 
-export type WorkflowDynamicTimeReference =
-  | {
-      field: "occurredAt";
-      kind: "workflow-trigger";
-    }
-  | {
-      field: "enteredAt";
-      kind: "current-node-lifecycle";
-    }
-  | {
-      field: "enteredAt" | "exitedAt";
-      kind: "node-lifecycle";
-      nodeId: string;
-    }
-  | {
-      kind: "node-output";
-      selector: WorkflowVariableSelector;
-    };
+export type WorkflowDynamicTimeReference = SharedWorkflowDynamicTimeReference;
 
-export type WorkflowTimeRange =
-  | {
-      endAt: string;
-      mode: "fixed";
-      startAt: string;
-    }
-  | {
-      end: WorkflowDynamicTimeReference;
-      mode: "dynamic";
-      start: WorkflowDynamicTimeReference;
-    };
+export type WorkflowTimeRange = SharedWorkflowTimeRange;
 
 export type WorkflowVariableDefinition = {
   availableOnSourceHandles?: string[];
@@ -162,93 +117,29 @@ export type WorkflowNodeOutputDefinition = {
   valueType: WorkflowOutputValueType;
 };
 
-export type WorkflowVariableContentSegment =
-  | { type: "text"; value: string }
-  | { selector: WorkflowVariableSelector; type: "variable" };
+export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegment;
 
-export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
-  attachments: WorkbenchQuickReplyAttachment[];
-  content: WorkflowVariableContentSegment[];
-  contentMode: "custom" | "node-output";
-  outputSelector?: WorkflowVariableSelector;
-};
-export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & {
-  limit: number;
-  take: "earliest" | "latest";
-  timeRange: WorkflowTimeRange;
-};
+export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
+export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
-export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & {
-  event: {
-    type: WorkflowWaitEventType;
-  };
-  timeout: {
-    duration: number;
-    unit: WorkflowWaitEventTimeoutUnit;
-  };
-};
+export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
-export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & {
-  customerMessage?: WorkflowVariableContentSegment[];
-  operatorMessage?: WorkflowVariableContentSegment[];
-};
+export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & WorkflowHandoffDraftConfig;
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;
-export type WorkflowLlmInputValue =
-  | {
-      kind: "literal";
-      value: string;
-    }
-  | {
-      kind: "variable";
-      selector: WorkflowVariableSelector;
-      valueType: WorkflowOutputValueType;
-    };
-export type WorkflowLlmInputParameter = {
-  id: string;
-  name: string;
-  value: WorkflowLlmInputValue;
-};
-export type WorkflowLlmOutputFieldType = "boolean" | "number" | "string";
-export type WorkflowLlmOutputField = {
-  description: string;
-  id: string;
-  name: string;
-  type: WorkflowLlmOutputFieldType;
-};
-export type WorkflowLlmOutputConfig =
-  | {
-      field: WorkflowLlmOutputField;
-      format: "markdown" | "text";
-    }
-  | {
-      fields: WorkflowLlmOutputField[];
-      format: "json";
-    };
-export type LlmNodeData = WorkflowNodeDataBase<"llm"> & {
-  inputs: WorkflowLlmInputParameter[];
-  modelId: string;
-  modelLabel?: string;
-  modelName?: string;
-  output: WorkflowLlmOutputConfig;
-  systemPrompt: WorkflowVariableContentSegment[];
-  userPrompt: WorkflowVariableContentSegment[];
-};
+export type WorkflowLlmInputValue = SharedWorkflowLlmInputValue;
+export type WorkflowLlmInputParameter = SharedWorkflowLlmInputParameter;
+export type WorkflowLlmOutputFieldType = SharedWorkflowLlmOutputFieldType;
+export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
+export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
+export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
-export type WorkflowIntentOption = {
-  description: string;
-  id: string;
-};
-export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & {
-  advancedEnabled: boolean;
-  inputSelector?: WorkflowVariableSelector;
-  intents: WorkflowIntentOption[];
-  prompt: string;
-};
+export type WorkflowIntentOption = SharedWorkflowIntentOption;
+export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {

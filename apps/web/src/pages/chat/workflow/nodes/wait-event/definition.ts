@@ -1,6 +1,3 @@
-import {
-  WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
-} from "@chatai/contracts";
 import { BellDotIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
@@ -32,21 +29,12 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
   canInsertAfter: true,
   canRename: true,
   configSections: [],
-  createDefaultData: () => createNodeData("wait-event", 1, {
+  createDefaultData: () => createNodeData("wait-event", {
     event: { type: DEFAULT_WAIT_EVENT_TYPE },
     label: "等待事件",
     metric: "等待新消息 · 最长 24 小时",
     timeout: { duration: 24, unit: "hour" },
     title: "等待事件",
-  }),
-  createExecutionConfig: (data) => ({
-    event: {
-      collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
-      capabilityKey: "event.message.received",
-      contractVersion: 1,
-      type: normalizeWaitEventType(data.event?.type),
-    },
-    timeout: normalizeWaitEventTimeout(data.timeout),
   }),
   description: "等待客户事件发生或超时后继续流程",
   getOutputVariables: (node) =>
@@ -88,7 +76,6 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
       timeout,
     };
   },
-  schemaVersion: 1,
   sort: 15,
   validate: (node) => {
     const unit = node.data.timeout?.unit;

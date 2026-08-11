@@ -254,6 +254,14 @@ describe("compileWorkflowDraft", () => {
   });
 
   it("rejects node configurations that would fail only at execution time", () => {
+    const incompleteStart = createDraft();
+    Object.assign(incompleteStart.nodes.find((item) => item.id === "start")!.data, {
+      seatIds: [],
+      triggers: [],
+    });
+
+    expectCompilationIssues(incompleteStart, ["invalid-node-config"]);
+
     const invalidWait = createDraft();
     invalidWait.nodes.find((item) => item.id === "wait")!.data.duration = -1;
 

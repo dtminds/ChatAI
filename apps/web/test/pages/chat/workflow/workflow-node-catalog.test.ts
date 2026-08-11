@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractWorkflowNodeDraftConfig,
+  getUnknownWorkflowNodeDraftDataKeys,
+  getWorkflowNodeContract,
+  isWorkflowNodeDraftConfig,
+} from "@chatai/contracts";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
+import {
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
   getAvailableNextNodeKinds,
@@ -86,7 +93,6 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
   expect(definition.role).toBe(catalogEntry.role);
   expect(definition.cardClassName).toBe(catalogEntry.cardClassName);
   expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
-  expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
   expect(definition.sanitizeData).toBe(catalogEntry.sanitizeData);
   expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
   expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
@@ -99,7 +105,9 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
   expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
   expect(definition.getTargetHandles(defaultData)).toEqual(getNodeTargetHandleDefinitions(defaultData));
   expect(defaultData.kind).toBe(kind);
-  expect(defaultData.schemaVersion).toBe(definition.schemaVersion);
+  expect(defaultData.schemaVersion).toBe(
+    getWorkflowNodeContract(kind).currentDraftSchemaVersion,
+  );
   expect(defaultData.title).toBeTruthy();
   expect(defaultData.metric).toBeTruthy();
   expect(catalogEntry.layout.width).toBeGreaterThan(0);
@@ -116,8 +124,11 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
     position: { x: 0, y: 0 },
     type: WORKFLOW_NODE_TYPE,
   })).toBe(catalogEntry.layout.estimatedHeight);
-  expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
-  expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
+  const draftConfig = extractWorkflowNodeDraftConfig(kind, defaultData);
+  expect(draftConfig).not.toHaveProperty("title");
+  expect(draftConfig).not.toHaveProperty("status");
+  expect(isWorkflowNodeDraftConfig(kind, draftConfig)).toBe(true);
+  expect(getUnknownWorkflowNodeDraftDataKeys(kind, defaultData)).toEqual([]);
 }
 
 function assertDefinitionExtensionContract<TKind extends WorkflowNodeKind>(kind: TKind) {
@@ -130,7 +141,14 @@ function assertDefinitionExtensionContract<TKind extends WorkflowNodeKind>(kind:
   expect(definition.visual.icon).toBeTruthy();
   expect(definition.getSourceHandles(defaultData)).toEqual(expect.any(Array));
   expect(definition.getTargetHandles(defaultData)).toEqual(expect.any(Array));
-  expect(definition.createExecutionConfig(defaultData)).toEqual(expect.any(Object));
+  const contract = getWorkflowNodeContract(kind);
+  if (contract.maturity === "placeholder") {
+    expect(contract.executionConfigSchema).toBeNull();
+  }
+  else {
+    expect(projectWorkflowNodeExecutionConfig({ data: defaultData, kind }))
+      .toEqual(expect.any(Object));
+  }
 
   if (definition.insertable) {
     expect(definition.paletteGroup).toBeTruthy();
@@ -215,7 +233,7 @@ describe("workflow node catalog", () => {
     nodeKinds.forEach(assertDefinitionSourcesStayInSync);
   });
 
-  it("keeps node definitions as the single extension contract", () => {
+  it("keeps every Web node definition internally complete", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
     const schemaNodeKinds: WorkflowNodeKind[] = [
       "agent",

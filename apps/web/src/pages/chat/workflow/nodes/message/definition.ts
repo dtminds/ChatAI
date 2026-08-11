@@ -3,7 +3,6 @@ import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
 } from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
-import { pickDefinedWorkflowConfig } from "../definition-shared";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import {
   getVariableContentText,
@@ -38,25 +37,8 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     content: [],
     contentMode: "custom",
     metric: "待配置消息内容",
-    schemaVersion: 2,
     status: "warning",
   }),
-  createExecutionConfig: (data) => {
-    const attachments = normalizeWorkflowMessageAttachments(data.attachments);
-    const contentMode = normalizeWorkflowMessageContentMode(data.contentMode);
-
-    return contentMode === "node-output"
-      ? pickDefinedWorkflowConfig({
-          attachments,
-          contentMode,
-          outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
-        })
-      : {
-          attachments,
-          content: normalizeVariableContent(data.content),
-          contentMode,
-        };
-  },
   sanitizeData: (data) => ({
     ...data,
     attachments: normalizeWorkflowMessageAttachments(data.attachments),
@@ -64,7 +46,6 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     contentMode: normalizeWorkflowMessageContentMode(data.contentMode),
     outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
   }),
-  schemaVersion: 2,
   getOutputVariables: () => [{
     description: "消息成功发送给客户的时间，可用于后续节点设置动态时间范围。",
     key: "sentAt",

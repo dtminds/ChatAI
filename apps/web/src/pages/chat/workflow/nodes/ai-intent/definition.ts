@@ -4,7 +4,6 @@ import {
   createCatalogIssue,
   createDefaultTargetHandles,
   createNodeData,
-  pickDefinedWorkflowConfig,
   sourceNodeKinds,
   targetNodeKinds,
 } from "../definition-shared";
@@ -35,7 +34,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
   canInsertAfter: true,
   canRename: true,
   configSections: [],
-  createDefaultData: () => createNodeData("ai-intent", 1, {
+  createDefaultData: () => createNodeData("ai-intent", {
     advancedEnabled: false,
     inputSelector: undefined,
     intents: [createWorkflowIntentOption()],
@@ -44,17 +43,6 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     prompt: "",
     status: "warning",
     title: "意图识别",
-  }),
-  createExecutionConfig: (data) => pickDefinedWorkflowConfig({
-    fallback: { id: AI_INTENT_FALLBACK_HANDLE_ID },
-    inputSelector: normalizeAiIntentInputSelector(data.inputSelector),
-    intents: normalizeAiIntentOptions(data.intents).map((intent, index) => ({
-      ...intent,
-      modelCode: `I${index + 1}`,
-    })),
-    prompt: normalizeAiIntentAdvancedEnabled(data.advancedEnabled)
-      ? normalizeAiIntentPrompt(data.prompt)
-      : undefined,
   }),
   description: "使用 AI 将前序消息匹配到预设意图",
   getEstimatedHeight: getAiIntentEstimatedHeight,
@@ -122,7 +110,6 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
       status: getAiIntentStatus(nextData),
     };
   },
-  schemaVersion: 1,
   sort: 30,
   validate: (node) => {
     const issues = [];

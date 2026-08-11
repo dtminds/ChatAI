@@ -19,6 +19,24 @@ export const WorkflowNodeMaturitySchema = Type.Union([
 
 export type WorkflowNodeMaturity = Static<typeof WorkflowNodeMaturitySchema>;
 
+export const WorkflowCapabilityKindSchema = Type.Union([
+  Type.Literal("action"),
+  Type.Literal("inference"),
+  Type.Literal("query"),
+]);
+
+export type WorkflowCapabilityKind = Static<typeof WorkflowCapabilityKindSchema>;
+
+export const WorkflowNodeExecutionClassSchema = Type.Union([
+  Type.Literal("action"),
+  Type.Literal("composite"),
+  Type.Literal("core"),
+  Type.Literal("inference"),
+  Type.Literal("query"),
+]);
+
+export type WorkflowNodeExecutionClass = Static<typeof WorkflowNodeExecutionClassSchema>;
+
 export const WorkflowVariableSelectorSchema = Type.Array(
   Type.String({ minLength: 1, maxLength: 128 }),
   { minItems: 2, maxItems: 4 },
@@ -275,78 +293,98 @@ export const WORKFLOW_DRAFT_NODE_BASE_KEYS = [
 
 type WorkflowNodeContractDefinition<
   TMaturity extends WorkflowNodeMaturity = WorkflowNodeMaturity,
+  TExecutionClass extends WorkflowNodeExecutionClass = WorkflowNodeExecutionClass,
 > = {
   currentDraftSchemaVersion: number;
   draftConfigKeys: readonly string[];
   draftConfigSchema: TSchema;
+  executionClass: TExecutionClass;
   executionConfigSchema: TSchema | null;
   maturity: TMaturity;
 };
 
 export const workflowNodeContractRegistry = {
-  agent: placeholderContract(),
-  "ai-collect": placeholderContract(),
+  agent: placeholderContract("action"),
+  "ai-collect": placeholderContract("composite"),
   "ai-intent": draftReadyContract(
+    "inference",
     1,
     ["advancedEnabled", "inputSelector", "intents", "prompt"],
     WorkflowAiIntentDraftConfigSchema,
     WorkflowAiIntentExecutionConfigSchema,
   ),
   branch: runtimeReadyContract(
+    "core",
     1,
     ["branchPaths"],
     WorkflowBranchConfigSchema,
     WorkflowBranchConfigSchema,
   ),
-  coupon: placeholderContract(),
-  "customer-update": placeholderContract(),
-  end: runtimeReadyContract(1, [], WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
+  coupon: placeholderContract("action"),
+  "customer-update": placeholderContract("action"),
+  end: runtimeReadyContract("core", 1, [], WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
   handoff: draftReadyContract(
+    "action",
     1,
     ["customerMessage", "operatorMessage"],
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
   ),
   llm: draftReadyContract(
+    "inference",
     1,
     ["inputs", "modelId", "modelLabel", "modelName", "output", "systemPrompt", "userPrompt"],
     WorkflowLlmDraftConfigSchema,
     WorkflowLlmExecutionConfigSchema,
   ),
   message: draftReadyContract(
+    "action",
     2,
     ["attachments", "content", "contentMode", "outputSelector"],
     WorkflowMessageDraftConfigSchema,
     WorkflowMessageExecutionConfigSchema,
   ),
   "message-query": draftReadyContract(
+    "query",
     1,
     ["limit", "take", "timeRange"],
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
   ),
-  "order-query": placeholderContract(),
+  "order-query": placeholderContract("query"),
   start: runtimeReadyContract(
+    "core",
     1,
     ["entryPolicy", "seatIds", "triggers", "workUserIds"],
     WorkflowStartDraftConfigSchema,
     WorkflowStartConfigSchema,
   ),
-  tag: placeholderContract(),
-  "tag-query": placeholderContract(),
+  tag: placeholderContract("action"),
+  "tag-query": placeholderContract("query"),
   wait: runtimeReadyContract(
+    "core",
     1,
     ["dayOffset", "duration", "mode", "time", "unit"],
     WorkflowWaitConfigSchema,
     WorkflowWaitConfigSchema,
   ),
   "wait-event": runtimeReadyContract(
+    "core",
     1,
     ["event", "timeout"],
     WorkflowWaitEventDraftConfigSchema,
     WorkflowWaitEventConfigSchema,
   ),
 } satisfies Record<WorkflowNodeKind, WorkflowNodeContractDefinition>;
+
+export type WorkflowNodeExecutionClassFor<TKind extends WorkflowNodeKind> =
+  (typeof workflowNodeContractRegistry)[TKind]["executionClass"];
+
+export type WorkflowCapabilityNodeKind = {
+  [TKind in WorkflowNodeKind]: WorkflowNodeExecutionClassFor<TKind> extends WorkflowCapabilityKind
+    ? TKind
+    : never;
+}[WorkflowNodeKind];
 
 export function getWorkflowNodeContract<TKind extends WorkflowNodeKind>(kind: TKind) {
   return workflowNodeContractRegistry[kind];
@@ -388,41 +426,48 @@ export function isWorkflowNodeExecutionConfig(
   return schema !== null && Value.Check(schema, value);
 }
 
-function placeholderContract(): WorkflowNodeContractDefinition<"placeholder"> {
+function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>(
+  executionClass: TExecutionClass,
+): WorkflowNodeContractDefinition<"placeholder", TExecutionClass> {
   return {
     currentDraftSchemaVersion: 1,
     draftConfigKeys: [],
     draftConfigSchema: WorkflowEmptyNodeConfigSchema,
+    executionClass,
     executionConfigSchema: null,
     maturity: "placeholder",
   };
 }
 
-function draftReadyContract(
+function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
+  executionClass: TExecutionClass,
   currentDraftSchemaVersion: number,
   draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
-): WorkflowNodeContractDefinition<"draft-ready"> {
+): WorkflowNodeContractDefinition<"draft-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
     draftConfigKeys,
     draftConfigSchema,
+    executionClass,
     executionConfigSchema,
     maturity: "draft-ready",
   };
 }
 
-function runtimeReadyContract(
+function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
+  executionClass: TExecutionClass,
   currentDraftSchemaVersion: number,
   draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
-): WorkflowNodeContractDefinition<"runtime-ready"> {
+): WorkflowNodeContractDefinition<"runtime-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
     draftConfigKeys,
     draftConfigSchema,
+    executionClass,
     executionConfigSchema,
     maturity: "runtime-ready",
   };

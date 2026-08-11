@@ -55,6 +55,20 @@ describe("workflow capability shared fixtures", () => {
       expect(isRecord(command.command) ? command.command : {}).not.toHaveProperty("selector");
     }
   });
+
+  it("reserves the external idempotency key for action commands", () => {
+    const commands = manifest.fixtures
+      .filter(fixture => fixture.kind === "capability-command")
+      .map(readFixture);
+
+    for (const command of commands) {
+      if (command.kind === "action") {
+        expect(command).toHaveProperty("idempotencyKey");
+      } else {
+        expect(command).not.toHaveProperty("idempotencyKey");
+      }
+    }
+  });
 });
 
 function validateFixture(fixture: FixtureManifest["fixtures"][number]) {

@@ -29,8 +29,8 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
 | `workflow.worker.readiness.failed` | `error` | `role`, `err` |
-| `workflow.action.retry.scheduled` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage`, `retryAt` |
-| `workflow.action.failed` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
+| `workflow.capability.retry.scheduled` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage`, `retryAt` |
+| `workflow.capability.failed` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
 | `workflow.node.failed` | `warn` | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
 Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
@@ -49,13 +49,13 @@ The Reconciler starts cleanup hourly in bounded batches. If a batch reports more
 
 Before rollout, apply the history-cleanup indexes in `docs/db/change-log.md`. A future real Entry Source must keep its approved replay window shorter than Run retention, with the initial integration capped at 30 days. Replaying an Entry after its Run deduplication row has expired is unsupported.
 
-## Action Failure Recovery
+## Capability Failure Recovery
 
-Action adapters must classify known downstream failures with `WorkflowActionExecutionError`. Retryable, unknown-outcome, and terminal failures are persisted before the broker message is acknowledged.
+Action, Query, and Inference adapters must classify known downstream failures with `WorkflowCapabilityExecutionError`. Retryable, unknown-outcome, and terminal failures are persisted before the broker message is acknowledged.
 
 The exception message is a user-safe description persisted in the execution ledger and exposed in run records. `diagnosticMessage` is for internal logs only and must not contain credentials, full downstream responses, customer content, or other sensitive data.
 
-Action calls have a 15-second default deadline and receive an `AbortSignal`. The deadline must not exceed half of the Task lease. A timeout is an unknown outcome and is retried with the same idempotency key. Adapters must project downstream responses into compact JSON outputs made only of JSON scalars, arrays, and plain objects with enumerable data properties; accessors, symbol keys, class instances, `undefined`, non-finite numbers, sparse arrays, and cycles are rejected. One node output is limited to 4 KiB and the complete Run Context to 128 KiB.
+Capability calls have a 15-second default deadline and receive an `AbortSignal`. The deadline must not exceed half of the Task lease. A timeout is an unknown outcome. Runtime retries reuse the same Node Execution Key internally. Action sends it downstream as `idempotencyKey`; Query and Inference send no additional call key and use execution metadata for correlation. Adapters must project downstream responses into compact JSON outputs made only of JSON scalars, arrays, and plain objects with enumerable data properties; accessors, symbol keys, class instances, `undefined`, non-finite numbers, sparse arrays, and cycles are rejected. One node output is limited to 4 KiB and the complete Run Context to 128 KiB.
 
 An unclassified exception is treated as an infrastructure or programming failure. After a Task has been claimed, its `task_version` has already advanced, so a NACKed copy of the original broker message becomes stale and is acknowledged on redelivery. Recovery therefore depends on the Task lease expiring: Reconciler returns the Task to `pending`, and Scheduler publishes a new message with the current Task version. Do not describe this path as direct Pulsar redelivery recovery.
 
@@ -65,7 +65,7 @@ Phase 3 configures Pulsar dead-letter routing, but the current Smoke Producer st
 
 - An Entry DLQ message may represent a customer who never received a Run. When a real Entry Source is integrated, Entry and Task must use distinguishable DLQ topics, and operations must add TDMQ-native backlog alerts plus an internal Entry redelivery tool. Redelivery preserves the original `eventId`, so existing entry idempotency prevents duplicate Runs.
 - A Task DLQ message is not the execution source of truth. Run and Task state remains in MySQL, and recovery publishes a message for the current `task_version` through Reconciler, Scheduler, and Outbox. Do not replay the old Task DLQ payload directly.
-- Business Action retries and final failures are database state and appear in Workflow run records; they are not operated as MQ dead-letter replay.
+- Capability retries and final failures are database state and appear in Workflow run records; they are not operated as MQ dead-letter replay.
 
 These DLQ operations are required before a real Entry Source enters production gray release, but they do not block Phase 4 node development against Smoke Producer events.
 

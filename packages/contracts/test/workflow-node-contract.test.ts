@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 import {
   extractWorkflowNodeDraftConfig,
@@ -82,6 +82,8 @@ describe("workflow node contracts", () => {
     expect(entries).toHaveLength(17);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
+      expect(["action", "composite", "core", "inference", "query"])
+        .toContain(contract.executionClass);
       expect(["placeholder", "draft-ready", "runtime-ready"]).toContain(contract.maturity);
       expect(contract.currentDraftSchemaVersion).toBeGreaterThan(0);
     }
@@ -92,6 +94,36 @@ describe("workflow node contracts", () => {
       .toEqual(["ai-intent", "handoff", "llm", "message", "message-query"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
+  });
+
+  it("assigns every node kind one stable execution class", () => {
+    expectTypeOf(getWorkflowNodeContract("message").executionClass).toEqualTypeOf<"action">();
+    expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
+    expectTypeOf(getWorkflowNodeContract("llm").executionClass).toEqualTypeOf<"inference">();
+    expectTypeOf(getWorkflowNodeContract("ai-collect").executionClass).toEqualTypeOf<"composite">();
+
+    expect(Object.fromEntries(Object.entries(workflowNodeContractRegistry).map(([kind, contract]) => [
+      kind,
+      contract.executionClass,
+    ]))).toEqual({
+      agent: "action",
+      "ai-collect": "composite",
+      "ai-intent": "inference",
+      branch: "core",
+      coupon: "action",
+      "customer-update": "action",
+      end: "core",
+      handoff: "action",
+      llm: "inference",
+      message: "action",
+      "message-query": "query",
+      "order-query": "query",
+      start: "core",
+      tag: "action",
+      "tag-query": "query",
+      wait: "core",
+      "wait-event": "core",
+    });
   });
 
   it("extracts only registered draft fields and validates every kind", () => {

@@ -34,8 +34,14 @@ export const WorkflowCapabilityQueryCommandFixtureSchema = Type.Object({
   kind: Type.Literal("query"),
 }, { additionalProperties: false });
 
+export const WorkflowCapabilityInferenceCommandFixtureSchema = Type.Object({
+  ...WorkflowCapabilityFixtureCommonProperties,
+  kind: Type.Literal("inference"),
+}, { additionalProperties: false });
+
 export const WorkflowCapabilityCommandFixtureSchema = Type.Union([
   WorkflowCapabilityActionCommandFixtureSchema,
+  WorkflowCapabilityInferenceCommandFixtureSchema,
   WorkflowCapabilityQueryCommandFixtureSchema,
 ]);
 
@@ -61,6 +67,9 @@ export const WorkflowCapabilityErrorFixtureSchema = Type.Object({
 
 export type WorkflowCapabilityActionCommandFixture = Static<
   typeof WorkflowCapabilityActionCommandFixtureSchema
+>;
+export type WorkflowCapabilityInferenceCommandFixture = Static<
+  typeof WorkflowCapabilityInferenceCommandFixtureSchema
 >;
 export type WorkflowCapabilityQueryCommandFixture = Static<
   typeof WorkflowCapabilityQueryCommandFixtureSchema

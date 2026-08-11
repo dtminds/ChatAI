@@ -138,6 +138,13 @@
       "expected": { "accepted": true, "resultCode": "accepted" }
     },
     {
+      "fixtureId": "capability-v1-command-inference",
+      "kind": "capability-command",
+      "path": "capability/v1/command/inference.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
       "fixtureId": "capability-v1-result-success",
       "kind": "capability-result",
       "path": "capability/v1/result/success.json",

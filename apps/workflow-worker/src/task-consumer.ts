@@ -63,10 +63,10 @@ function logPersistedTaskOutcome(
     && outcome.kind !== "failed"
     && outcome.kind !== "node-failed") return;
   const event = outcome.kind === "retry-scheduled"
-    ? "workflow.action.retry.scheduled"
+    ? "workflow.capability.retry.scheduled"
     : outcome.kind === "node-failed"
       ? "workflow.node.failed"
-      : "workflow.action.failed";
+      : "workflow.capability.failed";
   logger.warn({
     ...(typeof outcome.diagnosticMessage === "string"
       ? { diagnosticMessage: outcome.diagnosticMessage.slice(0, 1_024) }

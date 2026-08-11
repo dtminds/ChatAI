@@ -38,7 +38,7 @@ export function transitionTask(from: WorkflowTaskStatus, to: WorkflowTaskStatus)
   return to;
 }
 
-export function createWorkflowActionIdempotencyKey({
+export function createWorkflowNodeExecutionKey({
   nodeId,
   runId,
   sequence,

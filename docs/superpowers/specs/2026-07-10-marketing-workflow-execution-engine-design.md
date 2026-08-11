@@ -567,7 +567,7 @@ update_time
 
 ### 9.6 `xy_wap_embed_workflow_node_execution`
 
-保存产品可查询的节点执行结果和业务动作账本。
+保存产品可查询的节点执行结果和 Capability 执行账本。
 
 ```text
 id
@@ -577,7 +577,7 @@ node_id
 node_kind
 sequence
 status
-idempotency_key
+execution_key
 input_snapshot_json
 output_json
 error_code
@@ -591,7 +591,7 @@ update_time
 关键约束：
 
 - `(uid, run_id, sequence)` 唯一。
-- `idempotency_key` 在业务动作范围内唯一。
+- `execution_key` 在租户范围内唯一。
 
 不要记录内部每次轮询和每次租约刷新。仅保存用户可理解、审计或恢复所需的节点执行数据。
 
@@ -782,7 +782,7 @@ Action 默认总超时为 15 秒，且不得超过 Task 租约的一半。Runtim
 
 Adapter 不得将下游原始响应直接写入 Workflow。它必须先按节点输出契约提取后续节点需要的最小 JSON 数据。输出只接受由可枚举数据属性组成的 plain object、数组和 JSON 标量；`undefined`、访问器属性、Symbol key、class instance、非有限数字、稀疏数组和循环引用均视为非法。单节点持久化输出硬上限为 4 KiB，完整 Run Context 硬上限为 128 KiB；非法 JSON、超限输出或追加后超限的 Context 都使当前节点终态失败，且不得保存原始响应或继续重试。
 
-`WorkflowActionExecutionError.message` 是会写入运行记录的用户安全提示；内部诊断只能通过 `diagnosticMessage` 写入 Worker 日志。诊断日志不得包含凭证、完整下游响应、客户内容或其他敏感信息。
+`WorkflowCapabilityExecutionError.message` 是会写入运行记录的用户安全提示；内部诊断只能通过 `diagnosticMessage` 写入 Worker 日志。诊断日志不得包含凭证、完整下游响应、客户内容或其他敏感信息。
 
 Java 消息、标签、优惠券和转人工接口必须接受该幂等键，或提供等价的业务去重能力。没有下游幂等能力时，系统无法保证超时重试不产生重复副作用，禁止以“MQ 不重复”规避该问题。
 
@@ -844,7 +844,7 @@ shard_id = hash(uid + subjectId) % 256
 
 - Consumer 在取得 Task 执行权之前发生的短暂基础设施错误，通过 Pulsar Negative ACK 或 ACK Timeout 重投。
 - 业务 Action 返回明确的可重试错误时，Worker 在数据库中将 Task 恢复为 `pending` 并写入退避后的 `due_at`，随后 ACK 当前 MQ 消息。
-- 下游超时属于结果未知，也进入数据库 Retry Task，并保持原 `idempotency_key`。
+- 下游超时属于结果未知，也进入数据库 Retry Task，并保持原 `execution_key`；Action 对外重试同时复用由它派生的 `idempotencyKey`。
 - 不可重试业务错误将 Task 标记为 `dead`，Run 标记为 `failed`，随后 ACK MQ 消息。
 - 未被分类的异常允许由 TDMQ Pulsar 重投；超过 Consumer Dead Letter Policy 配置的最大次数后进入 DLQ。
 - Entry 消息进入 DLQ 可能导致客户没有对应 Run。当前 Smoke Producer 阶段不建设恢复工具；接入真实 Entry Source 时，必须同时完成独立的 Entry DLQ、TDMQ 原生积压告警和保留原 `eventId` 的内部重新投递能力，并将其作为生产灰度前置条件。
@@ -983,7 +983,7 @@ Reconciler 至少负责：
 - `workflow_outbox_oldest_age_seconds`
 - `workflow_lease_recovery_total`
 - `workflow_node_execution_total{kind,status}`
-- `workflow_action_duration_seconds{kind}`
+- `workflow_capability_duration_seconds{kind}`
 - Pulsar Subscription Backlog、Unacked Messages 和 Redelivery Count
 - Node Event Loop Lag
 - 数据库连接池使用率和慢查询
@@ -999,7 +999,7 @@ taskId
 nodeId
 sequence
 messageId
-idempotencyKey
+executionKey
 ```
 
 日志不得输出完整客户资料、消息正文、优惠券密钥或其他敏感内容。

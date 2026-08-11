@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createWorkflowActionIdempotencyKey,
+  createWorkflowNodeExecutionKey,
   getWorkflowExecutionBoundaryDecision,
   transitionRun,
   transitionTask,
@@ -25,11 +25,11 @@ describe("workflow state machine", () => {
     expect(() => transitionTask("completed", "running")).toThrow(WorkflowStateTransitionError);
   });
 
-  it("creates a stable action idempotency key", () => {
+  it("creates a stable node execution key", () => {
     const input = { nodeId: "message-1", runId: "91", sequence: 4, uid: "8" };
 
-    expect(createWorkflowActionIdempotencyKey(input)).toBe("8:91:message-1:4");
-    expect(createWorkflowActionIdempotencyKey(input)).toBe(createWorkflowActionIdempotencyKey(input));
+    expect(createWorkflowNodeExecutionKey(input)).toBe("8:91:message-1:4");
+    expect(createWorkflowNodeExecutionKey(input)).toBe(createWorkflowNodeExecutionKey(input));
   });
 
   it("blocks execution for paused, stopped, and deleted workflows", () => {

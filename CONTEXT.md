@@ -52,6 +52,14 @@ _Avoid_: Permission set, subscription plan, runtime support list
 The set of Workflow node semantics that the currently deployed Node execution artifact can compile and execute completely, including validation, outputs, failure handling, and recovery behavior. Runtime Support states implementation completeness, not whether an environment or tenant may use the capability.
 _Avoid_: Node catalog, deployment switch
 
+**Workflow Node Execution Class**:
+The one stable execution category assigned to each Node Kind: `core`, `action`, `query`, `inference`, or `composite`. The class selects the execution mechanism and reliability envelope; it is independent from node maturity and production availability. Core nodes execute inside the Workflow engine. Action, Query, and Inference nodes invoke a typed Workflow Capability. Composite nodes coordinate multiple durable stages and cannot be registered as one direct Capability call.
+_Avoid_: Node group, maturity, runtime support
+
+**Workflow Capability Kind**:
+The closed category of a typed external Capability invocation: `action`, `query`, or `inference`. An Action causes an externally visible side effect and carries an idempotency key. A Query is read-only. Inference is non-deterministic model execution. Query and Inference carry no additional call key; their execution metadata provides correlation.
+_Avoid_: Arbitrary operation type, node kind
+
 **Workflow Deployment Capability**:
 An environment-level declaration that a Runtime-supported event source or business operation is intentionally connected and enabled for production use. It is independent of transient service health and tenant-specific Product Entitlement.
 _Avoid_: Runtime Support, tenant allowlist, health check

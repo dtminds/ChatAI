@@ -407,10 +407,10 @@ export function runWorkflowRuntimeRepositoryContract(
       uid: 9,
     });
     if (claimed.kind !== "success") throw new Error("Expected initial task claim to succeed");
-    const prepared = await harness.repository.prepareActionExecution({
+    const prepared = await harness.repository.prepareCapabilityExecution({
       expectedRunLockVersion: 1,
       expectedTaskVersion: claimed.task.taskVersion,
-      idempotencyKey: "9:1:start:1",
+      executionKey: "9:1:start:1",
       input: { subjectId: "customer-1" },
       now: OUTBOX_READY_AT,
       runId: created.run.id,
@@ -426,7 +426,7 @@ export function runWorkflowRuntimeRepositoryContract(
       expectedRunLockVersion: 1,
       expectedTaskVersion: claimed.task.taskVersion,
       failureKind: "retryable" as const,
-      idempotencyKey: "9:1:start:1",
+      executionKey: "9:1:start:1",
       inbox: {
         consumer: "workflow-task",
         expiresAt: new Date("2099-02-01T00:00:00.000Z"),
@@ -437,11 +437,11 @@ export function runWorkflowRuntimeRepositoryContract(
       taskId: created.task.id,
       uid: 9,
     };
-    await expect(harness.repository.scheduleActionRetry(retryInput)).resolves.toMatchObject({
+    await expect(harness.repository.scheduleCapabilityRetry(retryInput)).resolves.toMatchObject({
       kind: "success",
       task: { status: "pending", taskVersion: 3 },
     });
-    await expect(harness.repository.scheduleActionRetry(retryInput)).resolves.toEqual({
+    await expect(harness.repository.scheduleCapabilityRetry(retryInput)).resolves.toEqual({
       kind: "already-processed",
     });
 
@@ -502,7 +502,7 @@ export function runWorkflowRuntimeRepositoryContract(
         messageId: "transaction-rollback",
       },
       nodeExecution: {
-        idempotencyKey: "transaction-rollback",
+        executionKey: "transaction-rollback",
         input: {},
         output: {},
       },

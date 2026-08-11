@@ -1,21 +1,23 @@
 import type {
-  WorkflowNodeKind,
+  WorkflowCapabilityKind,
+  WorkflowCapabilityNodeKind,
   WorkflowSubjectType,
 } from "@chatai/contracts";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { WorkflowActionExecutionError } from "@chatai/workflow-engine";
+import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 
-export type WorkflowCapabilityKind = "action" | "query";
+export type { WorkflowCapabilityKind } from "@chatai/contracts";
 
 export type WorkflowCapabilityDefinition<
   TCommandSchema extends TSchema = TSchema,
   TResultSchema extends TSchema = TSchema,
+  TKind extends WorkflowCapabilityKind = WorkflowCapabilityKind,
 > = {
   capabilityKey: string;
   commandSchema: TCommandSchema;
   contractVersion: number;
-  kind: WorkflowCapabilityKind;
+  kind: TKind;
   resultSchema: TResultSchema;
 };
 
@@ -27,21 +29,35 @@ export type WorkflowCapabilityExecutionMetadata = {
   workflowId: string;
 };
 
-export type WorkflowCapabilityRequest<TCommand> = {
+type WorkflowCapabilityRequestBase<TCommand> = {
   command: TCommand;
   deadlineAt: Date;
   execution: WorkflowCapabilityExecutionMetadata;
-  idempotencyKey?: string;
   signal: AbortSignal;
   subjectId: string;
   subjectType: WorkflowSubjectType;
   uid: number;
 };
 
+export type WorkflowCapabilityRequest<
+  TCommand,
+  TKind extends WorkflowCapabilityKind = WorkflowCapabilityKind,
+> = TKind extends "action"
+  ? WorkflowCapabilityRequestBase<TCommand> & {
+      idempotencyKey: string;
+    }
+  : WorkflowCapabilityRequestBase<TCommand> & {
+      idempotencyKey?: never;
+    };
+
 export interface WorkflowCapabilityPort {
-  execute<TCommandSchema extends TSchema, TResultSchema extends TSchema>(
-    definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema>,
-    request: WorkflowCapabilityRequest<Static<TCommandSchema>>,
+  execute<
+    TCommandSchema extends TSchema,
+    TResultSchema extends TSchema,
+    TKind extends WorkflowCapabilityKind,
+  >(
+    definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
+    request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown>;
 }
 
@@ -54,25 +70,27 @@ export type WorkflowCapabilityCommandContext = {
 export type WorkflowCapabilityExecutionBinding<
   TCommandSchema extends TSchema = TSchema,
   TResultSchema extends TSchema = TSchema,
+  TKind extends WorkflowCapabilityKind = WorkflowCapabilityKind,
 > = {
   createCommand(input: {
     config: Record<string, unknown>;
     context: WorkflowCapabilityCommandContext;
   }): unknown;
-  definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema>;
-  nodeKind: WorkflowNodeKind;
+  definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>;
+  nodeKind: WorkflowCapabilityNodeKind;
 };
 
 export async function executeWorkflowCapability<
   TCommandSchema extends TSchema,
   TResultSchema extends TSchema,
+  TKind extends WorkflowCapabilityKind,
 >(input: {
-  binding: WorkflowCapabilityExecutionBinding<TCommandSchema, TResultSchema>;
+  binding: WorkflowCapabilityExecutionBinding<TCommandSchema, TResultSchema, TKind>;
   commandContext: WorkflowCapabilityCommandContext;
   config: Record<string, unknown>;
   deadlineAt: Date;
   execution: WorkflowCapabilityExecutionMetadata;
-  idempotencyKey: string;
+  executionKey: string;
   port: WorkflowCapabilityPort;
   signal: AbortSignal;
   subjectId: string;
@@ -84,14 +102,14 @@ export async function executeWorkflowCapability<
     context: structuredClone(input.commandContext),
   });
   if (!Value.Check(input.binding.definition.commandSchema, command)) {
-    throw new WorkflowActionExecutionError(
+    throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_CAPABILITY_COMMAND_INVALID",
       "节点配置无法执行",
       { diagnosticMessage: "Workflow capability command failed schema validation" },
     );
   }
-  const request: WorkflowCapabilityRequest<Static<TCommandSchema>> = {
+  const request = {
     command: structuredClone(command) as Static<TCommandSchema>,
     deadlineAt: input.deadlineAt,
     execution: input.execution,
@@ -100,15 +118,15 @@ export async function executeWorkflowCapability<
     subjectType: input.subjectType,
     uid: input.uid,
     ...(input.binding.definition.kind === "action"
-      ? { idempotencyKey: input.idempotencyKey }
+      ? { idempotencyKey: input.executionKey }
       : {}),
-  };
+  } as WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>;
   const result = await input.port.execute(input.binding.definition, request);
   if (!Value.Check(input.binding.definition.resultSchema, result)
     || !result || typeof result !== "object" || Array.isArray(result)) {
-    throw new WorkflowActionExecutionError(
+    throw new WorkflowCapabilityExecutionError(
       "terminal",
-      "WORKFLOW_ACTION_OUTPUT_INVALID",
+      "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
       "节点返回的数据无法处理，流程已停止",
       { diagnosticMessage: "Workflow capability result failed schema validation" },
     );

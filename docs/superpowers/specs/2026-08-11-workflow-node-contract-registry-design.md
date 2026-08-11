@@ -2,7 +2,7 @@
 
 - 日期：2026-08-11
 - 状态：Accepted
-- 适用范围：`packages/contracts`、`packages/workflow-engine`、`apps/backend` 与 `apps/web` 中的 Workflow 节点定义
+- 适用范围：`packages/contracts`、`packages/workflow-engine`、`packages/workflow-runtime`、`apps/workflow-worker`、`apps/backend` 与 `apps/web` 中的 Workflow 节点定义
 - 目标：在 Java 业务能力尚未接通时，先冻结节点的持久化结构、执行投影和前端开发职责，使不同节点可以并行实现而不产生跨层契约漂移
 
 ## 1. 决策摘要
@@ -14,8 +14,9 @@ Workflow 节点采用一套共享的 per-kind 契约注册表。每个节点必�
 - Execution Config Schema；纯占位节点为 `null`
 - Draft 持久化字段白名单
 - 节点成熟度
+- 节点执行类别
 
-共享注册表位于 `packages/contracts/src/workflow/node-contract.ts`。它是节点数据结构、版本和成熟度的权威来源。
+共享注册表位于 `packages/contracts/src/workflow/node-contract.ts`。它是节点数据结构、版本、成熟度和执行类别的权威来源。
 
 Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/node-contract-registry.ts`。Web 不再自行生成 Execution Config，Compiler 也不再维护第二套按 kind 分支的投影逻辑。
 
@@ -35,9 +36,25 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
 
-## 3. Draft 与 Execution 的职责
+## 3. 单一执行类别
 
-### 3.1 Draft Config
+每个 Node Kind 必须且只能属于一个执行类别。执行类别决定运行机制和可靠性信封，成熟度决定当前实现进度；两者相互独立。
+
+| executionClass | 执行方式 | 可靠性身份 | 当前节点 |
+| --- | --- | --- | --- |
+| `core` | Workflow Engine 内部确定性执行，不经过 Capability Port | Runtime 内部 Node Execution Key | `start`、`wait`、`wait-event`、`branch`、`end` |
+| `action` | 通过 Capability Port 调用产生外部副作用的业务能力 | 下游必须接收 `idempotencyKey` | `message`、`handoff`、`agent`、`tag`、`customer-update`、`coupon` |
+| `query` | 通过 Capability Port 读取外部业务数据 | 不发送额外调用键 | `message-query`、`order-query`、`tag-query` |
+| `inference` | 通过 Capability Port 执行非确定性的模型推理 | 不发送额外调用键，使用执行元数据关联调用 | `llm`、`ai-intent` |
+| `composite` | 由多个阶段、等待或回调组成，需要独立的持久化子状态 | 由未来 Composite Runner 按阶段生成 | `ai-collect` |
+
+`action`、`query`、`inference` 统称 Capability 节点，共用 `workflow_node_execution` 生命周期、deadline、输出上限、错误分类和 Retry 框架。账本使用 `execution_key` 保存 Runtime 内部稳定的 Node Execution Key；它不代表 Query 或 Inference 对下游提供幂等承诺。
+
+Capability Binding 注册时必须与共享注册表中的执行类别一致。`core` 和 `composite` 不允许注册为 Capability Binding。`ai-collect` 本期继续保持 `placeholder`，不得把多阶段采集过程伪装成一次 Action 或 Inference 调用。
+
+## 4. Draft 与 Execution 的职责
+
+### 4.1 Draft Config
 
 Draft Config 是编辑器可持久化状态，必须满足：
 
@@ -48,7 +65,7 @@ Draft Config 是编辑器可持久化状态，必须满足：
 
 Draft Schema 只回答“这份编辑状态能否安全持久化”，不回答“这份配置能否发布”。
 
-### 3.2 Execution Config
+### 4.2 Execution Config
 
 Execution Config 是不可变 Revision 中的运行参数，必须满足：
 
@@ -59,7 +76,7 @@ Execution Config 是不可变 Revision 中的运行参数，必须满足：
 
 Draft 允许不完整，不代表 Execution 可以不完整。开始节点的空来源、空触发器和空标签选择可以保存，但 Compiler 必须拒绝发布。
 
-### 3.3 版本与迁移
+### 4.3 版本与迁移
 
 - 新节点从 `currentDraftSchemaVersion = 1` 开始。
 - 改变持久化形状或字段语义时必须提升版本并提供 Web hydration migration。
@@ -67,9 +84,9 @@ Draft 允许不完整，不代表 Execution 可以不完整。开始节点的空
 - Web 创建新节点和 hydration 都从共享注册表读取当前版本，节点 Definition 不再自行声明版本。
 - Backend 接受旧 Draft 的读取与恢复，但新保存必须符合迁移后的当前版本和字段白名单。
 
-## 4. 模块职责
+## 5. 模块职责
 
-### 4.1 Contracts 模块
+### 5.1 Contracts 模块
 
 `packages/contracts` 负责小而稳定的节点契约接口：
 
@@ -77,10 +94,11 @@ Draft 允许不完整，不代表 Execution 可以不完整。开始节点的空
 - 共享类型、资源上限和封闭枚举
 - Draft 字段提取和未知字段检查
 - 成熟度与当前 Draft Schema Version
+- 每个 Node Kind 唯一且类型可推导的执行类别
 
 Contracts 不依赖 React、画布状态、Java Adapter 或数据库实现。
 
-### 4.2 Workflow Engine 模块
+### 5.2 Workflow Engine 模块
 
 `packages/workflow-engine` 负责：
 
@@ -91,7 +109,7 @@ Contracts 不依赖 React、画布状态、Java Adapter 或数据库实现。
 
 投影函数接收 `kind + Draft Config + Workflow Type`，返回纯 JSON Execution Config。它不得读取 Node UI Definition，也不得通过默认 `{}` 掩盖未实现节点。
 
-### 4.3 Backend 模块
+### 5.3 Backend 模块
 
 Backend 保存 Draft 时负责：
 
@@ -102,7 +120,7 @@ Backend 保存 Draft 时负责：
 
 Backend 发布时通过 Engine 完成 Execution 投影和严格校验。Backend 不复制 per-kind 字段列表。
 
-### 4.4 Web 模块
+### 5.4 Web 模块
 
 Web 节点 Definition 只负责编辑体验：
 
@@ -114,7 +132,7 @@ Web 节点 Definition 只负责编辑体验：
 
 Web 不定义 Execution Config，不自行维护 Schema Version，也不把 UI 校验当作后端发布校验的替代品。
 
-## 5. Node UI 协议
+## 6. Node UI 协议
 
 Node UI 是画布上的扫描摘要，不是 Setting UI 的缩小版。
 
@@ -132,7 +150,7 @@ Node UI 是画布上的扫描摘要，不是 Setting UI 的缩小版。
 
 Node UI 的状态必须与 Setting 校验使用同一组事实。不能出现节点显示 ready，但发布因同一必填项缺失而失败的情况。
 
-## 6. Setting UI 协议
+## 7. Setting UI 协议
 
 Setting UI 是节点 Draft Config 的唯一主要编辑界面。
 
@@ -149,7 +167,7 @@ Setting UI 是节点 Draft Config 的唯一主要编辑界面。
 9. Panel 底部保留稳定留白，内容滚动不改变面板外框；切换已选节点时不重复播放面板入场动画。
 10. UI 测试保护状态流转、选择结果、引用失效、可访问名称和 Draft 数据，不锁 Tailwind class、尺寸、阴影或普通说明文案。
 
-## 7. 输出变量与 Capability 调用
+## 8. 输出变量与 Capability 调用
 
 节点输出必须在 Definition 中声明稳定 key、类型、用途和语义。后续节点只能选择：
 
@@ -157,24 +175,24 @@ Setting UI 是节点 Draft Config 的唯一主要编辑界面。
 - 当前 Workflow Type 允许的系统、Subject 和 Trigger 变量
 - 与当前输入用途兼容的类型
 
-Action 类型节点调用 Java 时，Execution Config 必须先由 Engine 编译成类型化 Capability Command。幂等键由 Workflow Runtime 按 Run、Node 与执行尝试的既定规则生成，前端不生成业务动作幂等键，Java 也不解析原始 Draft。
+Capability 节点调用外部能力时，Execution Config 必须先由 Engine 编译成类型化 Capability Command。Runtime 使用同一稳定 Node Execution Key 管理执行台账；发送给下游时，只有 Action 使用由它派生的 `idempotencyKey`，Query 和 Inference 不携带额外调用键，通过执行元数据关联调用。前端不生成这些键，外部 Adapter 也不解析原始 Draft。
 
-## 8. 新节点完成清单
+## 9. 新节点完成清单
 
 一个节点从 placeholder 演进时，至少按以下顺序交付：
 
-1. Contracts：Draft Schema、Execution Schema、版本、字段白名单、共享类型与资源上限。
+1. Contracts：Draft Schema、Execution Schema、版本、字段白名单、执行类别、共享类型与资源上限。
 2. Web Definition：默认值、sanitize、validate、Node UI 摘要、Handle 和输出变量。
 3. Setting UI：完整编辑路径、变量约束、失效状态和必要行为测试。
 4. Engine：唯一 Execution 投影、严格校验和 Capability Requirement。
-5. Adapter：类型化 Query 或 Action Command；Action 明确稳定幂等语义。
+5. Adapter：类型化 Action、Query 或 Inference Command；落实 Action 幂等键以及 Query、Inference 无额外调用键的语义。
 6. Runtime：Executor、输出上限、错误分类、Retry/Wait/恢复行为。
 7. 发布门控：确认 Workflow Capability Profile、Runtime Support、Deployment Capability 和 Product Entitlement 全部对齐。
 8. 验证：Contracts、Engine、Runtime、Backend、Web 的受影响测试与 build，以及 `git diff --check`。
 
 未完成第 4 至第 7 步的节点只能保持 `draft-ready`，不得仅因为前端交互完成而开放发布。
 
-## 9. 并行开发规则
+## 10. 并行开发规则
 
 可以按节点拆给不同开发者并行实现，但共享文件需要明确所有权：
 

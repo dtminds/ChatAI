@@ -11,6 +11,7 @@ import type {
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
+  getWorkflowNodeContract,
   normalizeWorkflowEntryPolicy,
   WORKFLOW_INBOX_RETENTION_DAYS,
   WorkflowStartConfigSchema,
@@ -19,9 +20,9 @@ import {
 import {
   createCoreNodeExecutorRegistry,
   createWorkflowDeploymentCapabilities,
-  createWorkflowActionIdempotencyKey,
+  createWorkflowNodeExecutionKey,
   hasWorkflowDeploymentCapability,
-  WorkflowActionExecutionError,
+  WorkflowCapabilityExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
   type WorkflowDeploymentCapabilities,
@@ -105,9 +106,7 @@ export class WorkflowRuntimeService {
       ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
-    this.capabilityBindings = new Map(
-      (options.capabilityBindings ?? []).map((binding) => [binding.nodeKind, binding]),
-    );
+    this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
     if (!Number.isSafeInteger(this.capabilityTimeoutMs) || this.capabilityTimeoutMs <= 0) {
       throw new Error("Workflow capability timeout must be a positive integer");
     }
@@ -295,7 +294,7 @@ export class WorkflowRuntimeService {
     }
     if (claimed.kind !== "success") throw staleTaskError();
 
-    const actionIdempotencyKey = createWorkflowActionIdempotencyKey({
+    const nodeExecutionKey = createWorkflowNodeExecutionKey({
       nodeId: node.id,
       runId: run.id,
       sequence: claimed.task.sequence,
@@ -303,7 +302,7 @@ export class WorkflowRuntimeService {
     });
     if (node.kind === "wait-event") {
       return this.executeWaitEventTask({
-        actionIdempotencyKey,
+        nodeExecutionKey,
         claimedTask: claimed.task,
         existingSubscription: existingEventSubscription,
         input,
@@ -312,12 +311,16 @@ export class WorkflowRuntimeService {
         run,
       });
     }
+    const executionClass = getWorkflowNodeContract(node.kind).executionClass;
+    const capabilityNode = executionClass === "action"
+      || executionClass === "inference"
+      || executionClass === "query";
     const capabilityBinding = this.capabilityBindings.get(node.kind);
-    if (capabilityBinding) {
-      const prepared = await this.runtimeRepository.prepareActionExecution({
+    if (capabilityNode) {
+      const prepared = await this.runtimeRepository.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
-        idempotencyKey: actionIdempotencyKey,
+        executionKey: nodeExecutionKey,
         input: createNodeInputSnapshot(run),
         now: input.now,
         runId: run.id,
@@ -326,17 +329,15 @@ export class WorkflowRuntimeService {
       });
       if (prepared.kind !== "success") throw staleTaskError();
     }
-    const capabilityNode = Boolean(capabilityBinding);
     let executionResult: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>;
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      executionResult = capabilityBinding
+      executionResult = capabilityNode
         ? await executeWithCapabilityTimeout({
-            actionIdempotencyKey,
+            nodeExecutionKey,
             capabilityTimeoutMs: this.capabilityTimeoutMs,
             binding: capabilityBinding,
-            now: input.now,
             node,
             port: this.capabilityPort,
             run,
@@ -363,7 +364,7 @@ export class WorkflowRuntimeService {
     } catch (error) {
       if (!capabilityNode && error instanceof WorkflowRuntimeValueError) {
         return this.commitCoreNodeFailure({
-          actionIdempotencyKey,
+          nodeExecutionKey,
           error,
           input,
           node,
@@ -371,28 +372,28 @@ export class WorkflowRuntimeService {
           task: claimed.task,
         });
       }
-      const actionError = capabilityNode ? toCapabilityExecutionError(error) : null;
-      if (!actionError) throw error;
+      const capabilityError = capabilityNode ? toCapabilityExecutionError(error) : null;
+      if (!capabilityError) throw error;
       const failureInput = {
-        errorCode: actionError.code.slice(0, 128),
-        errorMessage: actionError.message.slice(0, 512),
+        errorCode: capabilityError.code.slice(0, 128),
+        errorMessage: capabilityError.message.slice(0, 512),
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
-        failureKind: actionError.failureKind,
-        idempotencyKey: actionIdempotencyKey,
+        failureKind: capabilityError.failureKind,
+        executionKey: nodeExecutionKey,
         inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
         now: input.now,
         runId: run.id,
         taskId: task.id,
         uid: input.uid,
       };
-      if (actionError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
-        const failed = await this.runtimeRepository.failActionExecution(failureInput);
+      if (capabilityError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
+        const failed = await this.runtimeRepository.failCapabilityExecution(failureInput);
         if (failed.kind === "already-processed") throw alreadyProcessedError();
         if (failed.kind !== "success") throw staleTaskError();
         return {
           errorCode: failureInput.errorCode,
-          diagnosticMessage: actionError.diagnosticMessage.slice(0, 1_024),
+          diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
           failureKind: failureInput.failureKind,
           kind: "failed" as const,
           run: failed.run,
@@ -403,7 +404,7 @@ export class WorkflowRuntimeService {
         this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
         this.capabilityMaxRetryDelayMs,
       );
-      const scheduled = await this.runtimeRepository.scheduleActionRetry({
+      const scheduled = await this.runtimeRepository.scheduleCapabilityRetry({
         ...failureInput,
         dueAt: new Date(input.now.getTime() + retryDelayMs),
       });
@@ -411,7 +412,7 @@ export class WorkflowRuntimeService {
       if (scheduled.kind !== "success") throw staleTaskError();
       return {
         errorCode: failureInput.errorCode,
-        diagnosticMessage: actionError.diagnosticMessage.slice(0, 1_024),
+        diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
         failureKind: failureInput.failureKind,
         kind: "retry-scheduled" as const,
         retryAt: scheduled.task.dueAt,
@@ -427,7 +428,7 @@ export class WorkflowRuntimeService {
         ...createInbox(input.messageId, task.id, input.taskVersion, input.now),
       },
       nodeExecution: {
-        idempotencyKey: actionIdempotencyKey,
+        executionKey: nodeExecutionKey,
         input: createNodeInputSnapshot(run),
         output: executionResult.output,
       },
@@ -443,7 +444,7 @@ export class WorkflowRuntimeService {
   }
 
   private async executeWaitEventTask(input: {
-    actionIdempotencyKey: string;
+    nodeExecutionKey: string;
     claimedTask: WorkflowTaskRecord;
     existingSubscription: WorkflowEventSubscriptionRecord | null;
     input: WorkflowExecuteTaskInput;
@@ -531,7 +532,7 @@ export class WorkflowRuntimeService {
     } catch (error) {
       if (!(error instanceof WorkflowRuntimeValueError)) throw error;
       return this.commitCoreNodeFailure({
-        actionIdempotencyKey: input.actionIdempotencyKey,
+        nodeExecutionKey: input.nodeExecutionKey,
         error,
         input: input.input,
         node: input.node,
@@ -557,7 +558,7 @@ export class WorkflowRuntimeService {
       ),
       nextTask,
       nodeExecution: {
-        idempotencyKey: input.actionIdempotencyKey,
+        executionKey: input.nodeExecutionKey,
         input: createNodeInputSnapshot(input.run),
         output,
       },
@@ -571,7 +572,7 @@ export class WorkflowRuntimeService {
   }
 
   private async commitCoreNodeFailure(input: {
-    actionIdempotencyKey: string;
+    nodeExecutionKey: string;
     error: WorkflowRuntimeValueError;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
@@ -591,7 +592,7 @@ export class WorkflowRuntimeService {
       nodeExecution: {
         errorCode: nodeFailure.errorCode,
         errorMessage: nodeFailure.errorMessage,
-        idempotencyKey: input.actionIdempotencyKey,
+        executionKey: input.nodeExecutionKey,
         input: createNodeInputSnapshot(input.run),
         output: {},
       },
@@ -688,17 +689,24 @@ function createExecutionContext(
 }
 
 async function executeWithCapabilityTimeout(input: {
-  actionIdempotencyKey: string;
+  nodeExecutionKey: string;
   capabilityTimeoutMs: number;
-  binding: WorkflowCapabilityExecutionBinding;
-  now: Date;
+  binding: WorkflowCapabilityExecutionBinding | undefined;
   node: WorkflowExecutionNode;
   port: WorkflowCapabilityPort | undefined;
   run: WorkflowRunRecord;
   startedAt: Date;
 }) {
+  if (!input.binding) {
+    throw new WorkflowCapabilityExecutionError(
+      "terminal",
+      "WORKFLOW_CAPABILITY_BINDING_UNAVAILABLE",
+      "节点能力暂不可用",
+      { diagnosticMessage: `Workflow capability binding is not configured for ${input.node.kind}` },
+    );
+  }
   if (!input.port) {
-    throw new WorkflowActionExecutionError(
+    throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_CAPABILITY_PORT_UNAVAILABLE",
       "节点能力暂不可用",
@@ -710,9 +718,9 @@ async function executeWithCapabilityTimeout(input: {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const error = new WorkflowActionExecutionError(
+      const error = new WorkflowCapabilityExecutionError(
         "unknown",
-        "WORKFLOW_ACTION_TIMEOUT",
+        "WORKFLOW_CAPABILITY_TIMEOUT",
         "节点执行超时",
         { diagnosticMessage: `Workflow capability exceeded its ${input.capabilityTimeoutMs}ms deadline` },
       );
@@ -740,7 +748,7 @@ async function executeWithCapabilityTimeout(input: {
           sequence: input.run.sequence,
           workflowId: input.run.workflowId,
         },
-        idempotencyKey: input.actionIdempotencyKey,
+        executionKey: input.nodeExecutionKey,
         port: input.port,
         signal: controller.signal,
         subjectId: input.run.subjectId,
@@ -755,23 +763,23 @@ async function executeWithCapabilityTimeout(input: {
 }
 
 function toCapabilityExecutionError(error: unknown) {
-  if (error instanceof WorkflowActionExecutionError) return error;
+  if (error instanceof WorkflowCapabilityExecutionError) return error;
   if (!(error instanceof WorkflowRuntimeValueError)) return null;
   const safeMessage = "节点返回的数据无法处理，流程已停止";
   if (error.scope === "node-output" && error.reason === "invalid") {
-    return new WorkflowActionExecutionError(
+    return new WorkflowCapabilityExecutionError(
       "terminal",
-      "WORKFLOW_ACTION_OUTPUT_INVALID",
+      "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
       safeMessage,
-      { diagnosticMessage: "Workflow action returned a non-JSON output" },
+      { diagnosticMessage: "Workflow capability returned a non-JSON output" },
     );
   }
   const code = error.scope === "node-output"
-    ? "WORKFLOW_ACTION_OUTPUT_TOO_LARGE"
+    ? "WORKFLOW_CAPABILITY_OUTPUT_TOO_LARGE"
     : error.reason === "invalid"
       ? "WORKFLOW_CONTEXT_INVALID"
       : "WORKFLOW_CONTEXT_TOO_LARGE";
-  return new WorkflowActionExecutionError(
+  return new WorkflowCapabilityExecutionError(
     "terminal",
     code,
     safeMessage,
@@ -779,6 +787,25 @@ function toCapabilityExecutionError(error: unknown) {
       diagnosticMessage: formatRuntimeValueDiagnostic(error),
     },
   );
+}
+
+function createCapabilityBindingMap(
+  bindings: readonly WorkflowCapabilityExecutionBinding[],
+) {
+  const result = new Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>();
+  for (const binding of bindings) {
+    const executionClass = getWorkflowNodeContract(binding.nodeKind).executionClass;
+    if (executionClass !== binding.definition.kind) {
+      throw new Error(
+        `Workflow capability binding kind does not match node execution class: ${binding.nodeKind}`,
+      );
+    }
+    if (result.has(binding.nodeKind)) {
+      throw new Error(`Duplicate Workflow capability binding: ${binding.nodeKind}`);
+    }
+    result.set(binding.nodeKind, binding);
+  }
+  return result;
 }
 
 function toCoreNodeRuntimeFailure(error: WorkflowRuntimeValueError) {

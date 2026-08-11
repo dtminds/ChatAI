@@ -1,5 +1,5 @@
 import type {
-  WorkflowActionExecutionFailureInput,
+  WorkflowCapabilityExecutionFailureInput,
   WorkflowBeginEventWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
@@ -531,8 +531,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       .sort((first, second) => second.sequence - first.sequence)[0];
   }
 
-  async prepareActionExecution(
-    input: Parameters<WorkflowRuntimeRepository["prepareActionExecution"]>[0],
+  async prepareCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["prepareCapabilityExecution"]>[0],
   ) {
     const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
     const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
@@ -545,7 +545,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && item.runId === input.runId
       && item.sequence === task.sequence);
     if (existing) {
-      if (existing.idempotencyKey !== input.idempotencyKey
+      if (existing.executionKey !== input.executionKey
         || existing.nodeId !== task.nodeId
         || existing.nodeKind !== task.nodeKind
         || existing.status === "completed"
@@ -560,7 +560,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       errorCode: null,
       errorMessage: null,
       failureKind: null,
-      idempotencyKey: input.idempotencyKey,
+      executionKey: input.executionKey,
       input: clone(input.input),
       nodeId: task.nodeId,
       nodeKind: task.nodeKind,
@@ -574,10 +574,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { execution: clone(execution), kind: "success" as const };
   }
 
-  async scheduleActionRetry(
-    input: Parameters<WorkflowRuntimeRepository["scheduleActionRetry"]>[0],
+  async scheduleCapabilityRetry(
+    input: Parameters<WorkflowRuntimeRepository["scheduleCapabilityRetry"]>[0],
   ) {
-    const state = this.requireActionFailureState(input);
+    const state = this.requireCapabilityFailureState(input);
     if ("kind" in state) return state;
     const { execution, run, task } = state;
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
@@ -596,10 +596,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { kind: "success" as const, task: clone(task) };
   }
 
-  async failActionExecution(
-    input: Parameters<WorkflowRuntimeRepository["failActionExecution"]>[0],
+  async failCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["failCapabilityExecution"]>[0],
   ) {
-    const state = this.requireActionFailureState(input);
+    const state = this.requireCapabilityFailureState(input);
     if ("kind" in state) return state;
     const { execution, run, task } = state;
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
@@ -623,7 +623,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
-  private requireActionFailureState(input: WorkflowActionExecutionFailureInput) {
+  private requireCapabilityFailureState(input: WorkflowCapabilityExecutionFailureInput) {
     if (this.inbox.some(item => item.consumer === input.inbox.consumer
       && item.messageId === input.inbox.messageId)) return alreadyProcessed();
     const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
@@ -632,7 +632,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const execution = this.nodeExecutions.find(item => item.uid === input.uid
       && item.runId === input.runId
       && item.sequence === task.sequence
-      && item.idempotencyKey === input.idempotencyKey);
+      && item.executionKey === input.executionKey);
     if (!execution) return notFound();
     if (run.lockVersion !== input.expectedRunLockVersion
       || run.status !== "running"
@@ -670,7 +670,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && item.runId === run.id
       && item.sequence === task.sequence);
     if (existingExecution) {
-      if (existingExecution.idempotencyKey !== input.nodeExecution.idempotencyKey
+      if (existingExecution.executionKey !== input.nodeExecution.executionKey
         || existingExecution.status !== "running") return conflict();
       existingExecution.errorCode = input.nodeExecution.errorCode ?? null;
       existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
@@ -682,7 +682,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         errorCode: input.nodeExecution.errorCode ?? null,
         errorMessage: input.nodeExecution.errorMessage ?? null,
         failureKind: null,
-        idempotencyKey: input.nodeExecution.idempotencyKey,
+        executionKey: input.nodeExecution.executionKey,
         input: clone(input.nodeExecution.input),
         nodeId: task.nodeId,
         nodeKind: task.nodeKind,

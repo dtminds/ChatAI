@@ -3,14 +3,14 @@ import { Kysely, MysqlDialect } from "kysely";
 import { MysqlWorkflowRuntimeRepository } from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
-  it("locks the run and task before creating an action execution ledger", async () => {
-    const db = createActionExecutionDbMock();
+  it("locks the run and task before creating a capability execution ledger", async () => {
+    const db = createCapabilityExecutionDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
-    const result = await repository.prepareActionExecution({
+    const result = await repository.prepareCapabilityExecution({
       expectedRunLockVersion: 1,
       expectedTaskVersion: 2,
-      idempotencyKey: "9:5:message:2",
+      executionKey: "9:5:message:2",
       input: { subjectId: "customer-1" },
       now: new Date("2026-07-13T00:00:00.000Z"),
       runId: "5",
@@ -19,7 +19,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
 
     expect(result).toMatchObject({
-      execution: { idempotencyKey: "9:5:message:2", status: "running" },
+      execution: { executionKey: "9:5:message:2", status: "running" },
       kind: "success",
     });
     expect(db.lockOrder).toEqual(["run", "task", "execution"]);
@@ -30,19 +30,19 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
   });
 
-  it("persists one classified action retry and fences the current task message", async () => {
-    const db = createActionExecutionDbMock({ executionStatus: "running" });
+  it("persists one classified capability retry and fences the current task message", async () => {
+    const db = createCapabilityExecutionDbMock({ executionStatus: "running" });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
     const dueAt = new Date("2026-07-13T00:00:05.000Z");
 
-    const result = await repository.scheduleActionRetry({
+    const result = await repository.scheduleCapabilityRetry({
       dueAt,
       errorCode: "DOWNSTREAM_TEMPORARY",
       errorMessage: "可展示的下游错误",
       expectedRunLockVersion: 1,
       expectedTaskVersion: 2,
       failureKind: "unknown",
-      idempotencyKey: "9:5:message:2",
+      executionKey: "9:5:message:2",
       inbox: {
         consumer: "workflow-task",
         expiresAt: new Date("2026-08-13T00:00:00.000Z"),
@@ -73,17 +73,17 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
   });
 
-  it("atomically marks the ledger, task, and run failed for a terminal action error", async () => {
-    const db = createActionExecutionDbMock({ executionStatus: "running" });
+  it("atomically marks the ledger, task, and run failed for a terminal capability error", async () => {
+    const db = createCapabilityExecutionDbMock({ executionStatus: "running" });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
-    const result = await repository.failActionExecution({
+    const result = await repository.failCapabilityExecution({
       errorCode: "DOWNSTREAM_REJECTED",
       errorMessage: "可展示的下游错误",
       expectedRunLockVersion: 1,
       expectedTaskVersion: 2,
       failureKind: "terminal",
-      idempotencyKey: "9:5:message:2",
+      executionKey: "9:5:message:2",
       inbox: {
         consumer: "workflow-task",
         expiresAt: new Date("2026-08-13T00:00:00.000Z"),
@@ -112,7 +112,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
   });
 
   it("atomically fails a core node without persisting its rejected context", async () => {
-    const db = createActionExecutionDbMock({ nodeId: "start", nodeKind: "start", sequence: 1 });
+    const db = createCapabilityExecutionDbMock({ nodeId: "start", nodeKind: "start", sequence: 1 });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.commitNodeResult({
@@ -127,7 +127,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       nodeExecution: {
         errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
         errorMessage: "节点运行数据无法处理，流程已停止",
-        idempotencyKey: "9:5:start:1",
+        executionKey: "9:5:start:1",
         input: { subjectId: "customer-1" },
         output: {},
       },
@@ -552,7 +552,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
   });
 });
 
-function createActionExecutionDbMock(options: {
+function createCapabilityExecutionDbMock(options: {
   executionStatus?: string;
   nodeId?: string;
   nodeKind?: string;

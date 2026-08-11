@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { WorkflowActionExecutionError } from "@chatai/workflow-engine";
+import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   executeWorkflowCapability,
@@ -9,6 +9,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const actionBinding = binding("action");
 const queryBinding = binding("query");
+const inferenceBinding = binding("inference");
 
 describe("Workflow Capability Port", () => {
   it("passes only a validated typed action command and stable execution envelope", async () => {
@@ -46,9 +47,12 @@ describe("Workflow Capability Port", () => {
     expect(adapter.calls[0]!.request).not.toHaveProperty("selector");
   });
 
-  it("does not send an idempotency key for a query", async () => {
+  it.each([
+    ["query", queryBinding],
+    ["inference", inferenceBinding],
+  ] as const)("does not send an idempotency key for %s", async (_kind, capabilityBinding) => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ value: "ok" }));
-    await executeWorkflowCapability(invocation({ adapter, binding: queryBinding }));
+    await executeWorkflowCapability(invocation({ adapter, binding: capabilityBinding }));
     expect(adapter.calls[0]!.request).not.toHaveProperty("idempotencyKey");
   });
 
@@ -68,7 +72,7 @@ describe("Workflow Capability Port", () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ value: 42 }));
     await expect(executeWorkflowCapability(invocation({ adapter, binding: actionBinding })))
       .rejects.toMatchObject({
-        code: "WORKFLOW_ACTION_OUTPUT_INVALID",
+        code: "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
         failureKind: "terminal",
       });
   });
@@ -77,7 +81,7 @@ describe("Workflow Capability Port", () => {
     "preserves %s adapter error classification for Runtime retry policy",
     async (failureKind) => {
       const adapter = new FakeWorkflowCapabilityAdapter(async () => {
-        throw new WorkflowActionExecutionError(failureKind, "TEST_FAILURE", "测试失败");
+        throw new WorkflowCapabilityExecutionError(failureKind, "TEST_FAILURE", "测试失败");
       });
       await expect(executeWorkflowCapability(invocation({ adapter, binding: actionBinding })))
         .rejects.toMatchObject({ failureKind });
@@ -85,7 +89,7 @@ describe("Workflow Capability Port", () => {
   );
 });
 
-function binding(kind: "action" | "query"): WorkflowCapabilityExecutionBinding {
+function binding(kind: "action" | "inference" | "query"): WorkflowCapabilityExecutionBinding {
   return {
     createCommand: ({ config }) => ({ value: config.value }),
     definition: {
@@ -95,7 +99,7 @@ function binding(kind: "action" | "query"): WorkflowCapabilityExecutionBinding {
       kind,
       resultSchema: Type.Object({ value: Type.String() }, { additionalProperties: false }),
     },
-    nodeKind: "message",
+    nodeKind: kind === "action" ? "message" : kind === "query" ? "message-query" : "llm",
   };
 }
 
@@ -116,7 +120,7 @@ function invocation(input: {
       sequence: 3,
       workflowId: "workflow-1",
     },
-    idempotencyKey: "9:run-1:message:3",
+    executionKey: "9:run-1:message:3",
     port: input.adapter,
     signal: (input.controller ?? new AbortController()).signal,
     subjectId: "contact-1",

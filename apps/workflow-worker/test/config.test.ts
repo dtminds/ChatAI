@@ -130,9 +130,9 @@ describe("workflow worker config", () => {
       "task-consumer",
     ]);
     expect(config.runtime).toMatchObject({
-      actionMaxRetryDelayMs: 300_000,
-      actionRetryDelayMs: 5_000,
-      actionTimeoutMs: 15_000,
+      capabilityMaxRetryDelayMs: 300_000,
+      capabilityRetryDelayMs: 5_000,
+      capabilityTimeoutMs: 15_000,
       batchSize: 100,
       dispatchTimeoutMs: 300_000,
       inboxCleanupBatchSize: 1_000,
@@ -155,28 +155,58 @@ describe("workflow worker config", () => {
 
   it("allows runtime durations above the TCP port range", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
-      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
+      WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS: "900000",
+      WORKFLOW_CAPABILITY_RETRY_DELAY_MS: "15000",
       WORKFLOW_DISPATCH_TIMEOUT_MS: "600000",
       WORKFLOW_LEASE_DURATION_MS: "120000",
     }));
 
-    expect(config.runtime.actionMaxRetryDelayMs).toBe(900_000);
-    expect(config.runtime.actionRetryDelayMs).toBe(15_000);
+    expect(config.runtime.capabilityMaxRetryDelayMs).toBe(900_000);
+    expect(config.runtime.capabilityRetryDelayMs).toBe(15_000);
     expect(config.runtime.dispatchTimeoutMs).toBe(600_000);
     expect(config.runtime.leaseDurationMs).toBe(120_000);
   });
 
-  it("keeps the action timeout within half of the task lease", () => {
+  it("keeps the capability timeout within half of the task lease", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ACTION_TIMEOUT_MS: "30001",
+      WORKFLOW_CAPABILITY_TIMEOUT_MS: "30001",
       WORKFLOW_LEASE_DURATION_MS: "60000",
-    }))).toThrow("WORKFLOW_ACTION_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
+    }))).toThrow("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
 
     expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_CAPABILITY_TIMEOUT_MS: "30000",
+      WORKFLOW_LEASE_DURATION_MS: "60000",
+    })).runtime.capabilityTimeoutMs).toBe(30_000);
+  });
+
+  it("accepts legacy action variables while preferring capability variables", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
+      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
       WORKFLOW_ACTION_TIMEOUT_MS: "30000",
       WORKFLOW_LEASE_DURATION_MS: "60000",
-    })).runtime.actionTimeoutMs).toBe(30_000);
+    }));
+
+    expect(config.runtime).toMatchObject({
+      capabilityMaxRetryDelayMs: 900_000,
+      capabilityRetryDelayMs: 15_000,
+      capabilityTimeoutMs: 30_000,
+    });
+
+    const preferred = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
+      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
+      WORKFLOW_ACTION_TIMEOUT_MS: "30000",
+      WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS: "800000",
+      WORKFLOW_CAPABILITY_RETRY_DELAY_MS: "10000",
+      WORKFLOW_CAPABILITY_TIMEOUT_MS: "20000",
+      WORKFLOW_LEASE_DURATION_MS: "60000",
+    }));
+    expect(preferred.runtime).toMatchObject({
+      capabilityMaxRetryDelayMs: 800_000,
+      capabilityRetryDelayMs: 10_000,
+      capabilityTimeoutMs: 20_000,
+    });
   });
 
   it("rejects an invalid health port independently from durations", () => {

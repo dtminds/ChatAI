@@ -2,7 +2,7 @@ import type { WorkflowExecutionSpec } from "@chatai/contracts";
 import { Type } from "@sinclair/typebox";
 import {
   createWorkflowDeploymentCapabilities,
-  WorkflowActionExecutionError,
+  WorkflowCapabilityExecutionError,
   WorkflowNodeExecutorRegistry,
 } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
@@ -16,13 +16,49 @@ import {
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow action reliability", () => {
-  it("requires the action timeout to fit within half of the task lease", () => {
+  it("requires the capability timeout to fit within half of the task lease", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
 
     expect(() => createService(runtime, async () => ({}), {
       capabilityTimeoutMs: 30_001,
       taskLeaseDurationMs: 60_000,
     })).toThrow("capability timeout must not exceed half of the task lease duration");
+  });
+
+  it("rejects a binding whose operation kind disagrees with the node contract", () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const mismatchedBinding: WorkflowCapabilityExecutionBinding = {
+      ...TEST_MESSAGE_CAPABILITY_BINDING,
+      definition: {
+        ...TEST_MESSAGE_CAPABILITY_BINDING.definition,
+        kind: "query",
+      },
+    };
+
+    expect(() => createService(runtime, async () => ({}), {
+      capabilityBindings: [mismatchedBinding],
+    })).toThrow("binding kind does not match node execution class: message");
+  });
+
+  it("fails a capability node through its execution ledger when its binding is unavailable", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({}), { capabilityBindings: [] });
+    const actionTask = await startAction(service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "WORKFLOW_CAPABILITY_BINDING_UNAVAILABLE",
+      failureKind: "terminal",
+      kind: "failed",
+    });
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nodeId: "message", status: "failed" }),
+    ]));
   });
 
   it("aborts a timed-out action and persists an unknown-outcome retry", async () => {
@@ -55,7 +91,7 @@ describe("workflow action reliability", () => {
 
       await expect(execution).resolves.toMatchObject({
         diagnosticMessage: "Workflow capability exceeded its 100ms deadline",
-        errorCode: "WORKFLOW_ACTION_TIMEOUT",
+        errorCode: "WORKFLOW_CAPABILITY_TIMEOUT",
         failureKind: "unknown",
         kind: "retry-scheduled",
       });
@@ -63,7 +99,7 @@ describe("workflow action reliability", () => {
       expect(deadlineAt).toEqual(new Date(actionStartedAt.getTime() + 100));
       expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          errorCode: "WORKFLOW_ACTION_TIMEOUT",
+          errorCode: "WORKFLOW_CAPABILITY_TIMEOUT",
           errorMessage: "节点执行超时",
           failureKind: "unknown",
           status: "retrying",
@@ -88,7 +124,7 @@ describe("workflow action reliability", () => {
     });
 
     expect(result).toMatchObject({
-      errorCode: "WORKFLOW_ACTION_OUTPUT_TOO_LARGE",
+      errorCode: "WORKFLOW_CAPABILITY_OUTPUT_TOO_LARGE",
       failureKind: "terminal",
       kind: "failed",
     });
@@ -118,7 +154,7 @@ describe("workflow action reliability", () => {
       uid: 9,
       workerId: "worker-1",
     })).resolves.toMatchObject({
-      errorCode: "WORKFLOW_ACTION_OUTPUT_INVALID",
+      errorCode: "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
       failureKind: "terminal",
       kind: "failed",
     });
@@ -334,7 +370,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async (input: unknown) => {
       expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          idempotencyKey: "9:1:message:2",
+          executionKey: "9:1:message:2",
           nodeId: "message",
           status: "running",
         }),
@@ -355,11 +391,11 @@ describe("workflow action reliability", () => {
     expect(receivedKeys).toEqual(["9:1:message:2"]);
     expect(runtime.nodeExecutions).toEqual([
       expect.objectContaining({
-        idempotencyKey: "9:1:start:1",
+        executionKey: "9:1:start:1",
         status: "completed",
       }),
       expect.objectContaining({
-        idempotencyKey: "9:1:message:2",
+        executionKey: "9:1:message:2",
         output: { messageId: "downstream-1" },
         status: "completed",
       }),
@@ -401,7 +437,7 @@ describe("workflow action reliability", () => {
         expect.objectContaining({
           errorCode: "DOWNSTREAM_TEMPORARY",
           failureKind,
-          idempotencyKey: "9:1:message:2",
+          executionKey: "9:1:message:2",
           status: "retrying",
         }),
       ]));
@@ -419,7 +455,7 @@ describe("workflow action reliability", () => {
       expect(runtime.nodeExecutions.filter(item => item.nodeId === "message")).toEqual([
         expect.objectContaining({
           failureKind: null,
-          idempotencyKey: "9:1:message:2",
+          executionKey: "9:1:message:2",
           status: "completed",
         }),
       ]);
@@ -464,7 +500,7 @@ describe("workflow action reliability", () => {
   it("persists only the user-safe action error and returns diagnostics for internal logging", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => {
-      throw new WorkflowActionExecutionError(
+      throw new WorkflowCapabilityExecutionError(
         "terminal",
         "DOWNSTREAM_REJECTED",
         "消息发送失败",
@@ -687,10 +723,10 @@ describe("workflow action reliability", () => {
     const run = runtime.runs.find(item => item.id === actionTask.runId)!;
     run.status = "cancelled";
 
-    await expect(runtime.prepareActionExecution({
+    await expect(runtime.prepareCapabilityExecution({
       expectedRunLockVersion: run.lockVersion,
       expectedTaskVersion: claimed.task.taskVersion,
-      idempotencyKey: "9:1:message:2",
+      executionKey: "9:1:message:2",
       input: {},
       now,
       runId: run.id,
@@ -699,7 +735,7 @@ describe("workflow action reliability", () => {
     })).resolves.toEqual({ kind: "conflict" });
   });
 
-  it.each(["scheduleActionRetry", "failActionExecution"] as const)(
+  it.each(["scheduleCapabilityRetry", "failCapabilityExecution"] as const)(
     "rejects %s after its run is no longer running",
     async (operation) => {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
@@ -714,10 +750,10 @@ describe("workflow action reliability", () => {
       });
       if (claimed.kind !== "success") throw new Error("action task was not claimed");
       const run = runtime.runs.find(item => item.id === actionTask.runId)!;
-      await runtime.prepareActionExecution({
+      await runtime.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
-        idempotencyKey: "9:1:message:2",
+        executionKey: "9:1:message:2",
         input: {},
         now,
         runId: run.id,
@@ -731,7 +767,7 @@ describe("workflow action reliability", () => {
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
         failureKind: "retryable" as const,
-        idempotencyKey: "9:1:message:2",
+        executionKey: "9:1:message:2",
         inbox: {
           consumer: "workflow-task",
           expiresAt: new Date("2026-08-13T00:00:00.000Z"),
@@ -743,17 +779,17 @@ describe("workflow action reliability", () => {
         uid: 9,
       };
 
-      const result = operation === "scheduleActionRetry"
-        ? await runtime.scheduleActionRetry({ ...failureInput, dueAt: new Date("2026-07-13T00:00:05.000Z") })
-        : await runtime.failActionExecution(failureInput);
+      const result = operation === "scheduleCapabilityRetry"
+        ? await runtime.scheduleCapabilityRetry({ ...failureInput, dueAt: new Date("2026-07-13T00:00:05.000Z") })
+        : await runtime.failCapabilityExecution(failureInput);
 
       expect(result).toEqual({ kind: "conflict" });
     },
   );
 
   it.each([
-    { failureKind: "retryable", operation: "scheduleActionRetry" },
-    { failureKind: "terminal", operation: "failActionExecution" },
+    { failureKind: "retryable", operation: "scheduleCapabilityRetry" },
+    { failureKind: "terminal", operation: "failCapabilityExecution" },
   ] as const)("preserves already-processed from $operation", async ({ failureKind, operation }) => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     vi.spyOn(runtime, operation).mockResolvedValue({ kind: "already-processed" });
@@ -776,6 +812,7 @@ function createService(
   runtime: InMemoryWorkflowRuntimeRepository,
   executeAction: (input: unknown) => Promise<Record<string, unknown>>,
   options: {
+    capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
     capabilityTimeoutMs?: number;
     clock?: () => Date;
     executors?: WorkflowNodeExecutorRegistry;
@@ -792,7 +829,7 @@ function createService(
     capabilityRetryDelayMs: 5_000,
     capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
-    capabilityBindings: [TEST_MESSAGE_CAPABILITY_BINDING],
+    capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
     deploymentCapabilities: createWorkflowDeploymentCapabilities([ENTRY_EVENT_CAPABILITY]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
@@ -944,7 +981,7 @@ function createActionError(
   code: string,
   message = "可展示的下游错误",
 ) {
-  return new WorkflowActionExecutionError(kind, code, message);
+  return new WorkflowCapabilityExecutionError(kind, code, message);
 }
 
 function readIdempotencyKey(input: unknown) {

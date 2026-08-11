@@ -68,7 +68,7 @@ describe("workflow task consumer", () => {
 
   it.each([
     {
-      event: "workflow.action.retry.scheduled",
+      event: "workflow.capability.retry.scheduled",
       result: {
         errorCode: "DOWNSTREAM_TEMPORARY",
         failureKind: "unknown",
@@ -78,7 +78,7 @@ describe("workflow task consumer", () => {
       },
     },
     {
-      event: "workflow.action.failed",
+      event: "workflow.capability.failed",
       result: {
         diagnosticMessage: "Java messaging API returned 503",
         errorCode: "DOWNSTREAM_REJECTED",

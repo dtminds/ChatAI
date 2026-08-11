@@ -503,9 +503,9 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     pulsar: { serviceUrl: null, token: null },
     roles,
     runtime: {
-      actionMaxRetryDelayMs: 300_000,
-      actionRetryDelayMs: 5_000,
-      actionTimeoutMs: 15_000,
+      capabilityMaxRetryDelayMs: 300_000,
+      capabilityRetryDelayMs: 5_000,
+      capabilityTimeoutMs: 15_000,
       batchSize: 100,
       dispatchTimeoutMs: 300_000,
       historyCleanupBatchSize: 1_000,

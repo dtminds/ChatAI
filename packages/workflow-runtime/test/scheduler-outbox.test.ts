@@ -365,7 +365,7 @@ async function createWaitingTask(
       taskType: "wait",
     },
     nodeExecution: {
-      idempotencyKey: `9:${created.run.id}:start:1`,
+      executionKey: `9:${created.run.id}:start:1`,
       input: {},
       output: {},
     },

@@ -38,7 +38,7 @@ export function transitionTask(from: WorkflowTaskStatus, to: WorkflowTaskStatus)
   return to;
 }
 
-export function createWorkflowActionIdempotencyKey({
+export function createWorkflowNodeExecutionKey({
   nodeId,
   runId,
   sequence,
@@ -51,6 +51,8 @@ export function createWorkflowActionIdempotencyKey({
 }) {
   return `${uid}:${runId}:${nodeId}:${sequence}`;
 }
+
+export const createWorkflowActionIdempotencyKey = createWorkflowNodeExecutionKey;
 
 export function getWorkflowExecutionBoundaryDecision({
   bizStatus,

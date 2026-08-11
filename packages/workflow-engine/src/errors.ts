@@ -43,19 +43,22 @@ export class WorkflowNodeExecutionError extends Error {
   }
 }
 
-export type WorkflowActionFailureKind = "retryable" | "terminal" | "unknown";
+export type WorkflowCapabilityFailureKind = "retryable" | "terminal" | "unknown";
 
-export class WorkflowActionExecutionError extends Error {
+export class WorkflowCapabilityExecutionError extends Error {
   readonly diagnosticMessage: string;
 
   constructor(
-    readonly failureKind: WorkflowActionFailureKind,
+    readonly failureKind: WorkflowCapabilityFailureKind,
     readonly code: string,
     safeMessage: string,
     options: { diagnosticMessage?: string } = {},
   ) {
     super(safeMessage);
-    this.name = "WorkflowActionExecutionError";
+    this.name = "WorkflowCapabilityExecutionError";
     this.diagnosticMessage = options.diagnosticMessage ?? safeMessage;
   }
 }
+
+export type WorkflowActionFailureKind = WorkflowCapabilityFailureKind;
+export { WorkflowCapabilityExecutionError as WorkflowActionExecutionError };

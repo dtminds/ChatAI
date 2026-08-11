@@ -28,9 +28,9 @@ export type WorkflowWorkerConfig = {
   };
   roles: ReadonlySet<WorkflowWorkerRole>;
   runtime: {
-    actionMaxRetryDelayMs: number;
-    actionRetryDelayMs: number;
-    actionTimeoutMs: number;
+    capabilityMaxRetryDelayMs: number;
+    capabilityRetryDelayMs: number;
+    capabilityTimeoutMs: number;
     batchSize: number;
     dispatchTimeoutMs: number;
     historyCleanupBatchSize: number;
@@ -101,18 +101,18 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     pulsarClusterId!,
     pulsarNamespace!,
   );
-  const actionTimeoutMs = parseDurationMs(
-    env.WORKFLOW_ACTION_TIMEOUT_MS,
+  const capabilityTimeoutMs = parseDurationMs(
+    preferredEnvValue(env, "WORKFLOW_CAPABILITY_TIMEOUT_MS", "WORKFLOW_ACTION_TIMEOUT_MS"),
     15_000,
-    "WORKFLOW_ACTION_TIMEOUT_MS",
+    "WORKFLOW_CAPABILITY_TIMEOUT_MS",
   );
   const leaseDurationMs = parseDurationMs(
     env.WORKFLOW_LEASE_DURATION_MS,
     60_000,
     "WORKFLOW_LEASE_DURATION_MS",
   );
-  if (actionTimeoutMs * 2 > leaseDurationMs) {
-    throw new Error("WORKFLOW_ACTION_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
+  if (capabilityTimeoutMs * 2 > leaseDurationMs) {
+    throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
   return {
     broker,
@@ -133,17 +133,21 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
     runtime: {
-      actionMaxRetryDelayMs: parseDurationMs(
-        env.WORKFLOW_ACTION_MAX_RETRY_DELAY_MS,
+      capabilityMaxRetryDelayMs: parseDurationMs(
+        preferredEnvValue(
+          env,
+          "WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS",
+          "WORKFLOW_ACTION_MAX_RETRY_DELAY_MS",
+        ),
         300_000,
-        "WORKFLOW_ACTION_MAX_RETRY_DELAY_MS",
+        "WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS",
       ),
-      actionRetryDelayMs: parseDurationMs(
-        env.WORKFLOW_ACTION_RETRY_DELAY_MS,
+      capabilityRetryDelayMs: parseDurationMs(
+        preferredEnvValue(env, "WORKFLOW_CAPABILITY_RETRY_DELAY_MS", "WORKFLOW_ACTION_RETRY_DELAY_MS"),
         5_000,
-        "WORKFLOW_ACTION_RETRY_DELAY_MS",
+        "WORKFLOW_CAPABILITY_RETRY_DELAY_MS",
       ),
-      actionTimeoutMs,
+      capabilityTimeoutMs,
       batchSize: parseCount(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
       dispatchTimeoutMs: parseDurationMs(
         env.WORKFLOW_DISPATCH_TIMEOUT_MS,
@@ -290,4 +294,8 @@ function requireValue(env: NodeJS.ProcessEnv, name: string) {
 function optionalValue(value: string | undefined) {
   const normalized = value?.trim();
   return normalized || null;
+}
+
+function preferredEnvValue(env: NodeJS.ProcessEnv, name: string, legacyName: string) {
+  return optionalValue(env[name]) ?? optionalValue(env[legacyName]) ?? undefined;
 }

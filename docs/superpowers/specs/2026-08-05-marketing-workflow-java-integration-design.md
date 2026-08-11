@@ -1452,9 +1452,9 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 **N6：Java Capability Port 准备**
 
-- 建立类型化 `CapabilityDefinition<TCommand, TResult>`，每个 operation 独立声明 `capabilityKey + contractVersion`、`query / action`、Command Schema 和 Result Schema。
+- 建立类型化 `CapabilityDefinition<TCommand, TResult>`，每个 operation 独立声明 `capabilityKey + contractVersion`、`action / query / inference`、Command Schema 和 Result Schema。
 - Java Capability Port 只接收已校验的类型化命令、明确 `uid + subjectType + subjectId` 和执行元数据；禁止接收 Node、nodeConfig、变量表达式或任意 operation 字符串。
-- Action 强制稳定 `idempotencyKey`，Query 不要求；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
+- Action 强制稳定 `idempotencyKey`，Query 与 Inference 不携带额外调用键并通过执行元数据关联；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
 - 使用测试专属 Capability Definition 和 Fake Adapter 覆盖命令/结果校验、超时、幂等、三类错误、4 KiB 节点输出和 128 KiB Run Context 上限。
 - 从 Core Executor Registry 移除当前 `message / tag / coupon / handoff` 通用 Action 注册；真实 Action 以后按独立 Execution Definition 和 Adapter 逐个开放。
 - 本轮不增加任何 Action Runtime Support 或生产 Deployment Capability。
@@ -1478,7 +1478,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Wait Event 事件/超时竞争和暂停恢复。
 - 覆盖固定 10 秒收集窗口内多消息乱序、重复投递、首事件与超时竞争，以及 Trigger Projection 的输出上限。
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
-- 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 无幂等要求，Fake Adapter 不进入生产注册。
+- 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 与 Inference 不携带额外调用键，Fake Adapter 不进入生产注册。
 - 覆盖 Runtime 已实现但 Deployment 未启用时无法 Publish/Enable，以及只修改 Runtime 注册表不能开放 Java 依赖节点。
 - 覆盖 `requiredCapabilities` 版本冻结、Backend/Worker 未知能力 fail-closed、配置格式非法启动失败和清单漂移时 Worker 不误执行。
 - 覆盖紧急关闭后不创建新 Run、受影响 Task 不消耗业务重试、Wait Event 不触发且恢复后重新调度。
@@ -1561,7 +1561,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 | --- | --- |
 | Iteration 1 | 正式鉴权下的 Create/Save/Publish/Enable；Workflow Type 不可转换；Member SOP 禁用；跨 Subject Type 隔离；Entitlement success/失效/超时；Runtime/Deployment 双门槛；MySQL Repository Contract |
 | Iteration 2 | JSON Fixture -> Fake Event Catalog -> Fake Broker -> Entry Consumer -> Run/Wait Subscription -> Event/Timeout -> End；非法事件 DLQ、重复投递、扇出、CAS、暂停/停止、Outbox 重投和崩溃接管 |
-| Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、错误分类和输出上限 |
+| Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、Query/Inference 无额外调用键、错误分类和输出上限 |
 
 三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/Capability、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开启对应 Deployment Capability。
 
@@ -1603,7 +1603,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 ### Iteration 3：Branch 闭环与 Java Capability Port
 
-目标：交付第一个不依赖 Java 的新生产 Runtime 节点，并为后续 Query/Action 提供不会泄漏 Workflow 内部模型的类型化接缝。
+目标：交付第一个不依赖 Java 的新生产 Runtime 节点，并为后续 Action、Query 和 Inference 提供不会泄漏 Workflow 内部模型的类型化接缝。
 
 实施顺序：
 
@@ -1614,7 +1614,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 开放结果：`branch` 完整闭环后加入 Runtime Support；它不产生 Java Capability Requirement，在 Workflow 其他门槛满足时可生产发布。Message、Message Query、Tag、Coupon、Handoff 等 Java 依赖节点全部保持 Runtime Unsupported 和 Deployment Disabled。
 
-合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
+合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query/Inference 无额外调用键、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
 
 ### 合并与生产启用分离
 

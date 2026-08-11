@@ -36,7 +36,7 @@ import type {
   WorkflowTaskTable,
 } from "./db.js";
 import type {
-  WorkflowActionExecutionFailureInput,
+  WorkflowCapabilityExecutionFailureInput,
   WorkflowBeginEventWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
@@ -996,11 +996,11 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
-  async prepareActionExecution(
-    input: Parameters<WorkflowRuntimeRepository["prepareActionExecution"]>[0],
+  async prepareCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["prepareCapabilityExecution"]>[0],
   ) {
     return this.db.transaction().execute(async (trx) => {
-      const state = await lockActionExecutionState(trx, input);
+      const state = await lockCapabilityExecutionState(trx, input);
       if (state.kind !== "success") return state;
       const { run, task } = state;
       const existingRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
@@ -1011,7 +1011,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .executeTakeFirst();
       if (existingRow) {
         const existing = mapNodeExecution(existingRow);
-        if (existing.idempotencyKey !== input.idempotencyKey
+        if (existing.executionKey !== input.executionKey
           || existing.nodeId !== task.nodeId
           || existing.nodeKind !== task.nodeKind
           || existing.status === "completed"
@@ -1025,7 +1025,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("uid", "=", input.uid)
           .where("run_id", "=", input.runId)
           .where("sequence", "=", task.sequence)
-          .where("idempotency_key", "=", input.idempotencyKey)
+          .where("idempotency_key", "=", input.executionKey)
           .executeTakeFirstOrThrow();
         return {
           execution: {
@@ -1043,7 +1043,7 @@ export class MysqlWorkflowRuntimeRepository implements
         error_code: null,
         error_message: null,
         failure_kind: null,
-        idempotency_key: input.idempotencyKey,
+        idempotency_key: input.executionKey,
         input_snapshot_json: stringifyJson(input.input),
         node_id: task.nodeId,
         node_kind: task.nodeKind,
@@ -1059,7 +1059,7 @@ export class MysqlWorkflowRuntimeRepository implements
           errorCode: null,
           errorMessage: null,
           failureKind: null,
-          idempotencyKey: input.idempotencyKey,
+          executionKey: input.executionKey,
           input: structuredClone(input.input),
           nodeId: task.nodeId,
           nodeKind: task.nodeKind,
@@ -1074,15 +1074,15 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
-  async scheduleActionRetry(
-    input: Parameters<WorkflowRuntimeRepository["scheduleActionRetry"]>[0],
+  async scheduleCapabilityRetry(
+    input: Parameters<WorkflowRuntimeRepository["scheduleCapabilityRetry"]>[0],
   ) {
     return this.db.transaction().execute(async (trx) => {
-      const state = await lockActionFailureState(trx, input);
+      const state = await lockCapabilityFailureState(trx, input);
       if (state.kind !== "success") return state;
       const { run, task } = state;
       await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
-      await updateActionExecutionFailure(trx, input, "retrying");
+      await updateCapabilityExecutionFailure(trx, input, "retrying");
       await trx.updateTable(TASK_TABLE).set({
         bucket_time: floorToMinute(input.dueAt),
         due_at: input.dueAt,
@@ -1118,15 +1118,15 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
-  async failActionExecution(
-    input: Parameters<WorkflowRuntimeRepository["failActionExecution"]>[0],
+  async failCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["failCapabilityExecution"]>[0],
   ) {
     return this.db.transaction().execute(async (trx) => {
-      const state = await lockActionFailureState(trx, input);
+      const state = await lockCapabilityFailureState(trx, input);
       if (state.kind !== "success") return state;
       const { run, task } = state;
       await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
-      await updateActionExecutionFailure(trx, input, "failed");
+      await updateCapabilityExecutionFailure(trx, input, "failed");
       await insertNodeMetricEvents(trx, {
         eventKey: `${run.id}:${task.id}:failed`,
         runId: run.id,
@@ -1368,7 +1368,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .forUpdate()
         .executeTakeFirst();
       if (existingExecution) {
-        if (existingExecution.idempotency_key !== input.nodeExecution.idempotencyKey
+        if (existingExecution.idempotency_key !== input.nodeExecution.executionKey
           || existingExecution.status !== "running") return { kind: "conflict" as const };
         await trx.updateTable(EXECUTION_TABLE).set({
           completed_at: now,
@@ -1388,7 +1388,7 @@ export class MysqlWorkflowRuntimeRepository implements
           error_code: input.nodeExecution.errorCode ?? null,
           error_message: input.nodeExecution.errorMessage ?? null,
           failure_kind: null,
-          idempotency_key: input.nodeExecution.idempotencyKey,
+          idempotency_key: input.nodeExecution.executionKey,
           input_snapshot_json: stringifyJson(input.nodeExecution.input),
           node_id: task.nodeId,
           node_kind: task.nodeKind,
@@ -2646,8 +2646,8 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
   return {
     errorCode: row.error_code,
     errorMessage: row.error_message,
-    failureKind: parseActionFailureKind(row.failure_kind),
-    idempotencyKey: row.idempotency_key,
+    failureKind: parseCapabilityFailureKind(row.failure_kind),
+    executionKey: row.idempotency_key,
     input: row.input_snapshot_json ? parseJson(row.input_snapshot_json) : {},
     nodeId: row.node_id,
     nodeKind: parseNodeKind(row.node_kind),
@@ -2659,7 +2659,7 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
   };
 }
 
-async function lockActionExecutionState(
+async function lockCapabilityExecutionState(
   trx: RuntimeTransaction,
   input: {
     expectedRunLockVersion: number;
@@ -2695,9 +2695,9 @@ async function lockActionExecutionState(
   return { kind: "success", run, task };
 }
 
-async function lockActionFailureState(
+async function lockCapabilityFailureState(
   trx: RuntimeTransaction,
-  input: WorkflowActionExecutionFailureInput,
+  input: WorkflowCapabilityExecutionFailureInput,
 ): Promise<
   | { kind: "already-processed" | "conflict" | "not-found" }
   | {
@@ -2712,13 +2712,13 @@ async function lockActionFailureState(
     .where("message_id", "=", input.inbox.messageId)
     .executeTakeFirst();
   if (processed) return { kind: "already-processed" as const };
-  const state = await lockActionExecutionState(trx, input);
+  const state = await lockCapabilityExecutionState(trx, input);
   if (state.kind !== "success") return state;
   const executionRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
     .where("uid", "=", input.uid)
     .where("run_id", "=", input.runId)
     .where("sequence", "=", state.task.sequence)
-    .where("idempotency_key", "=", input.idempotencyKey)
+    .where("idempotency_key", "=", input.executionKey)
     .forUpdate()
     .executeTakeFirst();
   if (!executionRow) return { kind: "not-found" as const };
@@ -2730,7 +2730,7 @@ async function lockActionFailureState(
 function insertWorkflowInbox(
   trx: RuntimeTransaction,
   uid: number,
-  inbox: WorkflowActionExecutionFailureInput["inbox"],
+  inbox: WorkflowCapabilityExecutionFailureInput["inbox"],
   now: Date,
 ) {
   return trx.insertInto(INBOX_TABLE).values({
@@ -2742,9 +2742,9 @@ function insertWorkflowInbox(
   }).executeTakeFirstOrThrow();
 }
 
-function updateActionExecutionFailure(
+function updateCapabilityExecutionFailure(
   trx: RuntimeTransaction,
-  input: WorkflowActionExecutionFailureInput,
+  input: WorkflowCapabilityExecutionFailureInput,
   status: "failed" | "retrying",
 ) {
   return trx.updateTable(EXECUTION_TABLE).set({
@@ -2755,7 +2755,7 @@ function updateActionExecutionFailure(
     status,
   }).where("uid", "=", input.uid)
     .where("run_id", "=", input.runId)
-    .where("idempotency_key", "=", input.idempotencyKey)
+    .where("idempotency_key", "=", input.executionKey)
     .where("status", "=", "running")
     .executeTakeFirstOrThrow();
 }
@@ -2877,9 +2877,9 @@ function parseNodeKind(value: string): WorkflowNodeKind {
   throw new Error(`Unknown workflow node kind: ${value}`);
 }
 
-function parseActionFailureKind(value: string | null) {
+function parseCapabilityFailureKind(value: string | null) {
   if (value === null || value === "retryable" || value === "terminal" || value === "unknown") return value;
-  throw new Error(`Unknown workflow action failure kind: ${value}`);
+  throw new Error(`Unknown workflow capability failure kind: ${value}`);
 }
 
 function parseNodeExecutionStatus(value: string) {

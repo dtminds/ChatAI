@@ -24,16 +24,21 @@ import { cn } from "@/lib/utils";
 const DEFAULT_MAX_PAGE = 1000;
 
 export function resolveTablePagination({
+  maxPage,
   page,
   pageSize,
   total,
 }: {
+  maxPage?: number;
   page: number;
   pageSize: number;
   total: number;
 }) {
   const safePageSize = Math.max(1, pageSize);
-  const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+  const totalPages = limitTotalPages(
+    Math.max(1, Math.ceil(total / safePageSize)),
+    maxPage,
+  );
   const activePage = Math.min(Math.max(1, page), totalPages);
   const startRow = total === 0 ? 0 : (activePage - 1) * safePageSize + 1;
   const endRow = Math.min(activePage * safePageSize, total);
@@ -227,12 +232,18 @@ function PageButtons({
 
 function limitTotalPages(totalPages: number, maxPage?: number) {
   const resolvedMaxPage = maxPage === undefined ? DEFAULT_MAX_PAGE : maxPage;
+  const isValidMaxPage = Number.isSafeInteger(resolvedMaxPage) && resolvedMaxPage >= 1;
 
-  if (!Number.isSafeInteger(resolvedMaxPage) || resolvedMaxPage < 1) {
-    throw new RangeError("maxPage must be a positive safe integer");
+  if (!isValidMaxPage && import.meta.env.DEV) {
+    console.warn(
+      `TablePagination maxPage must be a positive safe integer; falling back to ${DEFAULT_MAX_PAGE}`,
+    );
   }
 
-  return Math.min(Math.max(1, totalPages), resolvedMaxPage);
+  return Math.min(
+    Math.max(1, totalPages),
+    isValidMaxPage ? resolvedMaxPage : DEFAULT_MAX_PAGE,
+  );
 }
 
 function PageButton({

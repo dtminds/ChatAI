@@ -85,6 +85,29 @@ describe("TablePagination", () => {
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
   });
 
+  it("clamps an external page before emitting navigation", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+
+    render(
+      <TablePagination
+        onPageChange={onPageChange}
+        page={2819}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+
+    expect(onPageChange).toHaveBeenCalledWith(999);
+  });
+
   it("resolves table row ranges from clamped page state", () => {
     expect(resolveTablePagination({ page: 3, pageSize: 10, total: 2 })).toEqual({
       activePage: 1,
@@ -115,6 +138,33 @@ describe("TablePagination", () => {
     });
   });
 
+  it("caps resolved pagination at the default maximum page", () => {
+    expect(
+      resolveTablePagination({ page: 2819, pageSize: 20, total: 56366 }),
+    ).toEqual({
+      activePage: 1000,
+      endRow: 20000,
+      startRow: 19981,
+      totalPages: 1000,
+    });
+  });
+
+  it("uses the maximum page override when resolving pagination", () => {
+    expect(
+      resolveTablePagination({
+        maxPage: 2000,
+        page: 2819,
+        pageSize: 20,
+        total: 56366,
+      }),
+    ).toEqual({
+      activePage: 2000,
+      endRow: 40000,
+      startRow: 39981,
+      totalPages: 2000,
+    });
+  });
+
   it.each([
     0,
     -1,
@@ -123,19 +173,29 @@ describe("TablePagination", () => {
     Number.POSITIVE_INFINITY,
     Number.NaN,
   ])(
-    "rejects invalid maximum page %s",
+    "falls back to the default maximum for invalid maximum page %s",
     (maxPage) => {
-      expect(() =>
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      try {
         render(
           <TablePagination
             maxPage={maxPage}
             onPageChange={vi.fn()}
-            page={1}
-            total={10}
-            totalPages={1}
+            page={1000}
+            total={56366}
+            totalPages={2819}
           />,
-        ),
-      ).toThrowError("maxPage must be a positive safe integer");
+        );
+      } finally {
+        warn.mockRestore();
+      }
+
+      expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
     },
   );
 

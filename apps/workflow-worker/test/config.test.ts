@@ -179,36 +179,6 @@ describe("workflow worker config", () => {
     })).runtime.capabilityTimeoutMs).toBe(30_000);
   });
 
-  it("accepts legacy action variables while preferring capability variables", () => {
-    const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
-      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
-      WORKFLOW_ACTION_TIMEOUT_MS: "30000",
-      WORKFLOW_LEASE_DURATION_MS: "60000",
-    }));
-
-    expect(config.runtime).toMatchObject({
-      capabilityMaxRetryDelayMs: 900_000,
-      capabilityRetryDelayMs: 15_000,
-      capabilityTimeoutMs: 30_000,
-    });
-
-    const preferred = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
-      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
-      WORKFLOW_ACTION_TIMEOUT_MS: "30000",
-      WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS: "800000",
-      WORKFLOW_CAPABILITY_RETRY_DELAY_MS: "10000",
-      WORKFLOW_CAPABILITY_TIMEOUT_MS: "20000",
-      WORKFLOW_LEASE_DURATION_MS: "60000",
-    }));
-    expect(preferred.runtime).toMatchObject({
-      capabilityMaxRetryDelayMs: 800_000,
-      capabilityRetryDelayMs: 10_000,
-      capabilityTimeoutMs: 20_000,
-    });
-  });
-
   it("rejects an invalid health port independently from durations", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_HEALTH_PORT: "65536",

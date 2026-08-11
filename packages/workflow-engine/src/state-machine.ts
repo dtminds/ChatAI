@@ -52,8 +52,6 @@ export function createWorkflowNodeExecutionKey({
   return `${uid}:${runId}:${nodeId}:${sequence}`;
 }
 
-export const createWorkflowActionIdempotencyKey = createWorkflowNodeExecutionKey;
-
 export function getWorkflowExecutionBoundaryDecision({
   bizStatus,
   runtimeStatus,

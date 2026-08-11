@@ -25,7 +25,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task", "execution"]);
     expect(db.inserts.xy_wap_embed_workflow_node_execution).toMatchObject({
       failure_kind: null,
-      idempotency_key: "9:5:message:2",
+      execution_key: "9:5:message:2",
       status: "running",
     });
   });
@@ -610,7 +610,7 @@ function createCapabilityExecutionDbMock(options: {
     error_message: null,
     failure_kind: null,
     id: "11",
-    idempotency_key: `9:5:${nodeId}:${sequence}`,
+    execution_key: `9:5:${nodeId}:${sequence}`,
     input_snapshot_json: JSON.stringify({ subjectId: "customer-1" }),
     node_id: nodeId,
     node_kind: nodeKind,

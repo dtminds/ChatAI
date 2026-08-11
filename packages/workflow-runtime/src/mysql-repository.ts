@@ -1025,7 +1025,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("uid", "=", input.uid)
           .where("run_id", "=", input.runId)
           .where("sequence", "=", task.sequence)
-          .where("idempotency_key", "=", input.executionKey)
+          .where("execution_key", "=", input.executionKey)
           .executeTakeFirstOrThrow();
         return {
           execution: {
@@ -1043,7 +1043,7 @@ export class MysqlWorkflowRuntimeRepository implements
         error_code: null,
         error_message: null,
         failure_kind: null,
-        idempotency_key: input.executionKey,
+        execution_key: input.executionKey,
         input_snapshot_json: stringifyJson(input.input),
         node_id: task.nodeId,
         node_kind: task.nodeKind,
@@ -1368,7 +1368,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .forUpdate()
         .executeTakeFirst();
       if (existingExecution) {
-        if (existingExecution.idempotency_key !== input.nodeExecution.executionKey
+        if (existingExecution.execution_key !== input.nodeExecution.executionKey
           || existingExecution.status !== "running") return { kind: "conflict" as const };
         await trx.updateTable(EXECUTION_TABLE).set({
           completed_at: now,
@@ -1388,7 +1388,7 @@ export class MysqlWorkflowRuntimeRepository implements
           error_code: input.nodeExecution.errorCode ?? null,
           error_message: input.nodeExecution.errorMessage ?? null,
           failure_kind: null,
-          idempotency_key: input.nodeExecution.executionKey,
+          execution_key: input.nodeExecution.executionKey,
           input_snapshot_json: stringifyJson(input.nodeExecution.input),
           node_id: task.nodeId,
           node_kind: task.nodeKind,
@@ -2647,7 +2647,7 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
     errorCode: row.error_code,
     errorMessage: row.error_message,
     failureKind: parseCapabilityFailureKind(row.failure_kind),
-    executionKey: row.idempotency_key,
+    executionKey: row.execution_key,
     input: row.input_snapshot_json ? parseJson(row.input_snapshot_json) : {},
     nodeId: row.node_id,
     nodeKind: parseNodeKind(row.node_kind),
@@ -2718,7 +2718,7 @@ async function lockCapabilityFailureState(
     .where("uid", "=", input.uid)
     .where("run_id", "=", input.runId)
     .where("sequence", "=", state.task.sequence)
-    .where("idempotency_key", "=", input.executionKey)
+    .where("execution_key", "=", input.executionKey)
     .forUpdate()
     .executeTakeFirst();
   if (!executionRow) return { kind: "not-found" as const };
@@ -2755,7 +2755,7 @@ function updateCapabilityExecutionFailure(
     status,
   }).where("uid", "=", input.uid)
     .where("run_id", "=", input.runId)
-    .where("idempotency_key", "=", input.executionKey)
+    .where("execution_key", "=", input.executionKey)
     .where("status", "=", "running")
     .executeTakeFirstOrThrow();
 }

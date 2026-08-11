@@ -15,7 +15,7 @@ import {
 
 const now = new Date("2026-07-13T00:00:00.000Z");
 
-describe("workflow action reliability", () => {
+describe("workflow capability reliability", () => {
   it("requires the capability timeout to fit within half of the task lease", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
 
@@ -43,7 +43,7 @@ describe("workflow action reliability", () => {
   it("fails a capability node through its execution ledger when its binding is unavailable", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}), { capabilityBindings: [] });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -78,7 +78,7 @@ describe("workflow action reliability", () => {
         clock: () => actionStartedAt,
         taskLeaseDurationMs: 1_000,
       });
-      const actionTask = await startAction(service);
+      const actionTask = await startCapability(service);
 
       const execution = service.executeTask({
         now,
@@ -110,10 +110,70 @@ describe("workflow action reliability", () => {
     }
   });
 
+  it.each([
+    { capabilityKind: "query", nodeKind: "message-query" },
+    { capabilityKind: "inference", nodeKind: "llm" },
+  ] as const)(
+    "persists $capabilityKind retries and terminal failures without an external idempotency key",
+    async ({ capabilityKind, nodeKind }) => {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const requests: unknown[] = [];
+      let attempt = 0;
+      const service = createService(runtime, async (request) => {
+        requests.push(request);
+        attempt += 1;
+        throw new WorkflowCapabilityExecutionError(
+          attempt === 1 ? "retryable" : "terminal",
+          attempt === 1 ? "DOWNSTREAM_TEMPORARY" : "DOWNSTREAM_REJECTED",
+          "节点能力调用失败",
+        );
+      }, {
+        capabilityBindings: [testCapabilityBinding(capabilityKind, nodeKind)],
+        spec: capabilitySpec(nodeKind),
+      });
+      const capabilityTask = await startCapability(service);
+
+      await expect(service.executeTask({
+        now,
+        taskId: capabilityTask.id,
+        taskVersion: capabilityTask.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      })).resolves.toMatchObject({
+        errorCode: "DOWNSTREAM_TEMPORARY",
+        kind: "retry-scheduled",
+      });
+      const retryTask = await runtime.findTask(9, capabilityTask.id);
+      if (!retryTask) throw new Error("capability retry task was not created");
+
+      await expect(service.executeTask({
+        now: retryTask.dueAt,
+        taskId: retryTask.id,
+        taskVersion: retryTask.taskVersion,
+        uid: 9,
+        workerId: "worker-2",
+      })).resolves.toMatchObject({
+        errorCode: "DOWNSTREAM_REJECTED",
+        kind: "failed",
+      });
+
+      expect(requests).toHaveLength(2);
+      for (const request of requests) expect(request).not.toHaveProperty("idempotencyKey");
+      expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          errorCode: "DOWNSTREAM_REJECTED",
+          executionKey: "9:1:capability:2",
+          nodeKind,
+          status: "failed",
+        }),
+      ]));
+    },
+  );
+
   it("fails an action whose projected output exceeds 4 KiB in UTF-8", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: "中".repeat(1_400) }));
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
       now,
@@ -145,7 +205,7 @@ describe("workflow action reliability", () => {
   it("fails an action that returns a non-JSON output", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: 1n }) as never);
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -163,7 +223,7 @@ describe("workflow action reliability", () => {
   it("fails when a valid action output would push the Run Context over its budget", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: "y".repeat(3_000) }));
-    const actionTask = await startAction(service, {
+    const actionTask = await startCapability(service, {
       padding: "x".repeat(128 * 1024 - 2_000),
     });
 
@@ -284,7 +344,7 @@ describe("workflow action reliability", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
     const service = createService(runtime, executeAction);
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
     const run = runtime.runs.find(item => item.id === actionTask.runId);
     if (!run) throw new Error("run was not created");
     run.context = {
@@ -378,7 +438,7 @@ describe("workflow action reliability", () => {
       receivedKeys.push(readIdempotencyKey(input));
       return { messageId: "downstream-1" };
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await service.executeTask({
       now,
@@ -414,7 +474,7 @@ describe("workflow action reliability", () => {
         if (attempt === 1) throw createActionError(failureKind, "DOWNSTREAM_TEMPORARY");
         return { messageId: "downstream-1" };
       });
-      const actionTask = await startAction(service);
+      const actionTask = await startCapability(service);
 
       const firstResult = await service.executeTask({
         now,
@@ -467,7 +527,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("terminal", "DOWNSTREAM_REJECTED");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
       now,
@@ -507,7 +567,7 @@ describe("workflow action reliability", () => {
         { diagnosticMessage: "Java messaging API returned 503" },
       );
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
       now,
@@ -534,7 +594,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
     }, { maxTaskAttempts: 1 });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
       now,
@@ -553,7 +613,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("terminal", `CODE_${"X".repeat(200)}`, "错".repeat(600));
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await service.executeTask({
       now,
@@ -573,7 +633,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw new Error("programming failure");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -599,7 +659,7 @@ describe("workflow action reliability", () => {
       if (attempt === 1) throw new Error("worker crashed after the side effect");
       return { messageId: "downstream-1" };
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -634,7 +694,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw new Error("unclassified failure");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -664,7 +724,7 @@ describe("workflow action reliability", () => {
       await runtime.cancelWorkflowBatch({ limit: 100, uid: 9, workflowId: "31" });
       throw new Error("action result arrived after stop");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -688,7 +748,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await service.executeTask({
       now,
@@ -711,7 +771,7 @@ describe("workflow action reliability", () => {
   it("rejects preparing an action after its run is no longer running", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}));
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
     const claimed = await runtime.claimTask({
       expectedTaskVersion: actionTask.taskVersion,
       leaseExpiresAt: new Date("2026-07-13T00:01:00.000Z"),
@@ -740,7 +800,7 @@ describe("workflow action reliability", () => {
     async (operation) => {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
       const service = createService(runtime, async () => ({}));
-      const actionTask = await startAction(service);
+      const actionTask = await startCapability(service);
       const claimed = await runtime.claimTask({
         expectedTaskVersion: actionTask.taskVersion,
         leaseExpiresAt: new Date("2026-07-13T00:01:00.000Z"),
@@ -796,7 +856,7 @@ describe("workflow action reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError(failureKind, "DOWNSTREAM_FAILURE");
     });
-    const actionTask = await startAction(service);
+    const actionTask = await startCapability(service);
 
     await expect(service.executeTask({
       now,
@@ -810,7 +870,7 @@ describe("workflow action reliability", () => {
 
 function createService(
   runtime: InMemoryWorkflowRuntimeRepository,
-  executeAction: (input: unknown) => Promise<Record<string, unknown>>,
+  executeCapability: (input: unknown) => Promise<Record<string, unknown>>,
   options: {
     capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
     capabilityTimeoutMs?: number;
@@ -822,7 +882,7 @@ function createService(
   } = {},
 ) {
   const capabilityPort: WorkflowCapabilityPort = {
-    execute: async (_definition, request) => executeAction(request),
+    execute: async (_definition, request) => executeCapability(request),
   };
   return new WorkflowRuntimeService(createControlReader(options.spec), runtime, capabilityPort, {
     capabilityMaxRetryDelayMs: 60_000,
@@ -852,7 +912,24 @@ const TEST_MESSAGE_CAPABILITY_BINDING: WorkflowCapabilityExecutionBinding = {
   nodeKind: "message",
 };
 
-async function startAction(
+function testCapabilityBinding(
+  capabilityKind: "inference" | "query",
+  nodeKind: "llm" | "message-query",
+): WorkflowCapabilityExecutionBinding {
+  return {
+    createCommand: () => ({}),
+    definition: {
+      capabilityKey: `operation.test.${capabilityKind}`,
+      commandSchema: Type.Record(Type.String(), Type.Unknown()),
+      contractVersion: 1,
+      kind: capabilityKind,
+      resultSchema: Type.Record(Type.String(), Type.Unknown()),
+    },
+    nodeKind,
+  };
+}
+
+async function startCapability(
   service: WorkflowRuntimeService,
   trigger: Record<string, unknown> = {},
 ) {
@@ -872,7 +949,9 @@ async function startAction(
     uid: 9,
     workerId: "worker-1",
   });
-  if (!("nextTask" in advanced) || !advanced.nextTask) throw new Error("action task was not created");
+  if (!("nextTask" in advanced) || !advanced.nextTask) {
+    throw new Error("capability task was not created");
+  }
   return advanced.nextTask;
 }
 
@@ -949,6 +1028,44 @@ function actionSpec(): WorkflowExecutionSpec {
         config: {},
         id: "message",
         kind: "message",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: {},
+        id: "end",
+        kind: "end",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+    ],
+    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
+    revision: 1,
+    schemaVersion: 2,
+    terminalNodeId: "end",
+    workflowId: "31",
+  };
+}
+
+function capabilitySpec(nodeKind: "llm" | "message-query"): WorkflowExecutionSpec {
+  return {
+    edges: [
+      { id: "start-capability", source: "start", sourceOutletId: "default", target: "capability" },
+      { id: "capability-end", source: "capability", sourceOutletId: "default", target: "end" },
+    ],
+    entryNodeId: "start",
+    nodes: [
+      {
+        config: startConfig(),
+        id: "start",
+        kind: "start",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
+      },
+      {
+        config: {},
+        id: "capability",
+        kind: nodeKind,
         nodeSchemaVersion: 1,
         requiredCapabilities: [],
       },

@@ -7,6 +7,7 @@ Manual database changes for the backend should be recorded here.
 - Added the structured Trigger Binding Match table used by Java Interest Reader and Node final matching.
 - Added the source-oriented Trigger Binding index for `uid + event_type` candidate lookup.
 - Replaced the development-only generic Wait Event `account_id` with the explicit ChatAI `seat_id`; there is no production Workflow data requiring dual-column compatibility.
+- Renamed the development-only Node Execution ledger key to `execution_key`; the ledger identity is not an external Action idempotency contract.
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_trigger_binding
@@ -28,6 +29,11 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding_match (
 
 ALTER TABLE xy_wap_embed_workflow_event_subscription
   CHANGE COLUMN account_id seat_id BIGINT UNSIGNED NULL COMMENT '可选ChatAI席位约束';
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  DROP KEY uk_workflow_node_execution_idempotency,
+  CHANGE COLUMN idempotency_key execution_key VARCHAR(512) NOT NULL COMMENT '稳定节点执行键',
+  ADD UNIQUE KEY uk_workflow_node_execution_key (uid, execution_key);
 ```
 
 ## 2026-08-10
@@ -167,13 +173,13 @@ ALTER TABLE xy_wap_embed_workflow_outbox
   ADD KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id);
 ```
 
-- Added the Workflow Action failure classification used by the durable retry ledger.
+- Added the Workflow Capability failure classification used by the durable retry ledger.
 
-Action reliability migration:
+Capability reliability migration:
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_node_execution
-  ADD COLUMN failure_kind VARCHAR(32) NULL COMMENT 'Action失败分类：retryable/unknown/terminal' AFTER error_message;
+  ADD COLUMN failure_kind VARCHAR(32) NULL COMMENT 'Capability失败分类：retryable/unknown/terminal' AFTER error_message;
 ```
 
 - Added the active Task status/index cursor used by bounded Run/Task consistency reconciliation.

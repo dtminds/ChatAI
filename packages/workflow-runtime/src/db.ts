@@ -128,7 +128,7 @@ export interface WorkflowNodeExecutionTable {
   error_message: string | null;
   failure_kind: string | null;
   id: Generated<DatabaseId>;
-  idempotency_key: string;
+  execution_key: string;
   input_snapshot_json: JsonText | null;
   node_id: string;
   node_kind: string;

@@ -102,7 +102,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     pulsarNamespace!,
   );
   const capabilityTimeoutMs = parseDurationMs(
-    preferredEnvValue(env, "WORKFLOW_CAPABILITY_TIMEOUT_MS", "WORKFLOW_ACTION_TIMEOUT_MS"),
+    env.WORKFLOW_CAPABILITY_TIMEOUT_MS,
     15_000,
     "WORKFLOW_CAPABILITY_TIMEOUT_MS",
   );
@@ -134,16 +134,12 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
     runtime: {
       capabilityMaxRetryDelayMs: parseDurationMs(
-        preferredEnvValue(
-          env,
-          "WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS",
-          "WORKFLOW_ACTION_MAX_RETRY_DELAY_MS",
-        ),
+        env.WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS,
         300_000,
         "WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS",
       ),
       capabilityRetryDelayMs: parseDurationMs(
-        preferredEnvValue(env, "WORKFLOW_CAPABILITY_RETRY_DELAY_MS", "WORKFLOW_ACTION_RETRY_DELAY_MS"),
+        env.WORKFLOW_CAPABILITY_RETRY_DELAY_MS,
         5_000,
         "WORKFLOW_CAPABILITY_RETRY_DELAY_MS",
       ),
@@ -294,8 +290,4 @@ function requireValue(env: NodeJS.ProcessEnv, name: string) {
 function optionalValue(value: string | undefined) {
   const normalized = value?.trim();
   return normalized || null;
-}
-
-function preferredEnvValue(env: NodeJS.ProcessEnv, name: string, legacyName: string) {
-  return optionalValue(env[name]) ?? optionalValue(env[legacyName]) ?? undefined;
 }

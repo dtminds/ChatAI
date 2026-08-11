@@ -48,7 +48,7 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 | `inference` | 通过 Capability Port 执行非确定性的模型推理 | 不发送额外调用键，使用执行元数据关联调用 | `llm`、`ai-intent` |
 | `composite` | 由多个阶段、等待或回调组成，需要独立的持久化子状态 | 由未来 Composite Runner 按阶段生成 | `ai-collect` |
 
-`action`、`query`、`inference` 统称 Capability 节点，共用 `workflow_node_execution` 生命周期、deadline、输出上限、错误分类和 Retry 框架。物理表及历史列名保持兼容；例如 `idempotency_key` 当前承载 Runtime 内部稳定的 Node Execution Key，不代表 Query 或 Inference 对下游提供幂等承诺。
+`action`、`query`、`inference` 统称 Capability 节点，共用 `workflow_node_execution` 生命周期、deadline、输出上限、错误分类和 Retry 框架。账本使用 `execution_key` 保存 Runtime 内部稳定的 Node Execution Key；它不代表 Query 或 Inference 对下游提供幂等承诺。
 
 Capability Binding 注册时必须与共享注册表中的执行类别一致。`core` 和 `composite` 不允许注册为 Capability Binding。`ai-collect` 本期继续保持 `placeholder`，不得把多阶段采集过程伪装成一次 Action 或 Inference 调用。
 

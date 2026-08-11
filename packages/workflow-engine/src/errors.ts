@@ -59,6 +59,3 @@ export class WorkflowCapabilityExecutionError extends Error {
     this.diagnosticMessage = options.diagnosticMessage ?? safeMessage;
   }
 }
-
-export type WorkflowActionFailureKind = WorkflowCapabilityFailureKind;
-export { WorkflowCapabilityExecutionError as WorkflowActionExecutionError };

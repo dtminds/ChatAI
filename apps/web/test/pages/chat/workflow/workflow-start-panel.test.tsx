@@ -36,12 +36,10 @@ describe("StartConfig", () => {
       />,
     );
 
-    expect(screen.getByText("席位")).toBeInTheDocument();
-    expect(screen.getByText("暂无可用席位")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "席位" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "触发条件" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "添加好友" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeInTheDocument();
-    expect(screen.getByText("暂无可用标签")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "用户发送消息" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "消息包含关键词" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入限制" })).toBeInTheDocument();

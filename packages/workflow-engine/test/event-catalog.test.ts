@@ -45,6 +45,22 @@ describe("workflow event catalog", () => {
     });
   });
 
+  it("retains optional message text in the controlled Trigger Projection", () => {
+    const result = WORKFLOW_EVENT_CATALOG.project(readEvent(
+      "entry/v1/valid/message-received.json",
+    ));
+
+    expect(result).toMatchObject({
+      kind: "accepted",
+      projection: {
+        variables: {
+          messageId: 938271,
+          text: "我想了解一下活动详情",
+        },
+      },
+    });
+  });
+
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "catalog"))(
     "$fixtureId follows the shared fixture result",
     (fixture) => {
@@ -147,7 +163,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     payload: { accountId: "account-a", change: "name" },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "engine-test",
+    source: "chatai",
     uid: 9,
     ...overrides,
   };

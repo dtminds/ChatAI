@@ -109,6 +109,13 @@ describe("workflow entry event envelope", () => {
       workflowId: "31",
     })).toMatchObject({ code: "envelope_invalid", kind: "rejected" });
   });
+
+  it("rejects Entry Event sources outside the frozen producer set", () => {
+    expect(validateWorkflowEntryEvent({
+      ...event(),
+      source: "workflow-test",
+    })).toMatchObject({ code: "envelope_invalid", kind: "rejected" });
+  });
 });
 
 function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {

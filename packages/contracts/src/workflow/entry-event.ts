@@ -57,8 +57,14 @@ export const WorkflowMessageReceivedPayloadSchema = Type.Object({
   externalUserId: Type.Optional(WorkflowExternalUserIdSchema),
   messageId: WorkflowPositiveSafeIntegerSchema,
   ...WorkflowChatAiContactIdentitySchema,
+  text: Type.Optional(Type.String()),
   workUserId: WorkflowPositiveSafeIntegerSchema,
 }, { additionalProperties: false });
+
+export const WorkflowEntryEventSourceSchema = Type.Union([
+  Type.Literal("wecom"),
+  Type.Literal("chatai"),
+]);
 
 export const WorkflowEntryEventNameSchema = Type.String({
   maxLength: 128,
@@ -75,13 +81,14 @@ export const WorkflowEntryEventSchema = Type.Object({
   payload: WorkflowJsonObjectSchema,
   payloadVersion: Type.Integer({ maximum: 65_535, minimum: 1 }),
   schemaVersion: Type.Literal(WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION),
-  source: Type.String({ maxLength: 64, minLength: 1 }),
+  source: WorkflowEntryEventSourceSchema,
   uid: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
 }, { additionalProperties: false });
 
 export type WorkflowJsonValue = Static<typeof WorkflowJsonValueSchema>;
 export type WorkflowJsonObject = Static<typeof WorkflowJsonObjectSchema>;
 export type WorkflowEntryEvent = Static<typeof WorkflowEntryEventSchema>;
+export type WorkflowEntryEventSource = Static<typeof WorkflowEntryEventSourceSchema>;
 export type WorkflowContactFriendAddedPayload = Static<
   typeof WorkflowContactFriendAddedPayloadSchema
 >;

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { WorkflowEntryEvent } from "@chatai/contracts";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -13,6 +14,10 @@ import { createFakeWorkflowEventCatalog } from "./support/fake-workflow-event-ca
 import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 
 const eventCatalog = createFakeWorkflowEventCatalog();
+const workflowFixtureRoot = new URL(
+  "../../../packages/contracts/test/fixtures/workflow/",
+  import.meta.url,
+);
 
 describe("workflow entry consumer", () => {
   it("fans one event out to every matching active workflow and ACKs after admission", async () => {
@@ -54,11 +59,39 @@ describe("workflow entry consumer", () => {
           thirdExternalUserId: "chatai_external_456",
           workUserId: 201,
         },
-        source: "worker-test",
+        source: "wecom",
       },
     }));
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
+  });
+
+  it("does not start a ChatAI Run when a matching WeCom event has no ChatAI identity", async () => {
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const message = createBrokerMessage(readSharedEntryFixture(
+      "entry/v1/valid/contact-friend-added.json",
+    ));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [
+          binding("31"),
+          binding("32", [201], "wecom_contact"),
+        ]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
+
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(startRun).toHaveBeenCalledWith(expect.objectContaining({
+      subjectId: "wecom-contact-1",
+      subjectType: "wecom_contact",
+      workflowId: "32",
+    }));
   });
 
   it("fans one message event out to both Start bindings and Wait Event subscriptions", async () => {
@@ -101,6 +134,7 @@ describe("workflow entry consumer", () => {
       "chatai_contact",
       "message.received",
       "chatai_external_456",
+      101,
       new Date("2026-08-10T00:00:04.000Z"),
       new Date("2026-08-10T00:00:05.000Z"),
     );
@@ -425,6 +459,10 @@ function createInboxRepository(
   };
 }
 
+function readSharedEntryFixture(path: string): WorkflowEntryEvent {
+  return JSON.parse(readFileSync(new URL(path, workflowFixtureRoot), "utf8")) as WorkflowEntryEvent;
+}
+
 function createSubscriptionReader(subscriptions: WorkflowEventSubscriptionRecord[] = []) {
   return {
     listMatchingEventSubscriptions: vi.fn(async () => subscriptions),
@@ -444,7 +482,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "worker-test",
+    source: "wecom",
     uid: 9,
     ...overrides,
   };
@@ -507,6 +545,7 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
     },
+    source: "chatai",
     ...overrides,
   });
 }

@@ -92,6 +92,7 @@ type WeComWorkflowStartConfig = {
 - 删除通用 `accountIds`。
 - 配置 Schema 必须由 Workflow Type 判别，不能允许 WeCom SOP 写入 `seatIds`。
 - ChatAI SOP 的 `message.received` 编译为 `seatId` Match。
+- `message.received` Start Trigger v1 只支持 `{ match: "any" }`；关键词匹配不在本期能力范围内。
 - ChatAI SOP 的企微事件把 `seatId` 权威解析为 `workUserId` 后编译 Match。
 - WeCom SOP 的企微事件直接编译 `workUserId` Match。
 - `contact.tag_added` 额外编译 `tagId` Match。
@@ -281,6 +282,7 @@ PR 2、PR 3 和 Java 工作可以在 PR 1 合并后并行，不要求继续全�
 - 不为旧单 Subject Entry Event 写迁移或双读兼容。
 - 不在本轮开放 `member_sop`。
 - 不在 Interest Reader 中实现消息关键词、文本或任意表达式匹配。
+- 不在本期 Start Trigger 中提供关键词匹配；未来恢复时同步扩展 Entry Event 文本、Binding Filter 与 Node 最终匹配。
 - 不添加 Java 本地负缓存。
 
 ## 9. 合并前验收

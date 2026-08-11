@@ -5,6 +5,6 @@
   "eventType": "test.unknown",
   "uid": 9,
   "occurredAt": "2026-08-09T10:30:15.123Z",
-  "source": "contract-fixture",
+  "source": "wecom",
   "payload": {}
 }

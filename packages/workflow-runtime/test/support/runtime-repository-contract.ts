@@ -100,6 +100,7 @@ export function runWorkflowRuntimeRepositoryContract(
       "chatai_contact",
       "message.received",
       "customer-1",
+      null,
       OUTBOX_READY_AT,
       OUTBOX_READY_AT,
     )).resolves.toEqual([
@@ -117,6 +118,7 @@ export function runWorkflowRuntimeRepositoryContract(
       "wecom_contact",
       "message.received",
       "customer-1",
+      null,
       OUTBOX_READY_AT,
       OUTBOX_READY_AT,
     )).resolves.toEqual([]);
@@ -130,6 +132,31 @@ export function runWorkflowRuntimeRepositoryContract(
       nextExecuteAt: EVENT_WAIT_EXPIRES_AT,
       status: "waiting",
     });
+  });
+
+  it("filters seat-specific Wait Event subscriptions before admission", async () => {
+    const waiting = await createEventWait(harness.repository, 101);
+
+    await expect(harness.repository.listMatchingEventSubscriptions(
+      9,
+      "chatai_contact",
+      "message.received",
+      "customer-1",
+      202,
+      OUTBOX_READY_AT,
+      OUTBOX_READY_AT,
+    )).resolves.toEqual([]);
+    await expect(harness.repository.listMatchingEventSubscriptions(
+      9,
+      "chatai_contact",
+      "message.received",
+      "customer-1",
+      101,
+      OUTBOX_READY_AT,
+      OUTBOX_READY_AT,
+    )).resolves.toEqual([
+      expect.objectContaining({ id: waiting.subscription.id, seatId: 101 }),
+    ]);
   });
 
   it("rejects beginning a Wait Event when the Workflow boundary is unavailable", async () => {
@@ -523,7 +550,10 @@ export function createRunInput(
   };
 }
 
-async function createEventWait(repository: WorkflowRuntimeRepository) {
+async function createEventWait(
+  repository: WorkflowRuntimeRepository,
+  seatId: number | null = null,
+) {
   const created = requireCreatedRun(await repository.createRunWithInitialTask(createRunInput({
     initialNodeId: "wait-event-1",
     initialNodeKind: "wait-event",
@@ -549,7 +579,7 @@ async function createEventWait(repository: WorkflowRuntimeRepository) {
     },
     now: OUTBOX_READY_AT,
     runId: created.run.id,
-    seatId: null,
+    seatId,
     taskId: created.task.id,
     uid: 9,
   });

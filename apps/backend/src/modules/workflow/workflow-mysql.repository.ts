@@ -418,13 +418,37 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   }
 }
 
-function createTriggerBindingMatches(filter: WorkflowTriggerBindingFilter) {
+const WORKFLOW_TRIGGER_BINDING_MATCH_KIND = {
+  seatId: 2,
+  tagId: 3,
+  workUserId: 1,
+} as const;
+
+type WorkflowTriggerBindingMatch = {
+  kind: typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND[
+    keyof typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND
+  ];
+  value: number;
+};
+
+function createTriggerBindingMatches(
+  filter: WorkflowTriggerBindingFilter,
+): WorkflowTriggerBindingMatch[] {
   if (filter.eventType === "message.received") {
-    return filter.seatIds.map(value => ({ kind: 2, value }));
+    return filter.seatIds.map(value => ({
+      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.seatId,
+      value,
+    }));
   }
-  const matches = filter.workUserIds.map(value => ({ kind: 1, value }));
+  const matches: WorkflowTriggerBindingMatch[] = filter.workUserIds.map(value => ({
+    kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.workUserId,
+    value,
+  }));
   if (filter.eventType === "contact.tag_added") {
-    matches.push(...filter.tagIds.map(value => ({ kind: 3, value })));
+    matches.push(...filter.tagIds.map(value => ({
+      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.tagId,
+      value,
+    })));
   }
   return matches;
 }

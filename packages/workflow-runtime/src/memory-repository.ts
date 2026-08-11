@@ -223,6 +223,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     subjectType: WorkflowEventSubscriptionRecord["subjectType"],
     eventType: WorkflowEventSubscriptionRecord["eventType"],
     subjectId: string,
+    seatId: number | null,
     eventOccurredAt: Date,
     observedAt: Date,
   ) {
@@ -232,6 +233,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || subscription.subjectType !== subjectType
         || subscription.eventType !== eventType
         || subscription.subjectId !== subjectId
+        || (subscription.seatId !== null && subscription.seatId !== seatId)
         || (subscription.status === "waiting"
           ? eventOccurredAt < subscription.effectiveFrom
             || eventOccurredAt >= subscription.expiresAt

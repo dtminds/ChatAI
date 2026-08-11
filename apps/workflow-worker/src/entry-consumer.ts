@@ -132,6 +132,7 @@ export function createEntryConsumerHandler(input: {
             subject.subjectType,
             entryEventType,
             subject.subjectId,
+            subject.seatId,
             new Date(parsed.event.occurredAt),
             observedAt,
           ))).then(results => results.flat()),
@@ -297,15 +298,21 @@ async function admitWorkflow(
 }
 
 function listProjectedSubjects(projection: WorkflowTriggerProjection) {
-  const subjects: Array<{ subjectId: string; subjectType: WorkflowSubjectType }> = [];
+  const subjects: Array<{
+    seatId: number | null;
+    subjectId: string;
+    subjectType: WorkflowSubjectType;
+  }> = [];
   if (projection.subjects.chatai_contact) {
     subjects.push({
+      seatId: projection.subjects.chatai_contact.seatId,
       subjectId: projection.subjects.chatai_contact.subjectId,
       subjectType: "chatai_contact",
     });
   }
   if (projection.subjects.wecom_contact) {
     subjects.push({
+      seatId: null,
       subjectId: projection.subjects.wecom_contact.subjectId,
       subjectType: "wecom_contact",
     });

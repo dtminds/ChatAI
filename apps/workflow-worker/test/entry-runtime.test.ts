@@ -138,7 +138,7 @@ function event(): WorkflowEntryEvent {
     },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "worker-test",
+    source: "wecom",
     uid: 9,
   };
 }

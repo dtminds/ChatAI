@@ -104,6 +104,7 @@ export type WorkflowEventSubscriptionReader = {
     subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
     subjectId: string,
+    seatId: number | null,
     eventOccurredAt: Date,
     observedAt: Date,
   ): Promise<WorkflowEventSubscriptionRecord[]>;

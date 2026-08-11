@@ -38,12 +38,14 @@ describe("Wait Event Entry runtime composition", () => {
       eventId: "message-event-1",
       messageId: 101,
       occurredAt: "2026-08-10T00:00:04.000Z",
+      text: "第一条消息",
     }));
     harness.setNow(new Date("2026-08-10T00:00:09.000Z"));
     await publishEntry(harness.broker, messageEvent({
       eventId: "message-event-2",
       messageId: 102,
       occurredAt: "2026-08-10T00:00:08.000Z",
+      text: "第二条消息",
     }));
 
     const collectUntil = new Date("2026-08-10T00:00:15.000Z");
@@ -65,6 +67,7 @@ describe("Wait Event Entry runtime composition", () => {
             lastMessageAt: "2026-08-10T00:00:08.000Z",
             messageCount: 2,
             messageIds: [101, 102],
+            textContent: "第一条消息\n第二条消息",
           },
         },
       },
@@ -213,6 +216,7 @@ function messageEvent(input: {
   eventId: string;
   messageId: number;
   occurredAt: string;
+  text: string;
 }): WorkflowEntryEvent {
   return {
     eventId: input.eventId,
@@ -223,11 +227,12 @@ function messageEvent(input: {
       messageId: input.messageId,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
+      text: input.text,
       workUserId: 201,
     },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "worker-test",
+    source: "chatai",
     uid: 9,
   };
 }

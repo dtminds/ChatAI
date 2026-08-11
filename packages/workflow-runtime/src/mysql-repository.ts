@@ -514,10 +514,11 @@ export class MysqlWorkflowRuntimeRepository implements
     subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
     subjectId: string,
+    seatId: number | null,
     eventOccurredAt: Date,
     observedAt: Date,
   ) {
-    const rows = await this.db.selectFrom(`${EVENT_SUBSCRIPTION_TABLE} as subscription`)
+    let query = this.db.selectFrom(`${EVENT_SUBSCRIPTION_TABLE} as subscription`)
       .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
         .onRef("definition.uid", "=", "subscription.uid")
         .onRef("definition.id", "=", "subscription.workflow_id"))
@@ -539,8 +540,14 @@ export class MysqlWorkflowRuntimeRepository implements
       ]))
       .where("definition.biz_status", "=", 1)
       .where("definition.runtime_status", "in", ["active", "paused"])
-      .orderBy("subscription.id", "asc")
-      .execute();
+      .orderBy("subscription.id", "asc");
+    query = seatId === null
+      ? query.where("subscription.seat_id", "is", null)
+      : query.where(eb => eb.or([
+          eb("subscription.seat_id", "is", null),
+          eb("subscription.seat_id", "=", seatId),
+        ]));
+    const rows = await query.execute();
     return rows.map(mapEventSubscription);
   }
 

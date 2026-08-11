@@ -192,7 +192,8 @@ Java Interest Reader 必须同时匹配 `workUserId + tagId`。
     "workUserId": 201,
     "thirdExternalUserId": "chatai_external_456",
     "externalUserId": "wm_external_123",
-    "messageId": 938271
+    "messageId": 938271,
+    "text": "我想了解一下活动详情"
   }
 }
 ```
@@ -206,7 +207,7 @@ thirdExternalUserId
 messageId
 ```
 
-`externalUserId` 可选。消息正文、附件和消息类型不属于 Interest Reader 契约，后续由 `message.received@1` Event Catalog 单独冻结。
+`externalUserId`、`text` 可选。文本消息必须提供归一化后的 `text`，非文本消息可以省略；`text` 只供 Node 的 Trigger Projection 和 Wait Event 输出使用，Interest Reader 不读取或匹配该字段。附件和消息类型不属于 v1 Entry Event 契约，下游多模态节点通过 `messageId` 读取原始消息。
 
 ## 4. Node 向 Java 提供的只读数据契约
 
@@ -433,7 +434,7 @@ WHERE binding.uid = :uid
 LIMIT 1;
 ```
 
-关键词和消息正文规则不进入 Interest Reader。Node 收到事件后执行最终匹配。
+v1 的新消息 Start Trigger 只支持“任意新消息”，Node 最终匹配仅校验 `seatId`。本期不提供关键词匹配；未来恢复时必须同时扩展 Start Trigger、Binding Filter 和基于 `text` 的 Node 最终匹配，Interest Reader 仍不读取消息正文。
 
 ### 5.5 收到消息的动态 Wait Event
 

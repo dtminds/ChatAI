@@ -115,6 +115,48 @@
       "path": "trigger-projection/v1/near-limit.json",
       "stage": "projection",
       "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-command-action",
+      "kind": "capability-command",
+      "path": "capability/v1/command/action.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-command-query",
+      "kind": "capability-command",
+      "path": "capability/v1/command/query.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-result-success",
+      "kind": "capability-result",
+      "path": "capability/v1/result/success.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-retryable",
+      "kind": "capability-error",
+      "path": "capability/v1/error/retryable.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-terminal",
+      "kind": "capability-error",
+      "path": "capability/v1/error/terminal.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-unknown",
+      "kind": "capability-error",
+      "path": "capability/v1/error/unknown.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
     }
   ]
 }

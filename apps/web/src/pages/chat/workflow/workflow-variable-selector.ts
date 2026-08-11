@@ -12,7 +12,8 @@ export function getWorkflowVariableDisplayLabel(variable: WorkflowVariableDefini
     return variable.label;
   }
 
-  return variable.scope === "node" && variable.sourceNodeTitle
+  return (variable.scope === "node" || variable.scope === "node-lifecycle")
+    && variable.sourceNodeTitle
     ? `${variable.sourceNodeTitle}.${variable.label}`
     : variable.label;
 }

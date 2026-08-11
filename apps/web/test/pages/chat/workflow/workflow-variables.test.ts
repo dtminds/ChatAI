@@ -7,6 +7,7 @@ import {
 } from "@/pages/chat/workflow/graph";
 import {
   getAvailableLlmInputVariablesForNode,
+  getAvailableBranchVariablesForNode,
   getAvailableMessageContentOutputsForNode,
   getAvailableIntentInputOutputsForNode,
   getAvailableVariablesForNode,
@@ -116,6 +117,33 @@ describe("workflow variables", () => {
       { selector: ["subject", "id"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
     ], variables)).toEqual([["node", "missing", "result"]]);
+  });
+
+  it("exposes current and guaranteed predecessor lifecycle variables only to Branch", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const branchVariables = getAvailableBranchVariablesForNode("branch-intent", nodes, edges);
+
+    expect(branchVariables).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        selector: ["current-node-lifecycle", "enteredAt"],
+        type: "datetime",
+      }),
+      expect.objectContaining({
+        selector: ["node-lifecycle", "wait-2d", "enteredAt"],
+        sourceNodeTitle: "观察期",
+      }),
+      expect.objectContaining({
+        selector: ["node-lifecycle", "wait-2d", "exitedAt"],
+        sourceNodeTitle: "观察期",
+      }),
+    ]));
+    expect(branchVariables).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["node-lifecycle", "message-welcome", "enteredAt"] }),
+    ]));
+    expect(getAvailableVariablesForNode("branch-intent", nodes, edges)).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["current-node-lifecycle", "enteredAt"] }),
+    ]));
   });
 
   it("scopes declared node outputs by stable node id and output key", () => {

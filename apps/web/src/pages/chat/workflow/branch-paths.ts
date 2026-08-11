@@ -423,6 +423,18 @@ function resolveContextVariableType(
   selector: WorkflowBranchCondition["selector"],
 ): Exclude<WorkflowVariableValueType, "object"> | undefined {
   if (!selector) return undefined;
+  const [scope, key, field, ...rest] = selector;
+  if (scope === "current-node-lifecycle" && key === "enteredAt" && !field && !rest.length) {
+    return "datetime";
+  }
+  if (
+    scope === "node-lifecycle"
+    && Boolean(key)
+    && (field === "enteredAt" || field === "exitedAt")
+    && !rest.length
+  ) {
+    return "datetime";
+  }
   const selectorKey = getWorkflowVariableSelectorKey(selector);
   const type = workflowContextVariables.find((variable) =>
     getWorkflowVariableSelectorKey(variable.selector) === selectorKey)?.type;

@@ -64,7 +64,13 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchPaths: WorkflowBranchPath[];
 };
 
-export type WorkflowVariableScope = "input" | "node" | "subject" | "trigger";
+export type WorkflowVariableScope =
+  | "current-node-lifecycle"
+  | "input"
+  | "node"
+  | "node-lifecycle"
+  | "subject"
+  | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";

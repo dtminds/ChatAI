@@ -1,4 +1,11 @@
-import type { WorkflowDraft } from "@chatai/contracts";
+import type {
+  WorkflowBranchCondition,
+  WorkflowBranchConditionValue,
+  WorkflowBranchLogic,
+  WorkflowBranchPath,
+  WorkflowBranchValueType,
+  WorkflowDraft,
+} from "@chatai/contracts";
 import {
   compileWorkflowDraft,
   createWorkflowDeploymentCapabilities,
@@ -14,6 +21,71 @@ const entryCapability = {
   capabilityKey: "event.contact.friend_added",
   contractVersion: 1,
 } as const;
+
+const branchOperatorCases: Array<{
+  condition: WorkflowBranchCondition;
+  label: string;
+  triggerValue: unknown;
+}> = [
+  branchCase("equals-string", "equals", "string", "vip", "vip"),
+  branchCase("not-equals", "not-equals", "string", "vip", "other"),
+  branchCase("contains", "contains", "string", "tag", "contact.tag_added"),
+  branchCase("not-contains", "not-contains", "string", "tag", "contact.friend_added"),
+  branchCase("starts-with", "starts-with", "string", "contact", "contact.tag_added"),
+  branchCase("ends-with", "ends-with", "string", "added", "contact.tag_added"),
+  branchCase("greater-than", "greater-than", "number", 8, 9),
+  branchCase("greater-than-or-equal", "greater-than-or-equal", "number", 8, 8),
+  branchCase("less-than", "less-than", "number", 8, 7),
+  branchCase("less-than-or-equal", "less-than-or-equal", "number", 8, 8),
+  branchCase("is-true", "is-true", "boolean", undefined, true),
+  branchCase("is-false", "is-false", "boolean", undefined, false),
+  branchCase("is-empty-string", "is-empty", "string", undefined, ""),
+  branchCase("is-not-empty-string", "is-not-empty", "string", undefined, "configured"),
+  branchCase("is-empty-message-list", "is-empty", "message-id-list", undefined, []),
+  branchCase("is-not-empty-message-list", "is-not-empty", "message-id-list", undefined, [101]),
+  branchCase(
+    "datetime-before",
+    "datetime-before",
+    "datetime",
+    "2026-08-10T10:00",
+    "2026-08-10T09:00:00+08:00",
+  ),
+  branchCase(
+    "datetime-before-or-equal",
+    "datetime-before-or-equal",
+    "datetime",
+    "2026-08-10T10:00",
+    "2026-08-10T02:00:00.000Z",
+  ),
+  branchCase(
+    "datetime-after",
+    "datetime-after",
+    "datetime",
+    "2026-08-10T10:00",
+    "2026-08-10T11:00:00+08:00",
+  ),
+  branchCase(
+    "datetime-after-or-equal",
+    "datetime-after-or-equal",
+    "datetime",
+    "2026-08-10T10:00",
+    "2026-08-10T10:00:00+08:00",
+  ),
+  branchCase(
+    "datetime-equals",
+    "equals",
+    "datetime",
+    "2026-08-10T10:00",
+    "2026-08-10T02:00:00.000Z",
+  ),
+  branchCase(
+    "datetime-between",
+    "datetime-between",
+    "datetime",
+    ["2026-08-10T10:00", "2026-08-10T11:00"],
+    "2026-08-10T10:30:00+08:00",
+  ),
+];
 
 describe("Branch runtime", () => {
   it("routes from compiled selectors after lease recovery and keeps Branch routing-only", async () => {
@@ -72,7 +144,127 @@ describe("Branch runtime", () => {
     });
     expect(run?.context).not.toHaveProperty("branchMatches");
   });
+
+  it.each(branchOperatorCases)(
+    "routes a real compiled Draft through Runtime for $label",
+    async ({ condition, triggerValue }) => {
+      await expect(executeBranch(branchDraft([branchPath(condition)]), { value: triggerValue }))
+        .resolves.toBe("matched");
+    },
+  );
+
+  it.each(["all", "any"] as const)(
+    "evaluates the %s relation in Runtime",
+    async (logic) => {
+      const conditions: WorkflowBranchCondition[] = [
+        conditionFor("first", "equals", "string", "yes"),
+        conditionFor("second", "equals", "string", "yes"),
+      ];
+      const trigger = logic === "all"
+        ? { first: "yes", second: "yes" }
+        : { first: "yes", second: "no" };
+
+      await expect(executeBranch(branchDraft([branchPath(conditions, logic)]), trigger))
+        .resolves.toBe("matched");
+    },
+  );
+
+  it("routes an unavailable selector to the compiled default path", async () => {
+    await expect(executeBranch(branchDraft([branchPath({
+      id: "missing-selector",
+      operator: "equals",
+      selector: ["node", "missing", "value"],
+      value: "present",
+      valueType: "string",
+    })]), {})).resolves.toBe("fallback");
+  });
 });
+
+function branchCase(
+  label: string,
+  operator: WorkflowBranchCondition["operator"],
+  valueType: WorkflowBranchValueType,
+  value: WorkflowBranchConditionValue | undefined,
+  triggerValue: unknown,
+) {
+  return {
+    condition: {
+      id: `condition-${label}`,
+      operator,
+      selector: ["trigger", "value"],
+      ...(value === undefined ? {} : { value }),
+      valueType,
+    },
+    label,
+    triggerValue,
+  };
+}
+
+function branchPath(
+  conditions: WorkflowBranchCondition | WorkflowBranchCondition[],
+  logic: WorkflowBranchLogic = "all",
+): WorkflowBranchPath {
+  return {
+    conditions: Array.isArray(conditions) ? conditions : [conditions],
+    id: "matched",
+    label: "如果",
+    logic,
+  };
+}
+
+function conditionFor(
+  key: string,
+  operator: WorkflowBranchCondition["operator"],
+  valueType: WorkflowBranchValueType,
+  value: WorkflowBranchConditionValue,
+): WorkflowBranchCondition {
+  return {
+    id: `condition-${key}`,
+    operator,
+    selector: ["trigger", key],
+    value,
+    valueType,
+  };
+}
+
+async function executeBranch(
+  draft: WorkflowDraft,
+  trigger: Record<string, unknown>,
+) {
+  const spec = compileWorkflowDraft({
+    draft,
+    revision: 1,
+    workflowId: "31",
+    workflowType: "chatai_sop",
+  });
+  const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => enteredAt);
+  const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
+    clock: () => enteredAt,
+    deploymentCapabilities: createWorkflowDeploymentCapabilities([entryCapability]),
+    entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+  });
+  const started = await service.startRun({
+    entryEventId: "event-1",
+    expectedRevision: 1,
+    subjectId: "contact-1",
+    subjectType: "chatai_contact",
+    trigger: {
+      eventType: "contact.friend_added",
+      occurredAt: enteredAt.toISOString(),
+      ...trigger,
+    },
+    uid: 9,
+    workflowId: "31",
+  });
+
+  const startResult = await service.executeTask(taskInput(started.task));
+  if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Wait task missing");
+  const waitResult = await service.executeTask(taskInput(startResult.nextTask));
+  if (!("nextTask" in waitResult) || !waitResult.nextTask) throw new Error("Branch task missing");
+  const branchResult = await service.executeTask(taskInput(waitResult.nextTask));
+  if (!("nextTask" in branchResult)) throw new Error("Branch result missing");
+  return branchResult.nextTask?.nodeId ?? null;
+}
 
 function control(spec: ReturnType<typeof compileWorkflowDraft>) {
   return {
@@ -103,7 +295,15 @@ function taskInput(task: { id: string; taskVersion: number }, now = enteredAt) {
   };
 }
 
-function branchDraft(): WorkflowDraft {
+function branchDraft(
+  conditionalPaths: WorkflowBranchPath[] = [branchPath({
+    id: "condition-1",
+    operator: "equals",
+    selector: ["node-lifecycle", "wait", "exitedAt"],
+    value: "2026-08-10T08:01",
+    valueType: "datetime",
+  })],
+): WorkflowDraft {
   return {
     edges: [
       { id: "start-wait", source: "start", target: "wait" },
@@ -122,18 +322,7 @@ function branchDraft(): WorkflowDraft {
       node("wait", "wait", { duration: 1, mode: "duration", unit: "minute" }),
       node("branch", "branch", {
         branchPaths: [
-          {
-            conditions: [{
-              id: "condition-1",
-              operator: "equals",
-              selector: ["node", "wait", "dueAt"],
-              value: "2026-08-10T08:01",
-              valueType: "datetime",
-            }],
-            id: "matched",
-            label: "如果",
-            logic: "all",
-          },
+          ...conditionalPaths,
           { conditions: [], id: "default", isDefault: true, label: "否则", logic: "all" },
         ],
       }),

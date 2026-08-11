@@ -378,8 +378,14 @@ export function AccountRail({
 
       <div className="my-4 h-px bg-divider" />
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-2 py-1">
+      <ScrollArea
+        className="min-h-0 min-w-0 flex-1"
+        viewportProps={{
+          className:
+            "max-w-full overflow-x-hidden [&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full",
+        }}
+      >
+        <div className="w-full min-w-0 space-y-2 overflow-hidden py-1">
           {accounts.map((account) => {
             const isActive = account.id === activeAccountId;
 

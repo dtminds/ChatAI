@@ -888,12 +888,6 @@ export function AgentSettingsPage() {
           state={invalidResourceDialog}
         />
 
-        {!canManage ? (
-          <p className="rounded-[8px] border border-border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-            当前账号仅可查看 Agent，保存、发布和还原操作需管理员权限
-          </p>
-        ) : null}
-
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-4">
             <AgentSettingsSection title="基本设置">

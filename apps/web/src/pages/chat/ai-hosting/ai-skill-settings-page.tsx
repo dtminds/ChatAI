@@ -790,12 +790,6 @@ export function AiSkillSettingsPage() {
           ) : null}
         </header>
 
-        {!canManage ? (
-          <p className="rounded-[8px] border border-border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-            当前账号仅可查看技能，管理操作需管理员权限
-          </p>
-        ) : null}
-
         {pageLoading ? (
           <div
             className="flex min-h-48 items-center justify-center gap-2 rounded-[14px] border border-border bg-card text-sm text-muted-foreground"

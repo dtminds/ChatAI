@@ -207,7 +207,7 @@ thirdExternalUserId
 messageId
 ```
 
-`externalUserId`、`text` 可选。文本消息必须提供归一化后的 `text`，非文本消息可以省略；`text` 只供 Node 的 Trigger Projection 和 Wait Event 输出使用，Interest Reader 不读取或匹配该字段。附件和消息类型不属于 v1 Entry Event 契约，下游多模态节点通过 `messageId` 读取原始消息。
+`externalUserId`、`text` 可选。文本消息必须提供归一化后的 `text`，最长 1000 字；非文本消息可以省略。`text` 只供 Node 的 Trigger Projection 和 Wait Event 输出使用，Interest Reader 不读取或匹配该字段。附件和消息类型不属于 v1 Entry Event 契约，下游多模态节点通过 `messageId` 读取原始消息。
 
 ## 4. Node 向 Java 提供的只读数据契约
 

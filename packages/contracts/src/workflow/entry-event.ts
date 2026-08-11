@@ -5,6 +5,7 @@ export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
 export const WORKFLOW_ENTRY_PAYLOAD_MAX_BYTES = 32 * 1024;
 export const WORKFLOW_ENTRY_JSON_MAX_DEPTH = 16;
+export const WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH = 1_000;
 
 export const WorkflowJsonValueSchema = Type.Recursive(Self => Type.Union([
   Type.Null(),
@@ -57,7 +58,7 @@ export const WorkflowMessageReceivedPayloadSchema = Type.Object({
   externalUserId: Type.Optional(WorkflowExternalUserIdSchema),
   messageId: WorkflowPositiveSafeIntegerSchema,
   ...WorkflowChatAiContactIdentitySchema,
-  text: Type.Optional(Type.String()),
+  text: Type.Optional(Type.String({ maxLength: WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH })),
   workUserId: WorkflowPositiveSafeIntegerSchema,
 }, { additionalProperties: false });
 

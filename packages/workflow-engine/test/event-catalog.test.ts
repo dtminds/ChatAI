@@ -3,6 +3,7 @@ import {
   getWorkflowJsonDepth,
   getWorkflowJsonEncodedByteLength,
   WORKFLOW_ENTRY_JSON_MAX_DEPTH,
+  WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH,
   validateWorkflowEntryEvent,
   type WorkflowEntryEvent,
 } from "@chatai/contracts";
@@ -59,6 +60,20 @@ describe("workflow event catalog", () => {
         },
       },
     });
+  });
+
+  it("rejects message text beyond the frozen per-message limit", () => {
+    expect(WORKFLOW_EVENT_CATALOG.project(event({
+      eventType: "message.received",
+      payload: {
+        messageId: 938271,
+        seatId: 101,
+        text: "x".repeat(WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH + 1),
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+      },
+      source: "chatai",
+    }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
   });
 
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "catalog"))(

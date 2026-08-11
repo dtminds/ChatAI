@@ -56,6 +56,16 @@ export interface WorkflowTriggerBindingTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowTriggerBindingMatchTable {
+  binding_id: DatabaseId;
+  create_time: GeneratedDate;
+  id: Generated<DatabaseId>;
+  match_kind: number;
+  match_value: DatabaseId;
+  uid: number;
+  update_time: GeneratedDate;
+}
+
 export interface WorkflowRunTable {
   completed_at: NullableDate;
   context_json: JsonText;
@@ -161,7 +171,6 @@ export interface WorkflowInboxTable {
 }
 
 export interface WorkflowEventSubscriptionTable {
-  account_id: string | null;
   collect_until: NullableDate;
   create_time: GeneratedDate;
   effective_from: DatabaseDate;
@@ -171,6 +180,7 @@ export interface WorkflowEventSubscriptionTable {
   node_id: string;
   revision: number;
   run_id: DatabaseId;
+  seat_id: DatabaseId | null;
   status: string;
   subject_id: string;
   subject_type: number;
@@ -239,4 +249,5 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_run: WorkflowRunTable;
   xy_wap_embed_workflow_task: WorkflowTaskTable;
   xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
+  xy_wap_embed_workflow_trigger_binding_match: WorkflowTriggerBindingMatchTable;
 }

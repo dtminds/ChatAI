@@ -190,7 +190,7 @@ async function createHarness(
     },
   });
   const created = await repository.createRunWithInitialTask({
-    context: { outputs: {}, trigger: {} },
+    context: { outputs: {}, trigger: { projection: { seatId: 101 } } },
     entryEventId: "entry-event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
     initialNodeId: "wait-event",
@@ -240,8 +240,8 @@ function recordMessage(
     eventId: input.eventId,
     eventOccurredAt: input.occurredAt,
     eventType: "message.received",
-    match: { accountId: "account-a", messageType: "text", text: input.text },
-    projection: { messageId: input.messageId, messageType: "text", text: input.text },
+    match: { seatId: 101 },
+    projection: { messageId: input.messageId, seatId: 101, text: input.text },
     recordedAt: input.recordedAt,
     subscription,
     subjectId: input.subjectId ?? "customer-1",

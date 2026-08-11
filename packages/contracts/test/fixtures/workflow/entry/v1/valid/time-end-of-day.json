@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "payloadVersion": 1,
   "eventId": "time-end-of-day-1",
-  "eventType": "test.contact_updated",
+  "eventType": "message.received",
   "uid": 9,
-  "subjectType": "chatai_contact",
-  "subjectId": "contact-time-1",
   "occurredAt": "2026-12-31T23:59:59.999Z",
-  "source": "contract-fixture",
+  "source": "chatai",
   "payload": {
-    "accountId": "account-a",
-    "change": "name"
+    "seatId": 101,
+    "workUserId": 201,
+    "thirdExternalUserId": "chatai-contact-time-1",
+    "messageId": 938272
   }
 }

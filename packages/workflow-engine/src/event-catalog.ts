@@ -2,27 +2,42 @@ import {
   getWorkflowJsonDepth,
   getWorkflowJsonEncodedByteLength,
   WORKFLOW_ENTRY_JSON_MAX_DEPTH,
+  WorkflowContactFriendAddedPayloadSchema,
+  WorkflowContactTagAddedPayloadSchema,
   WorkflowEntryEventNameSchema,
+  WorkflowMessageReceivedPayloadSchema,
   type WorkflowEntryEvent,
   type WorkflowJsonObject,
   WorkflowJsonObjectSchema,
   type WorkflowSubjectType,
   WorkflowSubjectTypeSchema,
 } from "@chatai/contracts";
-import { Type, type Static, type TObject } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 export const WORKFLOW_TRIGGER_PROJECTION_MAX_BYTES = 32 * 1024;
 
+export const WorkflowEventSubjectCandidatesSchema = Type.Object({
+  chatai_contact: Type.Optional(Type.Object({
+    seatId: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+    subjectId: Type.String({ maxLength: 128, minLength: 1 }),
+  }, { additionalProperties: false })),
+  wecom_contact: Type.Optional(Type.Object({
+    subjectId: Type.String({ maxLength: 128, minLength: 1 }),
+  }, { additionalProperties: false })),
+}, { additionalProperties: false });
+
 export const WorkflowTriggerProjectionSchema = Type.Object({
   eventType: WorkflowEntryEventNameSchema,
   match: WorkflowJsonObjectSchema,
+  subjects: WorkflowEventSubjectCandidatesSchema,
   variables: WorkflowJsonObjectSchema,
 }, { additionalProperties: false });
 
+export type WorkflowEventSubjectCandidates = Static<typeof WorkflowEventSubjectCandidatesSchema>;
 export type WorkflowTriggerProjection = Static<typeof WorkflowTriggerProjectionSchema>;
 
-export type WorkflowEventCatalogDefinition<TPayloadSchema extends TObject = TObject> = {
+export type WorkflowEventCatalogDefinition<TPayloadSchema extends TSchema = TSchema> = {
   eventType: string;
   payloadSchema: TPayloadSchema;
   payloadVersion: number;
@@ -30,6 +45,7 @@ export type WorkflowEventCatalogDefinition<TPayloadSchema extends TObject = TObj
     payload: Static<TPayloadSchema>;
   }): {
     match: WorkflowJsonObject;
+    subjects: WorkflowEventSubjectCandidates;
     variables: WorkflowJsonObject;
   };
   subjectTypes: readonly WorkflowSubjectType[];
@@ -38,7 +54,6 @@ export type WorkflowEventCatalogDefinition<TPayloadSchema extends TObject = TObj
 export type WorkflowEventCatalogErrorCode =
   | "payload_invalid"
   | "projection_invalid"
-  | "subject_type_unsupported"
   | "unknown_event_type"
   | "unsupported_payload_version";
 
@@ -51,6 +66,50 @@ export type WorkflowEventCatalog = {
 };
 
 export const EMPTY_WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([]);
+
+export const WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([
+  defineWorkflowEventCatalogDefinition({
+    eventType: "contact.friend_added",
+    payloadSchema: WorkflowContactFriendAddedPayloadSchema,
+    payloadVersion: 1,
+    project: event => ({
+      match: { workUserId: event.payload.workUserId },
+      subjects: createContactSubjectCandidates(event.payload),
+      variables: structuredClone(event.payload) as WorkflowJsonObject,
+    }),
+    subjectTypes: ["chatai_contact", "wecom_contact"],
+  }),
+  defineWorkflowEventCatalogDefinition({
+    eventType: "contact.tag_added",
+    payloadSchema: WorkflowContactTagAddedPayloadSchema,
+    payloadVersion: 1,
+    project: event => ({
+      match: {
+        tagId: event.payload.tagId,
+        workUserId: event.payload.workUserId,
+      },
+      subjects: createContactSubjectCandidates(event.payload),
+      variables: structuredClone(event.payload) as WorkflowJsonObject,
+    }),
+    subjectTypes: ["chatai_contact", "wecom_contact"],
+  }),
+  defineWorkflowEventCatalogDefinition({
+    eventType: "message.received",
+    payloadSchema: WorkflowMessageReceivedPayloadSchema,
+    payloadVersion: 1,
+    project: event => ({
+      match: { seatId: event.payload.seatId },
+      subjects: {
+        chatai_contact: {
+          seatId: event.payload.seatId,
+          subjectId: event.payload.thirdExternalUserId,
+        },
+      },
+      variables: structuredClone(event.payload) as WorkflowJsonObject,
+    }),
+    subjectTypes: ["chatai_contact"],
+  }),
+]);
 
 export function createWorkflowEventCatalog(
   definitions: readonly WorkflowEventCatalogDefinition[],
@@ -74,9 +133,6 @@ export function createWorkflowEventCatalog(
       if (!byVersion) return { code: "unknown_event_type", kind: "rejected" };
       const definition = byVersion.get(event.payloadVersion);
       if (!definition) return { code: "unsupported_payload_version", kind: "rejected" };
-      if (!definition.subjectTypes.includes(event.subjectType)) {
-        return { code: "subject_type_unsupported", kind: "rejected" };
-      }
       if (!Value.Check(definition.payloadSchema, event.payload)) {
         return { code: "payload_invalid", kind: "rejected" };
       }
@@ -87,6 +143,7 @@ export function createWorkflowEventCatalog(
         const projection = {
           eventType: event.eventType,
           match: structuredClone(projected.match),
+          subjects: structuredClone(projected.subjects),
           variables: structuredClone(projected.variables),
         };
         const byteLength = getWorkflowJsonEncodedByteLength(projection);
@@ -94,6 +151,8 @@ export function createWorkflowEventCatalog(
           return { code: "projection_invalid", kind: "rejected" };
         }
         if (!Value.Check(WorkflowTriggerProjectionSchema, projection)
+          || Object.keys(projection.subjects).some(subjectType =>
+            !definition.subjectTypes.includes(subjectType as WorkflowSubjectType))
           || getWorkflowJsonDepth(projection) > WORKFLOW_ENTRY_JSON_MAX_DEPTH) {
           return { code: "projection_invalid", kind: "rejected" };
         }
@@ -103,6 +162,30 @@ export function createWorkflowEventCatalog(
       }
     },
   };
+}
+
+function createContactSubjectCandidates(payload: {
+  externalUserId: string;
+  seatId?: number;
+  thirdExternalUserId?: string;
+}) {
+  return {
+    ...(payload.seatId !== undefined && payload.thirdExternalUserId !== undefined
+      ? {
+          chatai_contact: {
+            seatId: payload.seatId,
+            subjectId: payload.thirdExternalUserId,
+          },
+        }
+      : {}),
+    wecom_contact: { subjectId: payload.externalUserId },
+  } satisfies WorkflowEventSubjectCandidates;
+}
+
+function defineWorkflowEventCatalogDefinition<TPayloadSchema extends TSchema>(
+  definition: WorkflowEventCatalogDefinition<TPayloadSchema>,
+) {
+  return definition;
 }
 
 function assertDefinition(definition: WorkflowEventCatalogDefinition) {
@@ -120,8 +203,14 @@ function assertDefinition(definition: WorkflowEventCatalogDefinition) {
       Value.Check(WorkflowSubjectTypeSchema, subjectType))) {
     throw new Error("Workflow Event Catalog subject types must be unique and non-empty");
   }
-  if (definition.payloadSchema.type !== "object"
-    || definition.payloadSchema.additionalProperties !== false) {
+  if (!isClosedObjectSchema(definition.payloadSchema)) {
     throw new Error("Workflow Event Catalog payload schemas must be closed objects");
   }
+}
+
+function isClosedObjectSchema(schema: TSchema): boolean {
+  if (schema.type === "object") return schema.additionalProperties === false;
+  const variants = "anyOf" in schema && Array.isArray(schema.anyOf) ? schema.anyOf : null;
+  return variants !== null && variants.length > 0
+    && variants.every(variant => isClosedObjectSchema(variant as TSchema));
 }

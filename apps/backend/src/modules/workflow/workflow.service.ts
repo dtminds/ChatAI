@@ -25,6 +25,7 @@ import {
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCompilationError,
   type WorkflowDeploymentCapabilities,
+  type WorkflowTriggerBindingSpec,
 } from "@chatai/workflow-engine";
 import {
   decideWorkflowEntitlement,
@@ -39,6 +40,10 @@ import type {
   WorkflowRepository,
   WorkflowRevisionRecord,
 } from "./workflow-repository-types.js";
+import {
+  UnavailableWorkflowSourceIdentityResolver,
+  type WorkflowSourceIdentityResolver,
+} from "./workflow-source-identity.js";
 
 export type WorkflowOperatorScope = { roles: string[]; subUserId: string; uid: number };
 
@@ -46,12 +51,14 @@ export type WorkflowServiceOptions = {
   clock?: () => Date;
   deploymentCapabilities?: WorkflowDeploymentCapabilities;
   entitlementPort?: WorkflowEntitlementPort;
+  sourceIdentityResolver?: WorkflowSourceIdentityResolver;
 };
 
 export class WorkflowService {
   private readonly clock: () => Date;
   private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
+  private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -62,6 +69,8 @@ export class WorkflowService {
       ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
+    this.sourceIdentityResolver = options.sourceIdentityResolver
+      ?? new UnavailableWorkflowSourceIdentityResolver();
   }
 
   async list(scope: WorkflowOperatorScope) {
@@ -81,7 +90,7 @@ export class WorkflowService {
     const result = await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
       description: input.description?.trim() || "",
-      draft: createInitialWorkflowDraft(),
+      draft: createInitialWorkflowDraft(input.workflowType),
       name: input.name?.trim() || "未命名 Workflow",
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -172,6 +181,7 @@ export class WorkflowService {
     if (definition.publishedRevision === null) {
       const executionSpec = this.compile(normalizedDefinition, 1);
       this.assertProductionAvailability(executionSpec, entitlement);
+      await this.createTriggerBindings(scope.uid, executionSpec, subjectType);
       const validated = this.unwrapMutation(await this.repository.markValidated({
         expectedDraftVersion: input.expectedDraftVersion,
         opSubUserId: scope.subUserId,
@@ -184,9 +194,15 @@ export class WorkflowService {
     const nextRevision = definition.publishedRevision + 1;
     const executionSpec = this.compile(normalizedDefinition, nextRevision);
     this.assertProductionAvailability(executionSpec, entitlement);
+    const triggerBindings = await this.createTriggerBindings(
+      scope.uid,
+      executionSpec,
+      subjectType,
+    );
     const specHash = hashExecutionSpec({
       executionSpec,
       subjectType,
+      triggerBindings,
       workflowType: definition.workflowType,
     });
     const currentRevision = await this.repository.findRevision(
@@ -209,7 +225,7 @@ export class WorkflowService {
       opSubUserId: scope.subUserId,
       specHash,
       subjectType,
-      triggerBindings: createTriggerBindings(executionSpec, subjectType),
+      triggerBindings,
       uid: scope.uid,
       workflowId,
       workflowType: definition.workflowType,
@@ -239,6 +255,11 @@ export class WorkflowService {
     const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
     const executionSpec = this.compile({ ...definition, draft: normalizedDraft }, 1);
     this.assertProductionAvailability(executionSpec, entitlement);
+    const triggerBindings = await this.createTriggerBindings(
+      scope.uid,
+      executionSpec,
+      subjectType,
+    );
     const enabled = this.unwrapMutation(await this.repository.enable({
       draft: normalizedDraft,
       executionSpec,
@@ -247,10 +268,11 @@ export class WorkflowService {
       specHash: hashExecutionSpec({
         executionSpec,
         subjectType,
+        triggerBindings,
         workflowType: definition.workflowType,
       }),
       subjectType,
-      triggerBindings: createTriggerBindings(executionSpec, subjectType),
+      triggerBindings,
       uid: scope.uid,
       workflowId,
       workflowType: definition.workflowType,
@@ -355,6 +377,49 @@ export class WorkflowService {
     const definition = await this.repository.findDefinition(uid, workflowId);
     if (!definition) throw workflowNotFound();
     return definition;
+  }
+
+  private async createTriggerBindings(
+    uid: number,
+    spec: ReturnType<typeof compileWorkflowDraft>,
+    subjectType: WorkflowRevisionRecord["subjectType"],
+  ) {
+    const entryNode = spec.nodes.find(node => node.id === spec.entryNodeId);
+    if (!entryNode || entryNode.kind !== "start"
+      || !Value.Check(WorkflowStartConfigSchema, entryNode.config)) {
+      throw new Error("Compiled Workflow has an invalid Start configuration");
+    }
+    const config = entryNode.config as WorkflowStartConfig;
+    if (subjectType !== "chatai_contact" || !("seatIds" in config)) {
+      return getWorkflowTriggerBindings(config, subjectType);
+    }
+
+    let workUserIdBySeatId: Map<number, number>;
+    try {
+      workUserIdBySeatId = await this.sourceIdentityResolver.resolveActiveSeatWorkUserIds(
+        uid,
+        config.seatIds,
+      );
+    } catch {
+      throw new AppError(
+        "WORKFLOW_START_SOURCE_UNAVAILABLE",
+        "暂时无法校验开始节点来源，请稍后重试",
+        503,
+      );
+    }
+    const resolvedWorkUserIds = config.seatIds.map(seatId => workUserIdBySeatId.get(seatId));
+    if (resolvedWorkUserIds.some(workUserId => workUserId === undefined)) {
+      throw new BadRequestError(
+        "WORKFLOW_START_SOURCE_INVALID",
+        "开始节点包含无效席位",
+      );
+    }
+    if (!config.triggers.some(trigger => trigger.type.startsWith("contact."))) {
+      return getWorkflowTriggerBindings(config, subjectType);
+    }
+    return getWorkflowTriggerBindings(config, subjectType, {
+      resolvedWorkUserIds: resolvedWorkUserIds as number[],
+    });
   }
 
   private unwrapMutation<T>(result: WorkflowMutationResult<T>) {
@@ -470,20 +535,28 @@ function toRevision(record: WorkflowRevisionRecord): WorkflowRevision {
   };
 }
 
-function createInitialWorkflowDraft(): WorkflowDraft {
+function createInitialWorkflowDraft(workflowType: WorkflowType): WorkflowDraft {
+  const startConfig = workflowType === "chatai_sop"
+    ? { entryPolicy: { mode: "never" as const }, seatIds: [], triggers: [] }
+    : { entryPolicy: { mode: "never" as const }, triggers: [], workUserIds: [] };
   return {
     edges: [{ id: "edge-start-end", source: "start", target: "end", type: "workflowEdge" }],
     nodes: [
-      createInitialNode("start", "开始", { x: 120, y: 240 }),
+      createInitialNode("start", "开始", { x: 120, y: 240 }, startConfig),
       createInitialNode("end", "结束", { x: 560, y: 240 }),
     ],
     viewport: { x: 0, y: 0, zoom: 1 },
   };
 }
 
-function createInitialNode(kind: "end" | "start", title: string, position: { x: number; y: number }) {
+function createInitialNode(
+  kind: "end" | "start",
+  title: string,
+  position: { x: number; y: number },
+  config: Record<string, unknown> = {},
+) {
   return {
-    data: { kind, label: title, metric: "", schemaVersion: 1, status: "ready" as const, title },
+    data: { ...config, kind, label: title, metric: "", schemaVersion: 1, status: "ready" as const, title },
     id: kind,
     position,
     selected: false,
@@ -494,25 +567,16 @@ function createInitialNode(kind: "end" | "start", title: string, position: { x: 
 function hashExecutionSpec(input: {
   executionSpec: ReturnType<typeof compileWorkflowDraft>;
   subjectType: WorkflowRevisionRecord["subjectType"];
+  triggerBindings: WorkflowTriggerBindingSpec[];
   workflowType: WorkflowType;
 }) {
   const { revision: _revision, ...publishSemantics } = input.executionSpec;
   return createHash("sha256").update(JSON.stringify({
     executionSpec: publishSemantics,
     subjectType: input.subjectType,
+    triggerBindings: input.triggerBindings,
     workflowType: input.workflowType,
   })).digest("hex");
-}
-
-function createTriggerBindings(
-  spec: ReturnType<typeof compileWorkflowDraft>,
-  subjectType: WorkflowRevisionRecord["subjectType"],
-) {
-  const entryNode = spec.nodes.find(node => node.id === spec.entryNodeId);
-  if (!entryNode || entryNode.kind !== "start" || !Value.Check(WorkflowStartConfigSchema, entryNode.config)) {
-    throw new Error("Compiled Workflow has an invalid Start configuration");
-  }
-  return getWorkflowTriggerBindings(entryNode.config as WorkflowStartConfig, subjectType);
 }
 
 function assertWorkflowTypeEnabled(workflowType: WorkflowType) {

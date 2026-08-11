@@ -360,7 +360,7 @@ describe("workflow node catalog", () => {
     expect(workflowNodeCatalog.start.visual.label).toBe("开始");
     expect(createDefaultNodeData("start")).toEqual(
       expect.objectContaining({
-        accountIds: [],
+        seatIds: [],
         entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
         label: "开始",
         title: "开始",
@@ -375,7 +375,7 @@ describe("workflow node catalog", () => {
 
     expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: "hosting-accounts", label: "托管账号" }),
+        expect.objectContaining({ id: "sources", label: "席位" }),
         expect.objectContaining({ id: "triggers", label: "触发条件" }),
       ]));
     expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])

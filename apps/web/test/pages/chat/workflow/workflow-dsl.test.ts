@@ -309,7 +309,7 @@ describe("workflow DSL", () => {
 
     expect(graph.nodes.find((node) => node.id === "start")).toEqual(expect.objectContaining({
       config: expect.objectContaining({
-        accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
+        seatIds: [101, 102],
         entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
         triggers: expect.arrayContaining([{ type: "contact.friend_added" }]),
       }),
@@ -479,11 +479,11 @@ describe("workflow DSL", () => {
     const configByKind = new Map(graph.nodes.map((node) => [node.kind, node.config]));
 
     expect(configByKind.get("start")).toEqual({
-      accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
+      seatIds: [101, 102],
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [
         { type: "contact.friend_added" },
-        { tagIds: ["tag-new-customer"], type: "contact.tag_added" },
+        { tagIds: [201], type: "contact.tag_added" },
       ],
     });
     expect(configByKind.get("wait")).toEqual({

@@ -28,6 +28,22 @@ _Avoid_: Unified customer, generic customer
 The identity namespace that gives a Workflow Subject ID its business meaning. The current stable values are `chatai_contact`, `wecom_contact`, and the reserved `miniapp_member`. Runtime identity is the combination of Subject Type and Subject ID.
 _Avoid_: ID type
 
+**WeCom Member**:
+The WeCom employee account identified in Workflow contracts by `workUserId`. For `contact.friend_added` and `contact.tag_added`, it is the stable source identity used to match Workflow interest. Within one tenant, a WeCom Member has zero or one active ChatAI Seat.
+_Avoid_: Managed account, generic account
+
+**ChatAI Seat**:
+The ChatAI service resource identified in Workflow contracts by `seatId`. Every active ChatAI Seat belongs to exactly one WeCom Member. It is the source identity for ChatAI-owned events such as `message.received`, but it is not a Workflow Subject.
+_Avoid_: Account ID, Workflow customer
+
+**WeCom Contact**:
+The WeCom friend identified in Workflow contracts by `externalUserId`. It is the Subject of a WeCom SOP Run.
+_Avoid_: ChatAI contact
+
+**ChatAI Seat Contact**:
+The ChatAI seat friend identified in Workflow contracts by `thirdExternalUserId`. It is the Subject of a ChatAI SOP Run.
+_Avoid_: `external_third_userid`, WeCom contact
+
 **Workflow Capability Profile**:
 The semantic capability boundary of a Workflow Type, including valid entry events, nodes, variables, and business operations. It states what belongs in that type of Workflow, independently of whether the Runtime, current deployment, or tenant entitlement can use it yet.
 _Avoid_: Permission set, subscription plan, runtime support list
@@ -57,7 +73,7 @@ A recoverable system pause applied when Java reports that a tenant no longer has
 _Avoid_: User pause, immediate stop
 
 **Workflow Entry Event**:
-A versioned business fact produced by Java that may start or wake zero or more Workflows. It identifies one Workflow Subject but never names a target Workflow, Workflow Type, Revision, or Run.
+A versioned business fact produced by Java that may start or wake zero or more Workflows. It carries the source identities and available Subject references of the business fact, but never names a target Workflow, Workflow Type, Revision, or Run. Each matched Binding resolves exactly one Subject before creating or waking a Run.
 _Avoid_: Workflow command, target workflow event
 
 **Workflow Event ID**:

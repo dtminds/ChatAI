@@ -28,18 +28,18 @@ describe("Workflow Entry runtime composition", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new WorkflowRuntimeService({
       applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
-      findDefinition: vi.fn(async () => ({
+      findDefinition: vi.fn(async (_uid, workflowId) => ({
         bizStatus: 1 as const,
         publishedRevision: 1,
         runtimeStatus: "active" as const,
         statusReason: null,
-        workflowType: "chatai_sop" as const,
+        workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
       })),
       findRevision: vi.fn(async (_uid, workflowId) => ({
         executionSpec: executionSpec(workflowId),
         revision: 1,
-        subjectType: "chatai_contact" as const,
-        workflowType: "chatai_sop" as const,
+        subjectType: workflowId === "32" ? "wecom_contact" as const : "chatai_contact" as const,
+        workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
       })),
     }, repository, undefined, {
       clock: () => now,
@@ -48,7 +48,7 @@ describe("Workflow Entry runtime composition", () => {
         check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
       },
     });
-    const bindings = [binding("31"), binding("32")];
+    const bindings = [binding("31", "chatai_contact"), binding("32", "wecom_contact")];
     const bindingReader = {
       listActiveTriggerBindings: vi.fn(async () => bindings),
     };
@@ -80,8 +80,8 @@ describe("Workflow Entry runtime composition", () => {
       inbox: [{ consumer: "workflow-entry", messageId: "9:event-1", uid: 9 }],
       outbox: [expect.any(Object), expect.any(Object)],
       runs: [
-        { subjectId: "external-user-1", subjectType: "chatai_contact", workflowId: "31" },
-        { subjectId: "external-user-1", subjectType: "chatai_contact", workflowId: "32" },
+        { subjectId: "chatai_external_456", subjectType: "chatai_contact", workflowId: "31" },
+        { subjectId: "wm_external_123", subjectType: "wecom_contact", workflowId: "32" },
       ],
       tasks: [expect.any(Object), expect.any(Object)],
     });
@@ -96,11 +96,17 @@ function executionSpec(workflowId: string): WorkflowExecutionSpec {
     entryNodeId: "start",
     nodes: [
       {
-        config: {
-          accountIds: ["account-a"],
-          entryPolicy: { mode: "never" },
-          triggers: [{ type: "contact.friend_added" }],
-        },
+        config: workflowId === "32"
+          ? {
+              entryPolicy: { mode: "never" },
+              triggers: [{ type: "contact.friend_added" }],
+              workUserIds: [201],
+            }
+          : {
+              entryPolicy: { mode: "never" },
+              seatIds: [101],
+              triggers: [{ type: "contact.friend_added" }],
+            },
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
@@ -124,29 +130,35 @@ function event(): WorkflowEntryEvent {
     eventId: "event-1",
     eventType: "contact.friend_added",
     occurredAt: "2026-08-10T00:00:00.000Z",
-    payload: { accountId: "account-a" },
+    payload: {
+      externalUserId: "wm_external_123",
+      seatId: 101,
+      thirdExternalUserId: "chatai_external_456",
+      workUserId: 201,
+    },
     payloadVersion: 1,
     schemaVersion: 1,
     source: "worker-test",
-    subjectId: "external-user-1",
-    subjectType: "chatai_contact",
     uid: 9,
   };
 }
 
-function binding(workflowId: string): WorkflowTriggerBindingRecord {
+function binding(
+  workflowId: string,
+  subjectType: WorkflowTriggerBindingRecord["subjectType"],
+): WorkflowTriggerBindingRecord {
   return {
     createdAt: new Date("2026-08-10T00:00:00.000Z"),
     eventType: "contact.friend_added",
     filter: {
-      accountIds: ["account-a"],
       entryPolicy: { mode: "never" },
-      triggers: [{ type: "contact.friend_added" }],
+      eventType: "contact.friend_added",
+      workUserIds: [201],
     },
     id: workflowId,
     revision: 1,
     status: 1,
-    subjectType: "chatai_contact",
+    subjectType,
     uid: 9,
     updatedAt: new Date("2026-08-10T00:00:00.000Z"),
     workflowId,

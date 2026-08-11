@@ -16,7 +16,7 @@ const eventCatalog = createFakeWorkflowEventCatalog();
 
 describe("workflow entry consumer", () => {
   it("fans one event out to every matching active workflow and ACKs after admission", async () => {
-    const bindings = [binding("31"), binding("32")];
+    const bindings = [binding("31"), binding("32", [201], "wecom_contact")];
     const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
     const message = createBrokerMessage(event());
     const handler = createEntryConsumerHandler({
@@ -33,9 +33,14 @@ describe("workflow entry consumer", () => {
     expect(startRun).toHaveBeenNthCalledWith(1, expect.objectContaining({
       entryEventId: "event-1",
       expectedRevision: 2,
-      subjectId: "external-user-1",
+      subjectId: "chatai_external_456",
       subjectType: "chatai_contact",
       workflowId: "31",
+    }));
+    expect(startRun).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      subjectId: "wm_external_123",
+      subjectType: "wecom_contact",
+      workflowId: "32",
     }));
     expect(startRun).toHaveBeenNthCalledWith(1, expect.objectContaining({
       trigger: {
@@ -43,7 +48,12 @@ describe("workflow entry consumer", () => {
         eventType: "contact.friend_added",
         occurredAt: "2026-08-09T10:30:15.123Z",
         payloadVersion: 1,
-        projection: {},
+        projection: {
+          externalUserId: "wm_external_123",
+          seatId: 101,
+          thirdExternalUserId: "chatai_external_456",
+          workUserId: 201,
+        },
         source: "worker-test",
       },
     }));
@@ -74,17 +84,23 @@ describe("workflow entry consumer", () => {
       eventId: "message-event-1",
       eventOccurredAt: new Date("2026-08-10T00:00:04.000Z"),
       eventType: "message.received",
-      projection: { messageId: 101, messageType: "text", text: "你好" },
+      projection: {
+        externalUserId: "wm_external_123",
+        messageId: 1001,
+        seatId: 101,
+        thirdExternalUserId: "chatai_external_456",
+        workUserId: 201,
+      },
       recordedAt: new Date("2026-08-10T00:00:05.000Z"),
       subscription: expect.objectContaining({ id: "subscription-1" }),
-      subjectId: "external-user-1",
+      subjectId: "chatai_external_456",
       subjectType: "chatai_contact",
     }));
     expect(subscriptionReader.listMatchingEventSubscriptions).toHaveBeenCalledWith(
       9,
       "chatai_contact",
       "message.received",
-      "external-user-1",
+      "chatai_external_456",
       new Date("2026-08-10T00:00:04.000Z"),
       new Date("2026-08-10T00:00:05.000Z"),
     );
@@ -142,7 +158,7 @@ describe("workflow entry consumer", () => {
     expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("ACKs a subscription event that no longer matches its frozen account filter", async () => {
+  it("ACKs a subscription event that no longer matches its frozen seat filter", async () => {
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       eventCatalog,
@@ -162,12 +178,19 @@ describe("workflow entry consumer", () => {
 
   it("ACKs nonmatching bindings and entry-policy rejection", async () => {
     const startRun = vi.fn(async () => ({ kind: "entry-policy-rejected" as const }));
-    const message = createBrokerMessage(event({ payload: { accountId: "account-b" } }));
+    const message = createBrokerMessage(event({
+      payload: {
+        externalUserId: "wm_external_123",
+        seatId: 101,
+        thirdExternalUserId: "chatai_external_456",
+        workUserId: 202,
+      },
+    }));
     const handler = createEntryConsumerHandler({
       bindingReader: {
         listActiveTriggerBindings: vi.fn(async () => [
           binding("31"),
-          binding("32", { accountIds: ["account-b"] }),
+          binding("32", [202]),
         ]),
       },
       eventCatalog,
@@ -413,12 +436,15 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     eventId: "event-1",
     eventType: "contact.friend_added",
     occurredAt: "2026-08-09T10:30:15.123Z",
-    payload: { accountId: "account-a" },
+    payload: {
+      externalUserId: "wm_external_123",
+      seatId: 101,
+      thirdExternalUserId: "chatai_external_456",
+      workUserId: 201,
+    },
     payloadVersion: 1,
     schemaVersion: 1,
     source: "worker-test",
-    subjectId: "external-user-1",
-    subjectType: "chatai_contact",
     uid: 9,
     ...overrides,
   };
@@ -426,22 +452,22 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
 
 function binding(
   workflowId: string,
-  overrides: Partial<WorkflowTriggerBindingRecord["filter"]> = {},
+  workUserIds: number[] = [201],
+  subjectType: WorkflowTriggerBindingRecord["subjectType"] = "chatai_contact",
 ): WorkflowTriggerBindingRecord {
   const now = new Date("2026-07-11T00:00:00.000Z");
   return {
     createdAt: now,
     eventType: "contact.friend_added",
     filter: {
-      accountIds: ["account-a"],
       entryPolicy: { mode: "never" },
-      triggers: [{ type: "contact.friend_added" }],
-      ...overrides,
+      eventType: "contact.friend_added",
+      workUserIds,
     },
     id: workflowId,
     revision: 2,
     status: 1,
-    subjectType: "chatai_contact",
+    subjectType,
     uid: 9,
     updatedAt: now,
     workflowId,
@@ -454,9 +480,10 @@ function messageBinding(workflowId: string): WorkflowTriggerBindingRecord {
     createdAt: now,
     eventType: "message.received",
     filter: {
-      accountIds: ["account-a"],
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
-      triggers: [{ match: "any", type: "message.received" }],
+      eventType: "message.received",
+      match: "any",
+      seatIds: [101],
     },
     id: workflowId,
     revision: 1,
@@ -474,10 +501,11 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
     eventType: "message.received",
     occurredAt: "2026-08-10T00:00:04.000Z",
     payload: {
-      accountId: "account-a",
-      messageId: 101,
-      messageType: "text",
-      text: "你好",
+      externalUserId: "wm_external_123",
+      messageId: 1001,
+      seatId: 101,
+      thirdExternalUserId: "chatai_external_456",
+      workUserId: 201,
     },
     ...overrides,
   });
@@ -485,7 +513,6 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
 
 function subscription(id: string): WorkflowEventSubscriptionRecord {
   return {
-    accountId: "account-a",
     collectUntil: null,
     createdAt: new Date("2026-08-10T00:00:00.000Z"),
     effectiveFrom: new Date("2026-08-10T00:00:00.000Z"),
@@ -495,8 +522,9 @@ function subscription(id: string): WorkflowEventSubscriptionRecord {
     nodeId: "wait-event",
     revision: 1,
     runId: "run-1",
+    seatId: 101,
     status: "waiting",
-    subjectId: "external-user-1",
+    subjectId: "chatai_external_456",
     subjectType: "chatai_contact",
     taskId: "task-1",
     triggerEventId: null,

@@ -25,6 +25,7 @@ import {
 import { parseWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
+import { MysqlWorkflowSourceIdentityResolver } from "./workflow-source-identity.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 
@@ -69,6 +70,7 @@ export async function registerWorkflowRoutes(
             token: process.env.JAVA_INTERNAL_API_TOKEN,
           })
         : new UnavailableWorkflowEntitlementPort(),
+      sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
     },
   );
   const authenticated = { preHandler: app.authenticate };

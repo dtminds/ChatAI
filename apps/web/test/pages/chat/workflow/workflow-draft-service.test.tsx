@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { WorkflowStartTrigger } from "@chatai/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createInMemoryWorkflowDraftRepository,
@@ -23,7 +24,7 @@ import type {
   WorkflowDraftWriter,
   SyncWorkflowDraftRepository,
 } from "@/pages/chat/workflow/workflow-draft-service";
-import type { WorkflowDraft } from "@/pages/chat/workflow/types";
+import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
 function getBranchPaths(draft: WorkflowDraft | null | undefined) {
   const data = draft?.nodes.find((node) => node.id === "branch-intent")?.data;
@@ -94,11 +95,11 @@ describe("workflow draft service", () => {
       "live-follow-up",
     ]);
 
-    repository.saveDraft(newDocument.id, createDraftWithStartKeyword("新建 Workflow 人群"));
+    repository.saveDraft(newDocument.id, createDraftWithStartSourceMarker("新建 Workflow 人群"));
 
-    expect(getStartKeyword(repository.getDocument(newDocument.id).draft))
+    expect(getStartSourceMarker(repository.getDocument(newDocument.id).draft))
       .toBe("新建 Workflow 人群");
-    expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBeNull();
+    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBeNull();
   });
 
   it("validates workflow metadata when creating in-memory documents", () => {
@@ -172,9 +173,9 @@ describe("workflow draft service", () => {
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {
     expect(() => getWorkflowDocument("missing-workflow")).toThrow("Unknown workflow document");
-    expect(() => saveWorkflowDraft("missing-workflow", createDraftWithStartKeyword("错误 id 保存的人群")))
+    expect(() => saveWorkflowDraft("missing-workflow", createDraftWithStartSourceMarker("错误 id 保存的人群")))
       .toThrow("Unknown workflow document");
-    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBeNull();
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBeNull();
   });
 
   it("debounces mock draft saving state", async () => {
@@ -185,7 +186,7 @@ describe("workflow draft service", () => {
 
       expect(result.current.saveState).toBe("saved");
 
-      const nextDraft = createDraftWithStartKeyword("已保存的人群");
+      const nextDraft = createDraftWithStartSourceMarker("已保存的人群");
 
       act(() => {
         result.current.markDirty(nextDraft);
@@ -193,7 +194,7 @@ describe("workflow draft service", () => {
       expect(result.current.saveState).toBe("saving");
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("再次修改的人群"));
+        result.current.markDirty(createDraftWithStartSourceMarker("再次修改的人群"));
       });
       expect(result.current.saveState).toBe("dirty");
 
@@ -204,7 +205,7 @@ describe("workflow draft service", () => {
       expect(result.current.saveState).toBe("saved");
       expect(result.current.lastSavedAt).toBe("刚刚");
       expect(result.current.document.updatedAt).toBe("刚刚");
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("再次修改的人群");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("再次修改的人群");
     }
     finally {
       vi.useRealTimers();
@@ -241,7 +242,7 @@ describe("workflow draft service", () => {
 
     try {
       const { result, unmount } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
-      const nextDraft = createDraftWithStartKeyword("卸载前保存的人群");
+      const nextDraft = createDraftWithStartSourceMarker("卸载前保存的人群");
 
       act(() => {
         result.current.markDirty(nextDraft);
@@ -249,7 +250,7 @@ describe("workflow draft service", () => {
 
       unmount();
 
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("卸载前保存的人群");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("卸载前保存的人群");
     }
     finally {
       vi.useRealTimers();
@@ -264,7 +265,7 @@ describe("workflow draft service", () => {
         ({ workflowId }) => useWorkflowDocument(workflowId),
         { initialProps: { workflowId: "newcomer-conversion" } },
       );
-      const nextDraft = createDraftWithStartKeyword("切换前保存的人群");
+      const nextDraft = createDraftWithStartSourceMarker("切换前保存的人群");
 
       act(() => {
         result.current.markDirty(nextDraft);
@@ -273,7 +274,7 @@ describe("workflow draft service", () => {
       rerender({ workflowId: "vip-reactivation" });
 
       expect(result.current.document.id).toBe("vip-reactivation");
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("切换前保存的人群");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("切换前保存的人群");
     }
     finally {
       vi.useRealTimers();
@@ -343,7 +344,7 @@ describe("workflow draft service", () => {
   });
 
   it("publishes the current draft as a versioned snapshot", () => {
-    const draft = createDraftWithStartKeyword("发布版本的人群");
+    const draft = createDraftWithStartSourceMarker("发布版本的人群");
     const publishedDocument = publishWorkflowDraft("newcomer-conversion", draft);
 
     expect(publishedDocument.status).toBe("Published");
@@ -354,10 +355,10 @@ describe("workflow draft service", () => {
       revision: 2,
     }));
     expect(publishedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
-    expect(getStartKeyword(publishedDocument.versionHistory[0]?.draft ?? createInitialDraft()))
+    expect(getStartSourceMarker(publishedDocument.versionHistory[0]?.draft ?? createInitialDraft()))
       .toBe("发布版本的人群");
-    expect(getStartKeyword(publishedDocument.publishedDraft ?? createInitialDraft())).toBe("发布版本的人群");
-    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
+    expect(getStartSourceMarker(publishedDocument.publishedDraft ?? createInitialDraft())).toBe("发布版本的人群");
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
       .toBe("发布版本的人群");
   });
 
@@ -387,28 +388,28 @@ describe("workflow draft service", () => {
   });
 
   it("imports a sanitized draft without overwriting the published snapshot", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartKeyword("已发布的人群"));
-    const importedDocument = importWorkflowDraft("newcomer-conversion", createDraftWithStartKeyword("导入草稿的人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("已发布的人群"));
+    const importedDocument = importWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("导入草稿的人群"));
 
-    expect(getStartKeyword(publishedDocument.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
+    expect(getStartSourceMarker(publishedDocument.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
     expect(importedDocument.status).toBe("Draft");
     expect(importedDocument.revision).toBe(3);
-    expect(getStartKeyword(importedDocument.draft)).toBe("导入草稿的人群");
-    expect(getStartKeyword(importedDocument.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
+    expect(getStartSourceMarker(importedDocument.draft)).toBe("导入草稿的人群");
+    expect(getStartSourceMarker(importedDocument.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
     expect(importedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
   });
 
   it("restores a published version into the editable draft without deleting version history", () => {
-    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartKeyword("第一版人群"));
-    const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartKeyword("第二版人群"));
+    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("第一版人群"));
+    const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("第二版人群"));
     const restoredDocument = restoreWorkflowVersion("newcomer-conversion", firstPublishedDocument.currentVersion?.id ?? "");
 
     expect(secondPublishedDocument.currentVersion?.id).toBe("newcomer-conversion-r3");
     expect(restoredDocument.status).toBe("Draft");
     expect(restoredDocument.revision).toBe(4);
     expect(restoredDocument.currentVersion?.id).toBe("newcomer-conversion-r2");
-    expect(getStartKeyword(restoredDocument.draft)).toBe("第一版人群");
-    expect(getStartKeyword(restoredDocument.publishedDraft ?? createInitialDraft())).toBe("第二版人群");
+    expect(getStartSourceMarker(restoredDocument.draft)).toBe("第一版人群");
+    expect(getStartSourceMarker(restoredDocument.publishedDraft ?? createInitialDraft())).toBe("第二版人群");
     expect(restoredDocument.versionHistory.map((version) => version.id)).toEqual([
       "newcomer-conversion-r3",
       "newcomer-conversion-r2",
@@ -418,22 +419,22 @@ describe("workflow draft service", () => {
   it("keeps draft repositories isolated behind the persistence boundary", () => {
     const firstRepository = createInMemoryWorkflowDraftRepository();
     const secondRepository = createInMemoryWorkflowDraftRepository();
-    const draft = createDraftWithStartKeyword("独立仓库保存的人群");
+    const draft = createDraftWithStartSourceMarker("独立仓库保存的人群");
 
     firstRepository.saveDraft("newcomer-conversion", draft);
 
-    expect(getStartKeyword(firstRepository.getDocument("newcomer-conversion").draft))
+    expect(getStartSourceMarker(firstRepository.getDocument("newcomer-conversion").draft))
       .toBe("独立仓库保存的人群");
-    expect(getStartKeyword(secondRepository.getDocument("newcomer-conversion").draft)).toBeNull();
+    expect(getStartSourceMarker(secondRepository.getDocument("newcomer-conversion").draft)).toBeNull();
   });
 
   it("keeps the in-memory repository available as an explicit test fixture", () => {
     const repository = createInMemoryWorkflowDraftRepository();
 
-    repository.saveDraft("newcomer-conversion", createDraftWithStartKeyword("工厂仓库保存的人群"));
+    repository.saveDraft("newcomer-conversion", createDraftWithStartSourceMarker("工厂仓库保存的人群"));
 
-    expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBe("工厂仓库保存的人群");
-    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBeNull();
+    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("工厂仓库保存的人群");
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBeNull();
   });
 
   it("treats the draft repository as a replaceable reader and writer contract", async () => {
@@ -447,9 +448,9 @@ describe("workflow draft service", () => {
       "live-follow-up",
     ]);
 
-    writer.saveDraft("newcomer-conversion", createDraftWithStartKeyword("通过 writer 保存的人群"));
+    writer.saveDraft("newcomer-conversion", createDraftWithStartSourceMarker("通过 writer 保存的人群"));
 
-    expect(getStartKeyword((await Promise.resolve(reader.getDocument("newcomer-conversion"))).draft))
+    expect(getStartSourceMarker((await Promise.resolve(reader.getDocument("newcomer-conversion"))).draft))
       .toBe("通过 writer 保存的人群");
   });
 
@@ -459,7 +460,7 @@ describe("workflow draft service", () => {
     try {
       const repository = createDeferredWorkflowDraftRepository();
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithStartKeyword("异步保存的人群");
+      const nextDraft = createDraftWithStartSourceMarker("异步保存的人群");
       const initialDraftHash = result.current.lastSavedDraftHash;
 
       act(() => {
@@ -482,7 +483,7 @@ describe("workflow draft service", () => {
       expect(result.current.lastSavedAt).toBe("刚刚");
       expect(result.current.lastSavedDraftHash).not.toBe(initialDraftHash);
       expect(result.current.lastSavedDraftHash).toBe(result.current.document.draftHash);
-      expect(result.current.document.trigger).toBe("消息关键词");
+      expect(result.current.document.trigger).toBe("添加好友、添加标签");
       expect(result.current.document.revision).toBe(2);
     }
     finally {
@@ -521,7 +522,7 @@ describe("workflow draft service", () => {
       ));
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("发布检查后的新修改"));
+        result.current.markDirty(createDraftWithStartSourceMarker("发布检查后的新修改"));
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -546,7 +547,7 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("保存失败的人群"));
+        result.current.markDirty(createDraftWithStartSourceMarker("保存失败的人群"));
       });
 
       await act(async () => {
@@ -570,7 +571,7 @@ describe("workflow draft service", () => {
 
       expect(result.current.saveState).toBe("saved");
       expect(result.current.saveError).toBeNull();
-      expect(result.current.document.trigger).toBe("消息关键词");
+      expect(result.current.document.trigger).toBe("添加好友、添加标签");
     }
     finally {
       vi.useRealTimers();
@@ -588,7 +589,7 @@ describe("workflow draft service", () => {
       );
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("旧工作流保存结果"));
+        result.current.markDirty(createDraftWithStartSourceMarker("旧工作流保存结果"));
       });
 
       rerender({ workflowId: "vip-reactivation" });
@@ -601,7 +602,7 @@ describe("workflow draft service", () => {
 
       expect(result.current.document.id).toBe("vip-reactivation");
       expect(result.current.document.trigger).toBe("90 天未复购会员");
-      expect(repository.getDocument("newcomer-conversion").trigger).toBe("消息关键词");
+      expect(repository.getDocument("newcomer-conversion").trigger).toBe("添加好友、添加标签");
     }
     finally {
       vi.useRealTimers();
@@ -613,7 +614,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      const publishPromise = result.current.publishDraft(createDraftWithStartKeyword("异步发布的人群"));
+      const publishPromise = result.current.publishDraft(createDraftWithStartSourceMarker("异步发布的人群"));
       await waitFor(() => {
         expect(repository.pendingPublishes).toHaveLength(1);
       });
@@ -624,8 +625,8 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("published");
     expect(result.current.document.status).toBe("Published");
     expect(result.current.document.publishedRevision).toBe(2);
-    expect(getStartKeyword(result.current.document.draft)).toBe("异步发布的人群");
-    expect(getStartKeyword(result.current.document.publishedDraft ?? createInitialDraft()))
+    expect(getStartSourceMarker(result.current.document.draft)).toBe("异步发布的人群");
+    expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft()))
       .toBe("异步发布的人群");
   });
 
@@ -635,7 +636,7 @@ describe("workflow draft service", () => {
     try {
       const repository = createDeferredWorkflowDraftRepository();
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithStartKeyword("保存完成后发布");
+      const nextDraft = createDraftWithStartSourceMarker("保存完成后发布");
 
       act(() => {
         result.current.markDirty(nextDraft);
@@ -675,7 +676,7 @@ describe("workflow draft service", () => {
     try {
       const repository = createDeferredWorkflowDraftRepository();
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithStartKeyword("保存失败时禁止发布");
+      const nextDraft = createDraftWithStartSourceMarker("保存失败时禁止发布");
 
       act(() => {
         result.current.markDirty(nextDraft);
@@ -724,7 +725,7 @@ describe("workflow draft service", () => {
       ));
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("即将撤销的修改"));
+        result.current.markDirty(createDraftWithStartSourceMarker("即将撤销的修改"));
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -762,14 +763,14 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
 
       await act(async () => {
-        await result.current.publishDraft(createDraftWithStartKeyword("已发布的人群"));
+        await result.current.publishDraft(createDraftWithStartSourceMarker("已发布的人群"));
       });
 
       expect(result.current.publishState).toBe("published");
-      expect(getStartKeyword(result.current.document.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
+      expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("发布后的草稿修改"));
+        result.current.markDirty(createDraftWithStartSourceMarker("发布后的草稿修改"));
       });
 
       expect(result.current.publishState).toBe("idle");
@@ -778,12 +779,12 @@ describe("workflow draft service", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("发布后的草稿修改");
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("发布后的草稿修改");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
         .toBe("已发布的人群");
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("已发布的人群"));
+        result.current.markDirty(createDraftWithStartSourceMarker("已发布的人群"));
       });
 
       expect(result.current.publishState).toBe("published");
@@ -856,7 +857,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithStartKeyword("发布失败的人群"));
+      void result.current.publishDraft(createDraftWithStartSourceMarker("发布失败的人群"));
     });
 
     await act(async () => {
@@ -887,7 +888,7 @@ describe("workflow draft service", () => {
       repository,
       publishedDocument,
     ));
-    const changedDraft = createDraftWithStartKeyword("发布失败后仍未发布");
+    const changedDraft = createDraftWithStartSourceMarker("发布失败后仍未发布");
 
     act(() => {
       result.current.markDirty(changedDraft);
@@ -926,7 +927,7 @@ describe("workflow draft service", () => {
     );
 
     await act(async () => {
-      void result.current.importDraft(createDraftWithStartKeyword("旧工作流导入结果"));
+      void result.current.importDraft(createDraftWithStartSourceMarker("旧工作流导入结果"));
     });
 
     await waitFor(() => {
@@ -942,12 +943,12 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("vip-reactivation");
     expect(result.current.document.trigger).toBe("90 天未复购会员");
-    expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBe("旧工作流导入结果");
+    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("旧工作流导入结果");
   });
 
   it("keeps published snapshots cloned behind the repository boundary", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const publishedDocument = repository.publishDraft("newcomer-conversion", createDraftWithStartKeyword("发布克隆的人群")).document;
+    const publishedDocument = repository.publishDraft("newcomer-conversion", createDraftWithStartSourceMarker("发布克隆的人群")).document;
     const fetchedDocument = repository.getDocument("newcomer-conversion");
 
     publishedDocument.publishedDraft?.nodes.splice(0, 1);
@@ -1007,13 +1008,13 @@ describe("workflow draft service", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
 
-    repository.saveDraft("newcomer-conversion", createDraftWithStartKeyword("并发保存的人群"));
+    repository.saveDraft("newcomer-conversion", createDraftWithStartSourceMarker("并发保存的人群"));
 
     expect(() => repository.publishDraft("newcomer-conversion", document.draft, {
       expectedBaseDraftHash: document.draftHash,
     })).toThrow("Workflow draft has changed since publish started");
     expect(repository.getDocument("newcomer-conversion").publishedDraft).toBeNull();
-    expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBe("并发保存的人群");
+    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("并发保存的人群");
   });
 
   it("does not apply stale async publish results after switching workflow documents", async () => {
@@ -1024,7 +1025,7 @@ describe("workflow draft service", () => {
     );
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithStartKeyword("旧工作流发布结果"));
+      void result.current.publishDraft(createDraftWithStartSourceMarker("旧工作流发布结果"));
     });
 
     expect(repository.pendingPublishes).toHaveLength(1);
@@ -1038,7 +1039,7 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("vip-reactivation");
     expect(result.current.document.publishedAt).toBe("昨天 21:04");
-    expect(getStartKeyword(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
+    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
       .toBe("旧工作流发布结果");
   });
 
@@ -1050,14 +1051,14 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
       await act(async () => {
-        void result.current.publishDraft(createDraftWithStartKeyword("旧发布请求的人群"));
+        void result.current.publishDraft(createDraftWithStartSourceMarker("旧发布请求的人群"));
       });
 
       expect(repository.pendingPublishes).toHaveLength(1);
       expect(result.current.publishState).toBe("publishing");
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("发布期间继续编辑的人群"));
+        result.current.markDirty(createDraftWithStartSourceMarker("发布期间继续编辑的人群"));
       });
 
       expect(result.current.publishState).toBe("publishing");
@@ -1075,8 +1076,8 @@ describe("workflow draft service", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBe("旧发布请求的人群");
-      expect(getStartKeyword(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
+      expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("旧发布请求的人群");
+      expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
         .toBe("旧发布请求的人群");
     }
     finally {
@@ -1089,7 +1090,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithStartKeyword("异步发布的人群"));
+      void result.current.publishDraft(createDraftWithStartSourceMarker("异步发布的人群"));
     });
 
     expect(repository.pendingPublishes).toHaveLength(1);
@@ -1109,7 +1110,7 @@ describe("workflow draft service", () => {
 
     expect(result.current.publishState).toBe("published");
     expect(result.current.document.status).toBe("Published");
-    expect(getStartKeyword(result.current.document.publishedDraft ?? createInitialDraft()))
+    expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft()))
       .toBe("异步发布的人群");
   });
 
@@ -1130,7 +1131,7 @@ describe("workflow draft service", () => {
     expect(result.current.restoreState).toBe("restored");
     expect(result.current.saveState).toBe("saved");
     expect(result.current.document.status).toBe("Draft");
-    expect(getStartTagIds(result.current.document.draft)).toEqual(["tag-repurchase"]);
+    expect(getStartTagIds(result.current.document.draft)).toEqual([203]);
   });
 
   it("waits for an in-flight save before restoring a version", async () => {
@@ -1142,7 +1143,7 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("恢复前正在保存的修改"));
+        result.current.markDirty(createDraftWithStartSourceMarker("恢复前正在保存的修改"));
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -1182,7 +1183,7 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
 
       act(() => {
-        result.current.markDirty(createDraftWithStartKeyword("保存失败时禁止恢复"));
+        result.current.markDirty(createDraftWithStartSourceMarker("保存失败时禁止恢复"));
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -1249,42 +1250,46 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("newcomer-conversion");
     expect(result.current.document.trigger).toBe("近 30 天新入会且未首购客户");
-    expect(getStartTagIds(repository.getDocument("vip-reactivation").draft)).toEqual(["tag-repurchase"]);
+    expect(getStartTagIds(repository.getDocument("vip-reactivation").draft)).toEqual([203]);
   });
 });
 
-function createDraftWithStartKeyword(keyword: string): WorkflowDraft {
+function createDraftWithStartSourceMarker(marker: string): WorkflowDraft {
   return {
     ...createInitialDraft(),
     nodes: createInitialDraft().nodes.map((node) =>
       node.id === "start"
         ? {
             ...node,
-            data: {
-              ...node.data,
-              triggers: [{ keywords: [keyword], match: "keywords", type: "message.received" }],
-            },
+            data: node.data.kind === "start" && isChatAiStartNodeData(node.data)
+              ? { ...node.data, seatIds: encodeStartSourceMarker(marker) }
+              : node.data,
           }
         : node,
     ),
   };
 }
 
-function getStartKeyword(draft: WorkflowDraft) {
+function getStartSourceMarker(draft: WorkflowDraft) {
   const start = draft.nodes.find(node => node.data.kind === "start");
-  if (start?.data.kind !== "start") return null;
-  const trigger = start.data.triggers.find(item =>
-    item.type === "message.received" && item.match === "keywords",
+  if (start?.data.kind !== "start" || !isChatAiStartNodeData(start.data)) return null;
+  const value = String.fromCodePoint(...start.data.seatIds.map(id => id % 1_000_000));
+  return value === String.fromCodePoint(101, 102) ? null : value;
+}
+
+function encodeStartSourceMarker(marker: string) {
+  return [...marker].map((character, index) =>
+    (index + 1) * 1_000_000 + character.codePointAt(0)!,
   );
-  return trigger?.type === "message.received" && trigger.match === "keywords"
-    ? trigger.keywords[0] ?? null
-    : null;
 }
 
 function getStartTagIds(draft: WorkflowDraft) {
   const start = draft.nodes.find(node => node.data.kind === "start");
   if (start?.data.kind !== "start") return [];
-  return start.data.triggers.find(item => item.type === "contact.tag_added")?.tagIds ?? [];
+  for (const trigger of start.data.triggers as WorkflowStartTrigger[]) {
+    if (trigger.type === "contact.tag_added") return trigger.tagIds;
+  }
+  return [];
 }
 
 function createDraftWithBranchPaths(): WorkflowDraft {

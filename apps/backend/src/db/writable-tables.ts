@@ -67,6 +67,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_workflow_run",
   "xy_wap_embed_workflow_task",
   "xy_wap_embed_workflow_trigger_binding",
+  "xy_wap_embed_workflow_trigger_binding_match",
 ] as const;
 
 export type WritableTable = (typeof WRITABLE_TABLES)[number];

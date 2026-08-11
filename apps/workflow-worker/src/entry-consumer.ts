@@ -4,6 +4,7 @@ import {
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
   type WorkflowEntryEventType,
+  type WorkflowSubjectType,
   validateWorkflowEntryEvent,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
@@ -41,7 +42,7 @@ type WorkflowEntryRuntimeService = {
     recordedAt: Date;
     subscription: WorkflowEventSubscriptionRecord;
     subjectId: string;
-    subjectType: WorkflowEntryEvent["subjectType"];
+    subjectType: WorkflowSubjectType;
     uid: number;
   }): Promise<
     | { firstEvent: boolean; kind: "success" }
@@ -57,7 +58,7 @@ type WorkflowEntryRuntimeService = {
     entryEventId: string;
     expectedRevision: number;
     subjectId: string;
-    subjectType: WorkflowEntryEvent["subjectType"];
+    subjectType: WorkflowSubjectType;
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
@@ -115,23 +116,25 @@ export function createEntryConsumerHandler(input: {
         await message.ack();
         return { code: "deduplicated", disposition: "ack" };
       }
-      const subscriptionEventType = getSubscriptionEventType(parsed.event.eventType);
+      const entryEventType = getEntryEventType(parsed.event.eventType);
+      if (!entryEventType) {
+        return rejectPermanentEntry(message, "unknown_event_type", input.publishToDeadLetter);
+      }
+      const projectedSubjects = listProjectedSubjects(catalogResult.projection);
       const [bindings, subscriptions] = await Promise.all([
         input.bindingReader.listActiveTriggerBindings(
           parsed.event.uid,
-          parsed.event.subjectType,
-          parsed.event.eventType,
+          entryEventType,
         ),
-        subscriptionEventType
-          ? input.subscriptionReader.listMatchingEventSubscriptions(
-              parsed.event.uid,
-              parsed.event.subjectType,
-              subscriptionEventType,
-              parsed.event.subjectId,
-              new Date(parsed.event.occurredAt),
-              observedAt,
-            )
-          : Promise.resolve([]),
+        Promise.all(projectedSubjects.map(subject =>
+          input.subscriptionReader.listMatchingEventSubscriptions(
+            parsed.event.uid,
+            subject.subjectType,
+            entryEventType,
+            subject.subjectId,
+            new Date(parsed.event.occurredAt),
+            observedAt,
+          ))).then(results => results.flat()),
       ]);
       let admitted = 0;
       let deduplicated = 0;
@@ -139,12 +142,15 @@ export function createEntryConsumerHandler(input: {
       let runtimeRejected = 0;
       for (const binding of bindings) {
         if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
+        const subject = getProjectedSubject(catalogResult.projection, binding.subjectType);
+        if (!subject) continue;
         try {
           const result = await admitWorkflow(
             input.runtimeService,
             binding,
             parsed.event,
             catalogResult.projection,
+            subject,
           );
           if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
           else if (result.deduplicated) deduplicated += 1;
@@ -154,30 +160,28 @@ export function createEntryConsumerHandler(input: {
           runtimeRejected += 1;
         }
       }
-      if (subscriptionEventType) {
-        for (const subscription of subscriptions) {
-          try {
-            const result = await input.runtimeService.recordWaitEvent({
-              eventId: parsed.event.eventId,
-              eventOccurredAt: new Date(parsed.event.occurredAt),
-              eventType: subscriptionEventType,
-              match: catalogResult.projection.match,
-              projection: catalogResult.projection.variables,
-              recordedAt: observedAt,
-              subscription,
-              subjectId: parsed.event.subjectId,
-              subjectType: parsed.event.subjectType,
-              uid: parsed.event.uid,
-            });
-            if (result.kind === "success") admitted += 1;
-            else if (result.kind === "already-processed"
-              || result.kind === "conflict"
-              || result.kind === "not-found") deduplicated += 1;
-            else if (result.kind !== "not-matched") runtimeRejected += 1;
-          } catch (error) {
-            if (classifyEntryError(error) === "nack") throw error;
-            runtimeRejected += 1;
-          }
+      for (const subscription of subscriptions) {
+        try {
+          const result = await input.runtimeService.recordWaitEvent({
+            eventId: parsed.event.eventId,
+            eventOccurredAt: new Date(parsed.event.occurredAt),
+            eventType: entryEventType,
+            match: catalogResult.projection.match,
+            projection: catalogResult.projection.variables,
+            recordedAt: observedAt,
+            subscription,
+            subjectId: subscription.subjectId,
+            subjectType: subscription.subjectType,
+            uid: parsed.event.uid,
+          });
+          if (result.kind === "success") admitted += 1;
+          else if (result.kind === "already-processed"
+            || result.kind === "conflict"
+            || result.kind === "not-found") deduplicated += 1;
+          else if (result.kind !== "not-matched") runtimeRejected += 1;
+        } catch (error) {
+          if (classifyEntryError(error) === "nack") throw error;
+          runtimeRejected += 1;
         }
       }
       const processedAt = observedAt;
@@ -261,7 +265,7 @@ function createEntryInboxMessageId(event: Pick<WorkflowEntryEvent, "eventId" | "
   return `${event.uid}:${event.eventId}`;
 }
 
-function getSubscriptionEventType(eventType: string): WorkflowEntryEventType | null {
+function getEntryEventType(eventType: string): WorkflowEntryEventType | null {
   return Value.Check(WorkflowEntryEventTypeSchema, eventType)
     ? eventType as WorkflowEntryEventType
     : null;
@@ -272,12 +276,13 @@ async function admitWorkflow(
   binding: WorkflowTriggerBindingRecord,
   event: WorkflowEntryEvent,
   projection: WorkflowTriggerProjection,
+  subject: { subjectId: string; subjectType: WorkflowSubjectType },
 ) {
   return runtimeService.startRun({
     entryEventId: event.eventId,
     expectedRevision: binding.revision,
-    subjectId: event.subjectId,
-    subjectType: event.subjectType,
+    subjectId: subject.subjectId,
+    subjectType: subject.subjectType,
     trigger: {
       eventId: event.eventId,
       eventType: event.eventType,
@@ -289,6 +294,30 @@ async function admitWorkflow(
     uid: event.uid,
     workflowId: binding.workflowId,
   });
+}
+
+function listProjectedSubjects(projection: WorkflowTriggerProjection) {
+  const subjects: Array<{ subjectId: string; subjectType: WorkflowSubjectType }> = [];
+  if (projection.subjects.chatai_contact) {
+    subjects.push({
+      subjectId: projection.subjects.chatai_contact.subjectId,
+      subjectType: "chatai_contact",
+    });
+  }
+  if (projection.subjects.wecom_contact) {
+    subjects.push({
+      subjectId: projection.subjects.wecom_contact.subjectId,
+      subjectType: "wecom_contact",
+    });
+  }
+  return subjects;
+}
+
+function getProjectedSubject(
+  projection: WorkflowTriggerProjection,
+  subjectType: WorkflowSubjectType,
+) {
+  return listProjectedSubjects(projection).find(subject => subject.subjectType === subjectType) ?? null;
 }
 
 async function rejectPermanentEntry(

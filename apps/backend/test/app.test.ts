@@ -166,6 +166,10 @@ describe("backend app", () => {
       entitlementPort: {
         check: async () => ({ entitled: true, unentitledSince: null }),
       },
+      sourceIdentityResolver: {
+        resolveActiveSeatWorkUserIds: async (_uid, seatIds) =>
+          new Map(seatIds.map(seatId => [seatId, 201])),
+      },
     });
     const { app, authorization } = await createAuthenticatedAppWithRole("admin", {
       workflowService,
@@ -194,8 +198,8 @@ describe("backend app", () => {
               ...node,
               data: {
                 ...node.data,
-                accountIds: ["account-a"],
                 entryPolicy: { mode: "never" },
+                seatIds: [1],
                 triggers: [{ type: "contact.friend_added" }],
               },
             }

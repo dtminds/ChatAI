@@ -2,23 +2,23 @@
   "schemaVersion": 1,
   "fixtures": [
     {
-      "fixtureId": "entry-v1-valid-chatai-contact",
+      "fixtureId": "entry-v1-valid-message-received",
       "kind": "entry",
-      "path": "entry/v1/valid/chatai-contact.json",
+      "path": "entry/v1/valid/message-received.json",
       "stage": "envelope",
       "expected": { "accepted": true, "resultCode": "accepted" }
     },
     {
-      "fixtureId": "entry-v1-valid-wecom-contact",
+      "fixtureId": "entry-v1-valid-contact-friend-added",
       "kind": "entry",
-      "path": "entry/v1/valid/wecom-contact.json",
+      "path": "entry/v1/valid/contact-friend-added.json",
       "stage": "envelope",
       "expected": { "accepted": true, "resultCode": "accepted" }
     },
     {
-      "fixtureId": "entry-v1-valid-miniapp-member",
+      "fixtureId": "entry-v1-valid-contact-tag-added",
       "kind": "entry",
-      "path": "entry/v1/valid/miniapp-member.json",
+      "path": "entry/v1/valid/contact-tag-added.json",
       "stage": "envelope",
       "expected": { "accepted": true, "resultCode": "accepted" }
     },
@@ -81,6 +81,13 @@
       "expected": { "accepted": false, "resultCode": "envelope_invalid" }
     },
     {
+      "fixtureId": "entry-v1-legacy-single-subject-envelope",
+      "kind": "entry",
+      "path": "entry/v1/invalid/legacy-single-subject-envelope.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_invalid" }
+    },
+    {
       "fixtureId": "entry-v1-unknown-event-type",
       "kind": "entry",
       "path": "entry/v1/invalid/unknown-event-type.json",
@@ -102,9 +109,9 @@
       "expected": { "accepted": false, "resultCode": "payload_invalid" }
     },
     {
-      "fixtureId": "trigger-projection-v1-contact-updated",
+      "fixtureId": "trigger-projection-v1-contact-friend-added",
       "kind": "trigger-projection",
-      "path": "trigger-projection/v1/contact-updated.json",
+      "path": "trigger-projection/v1/contact-friend-added.json",
       "stage": "projection",
       "expected": { "accepted": true, "resultCode": "accepted" }
     },

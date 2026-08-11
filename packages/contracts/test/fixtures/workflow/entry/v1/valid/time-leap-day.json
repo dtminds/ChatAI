@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "payloadVersion": 1,
   "eventId": "time-leap-day-1",
-  "eventType": "test.member_updated",
+  "eventType": "contact.tag_added",
   "uid": 9,
-  "subjectType": "miniapp_member",
-  "subjectId": "member-time-1",
   "occurredAt": "2024-02-29T00:00:00.000Z",
-  "source": "contract-fixture",
+  "source": "wecom",
   "payload": {
-    "change": "profile"
+    "workUserId": 201,
+    "externalUserId": "wecom-contact-time-1",
+    "tagId": 301
   }
 }

@@ -153,7 +153,6 @@ export function runWorkflowRuntimeRepositoryContract(
       messageId: `wait-event:${created.task.id}`,
     };
     await expect(harness.repository.beginEventWait({
-      accountId: null,
       effectiveFrom: OUTBOX_READY_AT,
       eventType: "message.received",
       expectedRunLockVersion: created.run.lockVersion,
@@ -162,6 +161,7 @@ export function runWorkflowRuntimeRepositoryContract(
       inbox,
       now: OUTBOX_READY_AT,
       runId: created.run.id,
+      seatId: null,
       taskId: created.task.id,
       uid: 9,
     })).resolves.toEqual({ action: "cancel", kind: "workflow-unavailable" });
@@ -537,7 +537,6 @@ async function createEventWait(repository: WorkflowRuntimeRepository) {
   });
   if (claimed.kind !== "success") throw new Error("Expected Wait Event task claim to succeed");
   const waiting = await repository.beginEventWait({
-    accountId: null,
     effectiveFrom: OUTBOX_READY_AT,
     eventType: "message.received",
     expectedRunLockVersion: created.run.lockVersion,
@@ -550,6 +549,7 @@ async function createEventWait(repository: WorkflowRuntimeRepository) {
     },
     now: OUTBOX_READY_AT,
     runId: created.run.id,
+    seatId: null,
     taskId: created.task.id,
     uid: 9,
   });

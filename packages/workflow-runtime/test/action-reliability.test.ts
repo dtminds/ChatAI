@@ -933,8 +933,8 @@ function actionSpec(): WorkflowExecutionSpec {
 
 function startConfig() {
   return {
-    accountIds: ["account-a"],
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
+    seatIds: [101],
     triggers: [{ type: "contact.friend_added" as const }],
   };
 }

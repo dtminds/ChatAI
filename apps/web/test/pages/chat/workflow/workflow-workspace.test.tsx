@@ -17,7 +17,7 @@ import type {
   WorkflowDraftRepository,
   WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
-import type { WorkflowDraft } from "@/pages/chat/workflow/types";
+import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -558,7 +558,7 @@ describe("useWorkflowWorkspace", () => {
 
       act(() => {
         result.current.inspector.onNodeChange({
-          triggers: [{ keywords: ["更新后的发布人群"], match: "keywords", type: "message.received" }],
+          seatIds: encodeStartSourceMarker("更新后的发布人群"),
         });
       });
       expect(result.current.topBar.publishReady).toBe(true);
@@ -574,7 +574,7 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
       expect(toast.success).toHaveBeenCalledWith("发布成功");
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
     }
     finally {
       vi.useRealTimers();
@@ -587,7 +587,7 @@ describe("useWorkflowWorkspace", () => {
     try {
       importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-      const publishedKeyword = getCanvasStartKeyword(result.current.canvas);
+      const publishedKeyword = getCanvasStartSourceMarker(result.current.canvas);
 
       await act(async () => {
         await result.current.topBar.onPublish();
@@ -601,7 +601,7 @@ describe("useWorkflowWorkspace", () => {
 
       act(() => {
         result.current.inspector.onNodeChange({
-          triggers: [{ keywords: ["发布后的草稿修改"], match: "keywords", type: "message.received" }],
+          seatIds: encodeStartSourceMarker("发布后的草稿修改"),
         });
       });
 
@@ -615,7 +615,7 @@ describe("useWorkflowWorkspace", () => {
 
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
-      expect(getCanvasStartKeyword(result.current.canvas)).toBe(publishedKeyword);
+      expect(getCanvasStartSourceMarker(result.current.canvas)).toBe(publishedKeyword);
       expect(result.current.canvas.canRedo).toBe(true);
 
       act(() => {
@@ -624,8 +624,8 @@ describe("useWorkflowWorkspace", () => {
 
       expect(result.current.topBar.publishState).toBe("idle");
       expect(result.current.topBar.hasUnpublishedChanges).toBe(true);
-      expect(getCanvasStartKeyword(result.current.canvas)).toBe("发布后的草稿修改");
-      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe(publishedKeyword);
+      expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("发布后的草稿修改");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe(publishedKeyword);
     }
     finally {
       vi.useRealTimers();
@@ -711,8 +711,8 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("previews a version history snapshot as read-only and exits back to the draft", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("历史版本人群"));
-    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("当前草稿人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("历史版本人群"));
+    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("当前草稿人群"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = publishedDocument.currentVersion?.id ?? "";
 
@@ -730,7 +730,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.mode).toBe("version-preview");
     expect(result.current.canvas.isReadOnly).toBe(true);
     expect(result.current.inspector.isOpen).toBe(false);
-    expect(getCanvasStartKeyword(result.current.canvas)).toBe("历史版本人群");
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("历史版本人群");
 
     act(() => {
       result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
@@ -738,7 +738,7 @@ describe("useWorkflowWorkspace", () => {
     });
 
     expect(result.current.canvas.nodes).toHaveLength(publishedDocument.publishedDraft?.nodes.length ?? 0);
-    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("当前草稿人群");
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("当前草稿人群");
 
     act(() => {
       result.current.versionHistory.onExitPreview();
@@ -747,12 +747,12 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.versionHistory.isPreviewing).toBe(false);
     expect(result.current.mode).toBe("editing");
     expect(result.current.canvas.isReadOnly).toBe(false);
-    expect(getCanvasStartKeyword(result.current.canvas)).toBe("当前草稿人群");
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("当前草稿人群");
     expect(result.current.inspector.isOpen).toBe(true);
   });
 
   it("allows viewport navigation while previewing a read-only version", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("历史版本人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("历史版本人群"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialDraftViewport = result.current.document.draft.viewport;
     const versionId = publishedDocument.currentVersion?.id ?? "";
@@ -815,7 +815,7 @@ describe("useWorkflowWorkspace", () => {
     try {
       const publishedDocument = publishWorkflowDraft(
         "newcomer-conversion",
-        createWorkflowDraftWithStartKeyword("历史版本人群"),
+        createWorkflowDraftWithStartSourceMarker("历史版本人群"),
       );
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const versionId = publishedDocument.currentVersion?.id ?? "";
@@ -853,8 +853,8 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("restores the selected version history snapshot into the editable draft", async () => {
-    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("第一版恢复人群"));
-    publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("第二版仍是发布快照"));
+    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("第一版恢复人群"));
+    publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("第二版仍是发布快照"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = firstPublishedDocument.currentVersion?.id ?? "";
 
@@ -868,9 +868,9 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.versionHistory.isOpen).toBe(false);
     expect(result.current.versionHistory.isPreviewing).toBe(false);
-    expect(getCanvasStartKeyword(result.current.canvas)).toBe("第一版恢复人群");
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("第一版恢复人群");
     expect(result.current.document.status).toBe("Draft");
-    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("第二版仍是发布快照");
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("第二版仍是发布快照");
   });
 
   it("persists node config drafts through the workspace save boundary", async () => {
@@ -946,7 +946,7 @@ describe("useWorkflowWorkspace", () => {
 
 });
 
-function createWorkflowDraftWithStartKeyword(keyword: string): WorkflowDraft {
+function createWorkflowDraftWithStartSourceMarker(marker: string): WorkflowDraft {
   const draft = getWorkflowDocument("newcomer-conversion").draft;
 
   return {
@@ -955,33 +955,29 @@ function createWorkflowDraftWithStartKeyword(keyword: string): WorkflowDraft {
       node.id === "start"
         ? {
             ...node,
-            data: {
-              ...node.data,
-              triggers: [{
-                keywords: [keyword],
-                match: "keywords" as const,
-                type: "message.received" as const,
-              }],
-            },
+            data: node.data.kind === "start" && isChatAiStartNodeData(node.data)
+              ? { ...node.data, seatIds: encodeStartSourceMarker(marker) }
+              : node.data,
           }
         : node,
     ),
   };
 }
 
-function getStartKeyword(draft: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] } | null | undefined) {
+function getStartSourceMarker(draft: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] } | null | undefined) {
   const start = draft?.nodes.find(node => node.data.kind === "start");
-  if (start?.data.kind !== "start") return null;
-  const trigger = start.data.triggers.find(item =>
-    item.type === "message.received" && item.match === "keywords",
-  );
-  return trigger?.type === "message.received" && trigger.match === "keywords"
-    ? trigger.keywords[0] ?? null
-    : null;
+  if (start?.data.kind !== "start" || !isChatAiStartNodeData(start.data)) return null;
+  return String.fromCodePoint(...start.data.seatIds.map(id => id % 1_000_000));
 }
 
-function getCanvasStartKeyword(canvas: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] }) {
-  return getStartKeyword(canvas);
+function getCanvasStartSourceMarker(canvas: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] }) {
+  return getStartSourceMarker(canvas);
+}
+
+function encodeStartSourceMarker(marker: string) {
+  return [...marker].map((character, index) =>
+    (index + 1) * 1_000_000 + character.codePointAt(0)!,
+  );
 }
 
 function createWorkflowDraftWithoutEdge(edgeId: string) {

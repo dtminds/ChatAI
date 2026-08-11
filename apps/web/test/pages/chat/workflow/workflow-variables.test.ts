@@ -3,6 +3,7 @@ import {
   createEdge,
   createInitialEdges,
   createInitialNodes,
+  createNewWorkflowDraft,
   createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import {
@@ -26,7 +27,28 @@ describe("workflow variables", () => {
       ["subject", "id"],
       ["trigger", "eventType"],
       ["trigger", "occurredAt"],
+      ["trigger", "projection", "workUserId"],
+      ["trigger", "projection", "seatId"],
+      ["trigger", "projection", "externalUserId"],
+      ["trigger", "projection", "thirdExternalUserId"],
+      ["trigger", "projection", "tagId"],
+      ["trigger", "projection", "messageId"],
     ]);
+  });
+
+  it("limits trigger projection variables to the current Workflow Type", () => {
+    const draft = createNewWorkflowDraft("wecom_sop");
+    const variables = getAvailableVariablesForNode("end", draft.nodes, draft.edges);
+
+    expect(variables).toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["trigger", "projection", "workUserId"] }),
+      expect.objectContaining({ selector: ["trigger", "projection", "externalUserId"] }),
+      expect.objectContaining({ selector: ["trigger", "projection", "tagId"] }),
+    ]));
+    expect(variables).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["trigger", "projection", "seatId"] }),
+      expect.objectContaining({ selector: ["trigger", "projection", "messageId"] }),
+    ]));
   });
 
   it("only exposes nodes that execute on every path to the current node", () => {

@@ -24,8 +24,8 @@ describe("compileWorkflowDraft", () => {
       requiredCapabilities: [],
     });
     expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
-      accountIds: ["account-a"],
       entryPolicy: { mode: "never" },
+      seatIds: [101],
       triggers: [{ type: "contact.friend_added" }],
     });
     expect(spec.nodes.find((node) => node.id === "start")?.requiredCapabilities).toEqual([
@@ -230,7 +230,7 @@ describe("compileWorkflowDraft", () => {
         { id: "merge-end", source: "merge", target: "end" },
       ],
       nodes: [
-        node("start", "start"),
+        node("start", "start", startConfig()),
         node("branch", "branch", {
           branchPaths: [
             { id: "short", isDefault: true },
@@ -265,7 +265,7 @@ describe("compileWorkflowDraft", () => {
         { id: "branch-first-end", source: "branch", sourceHandle: "first", target: "end" },
       ],
       nodes: [
-        node("start", "start"),
+        node("start", "start", startConfig()),
         node("branch", "branch", {
           branchPaths: [
             { id: "first", isDefault: false },
@@ -328,9 +328,9 @@ function createDraft() {
 
 function startConfig() {
   return {
-    accountIds: ["account-a"],
     entryPolicy: { mode: "never" },
     panelState: { section: "triggers" },
+    seatIds: [101],
     triggers: [{ type: "contact.friend_added" }],
   };
 }

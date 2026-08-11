@@ -11,7 +11,9 @@ import {
   getWorkflowVariableValueType,
 } from "./workflow-node-outputs";
 import { getWorkflowVariableSelectorKey } from "./workflow-variable-selector";
-import { workflowContextVariables } from "./workflow-variable-registry";
+import {
+  getWorkflowContextVariables,
+} from "./workflow-variable-registry";
 
 export {
   getWorkflowVariableDisplayLabel,
@@ -25,7 +27,7 @@ export function getAvailableVariablesForNode(
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
   return [
-    ...workflowContextVariables,
+    ...getWorkflowContextVariables(nodes),
     ...getAvailableNodeOutputsForNode(nodeId, nodes, edges)
       .filter((variable) => variable.usages?.includes("variable")),
   ];
@@ -63,7 +65,7 @@ export function getAvailableLlmInputVariablesForNode(
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
   return [
-    ...workflowContextVariables,
+    ...getWorkflowContextVariables(nodes),
     ...getAvailableNodeOutputsForNode(nodeId, nodes, edges),
   ];
 }

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "message.received:938271",
+  "eventType": "message.received",
+  "uid": 9,
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "chatai",
+  "payload": {
+    "seatId": 101,
+    "workUserId": 201,
+    "thirdExternalUserId": "chatai-contact-1",
+    "externalUserId": "wecom-contact-1",
+    "messageId": 938271
+  }
+}

@@ -256,6 +256,11 @@ function createWorkflowService(repository: InMemoryWorkflowRepository) {
   return new WorkflowService(repository, {
     deploymentCapabilities: deploymentCapabilities(),
     entitlementPort: entitledPort(),
+    sourceIdentityResolver: {
+      async resolveActiveSeatWorkUserIds(_uid, seatIds) {
+        return new Map(seatIds.map(seatId => [seatId, seatId + 100]));
+      },
+    },
   });
 }
 
@@ -317,8 +322,8 @@ function node(
 
 function startConfig() {
   return {
-    accountIds: ["account-a"],
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
+    seatIds: [101],
     triggers: [{ type: "contact.friend_added" as const }],
   };
 }

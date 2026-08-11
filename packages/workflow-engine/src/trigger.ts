@@ -1,77 +1,125 @@
 import type {
+  WorkflowChatAiStartConfig,
   WorkflowEntryEventType,
   WorkflowStartConfig,
   WorkflowStartTrigger,
   WorkflowSubjectType,
+  WorkflowTriggerBindingFilter,
+  WorkflowWeComStartConfig,
 } from "@chatai/contracts";
 import { normalizeWorkflowEntryPolicy } from "@chatai/contracts";
 import type { WorkflowTriggerProjection } from "./event-catalog.js";
 
 export type WorkflowTriggerBindingSpec = {
   eventType: WorkflowEntryEventType;
-  filter: WorkflowStartConfig;
+  filter: WorkflowTriggerBindingFilter;
   subjectType: WorkflowSubjectType;
 };
 
 export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): WorkflowStartConfig {
-  return {
-    accountIds: unique(config.accountIds.map(value => value.trim()).filter(Boolean)),
-    entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
-    triggers: config.triggers.map(normalizeTrigger),
-  };
+  const triggers = normalizeTriggers(config.triggers);
+  return "seatIds" in config
+    ? {
+        entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
+        seatIds: uniqueNumbers(config.seatIds),
+        triggers,
+      } as WorkflowChatAiStartConfig
+    : {
+        entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
+        triggers: triggers.filter(trigger => trigger.type !== "message.received"),
+        workUserIds: uniqueNumbers(config.workUserIds),
+      } as WorkflowWeComStartConfig;
 }
 
 export function getWorkflowTriggerBindings(
   config: WorkflowStartConfig,
   subjectType: WorkflowSubjectType,
+  options: { resolvedWorkUserIds?: number[] } = {},
 ): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
+  assertStartConfigMatchesSubjectType(normalized, subjectType);
   const eventTypes = unique(normalized.triggers.map(trigger => trigger.type));
   return eventTypes.map(eventType => ({
     eventType,
-    filter: {
-      ...structuredClone(normalized),
-      triggers: normalized.triggers.filter(trigger => trigger.type === eventType),
-    },
+    filter: createBindingFilter(normalized, eventType, options.resolvedWorkUserIds),
     subjectType,
   }));
 }
 
 export function matchWorkflowTrigger(
-  config: WorkflowStartConfig,
+  filter: WorkflowTriggerBindingFilter,
   projection: WorkflowTriggerProjection,
 ) {
-  const normalized = normalizeWorkflowStartConfig(config);
-  const accountId = projection.match.accountId;
-  if (typeof accountId !== "string" || !normalized.accountIds.includes(accountId)) return false;
-  return normalized.triggers.some(trigger => matchTrigger(trigger, projection));
+  if (filter.eventType !== projection.eventType) return false;
+  if (filter.eventType === "message.received") {
+    const seatId = projection.match.seatId;
+    return typeof seatId === "number" && filter.seatIds.includes(seatId);
+  }
+  const workUserId = projection.match.workUserId;
+  if (typeof workUserId !== "number" || !filter.workUserIds.includes(workUserId)) return false;
+  if (filter.eventType === "contact.friend_added") return true;
+  const tagId = projection.match.tagId;
+  return typeof tagId === "number" && filter.tagIds.includes(tagId);
 }
 
-function normalizeTrigger(trigger: WorkflowStartTrigger): WorkflowStartTrigger {
-  if (trigger.type === "contact.tag_added") {
-    return { ...trigger, tagIds: unique(trigger.tagIds.map(value => value.trim()).filter(Boolean)) };
+function createBindingFilter(
+  config: WorkflowStartConfig,
+  eventType: WorkflowEntryEventType,
+  resolvedWorkUserIds: number[] | undefined,
+): WorkflowTriggerBindingFilter {
+  if (eventType === "message.received") {
+    if (!("seatIds" in config)) throw new Error("Message trigger requires ChatAI Start config");
+    return {
+      entryPolicy: structuredClone(config.entryPolicy),
+      eventType,
+      match: "any",
+      seatIds: [...config.seatIds],
+    };
   }
-  if (trigger.type === "message.received" && trigger.match === "keywords") {
-    return { ...trigger, keywords: unique(trigger.keywords.map(value => value.trim()).filter(Boolean)) };
+
+  const workUserIds = "workUserIds" in config
+    ? config.workUserIds
+    : uniqueNumbers(resolvedWorkUserIds ?? []);
+  if (workUserIds.length === 0) {
+    throw new Error("Contact trigger requires resolved WeCom member identities");
   }
-  return structuredClone(trigger);
+  if (eventType === "contact.friend_added") {
+    return {
+      entryPolicy: structuredClone(config.entryPolicy),
+      eventType,
+      workUserIds: [...workUserIds],
+    };
+  }
+
+  const tagIds = uniqueNumbers(config.triggers.flatMap(trigger =>
+    trigger.type === "contact.tag_added" ? trigger.tagIds : []));
+  return {
+    entryPolicy: structuredClone(config.entryPolicy),
+    eventType,
+    tagIds,
+    workUserIds: [...workUserIds],
+  };
 }
 
-function matchTrigger(trigger: WorkflowStartTrigger, projection: WorkflowTriggerProjection) {
-  if (trigger.type !== projection.eventType) return false;
-  if (trigger.type === "contact.friend_added") return true;
-  if (trigger.type === "contact.tag_added") {
-    const tagId = projection.match.tagId;
-    return typeof tagId === "string" && trigger.tagIds.includes(tagId);
-  }
-  if (trigger.match === "any") return true;
-  if (projection.match.messageType !== "text" || typeof projection.match.text !== "string") {
-    return false;
-  }
-  const text = projection.match.text.toLocaleLowerCase("en-US");
-  return trigger.keywords.some(keyword => text.includes(keyword.toLocaleLowerCase("en-US")));
+function assertStartConfigMatchesSubjectType(
+  config: WorkflowStartConfig,
+  subjectType: WorkflowSubjectType,
+) {
+  if (subjectType === "chatai_contact" && "seatIds" in config) return;
+  if (subjectType === "wecom_contact" && "workUserIds" in config) return;
+  throw new Error(`Start configuration does not match Workflow Subject Type: ${subjectType}`);
+}
+
+function normalizeTriggers(triggers: WorkflowStartTrigger[]): WorkflowStartTrigger[] {
+  return triggers.map((trigger) => trigger.type === "contact.tag_added"
+    ? { ...trigger, tagIds: uniqueNumbers(trigger.tagIds) }
+    : structuredClone(trigger));
 }
 
 function unique<T>(values: T[]) {
   return [...new Set(values)];
+}
+
+function uniqueNumbers(values: number[]) {
+  return unique(values.filter(value => Number.isSafeInteger(value) && value > 0));
 }

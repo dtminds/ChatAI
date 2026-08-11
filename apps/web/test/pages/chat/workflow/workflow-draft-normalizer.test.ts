@@ -122,6 +122,29 @@ describe("workflow draft normalizer", () => {
     });
   });
 
+  it("hydrates a WeCom start without retaining the ChatAI default source field", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+          kind: "start",
+          triggers: [{ type: "contact.friend_added" }],
+          workUserIds: [201],
+        },
+        id: "start",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      kind: "start",
+      workUserIds: [201],
+    }));
+    expect(draft.nodes[0]?.data).not.toHaveProperty("seatIds");
+  });
+
   it("removes runtime-only node and edge state from persistable drafts", () => {
     const sanitizedDraft = sanitizeDraft(createRuntimeDraft());
 

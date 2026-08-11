@@ -1,0 +1,15 @@
+{
+  "eventType": "contact.friend_added",
+  "match": {
+    "workUserId": 201
+  },
+  "subjects": {
+    "wecom_contact": {
+      "subjectId": "wecom-contact-1"
+    }
+  },
+  "variables": {
+    "workUserId": 201,
+    "externalUserId": "wecom-contact-1"
+  }
+}

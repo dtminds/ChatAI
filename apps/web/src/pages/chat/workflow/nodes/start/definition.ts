@@ -2,7 +2,16 @@ import { PlayIcon } from "@hugeicons/core-free-icons";
 import {
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+  type WorkflowType,
 } from "@chatai/contracts";
+import {
+  getStartNodeSourceIds,
+  isChatAiStartNodeData,
+  isWeComStartNodeData,
+  type ChatAiStartNodeData,
+  type StartNodeData,
+  type WeComStartNodeData,
+} from "../../types";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createCatalogIssue,
@@ -21,35 +30,36 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   canInsertAfter: true,
   canRename: false,
   configSections: [],
-  createDefaultData: () =>
-    createNodeData("start", 1, {
-      accountIds: [],
-      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
-      label: "开始",
-      metric: "待配置触发条件",
-      status: "warning",
-      title: "开始",
-      triggers: [],
-    }),
-  createExecutionConfig: (data) => ({
-    accountIds: [...data.accountIds],
-    entryPolicy: structuredClone(data.entryPolicy),
-    triggers: structuredClone(data.triggers),
-  }),
+  createDefaultData: () => createStartNodeData("chatai_sop"),
+  createExecutionConfig: (data) => isChatAiStartNodeData(data)
+    ? {
+        entryPolicy: structuredClone(data.entryPolicy),
+        seatIds: [...data.seatIds],
+        triggers: structuredClone(data.triggers),
+      }
+    : {
+        entryPolicy: structuredClone(data.entryPolicy),
+        triggers: structuredClone(data.triggers),
+        workUserIds: [...data.workUserIds],
+      },
   insertable: false,
   kind: "start",
   layout: standardNodeLayout,
   role: "entry",
   sanitizeData: (data) => {
-    if (data.entryPolicy.mode !== "rolling_window") return data;
-    const maxWindowSize = data.entryPolicy.windowUnit === "hour"
+    const sanitizedData = sanitizeStartSource(data);
+    if (sanitizedData.entryPolicy.mode !== "rolling_window") return sanitizedData;
+    const maxWindowSize = sanitizedData.entryPolicy.windowUnit === "hour"
       ? WORKFLOW_ENTRY_WINDOW_MAX_HOURS
       : WORKFLOW_ENTRY_WINDOW_MAX_DAYS;
     return {
-      ...data,
+      ...sanitizedData,
       entryPolicy: {
-        ...data.entryPolicy,
-        windowSize: Math.min(maxWindowSize, Math.max(1, Math.trunc(data.entryPolicy.windowSize))),
+        ...sanitizedData.entryPolicy,
+        windowSize: Math.min(
+          maxWindowSize,
+          Math.max(1, Math.trunc(sanitizedData.entryPolicy.windowSize)),
+        ),
       },
     };
   },
@@ -59,8 +69,12 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   sort: 0,
   validate: (node) => {
     const issues = [];
-    if (node.data.accountIds.length === 0) {
-      issues.push(createCatalogIssue("start-account-required", "开始节点需要选择托管账号"));
+    const sourceIds = getStartNodeSourceIds(node.data);
+    if (sourceIds.length === 0) {
+      issues.push(createCatalogIssue(
+        "start-source-required",
+        `开始节点需要选择${isChatAiStartNodeData(node.data) ? "席位" : "企微成员"}`,
+      ));
     }
     if (node.data.triggers.length === 0) {
       issues.push(createCatalogIssue("start-trigger-required", "开始节点需要选择触发条件"));
@@ -69,13 +83,6 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
       issues.push(createCatalogIssue("start-tag-required", "标签触发需要选择至少一个标签"));
-    }
-    if (node.data.triggers.some(trigger =>
-      trigger.type === "message.received"
-      && trigger.match === "keywords"
-      && trigger.keywords.length === 0,
-    )) {
-      issues.push(createCatalogIssue("start-keyword-required", "关键词触发需要填写至少一个关键词"));
     }
     return issues;
   },
@@ -86,3 +93,50 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
     label: "开始",
   },
 };
+
+export function createStartNodeData(
+  workflowType: "chatai_sop",
+): ChatAiStartNodeData;
+export function createStartNodeData(
+  workflowType: "wecom_sop",
+): WeComStartNodeData;
+export function createStartNodeData(
+  workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop">,
+): StartNodeData;
+export function createStartNodeData(
+  workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop">,
+): StartNodeData {
+  const common = {
+    entryPolicy: { maxEntries: 2, mode: "lifetime_limit" } as const,
+    label: "开始",
+    metric: "待配置触发条件",
+    status: "warning" as const,
+    title: "开始",
+    triggers: [],
+  };
+  return workflowType === "chatai_sop"
+    ? createNodeData("start", 1, { ...common, seatIds: [] })
+    : createNodeData("start", 1, { ...common, workUserIds: [] });
+}
+
+function sanitizeStartSource(data: StartNodeData): StartNodeData {
+  if (isWeComStartNodeData(data)) {
+    const { seatIds: _seatIds, ...weComData } = data as StartNodeData & { seatIds?: unknown };
+    return {
+      ...weComData,
+      workUserIds: sanitizePositiveIds(data.workUserIds),
+    } as StartNodeData;
+  }
+  const chatAiStartData = isChatAiStartNodeData(data) ? data : createStartNodeData("chatai_sop");
+  const { workUserIds: _workUserIds, ...chatAiData } = chatAiStartData as StartNodeData & {
+    workUserIds?: unknown;
+  };
+  return {
+    ...chatAiData,
+    seatIds: sanitizePositiveIds(chatAiStartData.seatIds),
+  } as StartNodeData;
+}
+
+function sanitizePositiveIds(ids: number[]) {
+  return [...new Set(ids.filter(id => Number.isSafeInteger(id) && id > 0))];
+}

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "payloadVersion": 2,
-  "eventId": "contact-change-4",
+  "payloadVersion": 1,
+  "eventId": "contact.friend_added:789",
   "eventType": "contact.friend_added",
   "uid": 9,
   "occurredAt": "2026-08-09T10:30:15.123Z",

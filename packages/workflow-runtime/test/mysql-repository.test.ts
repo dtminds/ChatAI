@@ -428,22 +428,33 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.deleteOrder).toEqual([]);
   });
 
-  it("reads only active current-revision trigger bindings through the definition join", async () => {
+  it("reads active current-revision trigger bindings across Subject Types", async () => {
     const db = createTriggerBindingDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.listActiveTriggerBindings(
       8,
-      "chatai_contact",
       "contact.friend_added",
     );
 
-    expect(result).toMatchObject([{
-      eventType: "contact.friend_added",
-      filter: { accountIds: ["account-a"] },
-      revision: 2,
-      workflowId: "42",
-    }]);
+    expect(result).toMatchObject([
+      {
+        eventType: "contact.friend_added",
+        filter: {
+          entryPolicy: { mode: "never" },
+          eventType: "contact.friend_added",
+          workUserIds: [201],
+        },
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowId: "42",
+      },
+      {
+        eventType: "contact.friend_added",
+        subjectType: "wecom_contact",
+        workflowId: "43",
+      },
+    ]);
     expect(db.joinReferences).toEqual(expect.arrayContaining([
       ["definition.published_revision", "=", "binding.revision"],
     ]));
@@ -454,6 +465,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       ["definition.biz_status", "=", 1],
       ["definition.runtime_status", "=", "active"],
     ]));
+    expect(db.wheres).not.toContainEqual(["binding.subject_type", "=", 1]);
   });
 
   it("normalizes string BIGINT tenant ids at the runtime boundary", async () => {
@@ -462,7 +474,6 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     const [binding] = await repository.listActiveTriggerBindings(
       8,
-      "chatai_contact",
       "contact.friend_added",
     );
 
@@ -890,13 +901,13 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
         select() { return builder; },
         where(...args: unknown[]) { db.wheres.push(args); return builder; },
         async execute() {
-          return [{
+          const chataiBinding = {
             create_time: now,
             event_type: "contact.friend_added",
             filter_spec_json: JSON.stringify({
-              accountIds: ["account-a"],
               entryPolicy: { mode: "never" },
-              triggers: [{ type: "contact.friend_added" }],
+              eventType: "contact.friend_added",
+              workUserIds: [201],
             }),
             id: "9",
             revision: 2,
@@ -905,7 +916,16 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
             uid: options.uid ?? 8,
             update_time: now,
             workflow_id: "42",
-          }];
+          };
+          return [
+            chataiBinding,
+            {
+              ...chataiBinding,
+              id: "10",
+              subject_type: 2,
+              workflow_id: "43",
+            },
+          ];
         },
       };
       const joinBuilder = {

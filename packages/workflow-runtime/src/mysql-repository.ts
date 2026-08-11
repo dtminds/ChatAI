@@ -4,13 +4,13 @@ import {
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
-  WorkflowStartConfig,
   WorkflowStatusReason,
   WorkflowTaskMessageSchema,
   WorkflowTaskStatus,
   WorkflowStoredExecutionSpec,
   WorkflowSubjectType,
   type WorkflowTaskMessage,
+  type WorkflowTriggerBindingFilter,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
@@ -183,8 +183,7 @@ export class MysqlWorkflowRuntimeRepository implements
 
   async listActiveTriggerBindings(
     uid: number,
-    subjectType: WorkflowSubjectType,
-    eventType: string,
+    eventType: WorkflowEntryEventType,
   ) {
     const rows = await this.db.selectFrom(`${TRIGGER_BINDING_TABLE} as binding`)
       .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
@@ -204,7 +203,6 @@ export class MysqlWorkflowRuntimeRepository implements
         "binding.workflow_id",
       ])
       .where("binding.uid", "=", uid)
-      .where("binding.subject_type", "=", encodeWorkflowSubjectType(subjectType))
       .where("binding.event_type", "=", eventType)
       .where("binding.status", "=", 1)
       .where("definition.biz_status", "=", 1)
@@ -420,7 +418,6 @@ export class MysqlWorkflowRuntimeRepository implements
       }
 
       const inserted = await trx.insertInto(EVENT_SUBSCRIPTION_TABLE).values({
-        account_id: input.accountId,
         collect_until: null,
         create_time: input.now,
         effective_from: input.effectiveFrom,
@@ -429,6 +426,7 @@ export class MysqlWorkflowRuntimeRepository implements
         node_id: task.nodeId,
         revision: run.revision,
         run_id: run.id,
+        seat_id: input.seatId,
         status: "waiting",
         subject_id: run.subjectId,
         subject_type: encodeWorkflowSubjectType(run.subjectType),
@@ -470,7 +468,6 @@ export class MysqlWorkflowRuntimeRepository implements
         .executeTakeFirstOrThrow();
 
       const subscription: WorkflowEventSubscriptionRecord = {
-        accountId: input.accountId,
         collectUntil: null,
         createdAt: input.now,
         effectiveFrom: input.effectiveFrom,
@@ -480,6 +477,7 @@ export class MysqlWorkflowRuntimeRepository implements
         nodeId: task.nodeId,
         revision: run.revision,
         runId: run.id,
+        seatId: input.seatId,
         status: "waiting",
         subjectId: run.subjectId,
         subjectType: run.subjectType,
@@ -2793,7 +2791,6 @@ function mapEventSubscription(
     throw new Error(`Unknown workflow event subscription status: ${status}`);
   }
   return {
-    accountId: row.account_id,
     collectUntil: row.collect_until ? toDate(row.collect_until) : null,
     createdAt: toDate(row.create_time),
     effectiveFrom: toDate(row.effective_from),
@@ -2803,6 +2800,7 @@ function mapEventSubscription(
     nodeId: row.node_id,
     revision: row.revision,
     runId: normalizeId(row.run_id),
+    seatId: row.seat_id == null ? null : Number(row.seat_id),
     status,
     subjectId: row.subject_id,
     subjectType: decodeWorkflowSubjectType(row.subject_type),
@@ -2836,7 +2834,7 @@ function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBinding
   return {
     createdAt: toDate(row.create_time),
     eventType: parseEntryEventType(row.event_type),
-    filter: parseJson(row.filter_spec_json) as WorkflowStartConfig,
+    filter: parseJson(row.filter_spec_json) as WorkflowTriggerBindingFilter,
     id: normalizeId(row.id),
     revision: Number(row.revision),
     status: Number(row.status) === 1 ? 1 : 0,

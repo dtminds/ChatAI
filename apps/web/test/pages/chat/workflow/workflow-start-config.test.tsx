@@ -6,9 +6,11 @@ import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/
 import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
 import {
   areWorkflowStartFixturesEnabled,
-  getWorkflowStartFixtureAccounts,
+  getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureTags,
+  getWorkflowStartFixtureWorkUsers,
 } from "@/pages/chat/workflow/nodes/start/fixture-options";
+import { createStartNodeData } from "@/pages/chat/workflow/nodes/start/definition";
 import type { StartNodeData, WorkflowNode } from "@/pages/chat/workflow/types";
 
 function createStartNode(data: StartNodeData = createDefaultNodeData("start")): WorkflowNode<"start"> {
@@ -24,9 +26,11 @@ describe("workflow start configuration", () => {
   it("exposes fixture options only through the explicit environment switch", () => {
     expect(areWorkflowStartFixturesEnabled("true")).toBe(true);
     expect(areWorkflowStartFixturesEnabled("false")).toBe(false);
-    expect(getWorkflowStartFixtureAccounts(true)).not.toHaveLength(0);
+    expect(getWorkflowStartFixtureSeats(true)).not.toHaveLength(0);
+    expect(getWorkflowStartFixtureWorkUsers(true)).not.toHaveLength(0);
     expect(getWorkflowStartFixtureTags(true)).not.toHaveLength(0);
-    expect(getWorkflowStartFixtureAccounts(false)).toEqual([]);
+    expect(getWorkflowStartFixtureSeats(false)).toEqual([]);
+    expect(getWorkflowStartFixtureWorkUsers(false)).toEqual([]);
     expect(getWorkflowStartFixtureTags(false)).toEqual([]);
   });
 
@@ -35,13 +39,13 @@ describe("workflow start configuration", () => {
     const data = definition.createDefaultData();
 
     expect(definition.createExecutionConfig(data)).toEqual({
-      accountIds: data.accountIds,
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [],
       triggers: data.triggers,
     });
   });
 
-  it("updates selected accounts and OR trigger options through the settings panel", async () => {
+  it("updates selected seats and OR trigger options through the ChatAI settings panel", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -58,7 +62,7 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("checkbox", { name: "用户发送消息" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
-      accountIds: expect.any(Array),
+      seatIds: [101],
       status: "warning",
     }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
@@ -67,6 +71,26 @@ describe("workflow start configuration", () => {
         expect.objectContaining({ match: "any", type: "message.received" }),
       ]),
     }));
+  });
+
+  it("uses work users and excludes message events for a WeCom start", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode(createStartNodeData("wecom_sop"));
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "企微成员一" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({ workUserIds: [201] }));
+    expect(screen.queryByRole("checkbox", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
   it("only exposes entry events allowed by the Workflow capability profile", () => {

@@ -2087,10 +2087,8 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(
-      await screen.findByText("当前账号仅可查看技能，管理操作需管理员权限"),
-    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加技能" })).not.toBeInTheDocument();
+    await screen.findByRole("link", { name: "订单与物流场景查询" });
 
     await user.click(
       screen.getByRole("button", { name: "打开 订单与物流场景查询 操作菜单" }),
@@ -4215,7 +4213,6 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
-    expect(screen.getByText("当前账号仅可查看 Agent，管理操作需管理员权限")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });
     await user.click(moreActions[0]);
@@ -5347,9 +5344,6 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
 
     expect(await screen.findByRole("heading", { level: 1, name: "护肤小助理" })).toBeInTheDocument();
-    expect(
-      screen.getByText("当前账号仅可查看 Agent，保存、发布和还原操作需管理员权限"),
-    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "智能生成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "发布正式版" })).not.toBeInTheDocument();

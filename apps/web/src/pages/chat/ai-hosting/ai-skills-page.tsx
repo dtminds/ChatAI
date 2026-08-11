@@ -529,12 +529,6 @@ function MySkillsPanel() {
         ) : null}
       </div>
 
-      {!canManage ? (
-        <p className="text-sm text-muted-foreground">
-          当前账号仅可查看技能，管理操作需管理员权限
-        </p>
-      ) : null}
-
       <div>
         <TooltipProvider>
           <Table aria-label="我的技能列表" className="min-w-[1080px] table-fixed">

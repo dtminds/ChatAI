@@ -888,6 +888,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
   UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
   KEY idx_workflow_node_metric_query (uid, workflow_id, revision, node_id)
 ) COMMENT='营销Workflow节点分片统计表';
+
 CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
   `uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '租户id',

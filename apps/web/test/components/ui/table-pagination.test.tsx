@@ -47,6 +47,44 @@ describe("TablePagination", () => {
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
   });
 
+  it("limits navigation to 1000 pages by default while preserving the total count", () => {
+    render(
+      <TablePagination
+        onPageChange={vi.fn()}
+        page={1000}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByText(/56366/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("button", { name: "2819" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
+  it("accepts a positive integer override for the maximum page", () => {
+    render(
+      <TablePagination
+        maxPage={2000}
+        onPageChange={vi.fn()}
+        page={2000}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "2000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("button", { name: "2819" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
   it("resolves table row ranges from clamped page state", () => {
     expect(resolveTablePagination({ page: 3, pageSize: 10, total: 2 })).toEqual({
       activePage: 1,
@@ -76,6 +114,30 @@ describe("TablePagination", () => {
       totalPages: 3,
     });
   });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.POSITIVE_INFINITY,
+    Number.NaN,
+  ])(
+    "rejects invalid maximum page %s",
+    (maxPage) => {
+      expect(() =>
+        render(
+          <TablePagination
+            maxPage={maxPage}
+            onPageChange={vi.fn()}
+            page={1}
+            total={10}
+            totalPages={1}
+          />,
+        ),
+      ).toThrowError("maxPage must be a positive safe integer");
+    },
+  );
 
   it("calls onPageSizeChange when selecting a new page size", async () => {
     const user = userEvent.setup();

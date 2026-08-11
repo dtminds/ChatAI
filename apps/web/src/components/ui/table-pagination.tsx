@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_MAX_PAGE = 1000;
+
 export function resolveTablePagination({
   page,
   pageSize,
@@ -47,6 +49,7 @@ export function resolveTablePagination({
 export function TablePagination({
   className,
   itemLabel = "条",
+  maxPage,
   onPageChange,
   onPageSizeChange,
   page,
@@ -57,6 +60,7 @@ export function TablePagination({
 }: {
   className?: string;
   itemLabel?: string;
+  maxPage?: number;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   page: number;
@@ -86,6 +90,7 @@ export function TablePagination({
         共 {total} {itemLabel}
       </span>
       <PageButtons
+        maxPage={maxPage}
         onPageChange={onPageChange}
         page={page}
         totalPages={totalPages}
@@ -130,15 +135,17 @@ function PageSizeSelector({
 }
 
 function PageButtons({
+  maxPage,
   onPageChange,
   page,
   totalPages,
 }: {
+  maxPage?: number;
   onPageChange: (page: number) => void;
   page: number;
   totalPages: number;
 }) {
-  const safeTotalPages = Math.max(1, totalPages);
+  const safeTotalPages = limitTotalPages(totalPages, maxPage);
   const safePage = Math.min(Math.max(1, page), safeTotalPages);
   const pages = useMemo(() => {
     const visiblePages = new Set<number>([1, safeTotalPages, safePage]);
@@ -216,6 +223,16 @@ function PageButtons({
       </PaginationContent>
     </Pagination>
   );
+}
+
+function limitTotalPages(totalPages: number, maxPage?: number) {
+  const resolvedMaxPage = maxPage === undefined ? DEFAULT_MAX_PAGE : maxPage;
+
+  if (!Number.isSafeInteger(resolvedMaxPage) || resolvedMaxPage < 1) {
+    throw new RangeError("maxPage must be a positive safe integer");
+  }
+
+  return Math.min(Math.max(1, totalPages), resolvedMaxPage);
 }
 
 function PageButton({

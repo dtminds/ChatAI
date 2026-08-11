@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createCoreNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
@@ -145,51 +145,84 @@ describe("core node executors", () => {
   it("selects the first matching branch and falls back to default", async () => {
     const branch = node("branch", {
       branchPaths: [
-        { id: "vip", isDefault: false },
-        { id: "returning", isDefault: false },
-        { id: "else", isDefault: true },
+        {
+          conditions: [{
+            id: "vip-condition",
+            operator: "equals",
+            selector: ["subject", "id"],
+            value: "vip-1",
+            valueType: "string",
+          }],
+          id: "vip",
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{
+            id: "returning-condition",
+            operator: "contains",
+            selector: ["trigger", "eventType"],
+            value: "tag",
+            valueType: "string",
+          }],
+          id: "returning",
+          label: "否则如果",
+          logic: "all",
+        },
+        { conditions: [], id: "else", isDefault: true, label: "否则", logic: "all" },
       ],
     });
 
-    await expect(registry.execute(branch, context({ matchingPathIds: new Set(["returning"]) })))
+    await expect(registry.execute(branch, context({
+      trigger: { eventType: "contact.tag_added" },
+    })))
       .resolves.toEqual({ output: {}, sourceOutletId: "returning", type: "advance" });
     await expect(registry.execute(branch, context()))
       .resolves.toEqual({ output: {}, sourceOutletId: "else", type: "advance" });
   });
 
-  it("requires deadline metadata before executing an action", async () => {
-    const executeAction = vi.fn(async () => ({}));
+  it("resolves Subject, Trigger, node output, and lifecycle selectors", async () => {
+    const branch = node("branch", {
+      branchPaths: [
+        {
+          conditions: [
+            condition("subject", ["subject", "id"], "equals", "customer-1", "string"),
+            condition("trigger", ["trigger", "eventType"], "contains", "tag", "string"),
+            condition("output", ["node", "score", "value"], "greater-than", 8, "number"),
+            condition(
+              "lifecycle",
+              ["node-lifecycle", "wait", "exitedAt"],
+              "equals",
+              "2026-07-10T08:00",
+              "datetime",
+            ),
+            condition(
+              "current-lifecycle",
+              ["current-node-lifecycle", "enteredAt"],
+              "equals",
+              "2026-07-10T08:00",
+              "datetime",
+            ),
+          ],
+          id: "matched",
+          label: "如果",
+          logic: "all",
+        },
+        { conditions: [], id: "else", isDefault: true, label: "否则", logic: "all" },
+      ],
+    });
 
-    await expect(registry.execute(node("message"), context({
-      actionIdempotencyKey: "8:1:message:1",
-      executeAction,
-    }))).rejects.toThrow("Action deadline is not configured: message");
-    expect(executeAction).not.toHaveBeenCalled();
+    await expect(registry.execute(branch, context({
+      currentNodeLifecycle: { enteredAt: "2026-07-10T00:00:00.000Z" },
+      nodeLifecycle: { wait: { exitedAt: "2026-07-10T00:00:00.000Z" } },
+      outputs: { score: { value: 9 } },
+      trigger: { eventType: "contact.tag_added" },
+    }))).resolves.toEqual({ output: {}, sourceOutletId: "matched", type: "advance" });
   });
 
-  it("forwards action execution metadata to the adapter", async () => {
-    const controller = new AbortController();
-    const deadlineAt = new Date("2026-07-10T00:00:15.000Z");
-    const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
-    const actionNode = node("message");
-    const executionContext = context({
-      actionDeadlineAt: deadlineAt,
-      actionIdempotencyKey: "8:1:message:1",
-      actionSignal: controller.signal,
-      executeAction,
-    });
-
-    await expect(registry.execute(actionNode, executionContext)).resolves.toMatchObject({
-      output: { messageId: "downstream-1" },
-      type: "advance",
-    });
-    expect(executeAction).toHaveBeenCalledWith({
-      context: executionContext,
-      deadlineAt,
-      idempotencyKey: "8:1:message:1",
-      node: actionNode,
-      signal: controller.signal,
-    });
+  it("does not register generic business action executors", async () => {
+    await expect(registry.execute(node("message"), context()))
+      .rejects.toThrow("Executor is not registered: message");
   });
 });
 
@@ -204,8 +237,6 @@ function context(
   overrides: Partial<WorkflowNodeExecutionContext> = {},
 ): WorkflowNodeExecutionContext {
   return {
-    evaluateBranchPath: ({ id }) => overrides.matchingPathIds?.has(id) ?? false,
-    matchingPathIds: new Set<string>(),
     now: new Date("2026-07-10T00:00:00.000Z"),
     outputs: {},
     run: {
@@ -220,4 +251,14 @@ function context(
     trigger: {},
     ...overrides,
   };
+}
+
+function condition(
+  id: string,
+  selector: string[],
+  operator: "contains" | "equals" | "greater-than",
+  value: number | string,
+  valueType: "datetime" | "number" | "string",
+) {
+  return { id, operator, selector, value, valueType };
 }

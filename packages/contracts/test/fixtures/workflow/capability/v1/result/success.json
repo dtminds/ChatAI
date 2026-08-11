@@ -1,0 +1,5 @@
+{
+  "capabilityKey": "operation.test.action",
+  "contractVersion": 1,
+  "result": { "value": "ok" }
+}

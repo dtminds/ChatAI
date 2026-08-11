@@ -31,6 +31,32 @@ export function getAvailableVariablesForNode(
   ];
 }
 
+export function getAvailableBranchVariablesForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowVariableDefinition[] {
+  const upstreamLifecycleVariables = getGuaranteedUpstreamNodes(nodeId, nodes, edges)
+    .flatMap((sourceNode) => [
+      createNodeLifecycleVariable(sourceNode, "enteredAt", "进入时间"),
+      createNodeLifecycleVariable(sourceNode, "exitedAt", "退出时间"),
+    ]);
+
+  return [
+    ...getAvailableVariablesForNode(nodeId, nodes, edges),
+    {
+      key: "enteredAt",
+      label: "进入时间",
+      scope: "current-node-lifecycle",
+      selector: ["current-node-lifecycle", "enteredAt"],
+      type: "datetime",
+      usages: ["variable"],
+      valueType: { kind: "datetime" },
+    },
+    ...upstreamLifecycleVariables,
+  ];
+}
+
 export function getAvailableLlmInputVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
@@ -181,6 +207,25 @@ export function scopeWorkflowNodeOutputs(
     sourceNodeTitle: node.data.title,
     type: getWorkflowVariableValueType(output.valueType),
   }));
+}
+
+function createNodeLifecycleVariable(
+  node: WorkflowNode,
+  field: "enteredAt" | "exitedAt",
+  label: string,
+): WorkflowVariableDefinition {
+  return {
+    key: field,
+    label,
+    scope: "node-lifecycle",
+    selector: ["node-lifecycle", node.id, field],
+    sourceNodeId: node.id,
+    sourceNodeKind: node.data.kind,
+    sourceNodeTitle: node.data.title,
+    type: "datetime",
+    usages: ["variable"],
+    valueType: { kind: "datetime" },
+  };
 }
 
 export function resolveWorkflowVariable(

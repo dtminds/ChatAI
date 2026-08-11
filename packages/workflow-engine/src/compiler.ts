@@ -1,4 +1,5 @@
 import {
+  isWorkflowBranchConfigComplete,
   normalizeWorkflowEntryPolicy,
   WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   type WorkflowDraft,
@@ -108,6 +109,16 @@ function createExecutionConfig(kind: WorkflowNodeKind, data: Record<string, unkn
       },
       timeout: data.timeout,
     }) as Record<string, unknown>;
+  }
+  if (kind === "branch") {
+    const config = cloneJsonValue({ branchPaths: data.branchPaths }) as Record<string, unknown>;
+    if (!isWorkflowBranchConfigComplete(config)) {
+      throw new WorkflowCompilationError([{
+        code: "invalid-node-config",
+        message: "Branch node requires complete ordered paths and conditions",
+      }]);
+    }
+    return config;
   }
   if (kind === "end") return {};
   return {};

@@ -1,4 +1,5 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
+import { Type } from "@sinclair/typebox";
 import {
   createWorkflowDeploymentCapabilities,
   WorkflowActionExecutionError,
@@ -6,6 +7,8 @@ import {
 } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type WorkflowCapabilityPort,
+  type WorkflowCapabilityExecutionBinding,
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeService,
 } from "../src/index.js";
@@ -17,9 +20,9 @@ describe("workflow action reliability", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
 
     expect(() => createService(runtime, async () => ({}), {
-      actionTimeoutMs: 30_001,
+      capabilityTimeoutMs: 30_001,
       taskLeaseDurationMs: 60_000,
-    })).toThrow("action timeout must not exceed half of the task lease duration");
+    })).toThrow("capability timeout must not exceed half of the task lease duration");
   });
 
   it("aborts a timed-out action and persists an unknown-outcome retry", async () => {
@@ -35,7 +38,7 @@ describe("workflow action reliability", () => {
         deadlineAt = actionInput.deadlineAt;
         return new Promise<Record<string, unknown>>(() => {});
       }, {
-        actionTimeoutMs: 100,
+        capabilityTimeoutMs: 100,
         clock: () => actionStartedAt,
         taskLeaseDurationMs: 1_000,
       });
@@ -51,7 +54,7 @@ describe("workflow action reliability", () => {
       await vi.advanceTimersByTimeAsync(100);
 
       await expect(execution).resolves.toMatchObject({
-        diagnosticMessage: "Workflow action exceeded its 100ms deadline",
+        diagnosticMessage: "Workflow capability exceeded its 100ms deadline",
         errorCode: "WORKFLOW_ACTION_TIMEOUT",
         failureKind: "unknown",
         kind: "retry-scheduled",
@@ -773,7 +776,7 @@ function createService(
   runtime: InMemoryWorkflowRuntimeRepository,
   executeAction: (input: unknown) => Promise<Record<string, unknown>>,
   options: {
-    actionTimeoutMs?: number;
+    capabilityTimeoutMs?: number;
     clock?: () => Date;
     executors?: WorkflowNodeExecutorRegistry;
     maxTaskAttempts?: number;
@@ -781,11 +784,15 @@ function createService(
     taskLeaseDurationMs?: number;
   } = {},
 ) {
-  return new WorkflowRuntimeService(createControlReader(options.spec), runtime, executeAction as never, {
-    actionMaxRetryDelayMs: 60_000,
-    actionRetryDelayMs: 5_000,
-    actionTimeoutMs: options.actionTimeoutMs ?? 15_000,
+  const capabilityPort: WorkflowCapabilityPort = {
+    execute: async (_definition, request) => executeAction(request),
+  };
+  return new WorkflowRuntimeService(createControlReader(options.spec), runtime, capabilityPort, {
+    capabilityMaxRetryDelayMs: 60_000,
+    capabilityRetryDelayMs: 5_000,
+    capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
+    capabilityBindings: [TEST_MESSAGE_CAPABILITY_BINDING],
     deploymentCapabilities: createWorkflowDeploymentCapabilities([ENTRY_EVENT_CAPABILITY]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
@@ -795,6 +802,18 @@ function createService(
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
 }
+
+const TEST_MESSAGE_CAPABILITY_BINDING: WorkflowCapabilityExecutionBinding = {
+  createCommand: () => ({}),
+  definition: {
+    capabilityKey: "operation.test.message",
+    commandSchema: Type.Record(Type.String(), Type.Unknown()),
+    contractVersion: 1,
+    kind: "action",
+    resultSchema: Type.Record(Type.String(), Type.Unknown()),
+  },
+  nodeKind: "message",
+};
 
 async function startAction(
   service: WorkflowRuntimeService,

@@ -1,7 +1,10 @@
 import {
+  evaluateWorkflowBranchPath,
+  isWorkflowBranchConfigComplete,
   WORKFLOW_WAIT_DAY_OFFSET_MAX,
   WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
   WorkflowWaitEventConfigSchema,
+  type WorkflowBranchSelector,
   type WorkflowExecutionNode,
   type WorkflowNodeKind,
   type WorkflowSubjectType,
@@ -10,20 +13,10 @@ import { Value } from "@sinclair/typebox/value";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
-  evaluateBranchPath?: (path: WorkflowBranchPathConfig) => boolean;
-  executeAction?: (input: {
-    context: WorkflowNodeExecutionContext;
-    deadlineAt: Date;
-    idempotencyKey: string;
-    node: WorkflowExecutionNode;
-    signal: AbortSignal;
-  }) => Promise<Record<string, unknown>>;
-  actionDeadlineAt?: Date;
-  actionIdempotencyKey?: string;
-  actionSignal?: AbortSignal;
-  matchingPathIds?: Set<string>;
   now: Date;
   outputs: Record<string, Record<string, unknown>>;
+  currentNodeLifecycle?: { enteredAt?: string; exitedAt?: string };
+  nodeLifecycle?: Record<string, { enteredAt?: string; exitedAt?: string }>;
   run: {
     id: string;
     revision: number;
@@ -46,12 +39,6 @@ export type WorkflowNodeExecutor = {
     node: WorkflowExecutionNode,
     context: WorkflowNodeExecutionContext,
   ): Promise<WorkflowNodeExecutionResult> | WorkflowNodeExecutionResult;
-};
-
-type WorkflowBranchPathConfig = {
-  id: string;
-  isDefault?: boolean;
-  label?: string;
 };
 
 // Published v1 wait specs omitted mode and used one shared duration limit.
@@ -89,39 +76,7 @@ export function createCoreNodeExecutorRegistry() {
   registry.register("wait", { execute: executeWait });
   registry.register("wait-event", { execute: executeWaitEvent });
   registry.register("branch", { execute: executeBranch });
-
-  const actionExecutor: WorkflowNodeExecutor = {
-    async execute(node, context) {
-      if (!context.executeAction) {
-        throw new WorkflowNodeExecutionError(`Action adapter is not configured: ${node.kind}`);
-      }
-      if (!context.actionIdempotencyKey) {
-        throw new WorkflowNodeExecutionError(`Action idempotency key is not configured: ${node.kind}`);
-      }
-      if (!context.actionDeadlineAt || !context.actionSignal) {
-        throw new WorkflowNodeExecutionError(`Action deadline is not configured: ${node.kind}`);
-      }
-      return {
-        output: await context.executeAction({
-          context,
-          deadlineAt: context.actionDeadlineAt,
-          idempotencyKey: context.actionIdempotencyKey,
-          node,
-          signal: context.actionSignal,
-        }),
-        sourceOutletId: "default",
-        type: "advance",
-      };
-    },
-  };
-  for (const kind of ["message", "tag", "coupon", "handoff"] as const) {
-    registry.register(kind, actionExecutor);
-  }
   return registry;
-}
-
-export function isWorkflowActionNodeKind(kind: WorkflowNodeKind) {
-  return kind === "message" || kind === "tag" || kind === "coupon" || kind === "handoff";
 }
 
 function executeWait(
@@ -204,10 +159,13 @@ function executeBranch(
   node: WorkflowExecutionNode,
   context: WorkflowNodeExecutionContext,
 ): WorkflowNodeExecutionResult {
-  const paths = parseBranchPaths(node.config.branchPaths);
+  if (!isWorkflowBranchConfigComplete(node.config)) {
+    throw new WorkflowNodeExecutionError("Branch node requires complete ordered paths and conditions");
+  }
+  const paths = node.config.branchPaths;
   const defaultPath = paths.find((path) => path.isDefault);
   const matchedPath = paths.find((path) =>
-    !path.isDefault && (context.evaluateBranchPath?.(path) ?? false),
+    !path.isDefault && evaluateWorkflowBranchPath(path, selector => resolveBranchSelector(selector, context)),
   ) ?? defaultPath;
 
   if (!matchedPath) {
@@ -220,18 +178,38 @@ function executeBranch(
   };
 }
 
-function parseBranchPaths(value: unknown): WorkflowBranchPathConfig[] {
-  if (!Array.isArray(value)) {
-    return [];
+function resolveBranchSelector(
+  selector: WorkflowBranchSelector,
+  context: WorkflowNodeExecutionContext,
+): { available: boolean; value: unknown } {
+  const [scope, key, ...path] = selector;
+  if (!scope || !key) return { available: false, value: undefined };
+  if (scope === "subject" && key === "id" && path.length === 0) {
+    return { available: true, value: context.run.subjectId };
   }
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
-      return [];
+  if (scope === "trigger") return readPath(context.trigger, [key, ...path]);
+  if (scope === "node") {
+    const output = context.outputs[key];
+    return output ? readPath(output, path) : { available: false, value: undefined };
+  }
+  if (scope === "node-lifecycle") {
+    const lifecycle = context.nodeLifecycle?.[key];
+    return lifecycle ? readPath(lifecycle, path) : { available: false, value: undefined };
+  }
+  if (scope === "current-node-lifecycle") {
+    return readPath(context.currentNodeLifecycle, [key, ...path]);
+  }
+  return { available: false, value: undefined };
+}
+
+function readPath(value: unknown, path: string[]): { available: boolean; value: unknown } {
+  let current = value;
+  for (const part of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)
+      || !Object.prototype.hasOwnProperty.call(current, part)) {
+      return { available: false, value: undefined };
     }
-    return [{
-      id: item.id,
-      isDefault: "isDefault" in item && item.isDefault === true,
-      label: "label" in item && typeof item.label === "string" ? item.label : undefined,
-    }];
-  });
+    current = (current as Record<string, unknown>)[part];
+  }
+  return { available: true, value: current };
 }

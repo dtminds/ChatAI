@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
 import {
+  getAvailableBranchVariablesForNode,
   getAvailableIntentInputOutputsForNode,
   getAvailableMessageContentOutputsForNode,
   getAvailableTimeReferenceNodesForNode,
@@ -233,7 +234,9 @@ function createWorkflowRenderNodes({
 }: CreateWorkflowRenderElementsOptions, cache?: Map<string, WorkflowRenderNodeCacheEntry>): WorkflowRenderNode[] {
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
-    const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+    const availableVariables = node.data.kind === "branch"
+      ? getAvailableBranchVariablesForNode(node.id, nodes, edges)
+      : getAvailableVariablesForNode(node.id, nodes, edges);
     const availableIntentInputs = node.data.kind === "ai-intent"
       ? getAvailableIntentInputOutputsForNode(node.id, nodes, edges)
       : undefined;

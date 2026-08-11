@@ -14,6 +14,7 @@ import type {
 import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
 import {
+  getAvailableBranchVariablesForNode,
   getAvailableIntentInputOutputsForNode,
   getAvailableLlmInputVariablesForNode,
   getAvailableMessageContentOutputsForNode,
@@ -100,8 +101,11 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
 ): WorkflowNodeValidationIssue[] {
   const definition = getNodeDefinitionCore(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
+  const availableVariables = node.data.kind === "branch"
+    ? getAvailableBranchVariablesForNode(node.id, nodes, edges)
+    : getAvailableVariablesForNode(node.id, nodes, edges);
   const definitionIssues = definition.validate?.(node, {
-    availableVariables: getAvailableVariablesForNode(node.id, nodes, edges),
+    availableVariables,
     edges,
     nodes,
   }) ?? [];

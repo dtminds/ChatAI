@@ -1,5 +1,10 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkflowBranchCondition as SharedWorkflowBranchCondition,
+  WorkflowBranchConditionValue as SharedWorkflowBranchConditionValue,
+  WorkflowBranchLogic as SharedWorkflowBranchLogic,
+  WorkflowBranchOperator as SharedWorkflowBranchOperator,
+  WorkflowBranchPath as SharedWorkflowBranchPath,
   WorkbenchQuickReplyAttachment,
   WorkflowEntryPolicy,
   WorkflowStartTrigger,
@@ -32,42 +37,11 @@ export type WorkflowNodeKind =
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
 export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "start" | "end">;
 
-export type WorkflowBranchLogic = "all" | "any";
-export type WorkflowBranchOperator =
-  | "contains"
-  | "datetime-after"
-  | "datetime-after-or-equal"
-  | "datetime-before"
-  | "datetime-before-or-equal"
-  | "datetime-between"
-  | "ends-with"
-  | "equals"
-  | "greater-than"
-  | "greater-than-or-equal"
-  | "is-empty"
-  | "is-false"
-  | "is-not-empty"
-  | "is-true"
-  | "less-than"
-  | "less-than-or-equal"
-  | "not-contains"
-  | "not-equals"
-  | "starts-with";
-export type WorkflowBranchConditionValue = boolean | number | string | [string, string];
-export type WorkflowBranchCondition = {
-  id: string;
-  operator: WorkflowBranchOperator;
-  selector?: WorkflowVariableSelector;
-  value?: WorkflowBranchConditionValue;
-  valueType?: Exclude<WorkflowVariableValueType, "object">;
-};
-export type WorkflowBranchPath = {
-  conditions: WorkflowBranchCondition[];
-  id: string;
-  isDefault?: boolean;
-  label: string;
-  logic: WorkflowBranchLogic;
-};
+export type WorkflowBranchLogic = SharedWorkflowBranchLogic;
+export type WorkflowBranchOperator = SharedWorkflowBranchOperator;
+export type WorkflowBranchConditionValue = SharedWorkflowBranchConditionValue;
+export type WorkflowBranchCondition = SharedWorkflowBranchCondition;
+export type WorkflowBranchPath = SharedWorkflowBranchPath;
 
 type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unknown> & {
   kind: TKind;
@@ -90,7 +64,13 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchPaths: WorkflowBranchPath[];
 };
 
-export type WorkflowVariableScope = "input" | "node" | "subject" | "trigger";
+export type WorkflowVariableScope =
+  | "current-node-lifecycle"
+  | "input"
+  | "node"
+  | "node-lifecycle"
+  | "subject"
+  | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";

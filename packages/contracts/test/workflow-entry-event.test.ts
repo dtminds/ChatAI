@@ -13,10 +13,15 @@ type FixtureManifest = {
     expected: { accepted: boolean; resultCode: string };
     fixtureId: string;
     idempotencyGroup?: string;
-    kind: "entry" | "trigger-projection";
+    kind:
+      | "capability-command"
+      | "capability-error"
+      | "capability-result"
+      | "entry"
+      | "trigger-projection";
     minimumBytes?: number;
     path: string;
-    stage: "catalog" | "envelope" | "projection";
+    stage: "capability" | "catalog" | "envelope" | "projection";
   }>;
   schemaVersion: 1;
 };

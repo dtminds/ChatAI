@@ -21,12 +21,16 @@ import {
   createWorkflowDeploymentCapabilities,
   createWorkflowActionIdempotencyKey,
   hasWorkflowDeploymentCapability,
-  isWorkflowActionNodeKind,
   WorkflowActionExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
   type WorkflowDeploymentCapabilities,
 } from "@chatai/workflow-engine";
+import {
+  executeWorkflowCapability,
+  type WorkflowCapabilityExecutionBinding,
+  type WorkflowCapabilityPort,
+} from "./capability-port.js";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -49,7 +53,6 @@ import type {
   WorkflowTaskRecord,
 } from "./types.js";
 
-type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAction"]>;
 type WorkflowExecuteTaskInput = {
   messageId?: string;
   now: Date;
@@ -60,9 +63,9 @@ type WorkflowExecuteTaskInput = {
 };
 
 export class WorkflowRuntimeService {
-  private readonly actionMaxRetryDelayMs: number;
-  private readonly actionRetryDelayMs: number;
-  private readonly actionTimeoutMs: number;
+  private readonly capabilityMaxRetryDelayMs: number;
+  private readonly capabilityRetryDelayMs: number;
+  private readonly capabilityTimeoutMs: number;
   private readonly clock: () => Date;
   private readonly executors: WorkflowNodeExecutorRegistry;
   private readonly maxTaskAttempts: number;
@@ -70,15 +73,17 @@ export class WorkflowRuntimeService {
   private readonly deferredTaskDelayMs: number;
   private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
+  private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
     private readonly runtimeRepository: WorkflowRuntimeRepository,
-    private readonly executeAction?: WorkflowActionAdapter,
+    private readonly capabilityPort?: WorkflowCapabilityPort,
     options: {
-      actionMaxRetryDelayMs?: number;
-      actionRetryDelayMs?: number;
-      actionTimeoutMs?: number;
+      capabilityMaxRetryDelayMs?: number;
+      capabilityRetryDelayMs?: number;
+      capabilityTimeoutMs?: number;
+      capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
       clock?: () => Date;
       deferredTaskDelayMs?: number;
       deploymentCapabilities?: WorkflowDeploymentCapabilities;
@@ -88,9 +93,9 @@ export class WorkflowRuntimeService {
       taskLeaseDurationMs?: number;
     } = {},
   ) {
-    this.actionMaxRetryDelayMs = options.actionMaxRetryDelayMs ?? 300_000;
-    this.actionRetryDelayMs = options.actionRetryDelayMs ?? 5_000;
-    this.actionTimeoutMs = options.actionTimeoutMs ?? 15_000;
+    this.capabilityMaxRetryDelayMs = options.capabilityMaxRetryDelayMs ?? 300_000;
+    this.capabilityRetryDelayMs = options.capabilityRetryDelayMs ?? 5_000;
+    this.capabilityTimeoutMs = options.capabilityTimeoutMs ?? 15_000;
     this.clock = options.clock ?? (() => new Date());
     this.executors = options.executors ?? createCoreNodeExecutorRegistry();
     this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
@@ -100,11 +105,14 @@ export class WorkflowRuntimeService {
       ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
-    if (!Number.isSafeInteger(this.actionTimeoutMs) || this.actionTimeoutMs <= 0) {
-      throw new Error("Workflow action timeout must be a positive integer");
+    this.capabilityBindings = new Map(
+      (options.capabilityBindings ?? []).map((binding) => [binding.nodeKind, binding]),
+    );
+    if (!Number.isSafeInteger(this.capabilityTimeoutMs) || this.capabilityTimeoutMs <= 0) {
+      throw new Error("Workflow capability timeout must be a positive integer");
     }
-    if (this.actionTimeoutMs * 2 > this.taskLeaseDurationMs) {
-      throw new Error("Workflow action timeout must not exceed half of the task lease duration");
+    if (this.capabilityTimeoutMs * 2 > this.taskLeaseDurationMs) {
+      throw new Error("Workflow capability timeout must not exceed half of the task lease duration");
     }
   }
 
@@ -304,7 +312,8 @@ export class WorkflowRuntimeService {
         run,
       });
     }
-    if (isWorkflowActionNodeKind(node.kind)) {
+    const capabilityBinding = this.capabilityBindings.get(node.kind);
+    if (capabilityBinding) {
       const prepared = await this.runtimeRepository.prepareActionExecution({
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
@@ -317,22 +326,27 @@ export class WorkflowRuntimeService {
       });
       if (prepared.kind !== "success") throw staleTaskError();
     }
-    const actionNode = isWorkflowActionNodeKind(node.kind);
+    const capabilityNode = Boolean(capabilityBinding);
     let executionResult: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>;
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      executionResult = actionNode
-        ? await executeWithActionTimeout({
+      executionResult = capabilityBinding
+        ? await executeWithCapabilityTimeout({
             actionIdempotencyKey,
-            actionTimeoutMs: this.actionTimeoutMs,
-            execute: context => this.executors.execute(node, context),
-            executeAction: this.executeAction,
+            capabilityTimeoutMs: this.capabilityTimeoutMs,
+            binding: capabilityBinding,
             now: input.now,
+            node,
+            port: this.capabilityPort,
             run,
             startedAt: this.clock(),
           })
-        : await this.executors.execute(node, createExecutionContext(run, input.now));
+        : await this.executors.execute(node, createExecutionContext(
+            run,
+            input.now,
+            claimed.task.dueAt,
+          ));
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
       }
@@ -341,10 +355,13 @@ export class WorkflowRuntimeService {
         "node-output",
         WORKFLOW_NODE_OUTPUT_MAX_BYTES,
       );
-      nextContext = appendNodeOutput(run.context, node.id, executionResult.output);
+      nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
+        enteredAt: claimed.task.dueAt,
+        exitedAt: executionResult.type === "wait" ? new Date(executionResult.dueAt) : input.now,
+      });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
-      if (!actionNode && error instanceof WorkflowRuntimeValueError) {
+      if (!capabilityNode && error instanceof WorkflowRuntimeValueError) {
         return this.commitCoreNodeFailure({
           actionIdempotencyKey,
           error,
@@ -354,7 +371,7 @@ export class WorkflowRuntimeService {
           task: claimed.task,
         });
       }
-      const actionError = actionNode ? toActionExecutionError(error) : null;
+      const actionError = capabilityNode ? toCapabilityExecutionError(error) : null;
       if (!actionError) throw error;
       const failureInput = {
         errorCode: actionError.code.slice(0, 128),
@@ -383,8 +400,8 @@ export class WorkflowRuntimeService {
         };
       }
       const retryDelayMs = Math.min(
-        this.actionRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
-        this.actionMaxRetryDelayMs,
+        this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
+        this.capabilityMaxRetryDelayMs,
       );
       const scheduled = await this.runtimeRepository.scheduleActionRetry({
         ...failureInput,
@@ -437,7 +454,7 @@ export class WorkflowRuntimeService {
     if (!input.existingSubscription) {
       const executionResult = await this.executors.execute(
         input.node,
-        createExecutionContext(input.run, input.input.now),
+        createExecutionContext(input.run, input.input.now, input.claimedTask.dueAt),
       );
       if (executionResult.type !== "event-wait") {
         throw new Error(`Wait Event executor returned ${executionResult.type}`);
@@ -506,7 +523,10 @@ export class WorkflowRuntimeService {
     try {
       output = collectedEvents ? aggregateWaitEventOutput(collectedEvents) : {};
       assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
-      nextContext = appendNodeOutput(input.run.context, input.node.id, output);
+      nextContext = appendNodeOutput(input.run.context, input.node.id, output, {
+        enteredAt: input.claimedTask.dueAt,
+        exitedAt: input.input.now,
+      });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
       if (!(error instanceof WorkflowRuntimeValueError)) throw error;
@@ -632,25 +652,19 @@ export class WorkflowRuntimeService {
 function createExecutionContext(
   run: WorkflowRunRecord,
   now: Date,
-  executeAction?: WorkflowActionAdapter,
-  actionIdempotencyKey?: string,
-  actionDeadlineAt?: Date,
-  actionSignal?: AbortSignal,
+  enteredAt: Date = now,
 ): WorkflowNodeExecutionContext {
   const trigger = isRecord(run.context.trigger) ? run.context.trigger : {};
   const outputs = isRecord(run.context.outputs)
     ? run.context.outputs as Record<string, Record<string, unknown>>
     : {};
+  const nodeLifecycle = isRecord(run.context.nodeLifecycle)
+    ? run.context.nodeLifecycle as Record<string, { enteredAt?: string; exitedAt?: string }>
+    : {};
   return {
-    actionDeadlineAt,
-    actionIdempotencyKey,
-    actionSignal,
-    evaluateBranchPath: (path) => {
-      const matches = isRecord(run.context.branchMatches) ? run.context.branchMatches : {};
-      return matches[path.id] === true;
-    },
-    executeAction,
+    currentNodeLifecycle: { enteredAt: enteredAt.toISOString() },
     now,
+    nodeLifecycle,
     outputs,
     run: {
       id: run.id,
@@ -664,17 +678,26 @@ function createExecutionContext(
   };
 }
 
-async function executeWithActionTimeout(input: {
+async function executeWithCapabilityTimeout(input: {
   actionIdempotencyKey: string;
-  actionTimeoutMs: number;
-  execute(context: WorkflowNodeExecutionContext): Promise<Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>>;
-  executeAction: WorkflowActionAdapter | undefined;
+  capabilityTimeoutMs: number;
+  binding: WorkflowCapabilityExecutionBinding;
   now: Date;
+  node: WorkflowExecutionNode;
+  port: WorkflowCapabilityPort | undefined;
   run: WorkflowRunRecord;
   startedAt: Date;
 }) {
+  if (!input.port) {
+    throw new WorkflowActionExecutionError(
+      "terminal",
+      "WORKFLOW_CAPABILITY_PORT_UNAVAILABLE",
+      "节点能力暂不可用",
+      { diagnosticMessage: "Workflow capability port is not configured" },
+    );
+  }
   const controller = new AbortController();
-  const deadlineAt = new Date(input.startedAt.getTime() + input.actionTimeoutMs);
+  const deadlineAt = new Date(input.startedAt.getTime() + input.capabilityTimeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -682,22 +705,39 @@ async function executeWithActionTimeout(input: {
         "unknown",
         "WORKFLOW_ACTION_TIMEOUT",
         "节点执行超时",
-        { diagnosticMessage: `Workflow action exceeded its ${input.actionTimeoutMs}ms deadline` },
+        { diagnosticMessage: `Workflow capability exceeded its ${input.capabilityTimeoutMs}ms deadline` },
       );
       reject(error);
       controller.abort(error);
-    }, input.actionTimeoutMs);
+    }, input.capabilityTimeoutMs);
   });
   try {
     return await Promise.race([
-      input.execute(createExecutionContext(
-        input.run,
-        input.now,
-        input.executeAction,
-        input.actionIdempotencyKey,
+      executeWorkflowCapability({
+        binding: input.binding,
+        commandContext: {
+          outputs: isRecord(input.run.context.outputs)
+            ? input.run.context.outputs as Record<string, Record<string, unknown>>
+            : {},
+          subjectId: input.run.subjectId,
+          trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+        },
+        config: input.node.config,
         deadlineAt,
-        controller.signal,
-      )),
+        execution: {
+          nodeId: input.node.id,
+          revision: input.run.revision,
+          runId: input.run.id,
+          sequence: input.run.sequence,
+          workflowId: input.run.workflowId,
+        },
+        idempotencyKey: input.actionIdempotencyKey,
+        port: input.port,
+        signal: controller.signal,
+        subjectId: input.run.subjectId,
+        subjectType: input.run.subjectType,
+        uid: input.run.uid,
+      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
       timeout,
     ]);
   } finally {
@@ -705,7 +745,7 @@ async function executeWithActionTimeout(input: {
   }
 }
 
-function toActionExecutionError(error: unknown) {
+function toCapabilityExecutionError(error: unknown) {
   if (error instanceof WorkflowActionExecutionError) return error;
   if (!(error instanceof WorkflowRuntimeValueError)) return null;
   const safeMessage = "节点返回的数据无法处理，流程已停止";
@@ -791,13 +831,22 @@ function appendNodeOutput(
   context: Record<string, unknown>,
   nodeId: string,
   output: Record<string, unknown>,
+  lifecycle: { enteredAt: Date; exitedAt: Date },
 ) {
   const existingOutputs = isRecord(context.outputs) ? context.outputs : {};
+  const existingLifecycle = isRecord(context.nodeLifecycle) ? context.nodeLifecycle : {};
   return {
     ...structuredClone(context),
     outputs: {
       ...structuredClone(existingOutputs),
       [nodeId]: structuredClone(output),
+    },
+    nodeLifecycle: {
+      ...structuredClone(existingLifecycle),
+      [nodeId]: {
+        enteredAt: lifecycle.enteredAt.toISOString(),
+        exitedAt: lifecycle.exitedAt.toISOString(),
+      },
     },
   };
 }

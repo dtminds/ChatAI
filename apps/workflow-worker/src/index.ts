@@ -34,9 +34,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       })
     : new UnavailableWorkflowEntitlementPort();
   const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
-    actionMaxRetryDelayMs: config.runtime.actionMaxRetryDelayMs,
-    actionRetryDelayMs: config.runtime.actionRetryDelayMs,
-    actionTimeoutMs: config.runtime.actionTimeoutMs,
+    capabilityMaxRetryDelayMs: config.runtime.actionMaxRetryDelayMs,
+    capabilityRetryDelayMs: config.runtime.actionRetryDelayMs,
+    capabilityTimeoutMs: config.runtime.actionTimeoutMs,
     deploymentCapabilities: config.deploymentCapabilities,
     entitlementPort,
     maxTaskAttempts: config.runtime.maxTaskAttempts,

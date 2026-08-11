@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  Clock01Icon,
   InputCursorTextIcon,
   Search01Icon,
   UserIcon,
@@ -95,13 +96,14 @@ function VariableOptions({ variables, onSelect }: {
     return <p className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用变量</p>;
   }
 
-  const contextScopes: Exclude<WorkflowVariableScope, "node">[] = [
+  const contextScopes: Exclude<WorkflowVariableScope, "node" | "node-lifecycle">[] = [
     "input",
     "subject",
     "trigger",
+    "current-node-lifecycle",
   ];
   const nodeVariableGroups = groupNodeVariables(
-    variables.filter((variable) => variable.scope === "node"),
+    variables.filter((variable) => variable.scope === "node" || variable.scope === "node-lifecycle"),
   );
 
   return (
@@ -234,14 +236,16 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
   return [...groups.values()];
 }
 
-const scopeLabels: Record<Exclude<WorkflowVariableScope, "node">, string> = {
+const scopeLabels: Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, string> = {
+  "current-node-lifecycle": "当前节点时间",
   input: "输入参数",
   subject: "主体变量",
   trigger: "触发变量",
 };
 
 const scopeIcons = {
+  "current-node-lifecycle": Clock01Icon,
   input: InputCursorTextIcon,
   subject: UserIcon,
   trigger: ZapIcon,
-} satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof UserIcon>;
+} satisfies Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, typeof UserIcon>;

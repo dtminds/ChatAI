@@ -1,4 +1,5 @@
 import {
+  isWorkflowBranchConfigComplete,
   WorkflowStartConfigSchema,
   WorkflowWaitEventDraftConfigSchema,
   WorkflowWaitConfigSchema,
@@ -149,6 +150,19 @@ function validateNodeConfig(
     return;
   }
 
+  if (node.data.kind === "branch") {
+    if (!isWorkflowBranchConfigComplete({
+      branchPaths: (node.data as Record<string, unknown>).branchPaths,
+    })) {
+      issues.push({
+        code: "invalid-node-config",
+        message: "Branch node requires complete ordered paths and conditions",
+        nodeId: node.id,
+      });
+    }
+    return;
+  }
+
 }
 
 function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowStartConfig {
@@ -226,22 +240,10 @@ function validateNodeOutlets(
 }
 
 function getBranchOutletIds(node: WorkflowDraftNode) {
-  return parseBranchPaths((node.data as Record<string, unknown>).branchPaths)
-    .map((path) => path.id);
-}
-
-function parseBranchPaths(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((path) => {
-    if (!path || typeof path !== "object" || !("id" in path)
-      || typeof path.id !== "string" || path.id.length === 0) {
-      return [];
-    }
-    return [{
-      id: path.id,
-      isDefault: "isDefault" in path && path.isDefault === true,
-    }];
-  });
+  const paths = (node.data as Record<string, unknown>).branchPaths;
+  if (!Array.isArray(paths)) return [];
+  return paths.flatMap((path) => path && typeof path === "object" && "id" in path
+    && typeof path.id === "string" && path.id.length > 0 ? [path.id] : []);
 }
 
 function indexEdges(edges: WorkflowDraftEdge[], key: "source" | "target") {

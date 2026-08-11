@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
-import { createEdge } from "@/pages/chat/workflow/graph";
+import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { BranchConfig } from "@/pages/chat/workflow/panels/node-settings/branch-panel";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
@@ -142,4 +142,52 @@ describe("BranchConfig", () => {
       ]),
     });
   });
+
+  it("selects a guaranteed predecessor lifecycle time as a condition", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const startNode = createStartNode();
+    const waitNode = createNodeFromKind("wait", "wait", 1);
+    waitNode.data.title = "观察期";
+    const branchNode = createBranchNode();
+
+    render(
+      <BranchConfig
+        edges={[
+          createEdge(startNode.id, waitNode.id),
+          createEdge(waitNode.id, branchNode.id),
+        ]}
+        node={branchNode}
+        nodes={[startNode, waitNode, branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "条件 1 变量" })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: "观察期" }));
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /进入时间.*日期时间/ }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: expect.arrayContaining([
+        expect.objectContaining({
+          conditions: expect.arrayContaining([
+            expect.objectContaining({
+              selector: ["node-lifecycle", waitNode.id, "enteredAt"],
+              valueType: "datetime",
+            }),
+          ]),
+          id: "branch-high",
+        }),
+      ]),
+    });
+  });
 });
+
+function createStartNode(): WorkflowNode<"start"> {
+  return {
+    data: createDefaultNodeData("start"),
+    id: "start",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+}

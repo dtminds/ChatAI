@@ -51,7 +51,7 @@ import type {
 } from "../../types";
 import { WorkflowVariablePicker } from "../../workflow-variable-picker";
 import {
-  getAvailableVariablesForNode,
+  getAvailableBranchVariablesForNode,
   getWorkflowVariableDisplayLabel,
   resolveWorkflowVariable,
 } from "../../workflow-variables";
@@ -62,7 +62,7 @@ export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsP
   const branchPaths = getWorkflowBranchPaths(node.data);
   const conditionalPaths = branchPaths.filter((path) => !path.isDefault);
   const fallbackPath = branchPaths.find((path) => path.isDefault)!;
-  const variables = getAvailableVariablesForNode(node.id, nodes, edges)
+  const variables = getAvailableBranchVariablesForNode(node.id, nodes, edges)
     .filter((variable) => variable.type !== "object");
 
   const updateBranchPaths = (nextPaths: WorkflowBranchPath[]) => {

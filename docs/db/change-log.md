@@ -2,6 +2,34 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-08-11
+
+- Added the structured Trigger Binding Match table used by Java Interest Reader and Node final matching.
+- Added the source-oriented Trigger Binding index for `uid + event_type` candidate lookup.
+- Replaced the development-only generic Wait Event `account_id` with the explicit ChatAI `seat_id`; there is no production Workflow data requiring dual-column compatibility.
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  ADD KEY idx_workflow_trigger_binding_interest
+    (uid, event_type, status, workflow_id, revision, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding_match (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  binding_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow触发绑定ID',
+  match_kind TINYINT UNSIGNED NOT NULL COMMENT '匹配维度：1企微成员，2ChatAI席位，3企微标签',
+  match_value BIGINT UNSIGNED NOT NULL COMMENT '匹配维度对应的业务ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_trigger_binding_match_value (uid, binding_id, match_kind, match_value),
+  KEY idx_workflow_trigger_binding_match_lookup (uid, match_kind, match_value, binding_id)
+) COMMENT='营销Workflow触发绑定精确匹配索引表';
+
+ALTER TABLE xy_wap_embed_workflow_event_subscription
+  CHANGE COLUMN account_id seat_id BIGINT UNSIGNED NULL COMMENT '可选ChatAI席位约束';
+```
+
 ## 2026-08-10
 
 - Added immutable Workflow Type and Subject Type identity to control-plane and Runtime records.

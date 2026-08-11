@@ -28,7 +28,7 @@ import type {
   WorkflowDocument,
   WorkflowDocumentPermissions,
 } from "./workflow-repository-types";
-import type { WorkflowDraft } from "./types";
+import type { WorkflowDraft, WorkflowNode } from "./types";
 
 export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftRepository {
   let workflowDocuments = createWorkflowDocuments();
@@ -359,7 +359,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
             data: {
               ...node.data,
               triggers: [{
-                tagIds: ["tag-repurchase"],
+                tagIds: [203],
                 type: "contact.tag_added" as const,
               }],
               title: "复购唤醒触发",
@@ -371,22 +371,18 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   };
   const liveFollowUpDraft: WorkflowDraft = {
     edges: createInitialEdges(),
-    nodes: createInitialNodes().map((node) =>
-      node.id === "start"
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              triggers: [{
-                keywords: ["直播", "活动"],
-                match: "keywords" as const,
-                type: "message.received" as const,
-              }],
-              title: "直播互动触发",
-            },
-          }
-        : node,
-    ),
+    nodes: createInitialNodes().map((node) => {
+      if (node.id !== "start") return node;
+      const startNode = node as WorkflowNode<"start">;
+      return {
+        ...startNode,
+        data: {
+          ...startNode.data,
+          triggers: [{ match: "any" as const, type: "message.received" as const }],
+          title: "直播互动触发",
+        },
+      } as WorkflowNode<"start">;
+    }),
     viewport: createInitialDraft().viewport,
   };
 
@@ -486,7 +482,10 @@ function createNewWorkflowDocument(
   description: string | undefined,
   workflowType: WorkflowType,
 ): WorkflowDocument {
-  const draft = createNewWorkflowDraft();
+  if (workflowType === "member_sop") {
+    throw new Error("member_sop is not available");
+  }
+  const draft = createNewWorkflowDraft(workflowType);
 
   return {
     activationReady: false,

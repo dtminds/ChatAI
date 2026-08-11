@@ -30,10 +30,18 @@ const fixtureRoot = new URL("./fixtures/workflow/", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", fixtureRoot), "utf8")) as FixtureManifest;
 
 describe("workflow entry event envelope", () => {
-  it("derives the transport partition key from the complete Subject identity", () => {
-    expect(createWorkflowEntryPartitionKey(event())).toBe("9:chatai_contact:contact-1");
-    expect(createWorkflowEntryPartitionKey(event({ subjectType: "wecom_contact" })))
-      .toBe("9:wecom_contact:contact-1");
+  it("derives the transport partition key from the source event identity", () => {
+    expect(createWorkflowEntryPartitionKey(event())).toBe("9:wecom_contact:wecom-contact-1");
+    expect(createWorkflowEntryPartitionKey(event({
+      eventType: "message.received",
+      payload: {
+        messageId: 938271,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+      },
+      source: "chatai",
+    }))).toBe("9:chatai_contact:chatai-contact-1");
   });
 
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "envelope"))(
@@ -101,19 +109,24 @@ describe("workflow entry event envelope", () => {
       workflowId: "31",
     })).toMatchObject({ code: "envelope_invalid", kind: "rejected" });
   });
+
+  it("rejects Entry Event sources outside the frozen producer set", () => {
+    expect(validateWorkflowEntryEvent({
+      ...event(),
+      source: "workflow-test",
+    })).toMatchObject({ code: "envelope_invalid", kind: "rejected" });
+  });
 });
 
 function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {
   return {
     eventId: "event-1",
-    eventType: "test.contact_updated",
+    eventType: "contact.friend_added",
     occurredAt: "2026-08-09T10:30:15.123Z",
-    payload: { accountId: "account-a", change: "name" },
+    payload: { externalUserId: "wecom-contact-1", workUserId: 201 },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "contract-test",
-    subjectId: "contact-1",
-    subjectType: "chatai_contact",
+    source: "wecom",
     uid: 9,
     ...overrides,
   };

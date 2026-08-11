@@ -1,24 +1,36 @@
 export type WorkflowStartOption = {
-  id: string;
+  id: number;
   label: string;
 };
 
-const fixtureAccounts: WorkflowStartOption[] = [
-  { id: "managed-account-sales-1", label: "销售一组" },
-  { id: "managed-account-sales-2", label: "销售二组" },
-  { id: "managed-account-service", label: "客户服务" },
+const fixtureSeats: WorkflowStartOption[] = [
+  { id: 101, label: "销售一组" },
+  { id: 102, label: "销售二组" },
+  { id: 103, label: "客户服务" },
+];
+
+const fixtureWorkUsers: WorkflowStartOption[] = [
+  { id: 201, label: "企微成员一" },
+  { id: 202, label: "企微成员二" },
+  { id: 203, label: "企微成员三" },
 ];
 
 const fixtureTags: WorkflowStartOption[] = [
-  { id: "tag-new-customer", label: "新客户" },
-  { id: "tag-high-intent", label: "高意向" },
-  { id: "tag-repurchase", label: "待复购" },
+  { id: 201, label: "新客户" },
+  { id: 202, label: "高意向" },
+  { id: 203, label: "待复购" },
 ];
 
-export function getWorkflowStartFixtureAccounts(
+export function getWorkflowStartFixtureSeats(
   enabled = areWorkflowStartFixturesEnabled(),
 ) {
-  return enabled ? fixtureAccounts : [];
+  return enabled ? fixtureSeats : [];
+}
+
+export function getWorkflowStartFixtureWorkUsers(
+  enabled = areWorkflowStartFixturesEnabled(),
+) {
+  return enabled ? fixtureWorkUsers : [];
 }
 
 export function getWorkflowStartFixtureTags(

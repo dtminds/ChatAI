@@ -68,9 +68,9 @@ describe("WorkflowService", () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "wecom_sop" });
     const startConfigured = withStartConfig(created.draft, {
-      accountIds: ["account-a"],
       entryPolicy: { mode: "never" },
       triggers: [{ type: "contact.friend_added" }],
+      workUserIds: [201],
     });
     const draft = {
       ...startConfigured,
@@ -176,18 +176,44 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
+  it("rejects an inactive seat during publish validation for message-only Start", async () => {
+    const service = createService(new InMemoryWorkflowRepository(), {
+      sourceIdentityResolver: {
+        async resolveActiveSeatWorkUserIds() {
+          return new Map();
+        },
+      },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [{ match: "any", type: "message.received" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.publish(operator, created.id, {
+      expectedDraftVersion: configured.draftVersion,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_START_SOURCE_INVALID",
+      statusCode: 400,
+    });
+  });
+
   it("publishes legacy rolling entry windows using the current maximum", async () => {
     const repository = new InMemoryWorkflowRepository();
     const service = createService(repository);
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const legacyDraft = withStartConfig(created.draft, {
-      accountIds: ["account-a"],
       entryPolicy: {
         maxEntries: 2,
         mode: "rolling_window",
         windowSize: 365,
         windowUnit: "day",
       },
+      seatIds: [101],
       triggers: [{ type: "contact.friend_added" }],
     });
 
@@ -217,8 +243,8 @@ describe("WorkflowService", () => {
     await service.enable(operator, created.id);
     const saved = await service.saveDraft(operator, created.id, {
       draft: withStartConfig(created.draft, {
-        accountIds: ["account-b"],
         entryPolicy: { mode: "never" },
+        seatIds: [102],
         triggers: [{ type: "contact.friend_added" }],
       }),
       expectedDraftVersion: created.draftVersion,
@@ -283,8 +309,8 @@ describe("WorkflowService", () => {
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const configured = await service.saveDraft(operator, created.id, {
       draft: withWaitNode(withStartConfig(created.draft, {
-        accountIds: ["account-a"],
         entryPolicy: { mode: "never" },
+        seatIds: [101],
         triggers: [{ type: "contact.friend_added" }],
       }), { duration: 2, mode: "duration", unit: "day" }),
       expectedDraftVersion: created.draftVersion,
@@ -313,7 +339,6 @@ describe("WorkflowService", () => {
     await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toEqual([]);
@@ -321,16 +346,15 @@ describe("WorkflowService", () => {
     await service.enable(operator, created.id);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toMatchObject([{ revision: 1, workflowId: created.id }]);
 
     const changed = await service.saveDraft(operator, created.id, {
       draft: withStartConfig(created.draft, {
-        accountIds: ["account-b"],
         entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
-        triggers: [{ tagIds: ["tag-vip"], type: "contact.tag_added" }],
+        seatIds: [102],
+        triggers: [{ tagIds: [301], type: "contact.tag_added" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -338,17 +362,20 @@ describe("WorkflowService", () => {
 
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toEqual([]);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.tag_added",
     ))
       .resolves.toMatchObject([{
-        filter: { accountIds: ["account-b"] },
+        filter: {
+          entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+          eventType: "contact.tag_added",
+          tagIds: [301],
+          workUserIds: [202],
+        },
         revision: 2,
         workflowId: created.id,
       }]);
@@ -364,14 +391,12 @@ describe("WorkflowService", () => {
     await service.pause(operator, created.id);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toEqual([]);
     await service.resume(operator, created.id);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toHaveLength(1);
@@ -379,14 +404,12 @@ describe("WorkflowService", () => {
     await service.stop(operator, created.id);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toEqual([]);
     await service.delete(operator, created.id);
     await expect(repository.listActiveTriggerBindings(
       operator.uid,
-      "chatai_contact",
       "contact.friend_added",
     ))
       .resolves.toEqual([]);
@@ -493,9 +516,17 @@ function createService(
     }, {
       capabilityKey: "event.contact.tag_added",
       contractVersion: 1,
+    }, {
+      capabilityKey: "event.message.received",
+      contractVersion: 1,
     }]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
+    },
+    sourceIdentityResolver: {
+      async resolveActiveSeatWorkUserIds(_uid, seatIds) {
+        return new Map(seatIds.map(seatId => [seatId, seatId + 100]));
+      },
     },
     ...options,
   });
@@ -510,8 +541,8 @@ async function createConfigured(
     workflowType: "chatai_sop",
   });
   const draft = withStartConfig(created.draft, {
-    accountIds: ["account-a"],
     entryPolicy: { mode: "never" },
+    seatIds: [101],
     triggers: [{ type: "contact.friend_added" }],
   });
   return service.saveDraft(operator, created.id, {

@@ -66,6 +66,19 @@ describe("workflow contracts", () => {
       subjectType: "wecom_contact",
     });
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
+    expect(getWorkflowCapabilityProfile("chatai_sop").variableCatalog).toEqual(expect.arrayContaining([
+      "trigger.projection.seatId",
+      "trigger.projection.thirdExternalUserId",
+      "trigger.projection.messageId",
+    ]));
+    expect(getWorkflowCapabilityProfile("wecom_sop").variableCatalog).toEqual(expect.arrayContaining([
+      "trigger.projection.workUserId",
+      "trigger.projection.externalUserId",
+      "trigger.projection.tagId",
+    ]));
+    expect(getWorkflowCapabilityProfile("wecom_sop").variableCatalog).not.toContain(
+      "trigger.projection.seatId",
+    );
     expect(getWorkflowCapabilityProfile("member_sop")).toMatchObject({
       allowedEntryEventTypes: [],
       allowedNodeKinds: [],
@@ -156,18 +169,24 @@ describe("workflow contracts", () => {
 
   it("validates production start and wait configurations", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
-      accountIds: ["account-a"],
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
       triggers: [
         { type: "contact.friend_added" },
-        { tagIds: ["tag-vip"], type: "contact.tag_added" },
-        { keywords: ["优惠"], match: "keywords", type: "message.received" },
+        { tagIds: [301], type: "contact.tag_added" },
+        { match: "any", type: "message.received" },
       ],
     })).toBe(true);
     expect(Value.Check(WorkflowStartConfigSchema, {
-      accountIds: [],
-      entryPolicy: { maxEntries: 0, mode: "lifetime_limit" },
-      triggers: [],
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [{ type: "contact.friend_added" }],
+      workUserIds: [201],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ type: "contact.friend_added" }],
+      workUserIds: [201],
     })).toBe(false);
     expect(Value.Check(WorkflowWaitConfigSchema, {
       duration: 15,
@@ -233,8 +252,8 @@ describe("workflow contracts", () => {
 
   it("limits rolling entry windows to 90 days by actual duration", () => {
     const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
-      accountIds: ["account-a"],
       entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
+      seatIds: [101],
       triggers: [{ type: "contact.friend_added" }],
     });
 

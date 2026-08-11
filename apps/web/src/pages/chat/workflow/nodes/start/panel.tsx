@@ -23,59 +23,76 @@ import {
 } from "@/components/ui/select";
 import type { NodeSettingsProps } from "../../panels/types";
 import {
-  getWorkflowStartFixtureAccounts,
+  getStartNodeSourceIds,
+  isChatAiStartNodeData,
+  type WorkflowNodeConfigPatch,
+} from "../../types";
+import {
+  getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureTags,
+  getWorkflowStartFixtureWorkUsers,
 } from "./fixture-options";
 
 export function StartConfig({
   allowedEntryEventTypes = [],
-  accounts = getWorkflowStartFixtureAccounts(),
   node,
   onNodeChange,
+  seats = getWorkflowStartFixtureSeats(),
   tags = getWorkflowStartFixtureTags(),
+  workUsers = getWorkflowStartFixtureWorkUsers(),
 }: NodeSettingsProps<"start"> & {
-  accounts?: ReturnType<typeof getWorkflowStartFixtureAccounts>;
+  seats?: ReturnType<typeof getWorkflowStartFixtureSeats>;
   tags?: ReturnType<typeof getWorkflowStartFixtureTags>;
+  workUsers?: ReturnType<typeof getWorkflowStartFixtureWorkUsers>;
 }) {
-  const { accountIds, entryPolicy, triggers } = node.data;
+  const { entryPolicy, triggers } = node.data;
+  const isChatAi = isChatAiStartNodeData(node.data);
+  const sourceIds = getStartNodeSourceIds(node.data);
+  const sourceOptions = isChatAi ? seats : workUsers;
+  const sourceLabel = isChatAi ? "席位" : "企微成员";
   const allowedEventTypes = new Set(allowedEntryEventTypes);
   const updateStartConfig = (patch: {
-    accountIds?: string[];
     entryPolicy?: WorkflowEntryPolicy;
+    seatIds?: number[];
     triggers?: WorkflowStartTrigger[];
+    workUserIds?: number[];
   }) => {
-    const nextAccountIds = patch.accountIds ?? accountIds;
+    const nextSourceIds = (isChatAi ? patch.seatIds : patch.workUserIds) ?? sourceIds;
     const nextTriggers = patch.triggers ?? triggers;
-    const configured = nextAccountIds.length > 0 && nextTriggers.length > 0;
+    const configured = nextSourceIds.length > 0 && nextTriggers.length > 0;
     onNodeChange({
       ...patch,
       metric: configured
-        ? `${nextAccountIds.length} 个账号 · ${nextTriggers.length} 个触发条件`
+        ? `${nextSourceIds.length} 个${sourceLabel} · ${nextTriggers.length} 个触发条件`
         : "待配置触发条件",
       status: configured ? "ready" : "warning",
-    });
+    } as WorkflowNodeConfigPatch<"start">);
   };
   return (
     <Accordion
       className="-mx-1 -mt-1"
-      defaultValue={["accounts", "triggers", "entry-policy"]}
+      defaultValue={["sources", "triggers", "entry-policy"]}
       type="multiple"
     >
-      <AccordionItem className="border-b-0" value="accounts">
+      <AccordionItem className="border-b-0" value="sources">
         <AccordionTrigger className="items-center px-1 py-3 text-[15px] font-semibold text-foreground">
-          托管账号
+          {sourceLabel}
         </AccordionTrigger>
         <AccordionContent className="pb-3">
           <div className="space-y-2 rounded-[8px] border bg-card p-3">
-            {accounts.length === 0 ? (
-              <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用托管账号</p>
-            ) : accounts.map(account => (
+            {sourceOptions.length === 0 ? (
+              <p className="py-2 text-center text-[13px] text-muted-foreground">
+                暂无可用{sourceLabel}
+              </p>
+            ) : sourceOptions.map(option => (
               <CheckboxRow
-                checked={accountIds.includes(account.id)}
-                key={account.id}
-                label={account.label}
+                checked={sourceIds.includes(option.id)}
+                key={option.id}
+                label={option.label}
                 onCheckedChange={(checked) => updateStartConfig({
-                  accountIds: toggleValue(accountIds, account.id, checked),
+                  ...(isChatAi
+                    ? { seatIds: toggleValue(sourceIds, option.id, checked) }
+                    : { workUserIds: toggleValue(sourceIds, option.id, checked) }),
                 })}
               />
             ))}
@@ -125,32 +142,13 @@ export function StartConfig({
               </TriggerCheckbox>
             ) : null}
             {allowedEventTypes.has("message.received") ? (
-              <>
-                <TriggerCheckbox
-                  checked={hasMessageTrigger(triggers, "any")}
-                  label="用户发送消息"
-                  onCheckedChange={(checked) => updateStartConfig({
-                    triggers: toggleMessageTrigger(triggers, "any", checked),
-                  })}
-                />
-                <TriggerCheckbox
-                  checked={hasMessageTrigger(triggers, "keywords")}
-                  label="消息包含关键词"
-                  onCheckedChange={(checked) => updateStartConfig({
-                    triggers: toggleMessageTrigger(triggers, "keywords", checked),
-                  })}
-                >
-                  <Input
-                    aria-label="消息关键词"
-                    className="ml-6 w-[calc(100%-1.5rem)]"
-                    onChange={(event) => updateStartConfig({
-                      triggers: updateKeywords(triggers, event.target.value),
-                    })}
-                    placeholder="多个关键词用逗号分隔"
-                    value={getKeywords(triggers).join(", ")}
-                  />
-                </TriggerCheckbox>
-              </>
+              <TriggerCheckbox
+                checked={hasTrigger(triggers, "message.received")}
+                label="用户发送消息"
+                onCheckedChange={(checked) => updateStartConfig({
+                  triggers: toggleMessageTrigger(triggers, checked),
+                })}
+              />
             ) : null}
           </div>
         </AccordionContent>
@@ -319,7 +317,7 @@ function getRollingWindowMaximum(unit: "hour" | "day") {
   return unit === "hour" ? WORKFLOW_ENTRY_WINDOW_MAX_HOURS : WORKFLOW_ENTRY_WINDOW_MAX_DAYS;
 }
 
-function toggleValue(values: string[], value: string, checked: boolean) {
+function toggleValue(values: number[], value: number, checked: boolean) {
   return checked ? [...new Set([...values, value])] : values.filter(item => item !== value);
 }
 
@@ -343,39 +341,17 @@ function getTagIds(triggers: WorkflowStartTrigger[]) {
   return triggers.find(trigger => trigger.type === "contact.tag_added")?.tagIds ?? [];
 }
 
-function updateTagTrigger(triggers: WorkflowStartTrigger[], tagId: string, checked: boolean) {
+function updateTagTrigger(triggers: WorkflowStartTrigger[], tagId: number, checked: boolean) {
   const tagIds = toggleValue(getTagIds(triggers), tagId, checked);
   const remaining = triggers.filter(trigger => trigger.type !== "contact.tag_added");
   return tagIds.length ? [...remaining, { tagIds, type: "contact.tag_added" as const }] : remaining;
 }
 
-function hasMessageTrigger(triggers: WorkflowStartTrigger[], match: "any" | "keywords") {
-  return triggers.some(trigger => trigger.type === "message.received" && trigger.match === match);
-}
-
 function toggleMessageTrigger(
   triggers: WorkflowStartTrigger[],
-  match: "any" | "keywords",
   checked: boolean,
 ) {
-  const remaining = triggers.filter(trigger =>
-    trigger.type !== "message.received" || trigger.match !== match,
-  );
+  const remaining = triggers.filter(trigger => trigger.type !== "message.received");
   if (!checked) return remaining;
-  return match === "any"
-    ? [...remaining, { match, type: "message.received" as const }]
-    : [...remaining, { keywords: [], match, type: "message.received" as const }];
-}
-
-function getKeywords(triggers: WorkflowStartTrigger[]) {
-  const trigger = triggers.find(item => item.type === "message.received" && item.match === "keywords");
-  return trigger?.match === "keywords" ? trigger.keywords : [];
-}
-
-function updateKeywords(triggers: WorkflowStartTrigger[], value: string) {
-  const keywords = [...new Set(value.split(/[,，]/).map(item => item.trim()).filter(Boolean))];
-  const remaining = triggers.filter(trigger =>
-    trigger.type !== "message.received" || trigger.match !== "keywords",
-  );
-  return [...remaining, { keywords, match: "keywords" as const, type: "message.received" as const }];
+  return [...remaining, { match: "any" as const, type: "message.received" as const }];
 }

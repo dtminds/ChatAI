@@ -255,7 +255,7 @@ export function getWorkflowTrigger(draft: WorkflowDraft) {
   const triggerLabels = entryNode.data.triggers.map(trigger => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";
-    return trigger.match === "keywords" ? "消息关键词" : "用户消息";
+    return "用户消息";
   });
   return [...new Set(triggerLabels)].join("、") || undefined;
 }

@@ -223,8 +223,8 @@ export class WorkflowRuntimeService {
     const node = requireExecutionNode(revision.executionSpec, input.subscription.nodeId);
     const config = requireWaitEventConfig(node);
     if (config.event.type !== input.eventType
-      || (input.subscription.accountId !== null
-        && input.match.accountId !== input.subscription.accountId)) {
+      || (input.subscription.seatId !== null
+        && input.match.seatId !== input.subscription.seatId)) {
       return { kind: "not-matched" as const };
     }
     if (!node.requiredCapabilities.every((requirement) =>
@@ -460,7 +460,6 @@ export class WorkflowRuntimeService {
         throw new Error(`Wait Event executor returned ${executionResult.type}`);
       }
       const waiting = await this.runtimeRepository.beginEventWait({
-        accountId: null,
         effectiveFrom: input.input.now,
         eventType: executionResult.eventType,
         expectedRunLockVersion: input.run.lockVersion,
@@ -474,6 +473,7 @@ export class WorkflowRuntimeService {
         ),
         now: input.input.now,
         runId: input.run.id,
+        seatId: getRunSeatId(input.run.context),
         taskId: input.claimedTask.id,
         uid: input.input.uid,
       });
@@ -647,6 +647,15 @@ export class WorkflowRuntimeService {
     });
     if (deferred.kind !== "success") throw staleTaskError();
   }
+}
+
+function getRunSeatId(context: Record<string, unknown>) {
+  const trigger = isRecord(context.trigger) ? context.trigger : null;
+  const projection = trigger && isRecord(trigger.projection) ? trigger.projection : null;
+  const seatId = projection?.seatId;
+  return typeof seatId === "number" && Number.isSafeInteger(seatId) && seatId > 0
+    ? seatId
+    : null;
 }
 
 function createExecutionContext(

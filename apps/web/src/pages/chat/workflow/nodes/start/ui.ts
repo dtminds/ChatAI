@@ -1,5 +1,6 @@
 import { StartConfig } from "./panel";
 import type { WorkflowNodeUiBinding } from "../ui-types";
+import { getStartNodeSourceIds, isChatAiStartNodeData } from "../../types";
 
 const triggerLabels = {
   "contact.friend_added": "添加好友",
@@ -9,14 +10,18 @@ const triggerLabels = {
 
 export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
   body: {
-    getFields: (data) => [
-      {
-        id: "hosting-accounts",
-        label: "托管账号",
-        value: data.accountIds.length
-          ? { kind: "text", text: `已选 ${data.accountIds.length} 个账号` }
-          : { kind: "empty" },
-      },
+    getFields: (data) => {
+      const isChatAi = isChatAiStartNodeData(data);
+      const sourceIds = getStartNodeSourceIds(data);
+      const sourceLabel = isChatAi ? "席位" : "企微成员";
+      return [
+        {
+          id: "sources",
+          label: sourceLabel,
+          value: sourceIds.length
+            ? { kind: "text" as const, text: `已选 ${sourceIds.length} 个${sourceLabel}` }
+            : { kind: "empty" as const },
+        },
       {
         id: "triggers",
         label: "触发条件",
@@ -33,7 +38,8 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
         label: "进入限制",
         value: { kind: "text", text: formatEntryPolicy(data.entryPolicy) },
       },
-    ],
+      ];
+    },
     kind: "fields",
   },
   settings: {

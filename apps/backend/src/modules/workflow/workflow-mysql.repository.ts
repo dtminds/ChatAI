@@ -4,6 +4,7 @@ import type {
   WorkflowRuntimeStatus,
   WorkflowStatusReason,
   WorkflowStoredExecutionSpec,
+  WorkflowTriggerBindingFilter,
 } from "@chatai/contracts";
 import {
   decodeWorkflowSubjectType,
@@ -24,6 +25,7 @@ import type {
 const DEFINITION_TABLE = "xy_wap_embed_workflow_definition" as const;
 const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
+const TRIGGER_BINDING_MATCH_TABLE = "xy_wap_embed_workflow_trigger_binding_match" as const;
 
 type WorkflowDbExecutor = Kysely<WorkflowDatabase> | Transaction<WorkflowDatabase>;
 type PublishedWriteResult = {
@@ -323,15 +325,27 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .where("status", "=", 1)
         .executeTakeFirst();
       if (input.triggerBindings.length > 0) {
-        await transaction.insertInto(TRIGGER_BINDING_TABLE).values(input.triggerBindings.map(binding => ({
-          event_type: binding.eventType,
-          filter_spec_json: stringifyJson(binding.filter),
-          revision: input.executionSpec.revision,
-          status: 1,
-          subject_type: encodeWorkflowSubjectType(binding.subjectType),
-          uid: input.uid,
-          workflow_id: input.workflowId,
-        }))).executeTakeFirstOrThrow();
+        for (const binding of input.triggerBindings) {
+          const bindingInsert = await transaction.insertInto(TRIGGER_BINDING_TABLE).values({
+            event_type: binding.eventType,
+            filter_spec_json: stringifyJson(binding.filter),
+            revision: input.executionSpec.revision,
+            status: 1,
+            subject_type: encodeWorkflowSubjectType(binding.subjectType),
+            uid: input.uid,
+            workflow_id: input.workflowId,
+          }).executeTakeFirstOrThrow();
+          if (bindingInsert.insertId === undefined) {
+            throw new Error("Workflow Trigger Binding insert did not return an ID");
+          }
+          const matches = createTriggerBindingMatches(binding.filter);
+          await transaction.insertInto(TRIGGER_BINDING_MATCH_TABLE).values(matches.map(match => ({
+            binding_id: bindingInsert.insertId!,
+            match_kind: match.kind,
+            match_value: match.value,
+            uid: input.uid,
+          }))).executeTakeFirstOrThrow();
+        }
       }
 
       await transaction.updateTable(DEFINITION_TABLE).set({
@@ -402,6 +416,41 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       .executeTakeFirst();
     return row ? mapDefinition(row) : null;
   }
+}
+
+const WORKFLOW_TRIGGER_BINDING_MATCH_KIND = {
+  seatId: 2,
+  tagId: 3,
+  workUserId: 1,
+} as const;
+
+type WorkflowTriggerBindingMatch = {
+  kind: typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND[
+    keyof typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND
+  ];
+  value: number;
+};
+
+function createTriggerBindingMatches(
+  filter: WorkflowTriggerBindingFilter,
+): WorkflowTriggerBindingMatch[] {
+  if (filter.eventType === "message.received") {
+    return filter.seatIds.map(value => ({
+      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.seatId,
+      value,
+    }));
+  }
+  const matches: WorkflowTriggerBindingMatch[] = filter.workUserIds.map(value => ({
+    kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.workUserId,
+    value,
+  }));
+  if (filter.eventType === "contact.tag_added") {
+    matches.push(...filter.tagIds.map(value => ({
+      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.tagId,
+      value,
+    })));
+  }
+  return matches;
 }
 
 async function selectDefinitionForUpdate(db: WorkflowDbExecutor, uid: number, workflowId: string) {

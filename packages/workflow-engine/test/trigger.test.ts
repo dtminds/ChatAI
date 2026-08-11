@@ -6,64 +6,87 @@ import {
 } from "../src/index.js";
 
 const startConfig = {
-  accountIds: ["account-a", "account-b"],
   entryPolicy: {
     maxEntries: 2,
     mode: "rolling_window" as const,
     windowSize: 7,
     windowUnit: "day" as const,
   },
+  seatIds: [101, 102],
   triggers: [
     { type: "contact.friend_added" as const },
-    { tagIds: ["tag-vip", "tag-lead"], type: "contact.tag_added" as const },
-    { keywords: [" 优惠 ", "VIP"], match: "keywords" as const, type: "message.received" as const },
+    { tagIds: [301, 302], type: "contact.tag_added" as const },
+    { match: "any" as const, type: "message.received" as const },
   ],
 };
 
 describe("workflow trigger matching", () => {
-  it("matches account-scoped events with OR semantics", () => {
-    expect(matchWorkflowTrigger(startConfig, projection({
+  const bindings = getWorkflowTriggerBindings(startConfig, "chatai_contact", {
+    resolvedWorkUserIds: [201, 202],
+  });
+
+  it("matches contact events by WeCom member and exact tag", () => {
+    const tagBinding = requireBinding("contact.tag_added");
+    expect(matchWorkflowTrigger(tagBinding.filter, projection({
       eventType: "contact.tag_added",
-      match: { accountId: "account-a", tagId: "tag-vip" },
+      match: { tagId: 301, workUserId: 201 },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, projection({
-      eventType: "message.received",
-      match: { accountId: "account-a", messageType: "text", text: "A vip OFFER" },
-    }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, projection({
-      eventType: "message.received",
-      match: { accountId: "account-c", messageType: "text", text: "VIP" },
+    expect(matchWorkflowTrigger(tagBinding.filter, projection({
+      eventType: "contact.tag_added",
+      match: { tagId: 999, workUserId: 201 },
+    }))).toBe(false);
+    expect(matchWorkflowTrigger(tagBinding.filter, projection({
+      eventType: "contact.tag_added",
+      match: { tagId: 301, workUserId: 999 },
     }))).toBe(false);
   });
 
-  it("uses literal keyword matching and ignores non-text messages", () => {
-    expect(matchWorkflowTrigger(startConfig, projection({
+  it("matches message events by ChatAI seat", () => {
+    const messageBinding = requireBinding("message.received");
+    expect(matchWorkflowTrigger(messageBinding.filter, projection({
       eventType: "message.received",
-      match: { accountId: "account-a", messageType: "text", text: "[VIP] customer" },
+      match: { seatId: 101 },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(startConfig, projection({
+    expect(matchWorkflowTrigger(messageBinding.filter, projection({
       eventType: "message.received",
-      match: { accountId: "account-a", messageType: "image", text: "VIP" },
+      match: { seatId: 999 },
     }))).toBe(false);
   });
 
-  it("normalizes keywords and creates one canonical binding per event type", () => {
-    const normalized = normalizeWorkflowStartConfig(startConfig);
-    expect(normalized.triggers.at(-1)).toMatchObject({ keywords: ["优惠", "VIP"] });
-    const bindings = getWorkflowTriggerBindings(startConfig, "chatai_contact");
+  it("normalizes numeric identities and creates one structured binding per event type", () => {
+    const normalized = normalizeWorkflowStartConfig({
+      ...startConfig,
+      seatIds: [101, 101, 102],
+      triggers: [
+        { tagIds: [301, 301, 302], type: "contact.tag_added" as const },
+      ],
+    });
+    expect("seatIds" in normalized ? normalized.seatIds : []).toEqual([101, 102]);
+    expect(normalized.triggers[0]).toMatchObject({ tagIds: [301, 302] });
     expect(bindings.map(binding => binding.eventType)).toEqual([
       "contact.friend_added",
       "contact.tag_added",
       "message.received",
     ]);
-    expect(bindings.every(binding => binding.subjectType === "chatai_contact")).toBe(true);
+    expect(requireBinding("contact.friend_added").filter).toEqual({
+      entryPolicy: startConfig.entryPolicy,
+      eventType: "contact.friend_added",
+      workUserIds: [201, 202],
+    });
   });
+
+  function requireBinding(eventType: typeof bindings[number]["eventType"]) {
+    const binding = bindings.find(item => item.eventType === eventType);
+    if (!binding) throw new Error(`Missing binding: ${eventType}`);
+    return binding;
+  }
 });
 
 function projection(overrides: Record<string, unknown>) {
   return {
     eventType: "contact.friend_added" as const,
-    match: { accountId: "account-a" },
+    match: { workUserId: 201 },
+    subjects: {},
     variables: {},
     ...overrides,
   };

@@ -179,7 +179,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && item.eventType === input.eventType)) return conflict();
 
     const subscription: WorkflowEventSubscriptionRecord = {
-      accountId: input.accountId,
       collectUntil: null,
       createdAt: clone(input.now),
       effectiveFrom: clone(input.effectiveFrom),
@@ -189,6 +188,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       nodeId: task.nodeId,
       revision: run.revision,
       runId: run.id,
+      seatId: input.seatId,
       status: "waiting",
       subjectId: run.subjectId,
       subjectType: run.subjectType,
@@ -223,6 +223,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     subjectType: WorkflowEventSubscriptionRecord["subjectType"],
     eventType: WorkflowEventSubscriptionRecord["eventType"],
     subjectId: string,
+    seatId: number | null,
     eventOccurredAt: Date,
     observedAt: Date,
   ) {
@@ -232,6 +233,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || subscription.subjectType !== subjectType
         || subscription.eventType !== eventType
         || subscription.subjectId !== subjectId
+        || (subscription.seatId !== null && subscription.seatId !== seatId)
         || (subscription.status === "waiting"
           ? eventOccurredAt < subscription.effectiveFrom
             || eventOccurredAt >= subscription.expiresAt

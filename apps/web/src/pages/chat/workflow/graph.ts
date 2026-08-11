@@ -3,12 +3,14 @@ import {
   WORKFLOW_LAYOUT_X_GAP,
   WORKFLOW_NODE_TYPE,
 } from "./constants";
+import type { WorkflowType } from "@chatai/contracts";
 import {
   getNodeSourceHandleIndex,
   getNodeSourceHandleLabel,
   getNodeSourceHandleLaneOffset,
 } from "./node-handle-definitions";
 import { createDefaultNodeData } from "./node-definition-core";
+import { createStartNodeData } from "./nodes/start/definition";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowEdge,
@@ -27,12 +29,14 @@ export function createInitialDraft(): WorkflowDraft {
   };
 }
 
-export function createNewWorkflowDraft(): WorkflowDraft {
+export function createNewWorkflowDraft(
+  workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop"> = "chatai_sop",
+): WorkflowDraft {
   return {
     edges: [createEdge("start", "end")],
     nodes: [
       {
-        data: createDefaultNodeData("start"),
+        data: createStartNodeData(workflowType),
         id: "start",
         position: { x: 120, y: 240 },
         type: WORKFLOW_NODE_TYPE,
@@ -53,13 +57,13 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("start"),
-        accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
-        metric: "2 个账号 · 2 个触发条件",
+        seatIds: [101, 102],
+        metric: "2 个席位 · 2 个触发条件",
         status: "running",
         title: "新人入会触发",
         triggers: [
           { type: "contact.friend_added" },
-          { tagIds: ["tag-new-customer"], type: "contact.tag_added" },
+          { tagIds: [201], type: "contact.tag_added" },
         ],
       },
       id: "start",

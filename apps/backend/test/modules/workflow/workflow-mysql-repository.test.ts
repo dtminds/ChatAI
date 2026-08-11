@@ -158,12 +158,21 @@ describe("MysqlWorkflowRepository", () => {
       triggerBindings: [
         {
           eventType: "contact.friend_added",
-          filter: startConfig(),
+          filter: {
+            entryPolicy: { mode: "never" },
+            eventType: "contact.friend_added",
+            workUserIds: [201],
+          },
           subjectType: "chatai_contact",
         },
         {
           eventType: "message.received",
-          filter: { ...startConfig(), triggers: [{ match: "any", type: "message.received" }] },
+          filter: {
+            entryPolicy: { mode: "never" },
+            eventType: "message.received",
+            match: "any",
+            seatIds: [101],
+          },
           subjectType: "chatai_contact",
         },
       ],
@@ -179,6 +188,10 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.triggerBindingInsert).toEqual([
       expect.objectContaining({ event_type: "contact.friend_added", revision: 1, status: 1 }),
       expect.objectContaining({ event_type: "message.received", revision: 1, status: 1 }),
+    ]);
+    expect(db.triggerBindingMatchInsert).toEqual([
+      expect.objectContaining({ binding_id: "binding-1", match_kind: 1, match_value: 201 }),
+      expect.objectContaining({ binding_id: "binding-2", match_kind: 2, match_value: 101 }),
     ]);
     expect(db.definitionUpdate).toMatchObject({ published_revision: 1, runtime_status: "active" });
   });
@@ -325,17 +338,25 @@ function createPublicationDbMock() {
     definitionUpdate: {} as Record<string, unknown>,
     transactionCount: 0,
     triggerBindingInsert: [] as Array<Record<string, unknown>>,
+    triggerBindingMatchInsert: [] as Array<Record<string, unknown>>,
     triggerBindingStatusUpdate: {} as Record<string, unknown>,
     insertInto(table: string) {
       const builder = {
         values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
           if (table === "xy_wap_embed_workflow_trigger_binding") {
-            db.triggerBindingInsert = values as Array<Record<string, unknown>>;
+            db.triggerBindingInsert.push(values as Record<string, unknown>);
+          }
+          if (table === "xy_wap_embed_workflow_trigger_binding_match") {
+            db.triggerBindingMatchInsert.push(...values as Array<Record<string, unknown>>);
           }
           return builder;
         },
         async executeTakeFirstOrThrow() {
-          return { insertId: table === "xy_wap_embed_workflow_revision" ? "11" : "12" };
+          if (table === "xy_wap_embed_workflow_revision") return { insertId: "11" };
+          if (table === "xy_wap_embed_workflow_trigger_binding") {
+            return { insertId: `binding-${db.triggerBindingInsert.length}` };
+          }
+          return { insertId: "12" };
         },
       };
       return builder;
@@ -383,8 +404,8 @@ function createDraft() {
 
 function startConfig() {
   return {
-    accountIds: ["account-a"],
     entryPolicy: { mode: "never" as const },
+    seatIds: [101],
     triggers: [{ type: "contact.friend_added" as const }],
   };
 }

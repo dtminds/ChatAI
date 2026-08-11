@@ -30,40 +30,101 @@ export const WorkflowEntryPolicySchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
-export const WorkflowStartTriggerSchema = Type.Union([
-  Type.Object({ type: Type.Literal("contact.friend_added") }, { additionalProperties: false }),
-  Type.Object({
-    tagIds: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), {
-      maxItems: 100,
-      minItems: 1,
-      uniqueItems: true,
-    }),
-    type: Type.Literal("contact.tag_added"),
-  }, { additionalProperties: false }),
-  Type.Object({
-    match: Type.Literal("any"),
-    type: Type.Literal("message.received"),
-  }, { additionalProperties: false }),
-  Type.Object({
-    keywords: Type.Array(Type.String({ minLength: 1, maxLength: 100 }), {
-      maxItems: 100,
-      minItems: 1,
-      uniqueItems: true,
-    }),
-    match: Type.Literal("keywords"),
-    type: Type.Literal("message.received"),
-  }, { additionalProperties: false }),
-]);
+const WorkflowContactFriendAddedTriggerSchema = Type.Object({
+  type: Type.Literal("contact.friend_added"),
+}, { additionalProperties: false });
 
-export const WorkflowStartConfigSchema = Type.Object({
-  accountIds: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), {
+const WorkflowContactTagAddedTriggerSchema = Type.Object({
+  tagIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,
     uniqueItems: true,
   }),
-  entryPolicy: WorkflowEntryPolicySchema,
-  triggers: Type.Array(WorkflowStartTriggerSchema, { maxItems: 100, minItems: 1 }),
+  type: Type.Literal("contact.tag_added"),
 }, { additionalProperties: false });
+
+const WorkflowMessageReceivedTriggerSchema = Type.Object({
+  match: Type.Literal("any"),
+  type: Type.Literal("message.received"),
+}, { additionalProperties: false });
+
+export const WorkflowStartTriggerSchema = Type.Union([
+  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactTagAddedTriggerSchema,
+  WorkflowMessageReceivedTriggerSchema,
+]);
+
+export const WorkflowChatAiStartTriggerSchema = Type.Union([
+  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactTagAddedTriggerSchema,
+  WorkflowMessageReceivedTriggerSchema,
+]);
+
+export const WorkflowWeComStartTriggerSchema = Type.Union([
+  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactTagAddedTriggerSchema,
+]);
+
+export const WorkflowChatAiStartConfigSchema = Type.Object({
+  entryPolicy: WorkflowEntryPolicySchema,
+  seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+    maxItems: 100,
+    minItems: 1,
+    uniqueItems: true,
+  }),
+  triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 100, minItems: 1 }),
+}, { additionalProperties: false });
+
+export const WorkflowWeComStartConfigSchema = Type.Object({
+  entryPolicy: WorkflowEntryPolicySchema,
+  triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 100, minItems: 1 }),
+  workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+    maxItems: 100,
+    minItems: 1,
+    uniqueItems: true,
+  }),
+}, { additionalProperties: false });
+
+export const WorkflowStartConfigSchema = Type.Union([
+  WorkflowChatAiStartConfigSchema,
+  WorkflowWeComStartConfigSchema,
+]);
+
+export const WorkflowTriggerBindingFilterSchema = Type.Union([
+  Type.Object({
+    entryPolicy: WorkflowEntryPolicySchema,
+    eventType: Type.Literal("contact.friend_added"),
+    workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+      maxItems: 100,
+      minItems: 1,
+      uniqueItems: true,
+    }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    entryPolicy: WorkflowEntryPolicySchema,
+    eventType: Type.Literal("contact.tag_added"),
+    tagIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+      maxItems: 100,
+      minItems: 1,
+      uniqueItems: true,
+    }),
+    workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+      maxItems: 100,
+      minItems: 1,
+      uniqueItems: true,
+    }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    entryPolicy: WorkflowEntryPolicySchema,
+    eventType: Type.Literal("message.received"),
+    match: Type.Literal("any"),
+    seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+      maxItems: 100,
+      minItems: 1,
+      uniqueItems: true,
+    }),
+  }, { additionalProperties: false }),
+]);
 
 export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
   day: 45,
@@ -144,8 +205,13 @@ export const WorkflowWaitEventConfigSchema = Type.Object({
 
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
+export type WorkflowChatAiStartConfig = Static<typeof WorkflowChatAiStartConfigSchema>;
+export type WorkflowWeComStartConfig = Static<typeof WorkflowWeComStartConfigSchema>;
 export type WorkflowStartConfig = Static<typeof WorkflowStartConfigSchema>;
 export type WorkflowStartTrigger = Static<typeof WorkflowStartTriggerSchema>;
+export type WorkflowChatAiStartTrigger = Static<typeof WorkflowChatAiStartTriggerSchema>;
+export type WorkflowWeComStartTrigger = Static<typeof WorkflowWeComStartTriggerSchema>;
+export type WorkflowTriggerBindingFilter = Static<typeof WorkflowTriggerBindingFilterSchema>;
 export type WorkflowWaitConfig = Static<typeof WorkflowWaitConfigSchema>;
 export type WorkflowWaitEventDraftConfig = Static<typeof WorkflowWaitEventDraftConfigSchema>;
 export type WorkflowWaitEventConfig = Static<typeof WorkflowWaitEventConfigSchema>;

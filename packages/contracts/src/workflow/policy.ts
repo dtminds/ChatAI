@@ -56,6 +56,23 @@ const SHARED_WORKFLOW_VARIABLE_CATALOG = [
   "trigger.occurredAt",
 ] as const;
 
+const CHATAI_WORKFLOW_VARIABLE_CATALOG = [
+  ...SHARED_WORKFLOW_VARIABLE_CATALOG,
+  "trigger.projection.workUserId",
+  "trigger.projection.seatId",
+  "trigger.projection.externalUserId",
+  "trigger.projection.thirdExternalUserId",
+  "trigger.projection.tagId",
+  "trigger.projection.messageId",
+] as const;
+
+const WECOM_WORKFLOW_VARIABLE_CATALOG = [
+  ...SHARED_WORKFLOW_VARIABLE_CATALOG,
+  "trigger.projection.workUserId",
+  "trigger.projection.externalUserId",
+  "trigger.projection.tagId",
+] as const;
+
 const CHATAI_NODE_KINDS = [
   "start",
   "wait",
@@ -99,7 +116,7 @@ export const WORKFLOW_CAPABILITY_PROFILES = {
     allowedNodeKinds: CHATAI_NODE_KINDS,
     availability: "enabled",
     subjectType: "chatai_contact",
-    variableCatalog: SHARED_WORKFLOW_VARIABLE_CATALOG,
+    variableCatalog: CHATAI_WORKFLOW_VARIABLE_CATALOG,
     workflowType: "chatai_sop",
   },
   member_sop: {
@@ -118,7 +135,7 @@ export const WORKFLOW_CAPABILITY_PROFILES = {
     allowedNodeKinds: WECOM_NODE_KINDS,
     availability: "enabled",
     subjectType: "wecom_contact",
-    variableCatalog: SHARED_WORKFLOW_VARIABLE_CATALOG,
+    variableCatalog: WECOM_WORKFLOW_VARIABLE_CATALOG,
     workflowType: "wecom_sop",
   },
 } as const satisfies Record<WorkflowType, WorkflowCapabilityProfile>;

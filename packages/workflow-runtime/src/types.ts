@@ -6,11 +6,11 @@ import type {
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
-  WorkflowStartConfig,
   WorkflowStatusReason,
   WorkflowSubjectType,
   WorkflowTaskStatus,
   WorkflowTaskMessage,
+  WorkflowTriggerBindingFilter,
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowActionFailureKind } from "@chatai/workflow-engine";
@@ -44,7 +44,7 @@ export type WorkflowRuntimeControlReader = {
 export type WorkflowTriggerBindingRecord = {
   createdAt: Date;
   eventType: WorkflowEntryEventType;
-  filter: WorkflowStartConfig;
+  filter: WorkflowTriggerBindingFilter;
   id: string;
   revision: number;
   status: 0 | 1;
@@ -57,8 +57,7 @@ export type WorkflowTriggerBindingRecord = {
 export type WorkflowTriggerBindingReader = {
   listActiveTriggerBindings(
     uid: number,
-    subjectType: WorkflowSubjectType,
-    eventType: string,
+    eventType: WorkflowEntryEventType,
   ): Promise<WorkflowTriggerBindingRecord[]>;
 };
 
@@ -69,7 +68,6 @@ export type WorkflowEventSubscriptionStatus =
   | "cancelled";
 
 export type WorkflowEventSubscriptionRecord = {
-  accountId: string | null;
   collectUntil: Date | null;
   createdAt: Date;
   effectiveFrom: Date;
@@ -79,6 +77,7 @@ export type WorkflowEventSubscriptionRecord = {
   nodeId: string;
   revision: number;
   runId: string;
+  seatId: number | null;
   status: WorkflowEventSubscriptionStatus;
   subjectId: string;
   subjectType: WorkflowSubjectType;
@@ -105,6 +104,7 @@ export type WorkflowEventSubscriptionReader = {
     subjectType: WorkflowSubjectType,
     eventType: WorkflowEntryEventType,
     subjectId: string,
+    seatId: number | null,
     eventOccurredAt: Date,
     observedAt: Date,
   ): Promise<WorkflowEventSubscriptionRecord[]>;
@@ -249,7 +249,6 @@ export type WorkflowCreateRunInput = {
 };
 
 export type WorkflowBeginEventWaitInput = {
-  accountId: string | null;
   effectiveFrom: Date;
   eventType: WorkflowEntryEventType;
   expectedRunLockVersion: number;
@@ -258,6 +257,7 @@ export type WorkflowBeginEventWaitInput = {
   inbox: WorkflowCommitNodeResultInput["inbox"];
   now: Date;
   runId: string;
+  seatId: number | null;
   taskId: string;
   uid: number;
 };

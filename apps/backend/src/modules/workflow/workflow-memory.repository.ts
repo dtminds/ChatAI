@@ -105,12 +105,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async listActiveTriggerBindings(
     uid: number,
-    subjectType: WorkflowTriggerBindingRecord["subjectType"],
-    eventType: string,
+    eventType: WorkflowTriggerBindingRecord["eventType"],
   ) {
     return this.triggerBindings.filter((binding) => {
       if (binding.uid !== uid
-        || binding.subjectType !== subjectType
         || binding.eventType !== eventType
         || binding.status !== 1) return false;
       const definition = this.findActive(uid, binding.workflowId);

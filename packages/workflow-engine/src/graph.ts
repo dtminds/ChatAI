@@ -166,11 +166,17 @@ function validateNodeConfig(
 }
 
 function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowStartConfig {
-  return Value.Check(WorkflowStartConfigSchema, {
-    accountIds: value.accountIds,
-    entryPolicy: value.entryPolicy,
-    triggers: value.triggers,
-  });
+  return Value.Check(WorkflowStartConfigSchema, "seatIds" in value
+    ? {
+        entryPolicy: value.entryPolicy,
+        seatIds: value.seatIds,
+        triggers: value.triggers,
+      }
+    : {
+        entryPolicy: value.entryPolicy,
+        triggers: value.triggers,
+        workUserIds: value.workUserIds,
+      });
 }
 
 function isWorkflowWaitConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowWaitConfig {

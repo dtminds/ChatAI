@@ -146,8 +146,8 @@ describe("workflow production availability", () => {
       nodes: [
         {
           config: {
-            accountIds: ["account-1"],
             entryPolicy: { mode: "never" },
+            seatIds: [1],
             triggers: [
               { type: "contact.friend_added" },
               { match: "any", type: "message.received" },

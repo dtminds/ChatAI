@@ -229,7 +229,7 @@ describe("buildPublishChecks", () => {
             ...node,
             data: {
               ...node.data,
-              accountIds: [],
+              seatIds: [],
               status: "running" as const,
             },
           }
@@ -240,7 +240,7 @@ describe("buildPublishChecks", () => {
     expect(checks.find((check) => check.id === "start")?.status).toBe("warning");
     expect(checks.find((check) => check.id === "start")?.blocksPublish).toBe(true);
     expect(checks.find((check) => check.id === "start")?.description).toBe(
-      "开始节点需要选择托管账号",
+      "开始节点需要选择席位",
     );
   });
 

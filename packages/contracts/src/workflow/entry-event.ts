@@ -1,11 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { WorkflowSubjectTypeSchema } from "./policy.js";
 
 export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
 export const WORKFLOW_ENTRY_PAYLOAD_MAX_BYTES = 32 * 1024;
 export const WORKFLOW_ENTRY_JSON_MAX_DEPTH = 16;
+export const WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH = 1_000;
 
 export const WorkflowJsonValueSchema = Type.Recursive(Self => Type.Union([
   Type.Null(),
@@ -17,6 +17,55 @@ export const WorkflowJsonValueSchema = Type.Recursive(Self => Type.Union([
 ]));
 
 export const WorkflowJsonObjectSchema = Type.Record(Type.String(), WorkflowJsonValueSchema);
+
+const WorkflowPositiveSafeIntegerSchema = Type.Integer({
+  maximum: Number.MAX_SAFE_INTEGER,
+  minimum: 1,
+});
+const WorkflowExternalUserIdSchema = Type.String({ maxLength: 128, minLength: 1 });
+
+const WorkflowWeComContactIdentitySchema = {
+  externalUserId: WorkflowExternalUserIdSchema,
+  workUserId: WorkflowPositiveSafeIntegerSchema,
+} as const;
+
+const WorkflowChatAiContactIdentitySchema = {
+  seatId: WorkflowPositiveSafeIntegerSchema,
+  thirdExternalUserId: WorkflowExternalUserIdSchema,
+} as const;
+
+export const WorkflowContactFriendAddedPayloadSchema = Type.Union([
+  Type.Object(WorkflowWeComContactIdentitySchema, { additionalProperties: false }),
+  Type.Object({
+    ...WorkflowWeComContactIdentitySchema,
+    ...WorkflowChatAiContactIdentitySchema,
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowContactTagAddedPayloadSchema = Type.Union([
+  Type.Object({
+    ...WorkflowWeComContactIdentitySchema,
+    tagId: WorkflowPositiveSafeIntegerSchema,
+  }, { additionalProperties: false }),
+  Type.Object({
+    ...WorkflowWeComContactIdentitySchema,
+    ...WorkflowChatAiContactIdentitySchema,
+    tagId: WorkflowPositiveSafeIntegerSchema,
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowMessageReceivedPayloadSchema = Type.Object({
+  externalUserId: Type.Optional(WorkflowExternalUserIdSchema),
+  messageId: WorkflowPositiveSafeIntegerSchema,
+  ...WorkflowChatAiContactIdentitySchema,
+  text: Type.Optional(Type.String({ maxLength: WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH })),
+  workUserId: WorkflowPositiveSafeIntegerSchema,
+}, { additionalProperties: false });
+
+export const WorkflowEntryEventSourceSchema = Type.Union([
+  Type.Literal("wecom"),
+  Type.Literal("chatai"),
+]);
 
 export const WorkflowEntryEventNameSchema = Type.String({
   maxLength: 128,
@@ -33,20 +82,34 @@ export const WorkflowEntryEventSchema = Type.Object({
   payload: WorkflowJsonObjectSchema,
   payloadVersion: Type.Integer({ maximum: 65_535, minimum: 1 }),
   schemaVersion: Type.Literal(WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION),
-  source: Type.String({ maxLength: 64, minLength: 1 }),
-  subjectId: Type.String({ maxLength: 256, minLength: 1 }),
-  subjectType: WorkflowSubjectTypeSchema,
+  source: WorkflowEntryEventSourceSchema,
   uid: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
 }, { additionalProperties: false });
 
 export type WorkflowJsonValue = Static<typeof WorkflowJsonValueSchema>;
 export type WorkflowJsonObject = Static<typeof WorkflowJsonObjectSchema>;
 export type WorkflowEntryEvent = Static<typeof WorkflowEntryEventSchema>;
+export type WorkflowEntryEventSource = Static<typeof WorkflowEntryEventSourceSchema>;
+export type WorkflowContactFriendAddedPayload = Static<
+  typeof WorkflowContactFriendAddedPayloadSchema
+>;
+export type WorkflowContactTagAddedPayload = Static<typeof WorkflowContactTagAddedPayloadSchema>;
+export type WorkflowMessageReceivedPayload = Static<typeof WorkflowMessageReceivedPayloadSchema>;
 
-export function createWorkflowEntryPartitionKey(
-  event: Pick<WorkflowEntryEvent, "subjectId" | "subjectType" | "uid">,
-) {
-  return `${event.uid}:${event.subjectType}:${event.subjectId}`;
+export function createWorkflowEntryPartitionKey(event: WorkflowEntryEvent) {
+  if (event.eventType === "contact.friend_added"
+    && Value.Check(WorkflowContactFriendAddedPayloadSchema, event.payload)) {
+    return `${event.uid}:wecom_contact:${event.payload.externalUserId}`;
+  }
+  if (event.eventType === "contact.tag_added"
+    && Value.Check(WorkflowContactTagAddedPayloadSchema, event.payload)) {
+    return `${event.uid}:wecom_contact:${event.payload.externalUserId}`;
+  }
+  if (event.eventType === "message.received"
+    && Value.Check(WorkflowMessageReceivedPayloadSchema, event.payload)) {
+    return `${event.uid}:chatai_contact:${event.payload.thirdExternalUserId}`;
+  }
+  throw new Error(`Unsupported Workflow Entry Event partition key: ${event.eventType}`);
 }
 
 export type WorkflowEntryEnvelopeValidationCode =

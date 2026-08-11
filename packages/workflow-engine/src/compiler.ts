@@ -42,7 +42,7 @@ export function compileWorkflowDraft({
 
   const nodes = validation.topologicalNodeIds.map((nodeId) => {
     const node = normalizedDraft.nodes.find((item) => item.id === nodeId)!;
-    const config = createExecutionConfig(node.data.kind, node.data);
+    const config = createExecutionConfig(node.data.kind, node.data, workflowType);
     return {
       config,
       id: node.id,
@@ -86,13 +86,23 @@ export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   } as WorkflowDraft;
 }
 
-function createExecutionConfig(kind: WorkflowNodeKind, data: Record<string, unknown>) {
+function createExecutionConfig(
+  kind: WorkflowNodeKind,
+  data: Record<string, unknown>,
+  workflowType: WorkflowType,
+) {
   if (kind === "start") {
-    return cloneJsonValue({
-      accountIds: data.accountIds,
-      entryPolicy: data.entryPolicy,
-      triggers: data.triggers,
-    }) as Record<string, unknown>;
+    return cloneJsonValue(workflowType === "chatai_sop"
+      ? {
+          entryPolicy: data.entryPolicy,
+          seatIds: data.seatIds,
+          triggers: data.triggers,
+        }
+      : {
+          entryPolicy: data.entryPolicy,
+          triggers: data.triggers,
+          workUserIds: data.workUserIds,
+        }) as Record<string, unknown>;
   }
   if (kind === "wait") {
     return data.mode === "fixed-time"

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
-import { EMPTY_WORKFLOW_EVENT_CATALOG } from "@chatai/workflow-engine";
+import { WORKFLOW_EVENT_CATALOG } from "@chatai/workflow-engine";
 import {
   assertDatabaseUtc8Timezone,
   HttpWorkflowEntitlementPort,
@@ -64,7 +64,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       config,
       database,
       entryConsumer: startEntryConsumer,
-      eventCatalog: EMPTY_WORKFLOW_EVENT_CATALOG,
+      eventCatalog: WORKFLOW_EVENT_CATALOG,
       eventSubscriptionReader: repository,
       inboxRepository: repository,
       logger,

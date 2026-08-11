@@ -137,7 +137,7 @@ async function createHarness() {
     },
   });
   const created = await repository.createRunWithInitialTask({
-    context: { outputs: {}, trigger: {} },
+    context: { outputs: {}, trigger: { projection: { seatId: 101 } } },
     entryEventId: "entry-event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
     initialNodeId: "wait-event",
@@ -145,7 +145,7 @@ async function createHarness() {
     occurredAt: now,
     revision: 1,
     shardId: 7,
-    subjectId: "external-user-1",
+    subjectId: "chatai_external_456",
     subjectType: "chatai_contact",
     uid: 9,
     workflowId: "31",
@@ -223,16 +223,16 @@ function messageEvent(input: {
     eventType: "message.received",
     occurredAt: input.occurredAt,
     payload: {
-      accountId: "account-a",
+      externalUserId: "wm_external_123",
       messageId: input.messageId,
-      messageType: "text",
+      seatId: 101,
+      thirdExternalUserId: "chatai_external_456",
       text: input.text,
+      workUserId: 201,
     },
     payloadVersion: 1,
     schemaVersion: 1,
-    source: "worker-test",
-    subjectId: "external-user-1",
-    subjectType: "chatai_contact",
+    source: "chatai",
     uid: 9,
   };
 }

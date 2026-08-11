@@ -1,13 +1,13 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkflowChatAiStartConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
   WorkflowBranchConditionValue as SharedWorkflowBranchConditionValue,
   WorkflowBranchLogic as SharedWorkflowBranchLogic,
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
   WorkbenchQuickReplyAttachment,
-  WorkflowEntryPolicy,
-  WorkflowStartTrigger,
+  WorkflowWeComStartConfig,
   WorkflowWaitConfig,
 } from "@chatai/contracts";
 import type { WorkflowNodeMetric } from "@chatai/contracts";
@@ -52,11 +52,23 @@ type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unkno
   title: string;
 };
 
-export type StartNodeData = WorkflowNodeDataBase<"start"> & {
-  accountIds: string[];
-  entryPolicy: WorkflowEntryPolicy;
-  triggers: WorkflowStartTrigger[];
-};
+export type ChatAiStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowChatAiStartConfig;
+export type WeComStartNodeData = WorkflowNodeDataBase<"start"> & WorkflowWeComStartConfig;
+export type StartNodeData = ChatAiStartNodeData | WeComStartNodeData;
+
+export function isChatAiStartNodeData(data: StartNodeData): data is ChatAiStartNodeData {
+  return Array.isArray(data.seatIds);
+}
+
+export function isWeComStartNodeData(data: StartNodeData): data is WeComStartNodeData {
+  return Array.isArray(data.workUserIds);
+}
+
+export function getStartNodeSourceIds(data: StartNodeData): number[] {
+  if (isChatAiStartNodeData(data)) return data.seatIds;
+  if (isWeComStartNodeData(data)) return data.workUserIds;
+  return [];
+}
 
 export type WaitNodeData = WorkflowNodeDataBase<"wait"> & WorkflowWaitConfig;
 

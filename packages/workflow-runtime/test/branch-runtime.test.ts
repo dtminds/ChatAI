@@ -315,8 +315,8 @@ function branchDraft(
     ],
     nodes: [
       node("start", "start", {
-        accountIds: ["account-a"],
         entryPolicy: { mode: "never" },
+        seatIds: [101],
         triggers: [{ type: "contact.friend_added" }],
       }),
       node("wait", "wait", { duration: 1, mode: "duration", unit: "minute" }),

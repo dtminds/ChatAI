@@ -248,6 +248,11 @@ describe("workflow routes", () => {
         entitlementPort: {
           check: async () => ({ entitled: true, unentitledSince: null }),
         },
+        sourceIdentityResolver: {
+          async resolveActiveSeatWorkUserIds(_uid, seatIds) {
+            return new Map(seatIds.map(seatId => [seatId, seatId + 100]));
+          },
+        },
       }),
     });
     return app;
@@ -261,8 +266,8 @@ describe("workflow routes", () => {
             ...node,
             data: {
               ...node.data,
-              accountIds: ["account-a"],
               entryPolicy: { mode: "never" },
+              seatIds: [101],
               triggers: [{ type: "contact.friend_added" }],
             },
           }

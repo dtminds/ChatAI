@@ -190,7 +190,20 @@ describe("backend env config", () => {
         NODE_ENV: "production",
         WORKFLOW_ENTITLEMENT_MODE: "allow",
       }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE=allow is not permitted in production");
+    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+  });
+
+  it("rejects a whitespace-padded entitlement bypass in production", () => {
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://prod",
+        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
+        JWT_PRIVATE_KEY: "private",
+        JWT_PUBLIC_KEY: "public",
+        NODE_ENV: "production",
+        WORKFLOW_ENTITLEMENT_MODE: " allow ",
+      }),
+    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
   });
 
   it("validates worker observer subjects before backend startup", () => {

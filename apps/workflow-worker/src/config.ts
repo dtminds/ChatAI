@@ -112,6 +112,10 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     60_000,
     "WORKFLOW_LEASE_DURATION_MS",
   );
+  const entitlementMode = parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE);
+  if (env.NODE_ENV === "production" && entitlementMode !== "enforce") {
+    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+  }
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
@@ -121,7 +125,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     deploymentCapabilities,
     entitlement: {
       apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
-      mode: parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE),
+      mode: entitlementMode,
       token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
     },
     environment,

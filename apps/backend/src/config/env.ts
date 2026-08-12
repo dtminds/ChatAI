@@ -146,8 +146,9 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
 
-  if (env.NODE_ENV === "production" && env.WORKFLOW_ENTITLEMENT_MODE === "allow") {
-    throw new Error("WORKFLOW_ENTITLEMENT_MODE=allow is not permitted in production");
+  const workflowEntitlementMode = env.WORKFLOW_ENTITLEMENT_MODE?.trim() || "enforce";
+  if (env.NODE_ENV === "production" && workflowEntitlementMode !== "enforce") {
+    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
   }
 
   return {

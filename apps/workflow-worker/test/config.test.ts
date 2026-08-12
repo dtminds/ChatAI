@@ -122,11 +122,22 @@ describe("workflow worker config", () => {
 
   it("loads the explicit entitlement bypass for development and test environments", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "development",
       WORKFLOW_ENTITLEMENT_MODE: "allow",
     }));
 
     expect(config.entitlement.mode).toBe("allow");
   });
+
+  it.each(["allow", " allow "])(
+    "rejects the entitlement bypass in production: %j",
+    (mode) => {
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        NODE_ENV: "production",
+        WORKFLOW_ENTITLEMENT_MODE: mode,
+      }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+    },
+  );
 
   it("rejects unknown entitlement modes", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({

@@ -1,10 +1,10 @@
 import {
   WORKFLOW_INTENT_TEMPLATE_KEY,
-  WorkflowAiIntentExecutionConfigSchema,
+  isWorkflowAiIntentExecutionConfigComplete,
+  isWorkflowLlmExecutionConfigComplete,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceMessageListResultSchema,
   WorkflowInferenceTemplateResultSchema,
-  WorkflowLlmExecutionConfigSchema,
   type WorkflowExecutionNode,
   type WorkflowInferenceRequest,
   type WorkflowInferenceResult,
@@ -41,7 +41,7 @@ export function mapWorkflowInferenceResult(
 }
 
 function createLlmRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): WorkflowInferenceRequest {
-  if (!Value.Check(WorkflowLlmExecutionConfigSchema, node.config)) {
+  if (!isWorkflowLlmExecutionConfigComplete(node.config)) {
     throw inferenceConfigError("LLM execution config failed schema validation");
   }
   const inputs = new Map(node.config.inputs.map(input => [
@@ -76,7 +76,7 @@ function createLlmRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): 
 }
 
 function createIntentRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): WorkflowInferenceRequest {
-  if (!Value.Check(WorkflowAiIntentExecutionConfigSchema, node.config) || !node.config.inputSelector) {
+  if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
   }
   const input = requireSelectorValue(node.config.inputSelector, run);
@@ -98,7 +98,7 @@ function mapLlmResult(
   node: WorkflowExecutionNode,
   result: WorkflowInferenceResult,
 ): { output: Record<string, unknown>; sourceOutletId: string } {
-  if (!Value.Check(WorkflowLlmExecutionConfigSchema, node.config)) {
+  if (!isWorkflowLlmExecutionConfigComplete(node.config)) {
     throw inferenceConfigError("LLM execution config failed schema validation");
   }
   if (node.config.output.format !== "json") {
@@ -134,7 +134,7 @@ function mapIntentResult(
   node: WorkflowExecutionNode,
   result: WorkflowInferenceResult,
 ): { output: Record<string, unknown>; sourceOutletId: string } {
-  if (!Value.Check(WorkflowAiIntentExecutionConfigSchema, node.config)) {
+  if (!isWorkflowAiIntentExecutionConfigComplete(node.config)) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
   }
   if (!Value.Check(WorkflowInferenceTemplateResultSchema, result)) {

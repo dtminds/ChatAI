@@ -211,6 +211,46 @@ describe("compileWorkflowDraft", () => {
     ]);
   });
 
+  it("rejects structurally valid but incomplete inference node configs", () => {
+    const invalidLlm = createDraft();
+    invalidLlm.nodes.splice(1, 1, node("llm", "llm", {
+      inputs: [],
+      modelId: "",
+      output: {
+        field: { description: "", id: "output-id", name: "output", type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ type: "text", value: "Summarize" }],
+      userPrompt: [],
+    }));
+    invalidLlm.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-end", source: "llm", target: "end" },
+    ];
+    expectCompilationIssue(invalidLlm, {
+      code: "invalid-node-config",
+      message: "LLM node requires a model, complete inputs, prompts, and outputs",
+      nodeId: "llm",
+    });
+
+    const invalidIntent = createDraft();
+    invalidIntent.nodes.splice(1, 1, node("intent", "ai-intent", {
+      advancedEnabled: false,
+      intents: [{ description: "Refund", id: "refund-id" }],
+      prompt: "",
+    }));
+    invalidIntent.edges = [
+      { id: "start-intent", source: "start", target: "intent" },
+      { id: "intent-refund", source: "intent", sourceHandle: "intent:refund-id", target: "end" },
+      { id: "intent-fallback", source: "intent", sourceHandle: "fallback", target: "end" },
+    ];
+    expectCompilationIssue(invalidIntent, {
+      code: "invalid-node-config",
+      message: "AI Intent node requires an input and complete unique intents",
+      nodeId: "intent",
+    });
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

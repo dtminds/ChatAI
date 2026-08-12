@@ -22,6 +22,7 @@ const draftConfigs = {
   "ai-collect": {},
   "ai-intent": {
     advancedEnabled: false,
+    inputSelector: ["node", "message-query", "textContent"],
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
@@ -235,5 +236,77 @@ describe("workflow node contracts", () => {
     expect(isWorkflowNodeExecutionConfig("start", emptyChatAiStart)).toBe(false);
     expect(isWorkflowNodeDraftConfig("start", incompleteTagStart)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("start", incompleteTagStart)).toBe(false);
+  });
+
+  it("requires semantically complete LLM and AI Intent execution configs", () => {
+    const llm = draftConfigs.llm;
+    const intent = {
+      fallback: { id: "fallback" },
+      inputSelector: ["node", "message-query", "textContent"],
+      intents: [{ description: "接受邀请", id: "intent-1", modelCode: "I1" }],
+    };
+
+    expect(isWorkflowNodeExecutionConfig("llm", llm)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("llm", { ...llm, modelId: "" })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [
+        { id: "input-1", name: "message", value: { kind: "literal", value: "hello" } },
+        { id: "input-2", name: "message", value: { kind: "literal", value: "world" } },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      systemPrompt: [{ selector: ["input", "missing"], type: "variable" }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [{
+        id: "input-1",
+        name: "message",
+        value: {
+          kind: "variable",
+          selector: ["unknown", "value"],
+          valueType: { kind: "string" },
+        },
+      }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [
+        { id: "input-1", name: "message", value: { kind: "literal", value: "hello" } },
+      ],
+      systemPrompt: [
+        { type: "text", value: "x".repeat(9_992) },
+        { selector: ["input", "input-1"], type: "variable" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      output: {
+        field: { ...llm.output.field, id: " " },
+        format: "text",
+      },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-intent", intent)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-intent", {
+      ...intent,
+      inputSelector: undefined,
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-intent", {
+      ...intent,
+      inputSelector: ["unknown", "value"],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-intent", {
+      ...intent,
+      intents: [
+        { description: "接受邀请", id: "intent-1", modelCode: "I1" },
+        { description: "接受邀请", id: "intent-2", modelCode: "I2" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-intent", {
+      ...intent,
+      intents: [{ description: "接受邀请", id: " ", modelCode: "I1" }],
+    })).toBe(false);
   });
 });

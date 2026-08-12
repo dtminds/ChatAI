@@ -282,6 +282,9 @@ export type WorkflowIntentOption = Static<typeof WorkflowIntentOptionSchema>;
 export type WorkflowAiIntentDraftConfig = Static<typeof WorkflowAiIntentDraftConfigSchema>;
 export type WorkflowAiIntentExecutionConfig = Static<typeof WorkflowAiIntentExecutionConfigSchema>;
 
+const WORKFLOW_LLM_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const WORKFLOW_LLM_PROMPT_MAX_LENGTH = 10_000;
+
 export const WORKFLOW_DRAFT_NODE_BASE_KEYS = [
   "kind",
   "label",
@@ -413,8 +416,107 @@ export function isWorkflowNodeExecutionConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
+  if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
+  if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null && Value.Check(schema, value);
+}
+
+export function isWorkflowLlmExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowLlmExecutionConfig {
+  if (!Value.Check(WorkflowLlmExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowLlmExecutionConfig;
+  const inputIds = config.inputs.map(input => input.id);
+  const inputNames = config.inputs.map(input => input.name.trim());
+  const inputNameById = new Map(config.inputs.map(input => [input.id, input.name.trim()]));
+  if (
+    !config.modelId.trim()
+    || !areUniqueNonBlankValues(inputIds)
+    || !areUniqueWorkflowIdentifiers(inputNames)
+    || config.inputs.some(input =>
+      input.value.kind === "literal"
+        ? !input.value.value.trim()
+        : !isWorkflowInferenceSelectorResolvable(input.value.selector))
+    || !isWorkflowPromptComplete(config.systemPrompt, inputNameById, true)
+    || !isWorkflowPromptComplete(config.userPrompt, inputNameById, false)
+  ) {
+    return false;
+  }
+
+  const fields = config.output.format === "json"
+    ? config.output.fields
+    : [config.output.field];
+  const fieldIds = fields.map(field => field.id);
+  const fieldNames = fields.map(field => field.name.trim());
+  return areUniqueNonBlankValues(fieldIds)
+    && areUniqueWorkflowIdentifiers(fieldNames)
+    && (config.output.format === "json" || config.output.field.type === "string");
+}
+
+export function isWorkflowAiIntentExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowAiIntentExecutionConfig {
+  if (!Value.Check(WorkflowAiIntentExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowAiIntentExecutionConfig;
+  const selector = config.inputSelector;
+  const intentIds = config.intents.map(intent => intent.id);
+  const descriptions = config.intents.map(intent => intent.description.trim());
+  return Boolean(selector && isWorkflowInferenceSelectorResolvable(selector))
+    && areUniqueNonBlankValues(intentIds)
+    && descriptions.every(Boolean)
+    && new Set(descriptions).size === descriptions.length
+    && config.intents.every((intent, index) => intent.modelCode === `I${index + 1}`);
+}
+
+function areUniqueWorkflowIdentifiers(values: string[]) {
+  return values.every(value =>
+    Boolean(value) && WORKFLOW_LLM_IDENTIFIER_PATTERN.test(value))
+    && new Set(values).size === values.length;
+}
+
+function areUniqueNonBlankValues(values: string[]) {
+  return values.every(value => Boolean(value.trim()))
+    && new Set(values).size === values.length;
+}
+
+function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelector) {
+  const [scope, key, ...path] = selector;
+  if (!scope || !key) return false;
+  if (scope === "subject") return key === "id" && path.length === 0;
+  if (scope === "trigger" || scope === "node") return true;
+  return scope === "node-lifecycle"
+    && path.length === 1
+    && (path[0] === "enteredAt" || path[0] === "exitedAt");
+}
+
+function isWorkflowPromptComplete(
+  segments: WorkflowVariableContentSegment[],
+  inputNameById: Map<string, string>,
+  required: boolean,
+) {
+  let displayLength = 0;
+  let hasContent = false;
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      displayLength += segment.value.length;
+      hasContent ||= Boolean(segment.value.trim());
+      continue;
+    }
+    const [scope, inputId] = segment.selector;
+    const inputName = inputId ? inputNameById.get(inputId) : undefined;
+    if (
+      segment.selector.length !== 2
+      || scope !== "input"
+      || !inputName
+    ) {
+      return false;
+    }
+    displayLength += inputName.length + 2;
+    hasContent = true;
+  }
+  return displayLength <= WORKFLOW_LLM_PROMPT_MAX_LENGTH
+    && (!required || hasContent);
 }
 
 function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>(

@@ -151,8 +151,12 @@ export function getWorkflowNodeExecutionConfigError(
 
 function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
   switch (kind) {
+    case "ai-intent":
+      return "AI Intent node requires an input and complete unique intents";
     case "start":
       return "Start node requires accounts, triggers, and an entry policy";
+    case "llm":
+      return "LLM node requires a model, complete inputs, prompts, and outputs";
     case "wait":
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":

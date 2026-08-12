@@ -1,4 +1,4 @@
-import { getNodeDefinitionCore } from "./node-definition-core";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import { WORKFLOW_NODE_HANDLE_TOP } from "./constants";
 import type {
   WorkflowEdge,
@@ -41,13 +41,13 @@ export function isWorkflowHandleIdEqual(
 export function getNodeSourceHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowSourceHandleDefinition[] {
-  return getNodeDefinitionCore(data.kind).getSourceHandles(data);
+  return getWorkflowNodeCatalogEntry(data.kind).getSourceHandles(data);
 }
 
 export function getNodeTargetHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowTargetHandleDefinition[] {
-  return getNodeDefinitionCore(data.kind).getTargetHandles(data);
+  return getWorkflowNodeCatalogEntry(data.kind).getTargetHandles(data);
 }
 
 export function getNodeTargetHandleCapacity(
@@ -72,7 +72,9 @@ export function getDefaultSourceHandleId(
   kind: WorkflowNodeKind,
   data?: WorkflowNodeRenderData,
 ) {
-  return getNodeDefinitionCore(kind).getSourceHandles(data ?? getNodeDefinitionCore(kind).createDefaultData())
+  return getWorkflowNodeCatalogEntry(kind).getSourceHandles(
+    data ?? getWorkflowNodeCatalogEntry(kind).createDefaultData(),
+  )
     .find((handle) => typeof handle.id === "string")
     ?.id;
 }

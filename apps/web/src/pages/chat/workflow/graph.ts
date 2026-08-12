@@ -9,7 +9,7 @@ import {
   getNodeSourceHandleLabel,
   getNodeSourceHandleLaneOffset,
 } from "./node-handle-definitions";
-import { createDefaultNodeData } from "./node-definition-core";
+import { createDefaultNodeData } from "./node-catalog";
 import { createStartNodeData } from "./nodes/start/definition";
 import type {
   InsertableWorkflowNodeKind,

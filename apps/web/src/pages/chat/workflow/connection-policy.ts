@@ -1,5 +1,5 @@
 import type { Connection } from "@xyflow/react";
-import { getNodeDefinitionCore } from "./node-definition-core";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import {
   getWorkflowHandleKey,
   getNodeTargetHandleConnectionCapacity,
@@ -114,8 +114,8 @@ function isNodeKindConnectionAllowed(
   sourceNode: WorkflowNode,
   targetNode: WorkflowNode,
 ) {
-  return getNodeDefinitionCore(sourceNode.data.kind).availableNextKinds.includes(targetNode.data.kind)
-    && getNodeDefinitionCore(targetNode.data.kind).availablePrevKinds.includes(sourceNode.data.kind);
+  return getWorkflowNodeCatalogEntry(sourceNode.data.kind).availableNextKinds.includes(targetNode.data.kind)
+    && getWorkflowNodeCatalogEntry(targetNode.data.kind).availablePrevKinds.includes(sourceNode.data.kind);
 }
 
 function isNodeHandleConnectionAllowed(
@@ -124,8 +124,8 @@ function isNodeHandleConnectionAllowed(
   sourceHandle: string | null | undefined,
   targetHandle: string | null | undefined,
 ) {
-  const sourceDefinition = getNodeDefinitionCore(sourceNode.data.kind);
-  const targetDefinition = getNodeDefinitionCore(targetNode.data.kind);
+  const sourceDefinition = getWorkflowNodeCatalogEntry(sourceNode.data.kind);
+  const targetDefinition = getWorkflowNodeCatalogEntry(targetNode.data.kind);
   const sourceHandleDefinitions = sourceDefinition.getSourceHandles(sourceNode.data);
   const targetHandleDefinitions = targetDefinition.getTargetHandles(targetNode.data);
 

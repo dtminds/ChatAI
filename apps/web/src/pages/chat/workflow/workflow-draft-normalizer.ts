@@ -4,9 +4,9 @@ import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
 import {
   createDefaultNodeData,
-  getNodeDefinitionCore,
-} from "./node-definition-core";
-import { isWorkflowNodeKind } from "./node-catalog";
+  getWorkflowNodeCatalogEntry,
+  isWorkflowNodeKind,
+} from "./node-catalog";
 import type {
   WorkflowEdge,
   WorkflowEdgeData,
@@ -205,7 +205,7 @@ function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
   const kindPersistableData = kind === "branch"
     ? persistableData
     : nonBranchPersistableData;
-  const definition = getNodeDefinitionCore(kind);
+  const definition = getWorkflowNodeCatalogEntry(kind);
   const contract = getWorkflowNodeContract(kind);
   const fromVersion = getNodeSchemaVersion(kindPersistableData.schemaVersion);
   const migrationInput = {

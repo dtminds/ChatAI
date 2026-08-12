@@ -7,8 +7,8 @@ import { getUniqueDuplicatedNodeTitle } from "./graph";
 import {
   canDuplicateNodeKind,
   canInsertNodeKind,
-} from "./node-definition-core";
-import { isWorkflowNodeKind } from "./node-catalog";
+  isWorkflowNodeKind,
+} from "./node-catalog";
 import type {
   WorkflowNodeKind,
   WorkflowEdge,

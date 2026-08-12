@@ -1,13 +1,13 @@
-import { getNodeDefinitionCore } from "./node-definition-core";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import { getNodeSourceHandleTop } from "./node-handle-definitions";
 import type { WorkflowNode } from "./types";
 
 export function getWorkflowNodeWidth(node: WorkflowNode) {
-  return getNodeDefinitionCore(node.data.kind).layout.width;
+  return getWorkflowNodeCatalogEntry(node.data.kind).layout.width;
 }
 
 export function getWorkflowNodeEstimatedHeight(node: WorkflowNode) {
-  const definition = getNodeDefinitionCore(node.data.kind);
+  const definition = getWorkflowNodeCatalogEntry(node.data.kind);
   return definition.getEstimatedHeight?.(node.data) ?? definition.layout.estimatedHeight;
 }
 

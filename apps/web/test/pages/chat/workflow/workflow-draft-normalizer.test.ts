@@ -13,8 +13,8 @@ import { DEFAULT_WORKFLOW_VIEWPORT } from "@/pages/chat/workflow/graph";
 import { createEdge } from "@/pages/chat/workflow/graph";
 import {
   createDefaultNodeData,
-  getNodeDefinitionCore,
-} from "@/pages/chat/workflow/node-definitions";
+  getWorkflowNodeCatalogEntry,
+} from "@/pages/chat/workflow/node-catalog";
 import type {
   WorkflowDraft,
   WorkflowEdge,
@@ -471,7 +471,7 @@ describe("workflow draft normalizer", () => {
   });
 
   it("runs the registered node data migration before applying the current schema", () => {
-    const definition = getNodeDefinitionCore("wait");
+    const definition = getWorkflowNodeCatalogEntry("wait");
     const originalMigration = definition.migrateData;
     const migrateData = vi.fn(({ data }) => ({
       ...data,

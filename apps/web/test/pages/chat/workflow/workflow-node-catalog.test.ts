@@ -7,6 +7,12 @@ import {
 } from "@chatai/contracts";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import {
+  canDeleteNodeKind,
+  canDuplicateNodeKind,
+  canInsertAfterNodeKind,
+  canInsertNodeKind,
+  canRenameNodeKind,
+  createDefaultNodeData,
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
   getAvailableNextNodeKinds,
@@ -24,17 +30,8 @@ import {
   workflowNodeCatalog,
 } from "@/pages/chat/workflow/node-catalog";
 import {
-  canDeleteNodeKind,
-  canDuplicateNodeKind,
-  canInsertAfterNodeKind,
-  canRenameNodeKind,
-  canInsertNodeKind,
-  createDefaultNodeData,
   getNodeDefinition,
-  getNodeDefinitionCore,
-  nodeDefinitionCore,
   nodeDefinitions,
-  orderedNodeDefinitionCore,
   orderedNodeDefinitions,
 } from "@/pages/chat/workflow/node-definitions";
 import {
@@ -85,9 +82,9 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
   const defaultData = createDefaultNodeData(kind);
 
   expect(definition.kind).toBe(catalogEntry.kind);
-  expect(getNodeDefinitionCore(kind)).toBe(nodeDefinitionCore[kind]);
+  expect(getWorkflowNodeCatalogEntry(kind)).toBe(workflowNodeCatalog[kind]);
   expect(getNodeDefinition(kind)).toBe(definition);
-  expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
+  expect(workflowNodeCatalog[kind].visual).toBe(catalogEntry.visual);
   expect(definition.visual).toBe(catalogEntry.visual);
   expect(definition.layout).toBe(catalogEntry.layout);
   expect(definition.role).toBe(catalogEntry.role);
@@ -247,7 +244,7 @@ describe("workflow node catalog", () => {
     const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "handoff", "llm", "message", "message-query", "start", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
-    expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
+    expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
 
     nodeKinds.forEach(assertDefinitionExtensionContract);
@@ -324,12 +321,12 @@ describe("workflow node catalog", () => {
   });
 
   it("keeps core node definitions free of UI bindings", () => {
-    const nodeKinds = Object.keys(nodeDefinitionCore) as WorkflowNodeKind[];
+    const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
     for (const kind of nodeKinds) {
-      expect(nodeDefinitionCore[kind]).not.toHaveProperty("body");
-      expect(nodeDefinitionCore[kind]).not.toHaveProperty("settings");
-      expect(nodeDefinitionCore[kind].configSections).toBe(getNodeConfigSections(kind));
+      expect(workflowNodeCatalog[kind]).not.toHaveProperty("body");
+      expect(workflowNodeCatalog[kind]).not.toHaveProperty("settings");
+      expect(workflowNodeCatalog[kind].configSections).toBe(getNodeConfigSections(kind));
     }
   });
 
@@ -475,9 +472,6 @@ describe("workflow node catalog", () => {
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
     );
-    expect(orderedNodeDefinitionCore.map((definition) => definition.kind)).toEqual(
-      orderedWorkflowNodeCatalog.map((definition) => definition.kind),
-    );
   });
 
   it("groups and filters palette nodes from catalog metadata", () => {
@@ -528,7 +522,7 @@ describe("workflow node catalog", () => {
 
   it("derives node source handles from the node definition boundary", () => {
     const branchHandles = getNodeSourceHandleDefinitions(createDefaultNodeData("branch"));
-    const branchDefinitionHandles = getNodeDefinitionCore("branch").getSourceHandles(createDefaultNodeData("branch"));
+    const branchDefinitionHandles = getWorkflowNodeCatalogEntry("branch").getSourceHandles(createDefaultNodeData("branch"));
     const customBranchHandles = getNodeSourceHandleDefinitions({
       ...createDefaultNodeData("branch"),
       branchPaths: [

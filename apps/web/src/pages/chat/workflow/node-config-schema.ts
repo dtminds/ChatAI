@@ -1,4 +1,4 @@
-import { getNodeDefinitionCore } from "./node-definition-core";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import type { WorkflowNodeKind } from "./types";
 import type {
   NodeConfigField,
@@ -17,7 +17,7 @@ export type {
 } from "./node-config-types";
 
 export function getNodeConfigSections<TKind extends WorkflowNodeKind>(kind: TKind) {
-  return getNodeDefinitionCore(kind).configSections as NodeConfigSection<TKind>[];
+  return getWorkflowNodeCatalogEntry(kind).configSections as NodeConfigSection<TKind>[];
 }
 
 export type WorkflowNodeConfigSchema<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {

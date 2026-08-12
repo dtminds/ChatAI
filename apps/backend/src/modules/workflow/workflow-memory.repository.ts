@@ -92,7 +92,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async listDefinitions(uid: number) {
     return this.definitions
       .filter((item) => item.uid === uid && item.bizStatus === 1)
-      .sort((first, second) => second.updatedAt.getTime() - first.updatedAt.getTime())
+      .sort((first, second) => {
+        const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
+        return createdAtDifference || Number(second.id) - Number(first.id);
+      })
       .map(clone);
   }
 
@@ -120,10 +123,15 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]) {
     return this.mutate(input.uid, input.workflowId, (definition) => {
       if (definition.draftVersion !== input.expectedDraftVersion) return conflict();
-      if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
+      if (definition.runtimeStatus === "stopped" && !input.layoutOnly) {
+        return invalidStatus(definition.runtimeStatus);
+      }
+      const wasValidated = definition.validatedDraftVersion === definition.draftVersion;
       definition.draft = clone(input.draft);
       definition.draftVersion += 1;
-      definition.validatedDraftVersion = null;
+      definition.validatedDraftVersion = input.layoutOnly
+        ? (wasValidated ? definition.draftVersion : definition.validatedDraftVersion)
+        : null;
       touch(definition, input.opSubUserId);
       return success(definition);
     });

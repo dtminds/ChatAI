@@ -291,6 +291,7 @@ function WorkflowWorkspaceContent({
                 allowedInsertableNodeKinds={canvas.allowedInsertableNodeKinds}
                 canRedo={canvas.canRedo}
                 canUndo={canvas.canUndo}
+                canMoveNodes={canvas.canMoveNodes}
                 edges={canvas.edges}
                 isReadOnly={canvas.isReadOnly}
                 nodes={canvas.nodes}
@@ -315,6 +316,7 @@ function WorkflowWorkspaceContent({
                 onUndo={canvas.onUndo}
                 onViewportChangeEnd={canvas.onViewportChangeEnd}
                 paletteOpen={canvas.paletteOpen}
+                showEditingTools={!canvas.isReadOnly}
                 viewport={canvas.viewport}
             />
             {checks.isOpen ? (
@@ -338,6 +340,7 @@ function WorkflowWorkspaceContent({
                 onClose={inspector.onClose}
                 onNodeChange={inspector.onNodeChange}
                 onRenameNode={inspector.onRenameNode}
+                readOnly={inspector.readOnly}
             />
           ) : null}
         </div>

@@ -3,9 +3,8 @@ import { sql } from "kysely";
 import { WORKFLOW_EVENT_CATALOG } from "@chatai/workflow-engine";
 import {
   assertDatabaseUtc8Timezone,
-  HttpWorkflowEntitlementPort,
+  createWorkflowEntitlementPort,
   MysqlWorkflowRuntimeRepository,
-  UnavailableWorkflowEntitlementPort,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
 } from "@chatai/workflow-runtime";
@@ -27,12 +26,11 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const logger = createWorkflowWorkerLogger(config.logLevel);
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
-  const entitlementPort = config.entitlement.apiUrl
-    ? new HttpWorkflowEntitlementPort({
-        endpoint: config.entitlement.apiUrl,
-        token: config.entitlement.token ?? undefined,
-      })
-    : new UnavailableWorkflowEntitlementPort();
+  const entitlementPort = createWorkflowEntitlementPort({
+    endpoint: config.entitlement.apiUrl,
+    mode: config.entitlement.mode,
+    token: config.entitlement.token,
+  });
   const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
     capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
     capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,

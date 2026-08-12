@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
+  it("lists definitions by creation time without moving edited workflows", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.listDefinitions(8);
+
+    expect(db.selectBuilders[0].orderBys).toEqual([
+      ["create_time", "desc"],
+      ["id", "desc"],
+    ]);
+  });
+
   it("rejects an idempotent create request bound to another Workflow type", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -87,6 +99,28 @@ describe("MysqlWorkflowRepository", () => {
       ["draft_version", "=", 3],
     ]));
     expect(db.selectBuilders).toHaveLength(1);
+  });
+
+  it("allows layout-only draft writes without requiring a non-stopped runtime status", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.saveDraft({
+      draft: createDraft(),
+      expectedDraftVersion: 3,
+      layoutOnly: true,
+      opSubUserId: "19",
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.updateBuilders[0].wheres).not.toContainEqual([
+      "runtime_status",
+      "!=",
+      "stopped",
+    ]);
+    expect(db.updateBuilders[0].sets.validated_draft_version).not.toBeNull();
   });
 
   it("uses an update for logical deletion and never exposes a physical delete path", async () => {
@@ -218,19 +252,19 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
   };
   const db = {
     deleteFromCalls: 0,
-    selectBuilders: [] as Array<{ wheres: unknown[][] }>,
+    selectBuilders: [] as Array<{ orderBys: unknown[][]; wheres: unknown[][] }>,
     updateBuilders: [] as Array<{ sets: Record<string, unknown>; wheres: unknown[][] }>,
     deleteFrom() {
       db.deleteFromCalls += 1;
       throw new Error("physical delete is forbidden");
     },
     selectFrom() {
-      const state = { wheres: [] as unknown[][] };
+      const state = { orderBys: [] as unknown[][], wheres: [] as unknown[][] };
       db.selectBuilders.push(state);
       const builder = {
         selectAll() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
-        orderBy() { return builder; },
+        orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
         limit() { return builder; },
         forUpdate() { return builder; },
         async execute() { return [row]; },

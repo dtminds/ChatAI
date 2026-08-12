@@ -112,7 +112,8 @@ export function WorkflowTopBar({
   const published = publishState === "published";
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
-  const readOnlyMode = Boolean(isPreviewingVersion);
+  const versionPreviewMode = Boolean(isPreviewingVersion);
+  const stoppedReadOnly = runtimeStatus === "stopped";
 
   return (
     <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
@@ -129,7 +130,7 @@ export function WorkflowTopBar({
           <HugeiconsIcon icon={ArrowLeft01Icon} size={19} strokeWidth={1.8} />
         </Button>
 
-        {readOnlyMode ? (
+        {versionPreviewMode ? (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="truncate text-sm font-semibold">{previewVersionLabel ?? "历史版本"}</h1>
@@ -149,6 +150,11 @@ export function WorkflowTopBar({
               </Badge>
               <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
               <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
+              {stoppedReadOnly ? (
+                <span className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  只读
+                </span>
+              ) : null}
               {description ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -209,7 +215,7 @@ export function WorkflowTopBar({
         )}
       </div>
 
-      {!readOnlyMode && onModeChange ? (
+      {!versionPreviewMode && onModeChange ? (
         <div
           aria-label="Workflow 模式"
           className="absolute left-1/2 top-0 flex h-full -translate-x-1/2 items-center gap-8 max-md:static max-md:h-auto max-md:translate-x-0"
@@ -234,7 +240,7 @@ export function WorkflowTopBar({
       ) : null}
 
       <div className="flex shrink-0 items-center gap-2" aria-label="Workflow 操作">
-        {readOnlyMode ? (
+        {versionPreviewMode ? (
           <>
             <Button
               disabled={!onRestoreVersion || restoring}
@@ -280,44 +286,48 @@ export function WorkflowTopBar({
                 {versionHistoryContent}
               </PopoverContent>
             </Popover>
-            <Button
-              className="h-9 rounded-lg px-5 text-sm font-semibold"
-              disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
-              onClick={onPublish}
-              type="button"
-            >
-              {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            {!stoppedReadOnly ? (
+              <>
                 <Button
-                  aria-label="更多操作"
-                  className="size-9 rounded-lg bg-muted text-muted-foreground"
-                  size="icon"
-                  title="更多操作"
+                  className="h-9 rounded-lg px-5 text-sm font-semibold"
+                  disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
+                  onClick={onPublish}
                   type="button"
-                  variant="ghost"
                 >
-                  <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
+                  {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-44">
-                <DropdownMenuItem disabled={!canPublish} onSelect={onPublishCheck}>
-                  <HugeiconsIcon
-                    icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                    size={16}
-                    strokeWidth={1.8}
-                  />
-                  发布检查 {readyChecks}/{totalChecks}
-                </DropdownMenuItem>
-                {publishErrorCode === "conflict" && onReloadDocument ? (
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onReloadDocument}>
-                    <HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />
-                    重新加载
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label="更多操作"
+                      className="size-9 rounded-lg bg-muted text-muted-foreground"
+                      size="icon"
+                      title="更多操作"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem disabled={!canPublish} onSelect={onPublishCheck}>
+                      <HugeiconsIcon
+                        icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                      发布检查 {readyChecks}/{totalChecks}
+                    </DropdownMenuItem>
+                    {publishErrorCode === "conflict" && onReloadDocument ? (
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onReloadDocument}>
+                        <HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />
+                        重新加载
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : null}
           </>
         )}
       </div>

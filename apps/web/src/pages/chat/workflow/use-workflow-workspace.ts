@@ -96,6 +96,7 @@ export function useWorkflowWorkspace(
     isPreviewingVersion,
     publishState,
     restoreState,
+    runtimeStatus: document.runtimeStatus,
   });
   const { permissions } = workflowMode;
   const capabilityProfile = getWorkflowCapabilityProfile(document.workflowType);
@@ -499,7 +500,7 @@ export function useWorkflowWorkspace(
   });
 
   const handleNodeDragStart: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event) => {
-    if (!permissions.canEditGraph) {
+    if (!permissions.canMoveNodes) {
       return;
     }
 
@@ -507,7 +508,7 @@ export function useWorkflowWorkspace(
   });
 
   const handleNodeDrag: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node) => {
-    if (!permissions.canEditGraph) {
+    if (!permissions.canMoveNodes) {
       return;
     }
 
@@ -515,7 +516,7 @@ export function useWorkflowWorkspace(
   });
 
   const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node, draggedNodes) => {
-    if (!permissions.canEditGraph) {
+    if (!permissions.canMoveNodes) {
       return;
     }
 
@@ -606,6 +607,7 @@ export function useWorkflowWorkspace(
       allowedInsertableNodeKinds,
       canRedo: permissions.canUseHistory && controller.canRedo,
       canUndo: permissions.canUseHistory && controller.canUndo,
+      canMoveNodes: permissions.canMoveNodes,
       edges: renderedEdges,
       isReadOnly: permissions.canvasReadOnly,
       nodes: renderedNodes,
@@ -652,6 +654,7 @@ export function useWorkflowWorkspace(
       onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
       onRenameNode: handleRenameNode,
+      readOnly: !permissions.canEditNodeSettings,
     },
     topBar: {
       canPublish: permissions.canPublish,

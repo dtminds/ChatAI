@@ -131,6 +131,7 @@ export type WorkflowRepository = {
   saveDraft(input: {
     draft: WorkflowDraft;
     expectedDraftVersion: number;
+    layoutOnly?: boolean;
     opSubUserId: string;
     uid: number;
     workflowId: string;

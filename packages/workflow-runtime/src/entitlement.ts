@@ -17,6 +17,8 @@ export interface WorkflowEntitlementPort {
   check(input: WorkflowEntitlementCheckInput): Promise<WorkflowTypeEntitlementResult>;
 }
 
+export type WorkflowEntitlementMode = "allow" | "enforce";
+
 export type WorkflowEntitlementDecision =
   | { action: "allow"; result: Extract<WorkflowTypeEntitlementResult, { entitled: true }> }
   | {
@@ -87,6 +89,33 @@ export class UnavailableWorkflowEntitlementPort implements WorkflowEntitlementPo
   async check(): Promise<never> {
     throw new WorkflowEntitlementUnavailableError();
   }
+}
+
+export class AllowAllWorkflowEntitlementPort implements WorkflowEntitlementPort {
+  async check(): Promise<WorkflowTypeEntitlementResult> {
+    return { entitled: true, unentitledSince: null };
+  }
+}
+
+export function createWorkflowEntitlementPort(options: {
+  endpoint?: string | null;
+  fetch?: typeof fetch;
+  mode?: string | null;
+  timeoutMs?: number;
+  token?: string | null;
+}): WorkflowEntitlementPort {
+  const mode = options.mode?.trim() || "enforce";
+  if (mode === "allow") return new AllowAllWorkflowEntitlementPort();
+  if (mode !== "enforce") {
+    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
+  }
+  if (!options.endpoint) return new UnavailableWorkflowEntitlementPort();
+  return new HttpWorkflowEntitlementPort({
+    endpoint: options.endpoint,
+    fetch: options.fetch,
+    timeoutMs: options.timeoutMs,
+    token: options.token ?? undefined,
+  });
 }
 
 export async function decideWorkflowEntitlement(

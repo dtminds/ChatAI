@@ -95,6 +95,30 @@ describe("WorkflowTopBar lifecycle", () => {
     expect(screen.getAllByText("待启用")).toHaveLength(2);
   });
 
+  it("shows stopped workflows as read-only without publishing actions", () => {
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        publishedAt="刚刚"
+        publishReady
+        publishState="published"
+        readyChecks={4}
+        runtimeStatus="stopped"
+        saveState="saved"
+        totalChecks={4}
+        workflowName="已停止流程"
+      />,
+    );
+
+    expect(screen.getByText("只读")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "版本历史" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
+  });
+
   it("opens version history directly and publish checks from the overflow menu", async () => {
     const user = userEvent.setup();
     const onOpenVersionHistory = vi.fn();

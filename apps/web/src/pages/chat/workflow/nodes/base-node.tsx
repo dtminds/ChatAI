@@ -56,8 +56,10 @@ function WorkflowBaseNodeComponent({
     <div
       className={cn(
         "workflow-node-shell",
+        data.readOnly && "nopan",
         isSelected ? "border-[var(--workflow-blue)]" : "border-border/70",
       )}
+      data-read-only={data.readOnly ? "true" : undefined}
     >
       <div
         className={cn(

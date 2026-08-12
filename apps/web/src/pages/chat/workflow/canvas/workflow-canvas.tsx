@@ -77,7 +77,8 @@ export function WorkflowCanvas({
   canUndo,
   edges,
   isReadOnly = false,
-  showEditingTools = true,
+  canMoveNodes = !isReadOnly,
+  showEditingTools = !isReadOnly,
   nodes,
   nextRedoLabel,
   nextUndoLabel,
@@ -103,6 +104,7 @@ export function WorkflowCanvas({
   viewport,
 }: {
   allowedInsertableNodeKinds: readonly InsertableWorkflowNodeKind[];
+  canMoveNodes?: boolean;
   canRedo: boolean;
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
@@ -231,8 +233,8 @@ export function WorkflowCanvas({
         nodeTypes={nodeTypes}
         nodes={flowNodes}
         nodesConnectable={!isReadOnly}
-        nodesDraggable={!isReadOnly}
-        nodesFocusable={!isReadOnly}
+        nodesDraggable={canMoveNodes}
+        nodesFocusable={canMoveNodes || !isReadOnly}
         edgesFocusable={!isReadOnly}
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}

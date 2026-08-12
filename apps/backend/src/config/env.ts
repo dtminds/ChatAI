@@ -33,6 +33,7 @@ export const EnvSchema = Type.Object({
   PORT: Type.Optional(Type.String()),
   WORKFLOW_DEPLOYMENT_CAPABILITIES: Type.Optional(Type.String()),
   WORKFLOW_ENTITLEMENT_API_URL: Type.Optional(Type.String()),
+  WORKFLOW_ENTITLEMENT_MODE: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
@@ -143,6 +144,10 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
 
   if (env.REDIS_ENABLED === "true" && !env.REDIS_URL) {
     throw new Error("Missing required environment variables for Redis: REDIS_URL");
+  }
+
+  if (env.NODE_ENV === "production" && env.WORKFLOW_ENTITLEMENT_MODE === "allow") {
+    throw new Error("WORKFLOW_ENTITLEMENT_MODE=allow is not permitted in production");
   }
 
   return {

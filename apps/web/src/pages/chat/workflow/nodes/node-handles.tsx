@@ -20,6 +20,7 @@ export function WorkflowSourceHandle({
   label,
   nodeId,
   onToggleInsertMenu,
+  readOnly = false,
   showInsertAction,
   title,
   top,
@@ -30,6 +31,7 @@ export function WorkflowSourceHandle({
   label?: string;
   nodeId: string;
   onToggleInsertMenu?: (nodeId: string, sourceHandle?: string) => void;
+  readOnly?: boolean;
   showInsertAction: boolean;
   title: string;
   top?: number;
@@ -46,28 +48,30 @@ export function WorkflowSourceHandle({
       style={top === undefined ? undefined : { top }}
       type="source"
     >
-      <div className="workflow-node-handle-tip">
-        <div className="workflow-node-handle-tip-body">
-          {label ? <div className="whitespace-nowrap">{label}</div> : null}
-          {showInsertAction ? (
-            <>
-              <div className="whitespace-nowrap">
-                <span className="workflow-node-handle-tip-title">点击</span>
-                添加节点
-              </div>
+      {!readOnly ? (
+        <div className="workflow-node-handle-tip">
+          <div className="workflow-node-handle-tip-body">
+            {label ? <div className="whitespace-nowrap">{label}</div> : null}
+            {showInsertAction ? (
+              <>
+                <div className="whitespace-nowrap">
+                  <span className="workflow-node-handle-tip-title">点击</span>
+                  添加节点
+                </div>
+                <div className="whitespace-nowrap">
+                  <span className="workflow-node-handle-tip-title">拖拽</span>
+                  连接节点
+                </div>
+              </>
+            ) : (
               <div className="whitespace-nowrap">
                 <span className="workflow-node-handle-tip-title">拖拽</span>
                 连接节点
               </div>
-            </>
-          ) : (
-            <div className="whitespace-nowrap">
-              <span className="workflow-node-handle-tip-title">拖拽</span>
-              连接节点
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
       {showInsertAction ? (
         <button
           aria-label={label ? `在${title}的${label}分支后添加节点` : `在${title}后添加节点`}

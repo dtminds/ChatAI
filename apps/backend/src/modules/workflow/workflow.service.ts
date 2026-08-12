@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
@@ -119,9 +120,17 @@ export class WorkflowService {
     const draft = normalizeWorkflowDraft(input.draft);
     assertWorkflowDraftNodeContracts(draft);
     assertWorkflowTypePolicy(definition.workflowType, draft);
+    const layoutOnly = definition.runtimeStatus === "stopped";
+    if (layoutOnly && !isWorkflowDraftLayoutOnlyChange(
+      normalizeWorkflowDraft(definition.draft),
+      draft,
+    )) {
+      throw stoppedError();
+    }
     return this.toDefinition(this.unwrapMutation(await this.repository.saveDraft({
       draft,
       expectedDraftVersion: input.expectedDraftVersion,
+      layoutOnly,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
       workflowId,
@@ -637,7 +646,21 @@ function invalidStatusError(status: WorkflowDefinitionRecord["runtimeStatus"]) {
 }
 
 function stoppedError() {
-  return new AppError("WORKFLOW_STOPPED", "已停止的 Workflow 不可恢复或继续编辑", 409);
+  return new AppError("WORKFLOW_STOPPED", "已停止的 Workflow 不可恢复或修改配置", 409);
+}
+
+function isWorkflowDraftLayoutOnlyChange(current: WorkflowDraft, next: WorkflowDraft) {
+  if (current.nodes.length !== next.nodes.length || !isDeepStrictEqual(current.edges, next.edges)) {
+    return false;
+  }
+
+  return current.nodes.every((currentNode, index) => {
+    const nextNode = next.nodes[index];
+    if (!nextNode || currentNode.id !== nextNode.id) return false;
+    const { position: currentPosition, ...currentNodeWithoutPosition } = currentNode;
+    const { position: nextPosition, ...nextNodeWithoutPosition } = nextNode;
+    return isDeepStrictEqual(currentNodeWithoutPosition, nextNodeWithoutPosition);
+  });
 }
 
 function assertWorkflowAccess(scope: WorkflowOperatorScope) {

@@ -80,6 +80,64 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.canPublish).toBe(false);
   });
 
+  it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+
+    expect(result.current.mode).toBe("read-only");
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.readOnly).toBe(true);
+    expect(result.current.canvas.canMoveNodes).toBe(true);
+    expect(result.current.canvas.nodes.find(node => node.id === "wait-2d")?.data.readOnly).toBe(true);
+  });
+
+  it("persists node movement while keeping a stopped workflow configuration read-only", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
+    const initialNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const movedNode = {
+      ...initialNode,
+      position: { x: initialNode.position.x + 120, y: initialNode.position.y + 48 },
+    };
+
+    act(() => {
+      result.current.canvas.onNodeDragStart(event, initialNode, [initialNode]);
+      result.current.canvas.onNodeDragStop(event, movedNode, [movedNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(movedNode.position);
+    expect(result.current.topBar.saveState).toBe("saving");
+    expect(result.current.inspector.readOnly).toBe(true);
+  });
+
   it("derives activation readiness from the in-memory draft revision", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");

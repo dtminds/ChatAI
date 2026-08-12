@@ -197,6 +197,7 @@ export type WorkflowNodeRuntimeData = {
   onDataMetricClick?: (nodeId: string) => void;
   onToggleInsertMenu?: (nodeId: string, sourceHandle?: string) => void;
   onSelect?: (nodeId: string, options?: { additive?: boolean }) => void;
+  readOnly?: boolean;
   selected?: boolean;
 };
 

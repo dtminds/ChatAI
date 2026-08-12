@@ -173,7 +173,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       .selectAll()
       .where("uid", "=", uid)
       .where("biz_status", "=", 1)
-      .orderBy("update_time", "desc")
+      .orderBy("create_time", "desc")
       .orderBy("id", "desc")
       .execute();
     return rows.map(mapDefinition);
@@ -190,16 +190,20 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   }
 
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]) {
-    const updated = await this.db.updateTable(DEFINITION_TABLE).set({
+    const update = this.db.updateTable(DEFINITION_TABLE).set({
       draft_json: stringifyJson(input.draft),
       draft_version: input.expectedDraftVersion + 1,
       op_sub_uid: input.opSubUserId,
-      validated_draft_version: null,
+      validated_draft_version: input.layoutOnly
+        ? sql<number | null>`CASE WHEN validated_draft_version = ${input.expectedDraftVersion} THEN ${input.expectedDraftVersion + 1} ELSE validated_draft_version END`
+        : null,
     }).where("uid", "=", input.uid)
       .where("id", "=", input.workflowId)
       .where("biz_status", "=", 1)
-      .where("draft_version", "=", input.expectedDraftVersion)
-      .where("runtime_status", "!=", "stopped")
+      .where("draft_version", "=", input.expectedDraftVersion);
+    const updated = await (input.layoutOnly
+      ? update
+      : update.where("runtime_status", "!=", "stopped"))
       .executeTakeFirst();
     return this.resolveUpdatedDefinition(input.uid, input.workflowId, updated.numUpdatedRows);
   }

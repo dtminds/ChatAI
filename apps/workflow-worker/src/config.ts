@@ -16,6 +16,7 @@ export type WorkflowWorkerConfig = {
   deploymentCapabilities: WorkflowDeploymentCapabilities;
   entitlement: {
     apiUrl: string | null;
+    mode: "allow" | "enforce";
     token: string | null;
   };
   environment: WorkflowEnvironment;
@@ -120,6 +121,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     deploymentCapabilities,
     entitlement: {
       apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
+      mode: parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE),
       token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
     },
     environment,
@@ -240,6 +242,12 @@ function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] 
 function parseEnvironment(value: string | undefined): WorkflowEnvironment {
   if (value === "dev" || value === "test01") return value;
   throw new Error("WORKFLOW_ENVIRONMENT must be dev or test01");
+}
+
+function parseEntitlementMode(value: string | undefined): WorkflowWorkerConfig["entitlement"]["mode"] {
+  const mode = optionalValue(value) ?? "enforce";
+  if (mode === "allow" || mode === "enforce") return mode;
+  throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
 }
 
 function parseRoles(value: string | undefined) {

@@ -51,5 +51,5 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
 function formatEntryPolicy(policy: import("@chatai/contracts").WorkflowEntryPolicy) {
   if (policy.mode === "never") return "不允许重复进入";
   if (policy.mode === "lifetime_limit") return `最多进入 ${policy.maxEntries} 次`;
-  return `${policy.windowSize} ${policy.windowUnit === "hour" ? "小时" : "天"}内最多 ${policy.maxEntries} 次`;
+  return `${policy.windowSize} ${policy.windowUnit === "hour" ? "小时" : "天"}内最多进入 ${policy.maxEntries} 次`;
 }

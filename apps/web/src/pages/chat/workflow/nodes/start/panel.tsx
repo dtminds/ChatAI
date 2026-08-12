@@ -1,4 +1,5 @@
 import {
+  WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowEntryPolicy,
@@ -165,60 +166,24 @@ export function StartConfig({
             value={entryPolicy.mode}
           >
             <RadioRow label="不允许重复进入" value="never" />
-            <RadioRow label="最多进入 M 次" value="lifetime_limit">
-              {entryPolicy.mode === "lifetime_limit" ? (
-                <NumberInput
-                  ariaLabel="最多进入次数"
-                  max={1_000}
-                  onChange={(maxEntries) => updateStartConfig({
-                    entryPolicy: { maxEntries, mode: "lifetime_limit" },
-                  })}
-                  value={entryPolicy.maxEntries}
-                />
-              ) : null}
+            <RadioRow inline label="最多进入" value="lifetime_limit">
+              <EntryCountSelect
+                ariaLabel="最多进入次数"
+                disabled={entryPolicy.mode !== "lifetime_limit"}
+                onChange={(maxEntries) => updateStartConfig({
+                  entryPolicy: { maxEntries, mode: "lifetime_limit" },
+                })}
+                value={entryPolicy.mode === "lifetime_limit" ? entryPolicy.maxEntries : 1}
+              />
             </RadioRow>
             <RadioRow label="时间范围内限制" value="rolling_window">
-              {entryPolicy.mode === "rolling_window" ? (
-                <div className="ml-6 grid grid-cols-[70px_1fr_70px] items-center gap-2">
-                  <NumberInput
-                    ariaLabel="时间范围"
-                    max={getRollingWindowMaximum(entryPolicy.windowUnit)}
-                    onChange={(windowSize) => updateStartConfig({
-                      entryPolicy: { ...entryPolicy, windowSize },
-                    })}
-                    value={entryPolicy.windowSize}
-                  />
-                  <Select
-                    onValueChange={(windowUnit: "hour" | "day") => updateStartConfig({
-                      entryPolicy: {
-                        ...entryPolicy,
-                        windowSize: Math.min(
-                          entryPolicy.windowSize,
-                          getRollingWindowMaximum(windowUnit),
-                        ),
-                        windowUnit,
-                      },
-                    })}
-                    value={entryPolicy.windowUnit}
-                  >
-                    <SelectTrigger aria-label="时间单位" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hour">小时</SelectItem>
-                      <SelectItem value="day">天</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <NumberInput
-                    ariaLabel="时间范围内最多进入次数"
-                    max={1_000}
-                    onChange={(maxEntries) => updateStartConfig({
-                      entryPolicy: { ...entryPolicy, maxEntries },
-                    })}
-                    value={entryPolicy.maxEntries}
-                  />
-                </div>
-              ) : null}
+              <RollingWindowControls
+                disabled={entryPolicy.mode !== "rolling_window"}
+                onChange={(nextPolicy) => updateStartConfig({ entryPolicy: nextPolicy })}
+                value={entryPolicy.mode === "rolling_window"
+                  ? entryPolicy
+                  : createRollingWindowEntryPolicy()}
+              />
             </RadioRow>
           </RadioGroup>
         </AccordionContent>
@@ -266,13 +231,14 @@ function TriggerCheckbox({ checked, children, disabled = false, label, onChecked
   );
 }
 
-function RadioRow({ children, label, value }: {
+function RadioRow({ children, inline = false, label, value }: {
   children?: ReactNode;
+  inline?: boolean;
   label: string;
   value: WorkflowEntryPolicy["mode"];
 }) {
   return (
-    <div className="space-y-2">
+    <div className={inline ? "flex items-center gap-2" : "space-y-2"}>
       <label className="flex items-center gap-2 text-[13px] text-foreground">
         <RadioGroupItem value={value} />
         <span>{label}</span>
@@ -282,8 +248,75 @@ function RadioRow({ children, label, value }: {
   );
 }
 
-function NumberInput({ ariaLabel, max, onChange, value }: {
+function EntryCountSelect({ ariaLabel, disabled = false, onChange, value }: {
   ariaLabel: string;
+  disabled?: boolean;
+  onChange(value: number): void;
+  value: number;
+}) {
+  return (
+    <Select
+      disabled={disabled}
+      onValueChange={(nextValue) => onChange(Number(nextValue))}
+      value={String(value)}
+    >
+      <SelectTrigger aria-label={ariaLabel} className="h-9 w-[82px] shrink-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: WORKFLOW_ENTRY_MAX_ENTRIES }, (_, index) => index + 1).map(count => (
+          <SelectItem key={count} value={String(count)}>{count}次</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function RollingWindowControls({ disabled, onChange, value }: {
+  disabled: boolean;
+  onChange(value: Extract<WorkflowEntryPolicy, { mode: "rolling_window" }>): void;
+  value: Extract<WorkflowEntryPolicy, { mode: "rolling_window" }>;
+}) {
+  return (
+    <div className="ml-6 flex items-center gap-2 whitespace-nowrap">
+      <NumberInput
+        ariaLabel="时间范围"
+        disabled={disabled}
+        max={getRollingWindowMaximum(value.windowUnit)}
+        onChange={(windowSize) => onChange({ ...value, windowSize })}
+        value={value.windowSize}
+      />
+      <Select
+        disabled={disabled}
+        onValueChange={(windowUnit: "hour" | "day") => onChange({
+          ...value,
+          windowSize: Math.min(value.windowSize, getRollingWindowMaximum(windowUnit)),
+          windowUnit,
+        })}
+        value={value.windowUnit}
+      >
+        <SelectTrigger aria-label="时间单位" className="w-[92px] shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="hour">小时</SelectItem>
+          <SelectItem value="day">天</SelectItem>
+        </SelectContent>
+      </Select>
+      <span className="text-[13px] text-foreground">内最多进入</span>
+      <EntryCountSelect
+        ariaLabel="时间范围内最多进入次数"
+        disabled={disabled}
+        onChange={(maxEntries) => onChange({ ...value, maxEntries })}
+        value={value.maxEntries}
+      />
+    </div>
+  );
+}
+
+function NumberInput({ ariaLabel, disabled = false, max, onChange, value }: {
+  ariaLabel: string;
+  disabled?: boolean;
   max: number;
   onChange(value: number): void;
   value: number;
@@ -291,7 +324,8 @@ function NumberInput({ ariaLabel, max, onChange, value }: {
   return (
     <Input
       aria-label={ariaLabel}
-      className="h-9 px-2.5"
+      className="h-9 w-[70px] shrink-0 px-2.5"
+      disabled={disabled}
       max={max}
       min={1}
       onChange={(event) => {
@@ -307,10 +341,12 @@ function NumberInput({ ariaLabel, max, onChange, value }: {
 
 function createEntryPolicy(mode: string): WorkflowEntryPolicy {
   if (mode === "never") return { mode: "never" };
-  if (mode === "rolling_window") {
-    return { maxEntries: 2, mode: "rolling_window", windowSize: 7, windowUnit: "day" };
-  }
-  return { maxEntries: 2, mode: "lifetime_limit" };
+  if (mode === "rolling_window") return createRollingWindowEntryPolicy();
+  return { maxEntries: 1, mode: "lifetime_limit" };
+}
+
+function createRollingWindowEntryPolicy(): Extract<WorkflowEntryPolicy, { mode: "rolling_window" }> {
+  return { maxEntries: 1, mode: "rolling_window", windowSize: 7, windowUnit: "day" };
 }
 
 function getRollingWindowMaximum(unit: "hour" | "day") {

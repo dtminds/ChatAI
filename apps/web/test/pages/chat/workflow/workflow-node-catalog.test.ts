@@ -377,7 +377,7 @@ describe("workflow node catalog", () => {
     expect(createDefaultNodeData("start")).toEqual(
       expect.objectContaining({
         seatIds: [],
-        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+        entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
         label: "开始",
         title: "开始",
         triggers: [],

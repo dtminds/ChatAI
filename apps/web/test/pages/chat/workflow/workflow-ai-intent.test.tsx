@@ -143,11 +143,14 @@ describe("workflow AI intent", () => {
     })).toEqual(expect.objectContaining({
       prompt: "优先参考客户最近一条消息",
     }));
-    expect(definition.getOutputVariables?.(node)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "matchedIntentId", valueType: { kind: "string" } }),
-      expect.objectContaining({ key: "matchedIntentDescription", valueType: { kind: "string" } }),
+    expect(definition.getOutputVariables?.(node)).toEqual([
+      expect.objectContaining({
+        key: "matchedIntentDescription",
+        label: "命中意图",
+        valueType: { kind: "string" },
+      }),
       expect.objectContaining({ key: "reason", valueType: { kind: "string" } }),
-    ]));
+    ]);
   });
 
   it("derives node height and requires every intent outcome including fallback to connect", () => {

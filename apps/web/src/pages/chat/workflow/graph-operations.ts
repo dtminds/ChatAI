@@ -103,7 +103,7 @@ export function addNodeOperation(
   }
 
   const node = {
-    ...createNodeFromKind(kind, nodeId, draft.nodes.length),
+    ...createNodeForInsertion(draft, kind, nodeId),
     position: resolveFloatingNodePosition(draft.nodes, position),
   };
 
@@ -183,7 +183,7 @@ export function insertNodeAfterOperation(
     ? getAfterNodesInSameBranch(nodes, edges, replacedEdge.target)
     : [];
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
-  const node = createNodeFromKind(kind, nodeId, nodes.length);
+  const node = createNodeForInsertion(draft, kind, nodeId);
   const insertionLayout = nextNode
     ? getNodeInsertionLayout(previousNode, nextNode, node)
     : undefined;
@@ -282,7 +282,7 @@ export function insertNodeBetweenOperation(
 
   const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
-  const node = createNodeFromKind(kind, nodeId, nodes.length);
+  const node = createNodeForInsertion(draft, kind, nodeId);
   const insertionLayout = getNodeInsertionLayout(sourceNode, targetNode, node);
   const positionedNode = {
     ...node,
@@ -363,6 +363,36 @@ function getNodeInsertionLayout(
     downstreamShift: Math.max(0, Math.ceil(minimumTargetX - targetLeft)),
     nodeX,
   };
+}
+
+function createNodeForInsertion<TKind extends InsertableWorkflowNodeKind>(
+  draft: WorkflowDraft,
+  kind: TKind,
+  nodeId: string,
+): WorkflowNode<TKind> {
+  const node = createNodeFromKind(kind, nodeId, draft.nodes.length);
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      title: getUniqueInsertedNodeTitle(
+        node.data.title,
+        new Set(draft.nodes.map((currentNode) => currentNode.data.title)),
+      ),
+    },
+  };
+}
+
+function getUniqueInsertedNodeTitle(defaultTitle: string, reservedTitles: Set<string>) {
+  if (!reservedTitles.has(defaultTitle)) {
+    return defaultTitle;
+  }
+
+  let suffix = 2;
+  while (reservedTitles.has(`${defaultTitle}（${suffix}）`)) {
+    suffix += 1;
+  }
+  return `${defaultTitle}（${suffix}）`;
 }
 
 export function createInsertNodeBetweenConnections(

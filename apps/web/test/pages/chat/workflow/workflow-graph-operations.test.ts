@@ -44,6 +44,60 @@ describe("workflow graph operations", () => {
     expect(deleteNodeOperation(draft, "end")).toBeUndefined();
   });
 
+  it("avoids duplicate default titles across all node kinds when adding nodes", () => {
+    const draft = createDraft();
+    const renamedWaitNode = {
+      ...draft.nodes.find((node) => node.id === "wait-2d")!,
+      data: {
+        ...draft.nodes.find((node) => node.id === "wait-2d")!.data,
+        title: "条件分支",
+      },
+    };
+    const occupiedSuffixNode = {
+      ...createNodeFromKind("message", "occupied-title", draft.nodes.length),
+      data: {
+        ...createNodeFromKind("message", "occupied-title", draft.nodes.length).data,
+        title: "条件分支（2）",
+      },
+    };
+    const occupiedDraft = {
+      ...draft,
+      nodes: draft.nodes
+        .map((node) => node.id === renamedWaitNode.id ? renamedWaitNode : node)
+        .concat(occupiedSuffixNode),
+    };
+
+    const operation = addNodeOperation(
+      occupiedDraft,
+      "branch",
+      "branch-added",
+      { x: 2_000, y: 0 },
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-added")?.data.title)
+      .toBe("条件分支（3）");
+  });
+
+  it("reuses the default title after the existing node is renamed", () => {
+    const draft = createDraft();
+    const renamedDraft = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "客户意向判断" } }
+        : node),
+    };
+
+    const operation = addNodeOperation(
+      renamedDraft,
+      "branch",
+      "branch-added",
+      { x: 2_000, y: 0 },
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-added")?.data.title)
+      .toBe("条件分支");
+  });
+
   it("inserts a node after a branch handle by replacing the existing branch edge", () => {
     expect(insertNodeAfterOperation(
       createDraft(),
@@ -115,8 +169,15 @@ describe("workflow graph operations", () => {
   });
 
   it("uses the default outlet when inserting a multi-outlet node after a connected handle", () => {
+    const draft = createDraft();
+    const draftWithDefaultBranchTitle = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "条件分支" } }
+        : node),
+    };
     const operation = insertNodeAfterOperation(
-      createDraft(),
+      draftWithDefaultBranchTitle,
       "branch-intent",
       "branch",
       "branch-after",
@@ -137,6 +198,8 @@ describe("workflow graph operations", () => {
         target: "message-welcome",
       }),
     ]));
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-after")?.data.title)
+      .toBe("条件分支（2）");
   });
 
   it("replaces default-handle edges when inserting after imported null handles", () => {
@@ -211,8 +274,15 @@ describe("workflow graph operations", () => {
   });
 
   it("uses the default outlet when inserting a multi-outlet node between an edge", () => {
+    const draft = createDraft();
+    const draftWithDefaultBranchTitle = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "条件分支" } }
+        : node),
+    };
     const operation = insertNodeBetweenOperation(
-      createDraft(),
+      draftWithDefaultBranchTitle,
       "edge-branch-intent-branch-high-message-welcome",
       "branch-intent",
       "message-welcome",
@@ -234,6 +304,8 @@ describe("workflow graph operations", () => {
         target: "message-welcome",
       }),
     ]));
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-between")?.data.title)
+      .toBe("条件分支（2）");
   });
 
   it("uses the first outlet when an inserted multi-outlet node has no default", () => {
@@ -768,10 +840,13 @@ describe("workflow graph operations", () => {
   it("renames editable nodes and rejects protected or empty names", () => {
     const draft = createDraft();
     const operation = renameNodeOperation(draft, "wait-2d", "  等待复购  ");
+    const duplicateTitleOperation = renameNodeOperation(draft, "wait-2d", "意向判断");
 
     expect(operation?.event).toBe("node:rename");
     expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title)
       .toBe("等待复购");
+    expect(duplicateTitleOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title)
+      .toBe("意向判断");
     expect(renameNodeOperation(draft, "start", "新的开始")).toBeUndefined();
     expect(renameNodeOperation(draft, "end", "新的结束")).toBeUndefined();
     expect(renameNodeOperation(draft, "wait-2d", "   ")).toBeUndefined();

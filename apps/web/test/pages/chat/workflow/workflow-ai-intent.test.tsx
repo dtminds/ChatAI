@@ -222,14 +222,19 @@ describe("workflow AI intent", () => {
       inputSelector: ["node", queryNode.id, "messageIds"],
     }));
 
-    await user.click(screen.getByRole("switch", { name: "高级调教" }));
     const prompt = screen.getByRole("textbox", { name: "提示词" });
+    expect(prompt).toBeDisabled();
+
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
+    expect(prompt).toBeEnabled();
     expect(prompt).toHaveAttribute("maxlength", String(AI_INTENT_PROMPT_MAX_LENGTH));
     await user.type(prompt, "优先根据客户最后一条消息判断");
     await user.click(screen.getByRole("switch", { name: "高级调教" }));
-    expect(screen.queryByRole("textbox", { name: "提示词" })).not.toBeInTheDocument();
+    expect(prompt).toBeDisabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
     await user.click(screen.getByRole("switch", { name: "高级调教" }));
-    expect(screen.getByRole("textbox", { name: "提示词" })).toHaveValue("优先根据客户最后一条消息判断");
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
   });
 
   it("projects only available predecessor intent inputs into render data", () => {

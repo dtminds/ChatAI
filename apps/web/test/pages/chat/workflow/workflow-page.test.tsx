@@ -47,6 +47,7 @@ const agentServiceMock = vi.hoisted(() => ({
 const reactFlowControlMock = vi.hoisted(() => ({
   fitView: vi.fn(),
   screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y })),
+  setCenter: vi.fn(),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
   zoomTo: vi.fn(),
@@ -400,6 +401,7 @@ describe("Agent workflow page", () => {
     resetWorkbenchService();
     reactFlowControlMock.fitView.mockClear();
     reactFlowControlMock.screenToFlowPosition.mockClear();
+    reactFlowControlMock.setCenter.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();
     reactFlowControlMock.zoomTo.mockClear();
@@ -994,15 +996,47 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("tab", { name: "检查" })).not.toBeInTheDocument();
     expect(screen.queryByText("客户路径模拟")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: /发布检查/ }));
+    await user.click(screen.getByRole("button", { name: "发布检查" }));
 
     expect(screen.getByRole("region", { name: "发布检查" })).toBeInTheDocument();
     expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
 
+    await user.click(within(screen.getByRole("application", { name: "营销 Workflow 画布" }))
+      .getByRole("button", { name: "点击画布空白处" }));
+
+    expect(screen.getByRole("region", { name: "发布检查" })).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "关闭发布检查" }));
 
     expect(screen.queryByRole("region", { name: "发布检查" })).not.toBeInTheDocument();
+  });
+
+  it("keeps publish checks open while navigating between node settings", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "发布检查" }));
+
+    const checksPanel = screen.getByRole("region", { name: "发布检查" });
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+
+    const nodeIssue = within(checksPanel).getAllByRole("button")
+      .find((button) => button.querySelector("[data-node-icon-kind]"));
+    expect(nodeIssue).toBeDefined();
+    await user.click(nodeIssue!);
+
+    expect(screen.getByRole("region", { name: "发布检查" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(reactFlowControlMock.setCenter).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      { duration: 200, zoom: 1 },
+    );
   });
 
   it("keeps node naming out of the settings panel", async () => {

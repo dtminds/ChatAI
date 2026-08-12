@@ -19,9 +19,7 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt="刚刚"
         publishReady
         publishState="published"
-        readyChecks={4}
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -42,9 +40,7 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="idle"
-        readyChecks={4}
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -64,9 +60,7 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="published"
-        readyChecks={4}
         saveState="saved"
-        totalChecks={4}
         validatedForActivation
         runtimeStatus="inactive"
         workflowName="新客培育"
@@ -84,9 +78,7 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt="刚刚"
         publishReady
         publishState="published"
-        readyChecks={4}
         saveState="saved"
-        totalChecks={4}
         runtimeStatus="paused"
         workflowName="暂停流程"
       />,
@@ -105,10 +97,8 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt="刚刚"
         publishReady
         publishState="published"
-        readyChecks={4}
         runtimeStatus="stopped"
         saveState="saved"
-        totalChecks={4}
         workflowName="已停止流程"
       />,
     );
@@ -119,7 +109,7 @@ describe("WorkflowTopBar lifecycle", () => {
     expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
   });
 
-  it("opens version history directly and publish checks from the overflow menu", async () => {
+  it("opens version history and publish checks from dedicated controls", async () => {
     const user = userEvent.setup();
     const onOpenVersionHistory = vi.fn();
     const onPublishCheck = vi.fn();
@@ -133,9 +123,7 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="idle"
-        readyChecks={4}
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -143,9 +131,32 @@ describe("WorkflowTopBar lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "版本历史" }));
     expect(onOpenVersionHistory).toHaveBeenCalledOnce();
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: /发布检查/ }));
+    await user.click(screen.getByRole("button", { name: "发布检查" }));
     expect(onPublishCheck).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
+  });
+
+  it("allows publishing to surface failed real-time checks", async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        onOpenVersionHistory={vi.fn()}
+        onPublish={onPublish}
+        onPublishCheck={vi.fn()}
+        publishedAt={null}
+        publishReady={false}
+        publishState="idle"
+        saveState="saved"
+        workflowName="新客培育"
+      />,
+    );
+
+    const publishButton = screen.getByRole("button", { name: "发布" });
+    expect(publishButton).toBeEnabled();
+    await user.click(publishButton);
+    expect(onPublish).toHaveBeenCalledOnce();
   });
 
   it("shows runtime status, description tooltip and unpublished changes", async () => {
@@ -161,10 +172,8 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt="07-11 20:00:00"
         publishReady
         publishState="idle"
-        readyChecks={4}
         runtimeStatus="active"
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -191,10 +200,8 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="idle"
-        readyChecks={4}
         runtimeStatus="inactive"
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -229,10 +236,8 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="idle"
-        readyChecks={4}
         runtimeStatus="inactive"
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );
@@ -256,10 +261,8 @@ describe("WorkflowTopBar lifecycle", () => {
         publishedAt={null}
         publishReady
         publishState="idle"
-        readyChecks={4}
         runtimeStatus="inactive"
         saveState="saved"
-        totalChecks={4}
         workflowName="新客培育"
       />,
     );

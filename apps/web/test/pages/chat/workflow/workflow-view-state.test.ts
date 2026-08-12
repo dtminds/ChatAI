@@ -5,8 +5,11 @@ import {
 } from "@/pages/chat/workflow/workflow-view-state";
 
 describe("reduceWorkflowViewState", () => {
-  it("keeps side panels mutually exclusive", () => {
-    const state = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
+  it("opens publish checks without closing other workspace panels", () => {
+    const inspectorState = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
+      type: "open-inspector",
+    });
+    const state = reduceWorkflowViewState(inspectorState, {
       type: "open-version-history",
     });
 
@@ -14,7 +17,28 @@ describe("reduceWorkflowViewState", () => {
 
     expect(reduceWorkflowViewState(state, {
       type: "open-checks",
-    }).activePanel).toBe("checks");
+    })).toEqual({
+      activePanel: "version-history",
+      checksOpen: true,
+      inspectorOpen: true,
+      previewVersionId: null,
+    });
+  });
+
+  it("keeps publish checks open when navigating to a node issue", () => {
+    const checksState = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
+      type: "open-checks",
+    });
+
+    expect(reduceWorkflowViewState(checksState, {
+      inspectorOpen: true,
+      type: "navigate-from-check",
+    })).toEqual({
+      activePanel: null,
+      checksOpen: true,
+      inspectorOpen: true,
+      previewVersionId: null,
+    });
   });
 
   it("enters and exits version preview state", () => {
@@ -25,6 +49,7 @@ describe("reduceWorkflowViewState", () => {
 
     expect(previewState).toEqual({
       activePanel: null,
+      checksOpen: false,
       inspectorOpen: false,
       previewVersionId: "version-1",
     });
@@ -33,6 +58,7 @@ describe("reduceWorkflowViewState", () => {
       type: "close-version-history",
     })).toEqual({
       activePanel: null,
+      checksOpen: false,
       inspectorOpen: false,
       previewVersionId: null,
     });
@@ -48,8 +74,26 @@ describe("reduceWorkflowViewState", () => {
       type: "workflow-edited",
     })).toEqual({
       activePanel: null,
+      checksOpen: true,
       inspectorOpen: true,
       previewVersionId: null,
     });
+  });
+
+  it("closes publish checks only through its explicit close action", () => {
+    const checksState = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
+      type: "open-checks",
+    });
+
+    expect(reduceWorkflowViewState(checksState, {
+      inspectorOpen: false,
+      type: "select-node",
+    }).checksOpen).toBe(true);
+    expect(reduceWorkflowViewState(checksState, {
+      type: "close-inspector",
+    }).checksOpen).toBe(true);
+    expect(reduceWorkflowViewState(checksState, {
+      type: "close-checks",
+    }).checksOpen).toBe(false);
   });
 });

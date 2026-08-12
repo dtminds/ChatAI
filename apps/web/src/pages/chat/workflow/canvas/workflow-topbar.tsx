@@ -1,7 +1,6 @@
 import {
   AlertCircleIcon,
   ArrowLeft01Icon,
-  CheckmarkCircle02Icon,
   CloudSavingDone01Icon,
   Edit02Icon,
   HistoryIcon,
@@ -60,11 +59,9 @@ export function WorkflowTopBar({
   publishErrorCode,
   publishState,
   publishReady,
-  readyChecks,
   restoreState,
   runtimeStatus = "inactive",
   saveState,
-  totalChecks,
   validatedForActivation = false,
   versionHistoryContent,
   versionHistoryOpen = false,
@@ -97,11 +94,9 @@ export function WorkflowTopBar({
   publishErrorCode?: WorkflowRepositoryErrorCode;
   publishState: WorkflowDraftPublishStatus;
   publishReady: boolean;
-  readyChecks: number;
   restoreState?: WorkflowDraftRestoreStatus;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
   saveState: WorkflowDraftSaveStatus;
-  totalChecks: number;
   validatedForActivation?: boolean;
   versionHistoryContent?: ReactNode;
   versionHistoryOpen?: boolean;
@@ -290,42 +285,49 @@ export function WorkflowTopBar({
               <>
                 <Button
                   className="h-9 rounded-lg px-5 text-sm font-semibold"
-                  disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
+                  disabled={!canPublish || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
                   onClick={onPublish}
                   type="button"
                 >
                   {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      aria-label="更多操作"
-                      className="size-9 rounded-lg bg-muted text-muted-foreground"
-                      size="icon"
-                      title="更多操作"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-44">
-                    <DropdownMenuItem disabled={!canPublish} onSelect={onPublishCheck}>
-                      <HugeiconsIcon
-                        icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                        size={16}
-                        strokeWidth={1.8}
-                      />
-                      发布检查 {readyChecks}/{totalChecks}
-                    </DropdownMenuItem>
-                    {publishErrorCode === "conflict" && onReloadDocument ? (
+                <Button
+                  aria-label="发布检查"
+                  className={cn(
+                    "size-9 rounded-lg",
+                    publishReady ? "text-muted-foreground" : "text-destructive",
+                  )}
+                  disabled={!canPublish}
+                  onClick={onPublishCheck}
+                  size="icon"
+                  title="发布检查"
+                  type="button"
+                  variant="secondary"
+                >
+                  <HugeiconsIcon icon={AlertCircleIcon} size={18} strokeWidth={1.8} />
+                </Button>
+                {publishErrorCode === "conflict" && onReloadDocument ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        aria-label="更多操作"
+                        className="size-9 rounded-lg bg-muted text-muted-foreground"
+                        size="icon"
+                        title="更多操作"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-44">
                       <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onReloadDocument}>
                         <HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />
                         重新加载
                       </DropdownMenuItem>
-                    ) : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
               </>
             ) : null}
           </>

@@ -238,6 +238,11 @@ export type QuickInsertTarget = {
   sourceHandle?: string;
 };
 
+export type WorkflowCanvasFocusRequest = {
+  nodeId: string;
+  sequence: number;
+};
+
 export type WorkflowPublishCheck = {
   blocksPublish: boolean;
   category: "connectivity" | "config" | "end" | "start";
@@ -245,6 +250,7 @@ export type WorkflowPublishCheck = {
   id: string;
   messages?: string[];
   nodeId?: string;
+  nodeKind?: WorkflowNodeKind;
   status: "warning";
   title: string;
 };

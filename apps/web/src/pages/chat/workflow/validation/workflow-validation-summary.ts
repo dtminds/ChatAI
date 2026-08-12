@@ -23,6 +23,7 @@ type WorkflowCheckBlockingScope = {
 export type WorkflowValidationSummary = {
   canPublish: boolean;
   checks: WorkflowPublishCheck[];
+  displayChecks: WorkflowPublishCheck[];
   publishBlockers: WorkflowPublishCheck[];
   readyChecks: number;
   summary: WorkflowPublishCheckSummaryItem[];
@@ -162,7 +163,9 @@ export function buildWorkflowValidationSummaryFromResult(
       category: getSummaryCheckCategory(item.id),
       description: item.description,
       id: item.id,
-      messages: [item.description],
+      messages: item.id === "start" && startConfigIssues.length
+        ? startConfigIssues.map((issue) => issue.message)
+        : [item.description],
       status: "warning",
       title: item.title,
     }));
@@ -199,11 +202,13 @@ export function buildWorkflowValidationSummaryFromResult(
     ...graphIssueChecks,
     ...nodeIssueChecks,
   ];
+  const displayChecks = buildWorkflowDisplayChecks(nodes, validation, checks);
   const publishBlockers = checks.filter((check) => check.blocksPublish);
 
   return {
     canPublish: publishBlockers.length === 0,
     checks,
+    displayChecks,
     publishBlockers,
     readyChecks: summary.filter((check) => check.status === "ready").length,
     summary,
@@ -246,6 +251,74 @@ function createNodeIssueCheck(
     status: "warning",
     title: node.data.title,
   };
+}
+
+function buildWorkflowDisplayChecks(
+  nodes: WorkflowNode[],
+  validation: WorkflowValidationResult,
+  checks: WorkflowPublishCheck[],
+) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const groupedByNodeId = new Map<string, WorkflowPublishCheck>();
+  const structureMessages: string[] = [];
+
+  for (const check of checks) {
+    if (check.id === "config" || check.id === "connectivity") continue;
+
+    const node = check.nodeId
+      ? nodeById.get(check.nodeId)
+      : check.id === "start"
+        ? validation.startNode
+        : check.id === "end"
+          ? validation.endNode
+          : undefined;
+
+    if (!node) {
+      structureMessages.push(...(check.messages?.length ? check.messages : [check.description]));
+      continue;
+    }
+
+    const current = groupedByNodeId.get(node.id);
+    const messages = uniqueMessages([
+      ...current?.messages ?? [],
+      ...(check.messages?.length ? check.messages : [check.description]),
+    ]);
+    groupedByNodeId.set(node.id, {
+      blocksPublish: current?.blocksPublish || check.blocksPublish,
+      category: current?.category === "config" || check.category === "config"
+        ? "config"
+        : check.category,
+      description: messages[0] ?? "节点仍需补全配置",
+      id: `node-${node.id}`,
+      messages,
+      nodeId: node.id,
+      nodeKind: node.data.kind,
+      status: "warning",
+      title: node.data.title,
+    });
+  }
+
+  const displayChecks = nodes.flatMap((node) => {
+    const check = groupedByNodeId.get(node.id);
+    return check ? [check] : [];
+  });
+  const messages = uniqueMessages(structureMessages);
+  if (messages.length) {
+    displayChecks.push({
+      ...getBlockingScope(),
+      category: "connectivity",
+      description: messages[0] ?? "流程结构仍需调整",
+      id: "workflow-structure",
+      messages,
+      status: "warning",
+      title: "流程结构",
+    });
+  }
+  return displayChecks;
+}
+
+function uniqueMessages(messages: string[]) {
+  return [...new Set(messages)];
 }
 
 function getBlockingScope(): WorkflowCheckBlockingScope {

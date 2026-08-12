@@ -13,6 +13,7 @@ import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
+  WorkflowCanvasFocusRequest,
   WorkflowNode,
   WorkflowNodeConfigPatch,
   WorkflowRenderEdge,
@@ -49,7 +50,6 @@ type WorkflowWorkspaceEditOptions = {
   clearEdgeSelection?: boolean;
   clearNodeSelection?: boolean;
   clearSelectedRemovedEdge?: boolean;
-  closeChecks?: boolean;
   closeOverlays?: boolean;
   selectNode?: boolean;
   workflowEdited?: boolean;
@@ -82,6 +82,7 @@ export function useWorkflowWorkspace(
     createDefaultWorkflowViewState,
   );
   const [publishAttempted, setPublishAttempted] = useState(false);
+  const [canvasFocusRequest, setCanvasFocusRequest] = useState<WorkflowCanvasFocusRequest>();
   const previewVersion = document.versionHistory.find((version) => version.id === viewState.previewVersionId);
   const previewDraft = useMemo(
     () => previewVersion
@@ -161,7 +162,6 @@ export function useWorkflowWorkspace(
   const selectWorkflowNode = useWorkflowStableCallback((nodeId: string, options?: { additive?: boolean }) => {
     if (options?.additive) {
       toggleNodeSelection(nodeId);
-      dispatchViewState({ type: "close-checks" });
       closeCanvasOverlays();
       return;
     }
@@ -177,7 +177,20 @@ export function useWorkflowWorkspace(
 
   const selectWorkflowEdge = useWorkflowStableCallback((edgeId: string) => {
     selectEdge(edgeId);
-    dispatchViewState({ type: "close-checks" });
+    closeCanvasOverlays();
+  });
+
+  const navigateFromPublishCheck = useWorkflowStableCallback((nodeId: string) => {
+    selectNode(nodeId);
+    setCanvasFocusRequest((current) => ({
+      nodeId,
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+    const node = controller.nodes.find((candidate) => candidate.id === nodeId);
+    dispatchViewState({
+      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind) && !isPreviewingVersion),
+      type: "navigate-from-check",
+    });
     closeCanvasOverlays();
   });
 
@@ -213,10 +226,6 @@ export function useWorkflowWorkspace(
         openInspector: options.selectNode && result.nodeId ? true : undefined,
         type: "workflow-edited",
       });
-    }
-
-    if (options.closeChecks) {
-      dispatchViewState({ type: "close-checks" });
     }
 
     if (options.closeOverlays !== false) {
@@ -322,9 +331,7 @@ export function useWorkflowWorkspace(
     }
 
     const result = controller.connectNodes(connection);
-    commitWorkflowEditResult(result, {
-      closeChecks: true,
-    });
+    commitWorkflowEditResult(result);
   });
 
   const handleDeleteNode = useWorkflowStableCallback((nodeId: string) => {
@@ -333,9 +340,7 @@ export function useWorkflowWorkspace(
     }
 
     const result = controller.deleteNode(nodeId);
-    commitWorkflowEditResult(result, {
-      closeChecks: true,
-    });
+    commitWorkflowEditResult(result);
   });
 
   const handleDeleteNodes = useWorkflowStableCallback((nodeIds: string[]) => {
@@ -346,7 +351,6 @@ export function useWorkflowWorkspace(
     const result = controller.deleteNodes(nodeIds);
     commitWorkflowEditResult(result, {
       clearNodeSelection: true,
-      closeChecks: true,
     });
   });
 
@@ -378,7 +382,6 @@ export function useWorkflowWorkspace(
     const result = controller.deleteEdge(edgeId);
     commitWorkflowEditResult(result, {
       clearEdgeSelection: true,
-      closeChecks: true,
     });
   });
 
@@ -447,7 +450,6 @@ export function useWorkflowWorkspace(
     clearEdgeSelection();
     clearNodeSelection();
     closeCanvasOverlays();
-    dispatchViewState({ type: "close-checks" });
     dispatchViewState({ type: "close-inspector" });
   });
 
@@ -474,7 +476,6 @@ export function useWorkflowWorkspace(
       return;
     }
 
-    dispatchViewState({ type: "close-checks" });
     closeCanvasOverlays();
     const result = await publishDraft(controller.currentDraft);
     if (result) toast.success("发布成功");
@@ -538,7 +539,6 @@ export function useWorkflowWorkspace(
     const result = controller.onEdgesChange(changes);
     commitWorkflowEditResult(result, {
       clearSelectedRemovedEdge: true,
-      closeChecks: true,
     });
   });
 
@@ -609,6 +609,7 @@ export function useWorkflowWorkspace(
       canUndo: permissions.canUseHistory && controller.canUndo,
       canMoveNodes: permissions.canMoveNodes,
       edges: renderedEdges,
+      focusRequest: canvasFocusRequest,
       isReadOnly: permissions.canvasReadOnly,
       nodes: renderedNodes,
       nextRedoLabel: controller.nextRedoLabel,
@@ -636,9 +637,10 @@ export function useWorkflowWorkspace(
     },
     checks: {
       ...publishChecks,
-      isOpen: viewState.activePanel === "checks",
+      checks: publishChecks.displayChecks,
+      isOpen: viewState.checksOpen,
       onClose: checksClose,
-      onNavigateToNode: selectWorkflowNode,
+      onNavigateToNode: navigateFromPublishCheck,
       publishAttempted,
     },
     document,
@@ -672,11 +674,9 @@ export function useWorkflowWorkspace(
       publishError,
       publishState,
       publishReady: publishChecks.publishReady,
-      readyChecks: publishChecks.readyChecks,
       metadataUpdating: metadataUpdateState === "updating",
       runtimeStatus: document.runtimeStatus,
       saveState,
-      totalChecks: publishChecks.totalSummaryChecks,
       validatedForActivation: document.runtimeStatus === "inactive"
         && document.validatedDraftVersion != null
         && document.validatedDraftVersion === (document.draftVersion ?? document.revision),

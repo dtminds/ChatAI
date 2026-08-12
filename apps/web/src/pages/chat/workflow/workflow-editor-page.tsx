@@ -236,11 +236,9 @@ function WorkflowWorkspaceContent({
         publishErrorCode={topBar.publishError?.code}
         publishState={topBar.publishState}
         publishReady={topBar.publishReady}
-        readyChecks={topBar.readyChecks}
         restoreState={versionHistory.restoreState}
         runtimeStatus={topBar.runtimeStatus}
         saveState={topBar.saveState}
-        totalChecks={topBar.totalChecks}
         validatedForActivation={topBar.validatedForActivation}
         versionHistoryContent={(
           <WorkflowVersionHistoryPanel
@@ -293,6 +291,7 @@ function WorkflowWorkspaceContent({
                 canUndo={canvas.canUndo}
                 canMoveNodes={canvas.canMoveNodes}
                 edges={canvas.edges}
+                focusRequest={canvas.focusRequest}
                 isReadOnly={canvas.isReadOnly}
                 nodes={canvas.nodes}
                 nextRedoLabel={canvas.nextRedoLabel}
@@ -325,7 +324,6 @@ function WorkflowWorkspaceContent({
                   onClose={checks.onClose}
                   onNavigateToNode={checks.onNavigateToNode}
                   publishAttempted={checks.publishAttempted}
-                  publishReady={checks.publishReady}
               />
             ) : null}
           </section>

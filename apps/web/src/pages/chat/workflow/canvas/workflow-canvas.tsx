@@ -49,6 +49,7 @@ import {
 import { WorkflowNodeCard } from "../nodes";
 import type {
   InsertableWorkflowNodeKind,
+  WorkflowCanvasFocusRequest,
   WorkflowRenderEdge,
   WorkflowRenderNode,
 } from "../types";
@@ -76,6 +77,7 @@ export function WorkflowCanvas({
   canRedo,
   canUndo,
   edges,
+  focusRequest,
   isReadOnly = false,
   canMoveNodes = !isReadOnly,
   showEditingTools = !isReadOnly,
@@ -108,6 +110,7 @@ export function WorkflowCanvas({
   canRedo: boolean;
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
+  focusRequest?: WorkflowCanvasFocusRequest;
   isReadOnly?: boolean;
   showEditingTools?: boolean;
   nodes: WorkflowRenderNode[];
@@ -135,7 +138,7 @@ export function WorkflowCanvas({
   viewport: Viewport;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
-  const { fitView, screenToFlowPosition, zoomIn, zoomOut, zoomTo } = useReactFlow<
+  const { fitView, screenToFlowPosition, setCenter, zoomIn, zoomOut, zoomTo } = useReactFlow<
     WorkflowRenderNode,
     WorkflowRenderEdge
   >();
@@ -149,6 +152,7 @@ export function WorkflowCanvas({
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [flowNodes, setFlowNodes] = useState(nodes);
   const canvasRef = useRef<HTMLElement | null>(null);
+  const handledFocusSequenceRef = useRef<number | undefined>(undefined);
   const isNodeDraggingRef = useRef(false);
   const activeInsertNode = flowNodes.find((node) => node.data.insertMenuOpen);
 
@@ -157,6 +161,24 @@ export function WorkflowCanvas({
       setFlowNodes(nodes);
     }
   }, [nodes]);
+
+  useEffect(() => {
+    if (!focusRequest || handledFocusSequenceRef.current === focusRequest.sequence) {
+      return;
+    }
+
+    const node = nodes.find((candidate) => candidate.id === focusRequest.nodeId);
+    if (!node) {
+      return;
+    }
+
+    handledFocusSequenceRef.current = focusRequest.sequence;
+    void setCenter(
+      node.position.x + getWorkflowNodeWidth(node) / 2,
+      node.position.y,
+      { duration: 200, zoom },
+    );
+  }, [focusRequest, nodes, setCenter, zoom]);
 
   const handleNodesChange: OnNodesChange<WorkflowRenderNode> = useCallback((changes) => {
     setFlowNodes((currentNodes) => applyCanvasNodeChanges(changes, currentNodes));
@@ -445,7 +467,7 @@ function WorkflowBottomToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         aria-label="画布工具"
-        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-foreground/15 bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground transition-[left] duration-200 ease-out motion-reduce:transition-none max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
+        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-foreground/10 bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground transition-[left] duration-200 ease-out motion-reduce:transition-none max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
         onClick={(event) => event.stopPropagation()}
         ref={menuRef}
       >

@@ -10,6 +10,12 @@ import {
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
+import {
+  WorkflowInferenceMessageListRequestSchema,
+  WorkflowInferenceMessageListResultSchema,
+  WorkflowInferenceTemplateRequestSchema,
+  WorkflowInferenceTemplateResultSchema,
+} from "../src/index.js";
 
 const draftConfigs = {
   agent: {},
@@ -76,6 +82,32 @@ const draftConfigs = {
 } as const satisfies Record<WorkflowNodeKind, Record<string, unknown>>;
 
 describe("workflow node contracts", () => {
+  it("keeps message-list and template inference contracts distinct", () => {
+    expect(Value.Check(WorkflowInferenceMessageListRequestSchema, {
+      kind: "message-list",
+      messageList: [{ content: "Summarize", role: "system" }],
+      modelId: "model-1",
+      responseFormat: { type: "text" },
+    })).toBe(true);
+    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
+      kind: "template",
+      templateKey: "workflow.intent.classify.v1",
+      variables: { input: "hello" },
+    })).toBe(true);
+    expect(Value.Check(WorkflowInferenceMessageListResultSchema, {
+      content: "summary",
+      type: "text",
+    })).toBe(true);
+    expect(Value.Check(WorkflowInferenceTemplateResultSchema, {
+      matchedCode: "I10",
+      reason: "matched",
+    })).toBe(true);
+    expect(Value.Check(WorkflowInferenceTemplateResultSchema, {
+      matchedCode: "I11",
+      reason: "invalid",
+    })).toBe(false);
+  });
+
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
@@ -89,9 +121,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "start", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "end", "llm", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "handoff", "llm", "message", "message-query"]);
+      .toEqual(["handoff", "message", "message-query"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
   });

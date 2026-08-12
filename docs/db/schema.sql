@@ -794,6 +794,39 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   KEY idx_workflow_node_execution_run_cleanup (run_id, id)
 ) COMMENT='营销Workflow节点执行账本表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow Run ID',
+  task_id BIGINT UNSIGNED NOT NULL COMMENT '等待推理结果的Workflow Task ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点稳定ID',
+  node_kind VARCHAR(64) NOT NULL COMMENT '推理节点类型：llm、ai-intent',
+  sequence INT UNSIGNED NOT NULL COMMENT 'Run内节点执行序号',
+  execution_key VARCHAR(512) NOT NULL COMMENT '节点执行稳定键',
+  contract_version INT UNSIGNED NOT NULL COMMENT 'Java推理请求契约版本',
+  payload_json JSON NOT NULL COMMENT '已解析的Java推理请求载荷',
+  result_json JSON NULL COMMENT '已校验的Java推理结果',
+  status VARCHAR(32) NOT NULL COMMENT '状态：pending、running、retry_wait、succeeded、failed、cancelled',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '推理调用尝试次数',
+  next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
+  deadline_at DATETIME NOT NULL COMMENT '推理总截止时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  error_code VARCHAR(128) NULL COMMENT '标准错误码',
+  error_message VARCHAR(512) NULL COMMENT '脱敏错误摘要',
+  failure_kind VARCHAR(32) NULL COMMENT '失败分类：retryable、terminal、unknown',
+  started_at DATETIME NULL COMMENT '首次开始调用时间',
+  completed_at DATETIME NULL COMMENT '终态完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_inference_execution (uid, execution_key),
+  UNIQUE KEY uk_workflow_inference_task (uid, task_id),
+  KEY idx_workflow_inference_claim (status, next_attempt_at, deadline_at, id),
+  KEY idx_workflow_inference_lease (status, lease_expires_at, id),
+  KEY idx_workflow_inference_run_cleanup (run_id, id)
+) COMMENT='营销Workflow异步推理任务表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

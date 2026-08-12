@@ -111,7 +111,7 @@ describe("Wait Event runtime", () => {
       messageId: 101,
       occurredAt: new Date("2026-08-10T00:00:05.000Z"),
       recordedAt: new Date("2026-08-10T00:00:05.000Z"),
-      text: "x".repeat(5_000),
+      text: "x".repeat(9_000),
     });
 
     const completed = await dispatchAndExecute(harness, COLLECT_UNTIL);

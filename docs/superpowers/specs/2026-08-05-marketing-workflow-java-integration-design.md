@@ -1174,8 +1174,8 @@ chatai.conversation.transfer-agent
 | Coupon | 类型化命令和 Workflow 重试 | 校验权益并幂等发券 |
 | Handoff | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验会话状态并幂等转人工 |
 | Agent | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验 Agent 并幂等转接会话 |
-| LLM | 提示词、变量、模型调用和输出校验 | 非 Java 业务域 |
-| AI Intent | 多模态输入、模型判断和分支路由 | 提供消息查询能力 |
+| LLM | 解析变量、渲染完整消息列表、校验并映射输出 | 接收消息列表并完成模型调用、计费和供应商路由 |
+| AI Intent | 解析输入、组装模板变量、将结果代码映射到稳定分支 | 按 `templateKey` 获取系统模板并完成模型调用、计费和供应商路由 |
 | AI Collect | 模型收集和结构化输出 | 提供消息查询/资料写入能力 |
 | End | Run 完成 | 无 |
 
@@ -1186,6 +1186,41 @@ chatai.conversation.transfer-agent
 ```text
 idempotencyKey = uid + runId + nodeId + sequence
 ```
+
+LLM 和 AI Intent 属于无业务副作用但可能长耗时的 Inference。它们不使用 Action
+`idempotencyKey`，而是以同一个 Node Execution Key 作为 `executionKey`。Node 先持久化
+Inference Job，再由独立 Worker 调用 Java；Java 应将 `executionKey` 作为稳定请求身份，Node
+重试同一 Job 时不得生成新键。Inference Job 已负责调用重试，Job 进入终态后恢复的 Workflow
+Task 只消费结果或结束节点，不再叠加第二层调用重试。Java 请求同时携带
+`contractVersion`，双方按该版本解析下面的判别式载荷。
+
+两类请求必须保持独立的判别式载荷：
+
+```ts
+type LlmInferencePayload = {
+  kind: "message-list";
+  modelId: string;
+  messageList: Array<{ role: "system" | "user"; content: string }>;
+  responseFormat:
+    | { type: "text" | "markdown" }
+    | { type: "json"; fields: Array<{ name: string; type: "string" | "number" | "boolean"; description: string }> };
+};
+
+type IntentInferencePayload = {
+  kind: "template";
+  templateKey: "workflow.intent.classify.v1"; // 临时值，Java 模板确定后替换
+  variables: {
+    input: string;
+    intents: string; // [{ code: "I1", description: "..." }]
+    additionalRules: string;
+  };
+};
+```
+
+LLM 的 `messageList` 由 Node 完整渲染，Java 不解析 Workflow 变量。AI Intent 不发送完整
+系统提示词，Java 根据 `templateKey` 读取模板，只接收业务变量。Java 返回意图代码
+`I1...I10 | fallback`；Node 将代码映射回 Revision 内的稳定意图 ID 和出口 Handle。两类
+返回都必须匹配各自 Schema，单节点最终输出受 8 KiB 上限约束。
 
 请求公共字段建议为：
 
@@ -1226,7 +1261,7 @@ Java 幂等语义：
 | 分类 | 示例 | Node 行为 |
 | --- | --- | --- |
 | `success` | 已发送、已打标、幂等重复成功 | 提交节点成功 |
-| `retryable` | 限流、临时不可用、依赖超时 | 数据库创建 Retry Task |
+| `retryable` | 限流、临时不可用、依赖超时 | 同步 Capability 创建 Retry Task；Inference Job 更新下次领取时间 |
 | `terminal` | 参数非法、资源不存在、业务明确拒绝 | 节点和 Run 失败 |
 | `unknown` | HTTP 超时、连接断开且结果未知 | 使用同一幂等键重试 |
 
@@ -1454,8 +1489,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 - 建立类型化 `CapabilityDefinition<TCommand, TResult>`，每个 operation 独立声明 `capabilityKey + contractVersion`、`action / query / inference`、Command Schema 和 Result Schema。
 - Java Capability Port 只接收已校验的类型化命令、明确 `uid + subjectType + subjectId` 和执行元数据；禁止接收 Node、nodeConfig、变量表达式或任意 operation 字符串。
-- Action 强制稳定 `idempotencyKey`，Query 与 Inference 不携带额外调用键并通过执行元数据关联；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
-- 使用测试专属 Capability Definition 和 Fake Adapter 覆盖命令/结果校验、超时、幂等、三类错误、4 KiB 节点输出和 128 KiB Run Context 上限。
+- Action 强制稳定 `idempotencyKey`，Query 不携带下游调用键，Inference Job 使用稳定 `executionKey`；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
+- 使用测试专属 Capability Definition 和 Fake Adapter 覆盖命令/结果校验、超时、幂等、三类错误、8 KiB 节点输出和 128 KiB Run Context 上限。
 - 从 Core Executor Registry 移除当前 `message / tag / coupon / handoff` 通用 Action 注册；真实 Action 以后按独立 Execution Definition 和 Adapter 逐个开放。
 - 本轮不增加任何 Action Runtime Support 或生产 Deployment Capability。
 
@@ -1478,7 +1513,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Wait Event 事件/超时竞争和暂停恢复。
 - 覆盖固定 10 秒收集窗口内多消息乱序、重复投递、首事件与超时竞争，以及 Trigger Projection 的输出上限。
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
-- 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 与 Inference 不携带额外调用键，Fake Adapter 不进入生产注册。
+- 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 不携带调用键，Inference 使用稳定 `executionKey`，Fake Adapter 不进入生产注册。
 - 覆盖 Runtime 已实现但 Deployment 未启用时无法 Publish/Enable，以及只修改 Runtime 注册表不能开放 Java 依赖节点。
 - 覆盖 `requiredCapabilities` 版本冻结、Backend/Worker 未知能力 fail-closed、配置格式非法启动失败和清单漂移时 Worker 不误执行。
 - 覆盖紧急关闭后不创建新 Run、受影响 Task 不消耗业务重试、Wait Event 不触发且恢复后重新调度。
@@ -1561,7 +1596,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 | --- | --- |
 | Iteration 1 | 正式鉴权下的 Create/Save/Publish/Enable；Workflow Type 不可转换；Member SOP 禁用；跨 Subject Type 隔离；Entitlement success/失效/超时；Runtime/Deployment 双门槛；MySQL Repository Contract |
 | Iteration 2 | JSON Fixture -> Fake Event Catalog -> Fake Broker -> Entry Consumer -> Run/Wait Subscription -> Event/Timeout -> End；非法事件 DLQ、重复投递、扇出、CAS、暂停/停止、Outbox 重投和崩溃接管 |
-| Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、Query/Inference 无额外调用键、错误分类和输出上限 |
+| Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、Query 无调用键、错误分类和输出上限 |
 
 三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/Capability、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开启对应 Deployment Capability。
 
@@ -1614,7 +1649,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 开放结果：`branch` 完整闭环后加入 Runtime Support；它不产生 Java Capability Requirement，在 Workflow 其他门槛满足时可生产发布。Message、Message Query、Tag、Coupon、Handoff 等 Java 依赖节点全部保持 Runtime Unsupported 和 Deployment Disabled。
 
-合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query/Inference 无额外调用键、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
+合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query 无调用键、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
 
 ### 合并与生产启用分离
 

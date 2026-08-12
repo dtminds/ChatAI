@@ -6,7 +6,7 @@ import {
 } from "../src/index.js";
 
 describe("workflow runtime value limits", () => {
-  it("accepts exactly 4 KiB and rejects one additional UTF-8 byte", () => {
+  it("accepts exactly 8 KiB and rejects one additional UTF-8 byte", () => {
     const emptyObjectBytes = Buffer.byteLength(JSON.stringify({ value: "" }), "utf8");
     const exact = { value: "x".repeat(WORKFLOW_NODE_OUTPUT_MAX_BYTES - emptyObjectBytes) };
     const oversized = { value: `${exact.value}x` };

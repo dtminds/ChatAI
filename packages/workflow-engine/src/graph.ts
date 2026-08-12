@@ -135,11 +135,7 @@ function validateNodeOutlets(
     return;
   }
 
-  const outletIds = node.data.kind === "branch"
-    ? getBranchOutletIds(node)
-    : node.data.kind === "wait-event"
-      ? ["triggered", "timeout"]
-      : [DEFAULT_OUTLET_ID];
+  const outletIds = getNodeOutletIds(node);
   const edgeCountByOutlet = new Map<string, number>();
 
   for (const edge of edges) {
@@ -173,11 +169,27 @@ function validateNodeOutlets(
   }
 }
 
+function getNodeOutletIds(node: WorkflowDraftNode) {
+  if (node.data.kind === "branch") return getBranchOutletIds(node);
+  if (node.data.kind === "wait-event") return ["triggered", "timeout"];
+  if (node.data.kind === "ai-intent") return getAiIntentOutletIds(node);
+  return [DEFAULT_OUTLET_ID];
+}
+
 function getBranchOutletIds(node: WorkflowDraftNode) {
   const paths = (node.data as Record<string, unknown>).branchPaths;
   if (!Array.isArray(paths)) return [];
   return paths.flatMap((path) => path && typeof path === "object" && "id" in path
     && typeof path.id === "string" && path.id.length > 0 ? [path.id] : []);
+}
+
+function getAiIntentOutletIds(node: WorkflowDraftNode) {
+  const intents = (node.data as Record<string, unknown>).intents;
+  const intentOutlets = Array.isArray(intents)
+    ? intents.flatMap(intent => intent && typeof intent === "object" && "id" in intent
+      && typeof intent.id === "string" && intent.id.length > 0 ? [`intent:${intent.id}`] : [])
+    : [];
+  return [...intentOutlets, "fallback"];
 }
 
 function indexEdges(edges: WorkflowDraftEdge[], key: "source" | "target") {

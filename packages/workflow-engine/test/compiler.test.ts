@@ -158,6 +158,59 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges.map((edge) => edge.sourceOutletId)).toEqual(["default", "vip", "default"]);
   });
 
+  it("freezes LLM and AI Intent execution contracts with their deployment capabilities", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1,
+      node("llm", "llm", {
+        inputs: [],
+        modelId: "model-1",
+        modelLabel: "Model label",
+        output: {
+          field: { description: "", id: "output-id", name: "output", type: "string" },
+          format: "text",
+        },
+        systemPrompt: [{ type: "text", value: "Summarize" }],
+        userPrompt: [],
+      }),
+      node("intent", "ai-intent", {
+        advancedEnabled: false,
+        inputSelector: ["node", "llm", "output-id"],
+        intents: [{ description: "Refund", id: "refund-id" }],
+        prompt: "unused",
+      }),
+    );
+    draft.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-intent", source: "llm", target: "intent" },
+      { id: "intent-refund", source: "intent", sourceHandle: "intent:refund-id", target: "end" },
+      { id: "intent-fallback", source: "intent", sourceHandle: "fallback", target: "end" },
+    ];
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 5,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.id === "llm")).toMatchObject({
+      config: { modelId: "model-1" },
+      requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
+    });
+    expect(spec.nodes.find(node => node.id === "intent")).toMatchObject({
+      config: {
+        fallback: { id: "fallback" },
+        intents: [{ description: "Refund", id: "refund-id", modelCode: "I1" }],
+      },
+      requiredCapabilities: [{ capabilityKey: "operation.intent.classify", contractVersion: 1 }],
+    });
+    expect(spec.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
+      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
+    ]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

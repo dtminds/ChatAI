@@ -8,7 +8,7 @@ import {
 } from "@chatai/workflow-engine";
 
 export type WorkflowEnvironment = "dev" | "test01";
-export type WorkflowWorkerRole = "entry-consumer" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
+export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
 export type WorkflowWorkerConfig = {
   broker: "pulsar";
@@ -36,6 +36,14 @@ export type WorkflowWorkerConfig = {
     dispatchTimeoutMs: number;
     historyCleanupBatchSize: number;
     historyCleanupIntervalMs: number;
+    inferenceConcurrency: number;
+    inferenceHeartbeatIntervalMs: number;
+    inferenceIntervalMs: number;
+    inferenceLeaseDurationMs: number;
+    inferenceMaxAttempts: number;
+    inferenceMaxRetryDelayMs: number;
+    inferenceRetryDelayMs: number;
+    inferenceTotalTimeoutMs: number;
     inboxCleanupBatchSize: number;
     leaseDurationMs: number;
     maxTaskAttempts: number;
@@ -67,6 +75,7 @@ export type WorkflowWorkerConfig = {
 
 const DEFAULT_ROLES: WorkflowWorkerRole[] = [
   "entry-consumer",
+  "inference",
   "outbox",
   "reconciler",
   "scheduler",
@@ -119,6 +128,21 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
+  const inferenceLeaseDurationMs = parseDurationMs(
+    env.WORKFLOW_INFERENCE_LEASE_DURATION_MS,
+    60_000,
+    "WORKFLOW_INFERENCE_LEASE_DURATION_MS",
+  );
+  const inferenceHeartbeatIntervalMs = parseDurationMs(
+    env.WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS,
+    15_000,
+    "WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS",
+  );
+  if (inferenceHeartbeatIntervalMs >= inferenceLeaseDurationMs) {
+    throw new Error(
+      "WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS must be less than WORKFLOW_INFERENCE_LEASE_DURATION_MS",
+    );
+  }
   return {
     broker,
     databaseUrl,
@@ -165,6 +189,39 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         env.WORKFLOW_HISTORY_CLEANUP_INTERVAL_MS,
         3_600_000,
         "WORKFLOW_HISTORY_CLEANUP_INTERVAL_MS",
+      ),
+      inferenceConcurrency: parseInteger(
+        env.WORKFLOW_INFERENCE_CONCURRENCY,
+        10,
+        "WORKFLOW_INFERENCE_CONCURRENCY",
+        100,
+      ),
+      inferenceHeartbeatIntervalMs,
+      inferenceIntervalMs: parseDurationMs(
+        env.WORKFLOW_INFERENCE_INTERVAL_MS,
+        1_000,
+        "WORKFLOW_INFERENCE_INTERVAL_MS",
+      ),
+      inferenceLeaseDurationMs,
+      inferenceMaxAttempts: parseCount(
+        env.WORKFLOW_INFERENCE_MAX_ATTEMPTS,
+        5,
+        "WORKFLOW_INFERENCE_MAX_ATTEMPTS",
+      ),
+      inferenceMaxRetryDelayMs: parseDurationMs(
+        env.WORKFLOW_INFERENCE_MAX_RETRY_DELAY_MS,
+        300_000,
+        "WORKFLOW_INFERENCE_MAX_RETRY_DELAY_MS",
+      ),
+      inferenceRetryDelayMs: parseDurationMs(
+        env.WORKFLOW_INFERENCE_RETRY_DELAY_MS,
+        5_000,
+        "WORKFLOW_INFERENCE_RETRY_DELAY_MS",
+      ),
+      inferenceTotalTimeoutMs: parseDurationMs(
+        env.WORKFLOW_INFERENCE_TOTAL_TIMEOUT_MS,
+        600_000,
+        "WORKFLOW_INFERENCE_TOTAL_TIMEOUT_MS",
       ),
       inboxCleanupBatchSize: parseCount(
         env.WORKFLOW_INBOX_CLEANUP_BATCH_SIZE,

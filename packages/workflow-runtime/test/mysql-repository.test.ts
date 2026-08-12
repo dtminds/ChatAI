@@ -375,7 +375,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
     ]);
     expect(db.lockOrder).toEqual(["run", "task", "outbox", "run"]);
-    expect(db.deleteOrder).toEqual(["outbox", "task", "execution", "run"]);
+    expect(db.deleteOrder).toEqual(["inference", "outbox", "task", "execution", "run"]);
     expect(db.runWhereCalls).toEqual(expect.arrayContaining([
       ["status", "in", ["cancelled", "completed", "failed"]],
       ["completed_at", "is not", null],
@@ -1071,6 +1071,8 @@ function createHistoryCleanupDbMock(options: {
         async executeTakeFirst() {
           const label = table === "xy_wap_embed_workflow_outbox"
             ? "outbox"
+            : table === "xy_wap_embed_workflow_inference_job"
+              ? "inference"
             : table === "xy_wap_embed_workflow_task"
               ? "task"
               : table === "xy_wap_embed_workflow_node_execution"

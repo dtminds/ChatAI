@@ -112,7 +112,6 @@ describe("workflow capability reliability", () => {
 
   it.each([
     { capabilityKind: "query", nodeKind: "message-query" },
-    { capabilityKind: "inference", nodeKind: "llm" },
   ] as const)(
     "persists $capabilityKind retries and terminal failures without an external idempotency key",
     async ({ capabilityKind, nodeKind }) => {
@@ -170,9 +169,9 @@ describe("workflow capability reliability", () => {
     },
   );
 
-  it("fails an action whose projected output exceeds 4 KiB in UTF-8", async () => {
+  it("fails an action whose projected output exceeds 8 KiB in UTF-8", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({ value: "中".repeat(1_400) }));
+    const service = createService(runtime, async () => ({ value: "中".repeat(2_800) }));
     const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
@@ -292,11 +291,11 @@ describe("workflow capability reliability", () => {
     ]);
   });
 
-  it("fails a core node whose output exceeds 4 KiB", async () => {
+  it("fails a core node whose output exceeds 8 KiB", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executors = new WorkflowNodeExecutorRegistry().register("start", {
       execute: () => ({
-        output: { value: "x".repeat(4 * 1024) },
+        output: { value: "x".repeat(8 * 1024) },
         sourceOutletId: "default",
         type: "advance",
       }),

@@ -5,6 +5,7 @@ import type {
   WorkflowCreateRunInput,
   WorkflowEventSubscriptionEventRecord,
   WorkflowEventSubscriptionRecord,
+  WorkflowInferenceJobRecord,
   WorkflowNodeExecutionRecord,
   WorkflowOutboxRecord,
   WorkflowRunRecord,
@@ -46,6 +47,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
   readonly eventSubscriptionEvents: WorkflowEventSubscriptionEventRecord[] = [];
+  readonly inferenceJobs: WorkflowInferenceJobRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
@@ -464,6 +466,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       }
     }
     this.cancelEventSubscriptions(selectedIds);
+    this.cancelInferenceJobs(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -507,6 +510,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       }
     }
     this.cancelEventSubscriptions(selectedIds);
+    this.cancelInferenceJobs(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
@@ -572,6 +576,180 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     };
     this.nodeExecutions.push(execution);
     return { execution: clone(execution), kind: "success" as const };
+  }
+
+  async beginInference(input: Parameters<WorkflowRuntimeRepository["beginInference"]>[0]) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
+      || input.deadlineAt <= input.now) return conflict();
+    const existing = this.inferenceJobs.find(item => item.uid === input.uid
+      && item.executionKey === input.executionKey);
+    if (existing) {
+      if (existing.taskId !== task.id) return conflict();
+      task.dueAt = clone(existing.deadlineAt);
+      task.leaseExpiresAt = null;
+      task.leaseOwner = null;
+      task.status = transitionTask(task.status, "pending");
+      task.taskType = "inference";
+      task.taskVersion += 1;
+      run.lockVersion += 1;
+      run.nextExecuteAt = clone(existing.deadlineAt);
+      run.status = transitionRun(run.status, "waiting");
+      this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+      this.touchRun(run);
+      return { created: false, job: clone(existing), kind: "success" as const, run: clone(run), task: clone(task) };
+    }
+    const job: WorkflowInferenceJobRecord = {
+      attempt: 0,
+      contractVersion: input.contractVersion,
+      createdAt: clone(input.now),
+      deadlineAt: clone(input.deadlineAt),
+      errorCode: null,
+      errorMessage: null,
+      executionKey: input.executionKey,
+      failureKind: null,
+      id: this.createId(),
+      leaseExpiresAt: null,
+      leaseOwner: null,
+      nextAttemptAt: clone(input.now),
+      nodeId: task.nodeId,
+      nodeKind: task.nodeKind,
+      payload: clone(input.payload),
+      result: null,
+      runId: run.id,
+      sequence: task.sequence,
+      status: "pending",
+      taskId: task.id,
+      uid: input.uid,
+      updatedAt: clone(input.now),
+    };
+    this.inferenceJobs.push(job);
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    task.dueAt = clone(input.deadlineAt);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "pending");
+    task.taskType = "inference";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.deadlineAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return { created: true, job: clone(job), kind: "success" as const, run: clone(run), task: clone(task) };
+  }
+
+  async findInferenceByExecutionKey(uid: number, executionKey: string) {
+    const job = this.inferenceJobs.find(item => item.uid === uid && item.executionKey === executionKey);
+    return job ? clone(job) : null;
+  }
+
+  async claimInferenceBatch(input: Parameters<WorkflowRuntimeRepository["claimInferenceBatch"]>[0]) {
+    const candidates = this.inferenceJobs
+      .filter(job => (job.status === "pending" || job.status === "retry_wait")
+        && job.nextAttemptAt <= input.now
+        && job.deadlineAt > input.now)
+      .sort((left, right) => compareDateAndId(left.nextAttemptAt, left.id, right.nextAttemptAt, right.id));
+    const jobs: WorkflowInferenceJobRecord[] = [];
+    for (const job of candidates) {
+      if (jobs.length >= Math.max(0, input.limit)) break;
+      const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
+      if (!run || run.status !== "waiting") continue;
+      if (this.resolveWorkflowBoundary) {
+        const boundary = await this.resolveWorkflowBoundary({ uid: job.uid, workflowId: run.workflowId });
+        if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) !== "execute") continue;
+      }
+      jobs.push(job);
+    }
+    for (const job of jobs) {
+      job.attempt += 1;
+      job.leaseExpiresAt = clone(input.leaseExpiresAt);
+      job.leaseOwner = input.leaseOwner;
+      job.status = "running";
+      job.updatedAt = clone(input.now);
+    }
+    return clone(jobs);
+  }
+
+  async renewInferenceLease(input: Parameters<WorkflowRuntimeRepository["renewInferenceLease"]>[0]) {
+    const job = this.inferenceJobs.find(item => item.id === input.id
+      && item.status === "running" && item.leaseOwner === input.leaseOwner);
+    if (!job) return false;
+    job.leaseExpiresAt = clone(input.leaseExpiresAt);
+    job.updatedAt = this.now();
+    return true;
+  }
+
+  async completeInference(input: Parameters<WorkflowRuntimeRepository["completeInference"]>[0]) {
+    return this.finishInference(input.id, input.leaseOwner, input.completedAt, {
+      result: input.result,
+      status: "succeeded",
+    });
+  }
+
+  async retryInference(input: Parameters<WorkflowRuntimeRepository["retryInference"]>[0]) {
+    const job = this.inferenceJobs.find(item => item.id === input.id
+      && item.status === "running" && item.leaseOwner === input.leaseOwner);
+    if (!job || input.nextAttemptAt >= job.deadlineAt) return false;
+    job.errorCode = input.errorCode;
+    job.errorMessage = input.errorMessage;
+    job.failureKind = input.failureKind;
+    job.leaseExpiresAt = null;
+    job.leaseOwner = null;
+    job.nextAttemptAt = clone(input.nextAttemptAt);
+    job.status = "retry_wait";
+    job.updatedAt = this.now();
+    return true;
+  }
+
+  async failInference(input: Parameters<WorkflowRuntimeRepository["failInference"]>[0]) {
+    return this.finishInference(input.id, input.leaseOwner, input.failedAt, {
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+      failureKind: input.failureKind,
+      status: "failed",
+    });
+  }
+
+  async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
+    let expired = 0;
+    let recovered = 0;
+    for (const job of this.inferenceJobs
+      .filter(item => item.status === "pending" || item.status === "retry_wait" || item.status === "running")
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit))) {
+      const leaseExpired = job.status === "running"
+        && job.leaseExpiresAt !== null
+        && job.leaseExpiresAt <= input.now;
+      const attemptsExhausted = job.attempt >= input.maxAttempts
+        && (job.status !== "running" || leaseExpired);
+      if (job.deadlineAt <= input.now || attemptsExhausted) {
+        const finished = await this.finishInference(job.id, job.leaseOwner, input.now, {
+          errorCode: job.deadlineAt <= input.now
+            ? "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED"
+            : "WORKFLOW_INFERENCE_ATTEMPTS_EXHAUSTED",
+          errorMessage: "推理任务未能完成",
+          failureKind: "unknown",
+          status: "failed",
+        }, true);
+        if (finished) expired += 1;
+      } else if (leaseExpired) {
+        job.leaseExpiresAt = null;
+        job.leaseOwner = null;
+        job.nextAttemptAt = clone(input.now);
+        job.status = "pending";
+        job.updatedAt = clone(input.now);
+        recovered += 1;
+      }
+    }
+    return { expired, recovered };
   }
 
   async scheduleCapabilityRetry(
@@ -995,6 +1173,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       .filter(item => technicalRunIds.has(item.runId))
       .map(item => item.id));
     this.outbox = this.outbox.filter(item => !taskIds.has(item.payload.taskId));
+    for (let index = this.inferenceJobs.length - 1; index >= 0; index -= 1) {
+      if (technicalRunIds.has(this.inferenceJobs[index]!.runId)) this.inferenceJobs.splice(index, 1);
+    }
     for (let index = this.eventSubscriptionEvents.length - 1; index >= 0; index -= 1) {
       if (subscriptionIds.has(this.eventSubscriptionEvents[index]!.subscriptionId)) {
         this.eventSubscriptionEvents.splice(index, 1);
@@ -1097,6 +1278,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const shardIds = input.shardIds ? new Set(input.shardIds) : null;
     const candidates = this.tasks
       .filter(task => task.status === "pending"
+        && task.taskType !== "inference"
         && task.dueAt <= input.now
         && (!shardIds || shardIds.has(task.shardId)))
       .sort((first, second) => compareDateAndId(
@@ -1120,6 +1302,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       if (decision === "cancel") {
         task.status = "cancelled";
         this.cancelEventSubscriptions(new Set([task.runId]));
+        this.cancelInferenceJobs(new Set([task.runId]));
         result.cancelled += 1;
         continue;
       }
@@ -1220,6 +1403,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return clone({
       eventSubscriptionEvents: this.eventSubscriptionEvents,
       eventSubscriptions: this.eventSubscriptions,
+      inferenceJobs: this.inferenceJobs,
       inbox: this.inbox,
       nodeExecutions: this.nodeExecutions,
       nodeMetricEvents: this.nodeMetricEvents,
@@ -1245,12 +1429,72 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
   }
 
+  private async finishInference(
+    id: string,
+    leaseOwner: string | null,
+    completedAt: Date,
+    terminal: {
+      errorCode?: string;
+      errorMessage?: string;
+      failureKind?: "retryable" | "terminal" | "unknown";
+      result?: import("@chatai/contracts").WorkflowInferenceResult;
+      status: "failed" | "succeeded";
+    },
+    allowUnleased = false,
+  ) {
+    const job = this.inferenceJobs.find(item => item.id === id
+      && (allowUnleased
+        ? item.status === "pending" || item.status === "retry_wait" || item.status === "running"
+        : item.status === "running" && item.leaseOwner === leaseOwner));
+    if (!job) return false;
+    job.errorCode = terminal.errorCode ?? null;
+    job.errorMessage = terminal.errorMessage ?? null;
+    job.failureKind = terminal.failureKind ?? null;
+    job.leaseExpiresAt = null;
+    job.leaseOwner = null;
+    job.result = terminal.result ? clone(terminal.result) : null;
+    job.status = terminal.status;
+    job.updatedAt = clone(completedAt);
+    const task = this.tasks.find(item => item.uid === job.uid && item.id === job.taskId);
+    const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
+    if (!task || !run || task.status !== "pending" || task.taskType !== "inference"
+      || run.status !== "waiting") return true;
+    task.dueAt = clone(completedAt);
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(completedAt);
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: job.uid, workflowId: run.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    if (boundary && getWorkflowExecutionBoundaryDecision(boundary) === "execute") {
+      task.taskType = "execute";
+      task.status = transitionTask(transitionTask(task.status, "leased"), "dispatched");
+      run.status = transitionRun(run.status, "running");
+      this.outbox.push(createOutbox(this.createId(), task, completedAt));
+    } else {
+      task.taskType = "execute";
+    }
+    this.touchRun(run);
+    return true;
+  }
+
   private cancelEventSubscriptions(runIds: Set<string>) {
     for (const subscription of this.eventSubscriptions) {
       if (!runIds.has(subscription.runId)
         || (subscription.status !== "waiting" && subscription.status !== "triggered")) continue;
       subscription.status = "cancelled";
       subscription.updatedAt = this.now();
+    }
+  }
+
+  private cancelInferenceJobs(runIds: Set<string>) {
+    for (const job of this.inferenceJobs) {
+      if (!runIds.has(job.runId)
+        || (job.status !== "pending" && job.status !== "running" && job.status !== "retry_wait")) continue;
+      job.status = "cancelled";
+      job.leaseOwner = null;
+      job.leaseExpiresAt = null;
+      job.updatedAt = this.now();
     }
   }
 

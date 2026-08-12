@@ -2,6 +2,8 @@ import type {
   WorkflowEntryPolicy,
   WorkflowEntryEventType,
   WorkflowExecutionSpec,
+  WorkflowInferenceRequest,
+  WorkflowInferenceResult,
   WorkflowJsonObject,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
@@ -182,6 +184,99 @@ export type WorkflowHistoryCleanupResult = {
   tasksDeleted: number;
 };
 
+export type WorkflowInferenceJobStatus =
+  | "pending"
+  | "running"
+  | "retry_wait"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type WorkflowInferenceJobRecord = {
+  attempt: number;
+  contractVersion: number;
+  createdAt: Date;
+  deadlineAt: Date;
+  errorCode: string | null;
+  errorMessage: string | null;
+  executionKey: string;
+  failureKind: WorkflowCapabilityFailureKind | null;
+  id: string;
+  leaseExpiresAt: Date | null;
+  leaseOwner: string | null;
+  nextAttemptAt: Date;
+  nodeId: string;
+  nodeKind: "ai-intent" | "llm";
+  payload: WorkflowInferenceRequest;
+  result: WorkflowInferenceResult | null;
+  runId: string;
+  sequence: number;
+  status: WorkflowInferenceJobStatus;
+  taskId: string;
+  uid: number;
+  updatedAt: Date;
+};
+
+export type WorkflowBeginInferenceInput = {
+  contractVersion: number;
+  deadlineAt: Date;
+  executionKey: string;
+  expectedRunLockVersion: number;
+  expectedTaskVersion: number;
+  inbox: WorkflowCommitNodeResultInput["inbox"];
+  now: Date;
+  payload: WorkflowInferenceRequest;
+  runId: string;
+  taskId: string;
+  uid: number;
+};
+
+export type WorkflowInferenceRepository = {
+  beginInference(input: WorkflowBeginInferenceInput): Promise<
+    | { created: boolean; job: WorkflowInferenceJobRecord; kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord }
+    | WorkflowRuntimeFailure
+  >;
+  claimInferenceBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<WorkflowInferenceJobRecord[]>;
+  completeInference(input: {
+    completedAt: Date;
+    id: string;
+    leaseOwner: string;
+    result: WorkflowInferenceResult;
+  }): Promise<boolean>;
+  failInference(input: {
+    errorCode: string;
+    errorMessage: string;
+    failedAt: Date;
+    failureKind: WorkflowCapabilityFailureKind;
+    id: string;
+    leaseOwner: string;
+  }): Promise<boolean>;
+  findInferenceByExecutionKey(uid: number, executionKey: string): Promise<WorkflowInferenceJobRecord | null>;
+  recoverInferenceJobs(input: {
+    limit: number;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<{ expired: number; recovered: number }>;
+  renewInferenceLease(input: {
+    id: string;
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+  }): Promise<boolean>;
+  retryInference(input: {
+    errorCode: string;
+    errorMessage: string;
+    failureKind: WorkflowCapabilityFailureKind;
+    id: string;
+    leaseOwner: string;
+    nextAttemptAt: Date;
+  }): Promise<boolean>;
+};
+
 export type WorkflowNodeExecutionStatus = "completed" | "failed" | "retrying" | "running";
 
 export type WorkflowNodeExecutionRecord = {
@@ -345,6 +440,7 @@ type WorkflowRuntimeFailure =
 
 export type WorkflowRuntimeRepository = WorkflowInboxRepository
   & WorkflowEventSubscriptionReader
+  & WorkflowInferenceRepository
   & WorkflowOutboxRepository
   & WorkflowSchedulerRepository & {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;

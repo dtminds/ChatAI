@@ -17,6 +17,7 @@ const OUTBOX_READY_AT = new Date("2099-01-01T00:00:00.000Z");
 const OUTBOX_RETRY_AT = new Date("2099-01-01T00:05:00.000Z");
 const EVENT_WAIT_EXPIRES_AT = new Date("2099-01-02T00:00:00.000Z");
 const EVENT_COLLECTION_UNTIL = new Date("2099-01-01T00:00:10.000Z");
+const INFERENCE_DEADLINE = new Date("2099-01-01T00:10:00.000Z");
 
 export function runWorkflowRuntimeRepositoryContract(
   createHarness: CreateRepositoryContractHarness,
@@ -40,6 +41,141 @@ export function runWorkflowRuntimeRepositoryContract(
 
     expect(recorded.filter(Boolean)).toHaveLength(1);
     await expect(harness.repository.hasProcessedInboxMessage(input)).resolves.toBe(true);
+  });
+
+  it("deduplicates Inference Job creation and wakes its original Task exactly once", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      initialNodeId: "llm-1",
+      initialNodeKind: "llm",
+    })));
+    const claimed = await harness.repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "task-worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("Expected Inference Task claim to succeed");
+    const input = {
+      contractVersion: 1,
+      deadlineAt: INFERENCE_DEADLINE,
+      executionKey: `9:${created.run.id}:llm-1:1`,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+        messageId: `inference:${created.task.id}`,
+      },
+      now: OUTBOX_READY_AT,
+      payload: {
+        kind: "message-list" as const,
+        messageList: [{ content: "Summarize", role: "system" as const }],
+        modelId: "model-1",
+        responseFormat: { type: "text" as const },
+      },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    };
+    const waiting = await harness.repository.beginInference(input);
+    expect(waiting).toMatchObject({ created: true, kind: "success", task: { status: "pending", taskType: "inference" } });
+    await expect(harness.repository.beginInference(input)).resolves.toEqual({ kind: "already-processed" });
+    const jobs = await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    });
+    expect(jobs).toHaveLength(1);
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:30.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "summary", type: "text" },
+    })).resolves.toBe(true);
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:31.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "duplicate", type: "text" },
+    })).resolves.toBe(false);
+    await expect(harness.repository.findTask(9, created.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskType: "execute",
+      taskVersion: 4,
+    });
+    const outbox = await harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    });
+    expect(outbox.filter(item => item.taskVersion === 4)).toHaveLength(1);
+  });
+
+  it("recovers an expired Inference lease without dispatching its waiting Task", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 10,
+      maxAttempts: 5,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toEqual({ expired: 0, recovered: 1 });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "inference",
+    });
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00.000Z"),
+      leaseOwner: "inference-worker-2",
+      limit: 1,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toHaveLength(1);
+  });
+
+  it("does not fail a final Inference attempt before its lease expires", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 10,
+      maxAttempts: 1,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+    await expect(harness.repository.findInferenceByExecutionKey(9, waiting.job.executionKey))
+      .resolves.toMatchObject({ status: "running" });
+  });
+
+  it("does not call inference while paused and resumes the same Job after activation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.setWorkflowRuntimeStatus("paused");
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    })).resolves.toEqual([]);
+
+    await harness.setWorkflowRuntimeStatus("active");
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    })).resolves.toEqual([
+      expect.objectContaining({ id: waiting.job.id, status: "running" }),
+    ]);
   });
 
   it("deduplicates concurrent entry creation with one initial task and outbox event", async () => {
@@ -586,6 +722,45 @@ async function createEventWait(
   if (waiting.kind !== "success") {
     throw new Error(`Expected Wait Event subscription to succeed, received ${waiting.kind}`);
   }
+  return waiting;
+}
+
+async function createInferenceWait(repository: WorkflowRuntimeRepository) {
+  const created = requireCreatedRun(await repository.createRunWithInitialTask(createRunInput({
+    initialNodeId: "llm-1",
+    initialNodeKind: "llm",
+  })));
+  const claimed = await repository.claimTask({
+    expectedTaskVersion: created.task.taskVersion,
+    leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+    leaseOwner: "task-worker-1",
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (claimed.kind !== "success") throw new Error("Expected Inference Task claim to succeed");
+  const waiting = await repository.beginInference({
+    contractVersion: 1,
+    deadlineAt: INFERENCE_DEADLINE,
+    executionKey: `9:${created.run.id}:llm-1:1`,
+    expectedRunLockVersion: created.run.lockVersion,
+    expectedTaskVersion: claimed.task.taskVersion,
+    inbox: {
+      consumer: "workflow-task",
+      expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+      messageId: `inference:${created.task.id}`,
+    },
+    now: OUTBOX_READY_AT,
+    payload: {
+      kind: "message-list",
+      messageList: [{ content: "Summarize", role: "system" }],
+      modelId: "model-1",
+      responseFormat: { type: "text" },
+    },
+    runId: created.run.id,
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (waiting.kind !== "success") throw new Error("Expected Inference wait to succeed");
   return waiting;
 }
 

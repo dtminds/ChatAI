@@ -1,0 +1,82 @@
+import { Type, type Static } from "@sinclair/typebox";
+
+export const WORKFLOW_INTENT_TEMPLATE_KEY = "workflow.intent.classify.v1";
+
+export const WorkflowInferenceMessageListRequestSchema = Type.Object({
+  kind: Type.Literal("message-list"),
+  messageList: Type.Array(Type.Object({
+    content: Type.String({ maxLength: 20_000 }),
+    role: Type.Union([Type.Literal("system"), Type.Literal("user")]),
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 2 }),
+  modelId: Type.String({ minLength: 1, maxLength: 128 }),
+  responseFormat: Type.Union([
+    Type.Object({ type: Type.Literal("text") }, { additionalProperties: false }),
+    Type.Object({ type: Type.Literal("markdown") }, { additionalProperties: false }),
+    Type.Object({
+      fields: Type.Array(Type.Object({
+        description: Type.String({ maxLength: 200 }),
+        name: Type.String({ minLength: 1, maxLength: 15 }),
+        type: Type.Union([
+          Type.Literal("boolean"),
+          Type.Literal("number"),
+          Type.Literal("string"),
+        ]),
+      }, { additionalProperties: false }), { minItems: 1, maxItems: 10 }),
+      type: Type.Literal("json"),
+    }, { additionalProperties: false }),
+  ]),
+}, { additionalProperties: false });
+
+export const WorkflowInferenceTemplateRequestSchema = Type.Object({
+  kind: Type.Literal("template"),
+  templateKey: Type.String({ minLength: 1, maxLength: 128 }),
+  variables: Type.Record(
+    Type.String({ minLength: 1, maxLength: 64 }),
+    Type.String({ maxLength: 20_000 }),
+  ),
+}, { additionalProperties: false });
+
+export const WorkflowInferenceRequestSchema = Type.Union([
+  WorkflowInferenceMessageListRequestSchema,
+  WorkflowInferenceTemplateRequestSchema,
+]);
+
+export const WorkflowInferenceMessageListResultSchema = Type.Union([
+  Type.Object({
+    content: Type.String(),
+    type: Type.Literal("text"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    type: Type.Literal("json"),
+    value: Type.Record(Type.String(), Type.Union([
+      Type.Boolean(),
+      Type.Number(),
+      Type.String(),
+    ])),
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowInferenceTemplateResultSchema = Type.Object({
+  matchedCode: Type.String({ pattern: "^(?:I(?:[1-9]|10)|fallback)$" }),
+  reason: Type.String(),
+}, { additionalProperties: false });
+
+export const WorkflowInferenceResultSchema = Type.Union([
+  WorkflowInferenceMessageListResultSchema,
+  WorkflowInferenceTemplateResultSchema,
+]);
+
+export type WorkflowInferenceMessageListRequest = Static<
+  typeof WorkflowInferenceMessageListRequestSchema
+>;
+export type WorkflowInferenceTemplateRequest = Static<
+  typeof WorkflowInferenceTemplateRequestSchema
+>;
+export type WorkflowInferenceRequest = Static<typeof WorkflowInferenceRequestSchema>;
+export type WorkflowInferenceMessageListResult = Static<
+  typeof WorkflowInferenceMessageListResultSchema
+>;
+export type WorkflowInferenceTemplateResult = Static<
+  typeof WorkflowInferenceTemplateResultSchema
+>;
+export type WorkflowInferenceResult = Static<typeof WorkflowInferenceResultSchema>;

@@ -309,45 +309,39 @@ export const workflowNodeContractRegistry = {
   "ai-intent": draftReadyContract(
     "inference",
     1,
-    ["advancedEnabled", "inputSelector", "intents", "prompt"],
     WorkflowAiIntentDraftConfigSchema,
     WorkflowAiIntentExecutionConfigSchema,
   ),
   branch: runtimeReadyContract(
     "core",
     1,
-    ["branchPaths"],
     WorkflowBranchConfigSchema,
     WorkflowBranchConfigSchema,
   ),
   coupon: placeholderContract("action"),
   "customer-update": placeholderContract("action"),
-  end: runtimeReadyContract("core", 1, [], WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
+  end: runtimeReadyContract("core", 1, WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
   handoff: draftReadyContract(
     "action",
     1,
-    ["customerMessage", "operatorMessage"],
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
   ),
   llm: draftReadyContract(
     "inference",
     1,
-    ["inputs", "modelId", "modelLabel", "modelName", "output", "systemPrompt", "userPrompt"],
     WorkflowLlmDraftConfigSchema,
     WorkflowLlmExecutionConfigSchema,
   ),
   message: draftReadyContract(
     "action",
     2,
-    ["attachments", "content", "contentMode", "outputSelector"],
     WorkflowMessageDraftConfigSchema,
     WorkflowMessageExecutionConfigSchema,
   ),
   "message-query": draftReadyContract(
     "query",
     1,
-    ["limit", "take", "timeRange"],
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
   ),
@@ -355,7 +349,6 @@ export const workflowNodeContractRegistry = {
   start: runtimeReadyContract(
     "core",
     1,
-    ["entryPolicy", "seatIds", "triggers", "workUserIds"],
     WorkflowStartDraftConfigSchema,
     WorkflowStartConfigSchema,
   ),
@@ -364,14 +357,12 @@ export const workflowNodeContractRegistry = {
   wait: runtimeReadyContract(
     "core",
     1,
-    ["dayOffset", "duration", "mode", "time", "unit"],
     WorkflowWaitConfigSchema,
     WorkflowWaitConfigSchema,
   ),
   "wait-event": runtimeReadyContract(
     "core",
     1,
-    ["event", "timeout"],
     WorkflowWaitEventDraftConfigSchema,
     WorkflowWaitEventConfigSchema,
   ),
@@ -431,8 +422,8 @@ function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>
 ): WorkflowNodeContractDefinition<"placeholder", TExecutionClass> {
   return {
     currentDraftSchemaVersion: 1,
-    draftConfigKeys: [],
     draftConfigSchema: WorkflowEmptyNodeConfigSchema,
+    draftConfigKeys: getTopLevelSchemaPropertyKeys(WorkflowEmptyNodeConfigSchema),
     executionClass,
     executionConfigSchema: null,
     maturity: "placeholder",
@@ -442,14 +433,13 @@ function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>
 function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
   executionClass: TExecutionClass,
   currentDraftSchemaVersion: number,
-  draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
 ): WorkflowNodeContractDefinition<"draft-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
-    draftConfigKeys,
     draftConfigSchema,
+    draftConfigKeys: getTopLevelSchemaPropertyKeys(draftConfigSchema),
     executionClass,
     executionConfigSchema,
     maturity: "draft-ready",
@@ -459,16 +449,39 @@ function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
 function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
   executionClass: TExecutionClass,
   currentDraftSchemaVersion: number,
-  draftConfigKeys: readonly string[],
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
 ): WorkflowNodeContractDefinition<"runtime-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
-    draftConfigKeys,
     draftConfigSchema,
+    draftConfigKeys: getTopLevelSchemaPropertyKeys(draftConfigSchema),
     executionClass,
     executionConfigSchema,
     maturity: "runtime-ready",
   };
+}
+
+function getTopLevelSchemaPropertyKeys(schema: TSchema): readonly string[] {
+  const keys = new Set<string>();
+  collectTopLevelSchemaPropertyKeys(schema, keys);
+  return [...keys].sort();
+}
+
+function collectTopLevelSchemaPropertyKeys(schema: TSchema, keys: Set<string>) {
+  const schemaRecord = schema as TSchema & Record<string, unknown>;
+  const properties = schemaRecord.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    Object.keys(properties).forEach(key => keys.add(key));
+  }
+
+  for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+    const branches = schemaRecord[keyword];
+    if (!Array.isArray(branches)) continue;
+    branches.forEach((branch) => {
+      if (branch && typeof branch === "object" && !Array.isArray(branch)) {
+        collectTopLevelSchemaPropertyKeys(branch as TSchema, keys);
+      }
+    });
+  }
 }

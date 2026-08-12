@@ -146,6 +146,31 @@ describe("workflow node contracts", () => {
     }
   });
 
+  it("derives optional and union draft fields from their schemas", () => {
+    expect(getWorkflowNodeContract("llm").draftConfigKeys).toEqual([
+      "inputs",
+      "modelId",
+      "modelLabel",
+      "modelName",
+      "output",
+      "systemPrompt",
+      "userPrompt",
+    ]);
+    expect(getWorkflowNodeContract("start").draftConfigKeys).toEqual([
+      "entryPolicy",
+      "seatIds",
+      "triggers",
+      "workUserIds",
+    ]);
+    expect(getWorkflowNodeContract("wait").draftConfigKeys).toEqual([
+      "dayOffset",
+      "duration",
+      "mode",
+      "time",
+      "unit",
+    ]);
+  });
+
   it("keeps placeholder execution absent and rejects undeclared draft fields", () => {
     expect(getWorkflowNodeContract("tag")).toMatchObject({
       executionConfigSchema: null,

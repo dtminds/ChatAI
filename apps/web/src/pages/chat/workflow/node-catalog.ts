@@ -1,6 +1,7 @@
 import type {
   InsertableWorkflowNodeKind,
   WorkflowNode,
+  WorkflowNodeData,
   WorkflowNodeKind,
 } from "./types";
 import {
@@ -169,6 +170,32 @@ export function getWorkflowNodeCatalogEntry<TKind extends WorkflowNodeKind>(
   kind: TKind,
 ): WorkflowNodeDefinition<TKind> {
   return workflowNodeCatalog[kind] as unknown as WorkflowNodeDefinition<TKind>;
+}
+
+export function canDeleteNodeKind(kind: WorkflowNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).canDelete;
+}
+
+export function canDuplicateNodeKind(kind: WorkflowNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).canDuplicate;
+}
+
+export function canInsertAfterNodeKind(kind: WorkflowNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).canInsertAfter;
+}
+
+export function canRenameNodeKind(kind: WorkflowNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).canRename;
+}
+
+export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWorkflowNodeKind {
+  return getWorkflowNodeCatalogEntry(kind).insertable;
+}
+
+export function createDefaultNodeData<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+): WorkflowNodeData<TKind> {
+  return getWorkflowNodeCatalogEntry(kind).createDefaultData();
 }
 
 export function getWorkflowNodeRole(kind: WorkflowNodeKind): WorkflowNodeRole | undefined {

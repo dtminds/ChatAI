@@ -1,7 +1,7 @@
-import { getNodeDefinitionCore } from "../node-definition-core";
 import {
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
+  getWorkflowNodeCatalogEntry,
 } from "../node-catalog";
 import { validateNodeConfigSections } from "../node-config-validation";
 import { getWorkflowNodeConfigSchema } from "../node-config-schema";
@@ -99,7 +99,7 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {
-  const definition = getNodeDefinitionCore(node.data.kind);
+  const definition = getWorkflowNodeCatalogEntry(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
   const availableVariables = node.data.kind === "branch"
     ? getAvailableBranchVariablesForNode(node.id, nodes, edges)

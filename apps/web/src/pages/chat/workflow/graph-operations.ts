@@ -22,8 +22,8 @@ import {
   canInsertAfterNodeKind,
   canInsertNodeKind,
   canRenameNodeKind,
-  getNodeDefinitionCore,
-} from "./node-definition-core";
+  getWorkflowNodeCatalogEntry,
+} from "./node-catalog";
 import {
   getNodeSourceHandleDefinitions,
   getWorkflowHandleKey,
@@ -763,7 +763,7 @@ function createUpdatedNodeData<TKind extends WorkflowNodeKind>(
     ...currentData,
     ...patch,
   } as WorkflowNodeData<TKind>;
-  const definition = getNodeDefinitionCore(currentData.kind as TKind);
+  const definition = getWorkflowNodeCatalogEntry(currentData.kind as TKind);
 
   return definition.sanitizeData?.(nextData) ?? nextData;
 }

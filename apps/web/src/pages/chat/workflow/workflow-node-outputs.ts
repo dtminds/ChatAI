@@ -1,4 +1,4 @@
-import { getNodeDefinitionCore } from "./node-definition-core";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import type {
   WorkflowNode,
   WorkflowNodeOutputDefinition,
@@ -12,7 +12,7 @@ const outputKeyPattern = /^[A-Za-z][A-Za-z0-9_-]*$/;
 export function getWorkflowNodeOutputDefinitions(
   node: WorkflowNode,
 ): WorkflowNodeOutputDefinition[] {
-  const definition = getNodeDefinitionCore(node.data.kind);
+  const definition = getWorkflowNodeCatalogEntry(node.data.kind);
   const outputs = definition.getOutputVariables?.(node) ?? [];
   const issues = validateWorkflowNodeOutputDefinitions(node, outputs);
 
@@ -84,7 +84,7 @@ export function validateWorkflowNodeOutputDefinitions(
   const issues: string[] = [];
   const keys = new Set<string>();
   const sourceHandleIds = new Set(
-    getNodeDefinitionCore(node.data.kind)
+    getWorkflowNodeCatalogEntry(node.data.kind)
       .getSourceHandles(node.data)
       .map((handle) => handle.id),
   );

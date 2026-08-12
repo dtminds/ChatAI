@@ -1,5 +1,9 @@
 import { cn } from "@/lib/utils";
 import { AgentModelBadge } from "@/pages/chat/ai-hosting/agent-model-badge";
+import {
+  NodeSummaryText,
+} from "./node-summary-text";
+import type { WorkflowNodeSummarySegment } from "../workflow-node-summary";
 
 export type WorkflowNodeFieldTagTone = "default" | "primary" | "warning";
 
@@ -17,6 +21,11 @@ export type WorkflowNodeFieldValue =
       kind: "model";
       label: string;
       model: string;
+    }
+  | {
+      items: WorkflowNodeSummarySegment[];
+      kind: "segments";
+      maxLines?: number;
     }
   | {
       kind: "tag";
@@ -87,6 +96,10 @@ function NodeFieldValue({ value }: { value: WorkflowNodeFieldValue }) {
         model={value.model}
       />
     );
+  }
+
+  if (value.kind === "segments") {
+    return <NodeSummaryText maxLines={value.maxLines} segments={value.items} />;
   }
 
   if (value.kind === "tags") {

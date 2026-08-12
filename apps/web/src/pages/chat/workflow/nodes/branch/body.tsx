@@ -1,10 +1,10 @@
-import { cn } from "@/lib/utils";
 import {
   getBranchConditionSummary,
+  getBranchConditionSummarySegments,
   getWorkflowBranchPaths,
-  isWorkflowBranchConditionComplete,
 } from "../../branch-paths";
 import type { NodeBodyProps } from "../types";
+import { NodeSummaryText } from "../node-summary-text";
 
 export function BranchNodeBody({ data }: NodeBodyProps<"branch">) {
   const variables = data.availableVariables ?? [];
@@ -13,8 +13,7 @@ export function BranchNodeBody({ data }: NodeBodyProps<"branch">) {
     <span aria-label="条件分支出口" className="mx-4 mb-3 grid gap-1.5">
       {getWorkflowBranchPaths(data).map((path) => {
         const summary = getBranchConditionSummary(path, variables);
-        const incomplete = !path.isDefault && path.conditions.some((condition) =>
-          !isWorkflowBranchConditionComplete(condition, variables));
+        const segments = getBranchConditionSummarySegments(path, variables);
 
         return (
           <span
@@ -24,12 +23,7 @@ export function BranchNodeBody({ data }: NodeBodyProps<"branch">) {
             title={`${path.label}：${summary}`}
           >
             <span className="shrink-0 font-medium text-foreground">{path.label}：</span>
-            <span className={cn(
-              "min-w-0 flex-1 truncate",
-              incomplete ? "text-muted-foreground" : "text-foreground",
-            )}>
-              {summary}
-            </span>
+            <NodeSummaryText className="flex-1" segments={segments} />
           </span>
         );
       })}

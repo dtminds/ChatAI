@@ -18,6 +18,11 @@ import {
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
 import { workflowContextVariables } from "./workflow-variable-registry";
+import {
+  createWorkflowReferenceSummarySegments,
+  getWorkflowNodeSummaryText,
+  type WorkflowNodeSummarySegment,
+} from "./workflow-node-summary";
 
 export const WORKFLOW_BRANCH_PATH_MIN = 1;
 export const WORKFLOW_BRANCH_PATH_MAX = 10;
@@ -323,16 +328,60 @@ export function getBranchConditionSummary(
   path: WorkflowBranchPath,
   variables: WorkflowVariableDefinition[],
 ) {
-  if (path.isDefault) return "不满足以上条件";
-  const summaries = path.conditions.map((condition) => {
+  return getWorkflowNodeSummaryText(getBranchConditionSummarySegments(path, variables));
+}
+
+export function getBranchConditionSummarySegments(
+  path: WorkflowBranchPath,
+  variables: WorkflowVariableDefinition[],
+): WorkflowNodeSummarySegment[] {
+  if (path.isDefault) {
+    return [{ kind: "text", text: "不满足以上条件", tone: "muted" }];
+  }
+
+  return path.conditions.flatMap((condition, index) => {
     const variable = resolveBranchVariable(variables, condition.selector);
-    if (!variable) return "未配置条件";
-    const operator = getBranchOperatorOptions(variable.type)
-      .find((item) => item.value === condition.operator)?.label ?? "未配置判断";
+    const connector = index > 0
+      ? [{
+          kind: "operator" as const,
+          text: path.logic === "all" ? " 且 " : " 或 ",
+        }]
+      : [];
+    if (!variable) {
+      return [
+        ...connector,
+        { kind: "value" as const, text: "未配置条件", tone: "warning" as const },
+      ];
+    }
+
+    const operatorOption = getBranchOperatorOptions(variable.type)
+      .find((item) => item.value === condition.operator);
+    const operator = operatorOption?.label ?? "未配置判断";
     const value = getBranchConditionValueLabel(condition.value, condition.operator);
-    return [getWorkflowVariableDisplayLabel(variable), operator, value].filter(Boolean).join(" ");
+    const variableSegments = variable.sourceNodeTitle
+      ? createWorkflowReferenceSummarySegments({
+          source: variable.sourceNodeTitle,
+          variable: variable.label,
+        })
+      : [{ kind: "variable" as const, text: getWorkflowVariableDisplayLabel(variable) }];
+
+    return [
+      ...connector,
+      ...variableSegments,
+      {
+        kind: "operator" as const,
+        text: ` ${operator}`,
+        tone: operatorOption ? "default" as const : "warning" as const,
+      },
+      ...(value
+        ? [{
+            kind: "value" as const,
+            text: ` ${value}`,
+            tone: value === "未配置值" ? "warning" as const : "default" as const,
+          }]
+        : []),
+    ];
   });
-  return summaries.join(path.logic === "all" ? " 且 " : " 或 ");
 }
 
 export function isWorkflowBranchConditionComplete(

@@ -562,6 +562,45 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_STOPPED", statusCode: 409 });
   });
 
+  it("normalizes legacy entry limits while saving stopped workflow layout", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository);
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    await service.enable(operator, created.id);
+    const stopped = await service.stop(operator, created.id);
+    const legacyDraft = withStartConfig(stopped.draft, {
+      entryPolicy: { maxEntries: 1_000, mode: "lifetime_limit" },
+    });
+    const seeded = await repository.saveDraft({
+      draft: legacyDraft,
+      expectedDraftVersion: stopped.draftVersion,
+      layoutOnly: true,
+      opSubUserId: operator.subUserId,
+      uid: operator.uid,
+      workflowId: created.id,
+    });
+    if (seeded.kind !== "success") throw new Error("legacy draft seed failed");
+
+    const movedDraft = {
+      ...seeded.value.draft,
+      nodes: seeded.value.draft.nodes.map(node => node.id === "start"
+        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 48 } }
+        : node),
+    };
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: movedDraft,
+      expectedDraftVersion: seeded.value.draftVersion,
+    });
+
+    expect(getStartEntryPolicy(saved.draft)).toEqual({
+      maxEntries: 10,
+      mode: "lifetime_limit",
+    });
+    expect(saved.draft.nodes.find(node => node.id === "start")?.position)
+      .toEqual(movedDraft.nodes.find(node => node.id === "start")?.position);
+  });
+
   it("logically deletes definitions and hides them from reads", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });

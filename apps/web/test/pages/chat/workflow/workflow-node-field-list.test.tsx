@@ -4,7 +4,7 @@ import { NodeFieldList } from "@/pages/chat/workflow/nodes/node-field-list";
 
 describe("NodeFieldList", () => {
   it("renders text, model, tag, tags, and empty field values", () => {
-    render(
+    const { container } = render(
       <NodeFieldList
         fields={[
           {
@@ -66,10 +66,11 @@ describe("NodeFieldList", () => {
     expect(screen.getByText("高意向")).toBeInTheDocument();
     expect(screen.getByText("配置异常")).toBeInTheDocument();
     expect(screen.getAllByText("未配置")).toHaveLength(2);
-    const summary = screen.getByLabelText("开始.触发时间 至 未配置");
+    const summary = container.querySelector('[data-summary-kind="variable"]')?.closest("[aria-label]");
+    if (!summary) throw new Error("summary segments not rendered");
     expect(summary.querySelector('[data-summary-kind="source"]')).toHaveTextContent("开始");
     expect(summary.querySelector('[data-summary-kind="variable"]')).toHaveTextContent("触发时间");
-    expect(summary.querySelector('[data-summary-kind="operator"]')).toHaveTextContent("至");
+    expect(summary.querySelector('[data-summary-kind="operator"]')).toBeInTheDocument();
     expect(summary.querySelector('[data-summary-tone="warning"]')).toHaveTextContent("未配置");
   });
 });

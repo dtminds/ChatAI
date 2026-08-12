@@ -295,14 +295,21 @@ describe("workflow contracts", () => {
     }))).toBe(false);
   });
 
-  it("normalizes legacy rolling entry windows to the current maximum", () => {
+  it("normalizes legacy entry limits to the current maximum", () => {
     expect(normalizeWorkflowEntryPolicy({
-      maxEntries: 2,
+      maxEntries: 1_000,
+      mode: "lifetime_limit",
+    })).toEqual({
+      maxEntries: 10,
+      mode: "lifetime_limit",
+    });
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 1_000,
       mode: "rolling_window",
       windowSize: 365,
       windowUnit: "day",
     })).toEqual({
-      maxEntries: 2,
+      maxEntries: 10,
       mode: "rolling_window",
       windowSize: 90,
       windowUnit: "day",

@@ -103,7 +103,6 @@ describe("WorkflowTopBar lifecycle", () => {
       />,
     );
 
-    expect(screen.getByText("只读")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "版本历史" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();

@@ -74,7 +74,7 @@ export function NodeFieldList({ fields }: { fields: WorkflowNodeField[] }) {
 function NodeFieldValue({ value }: { value: WorkflowNodeFieldValue }) {
   if (value.kind === "empty") {
     return (
-      <span className="min-w-0 text-[var(--workflow-text-tertiary)]">
+      <span className="min-w-0 font-medium text-warning">
         {value.text ?? "未配置"}
       </span>
     );

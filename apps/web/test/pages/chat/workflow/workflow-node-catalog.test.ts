@@ -40,6 +40,7 @@ import {
 } from "@/pages/chat/workflow/node-config-schema";
 import {
   getDefaultSourceHandleId,
+  getAutoConnectSourceHandleDefinition,
   getNodeSourceHandleIndex,
   getNodeSourceHandleDefinitions,
   getNodeSourceHandleLabel,
@@ -580,6 +581,7 @@ describe("workflow node catalog", () => {
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("end"))).toEqual([]);
     expect(branchDefinitionHandles).toEqual(branchHandles);
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{
+      isDefault: true,
       outletKind: "default",
       top: 16,
     }]);
@@ -592,6 +594,12 @@ describe("workflow node catalog", () => {
       "如果",
       "否则",
     ]);
+    expect(getAutoConnectSourceHandleDefinition(createDefaultNodeData("branch"))?.id)
+      .toBe("branch-default");
+    expect(getAutoConnectSourceHandleDefinition(customBranchNode.data)?.id)
+      .toBe("branch-fallback");
+    expect(getAutoConnectSourceHandleDefinition(createDefaultNodeData("wait-event"))?.id)
+      .toBe("triggered");
     expect(getDefaultSourceHandleId("branch")).toBe("branch-high");
     expect(customBranchHandles.map((handle) => handle.id)).toEqual([
       "branch-vip",

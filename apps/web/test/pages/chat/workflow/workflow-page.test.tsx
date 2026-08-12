@@ -1190,6 +1190,23 @@ describe("Agent workflow page", () => {
     );
   });
 
+  it("lets users insert a multi-outlet node from the edge insertion menu", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
+    const picker = screen.getByRole("menu", { name: "选择要添加的节点" });
+    await user.click(
+      within(picker).getByRole("menuitem", {
+        name: "添加 条件分支节点",
+      }),
+    );
+
+    expect(within(canvas).getByRole("button", { name: "条件分支" })).toBeInTheDocument();
+  });
+
   it("closes edge insertion menus from canvas-level interactions", async () => {
     const user = userEvent.setup();
 

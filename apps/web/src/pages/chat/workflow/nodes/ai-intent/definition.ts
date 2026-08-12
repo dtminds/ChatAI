@@ -80,6 +80,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
       ...intentHandles,
       {
         id: AI_INTENT_FALLBACK_HANDLE_ID,
+        isDefault: true,
         label: "其他意图",
         outletKind: "outcome" as const,
         top: getAiIntentHandleTop(intentHandles.length),

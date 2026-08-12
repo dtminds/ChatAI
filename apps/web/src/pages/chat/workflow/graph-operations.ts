@@ -24,7 +24,9 @@ import {
   canRenameNodeKind,
   getWorkflowNodeCatalogEntry,
 } from "./node-catalog";
+import { getWorkflowNodeWidth } from "./layout";
 import {
+  getAutoConnectSourceHandleDefinition,
   getNodeSourceHandleDefinitions,
   getWorkflowHandleKey,
   isWorkflowHandleIdEqual,
@@ -74,6 +76,7 @@ const FLOATING_NODE_COLLISION_Y = 24;
 const FLOATING_NODE_OFFSET_X = 16;
 const FLOATING_NODE_OFFSET_Y = 32;
 const FLOATING_NODE_MAX_OFFSET_ATTEMPTS = 20;
+const INSERT_NODE_HORIZONTAL_GAP = 70;
 
 function finalizeWorkflowGraphOperation(
   operation: WorkflowGraphOperation,
@@ -180,16 +183,21 @@ export function insertNodeAfterOperation(
     ? getAfterNodesInSameBranch(nodes, edges, replacedEdge.target)
     : [];
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
-  const node = {
-    ...createNodeFromKind(kind, nodeId, nodes.length),
+  const node = createNodeFromKind(kind, nodeId, nodes.length);
+  const insertionLayout = nextNode
+    ? getNodeInsertionLayout(previousNode, nextNode, node)
+    : undefined;
+  const positionedNode = {
+    ...node,
     position: {
-      x: nextNode?.position.x ?? (previousNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
+      x: insertionLayout?.nodeX ?? previousNode.position.x + WORKFLOW_LAYOUT_X_GAP,
       y:
         nextNode?.position.y
         ?? getSourceHandleInsertY(previousNode.position.y, sourceHandle, previousNode),
     },
   };
   const baseEdges = edges.filter((edge) => edge.id !== replacedEdge?.id);
+  const autoConnectSourceHandle = getAutoConnectSourceHandleDefinition(positionedNode.data);
   const incomingConnection = {
     source: previousNodeId,
     sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle ?? null,
@@ -198,7 +206,7 @@ export function insertNodeAfterOperation(
   };
   const outgoingConnection = {
     source: nodeId,
-    sourceHandle: null,
+    sourceHandle: autoConnectSourceHandle?.id ?? null,
     target: replacedEdge?.target ?? "",
     targetHandle: replacedEdge?.targetHandle ?? null,
   };
@@ -206,7 +214,7 @@ export function insertNodeAfterOperation(
   if (!areWorkflowInsertConnectionsAllowed({
     ...draft,
     edges: baseEdges,
-    nodes: [...nodes, node],
+    nodes: [...nodes, positionedNode],
   }, incomingConnection, replacedEdge ? outgoingConnection : undefined)) {
     return undefined;
   }
@@ -219,7 +227,8 @@ export function insertNodeAfterOperation(
   ];
 
   if (replacedEdge) {
-    nextEdges.push(createEdge(nodeId, replacedEdge.target, undefined, {
+    nextEdges.push(createEdge(nodeId, replacedEdge.target, autoConnectSourceHandle?.label, {
+      sourceHandle: autoConnectSourceHandle?.id,
       targetHandle: replacedEdge.targetHandle,
     }));
   }
@@ -228,12 +237,15 @@ export function insertNodeAfterOperation(
     draft: {
       ...draft,
       edges: nextEdges,
-      nodes: [...shiftNodesRight(nodes, shiftedNodeIds), node],
+      nodes: [
+        ...shiftNodesRight(nodes, shiftedNodeIds, insertionLayout?.downstreamShift ?? 0),
+        positionedNode,
+      ],
     },
     event: replacedEdge ? "node:insert" : "node:add",
     meta: {
       nodeId,
-      nodeTitle: node.data.title,
+      nodeTitle: positionedNode.data.title,
     },
     result: {
       edgeId: replacedEdge?.id,
@@ -270,20 +282,27 @@ export function insertNodeBetweenOperation(
 
   const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
-  const node = {
-    ...createNodeFromKind(kind, nodeId, nodes.length),
+  const node = createNodeFromKind(kind, nodeId, nodes.length);
+  const insertionLayout = getNodeInsertionLayout(sourceNode, targetNode, node);
+  const positionedNode = {
+    ...node,
     position: {
-      x: targetNode?.position.x ?? (sourceNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
-      y: targetNode?.position.y ?? sourceNode?.position.y ?? 0,
+      x: insertionLayout.nodeX,
+      y: targetNode.position.y,
     },
   };
   const baseEdges = edges.filter((edge) => edge.id !== edgeId);
-  const { incomingConnection, outgoingConnection } = createInsertNodeBetweenConnections(replacedEdge, nodeId);
+  const autoConnectSourceHandle = getAutoConnectSourceHandleDefinition(positionedNode.data);
+  const { incomingConnection, outgoingConnection } = createInsertNodeBetweenConnections(
+    replacedEdge,
+    nodeId,
+    autoConnectSourceHandle?.id,
+  );
 
   if (!areWorkflowInsertConnectionsAllowed({
     ...draft,
     edges: baseEdges,
-    nodes: [...nodes, node],
+    nodes: [...nodes, positionedNode],
   }, incomingConnection, outgoingConnection)) {
     return undefined;
   }
@@ -296,17 +315,21 @@ export function insertNodeBetweenOperation(
         createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
           sourceHandle: replacedEdge?.sourceHandle,
         }),
-        createEdge(nodeId, targetNodeId, undefined, {
+        createEdge(nodeId, targetNodeId, autoConnectSourceHandle?.label, {
+          sourceHandle: autoConnectSourceHandle?.id,
           targetHandle: replacedEdge?.targetHandle,
         }),
       ],
-      nodes: [...shiftNodesRight(nodes, shiftedNodeIds), node],
+      nodes: [
+        ...shiftNodesRight(nodes, shiftedNodeIds, insertionLayout.downstreamShift),
+        positionedNode,
+      ],
     },
     event: "node:insert",
     meta: {
       edgeId,
       nodeId,
-      nodeTitle: node.data.title,
+      nodeTitle: positionedNode.data.title,
     },
     result: {
       edgeId,
@@ -315,9 +338,37 @@ export function insertNodeBetweenOperation(
   });
 }
 
+function getNodeInsertionLayout(
+  sourceNode: WorkflowNode,
+  targetNode: WorkflowNode,
+  insertedNode: WorkflowNode,
+) {
+  const sourceRight = sourceNode.position.x + getWorkflowNodeWidth(sourceNode);
+  const targetLeft = targetNode.position.x;
+  const insertedWidth = getWorkflowNodeWidth(insertedNode);
+  const availableWidth = targetLeft - sourceRight;
+  const requiredWidth = insertedWidth + INSERT_NODE_HORIZONTAL_GAP * 2;
+
+  if (availableWidth >= requiredWidth) {
+    return {
+      downstreamShift: 0,
+      nodeX: Math.round(sourceRight + (availableWidth - insertedWidth) / 2),
+    };
+  }
+
+  const nodeX = sourceRight + INSERT_NODE_HORIZONTAL_GAP;
+  const minimumTargetX = nodeX + insertedWidth + INSERT_NODE_HORIZONTAL_GAP;
+
+  return {
+    downstreamShift: Math.max(0, Math.ceil(minimumTargetX - targetLeft)),
+    nodeX,
+  };
+}
+
 export function createInsertNodeBetweenConnections(
   replacedEdge: Pick<WorkflowEdge, "source" | "sourceHandle" | "target" | "targetHandle">,
   nodeId: string,
+  outgoingSourceHandle?: string,
 ) {
   return {
     incomingConnection: {
@@ -328,7 +379,7 @@ export function createInsertNodeBetweenConnections(
     },
     outgoingConnection: {
       source: nodeId,
-      sourceHandle: null,
+      sourceHandle: outgoingSourceHandle ?? null,
       target: replacedEdge.target,
       targetHandle: replacedEdge.targetHandle ?? null,
     },

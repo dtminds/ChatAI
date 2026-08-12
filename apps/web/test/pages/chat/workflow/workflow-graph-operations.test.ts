@@ -114,6 +114,31 @@ describe("workflow graph operations", () => {
     expect(operation!.draft.edges.filter((edge) => edge.target === "end")).toHaveLength(1);
   });
 
+  it("uses the default outlet when inserting a multi-outlet node after a connected handle", () => {
+    const operation = insertNodeAfterOperation(
+      createDraft(),
+      "branch-intent",
+      "branch",
+      "branch-after",
+      "branch-high",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "branch-after",
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "否则" }),
+        source: "branch-after",
+        sourceHandle: "branch-default",
+        target: "message-welcome",
+      }),
+    ]));
+  });
+
   it("replaces default-handle edges when inserting after imported null handles", () => {
     const draft = createDraft();
     const operation = insertNodeAfterOperation({
@@ -183,6 +208,88 @@ describe("workflow graph operations", () => {
         }),
       ]),
     );
+  });
+
+  it("uses the default outlet when inserting a multi-outlet node between an edge", () => {
+    const operation = insertNodeBetweenOperation(
+      createDraft(),
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "branch",
+      "branch-between",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "branch-between",
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "否则" }),
+        source: "branch-between",
+        sourceHandle: "branch-default",
+        target: "message-welcome",
+      }),
+    ]));
+  });
+
+  it("uses the first outlet when an inserted multi-outlet node has no default", () => {
+    const operation = insertNodeBetweenOperation(
+      createDraft(),
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "wait-event",
+      "wait-event-between",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "事件到达（新消息）" }),
+        source: "wait-event-between",
+        sourceHandle: "triggered",
+        target: "message-welcome",
+      }),
+    ]));
+  });
+
+  it("uses existing horizontal space without shifting downstream nodes", () => {
+    const draft = createDraft();
+    const sourceNode = draft.nodes.find((node) => node.id === "branch-intent")!;
+    const targetX = sourceNode.position.x + WORKFLOW_LAYOUT_X_GAP * 3;
+    const endX = targetX + WORKFLOW_LAYOUT_X_GAP;
+    const spacedDraft = {
+      ...draft,
+      nodes: draft.nodes.map((node) => {
+        if (node.id === "message-welcome") {
+          return { ...node, position: { ...node.position, x: targetX } };
+        }
+        if (node.id === "end") {
+          return { ...node, position: { ...node.position, x: endX } };
+        }
+        return node;
+      }),
+    };
+
+    const operation = insertNodeBetweenOperation(
+      spacedDraft,
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "branch",
+      "branch-between",
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-between")?.position.x)
+      .toBe(sourceNode.position.x + WORKFLOW_LAYOUT_X_GAP * 1.5);
+    expect(operation?.draft.nodes.find((node) => node.id === "message-welcome")?.position.x)
+      .toBe(targetX);
+    expect(operation?.draft.nodes.find((node) => node.id === "end")?.position.x)
+      .toBe(endX);
   });
 
   it("keeps split-edge source handles on incoming edges and target handles on outgoing edges", () => {

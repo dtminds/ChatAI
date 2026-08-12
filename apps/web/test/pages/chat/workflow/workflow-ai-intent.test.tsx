@@ -112,6 +112,7 @@ describe("workflow AI intent", () => {
       }),
       expect.objectContaining({
         id: AI_INTENT_FALLBACK_HANDLE_ID,
+        isDefault: true,
         label: "其他意图",
         outletKind: "outcome",
         top: 180,

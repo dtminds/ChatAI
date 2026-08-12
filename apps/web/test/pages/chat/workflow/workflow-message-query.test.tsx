@@ -77,9 +77,17 @@ describe("workflow message query", () => {
     expect(messageQueryNodeUi.body.getFields(renderData)).toContainEqual(expect.objectContaining({
       id: "time-range",
       value: {
-        kind: "text",
+        items: [
+          { kind: "source", text: "等待" },
+          { kind: "text", text: ".", tone: "muted" },
+          { kind: "variable", text: "进入时间" },
+          { kind: "operator", text: " 至 " },
+          { kind: "source", text: "等待" },
+          { kind: "text", text: ".", tone: "muted" },
+          { kind: "variable", text: "退出时间" },
+        ],
+        kind: "segments",
         maxLines: 2,
-        text: "等待.进入时间 至 等待.退出时间",
       },
     }));
   });
@@ -98,9 +106,13 @@ describe("workflow message query", () => {
     expect(messageQueryNodeUi.body.getFields(data)).toContainEqual(expect.objectContaining({
       id: "time-range",
       value: {
-        kind: "text",
+        items: [
+          { kind: "value", text: "2026-07-17 00:00" },
+          { kind: "operator", text: " 至 " },
+          { kind: "value", text: "未配置", tone: "warning" },
+        ],
+        kind: "segments",
         maxLines: 2,
-        text: "2026-07-17 00:00 至 未配置",
       },
     }));
     expect(data.timeRange.startAt).toBe("2026-07-17T00:00");

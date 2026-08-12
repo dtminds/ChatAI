@@ -236,11 +236,9 @@ function WorkflowWorkspaceContent({
         publishErrorCode={topBar.publishError?.code}
         publishState={topBar.publishState}
         publishReady={topBar.publishReady}
-        readyChecks={topBar.readyChecks}
         restoreState={versionHistory.restoreState}
         runtimeStatus={topBar.runtimeStatus}
         saveState={topBar.saveState}
-        totalChecks={topBar.totalChecks}
         validatedForActivation={topBar.validatedForActivation}
         versionHistoryContent={(
           <WorkflowVersionHistoryPanel
@@ -291,7 +289,9 @@ function WorkflowWorkspaceContent({
                 allowedInsertableNodeKinds={canvas.allowedInsertableNodeKinds}
                 canRedo={canvas.canRedo}
                 canUndo={canvas.canUndo}
+                canMoveNodes={canvas.canMoveNodes}
                 edges={canvas.edges}
+                focusRequest={canvas.focusRequest}
                 isReadOnly={canvas.isReadOnly}
                 nodes={canvas.nodes}
                 nextRedoLabel={canvas.nextRedoLabel}
@@ -315,6 +315,7 @@ function WorkflowWorkspaceContent({
                 onUndo={canvas.onUndo}
                 onViewportChangeEnd={canvas.onViewportChangeEnd}
                 paletteOpen={canvas.paletteOpen}
+                showEditingTools={!canvas.isReadOnly}
                 viewport={canvas.viewport}
             />
             {checks.isOpen ? (
@@ -323,7 +324,6 @@ function WorkflowWorkspaceContent({
                   onClose={checks.onClose}
                   onNavigateToNode={checks.onNavigateToNode}
                   publishAttempted={checks.publishAttempted}
-                  publishReady={checks.publishReady}
               />
             ) : null}
           </section>
@@ -338,6 +338,7 @@ function WorkflowWorkspaceContent({
                 onClose={inspector.onClose}
                 onNodeChange={inspector.onNodeChange}
                 onRenameNode={inspector.onRenameNode}
+                readOnly={inspector.readOnly}
             />
           ) : null}
         </div>

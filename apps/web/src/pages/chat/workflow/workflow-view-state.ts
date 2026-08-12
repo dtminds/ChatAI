@@ -1,13 +1,15 @@
-export type WorkflowSidePanel = "checks" | "version-history";
+export type WorkflowSidePanel = "version-history";
 
 export type WorkflowViewState = {
   activePanel: WorkflowSidePanel | null;
+  checksOpen: boolean;
   inspectorOpen: boolean;
   previewVersionId: string | null;
 };
 
 export const createDefaultWorkflowViewState = (): WorkflowViewState => ({
   activePanel: null,
+  checksOpen: false,
   inspectorOpen: false,
   previewVersionId: null,
 });
@@ -20,6 +22,7 @@ export type WorkflowViewStateAction =
   | { type: "open-checks" }
   | { type: "open-inspector" }
   | { type: "open-version-history" }
+  | { type: "navigate-from-check"; inspectorOpen: boolean }
   | { type: "select-node"; inspectorOpen: boolean }
   | { type: "select-version-preview"; versionId: string }
   | { type: "workflow-edited"; openInspector?: boolean }
@@ -33,7 +36,7 @@ export function reduceWorkflowViewState(
     case "close-checks":
       return {
         ...state,
-        activePanel: state.activePanel === "checks" ? null : state.activePanel,
+        checksOpen: false,
       };
     case "close-version-history":
       return {
@@ -55,7 +58,7 @@ export function reduceWorkflowViewState(
     case "open-checks":
       return {
         ...state,
-        activePanel: "checks",
+        checksOpen: true,
       };
     case "open-inspector":
       return {
@@ -67,6 +70,12 @@ export function reduceWorkflowViewState(
       return {
         ...state,
         activePanel: "version-history",
+      };
+    case "navigate-from-check":
+      return {
+        ...state,
+        activePanel: null,
+        inspectorOpen: action.inspectorOpen,
       };
     case "select-node":
       return {

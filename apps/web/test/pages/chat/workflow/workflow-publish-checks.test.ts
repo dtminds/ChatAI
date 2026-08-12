@@ -51,6 +51,59 @@ function useWorkflowPublishChecks(nodes: WorkflowNode[], edges: WorkflowEdge[]) 
 }
 
 describe("buildPublishChecks", () => {
+  it("groups every issue for an AI intent node into one display item", () => {
+    const start = createInitialNodes().find((node) => node.id === "start")!;
+    const end = createInitialNodes().find((node) => node.id === "end")!;
+    const intent: WorkflowNode<"ai-intent"> = {
+      data: {
+        ...createDefaultNodeData("ai-intent"),
+        intents: [{ description: "", id: "intent-1" }],
+      },
+      id: "intent",
+      position: { x: 360, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    };
+    const checklist = buildPublishChecklist([start, intent, end], [
+      createEdge("start", "intent"),
+      createEdge("intent", "end", "其他意图", { sourceHandle: "fallback" }),
+    ]);
+
+    expect(checklist.checks.filter((check) => check.nodeId === "intent").length).toBeGreaterThan(1);
+    expect(checklist.displayChecks.filter((check) => check.nodeId === "intent")).toEqual([
+      expect.objectContaining({
+        id: "node-intent",
+        nodeKind: "ai-intent",
+        title: "意图识别",
+        messages: expect.arrayContaining([
+          "意图识别需要选择输入",
+          "意图描述不能为空",
+          "节点存在未连接的出口",
+          "当前节点暂不支持发布",
+        ]),
+      }),
+    ]);
+    const intentMessages = checklist.displayChecks.find((check) => check.nodeId === "intent")?.messages ?? [];
+    expect(new Set(intentMessages).size).toBe(intentMessages.length);
+  });
+
+  it("groups checks without a concrete node under workflow structure", () => {
+    const nodes = createInitialNodes().filter((node) =>
+      node.data.kind !== "start" && node.data.kind !== "end",
+    );
+    const checklist = buildPublishChecklist(nodes, []);
+
+    expect(checklist.displayChecks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "workflow-structure",
+        messages: expect.arrayContaining([
+          "缺少开始节点",
+          "缺少结束节点",
+        ]),
+        title: "流程结构",
+      }),
+    ]));
+  });
+
   it("returns only unresolved checklist items while keeping a readiness summary", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 
@@ -800,6 +853,7 @@ describe("useWorkflowPublishChecks", () => {
     );
 
     expect(result.current.checks).toHaveLength(5);
+    expect(result.current.displayChecks).toHaveLength(2);
     expect(result.current.summary).toHaveLength(4);
     expect(result.current.readyChecks).toBe(2);
     expect(result.current.totalChecks).toBe(4);

@@ -310,7 +310,7 @@ describe("workflow DSL", () => {
     expect(graph.nodes.find((node) => node.id === "start")).toEqual(expect.objectContaining({
       config: expect.objectContaining({
         seatIds: [101, 102],
-        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+        entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
         triggers: expect.arrayContaining([{ type: "contact.friend_added" }]),
       }),
       id: "start",
@@ -480,7 +480,7 @@ describe("workflow DSL", () => {
 
     expect(configByKind.get("start")).toEqual({
       seatIds: [101, 102],
-      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
       triggers: [
         { type: "contact.friend_added" },
         { tagIds: [201], type: "contact.tag_added" },

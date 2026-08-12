@@ -44,6 +44,60 @@ describe("workflow graph operations", () => {
     expect(deleteNodeOperation(draft, "end")).toBeUndefined();
   });
 
+  it("avoids duplicate default titles across all node kinds when adding nodes", () => {
+    const draft = createDraft();
+    const renamedWaitNode = {
+      ...draft.nodes.find((node) => node.id === "wait-2d")!,
+      data: {
+        ...draft.nodes.find((node) => node.id === "wait-2d")!.data,
+        title: "条件分支",
+      },
+    };
+    const occupiedSuffixNode = {
+      ...createNodeFromKind("message", "occupied-title", draft.nodes.length),
+      data: {
+        ...createNodeFromKind("message", "occupied-title", draft.nodes.length).data,
+        title: "条件分支（2）",
+      },
+    };
+    const occupiedDraft = {
+      ...draft,
+      nodes: draft.nodes
+        .map((node) => node.id === renamedWaitNode.id ? renamedWaitNode : node)
+        .concat(occupiedSuffixNode),
+    };
+
+    const operation = addNodeOperation(
+      occupiedDraft,
+      "branch",
+      "branch-added",
+      { x: 2_000, y: 0 },
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-added")?.data.title)
+      .toBe("条件分支（3）");
+  });
+
+  it("reuses the default title after the existing node is renamed", () => {
+    const draft = createDraft();
+    const renamedDraft = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "客户意向判断" } }
+        : node),
+    };
+
+    const operation = addNodeOperation(
+      renamedDraft,
+      "branch",
+      "branch-added",
+      { x: 2_000, y: 0 },
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-added")?.data.title)
+      .toBe("条件分支");
+  });
+
   it("inserts a node after a branch handle by replacing the existing branch edge", () => {
     expect(insertNodeAfterOperation(
       createDraft(),
@@ -112,6 +166,40 @@ describe("workflow graph operations", () => {
       edge.source === "wait-default" && edge.target === "end",
     )).toBe(false);
     expect(operation!.draft.edges.filter((edge) => edge.target === "end")).toHaveLength(1);
+  });
+
+  it("uses the default outlet when inserting a multi-outlet node after a connected handle", () => {
+    const draft = createDraft();
+    const draftWithDefaultBranchTitle = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "条件分支" } }
+        : node),
+    };
+    const operation = insertNodeAfterOperation(
+      draftWithDefaultBranchTitle,
+      "branch-intent",
+      "branch",
+      "branch-after",
+      "branch-high",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "branch-after",
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "否则" }),
+        source: "branch-after",
+        sourceHandle: "branch-default",
+        target: "message-welcome",
+      }),
+    ]));
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-after")?.data.title)
+      .toBe("条件分支（2）");
   });
 
   it("replaces default-handle edges when inserting after imported null handles", () => {
@@ -183,6 +271,97 @@ describe("workflow graph operations", () => {
         }),
       ]),
     );
+  });
+
+  it("uses the default outlet when inserting a multi-outlet node between an edge", () => {
+    const draft = createDraft();
+    const draftWithDefaultBranchTitle = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "branch-intent"
+        ? { ...node, data: { ...node.data, title: "条件分支" } }
+        : node),
+    };
+    const operation = insertNodeBetweenOperation(
+      draftWithDefaultBranchTitle,
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "branch",
+      "branch-between",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "branch-between",
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "否则" }),
+        source: "branch-between",
+        sourceHandle: "branch-default",
+        target: "message-welcome",
+      }),
+    ]));
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-between")?.data.title)
+      .toBe("条件分支（2）");
+  });
+
+  it("uses the first outlet when an inserted multi-outlet node has no default", () => {
+    const operation = insertNodeBetweenOperation(
+      createDraft(),
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "wait-event",
+      "wait-event-between",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        data: expect.objectContaining({ label: "事件到达（新消息）" }),
+        source: "wait-event-between",
+        sourceHandle: "triggered",
+        target: "message-welcome",
+      }),
+    ]));
+  });
+
+  it("uses existing horizontal space without shifting downstream nodes", () => {
+    const draft = createDraft();
+    const sourceNode = draft.nodes.find((node) => node.id === "branch-intent")!;
+    const targetX = sourceNode.position.x + WORKFLOW_LAYOUT_X_GAP * 3;
+    const endX = targetX + WORKFLOW_LAYOUT_X_GAP;
+    const spacedDraft = {
+      ...draft,
+      nodes: draft.nodes.map((node) => {
+        if (node.id === "message-welcome") {
+          return { ...node, position: { ...node.position, x: targetX } };
+        }
+        if (node.id === "end") {
+          return { ...node, position: { ...node.position, x: endX } };
+        }
+        return node;
+      }),
+    };
+
+    const operation = insertNodeBetweenOperation(
+      spacedDraft,
+      "edge-branch-intent-branch-high-message-welcome",
+      "branch-intent",
+      "message-welcome",
+      "branch",
+      "branch-between",
+    );
+
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-between")?.position.x)
+      .toBe(sourceNode.position.x + WORKFLOW_LAYOUT_X_GAP * 1.5);
+    expect(operation?.draft.nodes.find((node) => node.id === "message-welcome")?.position.x)
+      .toBe(targetX);
+    expect(operation?.draft.nodes.find((node) => node.id === "end")?.position.x)
+      .toBe(endX);
   });
 
   it("keeps split-edge source handles on incoming edges and target handles on outgoing edges", () => {
@@ -661,10 +840,13 @@ describe("workflow graph operations", () => {
   it("renames editable nodes and rejects protected or empty names", () => {
     const draft = createDraft();
     const operation = renameNodeOperation(draft, "wait-2d", "  等待复购  ");
+    const duplicateTitleOperation = renameNodeOperation(draft, "wait-2d", "意向判断");
 
     expect(operation?.event).toBe("node:rename");
     expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title)
       .toBe("等待复购");
+    expect(duplicateTitleOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title)
+      .toBe("意向判断");
     expect(renameNodeOperation(draft, "start", "新的开始")).toBeUndefined();
     expect(renameNodeOperation(draft, "end", "新的结束")).toBeUndefined();
     expect(renameNodeOperation(draft, "wait-2d", "   ")).toBeUndefined();

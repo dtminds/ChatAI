@@ -495,7 +495,7 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
     deploymentCapabilities: { capabilities: [], fingerprint: "test-fingerprint" },
-    entitlement: { apiUrl: null, token: null },
+    entitlement: { apiUrl: null, mode: "enforce" as const, token: null },
     environment: "dev" as const,
     healthPort: 3002,
     logLevel: "info",

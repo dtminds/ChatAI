@@ -263,14 +263,53 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_161, "hour"))).toBe(false);
   });
 
-  it("normalizes legacy rolling entry windows to the current maximum", () => {
+  it("limits configured entry counts to ten", () => {
+    const createConfig = (entryPolicy:
+      | { maxEntries: number; mode: "lifetime_limit" }
+      | { maxEntries: number; mode: "rolling_window"; windowSize: number; windowUnit: "day" }
+    ) => ({
+      entryPolicy,
+      seatIds: [101],
+      triggers: [{ type: "contact.friend_added" }],
+    });
+
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig({
+      maxEntries: 10,
+      mode: "lifetime_limit",
+    }))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig({
+      maxEntries: 11,
+      mode: "lifetime_limit",
+    }))).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig({
+      maxEntries: 10,
+      mode: "rolling_window",
+      windowSize: 7,
+      windowUnit: "day",
+    }))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig({
+      maxEntries: 11,
+      mode: "rolling_window",
+      windowSize: 7,
+      windowUnit: "day",
+    }))).toBe(false);
+  });
+
+  it("normalizes legacy entry limits to the current maximum", () => {
     expect(normalizeWorkflowEntryPolicy({
-      maxEntries: 2,
+      maxEntries: 1_000,
+      mode: "lifetime_limit",
+    })).toEqual({
+      maxEntries: 10,
+      mode: "lifetime_limit",
+    });
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 1_000,
       mode: "rolling_window",
       windowSize: 365,
       windowUnit: "day",
     })).toEqual({
-      maxEntries: 2,
+      maxEntries: 10,
       mode: "rolling_window",
       windowSize: 90,
       windowUnit: "day",

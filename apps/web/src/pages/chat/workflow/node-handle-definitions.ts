@@ -9,6 +9,7 @@ import type {
 
 export type WorkflowSourceHandleDefinition = {
   id?: string;
+  isDefault?: boolean;
   label?: string;
   outletKind: "branch-path" | "default" | "outcome";
   top: number;
@@ -42,6 +43,13 @@ export function getNodeSourceHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowSourceHandleDefinition[] {
   return getWorkflowNodeCatalogEntry(data.kind).getSourceHandles(data);
+}
+
+export function getAutoConnectSourceHandleDefinition(
+  data: WorkflowNodeRenderData,
+) {
+  const handles = getNodeSourceHandleDefinitions(data);
+  return handles.find((handle) => handle.isDefault) ?? handles[0];
 }
 
 export function getNodeTargetHandleDefinitions(

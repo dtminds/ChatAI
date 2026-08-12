@@ -112,6 +112,7 @@ describe("workflow AI intent", () => {
       }),
       expect.objectContaining({
         id: AI_INTENT_FALLBACK_HANDLE_ID,
+        isDefault: true,
         label: "其他意图",
         outletKind: "outcome",
         top: 180,
@@ -142,11 +143,14 @@ describe("workflow AI intent", () => {
     })).toEqual(expect.objectContaining({
       prompt: "优先参考客户最近一条消息",
     }));
-    expect(definition.getOutputVariables?.(node)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "matchedIntentId", valueType: { kind: "string" } }),
-      expect.objectContaining({ key: "matchedIntentDescription", valueType: { kind: "string" } }),
+    expect(definition.getOutputVariables?.(node)).toEqual([
+      expect.objectContaining({
+        key: "matchedIntentDescription",
+        label: "命中意图",
+        valueType: { kind: "string" },
+      }),
       expect.objectContaining({ key: "reason", valueType: { kind: "string" } }),
-    ]));
+    ]);
   });
 
   it("derives node height and requires every intent outcome including fallback to connect", () => {
@@ -218,14 +222,19 @@ describe("workflow AI intent", () => {
       inputSelector: ["node", queryNode.id, "messageIds"],
     }));
 
-    await user.click(screen.getByRole("switch", { name: "高级调教" }));
     const prompt = screen.getByRole("textbox", { name: "提示词" });
+    expect(prompt).toBeDisabled();
+
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
+    expect(prompt).toBeEnabled();
     expect(prompt).toHaveAttribute("maxlength", String(AI_INTENT_PROMPT_MAX_LENGTH));
     await user.type(prompt, "优先根据客户最后一条消息判断");
     await user.click(screen.getByRole("switch", { name: "高级调教" }));
-    expect(screen.queryByRole("textbox", { name: "提示词" })).not.toBeInTheDocument();
+    expect(prompt).toBeDisabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
     await user.click(screen.getByRole("switch", { name: "高级调教" }));
-    expect(screen.getByRole("textbox", { name: "提示词" })).toHaveValue("优先根据客户最后一条消息判断");
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
   });
 
   it("projects only available predecessor intent inputs into render data", () => {

@@ -18,10 +18,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
-import {
-  HttpWorkflowEntitlementPort,
-  UnavailableWorkflowEntitlementPort,
-} from "@chatai/workflow-runtime";
+import { createWorkflowEntitlementPort } from "@chatai/workflow-runtime";
 import { parseWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
@@ -64,12 +61,11 @@ export async function registerWorkflowRoutes(
       deploymentCapabilities: parseWorkflowDeploymentCapabilities(
         process.env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
       ),
-      entitlementPort: process.env.WORKFLOW_ENTITLEMENT_API_URL
-        ? new HttpWorkflowEntitlementPort({
-            endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
-            token: process.env.JAVA_INTERNAL_API_TOKEN,
-          })
-        : new UnavailableWorkflowEntitlementPort(),
+      entitlementPort: createWorkflowEntitlementPort({
+        endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
+        mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
+        token: process.env.JAVA_INTERNAL_API_TOKEN,
+      }),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
     },
   );

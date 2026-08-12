@@ -43,7 +43,12 @@ describe("StartConfig", () => {
     expect(screen.getByRole("checkbox", { name: "用户发送消息" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "消息包含关键词" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入限制" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "最多进入 M 次" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "最多进入" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "最多进入次数" })).toHaveTextContent("1次");
+    expect(screen.getByRole("spinbutton", { name: "时间范围" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "时间单位" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "时间范围内最多进入次数" }))
+      .toBeDisabled();
   });
 
   it("does not allow enabling a tag trigger when no tags are available", () => {

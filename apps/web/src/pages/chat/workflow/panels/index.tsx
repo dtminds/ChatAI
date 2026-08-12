@@ -15,6 +15,7 @@ export function NodeConfigPanel({
   onClose,
   onNodeChange,
   onRenameNode,
+  readOnly = false,
 }: {
   allowedEntryEventTypes: readonly WorkflowEntryEventType[];
   animateOnMount?: boolean;
@@ -24,6 +25,7 @@ export function NodeConfigPanel({
   onClose: () => void;
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
   onRenameNode: (nodeId: string, title: string) => void;
+  readOnly?: boolean;
 }) {
   if (!node) {
     return (
@@ -40,17 +42,23 @@ export function NodeConfigPanel({
   return (
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
-        <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
-          <NodeSettingsForm
-            allowedEntryEventTypes={allowedEntryEventTypes}
-            edges={edges}
-            node={node}
-            nodes={nodes}
-            onNodeChange={onNodeChange}
-          />
-          {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
-            ? <NodeOutputsSection node={node} />
-            : null}
+        <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode} readOnly={readOnly}>
+          <fieldset
+            className="min-w-0 space-y-4 border-0 p-0 disabled:cursor-default"
+            disabled={readOnly}
+            inert={readOnly}
+          >
+            <NodeSettingsForm
+              allowedEntryEventTypes={allowedEntryEventTypes}
+              edges={edges}
+              node={node}
+              nodes={nodes}
+              onNodeChange={onNodeChange}
+            />
+            {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
+              ? <NodeOutputsSection node={node} />
+              : null}
+          </fieldset>
         </BasePanel>
       </SettingWorkspace>
     </SettingWorkspaceProvider>

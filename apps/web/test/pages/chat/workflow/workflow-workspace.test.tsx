@@ -80,6 +80,64 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.canPublish).toBe(false);
   });
 
+  it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+
+    expect(result.current.mode).toBe("read-only");
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.readOnly).toBe(true);
+    expect(result.current.canvas.canMoveNodes).toBe(true);
+    expect(result.current.canvas.nodes.find(node => node.id === "wait-2d")?.data.readOnly).toBe(true);
+  });
+
+  it("persists node movement while keeping a stopped workflow configuration read-only", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
+    const initialNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const movedNode = {
+      ...initialNode,
+      position: { x: initialNode.position.x + 120, y: initialNode.position.y + 48 },
+    };
+
+    act(() => {
+      result.current.canvas.onNodeDragStart(event, initialNode, [initialNode]);
+      result.current.canvas.onNodeDragStop(event, movedNode, [movedNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(movedNode.position);
+    expect(result.current.topBar.saveState).toBe("saving");
+    expect(result.current.inspector.readOnly).toBe(true);
+  });
+
   it("derives activation readiness from the in-memory draft revision", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
@@ -94,7 +152,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.validatedForActivation).toBe(true);
   });
 
-  it("selects nodes and opens the inspector while closing checks", () => {
+  it("selects nodes and opens the inspector while keeping checks open", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     act(() => {
@@ -108,7 +166,7 @@ describe("useWorkflowWorkspace", () => {
       result.current.canvas.onSelectNode("wait-2d");
     });
 
-    expect(result.current.checks.isOpen).toBe(false);
+    expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.canvas.paletteOpen).toBe(false);
     expect(result.current.inspector.isOpen).toBe(true);
     expect(result.current.inspector.node?.id).toBe("wait-2d");
@@ -118,6 +176,7 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     act(() => {
+      result.current.topBar.onPublishCheck();
       result.current.canvas.onSelectNode("wait-2d");
     });
     expect(result.current.inspector.isOpen).toBe(true);
@@ -128,6 +187,7 @@ describe("useWorkflowWorkspace", () => {
     });
 
     expect(result.current.inspector.isOpen).toBe(false);
+    expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.inspector.node).toBeUndefined();
     expect(result.current.canvas.nodes.some((node) => node.data.selected)).toBe(false);
   });
@@ -140,7 +200,7 @@ describe("useWorkflowWorkspace", () => {
       result.current.checks.onNavigateToNode("branch-intent");
     });
 
-    expect(result.current.checks.isOpen).toBe(false);
+    expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.inspector.isOpen).toBe(true);
     expect(result.current.inspector.node?.id).toBe("branch-intent");
   });

@@ -82,4 +82,20 @@ describe("deriveWorkflowMode", () => {
     expect(state.mode).toBe("version-preview");
     expect(state.readOnlyReason).toBe("version-preview");
   });
+
+  it("treats stopped workflows as a dedicated read-only workspace", () => {
+    const state = deriveWorkflowMode({
+      canEdit: false,
+      isPreviewingVersion: false,
+      runtimeStatus: "stopped",
+    });
+
+    expect(state.mode).toBe("read-only");
+    expect(state.readOnlyReason).toBe("stopped");
+    expect(state.permissions.canEditGraph).toBe(false);
+    expect(state.permissions.canEditNodeSettings).toBe(false);
+    expect(state.permissions.canMoveNodes).toBe(true);
+    expect(state.permissions.canOpenInsertPalette).toBe(false);
+    expect(state.permissions.canPublish).toBe(false);
+  });
 });

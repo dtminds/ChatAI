@@ -117,7 +117,7 @@ export function createCatalogIssue(
 }
 
 export function createDefaultSourceHandles(): WorkflowSourceHandleDefinition[] {
-  return [{ outletKind: "default", top: 16 }];
+  return [{ isDefault: true, outletKind: "default", top: 16 }];
 }
 
 export function createNoSourceHandles(): WorkflowSourceHandleDefinition[] {
@@ -129,6 +129,7 @@ export function createBranchSourceHandles(
 ): WorkflowSourceHandleDefinition[] {
   return getWorkflowBranchPaths(data).map((branch) => ({
     id: branch.id,
+    ...(branch.isDefault ? { isDefault: true } : {}),
     label: branch.label,
     outletKind: "branch-path",
     top: getBranchPathTop(data, branch.id),

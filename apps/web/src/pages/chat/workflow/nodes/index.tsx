@@ -96,7 +96,8 @@ function WorkflowNodeSourceHandles({
           label={handle.label}
           nodeId={id}
           onToggleInsertMenu={data.onToggleInsertMenu}
-          showInsertAction={!data.dataMetric}
+          readOnly={data.readOnly}
+          showInsertAction={!data.readOnly && !data.dataMetric}
           title={data.title}
           top={handle.top}
         />

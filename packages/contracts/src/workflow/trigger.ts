@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import {
+  WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
 } from "./retention.js";
@@ -13,17 +14,17 @@ export const WorkflowEntryEventTypeSchema = Type.Union([
 export const WorkflowEntryPolicySchema = Type.Union([
   Type.Object({ mode: Type.Literal("never") }, { additionalProperties: false }),
   Type.Object({
-    maxEntries: Type.Integer({ minimum: 1, maximum: 1_000 }),
+    maxEntries: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_MAX_ENTRIES }),
     mode: Type.Literal("lifetime_limit"),
   }, { additionalProperties: false }),
   Type.Object({
-    maxEntries: Type.Integer({ minimum: 1, maximum: 1_000 }),
+    maxEntries: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_MAX_ENTRIES }),
     mode: Type.Literal("rolling_window"),
     windowSize: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_WINDOW_MAX_HOURS }),
     windowUnit: Type.Literal("hour"),
   }, { additionalProperties: false }),
   Type.Object({
-    maxEntries: Type.Integer({ minimum: 1, maximum: 1_000 }),
+    maxEntries: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_MAX_ENTRIES }),
     mode: Type.Literal("rolling_window"),
     windowSize: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_WINDOW_MAX_DAYS }),
     windowUnit: Type.Literal("day"),

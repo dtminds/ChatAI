@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
@@ -35,7 +35,7 @@ describe("workflow start configuration", () => {
     expect(getWorkflowStartFixtureTags(false)).toEqual([]);
   });
 
-  it("creates the formal execution contract with a default lifetime limit of two", () => {
+  it("creates the formal execution contract with a default lifetime limit of one", () => {
     const definition = getNodeDefinition("start");
     const data = definition.createDefaultData();
 
@@ -44,7 +44,7 @@ describe("workflow start configuration", () => {
       kind: "start",
       workflowType: "chatai_sop",
     })).toEqual({
-      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
       seatIds: [],
       triggers: data.triggers,
     });
@@ -132,7 +132,7 @@ describe("workflow start configuration", () => {
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       entryPolicy: {
-        maxEntries: 2,
+        maxEntries: 1,
         mode: "rolling_window",
         windowSize: 7,
         windowUnit: "day",
@@ -140,7 +140,8 @@ describe("workflow start configuration", () => {
     }));
   });
 
-  it("normalizes entry limits to positive contract integers", async () => {
+  it("limits entry counts to the shared 1-10 options", async () => {
+    const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const node = createStartNode({
       ...createDefaultNodeData("start"),
@@ -156,11 +157,52 @@ describe("workflow start configuration", () => {
       />,
     );
 
-    const input = screen.getByRole("spinbutton", { name: "最多进入次数" });
-    fireEvent.change(input, { target: { value: "3.8" } });
+    await user.click(screen.getByRole("combobox", { name: "最多进入次数" }));
+
+    expect(screen.getAllByRole("option")).toHaveLength(10);
+    await user.click(screen.getByRole("option", { name: "3次" }));
 
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       entryPolicy: { maxEntries: 3, mode: "lifetime_limit" },
+    }));
+  });
+
+  it("updates the rolling-window count from the same bounded selector", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createDefaultNodeData("start"),
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 7,
+        windowUnit: "day",
+      },
+    });
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "最多进入次数" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "时间范围内最多进入次数" }))
+      .toBeEnabled();
+
+    await user.click(screen.getByRole("combobox", { name: "时间范围内最多进入次数" }));
+    await user.click(screen.getByRole("option", { name: "10次" }));
+
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entryPolicy: {
+        maxEntries: 10,
+        mode: "rolling_window",
+        windowSize: 7,
+        windowUnit: "day",
+      },
     }));
   });
 

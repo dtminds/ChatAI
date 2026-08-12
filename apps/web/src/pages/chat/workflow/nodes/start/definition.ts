@@ -95,7 +95,7 @@ export function createStartNodeData(
   workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop">,
 ): StartNodeData {
   const common = {
-    entryPolicy: { maxEntries: 2, mode: "lifetime_limit" } as const,
+    entryPolicy: { maxEntries: 1, mode: "lifetime_limit" } as const,
     label: "开始",
     metric: "待配置触发条件",
     status: "warning" as const,

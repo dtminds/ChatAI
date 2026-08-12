@@ -3,6 +3,7 @@ import {
   addWorkflowBranchCondition,
   addWorkflowBranchPath,
   getBranchConditionSummary,
+  getBranchConditionSummarySegments,
   getBranchOperatorOptions,
   getBranchPathTop,
   getWorkflowBranchEstimatedHeight,
@@ -196,11 +197,53 @@ describe("workflow branch paths", () => {
       .toBe("主体ID 等于 会员");
     expect(getBranchConditionSummary(paths[2], workflowContextVariables))
       .toBe("不满足以上条件");
+    expect(getBranchConditionSummarySegments(paths[0], workflowContextVariables)).toEqual([
+      { kind: "variable", text: "主体ID" },
+      { kind: "operator", text: " 等于", tone: "default" },
+      { kind: "value", text: " 会员", tone: "default" },
+    ]);
+    expect(getBranchConditionSummarySegments(paths[2], workflowContextVariables)).toEqual([
+      { kind: "text", text: "不满足以上条件", tone: "muted" },
+    ]);
     expect(getBranchPathTop(data, "first")).toBe(WORKFLOW_BRANCH_FIRST_HANDLE_TOP);
     expect(getBranchPathTop(data, "second")).toBe(
       WORKFLOW_BRANCH_FIRST_HANDLE_TOP + WORKFLOW_BRANCH_HANDLE_ROW_GAP,
     );
     expect(getWorkflowBranchEstimatedHeight(data)).toBe(188);
+  });
+
+  it("separates upstream sources, variables, operators, and missing values in summaries", () => {
+    const [path] = normalizeWorkflowBranchPaths([{
+      conditions: [{
+        id: "condition-intent",
+        operator: "equals",
+        selector: ["node", "intent-node", "matchedDescription"],
+        value: "",
+      }],
+      id: "intent",
+      label: "如果",
+      logic: "all",
+    }, createFallback()]);
+    const variables = [{
+      key: "matchedDescription",
+      label: "命中意图",
+      scope: "node" as const,
+      selector: ["node", "intent-node", "matchedDescription"],
+      sourceNodeId: "intent-node",
+      sourceNodeTitle: "意图识别",
+      type: "string" as const,
+      valueType: { kind: "string" as const },
+    }];
+
+    expect(getBranchConditionSummarySegments(path, variables)).toEqual([
+      { kind: "source", text: "意图识别" },
+      { kind: "text", text: ".", tone: "muted" },
+      { kind: "variable", text: "命中意图" },
+      { kind: "operator", text: " 等于", tone: "default" },
+      { kind: "value", text: " 未配置值", tone: "warning" },
+    ]);
+    expect(getBranchConditionSummary(path, variables))
+      .toBe("意图识别.命中意图 等于 未配置值");
   });
 
   it("creates the fixed default if and else paths", () => {

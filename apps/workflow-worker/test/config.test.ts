@@ -115,8 +115,34 @@ describe("workflow worker config", () => {
     expect(config.deploymentCapabilities.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(config.entitlement).toEqual({
       apiUrl: "https://java.example.com/internal/workflow/entitlement",
+      mode: "enforce",
       token: "internal-token",
     });
+  });
+
+  it("loads the explicit entitlement bypass for development and test environments", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "development",
+      WORKFLOW_ENTITLEMENT_MODE: "allow",
+    }));
+
+    expect(config.entitlement.mode).toBe("allow");
+  });
+
+  it.each(["allow", " allow "])(
+    "rejects the entitlement bypass in production: %j",
+    (mode) => {
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        NODE_ENV: "production",
+        WORKFLOW_ENTITLEMENT_MODE: mode,
+      }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+    },
+  );
+
+  it("rejects unknown entitlement modes", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ENTITLEMENT_MODE: "disabled",
+    }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
   });
 
   it("starts every Phase 3 role by default with bounded runtime settings", () => {

@@ -39,7 +39,7 @@ export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
           >
             <span className={cn(
               "truncate",
-              !intent.description.trim() && "text-muted-foreground",
+              !intent.description.trim() && "text-warning",
             )}>
               {intent.description || "未配置意图"}
             </span>

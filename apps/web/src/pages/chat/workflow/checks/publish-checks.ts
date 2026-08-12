@@ -17,10 +17,11 @@ export function useWorkflowPublishChecks(
     () => buildPublishChecklist(nodes, edges, policy),
     [edges, nodes, policy],
   );
-  const { canPublish, checks, readyChecks, summary, totalSummaryChecks } = checklist;
+  const { canPublish, checks, displayChecks, readyChecks, summary, totalSummaryChecks } = checklist;
 
   return {
     checks,
+    displayChecks,
     hasWarnings: checks.length > 0,
     publishReady: canPublish,
     readyChecks,
@@ -37,6 +38,7 @@ export function buildPublishChecklist(
 ): {
   checks: WorkflowPublishCheck[];
   canPublish: boolean;
+  displayChecks: WorkflowPublishCheck[];
   publishBlockers: WorkflowPublishCheck[];
   readyChecks: number;
   summary: WorkflowPublishCheckSummaryItem[];

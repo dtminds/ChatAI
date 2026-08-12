@@ -210,21 +210,20 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
             onCheckedChange={(checked) => updateConfig({ advancedEnabled: checked })}
           />
         </div>
-        {advancedEnabled ? (
-          <div className="relative">
-            <Textarea
-              aria-label="提示词"
-              className="min-h-40 resize-y pb-8"
-              maxLength={AI_INTENT_PROMPT_MAX_LENGTH}
-              onChange={(event) => updateConfig({ prompt: event.target.value })}
-              placeholder="补充意图判断规则、示例或冲突处理要求"
-              value={prompt}
-            />
-            <span className="pointer-events-none absolute bottom-3 right-3 text-xs text-muted-foreground">
-              {prompt.length}/{AI_INTENT_PROMPT_MAX_LENGTH}
-            </span>
-          </div>
-        ) : null}
+        <div className="relative">
+          <Textarea
+            aria-label="提示词"
+            className="min-h-40 resize-y pb-8"
+            disabled={!advancedEnabled}
+            maxLength={AI_INTENT_PROMPT_MAX_LENGTH}
+            onChange={(event) => updateConfig({ prompt: event.target.value })}
+            placeholder="补充意图判断规则、示例或冲突处理要求"
+            value={prompt}
+          />
+          <span className="pointer-events-none absolute bottom-3 right-3 text-xs text-muted-foreground">
+            {prompt.length}/{AI_INTENT_PROMPT_MAX_LENGTH}
+          </span>
+        </div>
       </section>
 
       <AlertDialog

@@ -292,8 +292,9 @@ export function getNodeIdSet(nodes: WorkflowNode[]) {
 export function shiftNodesRight(
   nodes: WorkflowNode[],
   shiftedNodeIds: Set<string>,
+  distance = WORKFLOW_LAYOUT_X_GAP,
 ) {
-  if (shiftedNodeIds.size === 0) {
+  if (shiftedNodeIds.size === 0 || distance === 0) {
     return nodes;
   }
 
@@ -303,7 +304,7 @@ export function shiftNodesRight(
           ...node,
           position: {
             ...node.position,
-            x: node.position.x + WORKFLOW_LAYOUT_X_GAP,
+            x: node.position.x + distance,
           },
         }
       : node,

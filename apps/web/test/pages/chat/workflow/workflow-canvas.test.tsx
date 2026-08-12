@@ -120,6 +120,17 @@ describe("WorkflowCanvas", () => {
     expect(reactFlowProps.latest?.nodesDraggable).toBe(false);
     expect(reactFlowProps.latest?.panOnDrag).toBe(true);
     expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
+    expect(screen.queryByRole("button", { name: "自动整理画布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开节点库" })).not.toBeInTheDocument();
+  });
+
+  it("allows node movement without enabling graph editing tools", () => {
+    renderWorkflowCanvas({ canMoveNodes: true, isReadOnly: true });
+
+    expect(reactFlowProps.latest?.nodesConnectable).toBe(false);
+    expect(reactFlowProps.latest?.nodesDraggable).toBe(true);
+    expect(screen.queryByRole("button", { name: "自动整理画布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开节点库" })).not.toBeInTheDocument();
   });
 
   it("keeps React Flow node position and selection changes local to the canvas", () => {

@@ -24,11 +24,13 @@ export function BasePanel({
   node,
   onClose,
   onRenameNode,
+  readOnly = false,
 }: {
   children: ReactNode;
   node: WorkflowNode;
   onClose: () => void;
   onRenameNode: (nodeId: string, title: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <aside
@@ -36,7 +38,7 @@ export function BasePanel({
       className="workflow-config-panel flex h-full min-h-0 flex-col"
       role="complementary"
     >
-      <PanelHeader node={node} onClose={onClose} onRenameNode={onRenameNode} />
+      <PanelHeader node={node} onClose={onClose} onRenameNode={onRenameNode} readOnly={readOnly} />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-4">{children}</div>
     </aside>
   );
@@ -46,10 +48,12 @@ function PanelHeader({
   node,
   onClose,
   onRenameNode,
+  readOnly,
 }: {
   node: WorkflowNode;
   onClose: () => void;
   onRenameNode: (nodeId: string, title: string) => void;
+  readOnly: boolean;
 }) {
   const visual = nodeVisuals[node.data.kind];
   const showNodeType = node.data.title !== visual.label;
@@ -101,10 +105,15 @@ function PanelHeader({
                 {visual.label}
               </Badge>
             ) : null}
+            {readOnly && !isRenaming ? (
+              <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="outline">
+                只读
+              </Badge>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {canRename ? (
+          {canRename && !readOnly ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button aria-label="更多节点操作" className="size-8 rounded-lg p-0" type="button" variant="ghost">

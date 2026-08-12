@@ -344,6 +344,7 @@ function createWorkflowRenderNodes({
           onSelectNode(selectedNodeId);
         },
         onToggleInsertMenu: readOnly ? undefined : onToggleNodeInsertMenu,
+        readOnly,
         selected: isSelected,
         status: effectiveStatus,
       },

@@ -19,6 +19,7 @@ import type {
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
+  WorkflowNodeOutputUsage as SharedWorkflowNodeOutputUsage,
   WorkflowOutputValueType as SharedWorkflowOutputValueType,
   WorkflowTimeRange as SharedWorkflowTimeRange,
   WorkflowVariableContentSegment as SharedWorkflowVariableContentSegment,
@@ -84,7 +85,7 @@ export type WorkflowVariableScope =
   | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = SharedWorkflowVariableSelector;
-export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
+export type WorkflowNodeOutputUsage = SharedWorkflowNodeOutputUsage;
 export type WorkflowOutputValueType = SharedWorkflowOutputValueType;
 
 export type WorkflowDynamicTimeReference = SharedWorkflowDynamicTimeReference;

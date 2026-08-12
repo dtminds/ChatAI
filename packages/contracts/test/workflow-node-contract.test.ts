@@ -2,10 +2,14 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 import {
   extractWorkflowNodeDraftConfig,
+  getWorkflowGuaranteedVariableCatalog,
+  getWorkflowContextVariableValueType,
+  getWorkflowNodeOutputContracts,
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowNodeContract,
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
+  isWorkflowOutputValueTypeEqual,
   WorkflowNodeKindSchema,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
@@ -308,5 +312,76 @@ describe("workflow node contracts", () => {
       ...intent,
       intents: [{ description: "接受邀请", id: " ", modelCode: "I1" }],
     })).toBe(false);
+  });
+
+  it("describes public inference and message collection outputs centrally", () => {
+    expect(getWorkflowNodeOutputContracts("llm", draftConfigs.llm)).toEqual([
+      {
+        key: "output-1",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+    ]);
+    expect(getWorkflowNodeOutputContracts("ai-intent", {})).toEqual([
+      {
+        key: "matchedIntentDescription",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "reason",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+    ]);
+    expect(getWorkflowNodeOutputContracts("message", {})).toEqual([{
+      key: "sentAt",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    }]);
+    expect(getWorkflowNodeOutputContracts("wait-event", {}))
+      .toContainEqual(expect.objectContaining({
+        availableOnSourceOutlets: ["triggered"],
+        key: "messageIds",
+        usages: ["intent-input"],
+      }));
+    expect(isWorkflowOutputValueTypeEqual(
+      { itemType: "bigint", kind: "array", semantic: "message" },
+      { itemType: "bigint", kind: "array", semantic: "message" },
+    )).toBe(true);
+    expect(isWorkflowOutputValueTypeEqual(
+      { itemType: "bigint", kind: "array", semantic: "message" },
+      { itemType: "string", kind: "array", semantic: "message" },
+    )).toBe(false);
+    expect(getWorkflowContextVariableValueType(
+      ["trigger", "projection", "messageId"],
+    )).toEqual({ kind: "number" });
+    expect(getWorkflowContextVariableValueType(
+      ["trigger", "projection", "workUserId"],
+      "wecom_sop",
+    )).toEqual({ kind: "number" });
+    expect(getWorkflowContextVariableValueType(
+      ["trigger", "projection", "seatId"],
+      "wecom_sop",
+    )).toBeNull();
+    expect(getWorkflowGuaranteedVariableCatalog(
+      "chatai_sop",
+      ["contact.tag_added", "message.received"],
+    )).toEqual([
+      "subject.id",
+      "trigger.eventType",
+      "trigger.occurredAt",
+      "trigger.projection.workUserId",
+      "trigger.projection.seatId",
+      "trigger.projection.thirdExternalUserId",
+    ]);
+    expect(getWorkflowContextVariableValueType(
+      ["trigger", "projection", "messageId"],
+      "chatai_sop",
+      ["contact.tag_added", "message.received"],
+    )).toBeNull();
+    expect(getWorkflowContextVariableValueType(
+      ["trigger", "projection", "unknown"],
+    )).toBeNull();
   });
 });

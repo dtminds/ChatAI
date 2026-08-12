@@ -90,7 +90,7 @@ describe("workflow task consumer", () => {
     {
       event: "workflow.node.failed",
       result: {
-        diagnosticMessage: "Workflow node-output was 4110 bytes; limit is 4096 bytes",
+        diagnosticMessage: "Workflow node-output was 8206 bytes; limit is 8192 bytes",
         errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
         kind: "node-failed",
         nodeId: "branch",

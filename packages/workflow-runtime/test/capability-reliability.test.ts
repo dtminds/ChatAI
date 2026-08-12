@@ -25,6 +25,14 @@ describe("workflow capability reliability", () => {
     })).toThrow("capability timeout must not exceed half of the task lease duration");
   });
 
+  it("requires a positive Inference total timeout", () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+
+    expect(() => createService(runtime, async () => ({}), {
+      inferenceTotalTimeoutMs: 0,
+    })).toThrow("inference timeout must be a positive integer");
+  });
+
   it("rejects a binding whose operation kind disagrees with the node contract", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const mismatchedBinding: WorkflowCapabilityExecutionBinding = {
@@ -875,6 +883,7 @@ function createService(
     capabilityTimeoutMs?: number;
     clock?: () => Date;
     executors?: WorkflowNodeExecutorRegistry;
+    inferenceTotalTimeoutMs?: number;
     maxTaskAttempts?: number;
     spec?: WorkflowExecutionSpec;
     taskLeaseDurationMs?: number;
@@ -894,6 +903,7 @@ function createService(
       check: async () => ({ entitled: true, unentitledSince: null }),
     },
     executors: options.executors,
+    inferenceTotalTimeoutMs: options.inferenceTotalTimeoutMs,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });

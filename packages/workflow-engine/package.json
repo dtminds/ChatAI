@@ -17,6 +17,10 @@
     "./node-contract-registry": {
       "types": "./dist/node-contract-registry.d.ts",
       "default": "./dist/node-contract-registry.js"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "default": "./dist/graph.js"
     }
   },
   "scripts": {

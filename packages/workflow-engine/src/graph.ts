@@ -126,6 +126,73 @@ export function getWorkflowSourceOutletId(edge: WorkflowDraftEdge) {
   return edge.sourceHandle || DEFAULT_OUTLET_ID;
 }
 
+export function getWorkflowGuaranteedUpstreamNodeIds(
+  targetNodeId: string,
+  nodeIds: readonly string[],
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
+) {
+  const existingNodeIds = new Set(nodeIds);
+  if (!existingNodeIds.has(targetNodeId)) return new Set<string>();
+  const ancestorIds = getAncestorNodeIds(targetNodeId, edges, existingNodeIds);
+  const predecessorIds = new Map([...ancestorIds].map(nodeId => [nodeId, [] as string[]]));
+  edges.forEach((edge) => {
+    if (!ancestorIds.has(edge.source) || !ancestorIds.has(edge.target)) return;
+    predecessorIds.get(edge.target)?.push(edge.source);
+  });
+  const rootIds = new Set([...ancestorIds].filter(nodeId =>
+    predecessorIds.get(nodeId)?.length === 0));
+  const dominators = new Map<string, Set<string>>();
+  for (const nodeId of ancestorIds) {
+    dominators.set(
+      nodeId,
+      rootIds.has(nodeId) ? new Set([nodeId]) : new Set(ancestorIds),
+    );
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const nodeId of ancestorIds) {
+      if (rootIds.has(nodeId)) continue;
+      const predecessorDominators = (predecessorIds.get(nodeId) ?? [])
+        .map(predecessorId => dominators.get(predecessorId))
+        .filter((value): value is Set<string> => Boolean(value));
+      const next = predecessorDominators.length > 0
+        ? intersectSets(predecessorDominators)
+        : new Set<string>();
+      next.add(nodeId);
+      if (!setsEqual(next, dominators.get(nodeId) ?? new Set())) {
+        dominators.set(nodeId, next);
+        changed = true;
+      }
+    }
+  }
+
+  const guaranteed = new Set(dominators.get(targetNodeId) ?? []);
+  guaranteed.delete(targetNodeId);
+  return guaranteed;
+}
+
+export function isWorkflowOutputAvailableOnSourceOutlets(
+  sourceNodeId: string,
+  targetNodeId: string,
+  allowedSourceOutlets: readonly string[],
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "sourceHandle" | "target">[],
+) {
+  const allowedOutlets = new Set(allowedSourceOutlets);
+  const sourceEdges = edges.filter(edge => edge.source === sourceNodeId);
+  const reachesTarget = (edge: Pick<WorkflowDraftEdge, "target">) =>
+    edge.target === targetNodeId
+    || getReachableNodeIds(edge.target, edges).has(targetNodeId);
+  const hasAllowedPath = sourceEdges.some(edge =>
+    allowedOutlets.has(edge.sourceHandle || DEFAULT_OUTLET_ID)
+    && reachesTarget(edge));
+  const hasDisallowedPath = sourceEdges.some(edge =>
+    !allowedOutlets.has(edge.sourceHandle || DEFAULT_OUTLET_ID)
+    && reachesTarget(edge));
+  return hasAllowedPath && !hasDisallowedPath;
+}
+
 function validateNodeOutlets(
   node: WorkflowDraftNode,
   edges: WorkflowDraftEdge[],
@@ -199,6 +266,54 @@ function indexEdges(edges: WorkflowDraftEdge[], key: "source" | "target") {
     index.set(nodeId, [...index.get(nodeId) ?? [], edge]);
   }
   return index;
+}
+
+function getAncestorNodeIds(
+  nodeId: string,
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
+  existingNodeIds: Set<string>,
+) {
+  const incoming = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target)) return;
+    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source]);
+  });
+  const ancestors = new Set<string>();
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (ancestors.has(current)) continue;
+    ancestors.add(current);
+    queue.push(...incoming.get(current) ?? []);
+  }
+  return ancestors;
+}
+
+function getReachableNodeIds(
+  entryNodeId: string,
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
+) {
+  const outgoing = new Map<string, string[]>();
+  edges.forEach(edge =>
+    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target]));
+  const reachable = new Set<string>();
+  const queue = [entryNodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (reachable.has(current)) continue;
+    reachable.add(current);
+    queue.push(...outgoing.get(current) ?? []);
+  }
+  return reachable;
+}
+
+function intersectSets(sets: Set<string>[]) {
+  const [first, ...rest] = sets;
+  return new Set([...first!].filter(value => rest.every(set => set.has(value))));
+}
+
+function setsEqual(left: Set<string>, right: Set<string>) {
+  return left.size === right.size && [...left].every(value => right.has(value));
 }
 
 function traverseGraph(startNodeId: string, outgoing: Map<string, WorkflowDraftEdge[]>) {

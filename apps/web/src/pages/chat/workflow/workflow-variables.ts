@@ -7,6 +7,10 @@ import type {
   WorkflowVariableSelector,
 } from "./types";
 import {
+  getWorkflowGuaranteedUpstreamNodeIds,
+  isWorkflowOutputAvailableOnSourceOutlets,
+} from "@chatai/workflow-engine/graph";
+import {
   getWorkflowNodeOutputDefinitions,
   getWorkflowVariableValueType,
 } from "./workflow-node-outputs";
@@ -113,62 +117,12 @@ export function getGuaranteedUpstreamNodes(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ) {
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  if (!nodeIds.has(nodeId)) {
-    return [];
-  }
-
-  const ancestorIds = getAncestorNodeIds(nodeId, edges, nodeIds);
-  const ancestorNodes = nodes.filter((node) => ancestorIds.has(node.id));
-  const predecessorIds = new Map<string, string[]>();
-  ancestorNodes.forEach((node) => predecessorIds.set(node.id, []));
-  edges.forEach((edge) => {
-    if (!ancestorIds.has(edge.source) || !ancestorIds.has(edge.target)) return;
-    predecessorIds.get(edge.target)?.push(edge.source);
-  });
-  const rootIds = new Set(ancestorNodes
-    .filter((node) => predecessorIds.get(node.id)?.length === 0)
-    .map((node) => node.id));
-
-  if (!rootIds.size) {
-    return [];
-  }
-
-  const dominators = new Map<string, Set<string>>();
-
-  ancestorNodes.forEach((node) => {
-    dominators.set(
-      node.id,
-      rootIds.has(node.id) ? new Set([node.id]) : new Set(ancestorIds),
-    );
-  });
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-
-    for (const node of ancestorNodes) {
-      if (rootIds.has(node.id)) {
-        continue;
-      }
-
-      const predecessorDominators = (predecessorIds.get(node.id) ?? [])
-        .map((predecessorId) => dominators.get(predecessorId))
-        .filter((value): value is Set<string> => Boolean(value));
-      const next = predecessorDominators.length
-        ? intersectSets(predecessorDominators)
-        : new Set<string>();
-      next.add(node.id);
-
-      if (!setsEqual(next, dominators.get(node.id) ?? new Set())) {
-        dominators.set(node.id, next);
-        changed = true;
-      }
-    }
-  }
-
-  const guaranteedIds = dominators.get(nodeId) ?? new Set<string>();
-  return ancestorNodes.filter((node) => node.id !== nodeId && guaranteedIds.has(node.id));
+  const guaranteedIds = getWorkflowGuaranteedUpstreamNodeIds(
+    nodeId,
+    nodes.map(node => node.id),
+    edges,
+  );
+  return nodes.filter(node => guaranteedIds.has(node.id));
 }
 
 export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariableDefinition[] {
@@ -186,7 +140,7 @@ function getAvailableNodeOutputsForNode(
   return getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap((sourceNode) =>
     getNodeOutputVariables(sourceNode).filter((output) =>
       !output.availableOnSourceHandles?.length
-      || isOutputAvailableOnSourceHandles(
+      || isWorkflowOutputAvailableOnSourceOutlets(
         sourceNode.id,
         nodeId,
         output.availableOnSourceHandles,
@@ -253,77 +207,4 @@ export function getInvalidVariableContentSelectors(
       segment.type === "variable")
     .map((segment) => segment.selector)
     .filter((selector) => !availableKeys.has(getWorkflowVariableSelectorKey(selector)));
-}
-
-function getReachableNodeIds(entryNodeId: string, edges: WorkflowEdge[]) {
-  const outgoing = new Map<string, string[]>();
-  edges.forEach((edge) => outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target]));
-  const reachable = new Set<string>();
-  const queue = [entryNodeId];
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    if (reachable.has(current)) {
-      continue;
-    }
-    reachable.add(current);
-    queue.push(...outgoing.get(current) ?? []);
-  }
-
-  return reachable;
-}
-
-function getAncestorNodeIds(
-  nodeId: string,
-  edges: WorkflowEdge[],
-  existingNodeIds: Set<string>,
-) {
-  const incoming = new Map<string, string[]>();
-  edges.forEach((edge) => {
-    if (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target)) return;
-    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source]);
-  });
-  const ancestors = new Set<string>();
-  const queue = [nodeId];
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    if (ancestors.has(current)) continue;
-    ancestors.add(current);
-    queue.push(...incoming.get(current) ?? []);
-  }
-
-  return ancestors;
-}
-
-function isOutputAvailableOnSourceHandles(
-  sourceNodeId: string,
-  targetNodeId: string,
-  allowedSourceHandles: string[],
-  edges: WorkflowEdge[],
-) {
-  const allowedHandles = new Set(allowedSourceHandles);
-  const sourceEdges = edges.filter((edge) => edge.source === sourceNodeId);
-  const reachesTarget = (edge: WorkflowEdge) =>
-    edge.target === targetNodeId || getReachableNodeIds(edge.target, edges).has(targetNodeId);
-  const hasAllowedPath = sourceEdges.some((edge) =>
-    edge.sourceHandle
-    && allowedHandles.has(edge.sourceHandle)
-    && reachesTarget(edge),
-  );
-  const hasDisallowedPath = sourceEdges.some((edge) =>
-    (!edge.sourceHandle || !allowedHandles.has(edge.sourceHandle))
-    && reachesTarget(edge),
-  );
-
-  return hasAllowedPath && !hasDisallowedPath;
-}
-
-function intersectSets(sets: Set<string>[]) {
-  const [first, ...rest] = sets;
-  return new Set([...first].filter((value) => rest.every((set) => set.has(value))));
-}
-
-function setsEqual(left: Set<string>, right: Set<string>) {
-  return left.size === right.size && [...left].every((value) => right.has(value));
 }

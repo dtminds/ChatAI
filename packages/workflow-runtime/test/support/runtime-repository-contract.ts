@@ -178,6 +178,42 @@ export function runWorkflowRuntimeRepositoryContract(
     ]);
   });
 
+  it("keeps a completed Inference result pending while paused and dispatches it after activation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    const jobs = await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    await harness.setWorkflowRuntimeStatus("paused");
+
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:30.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "summary", type: "text" },
+    })).resolves.toBe(true);
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "execute",
+    });
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    })).resolves.toMatchObject({ deferred: 1, dispatched: 0 });
+
+    await harness.setWorkflowRuntimeStatus("active");
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    })).resolves.toMatchObject({ dispatched: 1 });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskType: "execute",
+    });
+  });
+
   it("deduplicates concurrent entry creation with one initial task and outbox event", async () => {
     const results = await Promise.all(
       Array.from({ length: 8 }, () => harness.repository.createRunWithInitialTask(createRunInput())),

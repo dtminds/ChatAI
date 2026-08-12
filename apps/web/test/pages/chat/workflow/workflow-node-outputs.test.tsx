@@ -32,7 +32,7 @@ describe("workflow node outputs", () => {
   });
 
   it("rejects unstable declarations before they reach variable consumers", () => {
-    const node = createNode("message", 0);
+    const node = createNode("agent", 0);
     const outputs: WorkflowNodeOutputDefinition[] = [
       {
         availableOnSourceHandles: ["missing-handle"],
@@ -69,6 +69,17 @@ describe("workflow node outputs", () => {
       usages: [],
       valueType: { kind: "object", schemaRef: "query-result" },
     }])).toEqual([]);
+  });
+
+  it("rejects output declarations that drift from the shared node contract", () => {
+    const node = createNode("message", 0);
+
+    expect(validateWorkflowNodeOutputDefinitions(node, [{
+      key: "sentAt",
+      label: "发送成功时间",
+      usages: ["variable"],
+      valueType: { kind: "string" },
+    }])).toContainEqual("output contract mismatch for sentAt");
   });
 
   it("uses product-facing labels instead of implementation types", () => {

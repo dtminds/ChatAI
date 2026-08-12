@@ -1336,6 +1336,10 @@ export class MysqlWorkflowRuntimeRepository implements
           failureKind: "unknown",
           id: normalizeId(row.id),
           leaseOwner: row.lease_owner,
+          recovery: {
+            maxAttempts: input.maxAttempts,
+            now: input.now,
+          },
           status: "failed",
         })) expired += 1;
       } else if (leaseExpired) {
@@ -1360,6 +1364,10 @@ export class MysqlWorkflowRuntimeRepository implements
     failureKind?: "retryable" | "terminal" | "unknown";
     id: string;
     leaseOwner: string | null;
+    recovery?: {
+      maxAttempts: number;
+      now: Date;
+    };
     result?: import("@chatai/contracts").WorkflowInferenceResult;
     status: "failed" | "succeeded";
   }) {
@@ -1381,6 +1389,14 @@ export class MysqlWorkflowRuntimeRepository implements
       if (!input.allowUnleased) query = query.where("lease_owner", "=", input.leaseOwner);
       const row = await query.forUpdate().executeTakeFirst();
       if (!row) return false;
+      if (input.recovery) {
+        const leaseExpired = row.status === "running"
+          && row.lease_expires_at !== null
+          && row.lease_expires_at <= input.recovery.now;
+        const attemptsExhausted = row.attempt >= input.recovery.maxAttempts
+          && (row.status !== "running" || leaseExpired);
+        if (row.deadline_at > input.recovery.now && !attemptsExhausted) return false;
+      }
       await trx.updateTable(INFERENCE_JOB_TABLE).set({
         completed_at: input.completedAt,
         error_code: input.errorCode ?? null,

@@ -4,11 +4,17 @@ import { QUICK_REPLY_ATTACHMENT_MAX_COUNT } from "../chat/quick-reply-content.js
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import {
+  getWorkflowCapabilityProfile,
+  getWorkflowGuaranteedVariableCatalog,
+  type WorkflowType,
+} from "./policy.js";
+import {
   WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowWaitEventDraftConfigSchema,
+  type WorkflowStartTrigger,
 } from "./trigger.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
@@ -263,6 +269,17 @@ export const WorkflowEmptyNodeConfigSchema = Type.Object({}, { additionalPropert
 
 export type WorkflowVariableSelector = Static<typeof WorkflowVariableSelectorSchema>;
 export type WorkflowOutputValueType = Static<typeof WorkflowOutputValueTypeSchema>;
+export type WorkflowNodeOutputUsage =
+  | "intent-input"
+  | "message-content"
+  | "time-reference"
+  | "variable";
+export type WorkflowNodeOutputContract = {
+  availableOnSourceOutlets?: readonly string[];
+  key: string;
+  usages: readonly WorkflowNodeOutputUsage[];
+  valueType: WorkflowOutputValueType;
+};
 export type WorkflowVariableContentSegment = Static<typeof WorkflowVariableContentSegmentSchema>;
 export type WorkflowMessageDraftConfig = Static<typeof WorkflowMessageDraftConfigSchema>;
 export type WorkflowMessageExecutionConfig = Static<typeof WorkflowMessageExecutionConfigSchema>;
@@ -420,6 +437,151 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null && Value.Check(schema, value);
+}
+
+export function getWorkflowNodeOutputContracts(
+  kind: WorkflowNodeKind,
+  config: Record<string, unknown>,
+): readonly WorkflowNodeOutputContract[] | null {
+  if (kind === "llm" && Value.Check(WorkflowLlmOutputConfigSchema, config.output)) {
+    const output = config.output as WorkflowLlmOutputConfig;
+    const fields = output.format === "json" ? output.fields : [output.field];
+    return fields.map(field => ({
+      key: field.id,
+      usages: field.type === "string"
+        ? ["variable", "message-content"]
+        : ["variable"],
+      valueType: { kind: field.type },
+    }));
+  }
+  if (kind === "ai-intent") {
+    return [
+      {
+        key: "matchedIntentDescription",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "reason",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+    ];
+  }
+  if (kind === "message") {
+    return [{
+      key: "sentAt",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    }];
+  }
+  if (kind === "wait-event") {
+    return [
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "messageIds",
+        usages: ["intent-input"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "textContent",
+        usages: ["intent-input", "message-content", "variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "messageCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "lastMessageAt",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  if (kind === "message-query") {
+    return [
+      {
+        key: "messageIds",
+        usages: ["intent-input"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      },
+      {
+        key: "textContent",
+        usages: ["intent-input", "message-content", "variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "messageCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "rangeStart",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+      {
+        key: "rangeEnd",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  return null;
+}
+
+export function getWorkflowContextVariableValueType(
+  selector: WorkflowVariableSelector,
+  workflowType?: WorkflowType,
+  entryEventTypes?: readonly WorkflowStartTrigger["type"][],
+): WorkflowOutputValueType | null {
+  const key = selector.join(".");
+  const variableCatalog = workflowType && entryEventTypes
+    ? getWorkflowGuaranteedVariableCatalog(workflowType, entryEventTypes)
+    : workflowType
+      ? getWorkflowCapabilityProfile(workflowType).variableCatalog
+      : null;
+  if (variableCatalog && !variableCatalog.includes(key)) {
+    return null;
+  }
+  if (key === "subject.id") return { kind: "string" };
+  if (key === "trigger.eventType") return { kind: "string" };
+  if (key === "trigger.occurredAt") return { kind: "datetime" };
+  if (key === "trigger.projection.workUserId"
+    || key === "trigger.projection.seatId"
+    || key === "trigger.projection.tagId"
+    || key === "trigger.projection.messageId") {
+    return { kind: "number" };
+  }
+  if (key === "trigger.projection.externalUserId"
+    || key === "trigger.projection.thirdExternalUserId") {
+    return { kind: "string" };
+  }
+  return null;
+}
+
+export function isWorkflowOutputValueTypeEqual(
+  left: WorkflowOutputValueType,
+  right: WorkflowOutputValueType,
+) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "reference") {
+    return right.kind === "reference" && left.semantic === right.semantic;
+  }
+  if (left.kind === "array") {
+    return right.kind === "array"
+      && left.itemType === right.itemType
+      && left.semantic === right.semantic;
+  }
+  if (left.kind === "object") {
+    return right.kind === "object" && left.schemaRef === right.schemaRef;
+  }
+  return true;
 }
 
 export function isWorkflowLlmExecutionConfigComplete(

@@ -120,6 +120,10 @@ export class WorkflowRuntimeService {
     if (this.capabilityTimeoutMs * 2 > this.taskLeaseDurationMs) {
       throw new Error("Workflow capability timeout must not exceed half of the task lease duration");
     }
+    if (!Number.isSafeInteger(this.inferenceTotalTimeoutMs)
+      || this.inferenceTotalTimeoutMs <= 0) {
+      throw new Error("Workflow inference timeout must be a positive integer");
+    }
   }
 
   async startRun(input: {

@@ -146,8 +146,67 @@ export function getWorkflowCapabilityProfile(
   return WORKFLOW_CAPABILITY_PROFILES[workflowType];
 }
 
+export function getWorkflowGuaranteedVariableCatalog(
+  workflowType: WorkflowType,
+  eventTypes: readonly WorkflowEntryEventType[],
+) {
+  const shared = new Set<string>(SHARED_WORKFLOW_VARIABLE_CATALOG);
+  if (eventTypes.length === 0) return [...shared];
+  const eventCatalogs = eventTypes.map(eventType =>
+    new Set<string>(getWorkflowEntryEventVariableCatalog(workflowType, eventType)));
+  return getWorkflowCapabilityProfile(workflowType).variableCatalog.filter(variable =>
+    shared.has(variable) || eventCatalogs.every(catalog => catalog.has(variable)));
+}
+
 export function getEnabledWorkflowTypes(): WorkflowType[] {
   return Object.values(WORKFLOW_CAPABILITY_PROFILES)
     .filter((profile) => profile.availability === "enabled")
     .map((profile) => profile.workflowType);
+}
+
+function getWorkflowEntryEventVariableCatalog(
+  workflowType: WorkflowType,
+  eventType: WorkflowEntryEventType,
+) {
+  const shared = [...SHARED_WORKFLOW_VARIABLE_CATALOG];
+  if (workflowType === "wecom_sop") {
+    if (eventType === "contact.friend_added") {
+      return [
+        ...shared,
+        "trigger.projection.workUserId",
+        "trigger.projection.externalUserId",
+      ];
+    }
+    if (eventType === "contact.tag_added") {
+      return [
+        ...shared,
+        "trigger.projection.workUserId",
+        "trigger.projection.externalUserId",
+        "trigger.projection.tagId",
+      ];
+    }
+    return shared;
+  }
+  if (workflowType === "chatai_sop") {
+    const contactIdentity = [
+      "trigger.projection.workUserId",
+      "trigger.projection.seatId",
+      "trigger.projection.thirdExternalUserId",
+    ];
+    if (eventType === "contact.friend_added") {
+      return [...shared, ...contactIdentity, "trigger.projection.externalUserId"];
+    }
+    if (eventType === "contact.tag_added") {
+      return [
+        ...shared,
+        ...contactIdentity,
+        "trigger.projection.externalUserId",
+        "trigger.projection.tagId",
+      ];
+    }
+    if (eventType === "message.received") {
+      return [...shared, ...contactIdentity, "trigger.projection.messageId"];
+    }
+  }
+  return shared;
 }

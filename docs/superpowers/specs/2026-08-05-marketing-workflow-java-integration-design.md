@@ -399,7 +399,7 @@ type WorkflowCapabilityProfile = {
 
 WeCom SOP 明确不允许当前依赖 ChatAI 会话语义的 `wait-event`、`message`、`message-query`、`handoff`、`agent`、`ai-collect` 和 `ai-intent`。其中 `ai-intent` 当前接收消息内容或消息 ID，不作为通用文本分类节点开放。
 
-本期公共用户变量目录只包含：
+本期所有 Workflow Type 都保证以下公共变量：
 
 ```text
 subject.id
@@ -407,7 +407,13 @@ trigger.eventType
 trigger.occurredAt
 ```
 
-前序节点输出和节点 `enteredAt / exitedAt` 由图结构动态生成，不写入静态 Profile。选择器 scope 从 `customer` 统一为 `subject`；删除当前无法跨类型保证的 `system.employeeId` 和 `customer.name`。`eventId` 保留在 Runtime Context 用于幂等，不进入用户变量选择器。事件 payload 字段以后由具体事件契约注册，本期系统变量目录允许为空。
+首批 Entry Event 还注册了对应的 `trigger.projection.*` 变量。编辑器和 Compiler
+只能暴露当前 Workflow Type 允许、并且在该 Workflow 所有已配置 Start Event 中都保证存在的
+字段。例如同时配置 `contact.tag_added` 与 `message.received` 时，`tagId` 和 `messageId`
+都不可引用，因为它们分别只存在于其中一类事件。前序节点输出和节点
+`enteredAt / exitedAt` 由图结构动态生成，不写入静态 Profile。选择器 scope 从
+`customer` 统一为 `subject`；删除当前无法跨类型保证的 `system.employeeId` 和
+`customer.name`。`eventId` 保留在 Runtime Context 用于幂等，不进入用户变量选择器。
 
 当前 `message`、`message-query`、`wait-event`、`handoff` 和 `agent` 节点表达的是 ChatAI 会话能力。未来如果 WeCom SOP 支持企微触达，应增加明确的企微消息 operation 或节点能力，不能复用同一个名称后在 Java 内部猜测渠道。
 

@@ -1433,7 +1433,7 @@ export class MysqlWorkflowRuntimeRepository implements
       await trx.updateTable(RUN_TABLE).set({
         lock_version: run.lockVersion + 1,
         next_execute_at: input.completedAt,
-        status: decision === "execute" ? "running" : "waiting",
+        status: "running",
       }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
         .where("status", "=", "waiting").executeTakeFirstOrThrow();
       if (decision === "execute") {
@@ -1441,6 +1441,7 @@ export class MysqlWorkflowRuntimeRepository implements
           ...task,
           dueAt: input.completedAt,
           status: "dispatched",
+          taskType: "execute",
           taskVersion: nextTaskVersion,
         }, input.completedAt);
       }

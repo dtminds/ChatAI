@@ -123,6 +123,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_task",
       "xy_wap_embed_workflow_event_subscription",
       "xy_wap_embed_workflow_event_subscription_event",
+      "xy_wap_embed_workflow_inference_job",
       "xy_wap_embed_workflow_node_execution",
       "xy_wap_embed_workflow_outbox",
       "xy_wap_embed_workflow_inbox",
@@ -137,6 +138,7 @@ describe("database schema document", () => {
       expect(table).toContain("update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
       expect(table).toContain("PRIMARY KEY (id)");
     }
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_inference_job");
   });
 
   it("keeps workflow deletion separate from its runtime status", () => {

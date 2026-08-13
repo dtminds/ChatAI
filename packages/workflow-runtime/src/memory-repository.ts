@@ -1006,7 +1006,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.shardId !== run.shardId
         || (run.status !== "waiting" && authoritativeTask.nodeId !== run.currentNodeId)
         || (run.status === "waiting" && (
-          (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event")
+          (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
+            && authoritativeTask.taskType !== "inference")
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
@@ -1466,13 +1467,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const boundary = this.resolveWorkflowBoundary
       ? await this.resolveWorkflowBoundary({ uid: job.uid, workflowId: run.workflowId })
       : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    task.taskType = "execute";
+    run.status = transitionRun(run.status, "running");
     if (boundary && getWorkflowExecutionBoundaryDecision(boundary) === "execute") {
-      task.taskType = "execute";
       task.status = transitionTask(transitionTask(task.status, "leased"), "dispatched");
-      run.status = transitionRun(run.status, "running");
       this.outbox.push(createOutbox(this.createId(), task, completedAt));
-    } else {
-      task.taskType = "execute";
     }
     this.touchRun(run);
     return true;

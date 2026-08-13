@@ -97,8 +97,39 @@ describe("workflow node contracts", () => {
     expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
       kind: "template",
       templateKey: "workflow.intent.classify.v1",
-      variables: { input: "hello" },
+      variables: {
+        additionalRules: "",
+        input: "hello",
+        intents: "[]",
+      },
     })).toBe(true);
+    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
+      kind: "template",
+      templateKey: "workflow.intent.other.v1",
+      variables: {
+        additionalRules: "",
+        input: "hello",
+        intents: "[]",
+      },
+    })).toBe(false);
+    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
+      kind: "template",
+      templateKey: "workflow.intent.classify.v1",
+      variables: {
+        input: "hello",
+        intents: "[]",
+      },
+    })).toBe(false);
+    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
+      kind: "template",
+      templateKey: "workflow.intent.classify.v1",
+      variables: {
+        additionalRules: "",
+        input: "hello",
+        intents: "[]",
+        unexpected: "value",
+      },
+    })).toBe(false);
     expect(Value.Check(WorkflowInferenceMessageListResultSchema, {
       content: "summary",
       type: "text",

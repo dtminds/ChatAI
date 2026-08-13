@@ -139,6 +139,23 @@ export function runWorkflowRuntimeRepositoryContract(
     })).resolves.toHaveLength(1);
   });
 
+  it("keeps a valid Inference wait during consistency reconciliation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+
+    await expect(harness.repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2099-01-01T00:01:00.000Z"),
+      limit: 10,
+      now: new Date("2099-01-01T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
+    });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "inference",
+    });
+  });
+
   it("does not fail a final Inference attempt before its lease expires", async () => {
     const waiting = await createInferenceWait(harness.repository);
     await harness.repository.claimInferenceBatch({
@@ -197,6 +214,14 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
       status: "pending",
       taskType: "execute",
+    });
+    await expect(harness.repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2099-01-01T00:01:00.000Z"),
+      limit: 10,
+      now: new Date("2099-01-01T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
     });
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,

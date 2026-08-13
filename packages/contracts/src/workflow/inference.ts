@@ -29,11 +29,12 @@ export const WorkflowInferenceMessageListRequestSchema = Type.Object({
 
 export const WorkflowInferenceTemplateRequestSchema = Type.Object({
   kind: Type.Literal("template"),
-  templateKey: Type.String({ minLength: 1, maxLength: 128 }),
-  variables: Type.Record(
-    Type.String({ minLength: 1, maxLength: 64 }),
-    Type.String({ maxLength: 20_000 }),
-  ),
+  templateKey: Type.Literal(WORKFLOW_INTENT_TEMPLATE_KEY),
+  variables: Type.Object({
+    additionalRules: Type.String({ maxLength: 20_000 }),
+    input: Type.String({ maxLength: 20_000 }),
+    intents: Type.String({ maxLength: 20_000 }),
+  }, { additionalProperties: false }),
 }, { additionalProperties: false });
 
 export const WorkflowInferenceRequestSchema = Type.Union([

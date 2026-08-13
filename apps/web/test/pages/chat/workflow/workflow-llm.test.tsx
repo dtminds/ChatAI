@@ -679,6 +679,68 @@ describe("workflow LLM node", () => {
     expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
   });
 
+  it("clears a pending close confirmation when the Attempt finishes", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    const completed = createDeferred<ReturnType<typeof createAttempt>>();
+    llmTestServiceMock.createWorkflowLlmTestAttempt
+      .mockResolvedValueOnce(createAttempt({ attemptId: "1" }))
+      .mockResolvedValueOnce(createAttempt({ attemptId: "2" }));
+    llmTestServiceMock.getWorkflowLlmTestAttempt
+      .mockReturnValueOnce(completed.promise)
+      .mockResolvedValueOnce(createAttempt({
+        attemptId: "2",
+        completedAt: new Date().toISOString(),
+        output: { "output-1": "第二次结果" },
+        status: "succeeded",
+      }));
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "终态关闭确认");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalled());
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    completed.resolve(createAttempt({
+      attemptId: "1",
+      completedAt: new Date().toISOString(),
+      output: { "output-1": "第一次结果" },
+      status: "succeeded",
+    }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    await user.click(within(workspace).getByRole("button", { name: "重新运行" }));
+    expect(await within(workspace).findByText("第二次结果")).toBeInTheDocument();
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).not.toHaveBeenCalled();
+  });
+
+  it("guards closing the node settings panel while an Attempt is running", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    const onClose = vi.fn();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(new Promise(() => undefined));
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
+    );
+    render(createLlmTestPanel(node, vi.fn(), "saved", onClose));
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "关闭节点配置");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await user.click(screen.getByRole("button", { name: "关闭节点配置" }));
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "停止并关闭" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
+  });
+
   it("guards Escape and switching expanded editors while an Attempt is running", async () => {
     const user = userEvent.setup();
     const node = createTestableLlmNode();
@@ -760,6 +822,30 @@ describe("workflow LLM node", () => {
     await waitFor(() => expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt)
       .toHaveBeenCalledWith("42", node.id, "1"));
     expect(screen.queryByRole("region", { name: "试运行展开编辑" })).not.toBeInTheDocument();
+  });
+
+  it("cancels a created Attempt after confirmed close even when the panel unmounts", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    const created = createDeferred<ReturnType<typeof createAttempt>>();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockReturnValue(created.promise);
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
+    );
+    const rendered = renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "卸载后取消");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    await user.click(screen.getByRole("button", { name: "停止并关闭" }));
+    rendered.unmount();
+
+    created.resolve(createAttempt());
+
+    await waitFor(() => expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt)
+      .toHaveBeenCalledWith("42", node.id, "1"));
   });
 
   it("keeps the test Workspace open when creation fails after confirming close", async () => {
@@ -953,6 +1039,7 @@ function createLlmTestPanel(
   node: WorkflowNode<"llm">,
   onNodeChange: (patch: WorkflowNodeConfigPatch<"llm">) => void,
   saveState: "dirty" | "error" | "saved" | "saving" = "saved",
+  onClose = vi.fn(),
 ) {
   return (
     <NodeConfigPanel
@@ -960,7 +1047,7 @@ function createLlmTestPanel(
       edges={[]}
       node={node}
       nodes={[node]}
-      onClose={vi.fn()}
+      onClose={onClose}
       onNodeChange={onNodeChange}
       onRenameNode={vi.fn()}
       testContext={{ draftVersion: 3, saveState, workflowId: "42" }}

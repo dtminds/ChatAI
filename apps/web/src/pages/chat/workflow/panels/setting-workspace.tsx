@@ -26,7 +26,8 @@ type SettingWorkspaceContextValue = {
   closeEditor: () => void;
   editorHost: HTMLDivElement | null;
   openEditor: (editor: ExpandedEditor) => void;
-  registerCloseGuard: (guard: () => boolean) => () => void;
+  registerCloseGuard: (guard: (continueClose: () => void) => boolean) => () => void;
+  requestClose: (continueClose: () => void) => void;
   requestCloseEditor: () => void;
   setEditorHost: (host: HTMLDivElement | null) => void;
 };
@@ -36,22 +37,23 @@ const SettingWorkspaceContext = createContext<SettingWorkspaceContextValue | nul
 export function SettingWorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeEditor, setActiveEditor] = useState<ExpandedEditor | null>(null);
   const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
-  const closeGuardRef = useRef<(() => boolean) | null>(null);
+  const closeGuardRef = useRef<((continueClose: () => void) => boolean) | null>(null);
   const closeEditor = useCallback(() => setActiveEditor(null), []);
-  const registerCloseGuard = useCallback((guard: () => boolean) => {
+  const registerCloseGuard = useCallback((guard: (continueClose: () => void) => boolean) => {
     closeGuardRef.current = guard;
     return () => {
       if (closeGuardRef.current === guard) closeGuardRef.current = null;
     };
   }, []);
-  const requestCloseEditor = useCallback(() => {
-    if (closeGuardRef.current?.()) return;
-    closeEditor();
-  }, [closeEditor]);
+  const requestClose = useCallback((continueClose: () => void) => {
+    if (closeGuardRef.current?.(continueClose)) return;
+    continueClose();
+  }, []);
+  const requestCloseEditor = useCallback(() => requestClose(closeEditor), [closeEditor, requestClose]);
   const openEditor = useCallback((editor: ExpandedEditor) => {
-    if (activeEditor?.id !== editor.id && closeGuardRef.current?.()) return;
-    setActiveEditor(editor);
-  }, [activeEditor?.id]);
+    if (activeEditor?.id === editor.id) return;
+    requestClose(() => setActiveEditor(editor));
+  }, [activeEditor?.id, requestClose]);
 
   return (
     <SettingWorkspaceContext.Provider
@@ -61,6 +63,7 @@ export function SettingWorkspaceProvider({ children }: { children: ReactNode }) 
         editorHost,
         openEditor,
         registerCloseGuard,
+        requestClose,
         requestCloseEditor,
         setEditorHost,
       }}

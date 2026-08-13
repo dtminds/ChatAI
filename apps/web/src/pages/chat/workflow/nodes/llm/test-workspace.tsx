@@ -122,8 +122,9 @@ function LlmTestWorkspaceContent({
   const [stopping, setStopping] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const { closeEditor, registerCloseGuard } = useSettingWorkspace();
-  const closeAfterStopRef = useRef(false);
+  const { registerCloseGuard } = useSettingWorkspace();
+  const pendingCloseActionRef = useRef<(() => void) | null>(null);
+  const confirmedCloseActionRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
   const requestVersionRef = useRef(0);
   const configReady = getLlmStatus({
@@ -152,11 +153,21 @@ function LlmTestWorkspaceContent({
 
   useEffect(() => {
     if (!running && !stopping) return undefined;
-    return registerCloseGuard(() => {
-      if (!stopping) setCloseConfirmOpen(true);
+    return registerCloseGuard((continueClose) => {
+      if (!stopping) {
+        pendingCloseActionRef.current = continueClose;
+        setCloseConfirmOpen(true);
+      }
       return true;
     });
   }, [registerCloseGuard, running, stopping]);
+
+  useEffect(() => {
+    if (running || stopping) return;
+    pendingCloseActionRef.current = null;
+    confirmedCloseActionRef.current = null;
+    setCloseConfirmOpen(false);
+  }, [running, stopping]);
 
   useEffect(() => {
     if (!running && !stopping) return undefined;
@@ -234,19 +245,19 @@ function LlmTestWorkspaceContent({
         },
       );
       if (requestVersionRef.current === requestVersion) {
+        const confirmedCloseAction = confirmedCloseActionRef.current;
+        confirmedCloseActionRef.current = null;
         if (mountedRef.current) {
           setAttempt(created);
           setStarting(false);
-          if (closeAfterStopRef.current) {
-            void cancelAttempt(created, true);
-          }
         }
+        if (confirmedCloseAction) void cancelAttempt(created, confirmedCloseAction);
       }
     } catch (error) {
       if (mountedRef.current && requestVersionRef.current === requestVersion) {
         setStarting(false);
         setStopping(false);
-        closeAfterStopRef.current = false;
+        confirmedCloseActionRef.current = null;
         setRequestError(getRequestErrorMessage(error));
       }
     } finally {
@@ -254,11 +265,16 @@ function LlmTestWorkspaceContent({
     }
   };
 
-  const cancelAttempt = async (currentAttempt: WorkflowLlmTestAttempt, closeAfterStop: boolean) => {
+  const cancelAttempt = async (
+    currentAttempt: WorkflowLlmTestAttempt,
+    continueClose?: () => void,
+  ) => {
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
-    setStopping(true);
-    setRequestError(null);
+    if (mountedRef.current) {
+      setStopping(true);
+      setRequestError(null);
+    }
     try {
       const stopped = await cancelWorkflowLlmTestAttempt(
         testContext.workflowId,
@@ -267,15 +283,13 @@ function LlmTestWorkspaceContent({
       );
       if (mountedRef.current && requestVersionRef.current === requestVersion) {
         setAttempt(stopped);
-        closeAfterStopRef.current = false;
-        if (closeAfterStop) closeEditor();
+        continueClose?.();
       }
     } catch (error) {
       if (mountedRef.current && requestVersionRef.current === requestVersion) {
-        closeAfterStopRef.current = false;
         if (isMissingAttemptError(error)) {
           clearCurrentAttempt();
-          if (closeAfterStop) closeEditor();
+          continueClose?.();
         }
         else {
           setRequestError(getRequestErrorMessage(error));
@@ -289,17 +303,21 @@ function LlmTestWorkspaceContent({
 
   const stopAttempt = () => {
     if (!attempt || attempt.status !== "running" || stopping) return;
-    void cancelAttempt(attempt, false);
+    void cancelAttempt(attempt);
   };
 
   const stopAndClose = () => {
+    const continueClose = pendingCloseActionRef.current;
+    pendingCloseActionRef.current = null;
     setCloseConfirmOpen(false);
-    closeAfterStopRef.current = true;
+    if (!continueClose) return;
     if (attempt?.status === "running") {
-      void cancelAttempt(attempt, true);
+      void cancelAttempt(attempt, continueClose);
     } else if (starting) {
+      confirmedCloseActionRef.current = continueClose;
       setStopping(true);
     }
+    else continueClose();
   };
 
   return (
@@ -372,7 +390,13 @@ function LlmTestWorkspaceContent({
           </Button>
         )}
       </footer>
-      <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+      <AlertDialog
+        open={closeConfirmOpen}
+        onOpenChange={(open) => {
+          setCloseConfirmOpen(open);
+          if (!open) pendingCloseActionRef.current = null;
+        }}
+      >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>停止试运行</AlertDialogTitle>

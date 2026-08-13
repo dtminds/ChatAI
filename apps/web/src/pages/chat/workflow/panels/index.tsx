@@ -1,10 +1,11 @@
 import type { WorkflowEntryEventType } from "@chatai/contracts";
+import type { ComponentProps } from "react";
 import type { WorkflowEdge, WorkflowNodeConfigPatch, WorkflowNode } from "../types";
 import { BasePanel } from "./base-panel";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 import { NodeOutputsSection } from "./node-outputs-section";
-import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
+import { SettingWorkspace, SettingWorkspaceProvider, useSettingWorkspace } from "./setting-workspace";
 import { LlmTestWorkspaceTrigger } from "../nodes/llm/test-workspace";
 import type { WorkflowNodeTestContext } from "./types";
 
@@ -46,7 +47,7 @@ export function NodeConfigPanel({
   return (
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
-        <BasePanel
+        <GuardedBasePanel
           headerActions={node.data.kind === "llm" && testContext
             ? <LlmTestWorkspaceTrigger nodeId={node.id} />
             : undefined}
@@ -72,10 +73,15 @@ export function NodeConfigPanel({
               ? <NodeOutputsSection node={node} />
               : null}
           </fieldset>
-        </BasePanel>
+        </GuardedBasePanel>
       </SettingWorkspace>
     </SettingWorkspaceProvider>
   );
+}
+
+function GuardedBasePanel({ onClose, ...props }: ComponentProps<typeof BasePanel>) {
+  const { requestClose } = useSettingWorkspace();
+  return <BasePanel {...props} onClose={() => requestClose(onClose)} />;
 }
 
 function NodeSettingsForm(props: NodeSettingsProps) {

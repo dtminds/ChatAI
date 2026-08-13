@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -25,6 +26,8 @@ type SettingWorkspaceContextValue = {
   closeEditor: () => void;
   editorHost: HTMLDivElement | null;
   openEditor: (editor: ExpandedEditor) => void;
+  registerCloseGuard: (guard: () => boolean) => () => void;
+  requestCloseEditor: () => void;
   setEditorHost: (host: HTMLDivElement | null) => void;
 };
 
@@ -33,7 +36,22 @@ const SettingWorkspaceContext = createContext<SettingWorkspaceContextValue | nul
 export function SettingWorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeEditor, setActiveEditor] = useState<ExpandedEditor | null>(null);
   const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
+  const closeGuardRef = useRef<(() => boolean) | null>(null);
   const closeEditor = useCallback(() => setActiveEditor(null), []);
+  const registerCloseGuard = useCallback((guard: () => boolean) => {
+    closeGuardRef.current = guard;
+    return () => {
+      if (closeGuardRef.current === guard) closeGuardRef.current = null;
+    };
+  }, []);
+  const requestCloseEditor = useCallback(() => {
+    if (closeGuardRef.current?.()) return;
+    closeEditor();
+  }, [closeEditor]);
+  const openEditor = useCallback((editor: ExpandedEditor) => {
+    if (activeEditor?.id !== editor.id && closeGuardRef.current?.()) return;
+    setActiveEditor(editor);
+  }, [activeEditor?.id]);
 
   return (
     <SettingWorkspaceContext.Provider
@@ -41,7 +59,9 @@ export function SettingWorkspaceProvider({ children }: { children: ReactNode }) 
         activeEditor,
         closeEditor,
         editorHost,
-        openEditor: setActiveEditor,
+        openEditor,
+        registerCloseGuard,
+        requestCloseEditor,
         setEditorHost,
       }}
     >
@@ -63,7 +83,7 @@ export function SettingWorkspace({
   animateOnMount?: boolean;
   children: ReactNode;
 }) {
-  const { activeEditor, closeEditor, setEditorHost } = useSettingWorkspace();
+  const { activeEditor, requestCloseEditor, setEditorHost } = useSettingWorkspace();
 
   useEffect(() => {
     if (!activeEditor) return;
@@ -71,11 +91,11 @@ export function SettingWorkspace({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      closeEditor();
+      requestCloseEditor();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeEditor, closeEditor]);
+  }, [activeEditor, requestCloseEditor]);
 
   return (
     <div
@@ -94,7 +114,7 @@ export function SettingWorkspace({
           className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-[var(--workflow-border)] bg-background max-lg:border-r-0"
           role="region"
         >
-          <ExpandedEditorHeader title={activeEditor.title} onClose={closeEditor} />
+          <ExpandedEditorHeader title={activeEditor.title} onClose={requestCloseEditor} />
           <div className="flex min-h-0 flex-1" ref={setEditorHost} />
         </section>
       ) : null}

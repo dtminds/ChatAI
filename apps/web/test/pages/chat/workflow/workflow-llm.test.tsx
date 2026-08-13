@@ -14,7 +14,6 @@ import { LlmConfig } from "@/pages/chat/workflow/nodes/llm/panel";
 import { llmNodeUi } from "@/pages/chat/workflow/nodes/llm/ui";
 import { BasePanel } from "@/pages/chat/workflow/panels/base-panel";
 import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
-import { RequestNormalizedError } from "@/lib/request";
 import {
   SettingWorkspace,
   SettingWorkspaceEditorContent,
@@ -31,11 +30,6 @@ import type {
 import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
 import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
 import { getWorkflowNodeOutputDefinitions } from "@/pages/chat/workflow/workflow-node-outputs";
-import {
-  createLlmTestConfigFingerprint,
-  loadLlmTestAttemptReference,
-  saveLlmTestAttemptReference,
-} from "@/pages/chat/workflow/nodes/llm/test-attempt-session";
 
 const agentServiceMock = vi.hoisted(() => ({
   listAiHostingModels: vi.fn(),
@@ -61,7 +55,6 @@ const model = {
 
 describe("workflow LLM node", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
     agentServiceMock.listAiHostingModels.mockResolvedValue({ models: [model] });
     llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockReset();
     llmTestServiceMock.createWorkflowLlmTestAttempt.mockReset();
@@ -627,17 +620,14 @@ describe("workflow LLM node", () => {
     });
   });
 
-  it("restores the current Attempt after closing and reopening the test Workspace", async () => {
+  it("does not restore the previous result after closing and reopening the test Workspace", async () => {
     const user = userEvent.setup();
     const node = createTestableLlmNode();
-    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(
-      createAttempt({ inputValues: { "input-message": "关闭后恢复", "input-tone": "简洁" } }),
-    );
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
     llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
       createAttempt({
         completedAt: new Date().toISOString(),
-        inputValues: { "input-message": "关闭后恢复", "input-tone": "简洁" },
-        output: { "output-1": "已恢复结果" },
+        output: { "output-1": "本次结果" },
         status: "succeeded",
       }),
     );
@@ -645,113 +635,176 @@ describe("workflow LLM node", () => {
 
     await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
     let workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "关闭后恢复");
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "不恢复结果");
     await user.click(within(workspace).getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(loadLlmTestAttemptReference("42", node.id)?.attemptId).toBe("1"));
+    expect(await within(workspace).findByText("本次结果")).toBeInTheDocument();
 
     await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
     expect(screen.queryByRole("region", { name: "试运行展开编辑" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
     workspace = screen.getByRole("region", { name: "试运行展开编辑" });
 
-    expect(await within(workspace).findByText("已恢复结果")).toBeInTheDocument();
-    expect(within(workspace).getByRole("textbox", { name: "message的试运行值" }))
-      .toHaveValue("关闭后恢复");
+    expect(within(workspace).queryByText("本次结果")).not.toBeInTheDocument();
+    expect(within(workspace).getByRole("textbox", { name: "message的试运行值" })).toHaveValue("");
+    expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalledTimes(1);
   });
 
-  it("persists an Attempt that is created after the test Workspace closes", async () => {
+  it("confirms and cancels a running Attempt before closing the test Workspace", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(new Promise(() => undefined));
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
+    );
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "关闭运行中任务");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+
+    const dialog = screen.getByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "继续运行" }));
+    expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).not.toHaveBeenCalled();
+
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    await user.click(within(screen.getByRole("alertdialog"))
+      .getByRole("button", { name: "停止并关闭" }));
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "试运行展开编辑" }))
+      .not.toBeInTheDocument());
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
+  });
+
+  it("guards Escape and switching expanded editors while an Attempt is running", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(new Promise(() => undefined));
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
+    );
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "关闭保护");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "继续运行" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "全屏编辑系统提示词" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(document.querySelector('[aria-label="试运行展开编辑"]')).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "系统提示词展开编辑" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止并关闭" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "试运行展开编辑" }))
+      .not.toBeInTheDocument());
+  });
+
+  it("warns before leaving the page only while an Attempt is active", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(new Promise(() => undefined));
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
+    );
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "离开提示");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    const runningUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(runningUnload);
+    expect(runningUnload.defaultPrevented).toBe(true);
+
+    await user.click(within(workspace).getByRole("button", { name: "停止运行" }));
+    await waitFor(() => expect(within(workspace).getByRole("button", { name: "重新运行" })).toBeEnabled());
+
+    const terminalUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(terminalUnload);
+    expect(terminalUnload.defaultPrevented).toBe(false);
+  });
+
+  it("waits for an Attempt identity and cancels it when closing during creation", async () => {
     const user = userEvent.setup();
     const node = createTestableLlmNode();
     const created = createDeferred<ReturnType<typeof createAttempt>>();
     llmTestServiceMock.createWorkflowLlmTestAttempt.mockReturnValue(created.promise);
-    llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
-      createAttempt({
-        completedAt: new Date().toISOString(),
-        output: { "output-1": "关闭后创建的结果" },
-        status: "succeeded",
-      }),
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ completedAt: new Date().toISOString(), status: "cancelled" }),
     );
     renderLlmTestPanel(node, vi.fn());
-
-    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
-    let workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "关闭期间创建");
-    await user.click(within(workspace).getByRole("button", { name: "运行" }));
-    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
-
-    created.resolve(createAttempt({
-      inputValues: { "input-message": "关闭期间创建", "input-tone": "简洁" },
-    }));
-    await waitFor(() => expect(loadLlmTestAttemptReference("42", node.id)?.attemptId).toBe("1"));
-
-    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
-    workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    expect(await within(workspace).findByText("关闭后创建的结果")).toBeInTheDocument();
-  });
-
-  it("restores the current Attempt after remounting the Workflow editor", async () => {
-    const user = userEvent.setup();
-    const node = createTestableLlmNode();
-    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
-    llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
-      createAttempt({
-        completedAt: new Date().toISOString(),
-        output: { "output-1": "刷新后结果" },
-        status: "succeeded",
-      }),
-    );
-    const firstRender = renderLlmTestPanel(node, vi.fn());
-
-    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
-    let workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "刷新恢复");
-    await user.click(within(workspace).getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(loadLlmTestAttemptReference("42", node.id)?.attemptId).toBe("1"));
-    firstRender.unmount();
-
-    renderLlmTestPanel(node, vi.fn());
-    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
-    workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-
-    expect(await within(workspace).findByText("刷新后结果")).toBeInTheDocument();
-    expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
-  });
-
-  it("keeps a completed result on its frozen output snapshot after config changes", async () => {
-    const user = userEvent.setup();
-    const node = createTestableLlmNode();
-    const completed = createDeferred<ReturnType<typeof createAttempt>>();
-    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
-    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(completed.promise);
-    const rendered = renderLlmTestPanel(node, vi.fn());
 
     await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
     const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "快照测试");
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "创建中关闭");
     await user.click(within(workspace).getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalled());
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    await user.click(within(screen.getByRole("alertdialog"))
+      .getByRole("button", { name: "停止并关闭" }));
+    expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
 
-    const changedNode = createTestableLlmNode({
-      output: {
-        field: { description: "", id: "new-output", name: "new_result", type: "string" },
-        format: "text",
-      },
-      systemPrompt: [{ type: "text", value: "新的系统提示词" }],
-    });
-    rendered.rerender(createLlmTestPanel(changedNode, vi.fn()));
-    completed.resolve(createAttempt({
-      completedAt: new Date().toISOString(),
-      output: { "output-1": "旧配置结果" },
-      status: "succeeded",
-    }));
+    created.resolve(createAttempt());
 
-    expect(await within(workspace).findByText("旧配置结果")).toBeInTheDocument();
-    expect(within(workspace).getByText("当前配置已变更，本次结果基于旧配置")).toBeInTheDocument();
-    expect(within(workspace).queryByText("new_result")).not.toBeInTheDocument();
-    expect(within(workspace).getByRole("button", { name: "重新运行" })).toBeEnabled();
+    await waitFor(() => expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt)
+      .toHaveBeenCalledWith("42", node.id, "1"));
+    expect(screen.queryByRole("region", { name: "试运行展开编辑" })).not.toBeInTheDocument();
   });
 
-  it("replaces the current result and session pointer when rerun", async () => {
+  it("keeps the test Workspace open when creation fails after confirming close", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    const created = createDeferred<ReturnType<typeof createAttempt>>();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockReturnValue(created.promise);
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "创建失败");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    await user.click(within(screen.getByRole("alertdialog"))
+      .getByRole("button", { name: "停止并关闭" }));
+
+    created.reject(new Error("network"));
+
+    expect(await within(workspace).findByRole("alert")).toHaveTextContent("操作失败，请稍后重试");
+    expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).not.toHaveBeenCalled();
+  });
+
+  it("keeps the test Workspace open when cancelling during close fails", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(createAttempt());
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReturnValue(new Promise(() => undefined));
+    llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockRejectedValue(new Error("network"));
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "取消失败");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    await user.click(within(workspace).getByRole("button", { name: "收起试运行" }));
+    await user.click(within(screen.getByRole("alertdialog"))
+      .getByRole("button", { name: "停止并关闭" }));
+
+    expect(await within(workspace).findByRole("alert")).toHaveTextContent("操作失败，请稍后重试");
+    expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
+  });
+
+  it("replaces the current result when rerun", async () => {
     const user = userEvent.setup();
     const node = createTestableLlmNode();
     llmTestServiceMock.createWorkflowLlmTestAttempt
@@ -781,34 +834,6 @@ describe("workflow LLM node", () => {
     await user.click(within(workspace).getByRole("button", { name: "重新运行" }));
     expect(await within(workspace).findByText("第二次结果")).toBeInTheDocument();
     expect(within(workspace).queryByText("第一次结果")).not.toBeInTheDocument();
-    expect(loadLlmTestAttemptReference("42", node.id)?.attemptId).toBe("2");
-  });
-
-  it("clears an expired server Attempt and returns to the initial state", async () => {
-    const user = userEvent.setup();
-    const node = createTestableLlmNode();
-    saveLlmTestAttemptReference("42", node.id, {
-      attemptId: "37",
-      configFingerprint: createLlmTestConfigFingerprint(node),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      output: normalizeLlmOutput(node.data.output),
-      version: 1,
-    });
-    llmTestServiceMock.getWorkflowLlmTestAttempt.mockRejectedValue(
-      new RequestNormalizedError({
-        code: "WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND",
-        message: "试运行记录不存在",
-        status: 404,
-      }),
-    );
-    renderLlmTestPanel(node, vi.fn());
-
-    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
-    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-
-    await waitFor(() => expect(loadLlmTestAttemptReference("42", node.id)).toBeNull());
-    expect(within(workspace).getByRole("button", { name: "运行" })).toBeEnabled();
-    expect(workspace).not.toHaveTextContent("37");
   });
 
   it("keeps the expanded editor open when Escape cancels settings rename", async () => {
@@ -1032,8 +1057,10 @@ function createInput(id: string, name: string): WorkflowLlmInputParameter {
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }

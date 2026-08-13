@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event";
 import type React from "react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WorkflowEditorPage,
@@ -31,6 +32,7 @@ import {
   importWorkflowDraft,
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
@@ -847,6 +849,35 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(getWorkflowDocument("live-follow-up").runtimeStatus).toBe("active");
     });
+  });
+
+  it("shows the active Workflow limit for both enable and resume", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const limitError = () => new WorkflowRepositoryError(
+      "conflict",
+      "最多可同时运行 50 个 Workflow",
+      { apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED" },
+    );
+    const repository = {
+      ...baseRepository,
+      enableDocument: vi.fn(() => { throw limitError(); }),
+      resumeDocument: vi.fn(() => { throw limitError(); }),
+    };
+    const toastError = vi.spyOn(toast, "error");
+    renderWorkflowPage("/chat/workflows", repository);
+
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "启用" }));
+    await waitFor(() => expect(toastError).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow"));
+
+    const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
+    await user.click(within(pausedCard).getByRole("button", { name: "启用" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
+    expect(toastError).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
+
+    toastError.mockRestore();
   });
 
   it("confirms before stopping a workflow", async () => {

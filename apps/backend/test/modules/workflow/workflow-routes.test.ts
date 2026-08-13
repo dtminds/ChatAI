@@ -207,6 +207,32 @@ describe("workflow routes", () => {
     })).statusCode).toBe(404);
   });
 
+  it("returns 400 when LLM test inputs cannot produce a valid inference request", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: { draft: withLlmNode(created.draft), expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        expectedDraftVersion: saved.draftVersion,
+        inputValues: { "input-message": "x".repeat(25_000) },
+      },
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("WORKFLOW_LLM_TEST_INPUT_INVALID");
+  });
+
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");
 

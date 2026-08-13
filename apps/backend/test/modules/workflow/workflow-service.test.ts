@@ -96,6 +96,41 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_UNAVAILABLE", statusCode: 503 });
   });
 
+  it("rejects LLM test inputs that render an empty system prompt", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const draft = withLlmNode(created.draft);
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: {
+        ...draft,
+        nodes: draft.nodes.map(node => node.id === "llm-1"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                systemPrompt: [{
+                  selector: ["input", "input-message"] as [string, string],
+                  type: "variable" as const,
+                }],
+                userPrompt: [],
+              },
+            }
+          : node),
+      },
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "" },
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
+    expect(attempts.attempts).toHaveLength(0);
+  });
+
   it("isolates LLM test Attempts by tenant, Workflow, and node", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {

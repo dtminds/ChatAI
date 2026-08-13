@@ -41,6 +41,7 @@ import {
   normalizeWorkflowDraft,
   validateWorkflowTypePolicy,
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
+  WorkflowCapabilityExecutionError,
   WorkflowCompilationError,
   type WorkflowDeploymentCapabilities,
   type WorkflowTriggerBindingSpec,
@@ -149,7 +150,18 @@ export class WorkflowService {
     } catch {
       throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "试运行输入参数过大");
     }
-    const payload = createWorkflowLlmInferenceRequest(node, new Map(Object.entries(inputValues)));
+    let payload;
+    try {
+      payload = createWorkflowLlmInferenceRequest(node, new Map(Object.entries(inputValues)));
+    } catch (error) {
+      if (error instanceof WorkflowCapabilityExecutionError) {
+        throw new BadRequestError(
+          "WORKFLOW_LLM_TEST_INPUT_INVALID",
+          "试运行输入无法生成有效提示词",
+        );
+      }
+      throw error;
+    }
     const createdAt = this.clock();
     const attempt = await repository.createLlmTestAttempt({
       contractVersion: 1,

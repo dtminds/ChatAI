@@ -154,6 +154,112 @@ describe("WorkflowService", () => {
     await expect(service.getLlmTestAttempt(operator, created.id, "llm-1", attempt.attemptId))
       .resolves.toMatchObject({ attemptId: attempt.attemptId });
   });
+
+  it("stops the current LLM test Attempt without letting a late result replace cancellation", async () => {
+    let now = new Date("2099-01-01T00:00:00.000Z");
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const attempt = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test" },
+    });
+    await attempts.claimLlmTestAttemptBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      limit: 1,
+      now: new Date("2099-01-01T00:00:00.000Z"),
+    });
+    now = new Date("2099-01-01T00:00:01.000Z");
+
+    await expect(service.cancelLlmTestAttempt(
+      operator,
+      created.id,
+      "llm-1",
+      attempt.attemptId,
+    )).resolves.toMatchObject({ status: "cancelled" });
+    await expect(attempts.completeLlmTestAttempt({
+      attemptId: attempt.attemptId,
+      completedAt: new Date("2099-01-01T00:00:02.000Z"),
+      leaseOwner: "worker-1",
+      output: { "output-text": "late" },
+      result: { content: "late", type: "text" },
+    })).resolves.toBe(false);
+    await expect(attempts.failLlmTestAttempt({
+      attemptId: attempt.attemptId,
+      errorCode: "LATE_FAILURE",
+      errorMessage: "late",
+      failedAt: new Date("2099-01-01T00:00:02.000Z"),
+      leaseOwner: "worker-1",
+      status: "failed",
+    })).resolves.toBe(false);
+    await expect(service.cancelLlmTestAttempt(
+      operator,
+      created.id,
+      "llm-1",
+      attempt.attemptId,
+    )).resolves.toMatchObject({ output: null, status: "cancelled" });
+  });
+
+  it("keeps an overdue LLM test Attempt timed out when cancellation races its deadline", async () => {
+    let now = new Date("2099-01-01T00:00:00.000Z");
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+      llmTestTimeoutMs: 1_000,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const attempt = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test" },
+    });
+    now = new Date("2099-01-01T00:00:02.000Z");
+
+    await expect(service.cancelLlmTestAttempt(
+      operator,
+      created.id,
+      "llm-1",
+      attempt.attemptId,
+    )).resolves.toMatchObject({ status: "timed_out" });
+  });
+
+  it("expires an overdue LLM test Attempt when it is read", async () => {
+    let now = new Date("2099-01-01T00:00:00.000Z");
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+      llmTestTimeoutMs: 1_000,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const attempt = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test" },
+    });
+    now = new Date("2099-01-01T00:00:02.000Z");
+
+    await expect(service.getLlmTestAttempt(operator, created.id, "llm-1", attempt.attemptId))
+      .resolves.toMatchObject({ status: "timed_out" });
+  });
   it("creates a workflow with trimmed metadata", async () => {
     const service = createService();
 

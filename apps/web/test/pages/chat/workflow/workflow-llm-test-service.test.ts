@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowLlmTestAttempt } from "@chatai/contracts";
 import { http } from "@/lib/request";
 import {
+  cancelWorkflowLlmTestAttempt,
   createWorkflowLlmTestAttempt,
   getWorkflowLlmTestAttempt,
 } from "@/pages/chat/workflow/nodes/llm/test-service";
@@ -42,6 +43,7 @@ describe("workflow LLM test service", () => {
       inputValues: { input: "hello" },
     })).resolves.toEqual(attempt);
     await expect(getWorkflowLlmTestAttempt("42", "llm-1", "7")).resolves.toEqual(attempt);
+    await expect(cancelWorkflowLlmTestAttempt("42", "llm-1", "7")).resolves.toEqual(attempt);
 
     expect(http.post).toHaveBeenCalledWith(
       "/server/workflows/42/nodes/llm-1/llm-test-attempts",
@@ -49,6 +51,9 @@ describe("workflow LLM test service", () => {
     );
     expect(http.get).toHaveBeenCalledWith(
       "/server/workflows/42/nodes/llm-1/llm-test-attempts/7",
+    );
+    expect(http.post).toHaveBeenCalledWith(
+      "/server/workflows/42/nodes/llm-1/llm-test-attempts/7/cancel",
     );
   });
 });

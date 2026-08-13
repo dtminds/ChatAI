@@ -15,10 +15,21 @@ import {
   CheckmarkCircle02Icon,
   Clock01Icon,
   PlayIcon,
+  StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -50,6 +61,7 @@ import {
   normalizeLlmPrompt,
 } from "./config";
 import {
+  cancelWorkflowLlmTestAttempt,
   createWorkflowLlmTestAttempt,
   getWorkflowLlmTestAttempt,
 } from "./test-service";
@@ -104,9 +116,16 @@ function LlmTestWorkspaceContent({
   const [rawValues, setRawValues] = useState<RawInputValues>(() => createInitialRawValues(inputs));
   const [inputErrors, setInputErrors] = useState<InputErrors>({});
   const [attempt, setAttempt] = useState<WorkflowLlmTestAttempt | null>(null);
-  const [starting, setStarting] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
   const [outputSnapshot, setOutputSnapshot] = useState<WorkflowLlmOutputConfig>(output);
+  const [pollRevision, setPollRevision] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const { registerCloseGuard } = useSettingWorkspace();
+  const pendingCloseActionRef = useRef<(() => void) | null>(null);
+  const confirmedCloseActionRef = useRef<(() => void) | null>(null);
+  const mountedRef = useRef(true);
   const requestVersionRef = useRef(0);
   const configReady = getLlmStatus({
     inputs,
@@ -125,14 +144,46 @@ function LlmTestWorkspaceContent({
     ));
   }, [inputs]);
 
-  useEffect(() => () => {
-    requestVersionRef.current += 1;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!running && !stopping) return undefined;
+    return registerCloseGuard((continueClose) => {
+      if (!stopping) {
+        pendingCloseActionRef.current = continueClose;
+        setCloseConfirmOpen(true);
+      }
+      return true;
+    });
+  }, [registerCloseGuard, running, stopping]);
+
+  useEffect(() => {
+    if (running || stopping) return;
+    pendingCloseActionRef.current = null;
+    confirmedCloseActionRef.current = null;
+    setCloseConfirmOpen(false);
+  }, [running, stopping]);
+
+  useEffect(() => {
+    if (!running && !stopping) return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [running, stopping]);
 
   useEffect(() => {
     if (!attempt || attempt.status !== "running") return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const requestVersion = requestVersionRef.current;
 
     const poll = async () => {
       try {
@@ -141,14 +192,18 @@ function LlmTestWorkspaceContent({
           node.id,
           attempt.attemptId,
         );
-        if (cancelled) return;
+        if (cancelled || requestVersionRef.current !== requestVersion) return;
+        setRequestError(null);
         setAttempt(nextAttempt);
         if (nextAttempt.status === "running") {
           timer = setTimeout(() => void poll(), LLM_TEST_POLL_INTERVAL_MS);
         }
       } catch (error) {
-        if (cancelled) return;
-        setAttempt(null);
+        if (cancelled || requestVersionRef.current !== requestVersion) return;
+        if (isMissingAttemptError(error)) {
+          clearCurrentAttempt();
+          return;
+        }
         setRequestError(getRequestErrorMessage(error));
       }
     };
@@ -158,10 +213,18 @@ function LlmTestWorkspaceContent({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [attempt?.attemptId, attempt?.status, node.id, testContext.workflowId]);
+  }, [attempt?.attemptId, attempt?.status, node.id, pollRevision, testContext.workflowId]);
+
+  function clearCurrentAttempt() {
+    requestVersionRef.current += 1;
+    setAttempt(null);
+    setRequestError(null);
+    setStarting(false);
+    setStopping(false);
+  }
 
   const startAttempt = async () => {
-    if (running || !draftSaved || !configReady) return;
+    if (running || stopping || !draftSaved || !configReady) return;
     const parsed = parseInputValues(inputs, rawValues);
     setInputErrors(parsed.errors);
     if (!parsed.values) return;
@@ -169,9 +232,9 @@ function LlmTestWorkspaceContent({
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
     setAttempt(null);
+    setOutputSnapshot(output);
     setStarting(true);
     setRequestError(null);
-    setOutputSnapshot(output);
     try {
       const created = await createWorkflowLlmTestAttempt(
         testContext.workflowId,
@@ -181,14 +244,80 @@ function LlmTestWorkspaceContent({
           inputValues: parsed.values,
         },
       );
-      if (requestVersionRef.current === requestVersion) setAttempt(created);
-    } catch (error) {
       if (requestVersionRef.current === requestVersion) {
+        const confirmedCloseAction = confirmedCloseActionRef.current;
+        confirmedCloseActionRef.current = null;
+        if (mountedRef.current) {
+          setAttempt(created);
+          setStarting(false);
+        }
+        if (confirmedCloseAction) void cancelAttempt(created, confirmedCloseAction);
+      }
+    } catch (error) {
+      if (mountedRef.current && requestVersionRef.current === requestVersion) {
+        setStarting(false);
+        setStopping(false);
+        confirmedCloseActionRef.current = null;
         setRequestError(getRequestErrorMessage(error));
       }
     } finally {
-      if (requestVersionRef.current === requestVersion) setStarting(false);
+      if (mountedRef.current && requestVersionRef.current === requestVersion) setStarting(false);
     }
+  };
+
+  const cancelAttempt = async (
+    currentAttempt: WorkflowLlmTestAttempt,
+    continueClose?: () => void,
+  ) => {
+    const requestVersion = requestVersionRef.current + 1;
+    requestVersionRef.current = requestVersion;
+    if (mountedRef.current) {
+      setStopping(true);
+      setRequestError(null);
+    }
+    try {
+      const stopped = await cancelWorkflowLlmTestAttempt(
+        testContext.workflowId,
+        node.id,
+        currentAttempt.attemptId,
+      );
+      if (mountedRef.current && requestVersionRef.current === requestVersion) {
+        setAttempt(stopped);
+        continueClose?.();
+      }
+    } catch (error) {
+      if (mountedRef.current && requestVersionRef.current === requestVersion) {
+        if (isMissingAttemptError(error)) {
+          clearCurrentAttempt();
+          continueClose?.();
+        }
+        else {
+          setRequestError(getRequestErrorMessage(error));
+          setPollRevision(current => current + 1);
+        }
+      }
+    } finally {
+      if (mountedRef.current && requestVersionRef.current === requestVersion) setStopping(false);
+    }
+  };
+
+  const stopAttempt = () => {
+    if (!attempt || attempt.status !== "running" || stopping) return;
+    void cancelAttempt(attempt);
+  };
+
+  const stopAndClose = () => {
+    const continueClose = pendingCloseActionRef.current;
+    pendingCloseActionRef.current = null;
+    setCloseConfirmOpen(false);
+    if (!continueClose) return;
+    if (attempt?.status === "running") {
+      void cancelAttempt(attempt, continueClose);
+    } else if (starting) {
+      confirmedCloseActionRef.current = continueClose;
+      setStopping(true);
+    }
+    else continueClose();
   };
 
   return (
@@ -236,16 +365,51 @@ function LlmTestWorkspaceContent({
         ) : !configReady ? (
           <p className="mb-2 text-xs text-warning" role="status">请先完成节点配置</p>
         ) : null}
-        <Button
-          className="w-full"
-          disabled={running || !draftSaved || !configReady}
-          onClick={() => void startAttempt()}
-          type="button"
-        >
-          {running ? <Spinner size={15} /> : <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />}
-          {running ? "运行中" : attempt || requestError ? "重新运行" : "运行"}
-        </Button>
+        {attempt?.status === "running" || stopping ? (
+          <Button
+            className="w-full"
+            disabled={stopping}
+            onClick={stopAttempt}
+            type="button"
+            variant="outline"
+          >
+            {stopping
+              ? <Spinner size={15} />
+              : <HugeiconsIcon icon={StopCircleIcon} size={15} strokeWidth={1.8} />}
+            {stopping ? "正在停止" : "停止运行"}
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            disabled={running || stopping || !draftSaved || !configReady}
+            onClick={() => void startAttempt()}
+            type="button"
+          >
+            {running ? <Spinner size={15} /> : <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />}
+            {running ? "运行中" : attempt || requestError ? "重新运行" : "运行"}
+          </Button>
+        )}
       </footer>
+      <AlertDialog
+        open={closeConfirmOpen}
+        onOpenChange={(open) => {
+          setCloseConfirmOpen(open);
+          if (!open) pendingCloseActionRef.current = null;
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>停止试运行</AlertDialogTitle>
+            <AlertDialogDescription>试运行仍在进行，关闭将停止本次运行</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stopping}>继续运行</AlertDialogCancel>
+            <AlertDialogAction disabled={stopping} onClick={stopAndClose} variant="destructive">
+              停止并关闭
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -510,6 +674,11 @@ function formatOutputValue(value: WorkflowJsonValue | undefined) {
 function getRequestErrorMessage(error: unknown) {
   if (error instanceof RequestNormalizedError && error.status) return error.message;
   return "操作失败，请稍后重试";
+}
+
+function isMissingAttemptError(error: unknown) {
+  return error instanceof RequestNormalizedError
+    && (error.status === 404 || error.code === "WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND");
 }
 
 function getWorkspaceId(nodeId: string) {

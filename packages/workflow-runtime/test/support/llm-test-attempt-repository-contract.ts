@@ -83,6 +83,24 @@ export function runWorkflowLlmTestAttemptRepositoryContract(
     await expect(repository.findLlmTestAttempt({ attemptId: created.id, uid: 9, workflowId: "31" }))
       .resolves.toBeNull();
   });
+
+  it("expires one identified LLM test Attempt without touching another running Attempt", async () => {
+    const repository = createRepository();
+    const first = await repository.createLlmTestAttempt(createInput("execution-1"));
+    const second = await repository.createLlmTestAttempt(createInput("execution-2"));
+    const expiredAt = new Date("2099-01-01T00:10:00.000Z");
+
+    await expect(repository.expireLlmTestAttempt({
+      attemptId: first.id,
+      now: expiredAt,
+      uid: 9,
+      workflowId: "31",
+    })).resolves.toBe(true);
+    await expect(repository.findLlmTestAttempt({ attemptId: first.id, uid: 9, workflowId: "31" }))
+      .resolves.toMatchObject({ status: "timed_out" });
+    await expect(repository.findLlmTestAttempt({ attemptId: second.id, uid: 9, workflowId: "31" }))
+      .resolves.toMatchObject({ status: "running" });
+  });
 }
 
 function createInput(executionKey = "execution-1") {

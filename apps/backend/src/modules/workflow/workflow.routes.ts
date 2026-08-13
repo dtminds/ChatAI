@@ -170,6 +170,20 @@ export async function registerWorkflowRoutes(
     )),
   );
 
+  app.post<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId/cancel",
+    {
+      ...authenticated,
+      schema: { params: WorkflowLlmTestAttemptParamsSchema },
+    },
+    async request => apiSuccess(await service.cancelLlmTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.params.attemptId,
+    )),
+  );
+
   app.put<{ Body: WorkflowSaveDraftRequest; Params: WorkflowParams }>(
     "/api/server/workflows/:workflowId/draft",
     {

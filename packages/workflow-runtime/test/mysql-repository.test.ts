@@ -357,6 +357,19 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.inferenceUpdateCount).toBe(0);
   });
 
+  it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
+    const db = createDispatchDueTasksDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2026-07-10T00:01:00.000Z"),
+    })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 2 });
+    expect(db.definitionShareLocks).toBe(1);
+    expect(db.taskUpdates).toBe(1);
+    expect(db.outboxInserts).toEqual(2);
+  });
+
   it("casts the unsigned current counter before applying a negative delta", async () => {
     const db = createMetricAggregationDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -390,8 +403,16 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.taskExistenceWhereRefs).toEqual([
       ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
     ]);
-    expect(db.lockOrder).toEqual(["run", "task", "outbox", "run"]);
-    expect(db.deleteOrder).toEqual(["inference", "outbox", "task", "execution", "run"]);
+    expect(db.lockOrder).toEqual(["run", "outbox", "run"]);
+    expect(db.deleteOrder).toEqual([
+      "inference",
+      "outbox",
+      "subscription_event",
+      "subscription",
+      "task",
+      "execution",
+      "run",
+    ]);
     expect(db.runWhereCalls).toEqual(expect.arrayContaining([
       ["status", "in", ["cancelled", "completed", "failed"]],
       ["completed_at", "is not", null],
@@ -587,19 +608,30 @@ function createInferenceRecoveryRaceDbMock(input: {
   let inferenceSelectCount = 0;
   const db = {
     inferenceUpdateCount: 0,
+    jobLocked: false,
     selectFrom(table: string) {
       const builder = {
-        forUpdate() { return builder; },
+        forUpdate() {
+          if (table.startsWith("xy_wap_embed_workflow_inference_job")) db.jobLocked = true;
+          return builder;
+        },
         innerJoin() { return builder; },
         limit() { return builder; },
         orderBy() { return builder; },
         select() { return builder; },
         selectAll() { return builder; },
+        skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
-          return table.startsWith("xy_wap_embed_workflow_inference_job")
-            ? [{ ...baseJob, lease_expires_at: input.scannedLeaseExpiresAt }]
-            : [];
+          if (table.startsWith("xy_wap_embed_workflow_inference_job")) {
+            return [{
+              ...baseJob,
+              lease_expires_at: db.jobLocked
+                ? input.renewedLeaseExpiresAt
+                : input.scannedLeaseExpiresAt,
+            }];
+          }
+          return [];
         },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_inference_job") {
@@ -1158,6 +1190,10 @@ function createHistoryCleanupDbMock(options: {
             ? "outbox"
             : table === "xy_wap_embed_workflow_inference_job"
               ? "inference"
+            : table === "xy_wap_embed_workflow_event_subscription_event"
+              ? "subscription_event"
+            : table === "xy_wap_embed_workflow_event_subscription"
+              ? "subscription"
             : table === "xy_wap_embed_workflow_task"
               ? "task"
               : table === "xy_wap_embed_workflow_node_execution"
@@ -1172,13 +1208,15 @@ function createHistoryCleanupDbMock(options: {
     selectFrom(table: string) {
       const builder = {
         forUpdate() {
-          db.lockOrder.push(table === "xy_wap_embed_workflow_run"
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run" || table.startsWith("xy_wap_embed_workflow_run ")
             ? "run"
-            : table === "xy_wap_embed_workflow_task"
+            : table === "xy_wap_embed_workflow_task" || table.startsWith("xy_wap_embed_workflow_task ")
               ? "task"
               : "outbox");
           return builder;
         },
+        distinct() { return builder; },
+        innerJoin() { return builder; },
         limit() { return builder; },
         orderBy() { return builder; },
         select() { return builder; },
@@ -1209,10 +1247,15 @@ function createHistoryCleanupDbMock(options: {
             runSelectCount += 1;
             return runSelectCount === 1 ? technicalRuns : userRuns;
           }
-          if (table === "xy_wap_embed_workflow_task" && runSelectCount === 1) {
-            return [{ id: "10", run_id: "1" }];
+          if (table === "xy_wap_embed_workflow_task") {
+            return runSelectCount === 1 ? [] : (options.remainingTasks ?? []);
           }
-          if (table === "xy_wap_embed_workflow_outbox") return options.taskOutbox ?? [];
+          if (table === "xy_wap_embed_workflow_outbox"
+            || table.startsWith("xy_wap_embed_workflow_outbox")) {
+            return (options.taskOutbox ?? [])
+              .filter(item => item.status === "leased")
+              .map(item => ({ run_id: "1", ...item }));
+          }
           return options.remainingTasks ?? [];
         },
       };
@@ -1231,6 +1274,14 @@ function createRuntimeDbMock() {
   const db = {
     executionUpdateWheres: [] as unknown[][],
     runUpdateWheres: [] as unknown[][],
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       const builder = {
         forUpdate() { return builder; },
@@ -1573,6 +1624,94 @@ function createOutboxDeadDbMock() {
         },
         where() { return builder; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createDispatchDueTasksDbMock() {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const taskRow = (id: string) => ({
+    attempt: 0,
+    bucket_time: now,
+    create_time: now,
+    due_at: now,
+    id,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    node_id: "start",
+    node_kind: "start",
+    revision: 1,
+    run_id: id === "7" ? "5" : "6",
+    sequence: 1,
+    shard_id: 1,
+    status: "pending",
+    task_type: "execute",
+    task_version: 1,
+    uid: 8,
+    update_time: now,
+    workflow_id: "42",
+  });
+  const db = {
+    definitionShareLocks: 0,
+    outboxInserts: 0,
+    taskUpdates: 0,
+    insertInto(table: string) {
+      const builder = {
+        values(values: unknown) {
+          if (table === "xy_wap_embed_workflow_outbox") {
+            db.outboxInserts = Array.isArray(values) ? values.length : 1;
+          }
+          return builder;
+        },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      let locked = false;
+      const builder = {
+        forShare() {
+          if (table === "xy_wap_embed_workflow_definition") db.definitionShareLocks += 1;
+          return builder;
+        },
+        forUpdate() { locked = true; return builder; },
+        innerJoin() { return builder; },
+        leftJoin() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        skipLocked() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table.startsWith("xy_wap_embed_workflow_task")) {
+            return locked ? [taskRow("7"), taskRow("8")] : [];
+          }
+          if (table === "xy_wap_embed_workflow_definition") {
+            return [{ biz_status: 1, id: "42", runtime_status: "active", uid: 8 }];
+          }
+          return [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set() {
+          if (table === "xy_wap_embed_workflow_task") db.taskUpdates += 1;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 2n }; },
       };
       return builder;
     },

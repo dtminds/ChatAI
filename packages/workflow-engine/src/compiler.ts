@@ -1,15 +1,30 @@
 import {
+  getWorkflowContextVariableValueType,
+  getWorkflowNodeOutputContracts,
+  isWorkflowAiIntentExecutionConfigComplete,
+  isWorkflowLlmExecutionConfigComplete,
+  isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
+  type WorkflowExecutionNode,
   type WorkflowExecutionSpec,
+  type WorkflowNodeOutputUsage,
+  type WorkflowOutputValueType,
+  type WorkflowStartTrigger,
   type WorkflowType,
+  type WorkflowVariableSelector,
 } from "@chatai/contracts";
 import {
   getWorkflowAggregateCapabilityRequirements,
   getWorkflowNodeCapabilityRequirements,
 } from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
-import { getWorkflowSourceOutletId, validateWorkflowGraph } from "./graph.js";
+import {
+  getWorkflowGuaranteedUpstreamNodeIds,
+  getWorkflowSourceOutletId,
+  isWorkflowOutputAvailableOnSourceOutlets,
+  validateWorkflowGraph,
+} from "./graph.js";
 import {
   getWorkflowNodeExecutionConfigError,
   projectWorkflowNodeExecutionConfig,
@@ -64,6 +79,14 @@ export function compileWorkflowDraft({
       requiredCapabilities: getWorkflowNodeCapabilityRequirements(node.data.kind, config),
     };
   });
+  const inferenceReferenceIssues = validateWorkflowInferenceReferences(
+    nodes,
+    normalizedDraft.edges,
+    workflowType,
+  );
+  if (inferenceReferenceIssues.length > 0) {
+    throw new WorkflowCompilationError(inferenceReferenceIssues);
+  }
 
   return {
     edges: normalizedDraft.edges.map((edge) => ({
@@ -80,6 +103,140 @@ export function compileWorkflowDraft({
     terminalNodeId: validation.terminalNode.id,
     workflowId,
   };
+}
+
+function validateWorkflowInferenceReferences(
+  nodes: WorkflowExecutionNode[],
+  edges: WorkflowDraft["edges"],
+  workflowType: WorkflowType,
+) {
+  const issues: Array<{
+    code: "invalid-node-config";
+    message: string;
+    nodeId: string;
+  }> = [];
+  const nodeById = new Map(nodes.map(node => [node.id, node]));
+  const nodeIds = nodes.map(node => node.id);
+  const entryEventTypes = getWorkflowEntryEventTypes(nodes);
+
+  for (const node of nodes) {
+    if (node.kind === "llm" && isWorkflowLlmExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const valid = node.config.inputs.every(input =>
+        input.value.kind === "literal"
+        || validateWorkflowInferenceSelector({
+          edges,
+          expectedValueType: input.value.valueType,
+          guaranteedUpstreamIds,
+          nodeById,
+          selector: input.value.selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "LLM node references unavailable or changed input data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "ai-intent"
+      && isWorkflowAiIntentExecutionConfigComplete(node.config)
+      && node.config.inputSelector) {
+      const valid = validateWorkflowInferenceSelector({
+        edges,
+        guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
+          node.id,
+          nodeIds,
+          edges,
+        ),
+        nodeById,
+        requiredUsage: "intent-input",
+        selector: node.config.inputSelector,
+        targetNodeId: node.id,
+        workflowType,
+        entryEventTypes,
+      });
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "AI Intent node references unavailable input data",
+          nodeId: node.id,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+function validateWorkflowInferenceSelector(input: {
+  edges: WorkflowDraft["edges"];
+  expectedValueType?: WorkflowOutputValueType;
+  guaranteedUpstreamIds: Set<string>;
+  nodeById: Map<string, WorkflowExecutionNode>;
+  requiredUsage?: WorkflowNodeOutputUsage;
+  selector: WorkflowVariableSelector;
+  targetNodeId: string;
+  workflowType: WorkflowType;
+  entryEventTypes: readonly WorkflowStartTrigger["type"][];
+}) {
+  const [scope, sourceId, outputKey, ...rest] = input.selector;
+  if (scope === "subject" || scope === "trigger") {
+    const valueType = getWorkflowContextVariableValueType(
+      input.selector,
+      input.workflowType,
+      input.entryEventTypes,
+    );
+    return !input.requiredUsage
+      && valueType !== null
+      && (!input.expectedValueType
+        || isWorkflowOutputValueTypeEqual(valueType, input.expectedValueType));
+  }
+  if (scope !== "node"
+    || !sourceId
+    || !outputKey
+    || rest.length > 0
+    || !input.guaranteedUpstreamIds.has(sourceId)) {
+    return false;
+  }
+
+  const sourceNode = input.nodeById.get(sourceId);
+  if (!sourceNode) return false;
+  const output = getWorkflowNodeOutputContracts(sourceNode.kind, sourceNode.config)
+    ?.find(candidate => candidate.key === outputKey);
+  if (!output
+    || input.requiredUsage && !output.usages.includes(input.requiredUsage)
+    || input.expectedValueType
+      && !isWorkflowOutputValueTypeEqual(output.valueType, input.expectedValueType)) {
+    return false;
+  }
+  return !output.availableOnSourceOutlets
+    || isWorkflowOutputAvailableOnSourceOutlets(
+      sourceId,
+      input.targetNodeId,
+      output.availableOnSourceOutlets,
+      input.edges,
+    );
+}
+
+function getWorkflowEntryEventTypes(nodes: WorkflowExecutionNode[]) {
+  const start = nodes.find(node => node.kind === "start");
+  if (!start || !Array.isArray(start.config.triggers)) return [];
+  return start.config.triggers.flatMap(trigger =>
+    trigger && typeof trigger === "object" && "type" in trigger
+      && (trigger.type === "contact.friend_added"
+        || trigger.type === "contact.tag_added"
+        || trigger.type === "message.received")
+      ? [trigger.type]
+      : []);
 }
 
 export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {

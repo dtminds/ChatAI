@@ -1,5 +1,7 @@
 import {
   WorkflowEntryEventType,
+  WorkflowInferenceRequestSchema,
+  WorkflowInferenceResultSchema,
   WorkflowJsonObjectSchema,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
@@ -32,6 +34,7 @@ import type {
   WorkflowDatabase,
   WorkflowEventSubscriptionEventTable,
   WorkflowEventSubscriptionTable,
+  WorkflowInferenceJobTable,
   WorkflowRunTable,
   WorkflowTaskTable,
 } from "./db.js";
@@ -42,6 +45,8 @@ import type {
   WorkflowCreateRunInput,
   WorkflowEventSubscriptionEventRecord,
   WorkflowEventSubscriptionRecord,
+  WorkflowInferenceJobRecord,
+  WorkflowInferenceRepository,
   WorkflowOutboxRecord,
   WorkflowNodeMetricRecord,
   WorkflowNodeExecutionRecord,
@@ -57,6 +62,7 @@ const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
+const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
 const INBOX_TABLE = "xy_wap_embed_workflow_inbox" as const;
 const EVENT_SUBSCRIPTION_TABLE = "xy_wap_embed_workflow_event_subscription" as const;
@@ -70,6 +76,7 @@ const ACTIVE_TASK_STATUSES = ["pending", "leased", "dispatched", "running"] as c
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
 const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;
+type RuntimeDbExecutor = Kysely<WorkflowDatabase> | RuntimeTransaction;
 
 export class MysqlWorkflowRuntimeRepository implements
   WorkflowRuntimeControlReader,
@@ -100,7 +107,20 @@ export class MysqlWorkflowRuntimeRepository implements
         runtime_status: input.transition === "pause" ? "paused" : "stopped",
         status_reason: "entitlement_revoked",
       }).where("id", "in", workflowIds).executeTakeFirstOrThrow();
-      if (input.transition === "stop") {
+      if (input.transition === "pause") {
+        await transitionMysqlWorkflowInferenceJobs(trx, {
+          transitionedAt: input.transitionedAt,
+          transition: "pause",
+          uid: input.uid,
+          workflowIds: workflowIds.map(normalizeId),
+        });
+      } else {
+        await transitionMysqlWorkflowInferenceJobs(trx, {
+          transitionedAt: input.transitionedAt,
+          transition: "cancel",
+          uid: input.uid,
+          workflowIds: workflowIds.map(normalizeId),
+        });
         const runs = await trx.selectFrom(RUN_TABLE).select("id")
           .where("uid", "=", input.uid)
           .where("workflow_id", "in", workflowIds)
@@ -109,7 +129,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .execute();
         const runIds = runs.map((run) => run.id);
         if (runIds.length > 0) {
-          const now = new Date();
+          const now = input.transitionedAt;
           await trx.updateTable(RUN_TABLE).set({
             completed_at: now,
             lock_version: sql<number>`lock_version + 1`,
@@ -126,6 +146,7 @@ export class MysqlWorkflowRuntimeRepository implements
             .where("status", "in", ACTIVE_TASK_STATUSES)
             .executeTakeFirstOrThrow();
           await cancelEventSubscriptions(trx, runIds);
+          await cancelInferenceJobs(trx, runIds);
           await failRunningNodeExecutions(
             trx,
             runIds,
@@ -913,6 +934,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .onRef("definition.id", "=", "task.workflow_id"))
         .select("task.id")
         .where("task.status", "=", "pending")
+        .where("task.task_type", "!=", "inference")
         .where("task.bucket_time", "<=", floorToMinute(input.now))
         .where("task.due_at", "<=", input.now)
         .where("definition.biz_status", "=", 1)
@@ -932,6 +954,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .onRef("definition.id", "=", "task.workflow_id"))
         .selectAll("task")
         .where("task.status", "=", "pending")
+        .where("task.task_type", "!=", "inference")
         .where("task.bucket_time", "<=", floorToMinute(input.now))
         .where("task.due_at", "<=", input.now)
         .where(eb => eb.or([
@@ -978,6 +1001,7 @@ export class MysqlWorkflowRuntimeRepository implements
             .where("task_version", "=", task.taskVersion)
             .executeTakeFirstOrThrow();
           await cancelEventSubscriptions(trx, [task.runId]);
+          await cancelInferenceJobs(trx, [task.runId]);
           result.cancelled += 1;
           continue;
         }
@@ -1071,6 +1095,414 @@ export class MysqlWorkflowRuntimeRepository implements
         },
         kind: "success" as const,
       };
+    });
+  }
+
+  async beginInference(input: Parameters<WorkflowRuntimeRepository["beginInference"]>[0]) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runIdentity = await trx.selectFrom(RUN_TABLE).select("workflow_id")
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .executeTakeFirst();
+      if (!runIdentity) return { kind: "not-found" as const };
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", runIdentity.workflow_id)
+        .forShare().executeTakeFirst();
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      if (decision !== "execute") {
+        return { action: decision, kind: "workflow-unavailable" as const };
+      }
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow) return { kind: "not-found" as const };
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (task.runId !== run.id) return { kind: "not-found" as const };
+      if (run.lockVersion !== input.expectedRunLockVersion || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
+        || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
+        || input.deadlineAt <= input.now) return { kind: "conflict" as const };
+      const existingRow = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("execution_key", "=", input.executionKey)
+        .forUpdate()
+        .executeTakeFirst();
+      if (existingRow) {
+        const existing = mapInferenceJob(existingRow);
+        if (existing.taskId !== task.id) return { kind: "conflict" as const };
+        await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+        await trx.updateTable(TASK_TABLE).set({
+          bucket_time: floorToMinute(existing.deadlineAt),
+          due_at: existing.deadlineAt,
+          lease_expires_at: null,
+          lease_owner: null,
+          status: transitionTask(task.status, "pending"),
+          task_type: "inference",
+          task_version: task.taskVersion + 1,
+        }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+          .where("status", "=", "running").executeTakeFirstOrThrow();
+        await trx.updateTable(RUN_TABLE).set({
+          lock_version: run.lockVersion + 1,
+          next_execute_at: existing.deadlineAt,
+          status: transitionRun(run.status, "waiting"),
+        }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+          .where("status", "=", "running").executeTakeFirstOrThrow();
+        return {
+          created: false,
+          job: existing,
+          kind: "success" as const,
+          run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: existing.deadlineAt, status: "waiting" as const },
+          task: {
+            ...task,
+            dueAt: existing.deadlineAt,
+            leaseExpiresAt: null,
+            leaseOwner: null,
+            status: "pending" as const,
+            taskType: "inference",
+            taskVersion: task.taskVersion + 1,
+          },
+        };
+      }
+      const inserted = await trx.insertInto(INFERENCE_JOB_TABLE).values({
+        attempt: 0,
+        completed_at: null,
+        contract_version: input.contractVersion,
+        deadline_at: input.deadlineAt,
+        error_code: null,
+        error_message: null,
+        execution_key: input.executionKey,
+        failure_kind: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        node_id: task.nodeId,
+        node_kind: task.nodeKind,
+        payload_json: stringifyJson(input.payload),
+        paused_at: null,
+        result_json: null,
+        run_id: run.id,
+        sequence: task.sequence,
+        started_at: null,
+        status: "pending",
+        task_id: task.id,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.deadlineAt),
+        due_at: input.deadlineAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: transitionTask(task.status, "pending"),
+        task_type: "inference",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.deadlineAt,
+        status: transitionRun(run.status, "waiting"),
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      const insertedId = inserted.insertId;
+      if (insertedId === undefined) throw new Error("Inference Job insert did not return an ID");
+      const row = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("id", "=", insertedId).executeTakeFirstOrThrow();
+      return {
+        created: true,
+        job: mapInferenceJob(row),
+        kind: "success" as const,
+        run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: input.deadlineAt, status: "waiting" as const },
+        task: {
+          ...task,
+          dueAt: input.deadlineAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: "pending" as const,
+          taskType: "inference",
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async findInferenceByExecutionKey(uid: number, executionKey: string) {
+    const row = await this.db.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+      .where("uid", "=", uid).where("execution_key", "=", executionKey)
+      .executeTakeFirst();
+    return row ? mapInferenceJob(row) : null;
+  }
+
+  async claimInferenceBatch(input: Parameters<WorkflowRuntimeRepository["claimInferenceBatch"]>[0]) {
+    if (input.limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+        .selectAll("job")
+        .where("job.status", "in", ["pending", "retry_wait"])
+        .where("job.next_attempt_at", "<=", input.now)
+        .where("job.deadline_at", ">", input.now)
+        .where("job.paused_at", "is", null)
+        .where(({ exists, selectFrom }) => exists(
+          selectFrom(`${RUN_TABLE} as inference_run`)
+            .innerJoin("xy_wap_embed_workflow_definition as inference_definition", join => join
+              .onRef("inference_definition.uid", "=", "inference_run.uid")
+              .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
+            .select("inference_run.id")
+            .whereRef("inference_run.uid", "=", "job.uid")
+            .whereRef("inference_run.id", "=", "job.run_id")
+            .where("inference_run.status", "=", "waiting")
+            .where("inference_definition.biz_status", "=", 1)
+            .where("inference_definition.runtime_status", "=", "active"),
+        ))
+        .orderBy("job.next_attempt_at", "asc").orderBy("job.id", "asc")
+        .limit(input.limit).forUpdate().skipLocked().execute();
+      if (rows.length === 0) return [];
+      const ids = rows.map(row => row.id);
+      await trx.updateTable(INFERENCE_JOB_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        started_at: sql<Date>`COALESCE(started_at, ${input.now})`,
+        status: "running",
+      }).where("id", "in", ids).where("status", "in", ["pending", "retry_wait"])
+        .executeTakeFirstOrThrow();
+      return rows.map(row => mapInferenceJob({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        started_at: row.started_at ?? input.now,
+        status: "running",
+      }));
+    });
+  }
+
+  async renewInferenceLease(input: Parameters<WorkflowRuntimeRepository["renewInferenceLease"]>[0]) {
+    const result = await this.db.updateTable(INFERENCE_JOB_TABLE).set({
+      lease_expires_at: input.leaseExpiresAt,
+    }).where("id", "=", input.id).where("status", "=", "running")
+      .where("lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async completeInference(input: Parameters<WorkflowRuntimeRepository["completeInference"]>[0]) {
+    return this.finishInference({
+      completedAt: input.completedAt,
+      id: input.id,
+      leaseOwner: input.leaseOwner,
+      result: input.result,
+      status: "succeeded",
+    });
+  }
+
+  async retryInference(input: Parameters<WorkflowRuntimeRepository["retryInference"]>[0]) {
+    const result = await this.db.updateTable(INFERENCE_JOB_TABLE).set({
+      error_code: input.errorCode,
+      error_message: input.errorMessage,
+      failure_kind: input.failureKind,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: "retry_wait",
+    }).where("id", "=", input.id).where("status", "=", "running")
+      .where("lease_owner", "=", input.leaseOwner)
+      .where("deadline_at", ">", input.nextAttemptAt).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async failInference(input: Parameters<WorkflowRuntimeRepository["failInference"]>[0]) {
+    return this.finishInference({
+      completedAt: input.failedAt,
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+      failureKind: input.failureKind,
+      id: input.id,
+      leaseOwner: input.leaseOwner,
+      status: "failed",
+    });
+  }
+
+  async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
+    if (input.limit <= 0) return { expired: 0, recovered: 0 };
+    const candidates = await this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+      .innerJoin(`${RUN_TABLE} as inference_run`, join => join
+        .onRef("inference_run.uid", "=", "job.uid")
+        .onRef("inference_run.id", "=", "job.run_id"))
+      .innerJoin("xy_wap_embed_workflow_definition as inference_definition", join => join
+        .onRef("inference_definition.uid", "=", "inference_run.uid")
+        .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
+      .selectAll("job")
+      .where("job.status", "in", ["pending", "retry_wait", "running"])
+      .where("job.paused_at", "is", null)
+      .where("inference_definition.biz_status", "=", 1)
+      .where("inference_definition.runtime_status", "=", "active")
+      .where(eb => eb.or([
+        eb("job.deadline_at", "<=", input.now),
+        eb.and([
+          eb("job.status", "in", ["pending", "retry_wait"]),
+          eb("job.attempt", ">=", input.maxAttempts),
+        ]),
+        eb.and([
+          eb("job.status", "=", "running"),
+          eb("job.lease_expires_at", "<=", input.now),
+        ]),
+      ]))
+      .orderBy("job.id", "asc").limit(input.limit).execute();
+    let expired = 0;
+    let recovered = 0;
+    for (const row of candidates) {
+      const leaseExpired = row.status === "running"
+        && row.lease_expires_at !== null
+        && row.lease_expires_at <= input.now;
+      const attemptsExhausted = row.attempt >= input.maxAttempts
+        && (row.status !== "running" || leaseExpired);
+      if (row.deadline_at <= input.now || attemptsExhausted) {
+        if (await this.finishInference({
+          allowUnleased: true,
+          completedAt: input.now,
+          errorCode: row.deadline_at <= input.now
+            ? "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED"
+            : "WORKFLOW_INFERENCE_ATTEMPTS_EXHAUSTED",
+          errorMessage: "推理任务未能完成",
+          failureKind: "unknown",
+          id: normalizeId(row.id),
+          leaseOwner: row.lease_owner,
+          recovery: {
+            maxAttempts: input.maxAttempts,
+            now: input.now,
+          },
+          status: "failed",
+        })) expired += 1;
+      } else if (leaseExpired) {
+        const update = await this.db.updateTable(INFERENCE_JOB_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.now,
+          status: "pending",
+        }).where("id", "=", row.id).where("status", "=", "running")
+          .where("lease_expires_at", "<=", input.now).executeTakeFirst();
+        recovered += Number(update.numUpdatedRows);
+      }
+    }
+    return { expired, recovered };
+  }
+
+  transitionInferenceJobs(
+    input: Parameters<WorkflowRuntimeRepository["transitionInferenceJobs"]>[0],
+  ) {
+    return transitionMysqlWorkflowInferenceJobs(this.db, input);
+  }
+
+  private finishInference(input: {
+    allowUnleased?: boolean;
+    completedAt: Date;
+    errorCode?: string;
+    errorMessage?: string;
+    failureKind?: "retryable" | "terminal" | "unknown";
+    id: string;
+    leaseOwner: string | null;
+    recovery?: {
+      maxAttempts: number;
+      now: Date;
+    };
+    result?: import("@chatai/contracts").WorkflowInferenceResult;
+    status: "failed" | "succeeded";
+  }) {
+    return this.db.transaction().execute(async (trx) => {
+      const candidate = await trx.selectFrom(INFERENCE_JOB_TABLE).select(["run_id", "task_id", "uid"])
+        .where("id", "=", input.id).executeTakeFirst();
+      if (!candidate) return false;
+      const runIdentity = await trx.selectFrom(RUN_TABLE).select("workflow_id")
+        .where("uid", "=", candidate.uid).where("id", "=", candidate.run_id)
+        .executeTakeFirst();
+      const definition = runIdentity
+        ? await trx.selectFrom("xy_wap_embed_workflow_definition")
+            .select(["biz_status", "runtime_status"])
+            .where("uid", "=", candidate.uid).where("id", "=", runIdentity.workflow_id)
+            .forShare().executeTakeFirst()
+        : undefined;
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", candidate.uid).where("id", "=", candidate.run_id)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", candidate.uid).where("id", "=", candidate.task_id)
+        .forUpdate().executeTakeFirst();
+      let query = trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("id", "=", input.id);
+      query = input.allowUnleased
+        ? query.where("status", "in", ["pending", "retry_wait", "running"])
+        : query.where("status", "=", "running");
+      if (!input.allowUnleased) query = query.where("lease_owner", "=", input.leaseOwner);
+      const row = await query.forUpdate().executeTakeFirst();
+      if (!row) return false;
+      if (input.recovery) {
+        if (row.paused_at !== null) return false;
+        const leaseExpired = row.status === "running"
+          && row.lease_expires_at !== null
+          && row.lease_expires_at <= input.recovery.now;
+        const attemptsExhausted = row.attempt >= input.recovery.maxAttempts
+          && (row.status !== "running" || leaseExpired);
+        if (row.deadline_at > input.recovery.now && !attemptsExhausted) return false;
+      }
+      await trx.updateTable(INFERENCE_JOB_TABLE).set({
+        completed_at: input.completedAt,
+        error_code: input.errorCode ?? null,
+        error_message: input.errorMessage ?? null,
+        failure_kind: input.failureKind ?? null,
+        lease_expires_at: null,
+        lease_owner: null,
+        result_json: input.result ? stringifyJson(input.result) : null,
+        status: input.status,
+      }).where("id", "=", row.id).executeTakeFirstOrThrow();
+      if (!taskRow || !runRow) return true;
+      const task = mapTask(taskRow);
+      const run = mapRun(runRow);
+      if (task.status !== "pending" || task.taskType !== "inference" || run.status !== "waiting") {
+        return true;
+      }
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      const nextTaskVersion = task.taskVersion + 1;
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.completedAt),
+        due_at: input.completedAt,
+        status: decision === "execute" ? "dispatched" : "pending",
+        task_type: "execute",
+        task_version: nextTaskVersion,
+      }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+        .where("status", "=", "pending").executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.completedAt,
+        status: "running",
+      }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+        .where("status", "=", "waiting").executeTakeFirstOrThrow();
+      if (decision === "execute") {
+        await insertTaskOutbox(trx, {
+          ...task,
+          dueAt: input.completedAt,
+          status: "dispatched",
+          taskType: "execute",
+          taskVersion: nextTaskVersion,
+        }, input.completedAt);
+      }
+      return true;
     });
   }
 
@@ -1687,7 +2119,8 @@ export class MysqlWorkflowRuntimeRepository implements
           || authoritativeTask.shardId !== run.shard_id
           || (run.status !== "waiting" && authoritativeTask.nodeId !== run.current_node_id)
           || (run.status === "waiting" && (
-            (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event")
+            (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
+              && authoritativeTask.taskType !== "inference")
             || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
           ));
         if (!invalidAuthoritativeTask || toDate(run.update_time) > input.inconsistentBefore) continue;
@@ -1968,7 +2401,9 @@ export class MysqlWorkflowRuntimeRepository implements
         .execute();
       const selectedRuns = runs.slice(0, input.limit);
       const runIds = selectedRuns.map(run => run.id);
-      if (runIds.length === 0) return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
+      if (runIds.length === 0) {
+        return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
+      }
       const tasks = await trx.selectFrom(TASK_TABLE).select(["id", "run_id"])
         .where("run_id", "in", runIds)
         .orderBy("id", "asc")
@@ -1992,6 +2427,11 @@ export class MysqlWorkflowRuntimeRepository implements
         .filter(task => !blockedRunIds.has(normalizeId(task.run_id)))
         .map(task => task.id);
       const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
+      if (deletableRunIds.length > 0) {
+        await trx.deleteFrom(INFERENCE_JOB_TABLE)
+          .where("run_id", "in", deletableRunIds)
+          .executeTakeFirst();
+      }
       const outboxDeleted = deletableTaskIds.length === 0 ? 0 : Number((await trx.deleteFrom(OUTBOX_TABLE)
         .where("aggregate_type", "=", "workflow_task")
         .where("aggregate_id", "in", deletableTaskIds)
@@ -2268,6 +2708,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("status", "in", ["pending", "leased", "dispatched", "running"])
         .executeTakeFirst();
       await cancelEventSubscriptions(trx, runIds);
+      await cancelInferenceJobs(trx, runIds);
       await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
@@ -2342,6 +2783,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("status", "in", ["pending", "leased", "dispatched", "running"])
         .executeTakeFirst();
       await cancelEventSubscriptions(trx, runIds);
+      await cancelInferenceJobs(trx, runIds);
       await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
@@ -2486,6 +2928,52 @@ function emptyHistoryCleanupResult() {
     outboxDeleted: 0,
     runsDeleted: 0,
     tasksDeleted: 0,
+  };
+}
+
+function mapInferenceJob(
+  row: Selectable<WorkflowInferenceJobTable>,
+): WorkflowInferenceJobRecord {
+  const payload = parseJson(row.payload_json);
+  if (!Value.Check(WorkflowInferenceRequestSchema, payload)) {
+    throw new Error("Database returned an invalid Workflow inference payload");
+  }
+  const result = row.result_json === null ? null : parseJson(row.result_json);
+  if (result !== null && !Value.Check(WorkflowInferenceResultSchema, result)) {
+    throw new Error("Database returned an invalid Workflow inference result");
+  }
+  const status = row.status;
+  if (status !== "pending" && status !== "running" && status !== "retry_wait"
+    && status !== "succeeded" && status !== "failed" && status !== "cancelled") {
+    throw new Error(`Unknown Workflow inference job status: ${status}`);
+  }
+  if (row.node_kind !== "llm" && row.node_kind !== "ai-intent") {
+    throw new Error(`Unknown Workflow inference node kind: ${row.node_kind}`);
+  }
+  return {
+    attempt: row.attempt,
+    contractVersion: row.contract_version,
+    createdAt: toDate(row.create_time),
+    deadlineAt: toDate(row.deadline_at),
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    executionKey: row.execution_key,
+    failureKind: parseCapabilityFailureKind(row.failure_kind),
+    id: normalizeId(row.id),
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    nodeId: row.node_id,
+    nodeKind: row.node_kind,
+    pausedAt: row.paused_at ? toDate(row.paused_at) : null,
+    payload,
+    result,
+    runId: normalizeId(row.run_id),
+    sequence: row.sequence,
+    status,
+    taskId: normalizeId(row.task_id),
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
   };
 }
 
@@ -2785,6 +3273,65 @@ function cancelEventSubscriptions(trx: RuntimeTransaction, runIds: readonly Data
     .where("status", "in", ["waiting", "triggered"])
     .executeTakeFirst()
     .then(() => undefined);
+}
+
+function cancelInferenceJobs(trx: RuntimeTransaction, runIds: readonly DatabaseId[]) {
+  if (runIds.length === 0) return Promise.resolve();
+  return trx.updateTable(INFERENCE_JOB_TABLE).set({
+    lease_expires_at: null,
+    lease_owner: null,
+    paused_at: null,
+    status: "cancelled",
+  }).where("run_id", "in", runIds)
+    .where("status", "in", ["pending", "running", "retry_wait"])
+    .executeTakeFirst()
+    .then(() => undefined);
+}
+
+export async function transitionMysqlWorkflowInferenceJobs(
+  db: RuntimeDbExecutor,
+  input: Parameters<WorkflowInferenceRepository["transitionInferenceJobs"]>[0],
+) {
+  if (input.workflowIds.length === 0) return;
+  const runIds = db.selectFrom(RUN_TABLE).select("id")
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "in", input.workflowIds);
+  if (input.transition === "cancel") {
+    await db.updateTable(INFERENCE_JOB_TABLE).set({
+      lease_expires_at: null,
+      lease_owner: null,
+      paused_at: null,
+      status: "cancelled",
+    }).where("uid", "=", input.uid)
+      .where("run_id", "in", runIds)
+      .where("status", "in", ["pending", "running", "retry_wait"])
+      .executeTakeFirstOrThrow();
+    return;
+  }
+  if (input.transition === "pause") {
+    await db.updateTable(INFERENCE_JOB_TABLE).set({
+      attempt: sql<number>`CASE WHEN status = 'running' THEN GREATEST(attempt - 1, 0) ELSE attempt END`,
+      lease_expires_at: null,
+      lease_owner: null,
+      paused_at: input.transitionedAt,
+      status: sql<string>`CASE WHEN status = 'running' THEN 'pending' ELSE status END`,
+    }).where("uid", "=", input.uid)
+      .where("run_id", "in", runIds)
+      .where("status", "in", ["pending", "running", "retry_wait"])
+      .where("deadline_at", ">", input.transitionedAt)
+      .where("paused_at", "is", null)
+      .executeTakeFirstOrThrow();
+    return;
+  }
+  await db.updateTable(INFERENCE_JOB_TABLE).set({
+    deadline_at: sql<Date>`TIMESTAMPADD(MICROSECOND, TIMESTAMPDIFF(MICROSECOND, paused_at, ${input.transitionedAt}), deadline_at)`,
+    next_attempt_at: sql<Date>`TIMESTAMPADD(MICROSECOND, TIMESTAMPDIFF(MICROSECOND, paused_at, ${input.transitionedAt}), next_attempt_at)`,
+    paused_at: null,
+  }).where("uid", "=", input.uid)
+    .where("run_id", "in", runIds)
+    .where("status", "in", ["pending", "retry_wait"])
+    .where("paused_at", "is not", null)
+    .executeTakeFirstOrThrow();
 }
 
 function mapEventSubscription(

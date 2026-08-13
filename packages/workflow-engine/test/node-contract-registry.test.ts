@@ -47,6 +47,7 @@ describe("workflow node projection registry", () => {
 const projectableDraftData = {
   "ai-intent": {
     advancedEnabled: false,
+    inputSelector: ["node", "message-query", "textContent"],
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },

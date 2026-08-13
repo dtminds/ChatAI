@@ -60,7 +60,7 @@ describe("workflow worker runtime", () => {
     const resources = createResources();
     const backgroundConfig = {
       ...config(),
-      roles: new Set(["scheduler", "outbox", "reconciler"] as const),
+      roles: new Set(["inference", "scheduler", "outbox", "reconciler"] as const),
     };
     const runtime = await startWorkflowWorkerRuntime({
       ...resources.dependencies,
@@ -69,17 +69,23 @@ describe("workflow worker runtime", () => {
 
     await vi.waitFor(() => {
       expect(runtime.getReadiness().roles).toEqual({
+        inference: true,
         outbox: true,
         reconciler: true,
         scheduler: true,
       });
     });
+    expect(resources.inferenceWorker).toHaveBeenCalledWith(expect.objectContaining({
+      adapter: resources.dependencies.inferenceAdapter,
+      limit: 10,
+      repository: resources.dependencies.inferenceRepository,
+    }));
     expect(resources.scheduler).toHaveBeenCalled();
     expect(resources.outboxPublisher).toHaveBeenCalled();
     expect(resources.reconciler).toHaveBeenCalled();
 
     await runtime.close();
-    expect(resources.loopClose).toHaveBeenCalledTimes(4);
+    expect(resources.loopClose).toHaveBeenCalledTimes(5);
   });
 
   it("feeds consistency cursors into the next reconciler iteration and resets after the last page", async () => {
@@ -366,6 +372,7 @@ function createResources() {
   };
   const loopClose = vi.fn(async () => {});
   const scheduler = vi.fn(async () => ({ cancelled: 0, deferred: 0, dispatched: 0 }));
+  const inferenceWorker = vi.fn(async () => ({ claimed: 0, failed: 0, retried: 0, succeeded: 0 }));
   const outboxPublisher = vi.fn(async () => ({ claimed: 0, failed: 0, sent: 0 }));
   const reconciler = vi.fn(async () => ({
     cancelled: 0,
@@ -393,6 +400,9 @@ function createResources() {
         hasProcessedInboxMessage: vi.fn(async () => false),
         recordProcessedInboxMessage: vi.fn(async () => true),
       },
+      inferenceAdapter: { execute: vi.fn() },
+      inferenceRepository: {} as never,
+      inferenceWorker,
       pingDatabase: vi.fn(async () => {
         if (!databaseReady) throw new Error("database unavailable");
       }),
@@ -429,6 +439,7 @@ function createResources() {
       input.onError?.(error);
     },
     loopClose,
+    inferenceWorker,
     outboxPublisher,
     reconciler,
     get brokerReady() { return brokerReady; },
@@ -510,6 +521,14 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
       dispatchTimeoutMs: 300_000,
       historyCleanupBatchSize: 1_000,
       historyCleanupIntervalMs: 3_600_000,
+      inferenceConcurrency: 10,
+      inferenceHeartbeatIntervalMs: 15_000,
+      inferenceIntervalMs: 1_000,
+      inferenceLeaseDurationMs: 60_000,
+      inferenceMaxAttempts: 5,
+      inferenceMaxRetryDelayMs: 300_000,
+      inferenceRetryDelayMs: 5_000,
+      inferenceTotalTimeoutMs: 600_000,
       inboxCleanupBatchSize: 1_000,
       leaseDurationMs: 60_000,
       maxOutboxAttempts: 100,

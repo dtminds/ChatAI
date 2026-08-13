@@ -25,6 +25,14 @@ describe("workflow capability reliability", () => {
     })).toThrow("capability timeout must not exceed half of the task lease duration");
   });
 
+  it("requires a positive Inference total timeout", () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+
+    expect(() => createService(runtime, async () => ({}), {
+      inferenceTotalTimeoutMs: 0,
+    })).toThrow("inference timeout must be a positive integer");
+  });
+
   it("rejects a binding whose operation kind disagrees with the node contract", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const mismatchedBinding: WorkflowCapabilityExecutionBinding = {
@@ -112,7 +120,6 @@ describe("workflow capability reliability", () => {
 
   it.each([
     { capabilityKind: "query", nodeKind: "message-query" },
-    { capabilityKind: "inference", nodeKind: "llm" },
   ] as const)(
     "persists $capabilityKind retries and terminal failures without an external idempotency key",
     async ({ capabilityKind, nodeKind }) => {
@@ -170,9 +177,9 @@ describe("workflow capability reliability", () => {
     },
   );
 
-  it("fails an action whose projected output exceeds 4 KiB in UTF-8", async () => {
+  it("fails an action whose projected output exceeds 8 KiB in UTF-8", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({ value: "中".repeat(1_400) }));
+    const service = createService(runtime, async () => ({ value: "中".repeat(2_800) }));
     const actionTask = await startCapability(service);
 
     const result = await service.executeTask({
@@ -292,11 +299,11 @@ describe("workflow capability reliability", () => {
     ]);
   });
 
-  it("fails a core node whose output exceeds 4 KiB", async () => {
+  it("fails a core node whose output exceeds 8 KiB", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executors = new WorkflowNodeExecutorRegistry().register("start", {
       execute: () => ({
-        output: { value: "x".repeat(4 * 1024) },
+        output: { value: "x".repeat(8 * 1024) },
         sourceOutletId: "default",
         type: "advance",
       }),
@@ -876,6 +883,7 @@ function createService(
     capabilityTimeoutMs?: number;
     clock?: () => Date;
     executors?: WorkflowNodeExecutorRegistry;
+    inferenceTotalTimeoutMs?: number;
     maxTaskAttempts?: number;
     spec?: WorkflowExecutionSpec;
     taskLeaseDurationMs?: number;
@@ -895,6 +903,7 @@ function createService(
       check: async () => ({ entitled: true, unentitledSince: null }),
     },
     executors: options.executors,
+    inferenceTotalTimeoutMs: options.inferenceTotalTimeoutMs,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });

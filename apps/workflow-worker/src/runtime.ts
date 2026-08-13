@@ -1,6 +1,8 @@
 import type {
   WorkflowEventSubscriptionReader,
   WorkflowInboxRepository,
+  WorkflowInferenceRepository,
+  WorkflowJavaInferencePort,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
 import {
@@ -17,6 +19,7 @@ import {
   type WorkflowWorkerLogger,
 } from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
+import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
 import type { reconcileWorkflowRuntime } from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
@@ -73,6 +76,9 @@ export async function startWorkflowWorkerRuntime(input: {
   eventCatalog?: WorkflowEventCatalog;
   eventSubscriptionReader: WorkflowEventSubscriptionReader;
   inboxRepository: WorkflowInboxRepository;
+  inferenceAdapter: WorkflowJavaInferencePort;
+  inferenceRepository: WorkflowInferenceRepository;
+  inferenceWorker(input: Parameters<typeof processWorkflowInferenceBatch>[0]): ReturnType<typeof processWorkflowInferenceBatch>;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
@@ -139,6 +145,21 @@ export async function startWorkflowWorkerRuntime(input: {
           now: now(),
           repository: input.schedulerRepository,
           shardIds: input.config.runtime.shardIds,
+        })));
+    }
+    if (input.config.roles.has("inference")) {
+      loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, () =>
+        input.inferenceWorker({
+          adapter: input.inferenceAdapter,
+          heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
+          leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.inferenceConcurrency,
+          maxAttempts: input.config.runtime.inferenceMaxAttempts,
+          maxRetryDelayMs: input.config.runtime.inferenceMaxRetryDelayMs,
+          now,
+          repository: input.inferenceRepository,
+          retryDelayMs: input.config.runtime.inferenceRetryDelayMs,
         })));
     }
     if (input.config.roles.has("outbox")) {
@@ -257,7 +278,7 @@ export async function startWorkflowWorkerRuntime(input: {
   }
 
   function startBackgroundRole(
-    role: "outbox" | "reconciler" | "scheduler",
+    role: "inference" | "outbox" | "reconciler" | "scheduler",
     intervalMs: number,
     run: () => Promise<unknown>,
   ) {

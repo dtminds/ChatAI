@@ -150,6 +150,7 @@ describe("workflow worker config", () => {
 
     expect([...config.roles].sort()).toEqual([
       "entry-consumer",
+      "inference",
       "outbox",
       "reconciler",
       "scheduler",
@@ -164,6 +165,14 @@ describe("workflow worker config", () => {
       inboxCleanupBatchSize: 1_000,
       historyCleanupBatchSize: 1_000,
       historyCleanupIntervalMs: 3_600_000,
+      inferenceConcurrency: 10,
+      inferenceHeartbeatIntervalMs: 15_000,
+      inferenceIntervalMs: 1_000,
+      inferenceLeaseDurationMs: 60_000,
+      inferenceMaxAttempts: 5,
+      inferenceMaxRetryDelayMs: 300_000,
+      inferenceRetryDelayMs: 5_000,
+      inferenceTotalTimeoutMs: 600_000,
       leaseDurationMs: 60_000,
       maxOutboxAttempts: 100,
       maxOutboxRetryDelayMs: 300_000,
@@ -203,6 +212,30 @@ describe("workflow worker config", () => {
       WORKFLOW_CAPABILITY_TIMEOUT_MS: "30000",
       WORKFLOW_LEASE_DURATION_MS: "60000",
     })).runtime.capabilityTimeoutMs).toBe(30_000);
+  });
+
+  it("requires the inference heartbeat to renew before its lease expires", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS: "60000",
+      WORKFLOW_INFERENCE_LEASE_DURATION_MS: "60000",
+    }))).toThrow(
+      "WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS must be less than WORKFLOW_INFERENCE_LEASE_DURATION_MS",
+    );
+
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS: "15000",
+      WORKFLOW_INFERENCE_LEASE_DURATION_MS: "60000",
+    })).runtime.inferenceHeartbeatIntervalMs).toBe(15_000);
+  });
+
+  it("bounds inference concurrency independently from generic batch work", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BATCH_SIZE: "100",
+      WORKFLOW_INFERENCE_CONCURRENCY: "12",
+    })).runtime.inferenceConcurrency).toBe(12);
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_INFERENCE_CONCURRENCY: "101",
+    }))).toThrow("WORKFLOW_INFERENCE_CONCURRENCY must be an integer from 1 to 100");
   });
 
   it("rejects an invalid health port independently from durations", () => {

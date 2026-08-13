@@ -8,7 +8,7 @@ import type {
 type RepositoryContractHarness = {
   repository: WorkflowRuntimeRepository;
   setRunStatus(runId: string, status: WorkflowRunStatus): Promise<void>;
-  setWorkflowRuntimeStatus(status: WorkflowRuntimeStatus): Promise<void>;
+  setWorkflowRuntimeStatus(status: WorkflowRuntimeStatus, transitionedAt?: Date): Promise<void>;
 };
 
 type CreateRepositoryContractHarness = () => Promise<RepositoryContractHarness> | RepositoryContractHarness;
@@ -17,6 +17,7 @@ const OUTBOX_READY_AT = new Date("2099-01-01T00:00:00.000Z");
 const OUTBOX_RETRY_AT = new Date("2099-01-01T00:05:00.000Z");
 const EVENT_WAIT_EXPIRES_AT = new Date("2099-01-02T00:00:00.000Z");
 const EVENT_COLLECTION_UNTIL = new Date("2099-01-01T00:00:10.000Z");
+const INFERENCE_DEADLINE = new Date("2099-01-01T00:10:00.000Z");
 
 export function runWorkflowRuntimeRepositoryContract(
   createHarness: CreateRepositoryContractHarness,
@@ -40,6 +41,345 @@ export function runWorkflowRuntimeRepositoryContract(
 
     expect(recorded.filter(Boolean)).toHaveLength(1);
     await expect(harness.repository.hasProcessedInboxMessage(input)).resolves.toBe(true);
+  });
+
+  it("deduplicates Inference Job creation and wakes its original Task exactly once", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      initialNodeId: "llm-1",
+      initialNodeKind: "llm",
+    })));
+    const claimed = await harness.repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "task-worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("Expected Inference Task claim to succeed");
+    const input = {
+      contractVersion: 1,
+      deadlineAt: INFERENCE_DEADLINE,
+      executionKey: `9:${created.run.id}:llm-1:1`,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+        messageId: `inference:${created.task.id}`,
+      },
+      now: OUTBOX_READY_AT,
+      payload: {
+        kind: "message-list" as const,
+        messageList: [{ content: "Summarize", role: "system" as const }],
+        modelId: "model-1",
+        responseFormat: { type: "text" as const },
+      },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    };
+    const waiting = await harness.repository.beginInference(input);
+    expect(waiting).toMatchObject({ created: true, kind: "success", task: { status: "pending", taskType: "inference" } });
+    await expect(harness.repository.beginInference(input)).resolves.toEqual({ kind: "already-processed" });
+    const jobs = await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    });
+    expect(jobs).toHaveLength(1);
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:30.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "summary", type: "text" },
+    })).resolves.toBe(true);
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:31.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "duplicate", type: "text" },
+    })).resolves.toBe(false);
+    await expect(harness.repository.findTask(9, created.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskType: "execute",
+      taskVersion: 4,
+    });
+    const outbox = await harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    });
+    expect(outbox.filter(item => item.taskVersion === 4)).toHaveLength(1);
+  });
+
+  it("recovers an expired Inference lease without dispatching its waiting Task", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 10,
+      maxAttempts: 5,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toEqual({ expired: 0, recovered: 1 });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "inference",
+    });
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00.000Z"),
+      leaseOwner: "inference-worker-2",
+      limit: 1,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toHaveLength(1);
+  });
+
+  it("keeps a valid Inference wait during consistency reconciliation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+
+    await expect(harness.repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2099-01-01T00:01:00.000Z"),
+      limit: 10,
+      now: new Date("2099-01-01T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
+    });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "inference",
+    });
+  });
+
+  it("does not fail a final Inference attempt before its lease expires", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 10,
+      maxAttempts: 1,
+      now: new Date("2099-01-01T00:01:00.000Z"),
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+    await expect(harness.repository.findInferenceByExecutionKey(9, waiting.job.executionKey))
+      .resolves.toMatchObject({ status: "running" });
+  });
+
+  it("does not call inference while paused and resumes the same Job after activation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.setWorkflowRuntimeStatus("paused");
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    })).resolves.toEqual([]);
+
+    await harness.setWorkflowRuntimeStatus("active");
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    })).resolves.toEqual([
+      expect.objectContaining({ id: waiting.job.id, status: "running" }),
+    ]);
+  });
+
+  it("does not create an Inference Job after its Workflow was paused", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      entryEventId: "inference-event-paused-before-begin",
+      initialNodeId: "llm-paused-before-begin",
+      initialNodeKind: "llm",
+    })));
+    const claimed = await harness.repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "task-worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("Expected Inference Task claim to succeed");
+    await harness.setWorkflowRuntimeStatus(
+      "paused",
+      new Date("2099-01-01T00:05:00.000Z"),
+    );
+
+    await expect(harness.repository.beginInference({
+      contractVersion: 1,
+      deadlineAt: INFERENCE_DEADLINE,
+      executionKey: `9:${created.run.id}:llm-paused-before-begin:1`,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+        messageId: `inference:${created.task.id}`,
+      },
+      now: OUTBOX_READY_AT,
+      payload: {
+        kind: "message-list",
+        messageList: [{ content: "Summarize", role: "system" }],
+        modelId: "model-1",
+        responseFormat: { type: "text" },
+      },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    })).resolves.toEqual({ action: "defer", kind: "workflow-unavailable" });
+  });
+
+  it("preserves the remaining Inference deadline while its Workflow is paused", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.setWorkflowRuntimeStatus(
+      "paused",
+      new Date("2099-01-01T00:05:00.000Z"),
+    );
+
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 10,
+      maxAttempts: 5,
+      now: new Date("2099-01-01T00:20:00.000Z"),
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+    await expect(harness.repository.findInferenceByExecutionKey(9, waiting.job.executionKey))
+      .resolves.toMatchObject({ status: "pending" });
+
+    await harness.setWorkflowRuntimeStatus(
+      "active",
+      new Date("2099-01-01T00:30:00.000Z"),
+    );
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:31:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: new Date("2099-01-01T00:30:00.000Z"),
+    })).resolves.toEqual([
+      expect.objectContaining({
+        deadlineAt: new Date("2099-01-01T00:35:00.000Z"),
+        id: waiting.job.id,
+        status: "running",
+      }),
+    ]);
+  });
+
+  it("does not revive an Inference Job that expired before its Workflow was paused", async () => {
+    const expired = await createInferenceWait(harness.repository, {
+      deadlineAt: new Date("2099-01-01T00:01:00.000Z"),
+      suffix: "expired-before-pause",
+    });
+    await harness.setWorkflowRuntimeStatus(
+      "paused",
+      new Date("2099-01-01T00:02:00.000Z"),
+    );
+    await harness.setWorkflowRuntimeStatus(
+      "active",
+      new Date("2099-01-01T00:30:00.000Z"),
+    );
+
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 1,
+      maxAttempts: 5,
+      now: new Date("2099-01-01T00:30:00.000Z"),
+    })).resolves.toEqual({ expired: 1, recovered: 0 });
+    await expect(harness.repository.findInferenceByExecutionKey(9, expired.job.executionKey))
+      .resolves.toMatchObject({ status: "failed" });
+  });
+
+  it("invalidates a running Inference lease while paused and retries after activation", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    const jobs = await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:08:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    await harness.setWorkflowRuntimeStatus(
+      "paused",
+      new Date("2099-01-01T00:05:00.000Z"),
+    );
+
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:06:00.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "stale result", type: "text" },
+    })).resolves.toBe(false);
+    await expect(harness.repository.findInferenceByExecutionKey(9, waiting.job.executionKey))
+      .resolves.toMatchObject({ attempt: 0, status: "pending" });
+
+    await harness.setWorkflowRuntimeStatus(
+      "active",
+      new Date("2099-01-01T00:30:00.000Z"),
+    );
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:31:00.000Z"),
+      leaseOwner: "inference-worker-2",
+      limit: 1,
+      now: new Date("2099-01-01T00:30:00.000Z"),
+    })).resolves.toEqual([
+      expect.objectContaining({
+        attempt: 1,
+        deadlineAt: new Date("2099-01-01T00:35:00.000Z"),
+        id: waiting.job.id,
+        status: "running",
+      }),
+    ]);
+  });
+
+  it("recovers an eligible Inference Job behind healthy lower-ID Jobs", async () => {
+    await createInferenceWait(harness.repository, {
+      deadlineAt: new Date("2099-01-01T01:00:00.000Z"),
+      suffix: "healthy-1",
+    });
+    await createInferenceWait(harness.repository, {
+      deadlineAt: new Date("2099-01-01T01:00:00.000Z"),
+      suffix: "healthy-2",
+    });
+    const expired = await createInferenceWait(harness.repository, {
+      deadlineAt: new Date("2099-01-01T00:01:00.000Z"),
+      suffix: "expired",
+    });
+
+    await expect(harness.repository.recoverInferenceJobs({
+      limit: 1,
+      maxAttempts: 5,
+      now: new Date("2099-01-01T00:02:00.000Z"),
+    })).resolves.toEqual({ expired: 1, recovered: 0 });
+    await expect(harness.repository.findInferenceByExecutionKey(9, expired.job.executionKey))
+      .resolves.toMatchObject({ status: "failed" });
+  });
+
+  it("keeps an unclaimed Inference Job consistent while paused", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    await harness.setWorkflowRuntimeStatus("paused");
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "pending",
+      taskType: "inference",
+    });
+    await expect(harness.repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2099-01-01T00:01:00.000Z"),
+      limit: 10,
+      now: new Date("2099-01-01T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
+    });
+    await harness.setWorkflowRuntimeStatus("active");
+    await expect(harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    })).resolves.toEqual([expect.objectContaining({ id: waiting.job.id })]);
   });
 
   it("deduplicates concurrent entry creation with one initial task and outbox event", async () => {
@@ -586,6 +926,50 @@ async function createEventWait(
   if (waiting.kind !== "success") {
     throw new Error(`Expected Wait Event subscription to succeed, received ${waiting.kind}`);
   }
+  return waiting;
+}
+
+async function createInferenceWait(
+  repository: WorkflowRuntimeRepository,
+  options: { deadlineAt?: Date; suffix?: string } = {},
+) {
+  const suffix = options.suffix ?? "default";
+  const created = requireCreatedRun(await repository.createRunWithInitialTask(createRunInput({
+    entryEventId: `inference-event-${suffix}`,
+    initialNodeId: `llm-${suffix}`,
+    initialNodeKind: "llm",
+  })));
+  const claimed = await repository.claimTask({
+    expectedTaskVersion: created.task.taskVersion,
+    leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+    leaseOwner: "task-worker-1",
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (claimed.kind !== "success") throw new Error("Expected Inference Task claim to succeed");
+  const waiting = await repository.beginInference({
+    contractVersion: 1,
+    deadlineAt: options.deadlineAt ?? INFERENCE_DEADLINE,
+    executionKey: `9:${created.run.id}:llm-${suffix}:1`,
+    expectedRunLockVersion: created.run.lockVersion,
+    expectedTaskVersion: claimed.task.taskVersion,
+    inbox: {
+      consumer: "workflow-task",
+      expiresAt: new Date("2099-02-01T00:00:00.000Z"),
+      messageId: `inference:${created.task.id}`,
+    },
+    now: OUTBOX_READY_AT,
+    payload: {
+      kind: "message-list",
+      messageList: [{ content: "Summarize", role: "system" }],
+      modelId: "model-1",
+      responseFormat: { type: "text" },
+    },
+    runId: created.run.id,
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (waiting.kind !== "success") throw new Error("Expected Inference wait to succeed");
   return waiting;
 }
 

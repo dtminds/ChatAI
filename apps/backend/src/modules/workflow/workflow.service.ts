@@ -369,6 +369,7 @@ export class WorkflowService {
       opSubUserId: scope.subUserId,
       status,
       statusReason: null,
+      transitionedAt: this.clock(),
       uid: scope.uid,
       workflowId,
     })));
@@ -483,6 +484,7 @@ export class WorkflowService {
 
       await this.repository.applyEntitlementLoss({
         opSubUserId,
+        transitionedAt: this.clock(),
         transition: decision.action,
         uid,
         workflowType,

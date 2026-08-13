@@ -4,11 +4,17 @@ import { QUICK_REPLY_ATTACHMENT_MAX_COUNT } from "../chat/quick-reply-content.js
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import {
+  getWorkflowCapabilityProfile,
+  getWorkflowGuaranteedVariableCatalog,
+  type WorkflowType,
+} from "./policy.js";
+import {
   WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowWaitEventDraftConfigSchema,
+  type WorkflowStartTrigger,
 } from "./trigger.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
@@ -263,6 +269,17 @@ export const WorkflowEmptyNodeConfigSchema = Type.Object({}, { additionalPropert
 
 export type WorkflowVariableSelector = Static<typeof WorkflowVariableSelectorSchema>;
 export type WorkflowOutputValueType = Static<typeof WorkflowOutputValueTypeSchema>;
+export type WorkflowNodeOutputUsage =
+  | "intent-input"
+  | "message-content"
+  | "time-reference"
+  | "variable";
+export type WorkflowNodeOutputContract = {
+  availableOnSourceOutlets?: readonly string[];
+  key: string;
+  usages: readonly WorkflowNodeOutputUsage[];
+  valueType: WorkflowOutputValueType;
+};
 export type WorkflowVariableContentSegment = Static<typeof WorkflowVariableContentSegmentSchema>;
 export type WorkflowMessageDraftConfig = Static<typeof WorkflowMessageDraftConfigSchema>;
 export type WorkflowMessageExecutionConfig = Static<typeof WorkflowMessageExecutionConfigSchema>;
@@ -281,6 +298,9 @@ export type WorkflowLlmExecutionConfig = Static<typeof WorkflowLlmExecutionConfi
 export type WorkflowIntentOption = Static<typeof WorkflowIntentOptionSchema>;
 export type WorkflowAiIntentDraftConfig = Static<typeof WorkflowAiIntentDraftConfigSchema>;
 export type WorkflowAiIntentExecutionConfig = Static<typeof WorkflowAiIntentExecutionConfigSchema>;
+
+const WORKFLOW_LLM_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const WORKFLOW_LLM_PROMPT_MAX_LENGTH = 10_000;
 
 export const WORKFLOW_DRAFT_NODE_BASE_KEYS = [
   "kind",
@@ -306,7 +326,7 @@ type WorkflowNodeContractDefinition<
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
   "ai-collect": placeholderContract("composite"),
-  "ai-intent": draftReadyContract(
+  "ai-intent": runtimeReadyContract(
     "inference",
     1,
     WorkflowAiIntentDraftConfigSchema,
@@ -327,7 +347,7 @@ export const workflowNodeContractRegistry = {
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
   ),
-  llm: draftReadyContract(
+  llm: runtimeReadyContract(
     "inference",
     1,
     WorkflowLlmDraftConfigSchema,
@@ -413,8 +433,252 @@ export function isWorkflowNodeExecutionConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
+  if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
+  if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null && Value.Check(schema, value);
+}
+
+export function getWorkflowNodeOutputContracts(
+  kind: WorkflowNodeKind,
+  config: Record<string, unknown>,
+): readonly WorkflowNodeOutputContract[] | null {
+  if (kind === "llm" && Value.Check(WorkflowLlmOutputConfigSchema, config.output)) {
+    const output = config.output as WorkflowLlmOutputConfig;
+    const fields = output.format === "json" ? output.fields : [output.field];
+    return fields.map(field => ({
+      key: field.id,
+      usages: field.type === "string"
+        ? ["variable", "message-content"]
+        : ["variable"],
+      valueType: { kind: field.type },
+    }));
+  }
+  if (kind === "ai-intent") {
+    return [
+      {
+        key: "matchedIntentDescription",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "reason",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+    ];
+  }
+  if (kind === "message") {
+    return [{
+      key: "sentAt",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    }];
+  }
+  if (kind === "wait-event") {
+    return [
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "messageIds",
+        usages: ["intent-input"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "textContent",
+        usages: ["intent-input", "message-content", "variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "messageCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        availableOnSourceOutlets: ["triggered"],
+        key: "lastMessageAt",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  if (kind === "message-query") {
+    return [
+      {
+        key: "messageIds",
+        usages: ["intent-input"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      },
+      {
+        key: "textContent",
+        usages: ["intent-input", "message-content", "variable"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "messageCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "rangeStart",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+      {
+        key: "rangeEnd",
+        usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  return null;
+}
+
+export function getWorkflowContextVariableValueType(
+  selector: WorkflowVariableSelector,
+  workflowType?: WorkflowType,
+  entryEventTypes?: readonly WorkflowStartTrigger["type"][],
+): WorkflowOutputValueType | null {
+  const key = selector.join(".");
+  const variableCatalog = workflowType && entryEventTypes
+    ? getWorkflowGuaranteedVariableCatalog(workflowType, entryEventTypes)
+    : workflowType
+      ? getWorkflowCapabilityProfile(workflowType).variableCatalog
+      : null;
+  if (variableCatalog && !variableCatalog.includes(key)) {
+    return null;
+  }
+  if (key === "subject.id") return { kind: "string" };
+  if (key === "trigger.eventType") return { kind: "string" };
+  if (key === "trigger.occurredAt") return { kind: "datetime" };
+  if (key === "trigger.projection.workUserId"
+    || key === "trigger.projection.seatId"
+    || key === "trigger.projection.tagId"
+    || key === "trigger.projection.messageId") {
+    return { kind: "number" };
+  }
+  if (key === "trigger.projection.externalUserId"
+    || key === "trigger.projection.thirdExternalUserId") {
+    return { kind: "string" };
+  }
+  return null;
+}
+
+export function isWorkflowOutputValueTypeEqual(
+  left: WorkflowOutputValueType,
+  right: WorkflowOutputValueType,
+) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "reference") {
+    return right.kind === "reference" && left.semantic === right.semantic;
+  }
+  if (left.kind === "array") {
+    return right.kind === "array"
+      && left.itemType === right.itemType
+      && left.semantic === right.semantic;
+  }
+  if (left.kind === "object") {
+    return right.kind === "object" && left.schemaRef === right.schemaRef;
+  }
+  return true;
+}
+
+export function isWorkflowLlmExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowLlmExecutionConfig {
+  if (!Value.Check(WorkflowLlmExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowLlmExecutionConfig;
+  const inputIds = config.inputs.map(input => input.id);
+  const inputNames = config.inputs.map(input => input.name.trim());
+  const inputNameById = new Map(config.inputs.map(input => [input.id, input.name.trim()]));
+  if (
+    !config.modelId.trim()
+    || !areUniqueNonBlankValues(inputIds)
+    || !areUniqueWorkflowIdentifiers(inputNames)
+    || config.inputs.some(input =>
+      input.value.kind === "literal"
+        ? !input.value.value.trim()
+        : !isWorkflowInferenceSelectorResolvable(input.value.selector))
+    || !isWorkflowPromptComplete(config.systemPrompt, inputNameById, true)
+    || !isWorkflowPromptComplete(config.userPrompt, inputNameById, false)
+  ) {
+    return false;
+  }
+
+  const fields = config.output.format === "json"
+    ? config.output.fields
+    : [config.output.field];
+  const fieldIds = fields.map(field => field.id);
+  const fieldNames = fields.map(field => field.name.trim());
+  return areUniqueNonBlankValues(fieldIds)
+    && areUniqueWorkflowIdentifiers(fieldNames)
+    && (config.output.format === "json" || config.output.field.type === "string");
+}
+
+export function isWorkflowAiIntentExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowAiIntentExecutionConfig {
+  if (!Value.Check(WorkflowAiIntentExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowAiIntentExecutionConfig;
+  const selector = config.inputSelector;
+  const intentIds = config.intents.map(intent => intent.id);
+  const descriptions = config.intents.map(intent => intent.description.trim());
+  return Boolean(selector && isWorkflowInferenceSelectorResolvable(selector))
+    && areUniqueNonBlankValues(intentIds)
+    && descriptions.every(Boolean)
+    && new Set(descriptions).size === descriptions.length
+    && config.intents.every((intent, index) => intent.modelCode === `I${index + 1}`);
+}
+
+function areUniqueWorkflowIdentifiers(values: string[]) {
+  return values.every(value =>
+    Boolean(value) && WORKFLOW_LLM_IDENTIFIER_PATTERN.test(value))
+    && new Set(values).size === values.length;
+}
+
+function areUniqueNonBlankValues(values: string[]) {
+  return values.every(value => Boolean(value.trim()))
+    && new Set(values).size === values.length;
+}
+
+function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelector) {
+  const [scope, key, ...path] = selector;
+  if (!scope || !key) return false;
+  if (scope === "subject") return key === "id" && path.length === 0;
+  if (scope === "trigger" || scope === "node") return true;
+  return scope === "node-lifecycle"
+    && path.length === 1
+    && (path[0] === "enteredAt" || path[0] === "exitedAt");
+}
+
+function isWorkflowPromptComplete(
+  segments: WorkflowVariableContentSegment[],
+  inputNameById: Map<string, string>,
+  required: boolean,
+) {
+  let displayLength = 0;
+  let hasContent = false;
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      displayLength += segment.value.length;
+      hasContent ||= Boolean(segment.value.trim());
+      continue;
+    }
+    const [scope, inputId] = segment.selector;
+    const inputName = inputId ? inputNameById.get(inputId) : undefined;
+    if (
+      segment.selector.length !== 2
+      || scope !== "input"
+      || !inputName
+    ) {
+      return false;
+    }
+    displayLength += inputName.length + 2;
+    hasContent = true;
+  }
+  return displayLength <= WORKFLOW_LLM_PROMPT_MAX_LENGTH
+    && (!required || hasContent);
 }
 
 function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>(

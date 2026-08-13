@@ -30,8 +30,8 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 
 当前分类：
 
-- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`end`
-- `draft-ready`：`message`、`message-query`、`handoff`、`llm`、`ai-intent`
+- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`llm`、`ai-intent`、`end`
+- `draft-ready`：`message`、`message-query`、`handoff`
 - `placeholder`：`tag`、`coupon`、`agent`、`order-query`、`tag-query`、`customer-update`、`ai-collect`
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
@@ -45,7 +45,7 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 | `core` | Workflow Engine 内部确定性执行，不经过 Capability Port | Runtime 内部 Node Execution Key | `start`、`wait`、`wait-event`、`branch`、`end` |
 | `action` | 通过 Capability Port 调用产生外部副作用的业务能力 | 下游必须接收 `idempotencyKey` | `message`、`handoff`、`agent`、`tag`、`customer-update`、`coupon` |
 | `query` | 通过 Capability Port 读取外部业务数据 | 不发送额外调用键 | `message-query`、`order-query`、`tag-query` |
-| `inference` | 通过 Capability Port 执行非确定性的模型推理 | 不发送额外调用键，使用执行元数据关联调用 | `llm`、`ai-intent` |
+| `inference` | 通过持久化 Inference Job 执行非确定性的模型推理 | 发送稳定 `executionKey` 作为请求身份，不承诺业务副作用幂等 | `llm`、`ai-intent` |
 | `composite` | 由多个阶段、等待或回调组成，需要独立的持久化子状态 | 由未来 Composite Runner 按阶段生成 | `ai-collect` |
 
 `action`、`query`、`inference` 统称 Capability 节点，共用 `workflow_node_execution` 生命周期、deadline、输出上限、错误分类和 Retry 框架。账本使用 `execution_key` 保存 Runtime 内部稳定的 Node Execution Key；它不代表 Query 或 Inference 对下游提供幂等承诺。
@@ -175,7 +175,7 @@ Setting UI 是节点 Draft Config 的唯一主要编辑界面。
 - 当前 Workflow Type 允许的系统、Subject 和 Trigger 变量
 - 与当前输入用途兼容的类型
 
-Capability 节点调用外部能力时，Execution Config 必须先由 Engine 编译成类型化 Capability Command。Runtime 使用同一稳定 Node Execution Key 管理执行台账；发送给下游时，只有 Action 使用由它派生的 `idempotencyKey`，Query 和 Inference 不携带额外调用键，通过执行元数据关联调用。前端不生成这些键，外部 Adapter 也不解析原始 Draft。
+Capability 节点调用外部能力时，Execution Config 必须先由 Engine 编译成类型化 Capability Command。Runtime 使用同一稳定 Node Execution Key 管理执行台账；发送给下游时，Action 使用由它派生的 `idempotencyKey`，Query 不携带调用键，长耗时 Inference Job 显式携带同一个 `executionKey` 作为稳定请求身份。前端不生成这些键，外部 Adapter 也不解析原始 Draft。
 
 ## 9. 新节点完成清单
 
@@ -185,7 +185,7 @@ Capability 节点调用外部能力时，Execution Config 必须先由 Engine �
 2. Web Definition：默认值、sanitize、validate、Node UI 摘要、Handle 和输出变量。
 3. Setting UI：完整编辑路径、变量约束、失效状态和必要行为测试。
 4. Engine：唯一 Execution 投影、严格校验和 Capability Requirement。
-5. Adapter：类型化 Action、Query 或 Inference Command；落实 Action 幂等键以及 Query、Inference 无额外调用键的语义。
+5. Adapter：类型化 Action、Query 或 Inference Command；落实 Action 幂等键、Query 无调用键和 Inference 稳定 `executionKey` 的语义。
 6. Runtime：Executor、输出上限、错误分类、Retry/Wait/恢复行为。
 7. 发布门控：确认 Workflow Capability Profile、Runtime Support、Deployment Capability 和 Product Entitlement 全部对齐。
 8. 验证：Contracts、Engine、Runtime、Backend、Web 的受影响测试与 build，以及 `git diff --check`。

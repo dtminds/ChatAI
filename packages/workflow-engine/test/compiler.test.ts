@@ -158,6 +158,275 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges.map((edge) => edge.sourceOutletId)).toEqual(["default", "vip", "default"]);
   });
 
+  it("freezes LLM and AI Intent execution contracts with their deployment capabilities", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1,
+      node("wait-event", "wait-event", {
+        event: { type: "message.received" },
+        timeout: { duration: 15, unit: "minute" },
+      }),
+      node("llm", "llm", {
+        inputs: [{
+          id: "input-message",
+          name: "message",
+          value: {
+            kind: "variable",
+            selector: ["node", "wait-event", "textContent"],
+            valueType: { kind: "string" },
+          },
+        }],
+        modelId: "model-1",
+        modelLabel: "Model label",
+        output: {
+          field: { description: "", id: "output-id", name: "output", type: "string" },
+          format: "text",
+        },
+        systemPrompt: [{ type: "text", value: "Summarize" }],
+        userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+      }),
+      node("intent", "ai-intent", {
+        advancedEnabled: false,
+        inputSelector: ["node", "wait-event", "messageIds"],
+        intents: [{ description: "Refund", id: "refund-id" }],
+        prompt: "unused",
+      }),
+    );
+    draft.edges = [
+      { id: "start-wait-event", source: "start", target: "wait-event" },
+      {
+        id: "wait-event-triggered-llm",
+        source: "wait-event",
+        sourceHandle: "triggered",
+        target: "llm",
+      },
+      {
+        id: "wait-event-timeout-end",
+        source: "wait-event",
+        sourceHandle: "timeout",
+        target: "end",
+      },
+      { id: "llm-intent", source: "llm", target: "intent" },
+      { id: "intent-refund", source: "intent", sourceHandle: "intent:refund-id", target: "end" },
+      { id: "intent-fallback", source: "intent", sourceHandle: "fallback", target: "end" },
+    ];
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 5,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.id === "llm")).toMatchObject({
+      config: { modelId: "model-1" },
+      requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
+    });
+    expect(spec.nodes.find(node => node.id === "intent")).toMatchObject({
+      config: {
+        fallback: { id: "fallback" },
+        intents: [{ description: "Refund", id: "refund-id", modelCode: "I1" }],
+      },
+      requiredCapabilities: [{ capabilityKey: "operation.intent.classify", contractVersion: 1 }],
+    });
+    expect(spec.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "event.message.received", contractVersion: 1 },
+      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
+      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
+    ]);
+  });
+
+  it("rejects structurally valid but incomplete inference node configs", () => {
+    const invalidLlm = createDraft();
+    invalidLlm.nodes.splice(1, 1, node("llm", "llm", {
+      inputs: [],
+      modelId: "",
+      output: {
+        field: { description: "", id: "output-id", name: "output", type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ type: "text", value: "Summarize" }],
+      userPrompt: [],
+    }));
+    invalidLlm.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-end", source: "llm", target: "end" },
+    ];
+    expectCompilationIssue(invalidLlm, {
+      code: "invalid-node-config",
+      message: "LLM node requires a model, complete inputs, prompts, and outputs",
+      nodeId: "llm",
+    });
+
+    const invalidIntent = createDraft();
+    invalidIntent.nodes.splice(1, 1, node("intent", "ai-intent", {
+      advancedEnabled: false,
+      intents: [{ description: "Refund", id: "refund-id" }],
+      prompt: "",
+    }));
+    invalidIntent.edges = [
+      { id: "start-intent", source: "start", target: "intent" },
+      { id: "intent-refund", source: "intent", sourceHandle: "intent:refund-id", target: "end" },
+      { id: "intent-fallback", source: "intent", sourceHandle: "fallback", target: "end" },
+    ];
+    expectCompilationIssue(invalidIntent, {
+      code: "invalid-node-config",
+      message: "AI Intent node requires an input and complete unique intents",
+      nodeId: "intent",
+    });
+  });
+
+  it("rejects unavailable, changed, or wrong-outlet inference references", () => {
+    const missingOutput = createDraft();
+    missingOutput.nodes.splice(1, 1, node("llm", "llm", {
+      inputs: [{
+        id: "input-message",
+        name: "message",
+        value: {
+          kind: "variable",
+          selector: ["node", "missing", "textContent"],
+          valueType: { kind: "string" },
+        },
+      }],
+      modelId: "model-1",
+      output: {
+        field: { description: "", id: "output-id", name: "output", type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ type: "text", value: "Summarize" }],
+      userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+    }));
+    missingOutput.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-end", source: "llm", target: "end" },
+    ];
+    expectCompilationIssue(missingOutput, {
+      code: "invalid-node-config",
+      message: "LLM node references unavailable or changed input data",
+      nodeId: "llm",
+    });
+
+    const wrongType = createInferenceReferenceDraft({
+      inputSelector: ["node", "wait-event", "messageCount"],
+      targetKind: "llm",
+      valueType: { kind: "string" },
+    });
+    expectCompilationIssue(wrongType, {
+      code: "invalid-node-config",
+      message: "LLM node references unavailable or changed input data",
+      nodeId: "inference",
+    });
+
+    const wrongOutlet = createInferenceReferenceDraft({
+      inputSelector: ["node", "wait-event", "messageIds"],
+      targetKind: "ai-intent",
+      useTimeoutOutlet: true,
+    });
+    expectCompilationIssue(wrongOutlet, {
+      code: "invalid-node-config",
+      message: "AI Intent node references unavailable input data",
+      nodeId: "inference",
+    });
+
+    const contextIntent = createInferenceReferenceDraft({
+      inputSelector: ["subject", "id"],
+      targetKind: "ai-intent",
+    });
+    expectCompilationIssue(contextIntent, {
+      code: "invalid-node-config",
+      message: "AI Intent node references unavailable input data",
+      nodeId: "inference",
+    });
+
+    const lifecycleLlm = createInferenceReferenceDraft({
+      inputSelector: ["node-lifecycle", "wait-event", "enteredAt"],
+      targetKind: "llm",
+      valueType: { kind: "datetime" },
+    });
+    expectCompilationIssue(lifecycleLlm, {
+      code: "invalid-node-config",
+      message: "LLM node references unavailable or changed input data",
+      nodeId: "inference",
+    });
+  });
+
+  it("rejects trigger projection references outside the Workflow Type catalog", () => {
+    const draft = createDraft();
+    draft.nodes.find(node => node.id === "start")!.data = {
+      entryPolicy: { mode: "never" },
+      kind: "start",
+      label: "Start",
+      schemaVersion: 1,
+      status: "ready",
+      title: "Start",
+      triggers: [{ type: "contact.friend_added" }],
+      workUserIds: [201],
+    };
+    draft.nodes.splice(1, 1, node("llm", "llm", {
+      inputs: [{
+        id: "input-seat",
+        name: "seat",
+        value: {
+          kind: "variable",
+          selector: ["trigger", "projection", "seatId"],
+          valueType: { kind: "number" },
+        },
+      }],
+      modelId: "model-1",
+      output: {
+        field: { description: "", id: "output-id", name: "output", type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ selector: ["input", "input-seat"], type: "variable" }],
+      userPrompt: [],
+    }));
+    draft.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-end", source: "llm", target: "end" },
+    ];
+
+    expectCompilationIssue(draft, {
+      code: "invalid-node-config",
+      message: "LLM node references unavailable or changed input data",
+      nodeId: "llm",
+    }, "wecom_sop");
+
+    const mixedEvents = createDraft();
+    Object.assign(mixedEvents.nodes.find(node => node.id === "start")!.data, {
+      triggers: [
+        { type: "contact.friend_added" },
+        { match: "any", type: "message.received" },
+      ],
+    });
+    mixedEvents.nodes.splice(1, 1, node("llm", "llm", {
+      inputs: [{
+        id: "input-message-id",
+        name: "message_id",
+        value: {
+          kind: "variable",
+          selector: ["trigger", "projection", "messageId"],
+          valueType: { kind: "number" },
+        },
+      }],
+      modelId: "model-1",
+      output: {
+        field: { description: "", id: "output-id", name: "output", type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ selector: ["input", "input-message-id"], type: "variable" }],
+      userPrompt: [],
+    }));
+    mixedEvents.edges = [
+      { id: "start-llm", source: "start", target: "llm" },
+      { id: "llm-end", source: "llm", target: "end" },
+    ];
+    expectCompilationIssue(mixedEvents, {
+      code: "invalid-node-config",
+      message: "LLM node references unavailable or changed input data",
+      nodeId: "llm",
+    });
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {
@@ -373,13 +642,14 @@ function expectCompilationIssues(
 function expectCompilationIssue(
   draft: Parameters<typeof compileWorkflowDraft>[0]["draft"],
   expectedIssue: WorkflowCompilationError["issues"][number],
+  workflowType: Parameters<typeof compileWorkflowDraft>[0]["workflowType"] = "chatai_sop",
 ) {
   try {
     compileWorkflowDraft({
       draft,
       revision: 1,
       workflowId: "42",
-      workflowType: "chatai_sop",
+      workflowType,
     });
     throw new Error("Expected workflow compilation to fail");
   } catch (error) {
@@ -400,6 +670,84 @@ function createDraft() {
       node("end", "end"),
     ],
     viewport: { x: 100, y: 50, zoom: 1 },
+  };
+}
+
+function createInferenceReferenceDraft(input: {
+  inputSelector: string[];
+  targetKind: "ai-intent" | "llm";
+  useTimeoutOutlet?: boolean;
+  valueType?: { kind: "datetime" | "number" | "string" };
+}) {
+  const inferenceNode = input.targetKind === "llm"
+    ? node("inference", "llm", {
+        inputs: [{
+          id: "input-message",
+          name: "message",
+          value: {
+            kind: "variable",
+            selector: input.inputSelector,
+            valueType: input.valueType ?? { kind: "string" },
+          },
+        }],
+        modelId: "model-1",
+        output: {
+          field: { description: "", id: "output-id", name: "output", type: "string" },
+          format: "text",
+        },
+        systemPrompt: [{ type: "text", value: "Summarize" }],
+        userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+      })
+    : node("inference", "ai-intent", {
+        advancedEnabled: false,
+        inputSelector: input.inputSelector,
+        intents: [{ description: "Refund", id: "refund-id" }],
+        prompt: "",
+      });
+  const selectedOutlet = input.useTimeoutOutlet ? "timeout" : "triggered";
+  const otherOutlet = input.useTimeoutOutlet ? "triggered" : "timeout";
+  return {
+    edges: [
+      { id: "start-wait-event", source: "start", target: "wait-event" },
+      {
+        id: `wait-event-${selectedOutlet}-inference`,
+        source: "wait-event",
+        sourceHandle: selectedOutlet,
+        target: "inference",
+      },
+      {
+        id: `wait-event-${otherOutlet}-end`,
+        source: "wait-event",
+        sourceHandle: otherOutlet,
+        target: "end",
+      },
+      ...(input.targetKind === "llm"
+        ? [{ id: "inference-end", source: "inference", target: "end" }]
+        : [
+            {
+              id: "inference-refund-end",
+              source: "inference",
+              sourceHandle: "intent:refund-id",
+              target: "end",
+            },
+            {
+              id: "inference-fallback-end",
+              source: "inference",
+              sourceHandle: "fallback",
+              target: "end",
+            },
+          ]),
+    ],
+    nodes: [
+      node("start", "start", startConfig()),
+      node("wait-event", "wait-event", {
+        event: { type: "message.received" },
+        timeout: { duration: 15, unit: "minute" },
+      }),
+      inferenceNode,
+      node("end", "end"),
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
   };
 }
 

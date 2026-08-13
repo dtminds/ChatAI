@@ -341,6 +341,22 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task"]);
   });
 
+  it("does not expire an Inference Job whose lease was renewed after recovery scanning", async () => {
+    const now = new Date("2026-07-10T00:02:00.000Z");
+    const db = createInferenceRecoveryRaceDbMock({
+      renewedLeaseExpiresAt: new Date("2026-07-10T00:03:00.000Z"),
+      scannedLeaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.recoverInferenceJobs({
+      limit: 100,
+      maxAttempts: 1,
+      now,
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+    expect(db.inferenceUpdateCount).toBe(0);
+  });
+
   it("casts the unsigned current counter before applying a negative delta", async () => {
     const db = createMetricAggregationDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -375,7 +391,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
     ]);
     expect(db.lockOrder).toEqual(["run", "task", "outbox", "run"]);
-    expect(db.deleteOrder).toEqual(["outbox", "task", "execution", "run"]);
+    expect(db.deleteOrder).toEqual(["inference", "outbox", "task", "execution", "run"]);
     expect(db.runWhereCalls).toEqual(expect.arrayContaining([
       ["status", "in", ["cancelled", "completed", "failed"]],
       ["completed_at", "is not", null],
@@ -551,6 +567,74 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task", "outbox"]);
   });
 });
+
+function createInferenceRecoveryRaceDbMock(input: {
+  renewedLeaseExpiresAt: Date;
+  scannedLeaseExpiresAt: Date;
+}) {
+  const deadlineAt = new Date("2026-07-10T00:10:00.000Z");
+  const baseJob = {
+    attempt: 1,
+    deadline_at: deadlineAt,
+    id: "11",
+    lease_owner: "inference-worker-1",
+    paused_at: null,
+    run_id: "5",
+    status: "running",
+    task_id: "7",
+    uid: 8,
+  };
+  let inferenceSelectCount = 0;
+  const db = {
+    inferenceUpdateCount: 0,
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() { return builder; },
+        innerJoin() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async execute() {
+          return table.startsWith("xy_wap_embed_workflow_inference_job")
+            ? [{ ...baseJob, lease_expires_at: input.scannedLeaseExpiresAt }]
+            : [];
+        },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_inference_job") {
+            inferenceSelectCount += 1;
+            return inferenceSelectCount === 1
+              ? { run_id: "5", task_id: "7", uid: 8 }
+              : { ...baseJob, lease_expires_at: input.renewedLeaseExpiresAt };
+          }
+          return undefined;
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set() {
+          if (table === "xy_wap_embed_workflow_inference_job") {
+            db.inferenceUpdateCount += 1;
+          }
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
 
 function createCapabilityExecutionDbMock(options: {
   executionStatus?: string;
@@ -1071,6 +1155,8 @@ function createHistoryCleanupDbMock(options: {
         async executeTakeFirst() {
           const label = table === "xy_wap_embed_workflow_outbox"
             ? "outbox"
+            : table === "xy_wap_embed_workflow_inference_job"
+              ? "inference"
             : table === "xy_wap_embed_workflow_task"
               ? "task"
               : table === "xy_wap_embed_workflow_node_execution"

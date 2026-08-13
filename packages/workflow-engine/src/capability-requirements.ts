@@ -20,14 +20,31 @@ export const WORKFLOW_ENTRY_EVENT_CAPABILITIES = {
   },
 } as const satisfies Record<WorkflowEntryEventType, WorkflowCapabilityRequirement>;
 
+export const WORKFLOW_INFERENCE_CAPABILITIES = {
+  "ai-intent": {
+    capabilityKey: "operation.intent.classify",
+    contractVersion: 1,
+  },
+  llm: {
+    capabilityKey: "operation.llm.generate",
+    contractVersion: 1,
+  },
+} as const satisfies Partial<Record<WorkflowNodeKind, WorkflowCapabilityRequirement>>;
+
 export const KNOWN_WORKFLOW_CAPABILITIES = canonicalizeWorkflowCapabilityRequirements(
-  Object.values(WORKFLOW_ENTRY_EVENT_CAPABILITIES),
+  [
+    ...Object.values(WORKFLOW_ENTRY_EVENT_CAPABILITIES),
+    ...Object.values(WORKFLOW_INFERENCE_CAPABILITIES),
+  ],
 );
 
 export function getWorkflowNodeCapabilityRequirements(
   kind: WorkflowNodeKind,
   config: Record<string, unknown>,
 ): WorkflowCapabilityRequirement[] {
+  if (kind === "llm" || kind === "ai-intent") {
+    return [WORKFLOW_INFERENCE_CAPABILITIES[kind]];
+  }
   if (kind === "wait-event") {
     const event = config.event;
     if (!event || typeof event !== "object" || !("type" in event)) return [];

@@ -11,6 +11,7 @@ import {
   decodeWorkflowType,
   encodeWorkflowSubjectType,
   encodeWorkflowType,
+  transitionMysqlWorkflowInferenceJobs,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import { normalizeWorkflowExecutionSpec } from "@chatai/workflow-engine";
@@ -59,8 +60,21 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         status_reason: "entitlement_revoked",
       }).where("id", "in", workflowIds).executeTakeFirstOrThrow();
 
-      if (input.transition === "stop") {
-        const now = new Date();
+      if (input.transition === "pause") {
+        await transitionMysqlWorkflowInferenceJobs(transaction, {
+          transitionedAt: input.transitionedAt,
+          transition: "pause",
+          uid: input.uid,
+          workflowIds: workflowIds.map(normalizeId),
+        });
+      } else {
+        await transitionMysqlWorkflowInferenceJobs(transaction, {
+          transitionedAt: input.transitionedAt,
+          transition: "cancel",
+          uid: input.uid,
+          workflowIds: workflowIds.map(normalizeId),
+        });
+        const now = input.transitionedAt;
         const runs = await transaction.selectFrom("xy_wap_embed_workflow_run")
           .select("id")
           .where("uid", "=", input.uid)
@@ -269,20 +283,43 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   async setRuntimeStatus(
     input: Parameters<WorkflowRepository["setRuntimeStatus"]>[0],
   ): ReturnType<WorkflowRepository["setRuntimeStatus"]> {
-    const updated = await this.db.updateTable(DEFINITION_TABLE).set({
-      op_sub_uid: input.opSubUserId,
-      runtime_status: input.status,
-      status_reason: input.statusReason,
-    }).where("uid", "=", input.uid)
-      .where("id", "=", input.workflowId)
-      .where("biz_status", "=", 1)
-      .where("runtime_status", "in", input.allowedCurrentStatuses)
-      .executeTakeFirst();
-    if (updated.numUpdatedRows > 0n) {
-      return success(await this.requireDefinitionById(input.uid, input.workflowId));
-    }
-    const definition = await this.findDefinition(input.uid, input.workflowId);
-    return definition ? invalidStatus(definition.runtimeStatus) : notFound();
+    return this.db.transaction().execute(async (transaction) => {
+      const row = await selectDefinitionForUpdate(
+        transaction,
+        input.uid,
+        input.workflowId,
+      );
+      if (!row) return notFound();
+      const definition = mapDefinition(row);
+      if (!input.allowedCurrentStatuses.includes(definition.runtimeStatus)) {
+        return invalidStatus(definition.runtimeStatus);
+      }
+      await transaction.updateTable(DEFINITION_TABLE).set({
+        op_sub_uid: input.opSubUserId,
+        runtime_status: input.status,
+        status_reason: input.statusReason,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", input.workflowId)
+        .where("biz_status", "=", 1)
+        .where("runtime_status", "=", definition.runtimeStatus)
+        .executeTakeFirstOrThrow();
+      await transitionMysqlWorkflowInferenceJobs(transaction, {
+        transitionedAt: input.transitionedAt,
+        transition: input.status === "paused"
+          ? "pause"
+          : input.status === "active"
+            ? "resume"
+            : "cancel",
+        uid: input.uid,
+        workflowIds: [input.workflowId],
+      });
+      const updated = await transaction.selectFrom(DEFINITION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.workflowId)
+        .where("biz_status", "=", 1)
+        .executeTakeFirstOrThrow();
+      return success(mapDefinition(updated));
+    });
   }
 
   private writeRevision(

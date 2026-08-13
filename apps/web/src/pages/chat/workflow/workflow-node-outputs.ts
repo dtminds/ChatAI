@@ -1,3 +1,7 @@
+import {
+  getWorkflowNodeOutputContracts,
+  isWorkflowOutputValueTypeEqual as isSharedWorkflowOutputValueTypeEqual,
+} from "@chatai/contracts";
 import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import type {
   WorkflowNode,
@@ -61,20 +65,7 @@ export function isWorkflowOutputValueTypeEqual(
   left: WorkflowOutputValueType,
   right: WorkflowOutputValueType,
 ) {
-  if (left.kind !== right.kind) return false;
-
-  if (left.kind === "reference") {
-    return right.kind === "reference" && left.semantic === right.semantic;
-  }
-  if (left.kind === "array") {
-    return right.kind === "array"
-      && left.itemType === right.itemType
-      && left.semantic === right.semantic;
-  }
-  if (left.kind === "object") {
-    return right.kind === "object" && left.schemaRef === right.schemaRef;
-  }
-  return true;
+  return isSharedWorkflowOutputValueTypeEqual(left, right);
 }
 
 export function validateWorkflowNodeOutputDefinitions(
@@ -113,8 +104,31 @@ export function validateWorkflowNodeOutputDefinitions(
       }
     });
   });
+  const sharedOutputs = getWorkflowNodeOutputContracts(node.data.kind, node.data);
+  if (sharedOutputs) {
+    if (sharedOutputs.length !== outputs.length) {
+      issues.push("outputs do not match the shared node output contract");
+    }
+    for (const contract of sharedOutputs) {
+      const output = outputs.find(candidate => candidate.key === contract.key);
+      if (!output
+        || !isWorkflowOutputValueTypeEqual(output.valueType, contract.valueType)
+        || output.usages.length !== contract.usages.length
+        || contract.usages.some(usage => !output.usages.includes(usage))
+        || !sameStringSet(
+          output.availableOnSourceHandles ?? [],
+          contract.availableOnSourceOutlets ?? [],
+        )) {
+        issues.push(`output contract mismatch for ${contract.key}`);
+      }
+    }
+  }
 
   return issues;
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every(value => right.includes(value));
 }
 
 function isOutputUsageCompatible(

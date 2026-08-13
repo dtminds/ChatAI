@@ -111,6 +111,10 @@ export function createViteConfig(mode = "development"): UserConfig {
           repoRoot,
           "packages/workflow-engine/src/node-contract-registry.ts",
         ),
+        "@chatai/workflow-engine/graph": path.resolve(
+          repoRoot,
+          "packages/workflow-engine/src/graph.ts",
+        ),
       },
     },
   };

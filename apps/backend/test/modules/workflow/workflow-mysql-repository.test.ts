@@ -37,6 +37,7 @@ describe("MysqlWorkflowRepository", () => {
 
     await expect(repository.applyEntitlementLoss({
       opSubUserId: "19",
+      transitionedAt: new Date("2026-07-10T00:00:00.000Z"),
       transition: "stop",
       uid: 8,
       workflowType: "chatai_sop",
@@ -142,11 +143,56 @@ describe("MysqlWorkflowRepository", () => {
       allowedCurrentStatuses: ["active"],
       opSubUserId: "19",
       status: "paused",
+      statusReason: null,
+      transitionedAt: new Date("2026-07-10T00:00:00.000Z"),
       uid: 8,
       workflowId: "42",
     });
 
     expect(result).toEqual({ kind: "invalid-status", status: "inactive" });
+  });
+
+  it("freezes active Inference Jobs in the Workflow pause transaction", async () => {
+    const transitionedAt = new Date("2026-07-10T00:05:00.000Z");
+    const db = createWorkflowDbMock({ runtimeStatus: "active" });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.setRuntimeStatus({
+      allowedCurrentStatuses: ["active"],
+      opSubUserId: "19",
+      status: "paused",
+      statusReason: null,
+      transitionedAt,
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result).toMatchObject({ kind: "success", value: { runtimeStatus: "paused" } });
+    expect(db.updateBuilders.find(update =>
+      update.table === "xy_wap_embed_workflow_inference_job")?.sets,
+    ).toMatchObject({ paused_at: transitionedAt });
+  });
+
+  it("unfreezes Inference Jobs in the Workflow resume transaction", async () => {
+    const db = createWorkflowDbMock({ runtimeStatus: "paused" });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.setRuntimeStatus({
+      allowedCurrentStatuses: ["paused"],
+      opSubUserId: "19",
+      status: "active",
+      statusReason: null,
+      transitionedAt: new Date("2026-07-10T00:30:00.000Z"),
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result).toMatchObject({ kind: "success", value: { runtimeStatus: "active" } });
+    const inferenceUpdate = db.updateBuilders.find(update =>
+      update.table === "xy_wap_embed_workflow_inference_job");
+    expect(inferenceUpdate?.sets).toMatchObject({ paused_at: null });
+    expect(inferenceUpdate?.sets.deadline_at).toBeDefined();
+    expect(inferenceUpdate?.sets.next_attempt_at).toBeDefined();
   });
 
   it("replaces trigger bindings in the revision publication transaction", async () => {
@@ -231,7 +277,10 @@ describe("MysqlWorkflowRepository", () => {
   });
 });
 
-function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
+function createWorkflowDbMock(options: {
+  numUpdatedRows?: bigint;
+  runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
+} = {}) {
   const row = {
     biz_status: 1,
     create_time: new Date("2026-07-10T00:00:00.000Z"),
@@ -243,7 +292,7 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
     name: "新客培育",
     op_sub_uid: 19,
     published_revision: null,
-    runtime_status: "inactive",
+    runtime_status: options.runtimeStatus ?? "inactive",
     status_reason: null,
     uid: 8,
     update_time: new Date("2026-07-10T00:00:01.000Z"),
@@ -252,16 +301,17 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
   };
   const db = {
     deleteFromCalls: 0,
-    selectBuilders: [] as Array<{ orderBys: unknown[][]; wheres: unknown[][] }>,
-    updateBuilders: [] as Array<{ sets: Record<string, unknown>; wheres: unknown[][] }>,
+    selectBuilders: [] as Array<{ orderBys: unknown[][]; table: string; wheres: unknown[][] }>,
+    updateBuilders: [] as Array<{ sets: Record<string, unknown>; table: string; wheres: unknown[][] }>,
     deleteFrom() {
       db.deleteFromCalls += 1;
       throw new Error("physical delete is forbidden");
     },
-    selectFrom() {
-      const state = { orderBys: [] as unknown[][], wheres: [] as unknown[][] };
+    selectFrom(table: string) {
+      const state = { orderBys: [] as unknown[][], table, wheres: [] as unknown[][] };
       db.selectBuilders.push(state);
       const builder = {
+        select() { return builder; },
         selectAll() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
@@ -269,14 +319,19 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
         forUpdate() { return builder; },
         async execute() { return [row]; },
         async executeTakeFirst() { return row; },
+        async executeTakeFirstOrThrow() { return row; },
       };
       return builder;
     },
-    updateTable() {
-      const state = { sets: {} as Record<string, unknown>, wheres: [] as unknown[][] };
+    updateTable(table: string) {
+      const state = { sets: {} as Record<string, unknown>, table, wheres: [] as unknown[][] };
       db.updateBuilders.push(state);
       const builder = {
-        set(values: Record<string, unknown>) { state.sets = values; return builder; },
+        set(values: Record<string, unknown>) {
+          state.sets = values;
+          if (table === "xy_wap_embed_workflow_definition") Object.assign(row, values);
+          return builder;
+        },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         async executeTakeFirst() { return { numUpdatedRows: options.numUpdatedRows ?? 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: options.numUpdatedRows ?? 1n }; },

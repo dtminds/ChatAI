@@ -7,6 +7,7 @@ import {
   MysqlWorkflowRuntimeRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
 import { loadWorkflowWorkerConfig } from "./config.js";
 import { createWorkflowBroker } from "./broker/index.js";
@@ -20,6 +21,7 @@ import { startRoleLoop } from "./role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
 import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
+import { processWorkflowInferenceBatch } from "./inference-worker.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -38,6 +40,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     deploymentCapabilities: config.deploymentCapabilities,
     entitlementPort,
     maxTaskAttempts: config.runtime.maxTaskAttempts,
+    inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
     taskLeaseDurationMs: config.runtime.leaseDurationMs,
   });
   const reconcilerService = new WorkflowRuntimeReconciler(repository);
@@ -65,6 +68,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       eventCatalog: WORKFLOW_EVENT_CATALOG,
       eventSubscriptionReader: repository,
       inboxRepository: repository,
+      inferenceAdapter: new UnavailableWorkflowJavaInferencePort(),
+      inferenceRepository: repository,
+      inferenceWorker: processWorkflowInferenceBatch,
       logger,
       outboxPublisher: publishWorkflowOutboxBatch,
       outboxRepository: repository,
@@ -95,6 +101,7 @@ export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./error-policy.js";
 export * from "./health.js";
+export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";

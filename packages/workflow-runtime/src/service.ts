@@ -45,6 +45,10 @@ import {
   WORKFLOW_RUN_CONTEXT_MAX_BYTES,
   WorkflowRuntimeValueError,
 } from "./runtime-value-limits.js";
+import {
+  createWorkflowInferenceRequest,
+  mapWorkflowInferenceResult,
+} from "./inference.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -72,6 +76,7 @@ export class WorkflowRuntimeService {
   private readonly maxTaskAttempts: number;
   private readonly taskLeaseDurationMs: number;
   private readonly deferredTaskDelayMs: number;
+  private readonly inferenceTotalTimeoutMs: number;
   private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
@@ -87,6 +92,7 @@ export class WorkflowRuntimeService {
       capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
       clock?: () => Date;
       deferredTaskDelayMs?: number;
+      inferenceTotalTimeoutMs?: number;
       deploymentCapabilities?: WorkflowDeploymentCapabilities;
       entitlementPort?: WorkflowEntitlementPort;
       executors?: WorkflowNodeExecutorRegistry;
@@ -102,6 +108,7 @@ export class WorkflowRuntimeService {
     this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
     this.deferredTaskDelayMs = options.deferredTaskDelayMs ?? 60_000;
+    this.inferenceTotalTimeoutMs = options.inferenceTotalTimeoutMs ?? 600_000;
     this.deploymentCapabilities = options.deploymentCapabilities
       ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
@@ -112,6 +119,10 @@ export class WorkflowRuntimeService {
     }
     if (this.capabilityTimeoutMs * 2 > this.taskLeaseDurationMs) {
       throw new Error("Workflow capability timeout must not exceed half of the task lease duration");
+    }
+    if (!Number.isSafeInteger(this.inferenceTotalTimeoutMs)
+      || this.inferenceTotalTimeoutMs <= 0) {
+      throw new Error("Workflow inference timeout must be a positive integer");
     }
   }
 
@@ -315,6 +326,7 @@ export class WorkflowRuntimeService {
     const capabilityNode = executionClass === "action"
       || executionClass === "inference"
       || executionClass === "query";
+    const inferenceNode = executionClass === "inference";
     const capabilityBinding = this.capabilityBindings.get(node.kind);
     if (capabilityNode) {
       const prepared = await this.runtimeRepository.prepareCapabilityExecution({
@@ -329,12 +341,22 @@ export class WorkflowRuntimeService {
       });
       if (prepared.kind !== "success") throw staleTaskError();
     }
-    let executionResult: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>;
+    let executionResult:
+      | Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>
+      | { kind: "inference-waiting"; type: "inference-wait" };
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      executionResult = capabilityNode
-        ? await executeWithCapabilityTimeout({
+      executionResult = inferenceNode
+        ? await this.executeInferenceTask({
+            claimedTask: claimed.task,
+            input,
+            node,
+            nodeExecutionKey,
+            run,
+          })
+        : capabilityNode
+          ? await executeWithCapabilityTimeout({
             nodeExecutionKey,
             capabilityTimeoutMs: this.capabilityTimeoutMs,
             binding: capabilityBinding,
@@ -343,7 +365,7 @@ export class WorkflowRuntimeService {
             run,
             startedAt: this.clock(),
           })
-        : await this.executors.execute(node, createExecutionContext(
+          : await this.executors.execute(node, createExecutionContext(
             run,
             input.now,
             claimed.task.dueAt,
@@ -351,6 +373,7 @@ export class WorkflowRuntimeService {
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
       }
+      if (executionResult.type === "inference-wait") return executionResult;
       assertWorkflowRuntimeValue(
         executionResult.output,
         "node-output",
@@ -441,6 +464,73 @@ export class WorkflowRuntimeService {
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
     return committed;
+  }
+
+  private async executeInferenceTask(input: {
+    claimedTask: WorkflowTaskRecord;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    nodeExecutionKey: string;
+    run: WorkflowRunRecord;
+  }): Promise<
+    | { kind: "inference-waiting"; type: "inference-wait" }
+    | { output: Record<string, unknown>; sourceOutletId: string; type: "advance" }
+  > {
+    const existing = await this.runtimeRepository.findInferenceByExecutionKey(
+      input.input.uid,
+      input.nodeExecutionKey,
+    );
+    if (existing?.status === "succeeded") {
+      if (!existing.result) {
+        throw new WorkflowCapabilityExecutionError(
+          "terminal",
+          "WORKFLOW_INFERENCE_OUTPUT_INVALID",
+          "节点返回的数据无法处理，流程已停止",
+          { diagnosticMessage: "Succeeded inference job has no result" },
+        );
+      }
+      return {
+        ...mapWorkflowInferenceResult(input.node, existing.result),
+        type: "advance",
+      };
+    }
+    if (existing?.status === "failed") {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        existing.errorCode ?? "WORKFLOW_INFERENCE_FAILED",
+        existing.errorMessage ?? "推理任务未能完成",
+        { diagnosticMessage: existing.errorCode ?? "Workflow inference job failed" },
+      );
+    }
+    if (existing?.status === "cancelled") throw staleTaskError();
+    const payload = existing?.payload ?? createWorkflowInferenceRequest(input.node, input.run);
+    const waiting = await this.runtimeRepository.beginInference({
+      contractVersion: 1,
+      deadlineAt: existing?.deadlineAt
+        ?? new Date(input.input.now.getTime() + this.inferenceTotalTimeoutMs),
+      executionKey: input.nodeExecutionKey,
+      expectedRunLockVersion: input.run.lockVersion,
+      expectedTaskVersion: input.claimedTask.taskVersion,
+      inbox: createInbox(
+        input.input.messageId,
+        input.claimedTask.id,
+        input.input.taskVersion,
+        input.input.now,
+      ),
+      now: input.input.now,
+      payload,
+      runId: input.run.id,
+      taskId: input.claimedTask.id,
+      uid: input.input.uid,
+    });
+    if (waiting.kind === "already-processed") throw alreadyProcessedError();
+    if (waiting.kind === "workflow-unavailable") {
+      throw waiting.action === "defer"
+        ? runtimeStatusError("paused")
+        : workflowUnavailable();
+    }
+    if (waiting.kind !== "success") throw staleTaskError();
+    return { kind: "inference-waiting", type: "inference-wait" };
   }
 
   private async executeWaitEventTask(input: {
@@ -622,6 +712,7 @@ export class WorkflowRuntimeService {
       if (decision.action === "allow") return decision.result;
       await this.controlRepository.applyEntitlementLoss({
         opSubUserId: "0",
+        transitionedAt: this.clock(),
         transition: decision.action,
         uid,
         workflowType,

@@ -3,6 +3,8 @@ export * from "./database-timezone.js";
 export * from "./capability-port.js";
 export * from "./errors.js";
 export * from "./entitlement.js";
+export * from "./inference.js";
+export * from "./inference-port.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";
 export * from "./node-metrics.js";

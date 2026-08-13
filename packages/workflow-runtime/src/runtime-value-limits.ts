@@ -1,4 +1,4 @@
-export const WORKFLOW_NODE_OUTPUT_MAX_BYTES = 4 * 1024;
+export const WORKFLOW_NODE_OUTPUT_MAX_BYTES = 8 * 1024;
 export const WORKFLOW_RUN_CONTEXT_MAX_BYTES = 128 * 1024;
 
 type WorkflowRuntimeValueScope = "node-output" | "run-context";

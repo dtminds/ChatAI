@@ -1,3 +1,7 @@
+import {
+  getWorkflowGuaranteedVariableCatalog,
+  type WorkflowType,
+} from "@chatai/contracts";
 import type {
   WorkflowNode,
   WorkflowOutputValueType,
@@ -17,16 +21,17 @@ export const workflowContextVariables: WorkflowVariableDefinition[] = [
   createProjectionVariable("messageId", "消息ID", "number"),
 ];
 
-const SHARED_CONTEXT_VARIABLE_COUNT = 3;
-const WECOM_PROJECTION_KEYS = new Set(["workUserId", "externalUserId", "tagId"]);
-
 export function getWorkflowContextVariables(nodes: WorkflowNode[]) {
   const startNode = nodes.find((node): node is WorkflowNode<"start"> => node.data.kind === "start");
-  if (!startNode) return workflowContextVariables.slice(0, SHARED_CONTEXT_VARIABLE_COUNT);
-  if (isChatAiStartNodeData(startNode.data)) return workflowContextVariables;
-  return workflowContextVariables.filter((variable, index) =>
-    index < SHARED_CONTEXT_VARIABLE_COUNT || WECOM_PROJECTION_KEYS.has(variable.key),
-  );
+  if (!startNode) return workflowContextVariables.slice(0, 3);
+  const workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop"> =
+    isChatAiStartNodeData(startNode.data) ? "chatai_sop" : "wecom_sop";
+  const available = new Set(getWorkflowGuaranteedVariableCatalog(
+    workflowType,
+    startNode.data.triggers.map(trigger => trigger.type),
+  ));
+  return workflowContextVariables.filter(variable =>
+    available.has(variable.selector.join(".")));
 }
 
 function createContextVariable(

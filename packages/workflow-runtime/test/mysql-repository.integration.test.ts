@@ -5,9 +5,11 @@ import mysql from "mysql2";
 import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 import {
   MysqlWorkflowRuntimeRepository,
+  MysqlWorkflowLlmTestAttemptRepository,
   type WorkflowDatabase,
 } from "../src/index.js";
 import { runWorkflowRuntimeRepositoryContract } from "./support/runtime-repository-contract.js";
+import { runWorkflowLlmTestAttemptRepositoryContract } from "./support/llm-test-attempt-repository-contract.js";
 
 const WORKFLOW_TABLE_PATTERN = /CREATE TABLE IF NOT EXISTS (xy_wap_embed_workflow_[a-z_]+)[\s\S]*?\n\) COMMENT='[^']*';/g;
 
@@ -115,6 +117,13 @@ describe("MySQL workflow runtime repository contract", () => {
         });
       },
     };
+  });
+
+  describe("LLM test Attempt repository", () => {
+    runWorkflowLlmTestAttemptRepositoryContract(() => {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      return new MysqlWorkflowLlmTestAttemptRepository(database);
+    });
   });
 });
 

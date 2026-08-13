@@ -12,4 +12,6 @@ export * from "./persistence-codecs.js";
 export * from "./reconciler.js";
 export * from "./runtime-value-limits.js";
 export * from "./service.js";
+export * from "./test-attempt-repository.js";
+export * from "./test-attempt-mode.js";
 export * from "./types.js";

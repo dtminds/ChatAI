@@ -30,4 +30,5 @@ export * from "./workflow/inference.js";
 export * from "./workflow/node-contract.js";
 export * from "./workflow/policy.js";
 export * from "./workflow/retention.js";
+export * from "./workflow/test-attempt.js";
 export * from "./workflow/trigger.js";

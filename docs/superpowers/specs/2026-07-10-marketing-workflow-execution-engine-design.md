@@ -77,7 +77,7 @@ Node.js 24 LTS + TypeScript
 - 使用 MQ 或 Redis 实现 exactly-once。
 - 1.0 建设统一客户事件平台或实时数仓。
 - 1.0 在执行引擎内完成复杂客户分群计算。
-- 1.0 提供“试运行”；现有产品定位不需要运行模拟环境。
+- 1.0 不提供完整 Workflow 试运行或运行模拟环境。LLM 节点可提供独立的短期 Mock Attempt，用于校验当前节点的变量输入和输出映射；它不创建 Run、Task、Binding 或生产 Outbox，也不执行上下游节点。
 - 在节点字段未确定前预先固化全部节点业务配置。
 
 ## 4. Workflow 图语义

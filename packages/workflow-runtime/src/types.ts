@@ -3,8 +3,12 @@ import type {
   WorkflowEntryEventType,
   WorkflowExecutionSpec,
   WorkflowInferenceRequest,
+  WorkflowInferenceMessageListRequest,
+  WorkflowInferenceMessageListResult,
   WorkflowInferenceResult,
+  WorkflowExecutionNode,
   WorkflowJsonObject,
+  WorkflowLlmTestAttemptStatus,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
@@ -217,6 +221,88 @@ export type WorkflowInferenceJobRecord = {
   taskId: string;
   uid: number;
   updatedAt: Date;
+};
+
+export type WorkflowLlmTestAttemptRecord = {
+  attempt: number;
+  completedAt: Date | null;
+  contractVersion: number;
+  createdAt: Date;
+  deadlineAt: Date;
+  errorCode: string | null;
+  errorMessage: string | null;
+  executionKey: string;
+  expiresAt: Date;
+  id: string;
+  inputValues: WorkflowJsonObject;
+  leaseExpiresAt: Date | null;
+  leaseOwner: string | null;
+  node: WorkflowExecutionNode;
+  nodeId: string;
+  opSubUserId: string;
+  output: WorkflowJsonObject | null;
+  payload: WorkflowInferenceMessageListRequest;
+  result: WorkflowInferenceMessageListResult | null;
+  startedAt: Date | null;
+  status: WorkflowLlmTestAttemptStatus;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
+export type WorkflowLlmTestAttemptRepository = {
+  cancelLlmTestAttempt(input: {
+    attemptId: string;
+    cancelledAt: Date;
+    uid: number;
+    workflowId: string;
+  }): Promise<boolean>;
+  claimLlmTestAttemptBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<WorkflowLlmTestAttemptRecord[]>;
+  cleanupExpiredLlmTestAttempts(input: { limit: number; now: Date }): Promise<number>;
+  completeLlmTestAttempt(input: {
+    attemptId: string;
+    completedAt: Date;
+    leaseOwner: string;
+    output: WorkflowJsonObject;
+    result: WorkflowInferenceMessageListResult;
+  }): Promise<boolean>;
+  createLlmTestAttempt(input: {
+    contractVersion: number;
+    createdAt: Date;
+    deadlineAt: Date;
+    executionKey: string;
+    expiresAt: Date;
+    inputValues: WorkflowJsonObject;
+    node: WorkflowExecutionNode;
+    opSubUserId: string;
+    payload: WorkflowInferenceMessageListRequest;
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowLlmTestAttemptRecord>;
+  failLlmTestAttempt(input: {
+    attemptId: string;
+    errorCode: string;
+    errorMessage: string;
+    failedAt: Date;
+    leaseOwner: string;
+    status: "failed" | "timed_out";
+  }): Promise<boolean>;
+  expireTimedOutLlmTestAttempts(input: { limit: number; now: Date }): Promise<number>;
+  findLlmTestAttempt(input: {
+    attemptId: string;
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowLlmTestAttemptRecord | null>;
+  renewLlmTestAttemptLease(input: {
+    attemptId: string;
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+  }): Promise<boolean>;
 };
 
 export type WorkflowBeginInferenceInput = {

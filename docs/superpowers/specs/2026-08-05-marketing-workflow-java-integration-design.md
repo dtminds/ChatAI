@@ -1590,7 +1590,8 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 - 不增加 `DISABLE_AUTH`、开发用户、测试专属公开路由或绕过 Session 校验的环境开关。
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
-- 不增加 Workflow“试运行”按钮、公开 API 或持久化 Mock Run。测试通过模块接口和测试组合根驱动；测试产生的 Run 只能存在于隔离测试数据库。
+- 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
+- LLM Mock Attempt 只允许在开发或测试环境显式启用，响应必须标记 `executionMode=mock`；生产 Backend 和 Workflow Worker 均强制 `disabled`。Java Adapter 接通前，该结果只验证变量替换、请求构造和输出映射，不代表真实模型效果。
 - 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test01 联调和后续生产 Deployment Capability 验收中。
 
 #### Smoke 工具边界

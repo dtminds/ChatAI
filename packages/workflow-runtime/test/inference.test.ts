@@ -1,6 +1,7 @@
 import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  createWorkflowLlmInferenceRequest,
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
   type WorkflowRunRecord,
@@ -133,6 +134,29 @@ describe("workflow inference payloads", () => {
         { type: "text", value: "x" },
       ],
     }), run())).toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_INPUT_INVALID" }));
+  });
+
+  it("renders the same LLM request from explicit test values", () => {
+    const node = llmNode({
+      inputs: [{
+        id: "input-1",
+        name: "message",
+        value: {
+          kind: "variable",
+          selector: ["trigger", "text"],
+          valueType: { kind: "string" },
+        },
+      }],
+      systemPrompt: [
+        { type: "text", value: "Classify: " },
+        { selector: ["input", "input-1"], type: "variable" },
+      ],
+    });
+
+    expect(createWorkflowLlmInferenceRequest(
+      node,
+      new Map([["input-1", "退款什么时候到账"]]),
+    )).toEqual(createWorkflowInferenceRequest(node, run()));
   });
 });
 

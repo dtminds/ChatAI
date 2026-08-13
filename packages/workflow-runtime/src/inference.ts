@@ -7,7 +7,9 @@ import {
   WorkflowInferenceTemplateResultSchema,
   type WorkflowExecutionNode,
   type WorkflowInferenceRequest,
+  type WorkflowInferenceMessageListRequest,
   type WorkflowInferenceResult,
+  type WorkflowLlmInputParameter,
   type WorkflowVariableContentSegment,
   type WorkflowVariableSelector,
 } from "@chatai/contracts";
@@ -20,11 +22,27 @@ export function createWorkflowInferenceRequest(
   run: WorkflowRunRecord,
 ): WorkflowInferenceRequest {
   const request = node.kind === "llm"
-    ? createLlmRequest(node, run)
+    ? createLlmRequest(node, input => input.value.kind === "literal"
+        ? input.value.value
+        : requireSelectorValue(input.value.selector, run))
     : node.kind === "ai-intent"
       ? createIntentRequest(node, run)
       : null;
   if (!request) throw inferenceConfigError(`Unsupported inference node kind: ${node.kind}`);
+  if (!Value.Check(WorkflowInferenceRequestSchema, request)) {
+    throw inferenceConfigError("Rendered inference request failed schema validation");
+  }
+  return request;
+}
+
+export function createWorkflowLlmInferenceRequest(
+  node: WorkflowExecutionNode,
+  inputValues: ReadonlyMap<string, unknown>,
+): WorkflowInferenceMessageListRequest {
+  if (node.kind !== "llm") {
+    throw inferenceConfigError(`Expected an LLM node, received: ${node.kind}`);
+  }
+  const request = createLlmRequest(node, input => requireInputValue(input.id, inputValues));
   if (!Value.Check(WorkflowInferenceRequestSchema, request)) {
     throw inferenceConfigError("Rendered inference request failed schema validation");
   }
@@ -40,15 +58,16 @@ export function mapWorkflowInferenceResult(
   throw inferenceOutputError(`Unsupported inference node kind: ${node.kind}`);
 }
 
-function createLlmRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): WorkflowInferenceRequest {
+function createLlmRequest(
+  node: WorkflowExecutionNode,
+  resolveInput: (input: WorkflowLlmInputParameter) => unknown,
+): WorkflowInferenceMessageListRequest {
   if (!isWorkflowLlmExecutionConfigComplete(node.config)) {
     throw inferenceConfigError("LLM execution config failed schema validation");
   }
   const inputs = new Map(node.config.inputs.map(input => [
     input.id,
-    input.value.kind === "literal"
-      ? input.value.value
-      : requireSelectorValue(input.value.selector, run),
+    resolveInput(input),
   ]));
   const system = renderPrompt(node.config.systemPrompt, inputs);
   if (!system.trim()) throw inferenceConfigError("LLM system prompt is empty");
@@ -73,6 +92,13 @@ function createLlmRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): 
     modelId: node.config.modelId,
     responseFormat,
   };
+}
+
+function requireInputValue(inputId: string, inputValues: ReadonlyMap<string, unknown>) {
+  if (!inputValues.has(inputId)) {
+    throw inferenceConfigError("LLM test input is missing a configured parameter");
+  }
+  return inputValues.get(inputId);
 }
 
 function createIntentRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): WorkflowInferenceRequest {

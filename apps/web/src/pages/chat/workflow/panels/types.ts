@@ -1,6 +1,7 @@
 import type {
   WorkflowEntryEventType,
 } from "@chatai/contracts";
+import type { WorkflowDraftSaveStatus } from "../workflow-repository-types";
 import type {
   WorkflowEdge,
   WorkflowNodeConfigPatch,
@@ -14,4 +15,11 @@ export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind>
   node: WorkflowNode<TKind>;
   nodes: WorkflowNode[];
   onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
+  testContext?: WorkflowNodeTestContext;
+};
+
+export type WorkflowNodeTestContext = {
+  draftVersion: number;
+  saveState: WorkflowDraftSaveStatus;
+  workflowId: string;
 };

@@ -5,6 +5,8 @@ import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 import { NodeOutputsSection } from "./node-outputs-section";
 import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
+import { LlmTestWorkspaceTrigger } from "../nodes/llm/test-workspace";
+import type { WorkflowNodeTestContext } from "./types";
 
 export function NodeConfigPanel({
   allowedEntryEventTypes,
@@ -16,6 +18,7 @@ export function NodeConfigPanel({
   onNodeChange,
   onRenameNode,
   readOnly = false,
+  testContext,
 }: {
   allowedEntryEventTypes: readonly WorkflowEntryEventType[];
   animateOnMount?: boolean;
@@ -26,6 +29,7 @@ export function NodeConfigPanel({
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
   onRenameNode: (nodeId: string, title: string) => void;
   readOnly?: boolean;
+  testContext?: WorkflowNodeTestContext;
 }) {
   if (!node) {
     return (
@@ -42,7 +46,15 @@ export function NodeConfigPanel({
   return (
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
-        <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode} readOnly={readOnly}>
+        <BasePanel
+          headerActions={node.data.kind === "llm" && testContext
+            ? <LlmTestWorkspaceTrigger nodeId={node.id} />
+            : undefined}
+          node={node}
+          onClose={onClose}
+          onRenameNode={onRenameNode}
+          readOnly={readOnly}
+        >
           <fieldset
             className="min-w-0 space-y-4 border-0 p-0 disabled:cursor-default"
             disabled={readOnly}
@@ -54,6 +66,7 @@ export function NodeConfigPanel({
               node={node}
               nodes={nodes}
               onNodeChange={onNodeChange}
+              testContext={testContext}
             />
             {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
               ? <NodeOutputsSection node={node} />

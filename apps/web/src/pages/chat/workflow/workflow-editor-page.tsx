@@ -339,6 +339,7 @@ function WorkflowWorkspaceContent({
                 onNodeChange={inspector.onNodeChange}
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
+                testContext={inspector.testContext}
             />
           ) : null}
         </div>

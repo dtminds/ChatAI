@@ -21,12 +21,14 @@ import type { WorkflowNode } from "../types";
 
 export function BasePanel({
   children,
+  headerActions,
   node,
   onClose,
   onRenameNode,
   readOnly = false,
 }: {
   children: ReactNode;
+  headerActions?: ReactNode;
   node: WorkflowNode;
   onClose: () => void;
   onRenameNode: (nodeId: string, title: string) => void;
@@ -38,18 +40,26 @@ export function BasePanel({
       className="workflow-config-panel flex h-full min-h-0 flex-col"
       role="complementary"
     >
-      <PanelHeader node={node} onClose={onClose} onRenameNode={onRenameNode} readOnly={readOnly} />
+      <PanelHeader
+        headerActions={headerActions}
+        node={node}
+        onClose={onClose}
+        onRenameNode={onRenameNode}
+        readOnly={readOnly}
+      />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-4">{children}</div>
     </aside>
   );
 }
 
 function PanelHeader({
+  headerActions,
   node,
   onClose,
   onRenameNode,
   readOnly,
 }: {
+  headerActions?: ReactNode;
   node: WorkflowNode;
   onClose: () => void;
   onRenameNode: (nodeId: string, title: string) => void;
@@ -113,6 +123,7 @@ function PanelHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {headerActions}
           {canRename && !readOnly ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

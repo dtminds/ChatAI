@@ -231,7 +231,7 @@ function LlmTestWorkspaceContent({
       <footer className="shrink-0 border-t bg-background px-5 py-4">
         {!draftSaved ? (
           <p className="mb-2 text-xs text-muted-foreground" role="status">
-            {testContext.saveState === "error" ? "草稿保存失败后才能试运行" : "正在保存当前配置"}
+            {testContext.saveState === "error" ? "当前配置保存失败，请重试" : "正在保存当前配置"}
           </p>
         ) : !configReady ? (
           <p className="mb-2 text-xs text-warning" role="status">请先完成节点配置</p>

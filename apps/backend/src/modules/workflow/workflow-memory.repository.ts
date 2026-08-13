@@ -180,7 +180,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       return invalidStatus<never>(definition.runtimeStatus);
     }
     const revision = this.createRevision(definition, input);
-    this.replaceTriggerBinding(definition, revision.revision, input.triggerBinding);
+    this.addTriggerBindings(definition, revision.revision, input.triggerBindings);
     definition.publishedRevision = revision.revision;
     definition.validatedDraftVersion = definition.draftVersion;
     touch(definition, input.opSubUserId);
@@ -199,7 +199,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       return activeLimitExceeded<never>();
     }
     const revision = this.createRevision(definition, input);
-    this.replaceTriggerBinding(definition, revision.revision, input.triggerBinding);
+    this.addTriggerBindings(definition, revision.revision, input.triggerBindings);
     definition.publishedRevision = 1;
     definition.runtimeStatus = "active";
     definition.statusReason = null;
@@ -274,35 +274,32 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     return revision;
   }
 
-  private replaceTriggerBinding(
+  private addTriggerBindings(
     definition: WorkflowDefinitionRecord,
     revision: number,
-    spec: WorkflowTriggerBindingSpec,
+    specs: WorkflowTriggerBindingSpec[],
   ) {
     const now = new Date();
-    const existing = this.triggerBindings.find(binding =>
-      binding.uid === definition.uid && binding.workflowId === definition.id);
-    if (existing) {
-      existing.eventType = spec.eventType;
-      existing.filter = clone(spec.filter);
-      existing.revision = revision;
-      existing.status = 1;
-      existing.subjectType = spec.subjectType;
-      existing.updatedAt = now;
-      return;
+    for (const binding of this.triggerBindings) {
+      if (binding.uid === definition.uid
+        && binding.workflowId === definition.id
+        && binding.status === 1) {
+        binding.status = 0;
+        binding.updatedAt = now;
+      }
     }
-    this.triggerBindings.push({
+    this.triggerBindings.push(...specs.map(spec => ({
       createdAt: now,
       eventType: spec.eventType,
       filter: clone(spec.filter),
       id: String(this.nextTriggerBindingId++),
       revision,
-      status: 1,
+      status: 1 as const,
       subjectType: spec.subjectType,
       uid: definition.uid,
       updatedAt: now,
       workflowId: definition.id,
-    });
+    })));
   }
 }
 

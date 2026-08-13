@@ -21,8 +21,8 @@ message.received
 双方已确认：
 
 1. 本期一个 Workflow 只能选择一个 Start Event。
-2. 一个已发布 Workflow 只维护一条当前 Trigger Binding。
-3. 每租户最多有 50 个 active Workflow，因此 Java 每次最多读取 50 条静态 Binding。
+2. Trigger Binding 按 Revision 和 Event Type 持久化；本期因 Start Event 单选，当前 Revision 实际只有一条 Binding。
+3. 每租户最多允许 50 个 active Workflow；本期 Java 每次最多读取 50 条静态 Binding。
 4. Java 按 `uid + eventType` 查询当前有效 Binding，再解析 `filter_spec_json` 在内存中预匹配。
 5. Java 不使用 JSON SQL 条件，不维护 Match 派生表，也不需要展开关键词或 ID 列表。
 6. `contact.friend_added`、`contact.tag_added` 是企微源事件，ChatAI SOP 与 WeCom SOP 订阅同一份业务事实。
@@ -205,7 +205,7 @@ filter_spec_json
 status
 ```
 
-每个 Workflow 只维护一条当前 Binding。重新发布时 Node 使用 `(uid, workflow_id)` 唯一键原地更新 `revision`、`event_type`、`subject_type` 和 `filter_spec_json`。
+Node 发布新 Revision 时，将旧 Binding 标记失效，并批量写入新 Revision 的 Binding。数据库按 `uid + workflow_id + revision + subject_type + event_type` 防止同一 Revision 的同一事件重复写入，不限制一个 Workflow 只能有一条 Binding。
 
 有效 Binding 必须满足：
 
@@ -277,7 +277,7 @@ ORDER BY binding.id
 LIMIT 50;
 ```
 
-Backend 对每租户最多 50 个 active Workflow 做并发安全硬限制，因此该查询不会因为同租户 Workflow 数量无限增长。
+Backend 在启用或恢复前通过普通 `COUNT(*)` 检查每租户最多 50 个 active Workflow。这是防止正常产品操作超限的轻量护栏，不为极端并发请求增加租户级锁；本期单事件约束下，正常状态最多返回 50 条 Binding。
 
 Java 不在 SQL 中拆解 JSON。查询返回后逐条解析 Filter 并在内存判断；任意一条匹配即得到静态 Start 兴趣。
 

@@ -283,21 +283,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     input: Parameters<WorkflowRepository["setRuntimeStatus"]>[0],
   ): ReturnType<WorkflowRepository["setRuntimeStatus"]> {
     return this.db.transaction().execute(async (transaction) => {
-      const tenantDefinitions = input.status === "active"
-        ? await selectTenantDefinitionsForUpdate(transaction, input.uid)
-        : null;
-      const row = tenantDefinitions
-        ? tenantDefinitions.find(definition => normalizeId(definition.id) === input.workflowId)
-        : await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
+      const row = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!row) return notFound();
       const definition = mapDefinition(row);
       if (!input.allowedCurrentStatuses.includes(definition.runtimeStatus)) {
         return invalidStatus(definition.runtimeStatus);
       }
       if (input.status === "active"
-        && tenantDefinitions!.filter(candidate =>
-          Number(candidate.biz_status) === 1 && candidate.runtime_status === "active").length
-          >= WORKFLOW_ACTIVE_DEFINITION_LIMIT) {
+        && await hasReachedActiveDefinitionLimit(transaction, input.uid)) {
         return activeLimitExceeded();
       }
       await transaction.updateTable(DEFINITION_TABLE).set({
@@ -333,12 +326,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     firstEnable: boolean,
   ): Promise<WorkflowMutationResult<PublishedWriteResult>> {
     return this.db.transaction().execute(async (transaction) => {
-      const tenantDefinitions = firstEnable
-        ? await selectTenantDefinitionsForUpdate(transaction, input.uid)
-        : null;
-      const row = tenantDefinitions
-        ? tenantDefinitions.find(definition => normalizeId(definition.id) === input.workflowId)
-        : await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
+      const row = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!row) return notFound();
       const definition = mapDefinition(row);
       if (definition.workflowType !== input.workflowType) return conflict();
@@ -351,9 +339,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
           || definition.validatedDraftVersion !== definition.draftVersion) {
           return conflict();
         }
-        if (tenantDefinitions!.filter(candidate =>
-          Number(candidate.biz_status) === 1 && candidate.runtime_status === "active").length
-          >= WORKFLOW_ACTIVE_DEFINITION_LIMIT) {
+        if (await hasReachedActiveDefinitionLimit(transaction, input.uid)) {
           return activeLimitExceeded();
         }
       } else if (definition.runtimeStatus === "inactive"
@@ -376,22 +362,22 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         workflow_type: encodeWorkflowType(input.workflowType),
       }).executeTakeFirstOrThrow();
 
-      const binding = input.triggerBinding;
-      await transaction.insertInto(TRIGGER_BINDING_TABLE).values({
-        event_type: binding.eventType,
-        filter_spec_json: stringifyJson(binding.filter),
-        revision: input.executionSpec.revision,
-        status: 1,
-        subject_type: encodeWorkflowSubjectType(binding.subjectType),
-        uid: input.uid,
-        workflow_id: input.workflowId,
-      }).onDuplicateKeyUpdate({
-        event_type: binding.eventType,
-        filter_spec_json: stringifyJson(binding.filter),
-        revision: input.executionSpec.revision,
-        status: 1,
-        subject_type: encodeWorkflowSubjectType(binding.subjectType),
-      }).executeTakeFirstOrThrow();
+      await transaction.updateTable(TRIGGER_BINDING_TABLE).set({ status: 0 })
+        .where("uid", "=", input.uid)
+        .where("workflow_id", "=", input.workflowId)
+        .where("status", "=", 1)
+        .executeTakeFirstOrThrow();
+      if (input.triggerBindings.length > 0) {
+        await transaction.insertInto(TRIGGER_BINDING_TABLE).values(input.triggerBindings.map(binding => ({
+          event_type: binding.eventType,
+          filter_spec_json: stringifyJson(binding.filter),
+          revision: input.executionSpec.revision,
+          status: 1,
+          subject_type: encodeWorkflowSubjectType(binding.subjectType),
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }))).executeTakeFirstOrThrow();
+      }
 
       await transaction.updateTable(DEFINITION_TABLE).set({
         op_sub_uid: input.opSubUserId,
@@ -472,13 +458,14 @@ async function selectDefinitionForUpdate(db: WorkflowDbExecutor, uid: number, wo
     .executeTakeFirst();
 }
 
-async function selectTenantDefinitionsForUpdate(db: WorkflowDbExecutor, uid: number) {
-  return db.selectFrom(DEFINITION_TABLE).selectAll()
+async function hasReachedActiveDefinitionLimit(db: WorkflowDbExecutor, uid: number) {
+  const row = await db.selectFrom(DEFINITION_TABLE)
+    .select(({ fn }) => fn.countAll<number>().as("active_count"))
     .where("uid", "=", uid)
     .where("biz_status", "=", 1)
-    .orderBy("id", "asc")
-    .forUpdate()
-    .execute();
+    .where("runtime_status", "=", "active")
+    .executeTakeFirstOrThrow();
+  return Number(row.active_count) >= WORKFLOW_ACTIVE_DEFINITION_LIMIT;
 }
 
 function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {

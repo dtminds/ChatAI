@@ -1,7 +1,7 @@
 import type { WorkflowStartConfig } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  getWorkflowTriggerBinding,
+  getWorkflowTriggerBindings,
   matchWorkflowTrigger,
   normalizeWorkflowStartConfig,
 } from "../src/index.js";
@@ -41,21 +41,21 @@ describe("workflow trigger matching", () => {
   });
 
   it("matches tag events by member and exact tag", () => {
-    const binding = getWorkflowTriggerBinding({
+    const [binding] = getWorkflowTriggerBindings({
       entryPolicy,
       seatIds: [101],
       triggers: [{ tagIds: [301, 302], type: "contact.tag_added" }],
     }, "chatai_contact", { resolvedWorkUserIds: [201, 202] });
 
-    expect(matchWorkflowTrigger(binding.filter, projection({
+    expect(matchWorkflowTrigger(binding!.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 301, workUserId: 201 },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(binding.filter, projection({
+    expect(matchWorkflowTrigger(binding!.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 999, workUserId: 201 },
     }))).toBe(false);
-    expect(matchWorkflowTrigger(binding.filter, projection({
+    expect(matchWorkflowTrigger(binding!.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 301, workUserId: 999 },
     }))).toBe(false);
@@ -98,7 +98,7 @@ describe("workflow trigger matching", () => {
       keywords: ["价格", "优惠"],
       type: "message.received",
     }]);
-    expect(getWorkflowTriggerBinding(normalized, "chatai_contact")).toEqual({
+    expect(getWorkflowTriggerBindings(normalized, "chatai_contact")).toEqual([{
       eventType: "message.received",
       filter: {
         entryPolicy,
@@ -107,10 +107,10 @@ describe("workflow trigger matching", () => {
         seatIds: [101, 102],
       },
       subjectType: "chatai_contact",
-    });
+    }]);
   });
 
-  it("rejects malformed multi-event data at binding generation", () => {
+  it("projects each trigger independently when future contracts allow multiple events", () => {
     const malformed = {
       entryPolicy,
       seatIds: [101],
@@ -120,25 +120,27 @@ describe("workflow trigger matching", () => {
       ],
     } as unknown as WorkflowStartConfig;
 
-    expect(() => getWorkflowTriggerBinding(malformed, "chatai_contact"))
-      .toThrow("Start configuration requires exactly one trigger");
+    expect(getWorkflowTriggerBindings(malformed, "chatai_contact", {
+      resolvedWorkUserIds: [201],
+    }).map(binding => binding.eventType))
+      .toEqual(["contact.friend_added", "message.received"]);
   });
 });
 
 function friendBinding(sourceIds: string[]) {
-  return getWorkflowTriggerBinding({
+  return getWorkflowTriggerBindings({
     entryPolicy,
     seatIds: [101],
     triggers: [{ sourceIds, type: "contact.friend_added" }],
-  }, "chatai_contact", { resolvedWorkUserIds: [201, 202] });
+  }, "chatai_contact", { resolvedWorkUserIds: [201, 202] })[0]!;
 }
 
 function messageBinding(keywords: string[]) {
-  return getWorkflowTriggerBinding({
+  return getWorkflowTriggerBindings({
     entryPolicy,
     seatIds: [101, 102],
     triggers: [{ keywords, type: "message.received" }],
-  }, "chatai_contact");
+  }, "chatai_contact")[0]!;
 }
 
 function projection(overrides: Record<string, unknown>) {

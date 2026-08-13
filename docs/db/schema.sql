@@ -636,7 +636,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_trigger_binding_workflow (uid, workflow_id),
+  UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
   KEY idx_workflow_trigger_binding_interest (uid, event_type, status, workflow_id, revision, id)
 ) COMMENT='营销Workflow触发绑定表';
 

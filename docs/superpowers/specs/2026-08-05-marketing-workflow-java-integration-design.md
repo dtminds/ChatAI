@@ -31,7 +31,7 @@
 | Entry Event | Java 生产，Node 消费 | 可以触发 Start 或唤醒 Wait Event 的标准业务事实。事件携带来源身份和可用的 Subject 引用；Node 匹配具体 Binding 后才确定每个 Run 的唯一 Subject。通过 Pulsar `workflow-entry` 传递。 |
 | `eventId` | Java 生成，Node 使用 | 业务事件的稳定唯一标识。同一业务事实重试和重复投递时必须保持不变，Node 用它防止同一 Workflow 重复创建 Run。 |
 | Revision | Node | Workflow 每次正式启用或执行语义发生变化时生成的不可变执行快照。新 Run 使用最新 Revision，已经运行的 Run 始终固定使用进入时的 Revision。 |
-| Trigger Binding / Binding | Node | 从已发布 Revision 的 Start 节点编译出的当前触发索引，记录 Event Type、目标 Subject Type 和完整 `filter_spec_json`。本期一个 Workflow 只有一个当前 Binding；Java 预匹配、Node 最终匹配和 Subject 解析都以该 Binding 为准。 |
+| Trigger Binding / Binding | Node | 从已发布 Revision 的 Start 节点编译出的触发索引，记录 Event Type、目标 Subject Type 和完整 `filter_spec_json`。Binding 按 Revision 和 Event Type 持久化；本期因 Start Event 单选，当前 Revision 实际只有一条。Java 预匹配、Node 最终匹配和 Subject 解析都以当前 Revision Binding 为准。 |
 | Run | Node | 某个 `subjectType + subjectId` 成功进入某个 Workflow 后产生的一次运行实例。同一主体重复进入同一 Workflow 会形成不同 Run，但必须满足 Start 的重复进入规则。 |
 | Task | Node | Run 当前等待执行或即将执行的最小调度单元，记录节点、状态、执行版本、`due_at`、租约和重试次数。1.0 中一个 Run 同一时刻最多有一个有效 Task。 |
 | Node Execution | Node | 某个节点在某个 Run 中的一次执行账本，保存受控输入、输出、幂等键、开始/完成时间和错误结果，用于审计与排障。 |
@@ -690,8 +690,8 @@ Java 与 Node 当前共用 MySQL 实例，因此 1.0 不建设兴趣同步服务
 最终实施契约见 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md)。本节只冻结架构边界：
 
 - Java 只读 `workflow_definition`、`workflow_trigger_binding` 和 `workflow_event_subscription` 三张表。
-- 本期一个 Workflow 只能选择一个 Start Event，并只维护一条当前 Trigger Binding。
-- Backend 对每租户最多 50 个 active Workflow 做并发安全限制。
+- 本期一个 Workflow 只能选择一个 Start Event；发布契约和持久化仍使用 Binding 数组，为未来多事件保留扩展空间。
+- Backend 对每租户最多 50 个 active Workflow 做普通计数检查，不使用租户级锁处理极端并发超限。
 - Java 按 `uid + eventType` 查询 Binding JOIN Definition，最多读取 50 条 `filter_spec_json`，再按冻结的事件 Filter Schema 在内存预匹配。
 - Java 不在 SQL 中拆解 JSON，不读取 Draft、Revision、Execution Spec、Run 或 Task，也不维护 Binding Match 派生表。
 - `message.received` 的静态 Start 兴趣与动态 Wait Event Subscription 任一命中即可投递。
@@ -1233,7 +1233,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 将 Start 产品模型对齐为“发生事件 / 进入人群”。
 - 只展示当前 Workflow Type 允许的 Start 事件。
 - ChatAI SOP 保存 `seatIds`，WeCom SOP 保存 `workUserIds`，删除通用 `accountIds`。
-- 发布时为每个 Workflow 维护一条当前 Trigger Binding；ChatAI SOP 的企微事件将 `seatId` 权威解析为 `workUserId`。
+- 发布时按 Revision 批量写入 Trigger Binding；本期数组长度为 1。ChatAI SOP 的企微事件将 `seatId` 权威解析为 `workUserId`。
 - Java 读取完整 Binding Filter 做预匹配，Node 使用同一 Filter 做最终权威匹配并解析 Run Subject。
 - 验收：一条企微事件只投递一次，但可正确扇出到不同 Workflow Type。
 

@@ -17,7 +17,7 @@
 7. Java Interest Reader fail-open，Node Entry Consumer 负责最终匹配。
 8. 当前没有生产 Java 消费者和需要保留的旧 Entry Event 数据，不实现旧单 Subject 信封兼容。
 9. 本期一个 Workflow 只能选择一个 Start Event；Draft 可暂时不选，发布时必须恰好一个。
-10. 每个 Workflow 只维护一条当前 Trigger Binding，完整筛选规则保存在 `filter_spec_json`。
+10. Trigger Binding 按 Revision 和 Event Type 持久化，完整筛选规则保存在 `filter_spec_json`；本期因事件单选，当前 Revision 实际只有一条。
 
 ## 2. 当前实现与目标方案的差距
 
@@ -116,7 +116,7 @@ type WeComWorkflowStartConfig = {
 工作内容：
 
 - 不新增 Trigger Binding Match 派生表；删除开发期已存在的 Match 表。
-- Trigger Binding 使用 `(uid, workflow_id)` 唯一键，每个 Workflow 只保留一条当前记录。
+- Trigger Binding 保留 `(uid, workflow_id, revision, subject_type, event_type)` 唯一键，不限制一个 Workflow 只能有一条 Binding。
 - Trigger Binding 增加 `(uid, event_type, status, workflow_id, revision, id)` Interest Reader 索引。
 - `xy_wap_embed_workflow_event_subscription.account_id` 改为 `seat_id BIGINT UNSIGNED NULL`。
 - 当前无生产历史数据，DDL 不保留 `account_id` 和 `seat_id` 双字段过渡。
@@ -130,8 +130,8 @@ type WeComWorkflowStartConfig = {
 
 要求：
 
-- Definition/Revision 与唯一 Binding 在同一发布事务中完成。
-- 新 Revision 发布时按 `(uid, workflow_id)` 原地更新当前 Binding 的 Revision、Event Type、Subject Type 和 Filter。
+- Definition/Revision 与 Binding 数组在同一发布事务中完成。
+- 新 Revision 发布时将旧 Binding 标记失效，并批量插入新 Revision 的 Binding；本期数组长度为 1。
 - Draft 保存不创建或更新 Binding。
 - Pause、Resume、Stop、删除不单独修改 Binding；Interest Reader 通过 JOIN Definition 判断当前有效性。
 - 席位不存在、失效或无法解析 `workUserId` 时整次发布失败。

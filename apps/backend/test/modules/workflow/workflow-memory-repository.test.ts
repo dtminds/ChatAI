@@ -88,7 +88,7 @@ function enableDefinition(repository: InMemoryWorkflowRepository, workflowId: st
     opSubUserId: OP_SUB_USER_ID,
     specHash: "a".repeat(64),
     subjectType: "chatai_contact",
-    triggerBinding: {
+    triggerBindings: [{
       eventType: "message.received",
       filter: {
         entryPolicy: { mode: "never" },
@@ -97,7 +97,7 @@ function enableDefinition(repository: InMemoryWorkflowRepository, workflowId: st
         seatIds: [101],
       },
       subjectType: "chatai_contact",
-    },
+    }],
     uid: UID,
     workflowId,
     workflowType: "chatai_sop",

@@ -2,19 +2,15 @@
 
 ## 2026-08-13 Workflow 单入口事件与 Trigger Binding 筛选
 
-- 本期一个 Workflow 最多配置一个 Start Event，并只维护一条当前 Trigger Binding。
+- 本期一个 Workflow 最多配置一个 Start Event；Binding 按 Revision 和 Event Type 持久化，为未来多事件保留数组模型。
 - `filter_spec_json` 保存事件专属的完整筛选规则；Java Interest Reader 与 Node 最终匹配读取同一份规则。
-- 删除开发期的 Trigger Binding Match 派生表。当前无需要保留的 Workflow 业务数据，因此直接清理旧 Binding 数据，不做历史结构兼容。
+- 删除开发期的 Trigger Binding Match 派生表，不改变现有 Revision 级 Binding 唯一约束。
 
 ```sql
 DROP TABLE IF EXISTS xy_wap_embed_workflow_trigger_binding_match;
 
-DELETE FROM xy_wap_embed_workflow_trigger_binding;
-
 ALTER TABLE xy_wap_embed_workflow_trigger_binding
-  DROP KEY uk_workflow_trigger_binding_revision,
-  DROP KEY idx_workflow_trigger_binding_match,
-  ADD UNIQUE KEY uk_workflow_trigger_binding_workflow (uid, workflow_id);
+  DROP KEY idx_workflow_trigger_binding_match;
 ```
 
 ## 2026-08-13 Workflow 大模型节点试运行
@@ -95,7 +91,7 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-08-11
 
-- The development-only Trigger Binding Match experiment was superseded by the 2026-08-13 single-Binding migration and is not part of the final schema.
+- The development-only Trigger Binding Match experiment was superseded by the 2026-08-13 Binding filter design and is not part of the final schema.
 - Added the source-oriented Trigger Binding index for `uid + event_type` candidate lookup.
 - Replaced the development-only generic Wait Event `account_id` with the explicit ChatAI `seat_id`; there is no production Workflow data requiring dual-column compatibility.
 - Renamed the development-only Node Execution ledger key to `execution_key`; the ledger identity is not an external Action idempotency contract.

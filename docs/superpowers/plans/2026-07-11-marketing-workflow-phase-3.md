@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Historical note:** Trigger publication and Start Event details in this completed plan are superseded by GitHub Issue #595: one Start Event per Workflow, one current Trigger Binding per Workflow, and complete event-specific rules in `filter_spec_json`.
+> **Historical note:** Trigger publication and Start Event details in this completed plan are superseded by GitHub Issue #595: one Start Event per Workflow in the current product, Revision-scoped Trigger Bindings, and complete event-specific rules in `filter_spec_json`.
 
 **Goal:** Deliver the independent Workflow Worker, TDMQ Pulsar messaging path, Start admission, Wait scheduling, reconciliation, smoke tooling, and production-shaped Start/Wait configuration for Phase 3.
 
@@ -41,7 +41,7 @@
 
 **Interfaces:**
 - Produces `WorkflowStartConfigSchema`, `WorkflowEntryPolicySchema`, `WorkflowEntryCommandSchema`, `WorkflowWaitConfigSchema`, and their TypeScript types.
-- Produces `matchWorkflowTrigger(config, command)` and `getWorkflowTriggerBinding(config)` for control-plane publication and worker entry matching.
+- Produces `matchWorkflowTrigger(config, command)` and `getWorkflowTriggerBindings(config)` for control-plane publication and worker entry matching.
 
 - [ ] **Step 1: Write failing contract and engine tests**
 
@@ -193,8 +193,8 @@ git commit -m "Extract workflow runtime services"
 - Modify: `apps/backend/src/db/writable-tables.ts`
 
 **Interfaces:**
-- Consumes `getWorkflowTriggerBinding(startConfig)` from Task 1.
-- Produces one current Binding per Workflow and an active-binding reader for the Entry Consumer and smoke command.
+- Consumes `getWorkflowTriggerBindings(startConfig)` from Task 1.
+- Produces the current Revision's Binding set and an active-binding reader for the Entry Consumer and smoke command.
 
 - [ ] **Step 1: Write failing publication tests**
 
@@ -209,7 +209,7 @@ cd apps/backend
 
 - [ ] **Step 3: Implement binding persistence and active reads**
 
-Store one current Binding per Workflow, with source identities, event-specific filters, and entry policy in `filter_spec_json`. Upsert it by `(uid, workflow_id)` in the same transaction that inserts the Revision and updates `published_revision`.
+Store one Binding per current Revision event, with source identities, event-specific filters, and entry policy in `filter_spec_json`. Insert the Binding set in the same transaction that inserts the Revision and updates `published_revision`; the current phase produces one item because Start Event is single-select.
 
 - [ ] **Step 4: Verify tests and build**
 

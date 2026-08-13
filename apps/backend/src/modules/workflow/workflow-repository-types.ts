@@ -93,7 +93,7 @@ export type WorkflowRepository = {
     opSubUserId: string;
     specHash: string;
     subjectType: WorkflowSubjectType;
-    triggerBinding: WorkflowTriggerBindingSpec;
+    triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
     workflowType: WorkflowType;
@@ -108,7 +108,7 @@ export type WorkflowRepository = {
     opSubUserId: string;
     specHash: string;
     subjectType: WorkflowSubjectType;
-    triggerBinding: WorkflowTriggerBindingSpec;
+    triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
     workflowType: WorkflowType;

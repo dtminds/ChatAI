@@ -31,22 +31,18 @@ export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): Workf
       } as WorkflowWeComStartConfig;
 }
 
-export function getWorkflowTriggerBinding(
+export function getWorkflowTriggerBindings(
   config: WorkflowStartConfig,
   subjectType: WorkflowSubjectType,
   options: { resolvedWorkUserIds?: number[] } = {},
-): WorkflowTriggerBindingSpec {
+): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   assertStartConfigMatchesSubjectType(normalized, subjectType);
-  const [trigger] = normalized.triggers;
-  if (!trigger || normalized.triggers.length !== 1) {
-    throw new Error("Start configuration requires exactly one trigger");
-  }
-  return {
+  return normalized.triggers.map(trigger => ({
     eventType: trigger.type,
     filter: createBindingFilter(normalized, trigger, options.resolvedWorkUserIds),
     subjectType,
-  };
+  }));
 }
 
 export function matchWorkflowTrigger(

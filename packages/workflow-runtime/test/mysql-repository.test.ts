@@ -355,6 +355,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       now,
     })).resolves.toEqual({ expired: 0, recovered: 0 });
     expect(db.inferenceUpdateCount).toBe(0);
+    expect(db.lockOrder).toEqual(["definition", "run", "task", "job"]);
   });
 
   it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
@@ -404,6 +405,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
     ]);
     expect(db.lockOrder).toEqual(["run", "outbox", "run"]);
+    expect(db.outboxWhereCalls).not.toContainEqual(["outbox.status", "=", "leased"]);
     expect(db.deleteOrder).toEqual([
       "inference",
       "outbox",
@@ -463,6 +465,36 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       tasksDeleted: 0,
     });
     expect(db.deleteOrder).toEqual([]);
+  });
+
+  it("still deletes history when leftover outbox is pending rather than leased", async () => {
+    const db = createHistoryCleanupDbMock({
+      taskOutbox: [{ aggregate_id: "10", status: "pending" }],
+      technicalRuns: [{ id: "1" }],
+      userRuns: [],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: false,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 1,
+      runsDeleted: 0,
+      tasksDeleted: 1,
+    });
+    expect(db.lockOrder).toEqual(["run", "outbox", "run"]);
+    expect(db.outboxWhereCalls).not.toContainEqual(["outbox.status", "=", "leased"]);
+    expect(db.deleteOrder).toEqual([
+      "inference",
+      "outbox",
+      "subscription_event",
+      "subscription",
+      "task",
+    ]);
   });
 
   it("reads active current-revision trigger bindings across Subject Types", async () => {
@@ -604,15 +636,28 @@ function createInferenceRecoveryRaceDbMock(input: {
     status: "running",
     task_id: "7",
     uid: 8,
+    workflow_id: "42",
   };
   let inferenceSelectCount = 0;
   const db = {
     inferenceUpdateCount: 0,
     jobLocked: false,
+    lockOrder: [] as string[],
     selectFrom(table: string) {
       const builder = {
+        forShare() {
+          if (table === "xy_wap_embed_workflow_definition") db.lockOrder.push("definition");
+          return builder;
+        },
         forUpdate() {
-          if (table.startsWith("xy_wap_embed_workflow_inference_job")) db.jobLocked = true;
+          if (table.startsWith("xy_wap_embed_workflow_inference_job")) {
+            db.jobLocked = true;
+            db.lockOrder.push("job");
+          } else if (table === "xy_wap_embed_workflow_run") {
+            db.lockOrder.push("run");
+          } else if (table === "xy_wap_embed_workflow_task") {
+            db.lockOrder.push("task");
+          }
           return builder;
         },
         innerJoin() { return builder; },
@@ -1179,6 +1224,7 @@ function createHistoryCleanupDbMock(options: {
   const db = {
     deleteOrder: [] as string[],
     lockOrder: [] as string[],
+    outboxWhereCalls: [] as unknown[][],
     runWhereCalls: [] as unknown[][],
     taskExistenceWhereRefs: [] as unknown[][],
     usedTaskExistenceFilter: false,
@@ -1239,6 +1285,8 @@ function createHistoryCleanupDbMock(options: {
             });
           } else if (table === "xy_wap_embed_workflow_run") {
             db.runWhereCalls.push(args);
+          } else if (table.startsWith("xy_wap_embed_workflow_outbox")) {
+            db.outboxWhereCalls.push(args);
           }
           return builder;
         },
@@ -1252,9 +1300,7 @@ function createHistoryCleanupDbMock(options: {
           }
           if (table === "xy_wap_embed_workflow_outbox"
             || table.startsWith("xy_wap_embed_workflow_outbox")) {
-            return (options.taskOutbox ?? [])
-              .filter(item => item.status === "leased")
-              .map(item => ({ run_id: "1", ...item }));
+            return (options.taskOutbox ?? []).map(item => ({ run_id: "1", ...item }));
           }
           return options.remainingTasks ?? [];
         },

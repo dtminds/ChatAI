@@ -1309,7 +1309,7 @@ export class MysqlWorkflowRuntimeRepository implements
       .innerJoin("xy_wap_embed_workflow_definition as inference_definition", join => join
         .onRef("inference_definition.uid", "=", "inference_run.uid")
         .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
-      .select(["job.id", "job.run_id", "job.task_id"])
+      .select(["job.id", "job.run_id", "job.task_id", "inference_run.uid", "inference_run.workflow_id"])
       .where("job.status", "in", ["pending", "retry_wait", "running"])
       .where("job.paused_at", "is", null)
       .where("inference_definition.biz_status", "=", 1)
@@ -1328,6 +1328,10 @@ export class MysqlWorkflowRuntimeRepository implements
       .orderBy("job.id", "asc").limit(input.limit).execute();
     if (scanned.length === 0) return { expired: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
+      const definitionByKey = await loadDefinitionsForShare(trx, scanned.map(row => ({
+        uid: normalizeTenantId(row.uid),
+        workflowId: normalizeId(row.workflow_id),
+      })));
       const runIds = uniqueSortedIds(scanned.map(row => row.run_id));
       const taskIds = uniqueSortedIds(scanned.map(row => row.task_id));
       const jobIds = uniqueSortedIds(scanned.map(row => row.id));
@@ -1389,10 +1393,6 @@ export class MysqlWorkflowRuntimeRepository implements
         }
         const runById = new Map(runRows.map(row => [normalizeId(row.id), row]));
         const taskById = new Map(taskRows.map(row => [normalizeId(row.id), row]));
-        const definitionByKey = await loadDefinitionsForShare(trx, runRows.map(row => ({
-          uid: normalizeTenantId(row.uid),
-          workflowId: normalizeId(row.workflow_id),
-        })));
         const waking: Array<{ decision: "cancel" | "defer" | "execute"; runId: string; task: WorkflowTaskRecord }> = [];
         for (const row of toFail) {
           const runRow = runById.get(normalizeId(row.run_id));
@@ -2464,17 +2464,18 @@ export class MysqlWorkflowRuntimeRepository implements
       if (runIds.length === 0) {
         return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
       }
-      const leasedOutbox = await trx.selectFrom(`${OUTBOX_TABLE} as outbox`)
+      const candidateOutbox = await trx.selectFrom(`${OUTBOX_TABLE} as outbox`)
         .innerJoin(`${TASK_TABLE} as task`, join => join
           .onRef("task.id", "=", "outbox.aggregate_id"))
-        .select("task.run_id")
-        .distinct()
+        .select(["outbox.status", "task.run_id"])
         .where("outbox.aggregate_type", "=", "workflow_task")
-        .where("outbox.status", "=", "leased")
         .where("task.run_id", "in", runIds)
+        .orderBy("outbox.id", "asc")
         .forUpdate()
         .execute();
-      const blockedRunIds = new Set(leasedOutbox.map(item => normalizeId(item.run_id)));
+      const blockedRunIds = new Set(candidateOutbox
+        .filter(item => item.status === "leased")
+        .map(item => normalizeId(item.run_id)));
       const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
       if (deletableRunIds.length === 0) {
         return {

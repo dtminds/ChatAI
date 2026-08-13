@@ -3962,6 +3962,64 @@ describe("useWorkbenchStore", () => {
     ).toEqual(["13", "12"]);
   });
 
+  it("catches up active conversation messages across separate poll ticks", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedActiveMessageSeqs: Array<number | undefined> = [];
+    let pollCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        pollCount += 1;
+        observedActiveMessageSeqs.push(request.activeMessageSeq);
+        const firstSeq = (request.activeMessageSeq ?? 0) + 1;
+        const lastSeq = firstSeq + (pollCount === 1 ? 49 : 9);
+
+        return {
+          activeConversationMessages: Array.from(
+            { length: lastSeq - firstSeq + 1 },
+            (_, index) =>
+              createSmartReplyTextMessageDto({
+                id: `poll-${firstSeq + index}`,
+                seq: firstSeq + index,
+                text: `增量消息 ${firstSeq + index}`,
+              }),
+          ),
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const initialActiveMessageSeq = useWorkbenchStore.getState().activeMessageSeq;
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().activeMessageSeq).toBe(initialActiveMessageSeq + 50);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]
+        .map((message) => message.seq)
+        .slice(-50),
+    ).toEqual(Array.from({ length: 50 }, (_, index) => initialActiveMessageSeq + index + 1));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().activeMessageSeq).toBe(initialActiveMessageSeq + 60);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]
+        .map((message) => message.seq)
+        .slice(-60),
+    ).toEqual(Array.from({ length: 60 }, (_, index) => initialActiveMessageSeq + index + 1));
+    expect(observedActiveMessageSeqs).toEqual([
+      initialActiveMessageSeq,
+      initialActiveMessageSeq + 50,
+    ]);
+  });
+
   it("waits for a customer image download to finish before auto-generating smart reply", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];

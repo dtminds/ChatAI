@@ -7325,7 +7325,7 @@ describe("WorkbenchRepository", () => {
   });
 
   it("keeps revoke event rows visible in historical message pages", async () => {
-    const repository = new WorkbenchRepository(createMessagesDb([
+    const db = createMessagesDb([
       messageRow({
         content: JSON.stringify({ type: "revoke", revokeMsgId: "516" }),
         id: 103,
@@ -7344,7 +7344,8 @@ describe("WorkbenchRepository", () => {
         msgid: "remote-msg-101",
         msgtype: "text",
       }),
-    ]) as never);
+    ]);
+    const repository = new WorkbenchRepository(db as never);
 
     await expect(repository.listMessages("88", { limit: 3 })).resolves.toMatchObject({
       filteredCount: 0,
@@ -7373,22 +7374,93 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+    expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "desc"]]);
   });
 
-  it("limits poll message reads to rows after the active message sequence", async () => {
+  it("limits single-chat poll message reads to the previous day after the active message sequence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-10T12:00:00.000Z"));
     const db = createMessagesDb([
       messageRow({ id: 102, msgid: "remote-msg-102" }),
+      messageRow({ id: 103, msgid: "remote-msg-103" }),
     ]);
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessages("88", { afterSeq: 101, limit: 50 });
+    try {
+      await expect(
+        repository.listMessages("88", { afterSeq: 101, limit: 50 }),
+      ).resolves.toMatchObject({
+        nextBeforeSeq: 102,
+      });
 
-    expect(db.messageQueries[0]?.wheres).toContainEqual([
-      "message.id",
-      ">",
-      101,
-    ]);
-    expect(db.messageQueries[0]?.limits).toEqual([51]);
+      expect(db.messageQueries[0]?.wheres).toContainEqual([
+        "message.msgtime",
+        ">=",
+        Date.now() - 24 * 60 * 60 * 1000,
+      ]);
+      expect(db.messageQueries[0]?.wheres).toContainEqual([
+        "message.id",
+        ">",
+        101,
+      ]);
+      expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "asc"]]);
+      expect(db.messageQueries[0]?.limits).toEqual([51]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the group message index prefix for bounded ascending poll reads", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-10T12:00:00.000Z"));
+    const db = createMessagesDb(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          id: 202,
+          msgid: "group-msg-202",
+          third_external_id: null,
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+        group_seat_id: 7788,
+        third_group_origin_userid: "opening-seat-001",
+        third_userid: "reception-seat-001",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    try {
+      await repository.listMessages("88", { afterSeq: 201, limit: 50 });
+
+      expect(db.messageQueries[0]?.wheres).toEqual(
+        expect.arrayContaining([
+          ["message.uid", "=", 9001],
+          ["message.platform", "=", 5],
+          ["message.third_group_id", "=", "group-1"],
+          ["message.third_user_id", "=", "opening-seat-001"],
+          ["message.msgtime", ">=", Date.now() - 24 * 60 * 60 * 1000],
+          ["message.id", ">", 201],
+        ]),
+      );
+      expect(db.messageQueries[0]?.wheres).not.toContainEqual([
+        "message.third_external_id",
+        "=",
+        expect.anything(),
+      ]);
+      expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "asc"]]);
+      expect(db.messageQueries[0]?.limits).toEqual([51]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("loads shadow group messages with the opening seat third user id", async () => {

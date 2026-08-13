@@ -47,6 +47,67 @@ describe("TablePagination", () => {
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
   });
 
+  it("limits navigation to 1000 pages by default while preserving the total count", () => {
+    render(
+      <TablePagination
+        onPageChange={vi.fn()}
+        page={1000}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByText(/56366/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("button", { name: "2819" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
+  it("accepts a positive integer override for the maximum page", () => {
+    render(
+      <TablePagination
+        maxPage={2000}
+        onPageChange={vi.fn()}
+        page={2000}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "2000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("button", { name: "2819" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
+  it("clamps an external page before emitting navigation", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+
+    render(
+      <TablePagination
+        onPageChange={onPageChange}
+        page={2819}
+        total={56366}
+        totalPages={2819}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+
+    expect(onPageChange).toHaveBeenCalledWith(999);
+  });
+
   it("resolves table row ranges from clamped page state", () => {
     expect(resolveTablePagination({ page: 3, pageSize: 10, total: 2 })).toEqual({
       activePage: 1,
@@ -76,6 +137,67 @@ describe("TablePagination", () => {
       totalPages: 3,
     });
   });
+
+  it("caps resolved pagination at the default maximum page", () => {
+    expect(
+      resolveTablePagination({ page: 2819, pageSize: 20, total: 56366 }),
+    ).toEqual({
+      activePage: 1000,
+      endRow: 20000,
+      startRow: 19981,
+      totalPages: 1000,
+    });
+  });
+
+  it("uses the maximum page override when resolving pagination", () => {
+    expect(
+      resolveTablePagination({
+        maxPage: 2000,
+        page: 2819,
+        pageSize: 20,
+        total: 56366,
+      }),
+    ).toEqual({
+      activePage: 2000,
+      endRow: 40000,
+      startRow: 39981,
+      totalPages: 2000,
+    });
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.POSITIVE_INFINITY,
+    Number.NaN,
+  ])(
+    "falls back to the default maximum for invalid maximum page %s",
+    (maxPage) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      try {
+        render(
+          <TablePagination
+            maxPage={maxPage}
+            onPageChange={vi.fn()}
+            page={1000}
+            total={56366}
+            totalPages={2819}
+          />,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+
+      expect(screen.getByRole("button", { name: "1000" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    },
+  );
 
   it("calls onPageSizeChange when selecting a new page size", async () => {
     const user = userEvent.setup();

@@ -348,7 +348,7 @@ export function AccountSidebarItem({
         <button
           aria-label={`选择 ${account.name}`}
           className={cn(
-            "relative flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition-colors",
+            "relative flex w-full min-w-0 max-w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition-colors",
             isActive
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -365,7 +365,7 @@ export function AccountSidebarItem({
           type="button"
         >
           <div
-            className="relative"
+            className="relative shrink-0"
             data-testid={`account-avatar-wrap-${account.id}`}
           >
             <Avatar className="size-9">

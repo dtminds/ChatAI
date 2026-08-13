@@ -375,11 +375,6 @@ export function AgentManagementPage() {
           </div>
 
           <div className="mt-4">
-            {!canManage ? (
-              <p className="mb-3 text-sm text-muted-foreground">
-                当前账号仅可查看 Agent，管理操作需管理员权限
-              </p>
-            ) : null}
             <AgentCardGrid
               agents={agents}
               canManage={canManage}

@@ -2,6 +2,8 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { WorkflowNodeKind } from "./dto.js";
 import type { WorkflowEntryEventType } from "./trigger.js";
 
+export const WORKFLOW_ACTIVE_DEFINITION_LIMIT = 50;
+
 export const WorkflowTypeSchema = Type.Union([
   Type.Literal("chatai_sop"),
   Type.Literal("wecom_sop"),

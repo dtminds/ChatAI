@@ -26,7 +26,7 @@ describe("compileWorkflowDraft", () => {
     expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
       entryPolicy: { mode: "never" },
       seatIds: [101],
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
     expect(spec.nodes.find((node) => node.id === "start")?.requiredCapabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
@@ -359,7 +359,7 @@ describe("compileWorkflowDraft", () => {
       schemaVersion: 1,
       status: "ready",
       title: "Start",
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       workUserIds: [201],
     };
     draft.nodes.splice(1, 1, node("llm", "llm", {
@@ -391,14 +391,8 @@ describe("compileWorkflowDraft", () => {
       nodeId: "llm",
     }, "wecom_sop");
 
-    const mixedEvents = createDraft();
-    Object.assign(mixedEvents.nodes.find(node => node.id === "start")!.data, {
-      triggers: [
-        { type: "contact.friend_added" },
-        { match: "any", type: "message.received" },
-      ],
-    });
-    mixedEvents.nodes.splice(1, 1, node("llm", "llm", {
+    const friendAddedOnly = createDraft();
+    friendAddedOnly.nodes.splice(1, 1, node("llm", "llm", {
       inputs: [{
         id: "input-message-id",
         name: "message_id",
@@ -416,11 +410,11 @@ describe("compileWorkflowDraft", () => {
       systemPrompt: [{ selector: ["input", "input-message-id"], type: "variable" }],
       userPrompt: [],
     }));
-    mixedEvents.edges = [
+    friendAddedOnly.edges = [
       { id: "start-llm", source: "start", target: "llm" },
       { id: "llm-end", source: "llm", target: "end" },
     ];
-    expectCompilationIssue(mixedEvents, {
+    expectCompilationIssue(friendAddedOnly, {
       code: "invalid-node-config",
       message: "LLM node references unavailable or changed input data",
       nodeId: "llm",
@@ -756,7 +750,7 @@ function startConfig() {
     entryPolicy: { mode: "never" },
     panelState: { section: "triggers" },
     seatIds: [101],
-    triggers: [{ type: "contact.friend_added" }],
+    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   };
 }
 

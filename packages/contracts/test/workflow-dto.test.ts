@@ -171,21 +171,30 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
-      triggers: [
-        { type: "contact.friend_added" },
-        { tagIds: [301], type: "contact.tag_added" },
-        { match: "any", type: "message.received" },
-      ],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     })).toBe(true);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
     })).toBe(true);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ keywords: ["价格", "优惠"], type: "message.received" }],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [
+        { sourceIds: [], type: "contact.friend_added" },
+        { keywords: [], type: "message.received" },
+      ],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       workUserIds: [201],
     })).toBe(false);
     expect(Value.Check(WorkflowWaitConfigSchema, {
@@ -254,7 +263,7 @@ describe("workflow contracts", () => {
     const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
       entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
       seatIds: [101],
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
@@ -270,7 +279,7 @@ describe("workflow contracts", () => {
     ) => ({
       entryPolicy,
       seatIds: [101],
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig({

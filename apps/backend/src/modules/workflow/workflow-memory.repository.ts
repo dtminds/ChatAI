@@ -1,4 +1,5 @@
 import type { WorkflowTriggerBindingSpec } from "@chatai/workflow-engine";
+import { WORKFLOW_ACTIVE_DEFINITION_LIMIT } from "@chatai/contracts";
 import type {
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
@@ -179,7 +180,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       return invalidStatus<never>(definition.runtimeStatus);
     }
     const revision = this.createRevision(definition, input);
-    this.replaceTriggerBindings(definition, revision.revision, input.triggerBindings);
+    this.replaceTriggerBinding(definition, revision.revision, input.triggerBinding);
     definition.publishedRevision = revision.revision;
     definition.validatedDraftVersion = definition.draftVersion;
     touch(definition, input.opSubUserId);
@@ -194,8 +195,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     if (definition.runtimeStatus !== "inactive" || definition.publishedRevision !== null) {
       return invalidStatus<never>(definition.runtimeStatus);
     }
+    if (this.countActiveDefinitions(input.uid) >= WORKFLOW_ACTIVE_DEFINITION_LIMIT) {
+      return activeLimitExceeded<never>();
+    }
     const revision = this.createRevision(definition, input);
-    this.replaceTriggerBindings(definition, revision.revision, input.triggerBindings);
+    this.replaceTriggerBinding(definition, revision.revision, input.triggerBinding);
     definition.publishedRevision = 1;
     definition.runtimeStatus = "active";
     definition.statusReason = null;
@@ -208,6 +212,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       if (!input.allowedCurrentStatuses.includes(definition.runtimeStatus)) {
         return invalidStatus(definition.runtimeStatus);
       }
+      if (input.status === "active"
+        && this.countActiveDefinitions(input.uid) >= WORKFLOW_ACTIVE_DEFINITION_LIMIT) {
+        return activeLimitExceeded();
+      }
       definition.runtimeStatus = input.status;
       definition.statusReason = input.statusReason;
       touch(definition, input.opSubUserId);
@@ -217,6 +225,13 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   private findActive(uid: number, workflowId: string) {
     return this.definitions.find((item) => item.uid === uid && item.id === workflowId && item.bizStatus === 1);
+  }
+
+  private countActiveDefinitions(uid: number) {
+    return this.definitions.filter(definition =>
+      definition.uid === uid
+      && definition.bizStatus === 1
+      && definition.runtimeStatus === "active").length;
   }
 
   private async mutate(
@@ -259,32 +274,35 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     return revision;
   }
 
-  private replaceTriggerBindings(
+  private replaceTriggerBinding(
     definition: WorkflowDefinitionRecord,
     revision: number,
-    specs: WorkflowTriggerBindingSpec[],
+    spec: WorkflowTriggerBindingSpec,
   ) {
-    for (const binding of this.triggerBindings) {
-      if (binding.uid === definition.uid && binding.workflowId === definition.id && binding.status === 1) {
-        binding.status = 0;
-        binding.updatedAt = new Date();
-      }
-    }
     const now = new Date();
-    for (const spec of specs) {
-      this.triggerBindings.push({
-        createdAt: now,
-        eventType: spec.eventType,
-        filter: clone(spec.filter),
-        id: String(this.nextTriggerBindingId++),
-        revision,
-        status: 1,
-        subjectType: spec.subjectType,
-        uid: definition.uid,
-        updatedAt: now,
-        workflowId: definition.id,
-      });
+    const existing = this.triggerBindings.find(binding =>
+      binding.uid === definition.uid && binding.workflowId === definition.id);
+    if (existing) {
+      existing.eventType = spec.eventType;
+      existing.filter = clone(spec.filter);
+      existing.revision = revision;
+      existing.status = 1;
+      existing.subjectType = spec.subjectType;
+      existing.updatedAt = now;
+      return;
     }
+    this.triggerBindings.push({
+      createdAt: now,
+      eventType: spec.eventType,
+      filter: clone(spec.filter),
+      id: String(this.nextTriggerBindingId++),
+      revision,
+      status: 1,
+      subjectType: spec.subjectType,
+      uid: definition.uid,
+      updatedAt: now,
+      workflowId: definition.id,
+    });
   }
 }
 
@@ -303,6 +321,10 @@ function success<T>(value: T): WorkflowMutationResult<T> {
 
 function conflict<T>(): WorkflowMutationResult<T> {
   return { kind: "conflict" };
+}
+
+function activeLimitExceeded<T>(): WorkflowMutationResult<T> {
+  return { kind: "active-limit-exceeded" };
 }
 
 function invalidStatus<T>(status: WorkflowDefinitionRecord["runtimeStatus"]): WorkflowMutationResult<T> {

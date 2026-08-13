@@ -193,9 +193,32 @@ describe("MysqlWorkflowRepository", () => {
     expect(inferenceUpdate?.sets).toMatchObject({ paused_at: null });
     expect(inferenceUpdate?.sets.deadline_at).toBeDefined();
     expect(inferenceUpdate?.sets.next_attempt_at).toBeDefined();
+    expect(db.selectBuilders[0]).toMatchObject({
+      forUpdate: true,
+      orderBys: [["id", "asc"]],
+      wheres: [["uid", "=", 8], ["biz_status", "=", 1]],
+    });
   });
 
-  it("replaces trigger bindings in the revision publication transaction", async () => {
+  it("rejects resume when fifty other tenant Workflows are active", async () => {
+    const db = createWorkflowDbMock({ activeDefinitionCount: 50, runtimeStatus: "paused" });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.setRuntimeStatus({
+      allowedCurrentStatuses: ["paused"],
+      opSubUserId: "19",
+      status: "active",
+      statusReason: null,
+      transitionedAt: new Date("2026-07-10T00:30:00.000Z"),
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result).toEqual({ kind: "active-limit-exceeded" });
+    expect(db.updateBuilders).toHaveLength(0);
+  });
+
+  it("upserts the current trigger binding in the revision publication transaction", async () => {
     const db = createPublicationDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
 
@@ -235,27 +258,16 @@ describe("MysqlWorkflowRepository", () => {
       expectedDraftVersion: 4,
       opSubUserId: "19",
       specHash: "a".repeat(64),
-      triggerBindings: [
-        {
+      triggerBinding: {
+        eventType: "contact.friend_added",
+        filter: {
+          entryPolicy: { mode: "never" },
           eventType: "contact.friend_added",
-          filter: {
-            entryPolicy: { mode: "never" },
-            eventType: "contact.friend_added",
-            workUserIds: [201],
-          },
-          subjectType: "chatai_contact",
+          sourceIds: [],
+          workUserIds: [201],
         },
-        {
-          eventType: "message.received",
-          filter: {
-            entryPolicy: { mode: "never" },
-            eventType: "message.received",
-            match: "any",
-            seatIds: [101],
-          },
-          subjectType: "chatai_contact",
-        },
-      ],
+        subjectType: "chatai_contact",
+      },
       subjectType: "chatai_contact",
       uid: 8,
       workflowId: "42",
@@ -264,20 +276,45 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.transactionCount).toBe(1);
-    expect(db.triggerBindingStatusUpdate).toMatchObject({ status: 0 });
-    expect(db.triggerBindingInsert).toEqual([
-      expect.objectContaining({ event_type: "contact.friend_added", revision: 1, status: 1 }),
-      expect.objectContaining({ event_type: "message.received", revision: 1, status: 1 }),
-    ]);
-    expect(db.triggerBindingMatchInsert).toEqual([
-      expect.objectContaining({ binding_id: "binding-1", match_kind: 1, match_value: 201 }),
-      expect.objectContaining({ binding_id: "binding-2", match_kind: 2, match_value: 101 }),
-    ]);
+    expect(db.triggerBindingInsert).toMatchObject({
+      event_type: "contact.friend_added",
+      revision: 1,
+      status: 1,
+      uid: 8,
+      workflow_id: "42",
+    });
+    expect(JSON.parse(String(db.triggerBindingInsert.filter_spec_json))).toEqual({
+      entryPolicy: { mode: "never" },
+      eventType: "contact.friend_added",
+      sourceIds: [],
+      workUserIds: [201],
+    });
+    expect(db.triggerBindingDuplicateUpdate).toMatchObject({
+      event_type: "contact.friend_added",
+      revision: 1,
+      status: 1,
+    });
+    expect(db.selectBuilders[0]).toMatchObject({
+      forUpdate: true,
+      orderBys: [["id", "asc"]],
+    });
     expect(db.definitionUpdate).toMatchObject({ published_revision: 1, runtime_status: "active" });
+  });
+
+  it("rejects first enable when fifty tenant Workflows are already active", async () => {
+    const db = createPublicationDbMock({ activeDefinitionCount: 50 });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.enable(enableInput());
+
+    expect(result).toEqual({ kind: "active-limit-exceeded" });
+    expect(db.triggerBindingInsert).toEqual({});
+    expect(db.definitionUpdate).toEqual({});
   });
 });
 
 function createWorkflowDbMock(options: {
+  activeDefinitionCount?: number;
   numUpdatedRows?: bigint;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 } = {}) {
@@ -301,14 +338,24 @@ function createWorkflowDbMock(options: {
   };
   const db = {
     deleteFromCalls: 0,
-    selectBuilders: [] as Array<{ orderBys: unknown[][]; table: string; wheres: unknown[][] }>,
+    selectBuilders: [] as Array<{
+      forUpdate: boolean;
+      orderBys: unknown[][];
+      table: string;
+      wheres: unknown[][];
+    }>,
     updateBuilders: [] as Array<{ sets: Record<string, unknown>; table: string; wheres: unknown[][] }>,
     deleteFrom() {
       db.deleteFromCalls += 1;
       throw new Error("physical delete is forbidden");
     },
     selectFrom(table: string) {
-      const state = { orderBys: [] as unknown[][], table, wheres: [] as unknown[][] };
+      const state = {
+        forUpdate: false,
+        orderBys: [] as unknown[][],
+        table,
+        wheres: [] as unknown[][],
+      };
       db.selectBuilders.push(state);
       const builder = {
         select() { return builder; },
@@ -316,8 +363,13 @@ function createWorkflowDbMock(options: {
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
         limit() { return builder; },
-        forUpdate() { return builder; },
-        async execute() { return [row]; },
+        forUpdate() { state.forUpdate = true; return builder; },
+        async execute() {
+          return [
+            row,
+            ...createActiveDefinitionRows(options.activeDefinitionCount ?? 0),
+          ];
+        },
         async executeTakeFirst() { return row; },
         async executeTakeFirstOrThrow() { return row; },
       };
@@ -403,7 +455,7 @@ function createEntitlementLossDbMock() {
   return db;
 }
 
-function createPublicationDbMock() {
+function createPublicationDbMock(options: { activeDefinitionCount?: number } = {}) {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const definition = {
     biz_status: 1,
@@ -425,37 +477,56 @@ function createPublicationDbMock() {
   };
   const db = {
     definitionUpdate: {} as Record<string, unknown>,
+    selectBuilders: [] as Array<{
+      forUpdate: boolean;
+      orderBys: unknown[][];
+      table: string;
+      wheres: unknown[][];
+    }>,
     transactionCount: 0,
-    triggerBindingInsert: [] as Array<Record<string, unknown>>,
-    triggerBindingMatchInsert: [] as Array<Record<string, unknown>>,
-    triggerBindingStatusUpdate: {} as Record<string, unknown>,
+    triggerBindingDuplicateUpdate: {} as Record<string, unknown>,
+    triggerBindingInsert: {} as Record<string, unknown>,
     insertInto(table: string) {
       const builder = {
         values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
           if (table === "xy_wap_embed_workflow_trigger_binding") {
-            db.triggerBindingInsert.push(values as Record<string, unknown>);
+            db.triggerBindingInsert = values as Record<string, unknown>;
           }
-          if (table === "xy_wap_embed_workflow_trigger_binding_match") {
-            db.triggerBindingMatchInsert.push(...values as Array<Record<string, unknown>>);
-          }
+          return builder;
+        },
+        onDuplicateKeyUpdate(values: Record<string, unknown>) {
+          db.triggerBindingDuplicateUpdate = values;
           return builder;
         },
         async executeTakeFirstOrThrow() {
           if (table === "xy_wap_embed_workflow_revision") return { insertId: "11" };
-          if (table === "xy_wap_embed_workflow_trigger_binding") {
-            return { insertId: `binding-${db.triggerBindingInsert.length}` };
-          }
+          if (table === "xy_wap_embed_workflow_trigger_binding") return { insertId: "binding-1" };
           return { insertId: "12" };
         },
       };
       return builder;
     },
-    selectFrom() {
+    selectFrom(table: string) {
+      const state = {
+        forUpdate: false,
+        orderBys: [] as unknown[][],
+        table,
+        wheres: [] as unknown[][],
+      };
+      db.selectBuilders.push(state);
       const builder = {
-        forUpdate() { return builder; },
+        forUpdate() { state.forUpdate = true; return builder; },
+        orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
         selectAll() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) { state.wheres.push(args); return builder; },
+        async execute() {
+          return [
+            definition,
+            ...createActiveDefinitionRows(options.activeDefinitionCount ?? 0),
+          ];
+        },
         async executeTakeFirst() { return definition; },
+        async executeTakeFirstOrThrow() { return definition; },
       };
       return builder;
     },
@@ -467,7 +538,6 @@ function createPublicationDbMock() {
       const builder = {
         set(values: Record<string, unknown>) {
           if (table === "xy_wap_embed_workflow_definition") db.definitionUpdate = values;
-          if (table === "xy_wap_embed_workflow_trigger_binding") db.triggerBindingStatusUpdate = values;
           return builder;
         },
         where() { return builder; },
@@ -495,8 +565,70 @@ function startConfig() {
   return {
     entryPolicy: { mode: "never" as const },
     seatIds: [101],
-    triggers: [{ type: "contact.friend_added" as const }],
+    triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
   };
+}
+
+function enableInput() {
+  return {
+    draft: createDraft(),
+    executionSpec: {
+      edges: [{ id: "edge-start-end", source: "start", sourceOutletId: "default", target: "end" }],
+      entryNodeId: "start",
+      nodes: [
+        {
+          config: startConfig(),
+          id: "start",
+          kind: "start" as const,
+          nodeSchemaVersion: 1,
+          requiredCapabilities: [{
+            capabilityKey: "event.contact.friend_added" as const,
+            contractVersion: 1,
+          }],
+        },
+        {
+          config: {},
+          id: "end",
+          kind: "end" as const,
+          nodeSchemaVersion: 1,
+          requiredCapabilities: [],
+        },
+      ],
+      requiredCapabilities: [{
+        capabilityKey: "event.contact.friend_added" as const,
+        contractVersion: 1,
+      }],
+      revision: 1,
+      schemaVersion: 2 as const,
+      terminalNodeId: "end",
+      workflowId: "42",
+    },
+    expectedDraftVersion: 4,
+    opSubUserId: "19",
+    specHash: "a".repeat(64),
+    subjectType: "chatai_contact" as const,
+    triggerBinding: {
+      eventType: "contact.friend_added" as const,
+      filter: {
+        entryPolicy: { mode: "never" as const },
+        eventType: "contact.friend_added" as const,
+        sourceIds: [],
+        workUserIds: [201],
+      },
+      subjectType: "chatai_contact" as const,
+    },
+    uid: 8,
+    workflowId: "42",
+    workflowType: "chatai_sop" as const,
+  };
+}
+
+function createActiveDefinitionRows(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    biz_status: 1,
+    id: 100 + index,
+    runtime_status: "active",
+  }));
 }
 
 function createNode(kind: "end" | "start") {

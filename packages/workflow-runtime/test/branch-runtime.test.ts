@@ -317,7 +317,7 @@ function branchDraft(
       node("start", "start", {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ type: "contact.friend_added" }],
+        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       }),
       node("wait", "wait", { duration: 1, mode: "duration", unit: "minute" }),
       node("branch", "branch", {

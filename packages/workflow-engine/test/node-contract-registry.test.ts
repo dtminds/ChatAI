@@ -94,7 +94,7 @@ const projectableDraftData = {
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ type: "contact.friend_added" }],
+    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {

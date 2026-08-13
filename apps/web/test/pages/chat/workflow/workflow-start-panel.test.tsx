@@ -38,10 +38,9 @@ describe("StartConfig", () => {
 
     expect(screen.getByRole("button", { name: "席位" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "触发条件" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "添加好友" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "用户发送消息" })).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "消息包含关键词" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "添加好友" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "添加标签" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "用户发送消息" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入限制" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "最多进入" })).toBeChecked();
     expect(screen.getByRole("combobox", { name: "最多进入次数" })).toHaveTextContent("1次");
@@ -65,6 +64,6 @@ describe("StartConfig", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "添加标签" })).toBeDisabled();
   });
 });

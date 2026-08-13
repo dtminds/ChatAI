@@ -54,13 +54,10 @@ describe("workflow variables", () => {
     ]));
   });
 
-  it("only exposes trigger projections guaranteed by every configured entry event", () => {
+  it("exposes projections guaranteed by the selected entry event", () => {
     const draft = createNewWorkflowDraft("chatai_sop");
     Object.assign(draft.nodes.find(node => node.data.kind === "start")!.data, {
-      triggers: [
-        { tagIds: [1], type: "contact.tag_added" },
-        { match: "any", type: "message.received" },
-      ],
+      triggers: [{ keywords: [], type: "message.received" }],
     });
     const variables = getAvailableVariablesForNode("end", draft.nodes, draft.edges);
 
@@ -68,10 +65,10 @@ describe("workflow variables", () => {
       expect.objectContaining({ selector: ["trigger", "projection", "workUserId"] }),
       expect.objectContaining({ selector: ["trigger", "projection", "seatId"] }),
       expect.objectContaining({ selector: ["trigger", "projection", "thirdExternalUserId"] }),
+      expect.objectContaining({ selector: ["trigger", "projection", "messageId"] }),
     ]));
     expect(variables).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["trigger", "projection", "tagId"] }),
-      expect.objectContaining({ selector: ["trigger", "projection", "messageId"] }),
     ]));
   });
 

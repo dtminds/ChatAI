@@ -1,7 +1,7 @@
 # Workflow 入口身份与 Interest Reader 配套改造计划
 
 - 日期：2026-08-11
-- 状态：Ready for Implementation
+- 状态：Implemented；入口筛选持久化部分由 GitHub Issue #595 更新
 - 目标：把当前“每条 Entry Event 固定一个 Subject”的内部实现，改造成“单一源事件携带来源身份和候选 Subject，Node 按 Binding 解析 Run Subject”
 - Java 契约：[Workflow Interest Reader 与入口事件身份契约](../specs/2026-08-11-workflow-interest-reader-design.md)
 - 基线分支：`integration/sop-workflow-v1`
@@ -16,6 +16,8 @@
 6. 一条 Entry Event 可以启动多个 Workflow，但每个 Run 仍只有一个 `subjectType + subjectId`。
 7. Java Interest Reader fail-open，Node Entry Consumer 负责最终匹配。
 8. 当前没有生产 Java 消费者和需要保留的旧 Entry Event 数据，不实现旧单 Subject 信封兼容。
+9. 本期一个 Workflow 只能选择一个 Start Event；Draft 可暂时不选，发布时必须恰好一个。
+10. 每个 Workflow 只维护一条当前 Trigger Binding，完整筛选规则保存在 `filter_spec_json`。
 
 ## 2. 当前实现与目标方案的差距
 
@@ -25,7 +27,7 @@
 | Partition Key 为 `uid:subjectType:subjectId` | 按源事件稳定客户身份分区 |
 | Start 使用通用 `accountIds` | ChatAI SOP 使用 `seatIds`，WeCom SOP 使用 `workUserIds` |
 | Trigger Binding Reader 先按 `subjectType` 查询 | 先按 `uid + eventType` 查询，再按来源维度匹配 |
-| Java 只能读取粗粒度 Binding | Node 提供 Binding Match 精确索引 |
+| Java 只能读取粗粒度 Binding | Java 读取当前 Binding 的完整 Filter，并在内存中预匹配 |
 | Event Subscription 使用通用 `account_id` | `message.received` 明确使用 `seat_id` |
 | Event Catalog 只返回 Trigger Projection | 同时返回受控 Projection 和候选 Subject 引用 |
 | Consumer 直接使用事件 Subject 创建 Run | Consumer 按 Binding 的 Subject Type 选择事件中的 Subject ID |
@@ -77,13 +79,13 @@ type WorkflowEventSubjectCandidates = {
 type ChatAiWorkflowStartConfig = {
   entryPolicy: WorkflowEntryPolicy;
   seatIds: number[];
-  triggers: ChatAiWorkflowStartTrigger[];
+  triggers: [] | [ChatAiWorkflowStartTrigger];
 };
 
 type WeComWorkflowStartConfig = {
   entryPolicy: WorkflowEntryPolicy;
   workUserIds: number[];
-  triggers: WeComWorkflowStartTrigger[];
+  triggers: [] | [WeComWorkflowStartTrigger];
 };
 ```
 
@@ -91,13 +93,15 @@ type WeComWorkflowStartConfig = {
 
 - 删除通用 `accountIds`。
 - 配置 Schema 必须由 Workflow Type 判别，不能允许 WeCom SOP 写入 `seatIds`。
+- Draft `triggers` 最多一个；Execution `triggers` 必须恰好一个。
 - ChatAI SOP 的 `message.received` 编译为 `seatId` Match。
-- `message.received` Start Trigger v1 只支持 `{ match: "any" }`；关键词匹配不在本期能力范围内。
+- `message.received` 支持可选 `keywords`；空数组表示任意消息，否则正文包含任意关键词时命中。
 - ChatAI SOP 的企微事件把 `seatId` 权威解析为 `workUserId` 后编译 Match。
 - WeCom SOP 的企微事件直接编译 `workUserId` Match。
+- `contact.friend_added` 支持可选 `sourceIds`；空数组表示任意来源，否则按 `sourceId` 精确命中。
 - `contact.tag_added` 额外编译 `tagId` Match。
-- 每个 Event Type 生成独立的结构化 `WorkflowTriggerBindingFilter`；`filter_spec_json` 保存归一化后的 `workUserIds / seatIds / tagIds`，不直接保存未经编译的 Draft Config。
-- Binding Match 行只能从同一份结构化 Filter 派生，确保 Java 粗过滤与 Node 最终匹配不会使用两套规则来源。
+- 发布时生成唯一的结构化 `WorkflowTriggerBindingFilter`；`filter_spec_json` 保存归一化后的 `workUserIds / seatIds / tagIds / sourceIds / keywords`，不直接保存未经编译的 Draft Config。
+- Java Interest Reader 与 Node 最终匹配读取同一份 Filter，避免两套规则来源。
 
 ### 3.3 数据库
 
@@ -111,9 +115,9 @@ type WeComWorkflowStartConfig = {
 
 工作内容：
 
-- 新增 `xy_wap_embed_workflow_trigger_binding_match`。
-- Match 编码固定为 `workUserId=1`、`seatId=2`、`tagId=3`。
-- Trigger Binding 增加 `(uid, event_type, status, workflow_id, revision, id)` 索引。
+- 不新增 Trigger Binding Match 派生表；删除开发期已存在的 Match 表。
+- Trigger Binding 使用 `(uid, workflow_id)` 唯一键，每个 Workflow 只保留一条当前记录。
+- Trigger Binding 增加 `(uid, event_type, status, workflow_id, revision, id)` Interest Reader 索引。
 - `xy_wap_embed_workflow_event_subscription.account_id` 改为 `seat_id BIGINT UNSIGNED NULL`。
 - 当前无生产历史数据，DDL 不保留 `account_id` 和 `seat_id` 双字段过渡。
 
@@ -126,10 +130,10 @@ type WeComWorkflowStartConfig = {
 
 要求：
 
-- Definition/Revision、Binding、Binding Match 在同一发布事务中完成。
-- 新 Revision 发布时旧 Binding 失效；新 Match 行只属于新 Binding。
-- Draft 保存不创建 Match 行。
-- Pause、Resume、Stop、删除不单独修改 Match 行。
+- Definition/Revision 与唯一 Binding 在同一发布事务中完成。
+- 新 Revision 发布时按 `(uid, workflow_id)` 原地更新当前 Binding 的 Revision、Event Type、Subject Type 和 Filter。
+- Draft 保存不创建或更新 Binding。
+- Pause、Resume、Stop、删除不单独修改 Binding；Interest Reader 通过 JOIN Definition 判断当前有效性。
 - 席位不存在、失效或无法解析 `workUserId` 时整次发布失败。
 - Backend 必须从权威关系解析 `seatId -> workUserId`，不能信任前端提交映射。
 
@@ -147,7 +151,8 @@ type WeComWorkflowStartConfig = {
 
 - `listActiveTriggerBindings` 从 `(uid, subjectType, eventType)` 改为 `(uid, eventType)`。
 - Repository 返回 Binding 的目标 `subjectType` 和结构化 Filter。
-- MySQL 与 Memory Contract Test 必须覆盖跨 Subject Type 同时返回。
+- 同一源事件可以命中多个 Workflow 的当前 Binding；每个 Workflow 自身只有一条 Binding。
+- MySQL 与 Memory Contract Test 必须覆盖跨 Subject Type 的候选 Workflow。
 
 ### 4.2 Entry Consumer
 
@@ -248,12 +253,13 @@ messageId
 
 Java 不需要等待 PR 2、PR 3 完成。PR 1 冻结 DDL、JSON Fixture 和 SQL 后即可并行：
 
-1. 实现只读 `WorkflowInterestReader` DAO。
+1. 实现只读 `WorkflowInterestReader` DAO：按 `uid + eventType` 查询 Binding JOIN Definition，最多返回 50 条。
 2. 实现 `observe / enforce` 与 fail-open。
-3. 接入 `contact.friend_added`、`contact.tag_added`、`message.received` Mapper。
-4. 为每类事件生成稳定 `eventId`。
-5. 复用或实现 Transactional Outbox。
-6. 按共享 Fixture 做 Java 序列化兼容测试。
+3. 解析 `filter_spec_json`，在内存中执行成员、席位、标签、来源和关键词预匹配。
+4. 接入 `contact.friend_added`、`contact.tag_added`、`message.received` Mapper。
+5. 为每类事件生成稳定 `eventId`。
+6. 复用或实现 Transactional Outbox。
+7. 按共享 Fixture 做 Java 序列化兼容测试。
 
 Java 详细 SQL、权限、指标和验收场景见配套 Interest Reader 文档。
 
@@ -281,8 +287,9 @@ PR 2、PR 3 和 Java 工作可以在 PR 1 合并后并行，不要求继续全�
 - 不让 Java 返回 Workflow ID 并创建 Run。
 - 不为旧单 Subject Entry Event 写迁移或双读兼容。
 - 不在本轮开放 `member_sop`。
-- 不在 Interest Reader 中实现消息关键词、文本或任意表达式匹配。
-- 不在本期 Start Trigger 中提供关键词匹配；未来恢复时同步扩展 Entry Event 文本、Binding Filter 与 Node 最终匹配。
+- 不允许同一 Workflow 同时选择多个 Start Event。
+- 不建立通用 Filter DSL；Java 只实现本文冻结的三类事件 Filter。
+- 不在 SQL 中展开 JSON 条件或维护派生 Match 行；最多 50 条候选 Filter 在 Java 内存中匹配。
 - 不添加 Java 本地负缓存。
 
 ## 9. 合并前验收
@@ -317,6 +324,8 @@ PR 2、PR 3 和 Java 工作可以在 PR 1 合并后并行，不要求继续全�
 - 无兴趣事件在 `observe` 中仍投递，在 `enforce` 中被过滤。
 - SQL 超时在两种模式下都投递。
 - 打标签精确匹配 `workUserId + tagId`。
+- 添加好友按 `workUserId` 和可选 `sourceIds` 匹配。
+- 新消息按 `seatId` 和可选 `keywords` 匹配。
 - Java 只生成一条企微 Outbox 记录。
 - Java 与 Node 对同一 Fixture 的序列化结果一致。
 
@@ -326,7 +335,7 @@ PR 2、PR 3 和 Java 工作可以在 PR 1 合并后并行，不要求继续全�
 
 1. Node 不再生产或接受旧单 Subject Entry Event。
 2. 三类首批事件均有共享 Schema 和 Java/Node Fixture。
-3. Binding Match 表、索引、生命周期和 Java 只读权限完成。
+3. 单 Start Event、单当前 Binding、完整 Filter Schema、索引和 Java 只读权限完成。
 4. Java Interest Reader 在 `observe` 环境稳定运行并完成结果对账。
 5. Node 能从一条企微事件正确创建 ChatAI SOP 与 WeCom SOP Run。
 6. Wait Event 的新消息唤醒没有行为回退。

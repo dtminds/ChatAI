@@ -5,7 +5,7 @@ import {
   type WorkflowEntryPolicy,
   type WorkflowStartTrigger,
 } from "@chatai/contracts";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -106,24 +106,35 @@ export function StartConfig({
           触发条件
         </AccordionTrigger>
         <AccordionContent className="space-y-3 pb-3">
-          <div className="space-y-3 rounded-[8px] border bg-card p-3">
+          <RadioGroup
+            className="space-y-3 rounded-[8px] border bg-card p-3"
+            onValueChange={(eventType) => updateStartConfig({
+              triggers: [createTrigger(eventType as WorkflowStartTrigger["type"])],
+            })}
+            value={triggers[0]?.type ?? ""}
+          >
             {allowedEventTypes.has("contact.friend_added") ? (
-              <TriggerCheckbox
-                checked={hasTrigger(triggers, "contact.friend_added")}
+              <TriggerRadio
                 label="添加好友"
-                onCheckedChange={(checked) => updateStartConfig({
-                  triggers: toggleTrigger(triggers, "contact.friend_added", checked),
-                })}
-              />
+                selected={hasTrigger(triggers, "contact.friend_added")}
+                value="contact.friend_added"
+              >
+                <CommaSeparatedTriggerInput
+                  ariaLabel="添加好友来源 ID"
+                  onCommit={(sourceIds) => updateStartConfig({
+                    triggers: [{ sourceIds, type: "contact.friend_added" }],
+                  })}
+                  placeholder="输入来源 ID，多个用英文逗号分隔"
+                  values={getFriendSourceIds(triggers)}
+                />
+              </TriggerRadio>
             ) : null}
             {allowedEventTypes.has("contact.tag_added") ? (
-              <TriggerCheckbox
-                checked={hasTrigger(triggers, "contact.tag_added")}
+              <TriggerRadio
                 disabled={tags.length === 0 && !hasTrigger(triggers, "contact.tag_added")}
                 label="添加标签"
-                onCheckedChange={(checked) => updateStartConfig({
-                  triggers: toggleTrigger(triggers, "contact.tag_added", checked),
-                })}
+                selected={hasTrigger(triggers, "contact.tag_added")}
+                value="contact.tag_added"
               >
                 <div className="ml-6 space-y-2">
                   {tags.map(tag => (
@@ -140,18 +151,25 @@ export function StartConfig({
                     <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用标签</p>
                   ) : null}
                 </div>
-              </TriggerCheckbox>
+              </TriggerRadio>
             ) : null}
             {allowedEventTypes.has("message.received") ? (
-              <TriggerCheckbox
-                checked={hasTrigger(triggers, "message.received")}
+              <TriggerRadio
                 label="用户发送消息"
-                onCheckedChange={(checked) => updateStartConfig({
-                  triggers: toggleMessageTrigger(triggers, checked),
-                })}
-              />
+                selected={hasTrigger(triggers, "message.received")}
+                value="message.received"
+              >
+                <CommaSeparatedTriggerInput
+                  ariaLabel="消息关键词"
+                  onCommit={(keywords) => updateStartConfig({
+                    triggers: [{ keywords, type: "message.received" }],
+                  })}
+                  placeholder="输入关键词，多个用英文逗号分隔"
+                  values={getMessageKeywords(triggers)}
+                />
+              </TriggerRadio>
             ) : null}
-          </div>
+          </RadioGroup>
         </AccordionContent>
       </AccordionItem>
 
@@ -211,23 +229,46 @@ function CheckboxRow({ checked, disabled = false, label, onCheckedChange }: {
   );
 }
 
-function TriggerCheckbox({ checked, children, disabled = false, label, onCheckedChange }: {
-  checked: boolean;
+function TriggerRadio({ children, disabled = false, label, selected, value }: {
   children?: ReactNode;
   disabled?: boolean;
   label: string;
-  onCheckedChange(checked: boolean): void;
+  selected: boolean;
+  value: WorkflowStartTrigger["type"];
 }) {
   return (
     <div className="space-y-2">
-      <CheckboxRow
-        checked={checked}
-        disabled={disabled}
-        label={label}
-        onCheckedChange={onCheckedChange}
-      />
-      {checked ? children : null}
+      <label className="flex items-center gap-2 text-[13px] text-foreground">
+        <RadioGroupItem disabled={disabled} value={value} />
+        <span>{label}</span>
+      </label>
+      {selected ? children : null}
     </div>
+  );
+}
+
+function CommaSeparatedTriggerInput({ ariaLabel, onCommit, placeholder, values }: {
+  ariaLabel: string;
+  onCommit(values: string[]): void;
+  placeholder: string;
+  values: string[];
+}) {
+  const serializedValues = values.join(",");
+  const [text, setText] = useState(serializedValues);
+  useEffect(() => setText(serializedValues), [serializedValues]);
+  return (
+    <Input
+      aria-label={ariaLabel}
+      className="ml-6 w-[calc(100%-1.5rem)]"
+      onBlur={() => {
+        const normalized = normalizeCommaSeparatedValues(text);
+        setText(normalized.join(","));
+        onCommit(normalized);
+      }}
+      onChange={event => setText(event.target.value)}
+      placeholder={placeholder}
+      value={text}
+    />
   );
 }
 
@@ -361,16 +402,14 @@ function hasTrigger(triggers: WorkflowStartTrigger[], type: WorkflowStartTrigger
   return triggers.some(trigger => trigger.type === type);
 }
 
-function toggleTrigger(
-  triggers: WorkflowStartTrigger[],
-  type: "contact.friend_added" | "contact.tag_added",
-  checked: boolean,
-) {
-  const remaining = triggers.filter(trigger => trigger.type !== type);
-  if (!checked) return remaining;
-  return type === "contact.friend_added"
-    ? [...remaining, { type }]
-    : [...remaining, { tagIds: [], type }];
+function createTrigger(type: WorkflowStartTrigger["type"]): WorkflowStartTrigger {
+  if (type === "contact.friend_added") return { sourceIds: [], type };
+  if (type === "contact.tag_added") return { tagIds: [], type };
+  return { keywords: [], type };
+}
+
+function getFriendSourceIds(triggers: WorkflowStartTrigger[]) {
+  return triggers.find(trigger => trigger.type === "contact.friend_added")?.sourceIds ?? [];
 }
 
 function getTagIds(triggers: WorkflowStartTrigger[]) {
@@ -379,15 +418,13 @@ function getTagIds(triggers: WorkflowStartTrigger[]) {
 
 function updateTagTrigger(triggers: WorkflowStartTrigger[], tagId: number, checked: boolean) {
   const tagIds = toggleValue(getTagIds(triggers), tagId, checked);
-  const remaining = triggers.filter(trigger => trigger.type !== "contact.tag_added");
-  return tagIds.length ? [...remaining, { tagIds, type: "contact.tag_added" as const }] : remaining;
+  return [{ tagIds, type: "contact.tag_added" as const }];
 }
 
-function toggleMessageTrigger(
-  triggers: WorkflowStartTrigger[],
-  checked: boolean,
-) {
-  const remaining = triggers.filter(trigger => trigger.type !== "message.received");
-  if (!checked) return remaining;
-  return [...remaining, { match: "any" as const, type: "message.received" as const }];
+function getMessageKeywords(triggers: WorkflowStartTrigger[]) {
+  return triggers.find(trigger => trigger.type === "message.received")?.keywords ?? [];
+}
+
+function normalizeCommaSeparatedValues(value: string) {
+  return [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))];
 }

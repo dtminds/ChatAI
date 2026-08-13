@@ -99,13 +99,13 @@ function executionSpec(workflowId: string): WorkflowExecutionSpec {
         config: workflowId === "32"
           ? {
               entryPolicy: { mode: "never" },
-              triggers: [{ type: "contact.friend_added" }],
+              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
               workUserIds: [201],
             }
           : {
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ type: "contact.friend_added" }],
+              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
             },
         id: "start",
         kind: "start",
@@ -153,6 +153,7 @@ function binding(
     filter: {
       entryPolicy: { mode: "never" },
       eventType: "contact.friend_added",
+      sourceIds: [],
       workUserIds: [201],
     },
     id: workflowId,

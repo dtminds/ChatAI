@@ -23,6 +23,7 @@ const WorkflowPositiveSafeIntegerSchema = Type.Integer({
   minimum: 1,
 });
 const WorkflowExternalUserIdSchema = Type.String({ maxLength: 128, minLength: 1 });
+const WorkflowEventSourceIdSchema = Type.String({ maxLength: 128, minLength: 1 });
 
 const WorkflowWeComContactIdentitySchema = {
   externalUserId: WorkflowExternalUserIdSchema,
@@ -35,10 +36,14 @@ const WorkflowChatAiContactIdentitySchema = {
 } as const;
 
 export const WorkflowContactFriendAddedPayloadSchema = Type.Union([
-  Type.Object(WorkflowWeComContactIdentitySchema, { additionalProperties: false }),
+  Type.Object({
+    ...WorkflowWeComContactIdentitySchema,
+    sourceId: Type.Optional(WorkflowEventSourceIdSchema),
+  }, { additionalProperties: false }),
   Type.Object({
     ...WorkflowWeComContactIdentitySchema,
     ...WorkflowChatAiContactIdentitySchema,
+    sourceId: Type.Optional(WorkflowEventSourceIdSchema),
   }, { additionalProperties: false }),
 ]);
 

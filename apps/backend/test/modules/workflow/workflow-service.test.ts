@@ -245,7 +245,7 @@ describe("WorkflowService", () => {
     const created = await service.create(operator, { workflowType: "wecom_sop" });
     const startConfigured = withStartConfig(created.draft, {
       entryPolicy: { mode: "never" },
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       workUserIds: [201],
     });
     const draft = {
@@ -410,7 +410,7 @@ describe("WorkflowService", () => {
       draft: withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ match: "any", type: "message.received" }],
+        triggers: [{ keywords: [], type: "message.received" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -435,7 +435,7 @@ describe("WorkflowService", () => {
         windowUnit: "day",
       },
       seatIds: [101],
-      triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
 
     const seeded = await repository.saveDraft({
@@ -466,7 +466,7 @@ describe("WorkflowService", () => {
       draft: withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [102],
-        triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -532,7 +532,7 @@ describe("WorkflowService", () => {
       draft: withWaitNode(withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ type: "contact.friend_added" }],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       }), { duration: 2, mode: "duration", unit: "day" }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -663,6 +663,19 @@ describe("WorkflowService", () => {
     await expect(service.resume(operator, created.id)).rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
     await expect(service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion }))
       .rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
+  });
+
+  it("maps the active Workflow limit to a conflict response", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository);
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    vi.spyOn(repository, "enable").mockResolvedValue({ kind: "active-limit-exceeded" });
+
+    await expect(service.enable(operator, created.id)).rejects.toMatchObject({
+      code: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
+      statusCode: 409,
+    });
   });
 
   it("allows only layout changes after a workflow is stopped", async () => {
@@ -846,7 +859,7 @@ async function createConfigured(
   const draft = withStartConfig(created.draft, {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ type: "contact.friend_added" }],
+    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   });
   return service.saveDraft(operator, created.id, {
     draft,

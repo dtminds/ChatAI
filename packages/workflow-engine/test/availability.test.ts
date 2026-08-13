@@ -148,10 +148,7 @@ describe("workflow production availability", () => {
           config: {
             entryPolicy: { mode: "never" },
             seatIds: [1],
-            triggers: [
-              { type: "contact.friend_added" },
-              { match: "any", type: "message.received" },
-            ],
+            triggers: [{ sourceIds: [], type: "contact.friend_added" }],
           },
           id: "start",
           kind: "start",
@@ -172,7 +169,6 @@ describe("workflow production availability", () => {
           id: "start",
           requiredCapabilities: [
             { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-            { capabilityKey: "event.message.received", contractVersion: 1 },
           ],
         },
         { config: { duration: 46, unit: "day" }, id: "wait", requiredCapabilities: [] },
@@ -180,7 +176,6 @@ describe("workflow production availability", () => {
       ],
       requiredCapabilities: [
         { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-        { capabilityKey: "event.message.received", contractVersion: 1 },
       ],
       schemaVersion: 2,
     });

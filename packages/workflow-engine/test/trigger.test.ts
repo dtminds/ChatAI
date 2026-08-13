@@ -1,86 +1,145 @@
+import type { WorkflowStartConfig } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  getWorkflowTriggerBindings,
+  getWorkflowTriggerBinding,
   matchWorkflowTrigger,
   normalizeWorkflowStartConfig,
 } from "../src/index.js";
 
-const startConfig = {
-  entryPolicy: {
-    maxEntries: 2,
-    mode: "rolling_window" as const,
-    windowSize: 7,
-    windowUnit: "day" as const,
-  },
-  seatIds: [101, 102],
-  triggers: [
-    { type: "contact.friend_added" as const },
-    { tagIds: [301, 302], type: "contact.tag_added" as const },
-    { match: "any" as const, type: "message.received" as const },
-  ],
+const entryPolicy = {
+  maxEntries: 2,
+  mode: "rolling_window" as const,
+  windowSize: 7,
+  windowUnit: "day" as const,
 };
 
 describe("workflow trigger matching", () => {
-  const bindings = getWorkflowTriggerBindings(startConfig, "chatai_contact", {
-    resolvedWorkUserIds: [201, 202],
+  it("matches friend-added events by member and optional exact source", () => {
+    const anySource = friendBinding([]);
+    expect(matchWorkflowTrigger(anySource.filter, projection({
+      eventType: "contact.friend_added",
+      match: { workUserId: 201 },
+    }))).toBe(true);
+
+    const selectedSources = friendBinding(["qr-code-1", "store-2"]);
+    expect(matchWorkflowTrigger(selectedSources.filter, projection({
+      eventType: "contact.friend_added",
+      match: { sourceId: "qr-code-1", workUserId: 201 },
+    }))).toBe(true);
+    expect(matchWorkflowTrigger(selectedSources.filter, projection({
+      eventType: "contact.friend_added",
+      match: { sourceId: "other", workUserId: 201 },
+    }))).toBe(false);
+    expect(matchWorkflowTrigger(selectedSources.filter, projection({
+      eventType: "contact.friend_added",
+      match: { workUserId: 201 },
+    }))).toBe(false);
+    expect(matchWorkflowTrigger(selectedSources.filter, projection({
+      eventType: "contact.friend_added",
+      match: { sourceId: "qr-code-1", workUserId: 999 },
+    }))).toBe(false);
   });
 
-  it("matches contact events by WeCom member and exact tag", () => {
-    const tagBinding = requireBinding("contact.tag_added");
-    expect(matchWorkflowTrigger(tagBinding.filter, projection({
+  it("matches tag events by member and exact tag", () => {
+    const binding = getWorkflowTriggerBinding({
+      entryPolicy,
+      seatIds: [101],
+      triggers: [{ tagIds: [301, 302], type: "contact.tag_added" }],
+    }, "chatai_contact", { resolvedWorkUserIds: [201, 202] });
+
+    expect(matchWorkflowTrigger(binding.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 301, workUserId: 201 },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(tagBinding.filter, projection({
+    expect(matchWorkflowTrigger(binding.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 999, workUserId: 201 },
     }))).toBe(false);
-    expect(matchWorkflowTrigger(tagBinding.filter, projection({
+    expect(matchWorkflowTrigger(binding.filter, projection({
       eventType: "contact.tag_added",
       match: { tagId: 301, workUserId: 999 },
     }))).toBe(false);
   });
 
-  it("matches message events by ChatAI seat", () => {
-    const messageBinding = requireBinding("message.received");
-    expect(matchWorkflowTrigger(messageBinding.filter, projection({
+  it("matches message events by seat and optional keyword", () => {
+    const anyMessage = messageBinding([]);
+    expect(matchWorkflowTrigger(anyMessage.filter, projection({
       eventType: "message.received",
       match: { seatId: 101 },
     }))).toBe(true);
-    expect(matchWorkflowTrigger(messageBinding.filter, projection({
+
+    const keywords = messageBinding(["价格", "优惠"]);
+    expect(matchWorkflowTrigger(keywords.filter, projection({
       eventType: "message.received",
-      match: { seatId: 999 },
+      match: { seatId: 101, text: "请问现在有什么优惠" },
+    }))).toBe(true);
+    expect(matchWorkflowTrigger(keywords.filter, projection({
+      eventType: "message.received",
+      match: { seatId: 101, text: "你好" },
+    }))).toBe(false);
+    expect(matchWorkflowTrigger(keywords.filter, projection({
+      eventType: "message.received",
+      match: { seatId: 101 },
+    }))).toBe(false);
+    expect(matchWorkflowTrigger(keywords.filter, projection({
+      eventType: "message.received",
+      match: { seatId: 999, text: "价格" },
     }))).toBe(false);
   });
 
-  it("normalizes numeric identities and creates one structured binding per event type", () => {
+  it("normalizes the single trigger and creates one complete binding", () => {
     const normalized = normalizeWorkflowStartConfig({
-      ...startConfig,
+      entryPolicy,
       seatIds: [101, 101, 102],
-      triggers: [
-        { tagIds: [301, 301, 302], type: "contact.tag_added" as const },
-      ],
+      triggers: [{ keywords: [" 价格 ", "价格", "优惠"], type: "message.received" }],
     });
     expect("seatIds" in normalized ? normalized.seatIds : []).toEqual([101, 102]);
-    expect(normalized.triggers[0]).toMatchObject({ tagIds: [301, 302] });
-    expect(bindings.map(binding => binding.eventType)).toEqual([
-      "contact.friend_added",
-      "contact.tag_added",
-      "message.received",
-    ]);
-    expect(requireBinding("contact.friend_added").filter).toEqual({
-      entryPolicy: startConfig.entryPolicy,
-      eventType: "contact.friend_added",
-      workUserIds: [201, 202],
+    expect(normalized.triggers).toEqual([{
+      keywords: ["价格", "优惠"],
+      type: "message.received",
+    }]);
+    expect(getWorkflowTriggerBinding(normalized, "chatai_contact")).toEqual({
+      eventType: "message.received",
+      filter: {
+        entryPolicy,
+        eventType: "message.received",
+        keywords: ["价格", "优惠"],
+        seatIds: [101, 102],
+      },
+      subjectType: "chatai_contact",
     });
   });
 
-  function requireBinding(eventType: typeof bindings[number]["eventType"]) {
-    const binding = bindings.find(item => item.eventType === eventType);
-    if (!binding) throw new Error(`Missing binding: ${eventType}`);
-    return binding;
-  }
+  it("rejects malformed multi-event data at binding generation", () => {
+    const malformed = {
+      entryPolicy,
+      seatIds: [101],
+      triggers: [
+        { sourceIds: [], type: "contact.friend_added" },
+        { keywords: [], type: "message.received" },
+      ],
+    } as unknown as WorkflowStartConfig;
+
+    expect(() => getWorkflowTriggerBinding(malformed, "chatai_contact"))
+      .toThrow("Start configuration requires exactly one trigger");
+  });
 });
+
+function friendBinding(sourceIds: string[]) {
+  return getWorkflowTriggerBinding({
+    entryPolicy,
+    seatIds: [101],
+    triggers: [{ sourceIds, type: "contact.friend_added" }],
+  }, "chatai_contact", { resolvedWorkUserIds: [201, 202] });
+}
+
+function messageBinding(keywords: string[]) {
+  return getWorkflowTriggerBinding({
+    entryPolicy,
+    seatIds: [101, 102],
+    triggers: [{ keywords, type: "message.received" }],
+  }, "chatai_contact");
+}
 
 function projection(overrides: Record<string, unknown>) {
   return {

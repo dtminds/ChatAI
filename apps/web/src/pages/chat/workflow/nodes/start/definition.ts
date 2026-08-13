@@ -36,7 +36,7 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   layout: standardNodeLayout,
   role: "entry",
   sanitizeData: (data) => {
-    const sanitizedData = sanitizeStartSource(data);
+    const sanitizedData = sanitizeStartTriggers(sanitizeStartSource(data));
     if (sanitizedData.entryPolicy.mode !== "rolling_window") return sanitizedData;
     const maxWindowSize = sanitizedData.entryPolicy.windowUnit === "hour"
       ? WORKFLOW_ENTRY_WINDOW_MAX_HOURS
@@ -127,4 +127,21 @@ function sanitizeStartSource(data: StartNodeData): StartNodeData {
 
 function sanitizePositiveIds(ids: number[]) {
   return [...new Set(ids.filter(id => Number.isSafeInteger(id) && id > 0))];
+}
+
+function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
+  const triggers = data.triggers.slice(0, 1).map((trigger) => {
+    if (trigger.type === "contact.tag_added") {
+      return { ...trigger, tagIds: sanitizePositiveIds(trigger.tagIds) };
+    }
+    if (trigger.type === "contact.friend_added") {
+      return { ...trigger, sourceIds: sanitizeStrings(trigger.sourceIds) };
+    }
+    return { ...trigger, keywords: sanitizeStrings(trigger.keywords) };
+  });
+  return { ...data, triggers } as StartNodeData;
+}
+
+function sanitizeStrings(values: string[]) {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))];
 }

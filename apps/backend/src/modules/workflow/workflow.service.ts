@@ -34,7 +34,7 @@ import {
   compileWorkflowDraft,
   createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
-  getWorkflowTriggerBindings,
+  getWorkflowTriggerBinding,
   getWorkflowNodeCapabilityRequirements,
   getWorkflowNodeExecutionConfigError,
   projectWorkflowNodeExecutionConfig,
@@ -312,7 +312,7 @@ export class WorkflowService {
     if (definition.publishedRevision === null) {
       const executionSpec = this.compile(normalizedDefinition, 1);
       this.assertProductionAvailability(executionSpec, entitlement);
-      await this.createTriggerBindings(scope.uid, executionSpec, subjectType);
+      await this.createTriggerBinding(scope.uid, executionSpec, subjectType);
       const validated = this.unwrapMutation(await this.repository.markValidated({
         expectedDraftVersion: input.expectedDraftVersion,
         opSubUserId: scope.subUserId,
@@ -325,7 +325,7 @@ export class WorkflowService {
     const nextRevision = definition.publishedRevision + 1;
     const executionSpec = this.compile(normalizedDefinition, nextRevision);
     this.assertProductionAvailability(executionSpec, entitlement);
-    const triggerBindings = await this.createTriggerBindings(
+    const triggerBinding = await this.createTriggerBinding(
       scope.uid,
       executionSpec,
       subjectType,
@@ -333,7 +333,7 @@ export class WorkflowService {
     const specHash = hashExecutionSpec({
       executionSpec,
       subjectType,
-      triggerBindings,
+      triggerBinding,
       workflowType: definition.workflowType,
     });
     const currentRevision = await this.repository.findRevision(
@@ -356,7 +356,7 @@ export class WorkflowService {
       opSubUserId: scope.subUserId,
       specHash,
       subjectType,
-      triggerBindings,
+      triggerBinding,
       uid: scope.uid,
       workflowId,
       workflowType: definition.workflowType,
@@ -386,7 +386,7 @@ export class WorkflowService {
     const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
     const executionSpec = this.compile({ ...definition, draft: normalizedDraft }, 1);
     this.assertProductionAvailability(executionSpec, entitlement);
-    const triggerBindings = await this.createTriggerBindings(
+    const triggerBinding = await this.createTriggerBinding(
       scope.uid,
       executionSpec,
       subjectType,
@@ -399,11 +399,11 @@ export class WorkflowService {
       specHash: hashExecutionSpec({
         executionSpec,
         subjectType,
-        triggerBindings,
+        triggerBinding,
         workflowType: definition.workflowType,
       }),
       subjectType,
-      triggerBindings,
+      triggerBinding,
       uid: scope.uid,
       workflowId,
       workflowType: definition.workflowType,
@@ -522,7 +522,7 @@ export class WorkflowService {
     return this.llmTestAttemptRepository;
   }
 
-  private async createTriggerBindings(
+  private async createTriggerBinding(
     uid: number,
     spec: ReturnType<typeof compileWorkflowDraft>,
     subjectType: WorkflowRevisionRecord["subjectType"],
@@ -534,7 +534,7 @@ export class WorkflowService {
     }
     const config = entryNode.config as WorkflowStartConfig;
     if (subjectType !== "chatai_contact" || !("seatIds" in config)) {
-      return getWorkflowTriggerBindings(config, subjectType);
+      return getWorkflowTriggerBinding(config, subjectType);
     }
 
     let workUserIdBySeatId: Map<number, number>;
@@ -558,9 +558,9 @@ export class WorkflowService {
       );
     }
     if (!config.triggers.some(trigger => trigger.type.startsWith("contact."))) {
-      return getWorkflowTriggerBindings(config, subjectType);
+      return getWorkflowTriggerBinding(config, subjectType);
     }
-    return getWorkflowTriggerBindings(config, subjectType, {
+    return getWorkflowTriggerBinding(config, subjectType, {
       resolvedWorkUserIds: resolvedWorkUserIds as number[],
     });
   }
@@ -568,6 +568,13 @@ export class WorkflowService {
   private unwrapMutation<T>(result: WorkflowMutationResult<T>) {
     if (result.kind === "success") return result.value;
     if (result.kind === "not-found") throw workflowNotFound();
+    if (result.kind === "active-limit-exceeded") {
+      throw new AppError(
+        "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
+        "最多可同时运行 50 个 Workflow",
+        409,
+      );
+    }
     if (result.kind === "conflict") throw conflictError();
     throw invalidStatusError(result.status);
   }
@@ -729,14 +736,14 @@ function createInitialNode(
 function hashExecutionSpec(input: {
   executionSpec: ReturnType<typeof compileWorkflowDraft>;
   subjectType: WorkflowRevisionRecord["subjectType"];
-  triggerBindings: WorkflowTriggerBindingSpec[];
+  triggerBinding: WorkflowTriggerBindingSpec;
   workflowType: WorkflowType;
 }) {
   const { revision: _revision, ...publishSemantics } = input.executionSpec;
   return createHash("sha256").update(JSON.stringify({
     executionSpec: publishSemantics,
     subjectType: input.subjectType,
-    triggerBindings: input.triggerBindings,
+    triggerBinding: input.triggerBinding,
     workflowType: input.workflowType,
   })).digest("hex");
 }

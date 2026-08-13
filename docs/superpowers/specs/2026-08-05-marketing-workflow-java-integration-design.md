@@ -31,7 +31,7 @@
 | Entry Event | Java 生产，Node 消费 | 可以触发 Start 或唤醒 Wait Event 的标准业务事实。事件携带来源身份和可用的 Subject 引用；Node 匹配具体 Binding 后才确定每个 Run 的唯一 Subject。通过 Pulsar `workflow-entry` 传递。 |
 | `eventId` | Java 生成，Node 使用 | 业务事件的稳定唯一标识。同一业务事实重试和重复投递时必须保持不变，Node 用它防止同一 Workflow 重复创建 Run。 |
 | Revision | Node | Workflow 每次正式启用或执行语义发生变化时生成的不可变执行快照。新 Run 使用最新 Revision，已经运行的 Run 始终固定使用进入时的 Revision。 |
-| Trigger Binding / Binding | Node | 从已发布 Revision 的 Start 节点编译出的触发索引，记录 Event Type、目标 Subject Type 和完整触发条件。Node 同时维护结构化 Binding Match 子表，Java 只做来源维度的存在性查询，Node 负责最终匹配和 Subject 解析。 |
+| Trigger Binding / Binding | Node | 从已发布 Revision 的 Start 节点编译出的触发索引，记录 Event Type、目标 Subject Type 和完整 `filter_spec_json`。Binding 按 Revision 和 Event Type 持久化；本期因 Start Event 单选，当前 Revision 实际只有一条。Java 预匹配、Node 最终匹配和 Subject 解析都以当前 Revision Binding 为准。 |
 | Run | Node | 某个 `subjectType + subjectId` 成功进入某个 Workflow 后产生的一次运行实例。同一主体重复进入同一 Workflow 会形成不同 Run，但必须满足 Start 的重复进入规则。 |
 | Task | Node | Run 当前等待执行或即将执行的最小调度单元，记录节点、状态、执行版本、`due_at`、租约和重试次数。1.0 中一个 Run 同一时刻最多有一个有效 Task。 |
 | Node Execution | Node | 某个节点在某个 Run 中的一次执行账本，保存受控输入、输出、幂等键、开始/完成时间和错误结果，用于审计与排障。 |
@@ -240,7 +240,7 @@ Node 负责：
 Java 不应：
 
 - 读取或解析 `draft_json`、`execution_spec_json`、节点图和条件 AST。
-- 解析 `filter_spec_json` 后自行完成关键词、标签或复杂触发条件匹配。
+- 解释 Draft、节点配置或任意规则 DSL；Java 只允许按 Interest Reader 文档冻结的事件 Filter Schema 解析 `filter_spec_json` 并执行预匹配。
 - 在业务事件中写入 `workflowId`、`revision`、`runId` 或指定目标 Workflow。
 - 把 Java 的业务事件直接标记为某个 `workflowType`，或由 Java 决定目标 Workflow 类型。
 - 创建或修改 Workflow Run、Task、Revision、Trigger Binding。
@@ -553,7 +553,7 @@ Node 只在真正要使用 Workflow 时惰性查询 Java：
 
 ## 6. 标准事件契约
 
-> 本节旧的单 Subject 信封保留为历史背景。首批事件的最终字段、单企微事件投递和 Subject 解析以 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md) 为准。
+> 本节描述首批事件的当前公共边界。逐事件字段、Interest Reader SQL 和 Filter 规则以 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md) 为准。
 
 ### 6.1 目标事件信封
 
@@ -576,10 +576,8 @@ type WorkflowEntryEvent = {
   eventId: string;
   eventType: string;
   uid: number;
-  subjectType: "wecom_contact" | "miniapp_member" | "chatai_contact";
-  subjectId: string;
   occurredAt: string;
-  source: string;
+  source: "wecom" | "chatai";
   payload: Record<string, JsonValue>;
 };
 ```
@@ -593,11 +591,9 @@ type WorkflowEntryEvent = {
 | `eventId` | Java | 大小写敏感，1-128 字符，在租户内全局唯一；同一业务事实重试时必须稳定 |
 | `eventType` | 双方 | 1-128 字符，匹配 `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`，由 Event Catalog 统一管理 |
 | `uid` | Java | 租户 ID，必须是 JavaScript 安全整数范围内的正整数 |
-| `subjectType` | Java | 事件主体身份命名空间，必须与 Start Binding 或 Wait Event Subscription 的主体类型兼容 |
-| `subjectId` | Java | 1-256 字符，在 `uid + subjectType` 内稳定、不透明且大小写敏感；Node 不解析其组成 |
 | `occurredAt` | Java | UTC RFC 3339 毫秒格式，例如 `2026-08-09T10:30:15.123Z` |
-| `source` | Java | 必填，1-64 字符；表示权威事件来源，只用于审计和指标，不参与路由 |
-| `payload` | 双方 | 由具体 `eventType + payloadVersion` 定义的受控对象 |
+| `source` | Java | 当前只能是 `wecom` 或 `chatai`；表示权威事件来源，只用于审计和指标，不参与 Workflow 匹配 |
+| `payload` | 双方 | 由具体 `eventType + payloadVersion` 定义的受控对象，并携带 Node 解析候选 Run Subject 所需的事件身份字段 |
 
 公共信封采用关闭对象规则，`additionalProperties: false`，不提供自由扩展的公共 `context`。账号、会话、渠道等非公共字段如果是某种事件所必需，必须进入该事件专属 `payload` 并由对应 Schema 校验。
 
@@ -619,7 +615,7 @@ Java 用 `Instant` 生成和解析 `occurredAt`，Node 用 `Date` 解析。写�
 - 完整 Workflow 配置
 - Java 已经判断出的目标流程列表
 
-同一个 Subject 投影事件只投递一次，由 Node 决定它命中零个、一个还是多个兼容 Workflow。一个源业务事实如果明确映射到多个 Subject Type，可以生成多个稳定投影事件，但不能让 Node 在消费时猜测跨域身份。
+首批企微事件的同一个源业务事实只投递一次。事件 payload 可以同时携带 WeCom 与 ChatAI 候选身份；Node 按每条命中 Binding 的 `subject_type` 选择对应 Run Subject，并可以从一条事件创建零个、一个或多个 Workflow Run。
 
 ### 6.2 本期最小事件目录
 
@@ -629,9 +625,9 @@ Java 用 `Instant` 生成和解析 `occurredAt`，Node 用 `Date` 解析。写�
 
 | eventType | 类型 | 首批 Subject Type | 权威生产方 | 说明 |
 | --- | --- | --- | --- | --- |
-| `message.received` | 发生事件 | `chatai_contact` | Java 消息域 | ChatAI 联系人产生一条新消息 |
-| `contact.friend_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 联系人完成添加好友；Java 必须产生对应 Subject 投影 |
-| `contact.tag_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 联系人被添加标签；具体标签字段稍后冻结 |
+| `message.received` | 发生事件 | `chatai_contact` | Java 消息域 | payload 携带 `seatId`、`thirdExternalUserId` 等身份字段 |
+| `contact.friend_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 一个企微事实只投递一次，payload 携带可用的两类候选身份 |
+| `contact.tag_added` | 发生事件 | `chatai_contact`、`wecom_contact` | Java 联系人域 | 一个企微事实只投递一次，payload 携带 `tagId` 与候选身份 |
 
 `audience.entered`、订单等事件是后续兼容扩展，本期不进入最小 Policy。无论后续增加哪种事件，Java 都只生产标准事件，不负责匹配具体 Workflow。
 
@@ -650,7 +646,7 @@ audience.entered:<audienceMembershipEventId>:<subjectType>
 contact.tag_added:<tagChangeEventId>
 ```
 
-当同一源事实只产生一个 Subject 投影时，可以继续使用更短的天然业务 ID。一个事实映射到多个 Subject 时，每个投影必须使用不同且稳定的 `eventId`；具体生成算法本期不冻结。
+首批事件中，一个源事实只生成一个稳定 `eventId`，不会因为可解析出多个候选 Subject 而拆成多条事件。
 
 如果源系统没有天然事件 ID，应在 Java 业务事务中先生成并持久化 Outbox ID，后续所有重试复用该值。
 
@@ -662,12 +658,12 @@ Pulsar Message ID 只用于识别一次传输，不能代替业务 `eventId`。P
 - Producer：Java。
 - Consumer：独立 Node Workflow Worker。
 - Delivery：at-least-once。
-- Partition Key：`uid:subjectType:subjectId`。
+- Partition Key：`contact.*` 使用 `uid:wecom_contact:externalUserId`；`message.received` 使用 `uid:chatai_contact:thirdExternalUserId`。
 - Java Outbox 发送成功后再标记已发送。
 - Node 完成数据库事务后再 ACK。
 - Pulsar 不承担最终状态和业务幂等。
 - 同一事件允许同时命中 Start Binding 和 Wait Event Subscription。
-- Partition Key 只优化同一 Subject 的顺序，不作为正确性条件；Start、Wait Event 和 Run 推进仍依赖数据库唯一约束、CAS 和幂等。
+- Partition Key 只优化同一源身份的顺序，不作为正确性条件；Start、Wait Event 和 Run 推进仍依赖数据库唯一约束、CAS 和幂等。
 
 ### 6.5 版本演进
 
@@ -689,255 +685,20 @@ Pulsar Message ID 只用于识别一次传输，不能代替业务 `eventId`。P
 
 ## 7. Java 直接读表的兴趣判断
 
-> 本节旧 SQL 不再作为 Java 实施依据。最终 Match 表、索引、精确查询、fail-open 和灰度契约见 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md)。
+Java 与 Node 当前共用 MySQL 实例，因此 1.0 不建设兴趣同步服务、缓存投影或注册 API。
 
-### 7.1 为什么不建设兴趣同步服务
+最终实施契约见 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md)。本节只冻结架构边界：
 
-Java 和 Node 当前使用同一个 MySQL 实例，因此 1.0 可以直接利用数据库事务和索引：
-
-- 不需要 Node 调 Java 的“注册兴趣”API。
-- 不需要再发一条“兴趣已更新”消息。
-- 不需要双方维护版本号、确认回执和定期全量对账。
-- 不需要把正确性放到 Redis 或本地缓存。
-
-代价是 Workflow 表结构中的少量只读字段成为 Java 与 Node 的数据库级契约。因此必须限定 Java 只读的表和字段，不能让 Java 依赖内部 JSON 或运行表结构。
-
-### 7.2 静态 Start 兴趣：直接读现有 Trigger Binding
-
-现有表已经提供静态入口索引：
-
-```text
-xy_wap_embed_workflow_definition
-xy_wap_embed_workflow_trigger_binding
-```
-
-Java 只需要判断租户下是否存在当前 Active Workflow 对该 `subjectType + eventType` 的有效 Binding，不读取 `filter_spec_json`。Node 发布 Revision 时将 Subject Type 从 Workflow Capability Profile 固化到 Binding 的普通索引列。
-
-推荐 SQL：
-
-```sql
-SELECT 1
-FROM xy_wap_embed_workflow_trigger_binding AS binding
-INNER JOIN xy_wap_embed_workflow_definition AS definition
-  ON definition.uid = binding.uid
- AND definition.id = binding.workflow_id
- AND definition.published_revision = binding.revision
-WHERE binding.uid = :uid
-  AND binding.subject_type = :subjectTypeCode
-  AND binding.event_type = :eventType
-  AND binding.status = 1
-  AND definition.biz_status = 1
-  AND definition.runtime_status = 'active'
-LIMIT 1;
-```
-
-现有索引：
-
-```text
-workflow_trigger_binding:
-  (uid, subject_type, event_type, status, workflow_id, revision)
-
-workflow_definition:
-  PRIMARY KEY (id)
-```
-
-这个查询的语义只是：
-
-> 当前租户是否至少有一个 Active Workflow 可能消费该 Subject Type 的事件。
-
-它故意不判断：
-
-- 托管账号是否匹配。
-- 标签、人群或关键词是否匹配。
-- 客户是否达到重复进入上限。
-- 具体命中哪个 Workflow。
-
-这些条件继续由 Node Trigger Binding Matcher 和入口事务完成。Java 允许因此多投事件，但不会因复制一套匹配规则而产生跨语言不一致。
-
-1.0 的静态粗过滤键因此是 `uid + subjectType + eventType`。如果上线数据证明某个高频事件仍有大量误投，再通过独立评审增加规范化的 `accountId`、`audienceId` 等索引字段；Java 不应直接对 `filter_spec_json` 使用 JSON 查询或复制 Node 匹配代码。
-
-### 7.3 动态 Wait Event 兴趣：新增订阅表
-
-Wait Event 和 Start 不同。只有某个 Run 真正运行到“等待事件”节点后，才需要等待特定 `subjectType + subjectId` 的事件。Java 不应通过连接 Task、Run、Revision 并解析 JSON 来推导该状态。
-
-建议新增：
-
-```sql
-CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
-  revision INT UNSIGNED NOT NULL COMMENT 'Run固定Revision',
-  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID',
-  task_id BIGINT UNSIGNED NOT NULL COMMENT '对应Wait Event任务ID',
-  node_id VARCHAR(128) NOT NULL COMMENT 'Wait Event节点ID',
-  event_type VARCHAR(128) NOT NULL COMMENT '等待的标准事件类型',
-  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体身份命名空间稳定编码',
-  subject_id VARCHAR(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主体类型内不透明ID',
-  account_id VARCHAR(128) NULL COMMENT '可选托管账号约束',
-  status VARCHAR(32) NOT NULL COMMENT 'waiting、triggered、timed_out、cancelled',
-  effective_from DATETIME NOT NULL COMMENT '订阅生效时间',
-  expires_at DATETIME NOT NULL COMMENT '最长等待截止时间',
-  collect_until DATETIME NULL COMMENT '事件触发后的消息收集截止时间',
-  trigger_event_id VARCHAR(128) NULL COMMENT '命中的入口事件ID',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_event_subscription_task (uid, task_id, event_type),
-  KEY idx_workflow_event_subscription_lookup
-    (uid, subject_type, event_type, subject_id, status, expires_at, id),
-  KEY idx_workflow_event_subscription_collect
-    (uid, subject_type, event_type, subject_id, status, collect_until, id),
-  KEY idx_workflow_event_subscription_run
-    (uid, run_id, status, id),
-  KEY idx_workflow_event_subscription_reconcile (status, id)
-) COMMENT='营销Workflow动态事件等待订阅表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription_event (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  subscription_id BIGINT UNSIGNED NOT NULL COMMENT 'Wait Event订阅ID',
-  event_id VARCHAR(128) NOT NULL COMMENT 'Workflow入口事件ID',
-  occurred_at DATETIME NOT NULL COMMENT '事件发生时间',
-  projection_json JSON NOT NULL COMMENT 'Event Catalog允许的变量投影',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收集时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id),
-  KEY idx_workflow_event_subscription_event_list (uid, subscription_id, occurred_at, id)
-) COMMENT='营销Workflow等待事件收集记录表';
-```
-
-这张表由 Node 独占写入：
-
-- Run 进入 Wait Event：在创建等待 Task 的同一事务中插入 `waiting` 订阅。
-- 事件命中：CAS `waiting -> triggered`，记录 `trigger_event_id`。
-- 收集窗口：只保存 Event Catalog 允许的变量投影，并按 `uid + subscription_id + event_id` 去重。
-- 等待超时：CAS `waiting -> timed_out`。
-- Workflow Stop、删除或 Run 取消：`waiting / triggered -> cancelled`。
-- Reconciler 清理状态与 Task 不一致或已过期的订阅。
-
-Java 动态兴趣查询：
-
-```sql
-SELECT 1
-FROM xy_wap_embed_workflow_event_subscription AS subscription
-INNER JOIN xy_wap_embed_workflow_definition AS definition
-  ON definition.uid = subscription.uid
- AND definition.id = subscription.workflow_id
-WHERE subscription.uid = :uid
-  AND subscription.subject_type = :subjectTypeCode
-  AND subscription.event_type = :eventType
-  AND subscription.subject_id = :subjectId
-  AND (
-    (subscription.status = 'waiting'
-      AND subscription.expires_at > CURRENT_TIMESTAMP)
-    OR (subscription.status = 'triggered'
-      AND subscription.collect_until > CURRENT_TIMESTAMP)
-  )
-  AND (subscription.account_id IS NULL OR subscription.account_id = :accountId)
-  AND definition.biz_status = 1
-  AND definition.runtime_status IN ('active', 'paused')
-LIMIT 1;
-```
-
-动态订阅在 Paused 时仍保留兴趣。原因是流程暂停期间发生的主体事件不应在 Java 入口被直接丢弃；Node 可以记录订阅已触发，并将后续执行延迟到恢复后。首条事件将订阅切换为 `triggered` 后，兴趣继续保留到 `collect_until`，用于收集固定 10 秒窗口内的后续消息。Stopped 和已删除流程不再保留兴趣。
-
-Wait Event 的事件到达与超时可能并发。Node 必须用单条条件更新竞争 `status = 'waiting'`，只有一个分支能够成功推进 Run。1.0 以数据库成功取得订阅的先后作为竞争结果，不依赖两个 Pulsar Topic 之间的顺序。
-
-### 7.4 Java 的统一判断 SQL
-
-Java 可以执行两个 `EXISTS` 子查询，并在任一命中时写入事件 Outbox：
-
-```sql
-SELECT
-  EXISTS (
-    SELECT 1
-    FROM xy_wap_embed_workflow_trigger_binding AS binding
-    INNER JOIN xy_wap_embed_workflow_definition AS definition
-      ON definition.uid = binding.uid
-     AND definition.id = binding.workflow_id
-     AND definition.published_revision = binding.revision
-    WHERE binding.uid = :uid
-      AND binding.subject_type = :subjectTypeCode
-      AND binding.event_type = :eventType
-      AND binding.status = 1
-      AND definition.biz_status = 1
-      AND definition.runtime_status = 'active'
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM xy_wap_embed_workflow_event_subscription AS subscription
-    INNER JOIN xy_wap_embed_workflow_definition AS definition
-      ON definition.uid = subscription.uid
-     AND definition.id = subscription.workflow_id
-    WHERE subscription.uid = :uid
-      AND subscription.subject_type = :subjectTypeCode
-      AND subscription.event_type = :eventType
-      AND subscription.subject_id = :subjectId
-      AND (
-        (subscription.status = 'waiting'
-          AND subscription.expires_at > CURRENT_TIMESTAMP)
-        OR (subscription.status = 'triggered'
-          AND subscription.collect_until > CURRENT_TIMESTAMP)
-      )
-      AND (:accountId IS NULL
-        OR subscription.account_id IS NULL
-        OR subscription.account_id = :accountId)
-      AND definition.biz_status = 1
-      AND definition.runtime_status IN ('active', 'paused')
-  ) AS interested;
-```
-
-在 Event Subscription 尚未上线前，Java 先只执行第一个静态查询。Wait Event 不得加入运行白名单，直到动态订阅表和第二个查询都完成。
-
-### 7.5 事务与隔离级别
-
-Java 的推荐顺序：
-
-```text
-Java 业务事务产生业务事实
-  -> 生成稳定 eventId
-  -> 使用 READ COMMITTED 视图执行兴趣 EXISTS
-  -> interested = true：在同一业务事务写 Java Event Outbox
-  -> interested = false：不写 Workflow Event Outbox
-  -> 提交业务事务
-  -> Java Outbox Publisher 异步发送 Pulsar
-```
-
-需要 Java 团队确认当前业务事务隔离级别。如果使用 MySQL 默认 `REPEATABLE READ`，且事务在兴趣查询前已经建立旧快照，可能看不到刚刚启用的 Workflow。建议 Workflow 兴趣查询所在事务使用 `READ COMMITTED`，或确保该查询通过不会复用旧一致性快照的短事务执行。
-
-并发边界按兴趣查询实际读取到的已提交状态定义：查询时尚未 Active 的 Workflow 不消费该事件；已经 Active 的 Workflow 可以消费。Java 不需要对 Workflow 表加锁。
-
-### 7.6 数据库权限
-
-Java 数据库账号只授予以下权限：
-
-```text
-SELECT xy_wap_embed_workflow_definition
-SELECT xy_wap_embed_workflow_trigger_binding
-SELECT xy_wap_embed_workflow_event_subscription
-```
-
-Java 不应获得 Workflow 表的 INSERT、UPDATE 或 DELETE 权限。Node 继续拥有 Workflow 表写入权。
-
-如果 Java 和 Node 使用同一实例但不同 Schema，SQL 使用全限定表名，并对上述三张表单独授权。不要因为共用实例就开放整个 Workflow Schema。
-
-Java 应把上述 SQL 收敛在单一 `WorkflowInterestReader` DAO 中，不允许各事件模块自行拼接 Workflow SQL。三张表被 Java 使用的列、状态值和索引构成跨服务数据库契约，后续修改必须经过 Java/Node 联合评审和集成测试。
-
-### 7.7 缓存策略
-
-1.0 默认不加 Java 本地缓存：
-
-- 负缓存会在 Workflow 刚启用时造成短暂漏事件。
-- 正缓存过期只会多发事件，但对大量没有 Workflow 的租户帮助有限。
-- 当前最重要的是先测量带索引 `EXISTS` 的真实 QPS 和延迟。
-
-当查询压力确实成为瓶颈时再演进：
-
-1. 先增加只读副本或短时正缓存。
-2. 如需负缓存，必须同时提供可靠失效通知或启用生效屏障。
-3. 无论是否缓存，缓存缺失、过期和异常都按 fail-open 处理。
+- Java 只读 `workflow_definition`、`workflow_trigger_binding` 和 `workflow_event_subscription` 三张表。
+- 本期一个 Workflow 只能选择一个 Start Event；发布契约和持久化仍使用 Binding 数组，为未来多事件保留扩展空间。
+- Backend 对每租户最多 50 个 active Workflow 做普通计数检查，不使用租户级锁处理极端并发超限。
+- Java 按 `uid + eventType` 查询 Binding JOIN Definition，最多读取 50 条 `filter_spec_json`，再按冻结的事件 Filter Schema 在内存预匹配。
+- Java 不在 SQL 中拆解 JSON，不读取 Draft、Revision、Execution Spec、Run 或 Task，也不维护 Binding Match 派生表。
+- `message.received` 的静态 Start 兴趣与动态 Wait Event Subscription 任一命中即可投递。
+- 查询、JSON 解析或未知 Filter 失败时返回 `UNKNOWN` 并 fail-open。
+- Node 收到事件后仍使用同一 Binding Filter 做最终权威匹配并创建 Run。
+- Java 数据库账号仅授予上述三张表的 `SELECT`，所有查询收敛在单一 `WorkflowInterestReader` DAO。
+- 1.0 默认不加 Java 本地缓存；只有真实指标证明数据库查询成为瓶颈后再独立评审。
 
 ## 8. Java 事件生产机制
 
@@ -1299,7 +1060,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 ### 11.2 顺序
 
-- Pulsar Partition Key 使用 `uid:subjectType:subjectId`，提高同一主体事件稳定路由概率，并避免不同身份域中的同值 ID 被错误聚合。
+- Pulsar Partition Key 按事件来源域选择稳定身份：`contact.*` 使用 `externalUserId`，`message.received` 使用 `thirdExternalUserId`。
 - 正确性不能依赖 MQ 严格顺序。
 - Start 通过事件 ID 和数据库事务幂等。
 - Wait Event 通过 Subscription CAS 解决事件与超时竞争。
@@ -1308,7 +1069,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 ### 11.3 重复和重放
 
 - Java Outbox 或 Pulsar 重投可以产生重复消息。
-- 同一业务事实的同一 Subject 投影必须复用同一 `eventId`。
+- 同一业务事实的重试、Outbox 重发和 Pulsar 重投必须复用同一 `eventId`。
 - Node 允许同一事件命中不同 Workflow，但禁止它在同一 Workflow 中重复创建 Run。
 - 人工重放必须保留原 `eventId`，除非产品明确要求把它当作一个全新业务事件。
 - Java 在兴趣查询为 false 时不会写 Workflow Event Outbox，因此 1.0 不支持未来启用 Workflow 后回放此前所有被过滤事件。
@@ -1385,7 +1146,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | 确认 Business Capability Layer | Java | Node | 确认能力目录、统一信封以及禁止传递原始 nodeConfig |
 | 冻结错误码分类 | Java | Node | 每个动作接口明确 success/retryable/terminal/unknown |
 | 冻结资源校验边界 | Java | Node、产品 | 明确哪些资源发布时批量校验、执行时再次权威校验 |
-| 确认数据库权限 | 运维/DBA | Java、Node | Java 账号仅能 SELECT Definition、Trigger Binding、Binding Match 和 Event Subscription 四张 Workflow 兴趣相关表 |
+| 确认数据库权限 | 运维/DBA | Java、Node | Java 账号仅能 SELECT Definition、Trigger Binding 和 Event Subscription 三张 Workflow 兴趣相关表 |
 | 确认 Pulsar 环境参数 | 运维 | Java、Node | Topic、Token、Namespace、分区和订阅可联调 |
 
 ### 14.2 Java 任务包
@@ -1399,8 +1160,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 **J1：WorkflowInterestReader**
 
-- 按最新入口契约实现静态 Trigger Binding + Binding Match `EXISTS` 查询。
-- `contact.friend_added` 按 `uid + workUserId`；`contact.tag_added` 按 `uid + workUserId + tagId`；`message.received` 按 `uid + seatId`。
+- 按最新入口契约查询 Binding JOIN Definition，最多读取 50 条完整 `filter_spec_json`。
+- 在内存中实现添加好友来源、标签和消息关键词的版本化 Filter Matcher。
 - 实现 `message.received` 动态 Event Subscription 查询。
 - 配置查询超时、fail-open 和指标。
 - 支持 `observe / enforce` 灰度模式。
@@ -1472,8 +1233,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 将 Start 产品模型对齐为“发生事件 / 进入人群”。
 - 只展示当前 Workflow Type 允许的 Start 事件。
 - ChatAI SOP 保存 `seatIds`，WeCom SOP 保存 `workUserIds`，删除通用 `accountIds`。
-- 发布时生成 Trigger Binding 与 Binding Match；ChatAI SOP 的企微事件将 `seatId` 权威解析为 `workUserId`。
-- Java 按稳定来源维度做存在性查询，Node 做完整规则匹配并解析 Run Subject。
+- 发布时按 Revision 批量写入 Trigger Binding；本期数组长度为 1。ChatAI SOP 的企微事件将 `seatId` 权威解析为 `workUserId`。
+- Java 读取完整 Binding Filter 做预匹配，Node 使用同一 Filter 做最终权威匹配并解析 Run Subject。
 - 验收：一条企微事件只投递一次，但可正确扇出到不同 Workflow Type。
 
 **N4：Wait Event Runtime**
@@ -1640,7 +1401,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 实施顺序：
 
 1. 版本化 Workflow Entry Event Envelope、Event Catalog、Trigger Projection 和消费结果分类。
-2. `uid + subjectType + subjectId` 的 Binding、Run、Entry Guard、Partition Key、Inbox 与扇出。
+2. 源事件身份、Binding Filter、Run Subject 解析、Entry Guard、Partition Key、Inbox 与扇出。
 3. Event Subscription 持久化、事件/超时 CAS、暂停/停止/恢复和 Reconciler。
 4. Wait Event Compiler、Executor、固定 10 秒消息收集及 Triggered/Timeout 路由。
 
@@ -1705,7 +1466,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Wait Event 完整实现后仍需真实事件源和 Event Catalog v1 的 test01 Smoke 才能开启对应 Deployment Capability；Branch 完整实现后无需 Java operation 即可进入 Runtime Support。
 - Java Capability Port 不能接收原始 Node、nodeConfig 或变量表达式；仅完成 Port 不会开放任何 Message、Query、Tag、Coupon 或 Handoff 节点。
 - 创建、发布、启用、恢复、Entry 和 Task 推进均执行 Workflow Type Entitlement 检查；Java 查询失败不会被当作无权益，也不会继续执行业务动作。
-- Event、Binding、Run、Entry Guard、Wait Event Subscription 和 Partition Key 都使用明确的 `subjectType + subjectId` 语义。
+- Binding 明确目标 `subjectType`，Run、Entry Guard 和 Wait Event Subscription 使用 `subjectType + subjectId`；Entry Event 与 Partition Key 使用事件来源域身份，并由 Node 解析候选 Run Subject。
 - 不同 Subject Type 的同值 ID 已通过隔离测试，运行记录可按 Subject Type 正确展示主体信息。
 - Java 事件生产使用 Outbox，不在业务事务中裸发 MQ。
 - Interest Reader 已完成 Observe 数据验证，查询异常 fail-open。

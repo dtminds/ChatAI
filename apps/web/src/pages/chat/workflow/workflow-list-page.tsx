@@ -396,6 +396,9 @@ function getWorkflowLifecycleErrorMessage(
   error: unknown,
 ) {
   const repositoryError = normalizeWorkflowRepositoryError(error);
+  if (repositoryError.apiCode === "WORKFLOW_ACTIVE_LIMIT_EXCEEDED") {
+    return "最多可同时运行 50 个 Workflow";
+  }
   if (action === "enable" && repositoryError.code === "conflict") {
     return "请先在编辑页发布当前草稿";
   }

@@ -1,10 +1,10 @@
-import type {
-  WorkflowDraft,
-  WorkflowExecutionSpec,
-  WorkflowRuntimeStatus,
-  WorkflowStatusReason,
-  WorkflowStoredExecutionSpec,
-  WorkflowTriggerBindingFilter,
+import {
+  WORKFLOW_ACTIVE_DEFINITION_LIMIT,
+  type WorkflowDraft,
+  type WorkflowExecutionSpec,
+  type WorkflowRuntimeStatus,
+  type WorkflowStatusReason,
+  type WorkflowStoredExecutionSpec,
 } from "@chatai/contracts";
 import {
   decodeWorkflowSubjectType,
@@ -26,7 +26,6 @@ import type {
 const DEFINITION_TABLE = "xy_wap_embed_workflow_definition" as const;
 const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
-const TRIGGER_BINDING_MATCH_TABLE = "xy_wap_embed_workflow_trigger_binding_match" as const;
 
 type WorkflowDbExecutor = Kysely<WorkflowDatabase> | Transaction<WorkflowDatabase>;
 type PublishedWriteResult = {
@@ -284,15 +283,15 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     input: Parameters<WorkflowRepository["setRuntimeStatus"]>[0],
   ): ReturnType<WorkflowRepository["setRuntimeStatus"]> {
     return this.db.transaction().execute(async (transaction) => {
-      const row = await selectDefinitionForUpdate(
-        transaction,
-        input.uid,
-        input.workflowId,
-      );
+      const row = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!row) return notFound();
       const definition = mapDefinition(row);
       if (!input.allowedCurrentStatuses.includes(definition.runtimeStatus)) {
         return invalidStatus(definition.runtimeStatus);
+      }
+      if (input.status === "active"
+        && await hasReachedActiveDefinitionLimit(transaction, input.uid)) {
+        return activeLimitExceeded();
       }
       await transaction.updateTable(DEFINITION_TABLE).set({
         op_sub_uid: input.opSubUserId,
@@ -340,6 +339,9 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
           || definition.validatedDraftVersion !== definition.draftVersion) {
           return conflict();
         }
+        if (await hasReachedActiveDefinitionLimit(transaction, input.uid)) {
+          return activeLimitExceeded();
+        }
       } else if (definition.runtimeStatus === "inactive"
         || definition.publishedRevision !== input.expectedPublishedRevision) {
         return invalidStatus(definition.runtimeStatus);
@@ -364,29 +366,17 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .where("uid", "=", input.uid)
         .where("workflow_id", "=", input.workflowId)
         .where("status", "=", 1)
-        .executeTakeFirst();
+        .executeTakeFirstOrThrow();
       if (input.triggerBindings.length > 0) {
-        for (const binding of input.triggerBindings) {
-          const bindingInsert = await transaction.insertInto(TRIGGER_BINDING_TABLE).values({
-            event_type: binding.eventType,
-            filter_spec_json: stringifyJson(binding.filter),
-            revision: input.executionSpec.revision,
-            status: 1,
-            subject_type: encodeWorkflowSubjectType(binding.subjectType),
-            uid: input.uid,
-            workflow_id: input.workflowId,
-          }).executeTakeFirstOrThrow();
-          if (bindingInsert.insertId === undefined) {
-            throw new Error("Workflow Trigger Binding insert did not return an ID");
-          }
-          const matches = createTriggerBindingMatches(binding.filter);
-          await transaction.insertInto(TRIGGER_BINDING_MATCH_TABLE).values(matches.map(match => ({
-            binding_id: bindingInsert.insertId!,
-            match_kind: match.kind,
-            match_value: match.value,
-            uid: input.uid,
-          }))).executeTakeFirstOrThrow();
-        }
+        await transaction.insertInto(TRIGGER_BINDING_TABLE).values(input.triggerBindings.map(binding => ({
+          event_type: binding.eventType,
+          filter_spec_json: stringifyJson(binding.filter),
+          revision: input.executionSpec.revision,
+          status: 1,
+          subject_type: encodeWorkflowSubjectType(binding.subjectType),
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }))).executeTakeFirstOrThrow();
       }
 
       await transaction.updateTable(DEFINITION_TABLE).set({
@@ -459,41 +449,6 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   }
 }
 
-const WORKFLOW_TRIGGER_BINDING_MATCH_KIND = {
-  seatId: 2,
-  tagId: 3,
-  workUserId: 1,
-} as const;
-
-type WorkflowTriggerBindingMatch = {
-  kind: typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND[
-    keyof typeof WORKFLOW_TRIGGER_BINDING_MATCH_KIND
-  ];
-  value: number;
-};
-
-function createTriggerBindingMatches(
-  filter: WorkflowTriggerBindingFilter,
-): WorkflowTriggerBindingMatch[] {
-  if (filter.eventType === "message.received") {
-    return filter.seatIds.map(value => ({
-      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.seatId,
-      value,
-    }));
-  }
-  const matches: WorkflowTriggerBindingMatch[] = filter.workUserIds.map(value => ({
-    kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.workUserId,
-    value,
-  }));
-  if (filter.eventType === "contact.tag_added") {
-    matches.push(...filter.tagIds.map(value => ({
-      kind: WORKFLOW_TRIGGER_BINDING_MATCH_KIND.tagId,
-      value,
-    })));
-  }
-  return matches;
-}
-
 async function selectDefinitionForUpdate(db: WorkflowDbExecutor, uid: number, workflowId: string) {
   return db.selectFrom(DEFINITION_TABLE).selectAll()
     .where("uid", "=", uid)
@@ -501,6 +456,16 @@ async function selectDefinitionForUpdate(db: WorkflowDbExecutor, uid: number, wo
     .where("biz_status", "=", 1)
     .forUpdate()
     .executeTakeFirst();
+}
+
+async function hasReachedActiveDefinitionLimit(db: WorkflowDbExecutor, uid: number) {
+  const row = await db.selectFrom(DEFINITION_TABLE)
+    .select(({ fn }) => fn.countAll<number>().as("active_count"))
+    .where("uid", "=", uid)
+    .where("biz_status", "=", 1)
+    .where("runtime_status", "=", "active")
+    .executeTakeFirstOrThrow();
+  return Number(row.active_count) >= WORKFLOW_ACTIVE_DEFINITION_LIMIT;
 }
 
 function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
@@ -594,6 +559,10 @@ function toCreateResult(
 
 function conflict<T>(): WorkflowMutationResult<T> {
   return { kind: "conflict" };
+}
+
+function activeLimitExceeded<T>(): WorkflowMutationResult<T> {
+  return { kind: "active-limit-exceeded" };
 }
 
 function invalidStatus<T>(status: WorkflowRuntimeStatus): WorkflowMutationResult<T> {

@@ -500,6 +500,7 @@ function binding(
     filter: {
       entryPolicy: { mode: "never" },
       eventType: "contact.friend_added",
+      sourceIds: [],
       workUserIds,
     },
     id: workflowId,
@@ -520,7 +521,7 @@ function messageBinding(workflowId: string): WorkflowTriggerBindingRecord {
     filter: {
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
       eventType: "message.received",
-      match: "any",
+      keywords: [],
       seatIds: [101],
     },
     id: workflowId,

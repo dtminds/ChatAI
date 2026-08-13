@@ -67,12 +67,18 @@ export type WorkflowRepositoryErrorCode =
   | "unauthorized"
   | "validation";
 
+type WorkflowRepositoryErrorOptions = ErrorOptions & {
+  apiCode?: string;
+};
+
 export class WorkflowRepositoryError extends Error {
+  readonly apiCode?: string;
   code: WorkflowRepositoryErrorCode;
 
-  constructor(code: WorkflowRepositoryErrorCode, message: string, options?: ErrorOptions) {
+  constructor(code: WorkflowRepositoryErrorCode, message: string, options?: WorkflowRepositoryErrorOptions) {
     super(message, options);
     this.name = "WorkflowRepositoryError";
+    this.apiCode = options?.apiCode;
     this.code = code;
   }
 }

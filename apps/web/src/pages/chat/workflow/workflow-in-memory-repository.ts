@@ -378,7 +378,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
         ...startNode,
         data: {
           ...startNode.data,
-          triggers: [{ match: "any" as const, type: "message.received" as const }],
+          triggers: [{ keywords: [], type: "message.received" as const }],
           title: "直播互动触发",
         },
       } as WorkflowNode<"start">;

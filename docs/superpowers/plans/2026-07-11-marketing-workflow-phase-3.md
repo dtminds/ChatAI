@@ -1,6 +1,8 @@
 # Marketing Workflow Phase 3 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Historical note:** Trigger publication and Start Event details in this completed plan are superseded by GitHub Issue #595: one Start Event per Workflow in the current product, Revision-scoped Trigger Bindings, and complete event-specific rules in `filter_spec_json`.
 
 **Goal:** Deliver the independent Workflow Worker, TDMQ Pulsar messaging path, Start admission, Wait scheduling, reconciliation, smoke tooling, and production-shaped Start/Wait configuration for Phase 3.
 
@@ -69,18 +71,17 @@ Use a discriminated command union and a start configuration shaped as:
 
 ```ts
 type WorkflowStartConfig = {
-  accountIds: string[];
   entryPolicy: WorkflowEntryPolicy;
-  triggers: Array<
+  seatIds: number[];
+  triggers: [] | [
     | { type: "contact.friend_added" }
-    | { tagIds: string[]; type: "customer.tag_added" }
-    | { match: "any"; type: "message.received" }
-    | { keywords: string[]; match: "keywords"; type: "message.received" }
-  >;
+    | { tagIds: number[]; type: "contact.tag_added" }
+    | { keywords: string[]; type: "message.received" }
+  ];
 };
 ```
 
-Reject empty accounts, empty triggers, empty tag lists, empty normalized keyword lists, non-positive wait values, and every runtime node outside `start/wait/end`.
+Draft may temporarily have no event; publication requires exactly one. Reject empty source identities, empty tag lists, non-positive wait values, and every runtime node outside `start/wait/end`. Empty message keywords mean any message.
 
 - [ ] **Step 4: Run tests and builds**
 
@@ -193,11 +194,11 @@ git commit -m "Extract workflow runtime services"
 
 **Interfaces:**
 - Consumes `getWorkflowTriggerBindings(startConfig)` from Task 1.
-- Produces immutable revision bindings and an active-binding reader for the Entry Consumer and smoke command.
+- Produces the current Revision's Binding set and an active-binding reader for the Entry Consumer and smoke command.
 
 - [ ] **Step 1: Write failing publication tests**
 
-Assert that validation-only publication creates no binding, first enable writes bindings in the Revision transaction, republish deactivates old bindings and activates new bindings atomically, pause retains bindings but admission rejects, and stop/delete prevent matching.
+Assert that validation-only publication creates no binding, first enable writes the Binding in the Revision transaction, republish updates the current Binding atomically, pause retains the Binding but admission rejects, and stop/delete prevent matching through the Definition join.
 
 - [ ] **Step 2: Verify RED**
 
@@ -208,7 +209,7 @@ cd apps/backend
 
 - [ ] **Step 3: Implement binding persistence and active reads**
 
-Store one canonical binding per `eventType` per Revision, with account IDs, event filters, and entry policy in `filter_spec_json`. Replace binding status in the same transaction that inserts the Revision and updates `published_revision`.
+Store one Binding per current Revision event, with source identities, event-specific filters, and entry policy in `filter_spec_json`. Insert the Binding set in the same transaction that inserts the Revision and updates `published_revision`; the current phase produces one item because Start Event is single-select.
 
 - [ ] **Step 4: Verify tests and build**
 

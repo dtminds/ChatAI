@@ -419,7 +419,7 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
         config: {
           entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
           seatIds: [101],
-          triggers: [{ type: "contact.friend_added" }],
+          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
         },
         id: "start",
         kind: "start",

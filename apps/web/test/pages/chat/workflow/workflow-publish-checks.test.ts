@@ -683,7 +683,6 @@ describe("buildPublishChecks", () => {
     });
 
     expect(summary.summary.find((check) => check.id === "start")).toEqual(expect.objectContaining({
-      description: "已配置 2 个触发条件",
       status: "ready",
     }));
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");

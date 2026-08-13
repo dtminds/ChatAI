@@ -44,6 +44,7 @@ export type WorkflowRevisionRecord = {
 
 export type WorkflowMutationResult<T> =
   | { kind: "success"; value: T }
+  | { kind: "active-limit-exceeded" }
   | { kind: "conflict" }
   | { kind: "invalid-status"; status: WorkflowRuntimeStatus }
   | { kind: "not-found" };

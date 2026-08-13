@@ -340,7 +340,7 @@ describe("workflow routes", () => {
               ...node.data,
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ type: "contact.friend_added" }],
+              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
             },
           }
         : node),

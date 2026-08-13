@@ -311,7 +311,7 @@ describe("workflow DSL", () => {
       config: expect.objectContaining({
         seatIds: [101, 102],
         entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
-        triggers: expect.arrayContaining([{ type: "contact.friend_added" }]),
+        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
       }),
       id: "start",
       kind: "start",
@@ -481,10 +481,7 @@ describe("workflow DSL", () => {
     expect(configByKind.get("start")).toEqual({
       seatIds: [101, 102],
       entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
-      triggers: [
-        { type: "contact.friend_added" },
-        { tagIds: [201], type: "contact.tag_added" },
-      ],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
     expect(configByKind.get("wait")).toEqual({
       duration: 2,

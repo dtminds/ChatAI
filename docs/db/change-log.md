@@ -1,5 +1,18 @@
 # Database Change Log
 
+## 2026-08-13 Workflow 单入口事件与 Trigger Binding 筛选
+
+- 本期一个 Workflow 最多配置一个 Start Event；Binding 按 Revision 和 Event Type 持久化，为未来多事件保留数组模型。
+- `filter_spec_json` 保存事件专属的完整筛选规则；Java Interest Reader 与 Node 最终匹配读取同一份规则。
+- 删除开发期的 Trigger Binding Match 派生表，不改变现有 Revision 级 Binding 唯一约束。
+
+```sql
+DROP TABLE IF EXISTS xy_wap_embed_workflow_trigger_binding_match;
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  DROP KEY idx_workflow_trigger_binding_match;
+```
+
 ## 2026-08-13 Workflow 大模型节点试运行
 
 ```sql
@@ -78,7 +91,7 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-08-11
 
-- Added the structured Trigger Binding Match table used by Java Interest Reader and Node final matching.
+- The development-only Trigger Binding Match experiment was superseded by the 2026-08-13 Binding filter design and is not part of the final schema.
 - Added the source-oriented Trigger Binding index for `uid + event_type` candidate lookup.
 - Replaced the development-only generic Wait Event `account_id` with the explicit ChatAI `seat_id`; there is no production Workflow data requiring dual-column compatibility.
 - Renamed the development-only Node Execution ledger key to `execution_key`; the ledger identity is not an external Action idempotency contract.
@@ -87,19 +100,6 @@ Manual database changes for the backend should be recorded here.
 ALTER TABLE xy_wap_embed_workflow_trigger_binding
   ADD KEY idx_workflow_trigger_binding_interest
     (uid, event_type, status, workflow_id, revision, id);
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding_match (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  binding_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow触发绑定ID',
-  match_kind TINYINT UNSIGNED NOT NULL COMMENT '匹配维度：1企微成员，2ChatAI席位，3企微标签',
-  match_value BIGINT UNSIGNED NOT NULL COMMENT '匹配维度对应的业务ID',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_trigger_binding_match_value (uid, binding_id, match_kind, match_value),
-  KEY idx_workflow_trigger_binding_match_lookup (uid, match_kind, match_value, binding_id)
-) COMMENT='营销Workflow触发绑定精确匹配索引表';
 
 ALTER TABLE xy_wap_embed_workflow_event_subscription
   CHANGE COLUMN account_id seat_id BIGINT UNSIGNED NULL COMMENT '可选ChatAI席位约束';

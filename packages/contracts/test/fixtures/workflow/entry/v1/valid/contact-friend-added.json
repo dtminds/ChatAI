@@ -8,6 +8,7 @@
   "source": "wecom",
   "payload": {
     "workUserId": 201,
-    "externalUserId": "wecom-contact-1"
+    "externalUserId": "wecom-contact-1",
+    "sourceId": "qr-code-1"
   }
 }

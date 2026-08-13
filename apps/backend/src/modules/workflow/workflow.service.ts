@@ -568,6 +568,13 @@ export class WorkflowService {
   private unwrapMutation<T>(result: WorkflowMutationResult<T>) {
     if (result.kind === "success") return result.value;
     if (result.kind === "not-found") throw workflowNotFound();
+    if (result.kind === "active-limit-exceeded") {
+      throw new AppError(
+        "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
+        "最多可同时运行 50 个 Workflow",
+        409,
+      );
+    }
     if (result.kind === "conflict") throw conflictError();
     throw invalidStatusError(result.status);
   }

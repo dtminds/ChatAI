@@ -129,7 +129,7 @@ describe("workflow draft normalizer", () => {
         data: {
           entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
           kind: "start",
-          triggers: [{ type: "contact.friend_added" }],
+          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
           workUserIds: [201],
         },
         id: "start",

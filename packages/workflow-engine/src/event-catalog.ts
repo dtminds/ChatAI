@@ -73,7 +73,10 @@ export const WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([
     payloadSchema: WorkflowContactFriendAddedPayloadSchema,
     payloadVersion: 1,
     project: event => ({
-      match: { workUserId: event.payload.workUserId },
+      match: {
+        ...(event.payload.sourceId === undefined ? {} : { sourceId: event.payload.sourceId }),
+        workUserId: event.payload.workUserId,
+      },
       subjects: createContactSubjectCandidates(event.payload),
       variables: structuredClone(event.payload) as WorkflowJsonObject,
     }),
@@ -98,7 +101,10 @@ export const WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([
     payloadSchema: WorkflowMessageReceivedPayloadSchema,
     payloadVersion: 1,
     project: event => ({
-      match: { seatId: event.payload.seatId },
+      match: {
+        seatId: event.payload.seatId,
+        ...(event.payload.text === undefined ? {} : { text: event.payload.text }),
+      },
       subjects: {
         chatai_contact: {
           seatId: event.payload.seatId,

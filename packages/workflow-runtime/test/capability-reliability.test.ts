@@ -1098,7 +1098,7 @@ function startConfig() {
   return {
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
     seatIds: [101],
-    triggers: [{ type: "contact.friend_added" as const }],
+    triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
   };
 }
 

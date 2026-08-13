@@ -200,7 +200,7 @@ describe("backend app", () => {
                 ...node.data,
                 entryPolicy: { mode: "never" },
                 seatIds: [1],
-                triggers: [{ type: "contact.friend_added" }],
+                triggers: [{ sourceIds: [], type: "contact.friend_added" }],
               },
             }
           : node),

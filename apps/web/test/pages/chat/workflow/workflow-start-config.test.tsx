@@ -50,7 +50,7 @@ describe("workflow start configuration", () => {
     });
   });
 
-  it("updates selected seats and OR trigger options through the ChatAI settings panel", async () => {
+  it("updates seats and replaces the selected Start Event", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -64,7 +64,7 @@ describe("workflow start configuration", () => {
     );
 
     await user.click(screen.getByRole("checkbox", { name: "销售一组" }));
-    await user.click(screen.getByRole("checkbox", { name: "用户发送消息" }));
+    await user.click(screen.getByRole("radio", { name: "用户发送消息" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       seatIds: [101],
@@ -72,9 +72,12 @@ describe("workflow start configuration", () => {
     }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       metric: "待配置触发条件",
-      triggers: expect.arrayContaining([
-        expect.objectContaining({ match: "any", type: "message.received" }),
-      ]),
+      triggers: [{ keywords: [], type: "message.received" }],
+    }));
+
+    await user.click(screen.getByRole("radio", { name: "添加好友" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     }));
   });
 
@@ -95,7 +98,7 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("checkbox", { name: "企微成员一" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({ workUserIds: [201] }));
-    expect(screen.queryByRole("checkbox", { name: "用户发送消息" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
   it("only exposes entry events allowed by the Workflow capability profile", () => {
@@ -109,10 +112,52 @@ describe("workflow start configuration", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: "添加好友" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "用户发送消息" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "消息包含关键词" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "添加好友" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "添加标签" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "用户发送消息" })).not.toBeInTheDocument();
+  });
+
+  it("normalizes comma-separated source IDs and keywords on blur", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const { rerender } = render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "message.received"]}
+        edges={[]}
+        node={createStartNode({
+          ...createStartNodeData("chatai_sop"),
+          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        })}
+        nodes={[]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    const sourceInput = screen.getByRole("textbox", { name: "添加好友来源 ID" });
+    await user.type(sourceInput, " qr-1,qr-1, store-2 ,");
+    await user.tab();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      triggers: [{ sourceIds: ["qr-1", "store-2"], type: "contact.friend_added" }],
+    }));
+
+    rerender(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added", "message.received"]}
+        edges={[]}
+        node={createStartNode({
+          ...createStartNodeData("chatai_sop"),
+          triggers: [{ keywords: [], type: "message.received" }],
+        })}
+        nodes={[]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+    const keywordInput = screen.getByRole("textbox", { name: "消息关键词" });
+    await user.type(keywordInput, " 价格,优惠,价格 ");
+    await user.tab();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      triggers: [{ keywords: ["价格", "优惠"], type: "message.received" }],
+    }));
   });
 
   it("supports rolling-window entry limits", async () => {

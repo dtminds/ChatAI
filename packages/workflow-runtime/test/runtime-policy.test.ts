@@ -221,13 +221,13 @@ function createExecutionSpec(workflowId: string): WorkflowExecutionSpec {
         config: workflowId === "wecom-workflow"
           ? {
               entryPolicy: { mode: "never" },
-              triggers: [{ type: "contact.friend_added" }],
+              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
               workUserIds: [201],
             }
           : {
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ type: "contact.friend_added" }],
+              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
             },
         id: "start",
         kind: "start",

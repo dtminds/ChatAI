@@ -58,12 +58,11 @@ export function createInitialNodes(): WorkflowNode[] {
       data: {
         ...createDefaultNodeData("start"),
         seatIds: [101, 102],
-        metric: "2 个席位 · 2 个触发条件",
+        metric: "2 个席位 · 1 个触发条件",
         status: "running",
         title: "新人入会触发",
         triggers: [
-          { type: "contact.friend_added" },
-          { tagIds: [201], type: "contact.tag_added" },
+          { sourceIds: [], type: "contact.friend_added" },
         ],
       },
       id: "start",

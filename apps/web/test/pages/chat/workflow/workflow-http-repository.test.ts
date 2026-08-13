@@ -260,6 +260,23 @@ describe("HTTP workflow draft repository", () => {
     expect(client.post).toHaveBeenCalledWith("/server/workflows/42/enable");
     expect(document).toMatchObject({ publishedRevision: 1, runtimeStatus: "active" });
   });
+
+  it("preserves the backend business code for lifecycle conflicts", async () => {
+    const definition = createDefinition({ validatedDraftVersion: 1 });
+    const client = createClient({ definition, revisions: [] });
+    client.post.mockRejectedValueOnce(new RequestNormalizedError({
+      code: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
+      message: "最多可同时运行 50 个 Workflow",
+      status: 409,
+    }));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await expect(repository.enableDocument?.("42")).rejects.toMatchObject({
+      apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
+      code: "conflict",
+      message: "最多可同时运行 50 个 Workflow",
+    });
+  });
 });
 
 function createClient({

@@ -637,22 +637,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
-  KEY idx_workflow_trigger_binding_match (uid, subject_type, event_type, status, workflow_id),
   KEY idx_workflow_trigger_binding_interest (uid, event_type, status, workflow_id, revision, id)
 ) COMMENT='营销Workflow触发绑定表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding_match (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  binding_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow触发绑定ID',
-  match_kind TINYINT UNSIGNED NOT NULL COMMENT '匹配维度：1企微成员，2ChatAI席位，3企微标签',
-  match_value BIGINT UNSIGNED NOT NULL COMMENT '匹配维度对应的业务ID',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_trigger_binding_match_value (uid, binding_id, match_kind, match_value),
-  KEY idx_workflow_trigger_binding_match_lookup (uid, match_kind, match_value, binding_id)
-) COMMENT='营销Workflow触发绑定精确匹配索引表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

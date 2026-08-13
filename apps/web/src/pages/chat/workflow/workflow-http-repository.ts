@@ -407,7 +407,10 @@ function normalizeHttpError(error: unknown) {
               : error.status && error.status >= 500
                 ? "server"
                 : "network";
-    return new WorkflowRepositoryError(code, error.message, { cause: error });
+    return new WorkflowRepositoryError(code, error.message, {
+      apiCode: error.code,
+      cause: error,
+    });
   }
   return new WorkflowRepositoryError("network", error instanceof Error ? error.message : "Workflow 请求失败", {
     cause: error,

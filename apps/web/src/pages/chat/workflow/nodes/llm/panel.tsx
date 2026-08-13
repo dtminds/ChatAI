@@ -58,6 +58,7 @@ import {
   variableContentEqual,
 } from "../variable-content/content";
 import { VariableContentEditor } from "../variable-content/editor";
+import { LlmTestWorkspace } from "./test-workspace";
 import {
   LLM_IDENTIFIER_PATTERN,
   LLM_INPUT_MAX_COUNT,
@@ -93,7 +94,7 @@ const outputTypeLabels: Record<WorkflowLlmOutputFieldType, string> = {
   string: "String",
 };
 
-export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"llm">) {
+export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: NodeSettingsProps<"llm">) {
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState(false);
@@ -321,6 +322,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
           segments={expandedPrompt === "system" ? systemPrompt : userPrompt}
         />
       ) : null}
+      {testContext ? <LlmTestWorkspace node={node} testContext={testContext} /> : null}
     </div>
   );
 }

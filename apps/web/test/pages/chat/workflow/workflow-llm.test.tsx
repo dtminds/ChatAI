@@ -13,6 +13,7 @@ import {
 import { LlmConfig } from "@/pages/chat/workflow/nodes/llm/panel";
 import { llmNodeUi } from "@/pages/chat/workflow/nodes/llm/ui";
 import { BasePanel } from "@/pages/chat/workflow/panels/base-panel";
+import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
 import {
   SettingWorkspace,
   SettingWorkspaceEditorContent,
@@ -34,7 +35,13 @@ const agentServiceMock = vi.hoisted(() => ({
   listAiHostingModels: vi.fn(),
 }));
 
+const llmTestServiceMock = vi.hoisted(() => ({
+  createWorkflowLlmTestAttempt: vi.fn(),
+  getWorkflowLlmTestAttempt: vi.fn(),
+}));
+
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
+vi.mock("@/pages/chat/workflow/nodes/llm/test-service", () => llmTestServiceMock);
 
 const model = {
   description: "通用文本模型",
@@ -48,6 +55,8 @@ const model = {
 describe("workflow LLM node", () => {
   beforeEach(() => {
     agentServiceMock.listAiHostingModels.mockResolvedValue({ models: [model] });
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockReset();
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockReset();
   });
 
   it("normalizes malformed configuration deterministically and emits the execution contract", () => {
@@ -451,6 +460,130 @@ describe("workflow LLM node", () => {
     expect(screen.queryByRole("region", { name: "用户提示词展开编辑" })).not.toBeInTheDocument();
   });
 
+  it("runs the saved LLM draft with temporary inputs without updating node configuration", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createTestableLlmNode();
+    const output = normalizeLlmOutput(node.data.output);
+    expect(output.format).toBe("text");
+    if (output.format === "json") return;
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ status: "running" }),
+    );
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({
+        completedAt: "2026-08-13T05:00:01.000Z",
+        output: { [output.field.id]: "退款将在 3 个工作日内到账" },
+        status: "succeeded",
+      }),
+    );
+    renderLlmTestPanel(node, onNodeChange);
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    expect(within(workspace).getByRole("textbox", { name: "tone的试运行值" })).toHaveValue("简洁");
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "退款多久到账");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(llmTestServiceMock.createWorkflowLlmTestAttempt).toHaveBeenCalledWith(
+      "42",
+      node.id,
+      {
+        expectedDraftVersion: 3,
+        inputValues: {
+          "input-message": "退款多久到账",
+          "input-tone": "简洁",
+        },
+      },
+    );
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    expect(await within(workspace).findByText("退款将在 3 个工作日内到账")).toBeInTheDocument();
+    expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalledWith(
+      "42",
+      node.id,
+      "1",
+    );
+  });
+
+  it("validates temporary inputs and waits for the current draft to be saved", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    const { rerender } = renderLlmTestPanel(node, vi.fn(), "saving");
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    expect(within(screen.getByRole("region", { name: "试运行展开编辑" }))
+      .getByRole("button", { name: "运行" })).toBeDisabled();
+
+    rerender(createLlmTestPanel(node, vi.fn(), "saved"));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(within(workspace).getByRole("textbox", { name: "message的试运行值" }))
+      .toHaveAttribute("aria-invalid", "true");
+    expect(llmTestServiceMock.createWorkflowLlmTestAttempt).not.toHaveBeenCalled();
+  });
+
+  it("renders configured JSON output fields instead of adapter response details", async () => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode({
+      output: {
+        fields: [
+          { description: "", id: "field-summary", name: "summary", type: "string" },
+          { description: "", id: "field-score", name: "score", type: "number" },
+        ],
+        format: "json",
+      },
+    });
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ status: "running" }),
+    );
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({
+        completedAt: "2026-08-13T05:00:01.000Z",
+        output: { "field-score": 0.92, "field-summary": "高意向客户" },
+        status: "succeeded",
+      }),
+    );
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "需要报价");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(await within(workspace).findByText("高意向客户")).toBeInTheDocument();
+    expect(within(workspace).getByText("0.92")).toBeInTheDocument();
+    expect(within(workspace).queryByText("field-summary")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["failed" as const, "试运行失败"],
+    ["timed_out" as const, "试运行超时"],
+  ])("renders the %s Attempt terminal state", async (status, errorMessage) => {
+    const user = userEvent.setup();
+    const node = createTestableLlmNode();
+    llmTestServiceMock.createWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({ status: "running" }),
+    );
+    llmTestServiceMock.getWorkflowLlmTestAttempt.mockResolvedValue(
+      createAttempt({
+        completedAt: "2026-08-13T05:00:01.000Z",
+        errorMessage,
+        status,
+      }),
+    );
+    renderLlmTestPanel(node, vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "试运行大模型节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    await user.type(within(workspace).getByRole("textbox", { name: "message的试运行值" }), "测试内容");
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(await within(workspace).findByRole("alert")).toHaveTextContent(errorMessage);
+    expect(within(workspace).getByRole("button", { name: "重新运行" })).toBeEnabled();
+  });
+
   it("keeps the expanded editor open when Escape cancels settings rename", async () => {
     const user = userEvent.setup();
     const node = createLlmNode({ title: "生成营销文案" });
@@ -556,6 +689,33 @@ function StatefulLlmConfig({
   );
 }
 
+function renderLlmTestPanel(
+  node: WorkflowNode<"llm">,
+  onNodeChange: (patch: WorkflowNodeConfigPatch<"llm">) => void,
+  saveState: "dirty" | "error" | "saved" | "saving" = "saved",
+) {
+  return render(createLlmTestPanel(node, onNodeChange, saveState));
+}
+
+function createLlmTestPanel(
+  node: WorkflowNode<"llm">,
+  onNodeChange: (patch: WorkflowNodeConfigPatch<"llm">) => void,
+  saveState: "dirty" | "error" | "saved" | "saving" = "saved",
+) {
+  return (
+    <NodeConfigPanel
+      allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
+      edges={[]}
+      node={node}
+      nodes={[node]}
+      onClose={vi.fn()}
+      onNodeChange={onNodeChange}
+      onRenameNode={vi.fn()}
+      testContext={{ draftVersion: 3, saveState, workflowId: "42" }}
+    />
+  );
+}
+
 function ExpandedEditorFixture() {
   const { openEditor } = useSettingWorkspace();
 
@@ -576,6 +736,57 @@ function createLlmNode(patch: Partial<LlmNodeData> = {}): WorkflowNode<"llm"> {
   return {
     ...node,
     data: { ...node.data, ...patch },
+  };
+}
+
+function createTestableLlmNode(patch: Partial<LlmNodeData> = {}) {
+  return createLlmNode({
+    inputs: [
+      {
+        id: "input-message",
+        name: "message",
+        value: {
+          kind: "variable",
+          selector: ["trigger", "text"],
+          valueType: { kind: "string" },
+        },
+      },
+      { id: "input-tone", name: "tone", value: { kind: "literal", value: "简洁" } },
+    ],
+    modelId: model.id,
+    output: {
+      field: { description: "", id: "output-1", name: "output", type: "string" },
+      format: "text",
+    },
+    systemPrompt: [
+      { type: "text", value: "请用" },
+      { selector: ["input", "input-tone"], type: "variable" },
+      { type: "text", value: "方式回答" },
+    ],
+    userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+    ...patch,
+  });
+}
+
+function createAttempt(overrides: Partial<{
+  completedAt: string | null;
+  errorMessage: string | null;
+  output: Record<string, boolean | number | string> | null;
+  status: "cancelled" | "failed" | "running" | "succeeded" | "timed_out";
+}> = {}) {
+  return {
+    attemptId: "1",
+    completedAt: null,
+    createdAt: "2026-08-13T05:00:00.000Z",
+    errorMessage: null,
+    executionMode: "mock" as const,
+    expiresAt: "2026-08-13T05:10:00.000Z",
+    inputValues: {},
+    nodeId: "llm",
+    output: null,
+    status: "running" as const,
+    workflowId: "42",
+    ...overrides,
   };
 }
 

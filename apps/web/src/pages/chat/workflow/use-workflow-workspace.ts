@@ -657,6 +657,11 @@ export function useWorkflowWorkspace(
       onNodeChange: updateSelectedNode,
       onRenameNode: handleRenameNode,
       readOnly: !permissions.canEditNodeSettings,
+      testContext: {
+        draftVersion: document.draftVersion ?? document.revision,
+        saveState,
+        workflowId: document.id,
+      },
     },
     topBar: {
       canPublish: permissions.canPublish,

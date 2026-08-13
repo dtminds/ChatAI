@@ -483,7 +483,7 @@ describe("workflow draft service", () => {
       expect(result.current.lastSavedAt).toBe("刚刚");
       expect(result.current.lastSavedDraftHash).not.toBe(initialDraftHash);
       expect(result.current.lastSavedDraftHash).toBe(result.current.document.draftHash);
-      expect(result.current.document.trigger).toBe("添加好友、添加标签");
+      expect(getStartSourceMarker(result.current.document.draft)).toBe("异步保存的人群");
       expect(result.current.document.revision).toBe(2);
     }
     finally {
@@ -571,7 +571,7 @@ describe("workflow draft service", () => {
 
       expect(result.current.saveState).toBe("saved");
       expect(result.current.saveError).toBeNull();
-      expect(result.current.document.trigger).toBe("添加好友、添加标签");
+      expect(getStartSourceMarker(result.current.document.draft)).toBe("保存失败的人群");
     }
     finally {
       vi.useRealTimers();
@@ -602,7 +602,8 @@ describe("workflow draft service", () => {
 
       expect(result.current.document.id).toBe("vip-reactivation");
       expect(result.current.document.trigger).toBe("90 天未复购会员");
-      expect(repository.getDocument("newcomer-conversion").trigger).toBe("添加好友、添加标签");
+      expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft))
+        .toBe("旧工作流保存结果");
     }
     finally {
       vi.useRealTimers();

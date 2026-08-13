@@ -293,6 +293,12 @@ export type WorkflowLlmTestAttemptRepository = {
     status: "failed" | "timed_out";
   }): Promise<boolean>;
   expireTimedOutLlmTestAttempts(input: { limit: number; now: Date }): Promise<number>;
+  expireLlmTestAttempt(input: {
+    attemptId: string;
+    now: Date;
+    uid: number;
+    workflowId: string;
+  }): Promise<boolean>;
   findLlmTestAttempt(input: {
     attemptId: string;
     uid: number;

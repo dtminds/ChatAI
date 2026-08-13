@@ -188,11 +188,53 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
     await this.requireDefinition(scope.uid, workflowId);
+    const now = this.clock();
+    await repository.expireLlmTestAttempt({
+      attemptId,
+      now,
+      uid: scope.uid,
+      workflowId,
+    });
     const attempt = await repository.findLlmTestAttempt({ attemptId, uid: scope.uid, workflowId });
-    if (!attempt || attempt.nodeId !== nodeId || attempt.expiresAt <= this.clock()) {
+    if (!attempt || attempt.nodeId !== nodeId || attempt.expiresAt <= now) {
       throw new NotFoundError("WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND", "试运行记录不存在");
     }
     return toLlmTestAttempt(attempt);
+  }
+
+  async cancelLlmTestAttempt(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    nodeId: string,
+    attemptId: string,
+  ): Promise<WorkflowLlmTestAttempt> {
+    assertWorkflowAccess(scope);
+    const repository = this.requireLlmTestAttemptRepository();
+    await this.requireDefinition(scope.uid, workflowId);
+    const cancelledAt = this.clock();
+    await repository.expireLlmTestAttempt({
+      attemptId,
+      now: cancelledAt,
+      uid: scope.uid,
+      workflowId,
+    });
+    const attempt = await repository.findLlmTestAttempt({ attemptId, uid: scope.uid, workflowId });
+    if (!attempt || attempt.nodeId !== nodeId || attempt.expiresAt <= cancelledAt) {
+      throw new NotFoundError("WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND", "试运行记录不存在");
+    }
+    if (attempt.status === "running") {
+      await repository.cancelLlmTestAttempt({
+        attemptId,
+        cancelledAt,
+        uid: scope.uid,
+        workflowId,
+      });
+    }
+    const current = await repository.findLlmTestAttempt({ attemptId, uid: scope.uid, workflowId });
+    if (!current || current.nodeId !== nodeId || current.expiresAt <= cancelledAt) {
+      throw new NotFoundError("WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND", "试运行记录不存在");
+    }
+    return toLlmTestAttempt(current);
   }
 
   async list(scope: WorkflowOperatorScope) {

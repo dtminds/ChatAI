@@ -162,6 +162,23 @@ export class MysqlWorkflowLlmTestAttemptRepository implements WorkflowLlmTestAtt
       return Number(result.numUpdatedRows);
     });
   }
+
+  async expireLlmTestAttempt(input: Parameters<WorkflowLlmTestAttemptRepository["expireLlmTestAttempt"]>[0]) {
+    const result = await this.db.updateTable(TABLE).set({
+      completed_at: input.now,
+      error_code: "WORKFLOW_LLM_TEST_TIMEOUT",
+      error_message: "试运行超时",
+      lease_expires_at: null,
+      lease_owner: null,
+      status: "timed_out",
+    }).where("id", "=", input.attemptId)
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("status", "=", "running")
+      .where("deadline_at", "<=", input.now)
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
+  }
 }
 
 export class InMemoryWorkflowLlmTestAttemptRepository implements WorkflowLlmTestAttemptRepository {
@@ -292,6 +309,23 @@ export class InMemoryWorkflowLlmTestAttemptRepository implements WorkflowLlmTest
       updatedAt: input.now,
     });
     return items.length;
+  }
+
+  async expireLlmTestAttempt(input: Parameters<WorkflowLlmTestAttemptRepository["expireLlmTestAttempt"]>[0]) {
+    const item = this.attempts.find(candidate => candidate.id === input.attemptId
+      && candidate.uid === input.uid && candidate.workflowId === input.workflowId
+      && candidate.status === "running" && candidate.deadlineAt <= input.now);
+    if (!item) return false;
+    Object.assign(item, {
+      completedAt: input.now,
+      errorCode: "WORKFLOW_LLM_TEST_TIMEOUT",
+      errorMessage: "试运行超时",
+      leaseExpiresAt: null,
+      leaseOwner: null,
+      status: "timed_out" as const,
+      updatedAt: input.now,
+    });
+    return true;
   }
 
   private leased(id: string, owner: string) {

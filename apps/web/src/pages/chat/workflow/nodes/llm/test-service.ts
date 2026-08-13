@@ -27,3 +27,14 @@ export async function getWorkflowLlmTestAttempt(
   );
   return response.data;
 }
+
+export async function cancelWorkflowLlmTestAttempt(
+  workflowId: string,
+  nodeId: string,
+  attemptId: string,
+) {
+  const response = await http.post<ApiSuccessEnvelope<WorkflowLlmTestAttempt>>(
+    `/server/workflows/${workflowId}/nodes/${nodeId}/llm-test-attempts/${attemptId}/cancel`,
+  );
+  return response.data;
+}

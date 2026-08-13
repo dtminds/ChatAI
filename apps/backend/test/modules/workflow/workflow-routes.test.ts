@@ -201,6 +201,16 @@ describe("workflow routes", () => {
     });
     expect(read.statusCode).toBe(200);
     expect(read.json().data).toEqual(started.json().data);
+
+    const stopped = await app.inject({
+      method: "POST",
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts/${started.json().data.attemptId}/cancel`,
+    });
+    expect(stopped.statusCode).toBe(200);
+    expect(stopped.json().data).toMatchObject({
+      attemptId: started.json().data.attemptId,
+      status: "cancelled",
+    });
     expect((await app.inject({
       method: "GET",
       url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts`,

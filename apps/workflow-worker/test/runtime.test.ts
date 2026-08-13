@@ -88,6 +88,42 @@ describe("workflow worker runtime", () => {
     expect(resources.loopClose).toHaveBeenCalledTimes(5);
   });
 
+  it("runs LLM test Attempts only when Mock mode is explicitly enabled", async () => {
+    const resources = createResources();
+    const llmTestAttemptWorker = vi.fn(async () => ({
+      claimed: 0,
+      failed: 0,
+      succeeded: 0,
+      timedOut: 0,
+    }));
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: { ...config(new Set(["inference"] as const)), llmTestMode: "mock" },
+      llmTestAdapter: { execute: vi.fn() },
+      llmTestAttemptRepository: {} as never,
+      llmTestAttemptWorker,
+    });
+
+    await vi.waitFor(() => expect(llmTestAttemptWorker).toHaveBeenCalledTimes(1));
+    expect(llmTestAttemptWorker).toHaveBeenCalledWith(expect.objectContaining({
+      leaseOwner: "worker-1",
+      limit: 10,
+    }));
+    await runtime.close();
+
+    const disabled = createResources();
+    const disabledRuntime = await startWorkflowWorkerRuntime({
+      ...disabled.dependencies,
+      config: { ...config(new Set(["inference"] as const)), llmTestMode: "disabled" },
+      llmTestAdapter: { execute: vi.fn() },
+      llmTestAttemptRepository: {} as never,
+      llmTestAttemptWorker,
+    });
+    await vi.waitFor(() => expect(disabled.inferenceWorker).toHaveBeenCalledTimes(1));
+    expect(llmTestAttemptWorker).toHaveBeenCalledTimes(1);
+    await disabledRuntime.close();
+  });
+
   it("feeds consistency cursors into the next reconciler iteration and resets after the last page", async () => {
     const resources = createResources();
     resources.reconciler

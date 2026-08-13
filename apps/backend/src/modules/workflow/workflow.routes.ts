@@ -7,18 +7,24 @@ import {
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
   WorkflowEntryRecordStatusSchema,
+  WorkflowLlmTestAttemptCreateRequestSchema,
   type WorkflowCreateRequest,
   type WorkflowMetadataUpdateRequest,
   type WorkflowPublishRequest,
   type WorkflowRenameRequest,
   type WorkflowRestoreRequest,
   type WorkflowSaveDraftRequest,
+  type WorkflowLlmTestAttemptCreateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
-import { createWorkflowEntitlementPort } from "@chatai/workflow-runtime";
+import {
+  createWorkflowEntitlementPort,
+  MysqlWorkflowLlmTestAttemptRepository,
+  parseWorkflowLlmTestMode,
+} from "@chatai/workflow-runtime";
 import { parseWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
@@ -50,13 +56,22 @@ const WorkflowRecordParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ recordId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
 ]);
+const WorkflowLlmTestNodeParamsSchema = Type.Intersect([
+  WorkflowParamsSchema,
+  Type.Object({ nodeId: Type.String({ minLength: 1, maxLength: 128 }) }),
+]);
+const WorkflowLlmTestAttemptParamsSchema = Type.Intersect([
+  WorkflowLlmTestNodeParamsSchema,
+  Type.Object({ attemptId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
+]);
 
 export async function registerWorkflowRoutes(
   app: FastifyInstance,
   options: { dataService?: WorkflowDataService; service?: WorkflowService } = {},
 ) {
+  const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
   const service = options.service ?? new WorkflowService(
-    new MysqlWorkflowRepository(app.db as unknown as Kysely<WorkflowDatabase>),
+    new MysqlWorkflowRepository(workflowDatabase),
     {
       deploymentCapabilities: parseWorkflowDeploymentCapabilities(
         process.env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
@@ -67,6 +82,8 @@ export async function registerWorkflowRoutes(
         token: process.env.JAVA_INTERNAL_API_TOKEN,
       }),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
+      llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
+      llmTestMode: parseWorkflowLlmTestMode(process.env.WORKFLOW_LLM_TEST_MODE),
     },
   );
   const authenticated = { preHandler: app.authenticate };
@@ -117,6 +134,40 @@ export async function registerWorkflowRoutes(
     "/api/server/workflows/:workflowId",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
     async (request) => apiSuccess(await service.get(getWorkflowScope(request), request.params.workflowId)),
+  );
+
+  app.post<{
+    Body: WorkflowLlmTestAttemptCreateRequest;
+    Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;
+  }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts",
+    {
+      ...authenticated,
+      schema: {
+        body: WorkflowLlmTestAttemptCreateRequestSchema,
+        params: WorkflowLlmTestNodeParamsSchema,
+      },
+    },
+    async request => apiSuccess(await service.createLlmTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.body,
+    )),
+  );
+
+  app.get<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId",
+    {
+      ...authenticated,
+      schema: { params: WorkflowLlmTestAttemptParamsSchema },
+    },
+    async request => apiSuccess(await service.getLlmTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.params.attemptId,
+    )),
   );
 
   app.put<{ Body: WorkflowSaveDraftRequest; Params: WorkflowParams }>(

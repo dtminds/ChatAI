@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
+import { InMemoryWorkflowLlmTestAttemptRepository } from "@chatai/workflow-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
 import {
@@ -163,6 +164,75 @@ describe("workflow routes", () => {
     });
   });
 
+  it("creates and reads one LLM test Attempt without exposing a history endpoint", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: { draft: withLlmNode(created.draft), expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const started = await app.inject({
+      method: "POST",
+      payload: {
+        expectedDraftVersion: saved.draftVersion,
+        inputValues: { "input-message": "退款什么时候到账" },
+      },
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts`,
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json().data).toMatchObject({
+      executionMode: "mock",
+      inputValues: { "input-message": "退款什么时候到账" },
+      nodeId: "llm-1",
+      output: null,
+      status: "running",
+      workflowId: created.id,
+    });
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts/${started.json().data.attemptId}`,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().data).toEqual(started.json().data);
+    expect((await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts`,
+    })).statusCode).toBe(404);
+  });
+
+  it("returns 400 when LLM test inputs cannot produce a valid inference request", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: { draft: withLlmNode(created.draft), expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        expectedDraftVersion: saved.draftVersion,
+        inputValues: { "input-message": "x".repeat(25_000) },
+      },
+      url: `/api/server/workflows/${created.id}/nodes/llm-1/llm-test-attempts`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("WORKFLOW_LLM_TEST_INPUT_INVALID");
+  });
+
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");
 
@@ -253,6 +323,8 @@ describe("workflow routes", () => {
             return new Map(seatIds.map(seatId => [seatId, seatId + 100]));
           },
         },
+        llmTestAttemptRepository: new InMemoryWorkflowLlmTestAttemptRepository(),
+        llmTestMode: "mock",
       }),
     });
     return app;
@@ -273,6 +345,50 @@ describe("workflow routes", () => {
           }
         : node),
       viewport: { x: 10, y: 20, zoom: 1 },
+    };
+  }
+
+  function withLlmNode(draft: { edges: unknown[]; nodes: Array<{ id: string }>; viewport: unknown }) {
+    const llmNode = {
+      data: {
+        inputs: [{
+          id: "input-message",
+          name: "message",
+          value: {
+            kind: "variable",
+            selector: ["trigger", "text"],
+            valueType: { kind: "string" },
+          },
+        }],
+        kind: "llm",
+        label: "大模型",
+        metric: "model-1",
+        modelId: "model-1",
+        output: {
+          field: { description: "", id: "output-1", name: "output", type: "string" },
+          format: "text",
+        },
+        schemaVersion: 1,
+        status: "ready",
+        systemPrompt: [{ type: "text", value: "Summarize" }],
+        title: "大模型",
+        userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+      },
+      id: "llm-1",
+      position: { x: 360, y: 240 },
+      type: "workflowNode",
+    };
+    return {
+      ...draft,
+      edges: [
+        { id: "edge-start-llm", source: "start", target: "llm-1", type: "workflowEdge" },
+        { id: "edge-llm-end", source: "llm-1", target: "end", type: "workflowEdge" },
+      ],
+      nodes: [
+        ...draft.nodes.filter(node => node.id !== "end"),
+        llmNode,
+        draft.nodes.find(node => node.id === "end"),
+      ],
     };
   }
 });

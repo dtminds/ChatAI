@@ -5,6 +5,7 @@ import {
   assertDatabaseUtc8Timezone,
   createWorkflowEntitlementPort,
   MysqlWorkflowRuntimeRepository,
+  MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
   UnavailableWorkflowJavaInferencePort,
@@ -28,6 +29,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const logger = createWorkflowWorkerLogger(config.logLevel);
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
+  const llmTestAttemptRepository = config.llmTestMode === "mock"
+    ? new MysqlWorkflowLlmTestAttemptRepository(database)
+    : undefined;
+  const llmTestWorker = config.llmTestMode === "mock"
+    ? await loadLlmTestWorker()
+    : undefined;
   const entitlementPort = createWorkflowEntitlementPort({
     endpoint: config.entitlement.apiUrl,
     mode: config.entitlement.mode,
@@ -71,6 +78,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       inferenceAdapter: new UnavailableWorkflowJavaInferencePort(),
       inferenceRepository: repository,
       inferenceWorker: processWorkflowInferenceBatch,
+      llmTestAdapter: llmTestWorker?.adapter,
+      llmTestAttemptRepository,
+      llmTestAttemptWorker: llmTestWorker?.process,
       logger,
       outboxPublisher: publishWorkflowOutboxBatch,
       outboxRepository: repository,
@@ -86,6 +96,17 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       workerId,
     }),
   });
+}
+
+async function loadLlmTestWorker() {
+  const [{ processWorkflowLlmTestAttemptBatch }, { WorkflowLlmTestMockAdapter }] = await Promise.all([
+    import("./llm-test-attempt-worker.js"),
+    import("./llm-test-mock-adapter.js"),
+  ]);
+  return {
+    adapter: new WorkflowLlmTestMockAdapter(),
+    process: processWorkflowLlmTestAttemptBatch,
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

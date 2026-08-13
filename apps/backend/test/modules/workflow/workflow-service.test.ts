@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import {
+  InMemoryWorkflowLlmTestAttemptRepository,
+} from "@chatai/workflow-runtime";
+import {
   InMemoryWorkflowRepository,
   WorkflowService,
 } from "../../../src/modules/workflow/index.js";
@@ -8,6 +11,149 @@ import {
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
+  it("creates isolated LLM test Attempts from the current draft snapshot", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const first = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "退款什么时候到账" },
+    });
+    const second = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "物流什么时候到" },
+    });
+
+    expect(first).toMatchObject({
+      executionMode: "mock",
+      inputValues: { "input-message": "退款什么时候到账", "input-tone": "简洁" },
+      nodeId: "llm-1",
+      output: null,
+      status: "running",
+      workflowId: created.id,
+    });
+    expect(first.attemptId).not.toBe(second.attemptId);
+    expect(attempts.attempts).toHaveLength(2);
+    expect(attempts.attempts[0]).toMatchObject({
+      node: { id: "llm-1", kind: "llm" },
+      payload: {
+        kind: "message-list",
+        messageList: [
+          { content: "请用简洁方式处理", role: "system" },
+          { content: "退款什么时候到账", role: "user" },
+        ],
+      },
+    });
+  });
+
+  it("rejects stale, invalid, or unavailable LLM test Attempt requests", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(repository, {
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion - 1,
+      inputValues: { "input-message": "test" },
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_CONFLICT", statusCode: 409 });
+    await expect(service.createLlmTestAttempt(operator, created.id, "start", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: {},
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_NODE_INVALID", statusCode: 400 });
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: {},
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": 42 },
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test", unknown: "value" },
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
+    expect(attempts.attempts).toHaveLength(0);
+
+    const disabled = createService(repository, { llmTestMode: "disabled" });
+    await expect(disabled.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test" },
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_UNAVAILABLE", statusCode: 503 });
+  });
+
+  it("rejects LLM test inputs that render an empty system prompt", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const draft = withLlmNode(created.draft);
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: {
+        ...draft,
+        nodes: draft.nodes.map(node => node.id === "llm-1"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                systemPrompt: [{
+                  selector: ["input", "input-message"] as [string, string],
+                  type: "variable" as const,
+                }],
+                userPrompt: [],
+              },
+            }
+          : node),
+      },
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "" },
+    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
+    expect(attempts.attempts).toHaveLength(0);
+  });
+
+  it("isolates LLM test Attempts by tenant, Workflow, and node", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+      llmTestMode: "mock",
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withLlmNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const attempt = await service.createLlmTestAttempt(operator, created.id, "llm-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValues: { "input-message": "test" },
+    });
+
+    await expect(service.getLlmTestAttempt(operator, created.id, "llm-2", attempt.attemptId))
+      .rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND", statusCode: 404 });
+    await expect(service.getLlmTestAttempt({ ...operator, uid: 10 }, created.id, "llm-1", attempt.attemptId))
+      .rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND", statusCode: 404 });
+    await expect(service.getLlmTestAttempt(operator, created.id, "llm-1", attempt.attemptId))
+      .resolves.toMatchObject({ attemptId: attempt.attemptId });
+  });
   it("creates a workflow with trimmed metadata", async () => {
     const service = createService();
 
@@ -717,6 +863,59 @@ function withStartConfig(
     nodes: draft.nodes.map(node => node.id === "start"
       ? { ...node, data: { ...node.data, ...config } }
       : node),
+  };
+}
+
+function withLlmNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  const llmNode = {
+    data: {
+      inputs: [
+        {
+          id: "input-message",
+          name: "message",
+          value: {
+            kind: "variable" as const,
+            selector: ["trigger", "text"] as [string, string],
+            valueType: { kind: "string" as const },
+          },
+        },
+        { id: "input-tone", name: "tone", value: { kind: "literal" as const, value: "简洁" } },
+      ],
+      kind: "llm" as const,
+      label: "大模型",
+      metric: "model-1",
+      modelId: "model-1",
+      output: {
+        field: { description: "", id: "output-1", name: "output", type: "string" as const },
+        format: "text" as const,
+      },
+      schemaVersion: 1,
+      status: "ready" as const,
+      systemPrompt: [
+        { type: "text" as const, value: "请用" },
+        { selector: ["input", "input-tone"] as [string, string], type: "variable" as const },
+        { type: "text" as const, value: "方式处理" },
+      ],
+      title: "大模型",
+      userPrompt: [{ selector: ["input", "input-message"] as [string, string], type: "variable" as const }],
+    },
+    id: "llm-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      { id: "edge-start-llm", source: "start", target: "llm-1", type: "workflowEdge" },
+      { id: "edge-llm-end", source: "llm-1", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      llmNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
   };
 }
 

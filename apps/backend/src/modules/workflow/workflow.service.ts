@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowCreateRequest,
@@ -13,6 +13,11 @@ import type {
   WorkflowStartConfig,
   WorkflowType,
   WorkflowTypeEntitlementResult,
+  WorkflowLlmTestAttempt,
+  WorkflowLlmTestAttemptCreateRequest,
+  WorkflowJsonObject,
+  WorkflowLlmInputParameter,
+  WorkflowOutputValueType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -20,17 +25,23 @@ import {
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowCapabilityProfile,
   getWorkflowNodeContract,
+  isWorkflowLlmExecutionConfigComplete,
   isWorkflowNodeDraftConfig,
   WorkflowStartConfigSchema,
+  WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
   createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
+  getWorkflowNodeCapabilityRequirements,
+  getWorkflowNodeExecutionConfigError,
+  projectWorkflowNodeExecutionConfig,
   normalizeWorkflowDraft,
   validateWorkflowTypePolicy,
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
+  WorkflowCapabilityExecutionError,
   WorkflowCompilationError,
   type WorkflowDeploymentCapabilities,
   type WorkflowTriggerBindingSpec,
@@ -39,6 +50,11 @@ import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
   WorkflowEntitlementUnavailableError,
+  createWorkflowLlmInferenceRequest,
+  assertWorkflowRuntimeValue,
+  type WorkflowLlmTestAttemptRecord,
+  type WorkflowLlmTestAttemptRepository,
+  type WorkflowLlmTestMode,
   type WorkflowEntitlementPort,
 } from "@chatai/workflow-runtime";
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
@@ -60,6 +76,10 @@ export type WorkflowServiceOptions = {
   deploymentCapabilities?: WorkflowDeploymentCapabilities;
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
+  llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
+  llmTestMode?: WorkflowLlmTestMode;
+  llmTestTimeoutMs?: number;
+  llmTestTtlMs?: number;
 };
 
 export class WorkflowService {
@@ -67,6 +87,10 @@ export class WorkflowService {
   private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
+  private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
+  private readonly llmTestMode: WorkflowLlmTestMode;
+  private readonly llmTestTimeoutMs: number;
+  private readonly llmTestTtlMs: number;
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -79,6 +103,96 @@ export class WorkflowService {
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver
       ?? new UnavailableWorkflowSourceIdentityResolver();
+    this.llmTestAttemptRepository = options.llmTestAttemptRepository;
+    this.llmTestMode = options.llmTestMode ?? "disabled";
+    this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
+    this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
+  }
+
+  async createLlmTestAttempt(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    nodeId: string,
+    input: WorkflowLlmTestAttemptCreateRequest,
+  ): Promise<WorkflowLlmTestAttempt> {
+    assertWorkflowAccess(scope);
+    const repository = this.requireLlmTestAttemptRepository();
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
+    const draft = normalizeWorkflowDraft(definition.draft);
+    const draftNode = draft.nodes.find(node => node.id === nodeId);
+    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "Workflow 节点不存在");
+    if (draftNode.data.kind !== "llm") {
+      throw new BadRequestError("WORKFLOW_LLM_TEST_NODE_INVALID", "仅支持试运行大模型节点");
+    }
+    const config = projectWorkflowNodeExecutionConfig({
+      data: draftNode.data,
+      kind: "llm",
+      workflowType: definition.workflowType,
+    });
+    const configError = getWorkflowNodeExecutionConfigError("llm", config);
+    if (configError || !isWorkflowLlmExecutionConfigComplete(config)) {
+      throw new BadRequestError(
+        "WORKFLOW_LLM_TEST_CONFIG_INVALID",
+        "请先完成大模型节点配置",
+      );
+    }
+    const node = {
+      config,
+      id: draftNode.id,
+      kind: "llm" as const,
+      nodeSchemaVersion: draftNode.data.schemaVersion,
+      requiredCapabilities: getWorkflowNodeCapabilityRequirements("llm", config),
+    };
+    const inputValues = resolveLlmTestInputValues(config.inputs, input.inputValues);
+    try {
+      assertWorkflowRuntimeValue(inputValues, "run-context", WORKFLOW_LLM_TEST_INPUT_MAX_BYTES);
+    } catch {
+      throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "试运行输入参数过大");
+    }
+    let payload;
+    try {
+      payload = createWorkflowLlmInferenceRequest(node, new Map(Object.entries(inputValues)));
+    } catch (error) {
+      if (error instanceof WorkflowCapabilityExecutionError) {
+        throw new BadRequestError(
+          "WORKFLOW_LLM_TEST_INPUT_INVALID",
+          "试运行输入无法生成有效提示词",
+        );
+      }
+      throw error;
+    }
+    const createdAt = this.clock();
+    const attempt = await repository.createLlmTestAttempt({
+      contractVersion: 1,
+      createdAt,
+      deadlineAt: new Date(createdAt.getTime() + this.llmTestTimeoutMs),
+      executionKey: `workflow-llm-test:${scope.uid}:${workflowId}:${nodeId}:${randomUUID()}`,
+      expiresAt: new Date(createdAt.getTime() + this.llmTestTtlMs),
+      inputValues,
+      node,
+      opSubUserId: scope.subUserId,
+      payload,
+      uid: scope.uid,
+      workflowId,
+    });
+    return toLlmTestAttempt(attempt);
+  }
+
+  async getLlmTestAttempt(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    nodeId: string,
+    attemptId: string,
+  ): Promise<WorkflowLlmTestAttempt> {
+    assertWorkflowAccess(scope);
+    const repository = this.requireLlmTestAttemptRepository();
+    await this.requireDefinition(scope.uid, workflowId);
+    const attempt = await repository.findLlmTestAttempt({ attemptId, uid: scope.uid, workflowId });
+    if (!attempt || attempt.nodeId !== nodeId || attempt.expiresAt <= this.clock()) {
+      throw new NotFoundError("WORKFLOW_LLM_TEST_ATTEMPT_NOT_FOUND", "试运行记录不存在");
+    }
+    return toLlmTestAttempt(attempt);
   }
 
   async list(scope: WorkflowOperatorScope) {
@@ -397,6 +511,17 @@ export class WorkflowService {
     return definition;
   }
 
+  private requireLlmTestAttemptRepository() {
+    if (this.llmTestMode !== "mock" || !this.llmTestAttemptRepository) {
+      throw new AppError(
+        "WORKFLOW_LLM_TEST_UNAVAILABLE",
+        "大模型试运行暂不可用",
+        503,
+      );
+    }
+    return this.llmTestAttemptRepository;
+  }
+
   private async createTriggerBindings(
     uid: number,
     spec: ReturnType<typeof compileWorkflowDraft>,
@@ -669,4 +794,81 @@ function assertWorkflowAccess(scope: WorkflowOperatorScope) {
   if (!scope.roles.some((role) => role === "owner" || role === "admin")) {
     throw new ForbiddenError("WORKFLOW_FORBIDDEN", "无权访问 Workflow");
   }
+}
+
+function resolveLlmTestInputValues(
+  inputs: WorkflowLlmInputParameter[],
+  supplied: WorkflowJsonObject,
+): WorkflowJsonObject {
+  const knownIds = new Set(inputs.map(input => input.id));
+  const unknownIds = Object.keys(supplied).filter(id => !knownIds.has(id));
+  if (unknownIds.length > 0) {
+    throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "试运行输入参数不匹配");
+  }
+
+  const result: WorkflowJsonObject = {};
+  for (const input of inputs) {
+    const hasSuppliedValue = Object.prototype.hasOwnProperty.call(supplied, input.id);
+    if (input.value.kind === "literal") {
+      const value = hasSuppliedValue ? supplied[input.id] : input.value.value;
+      if (typeof value !== "string") {
+        throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "试运行输入参数类型不匹配");
+      }
+      result[input.id] = value;
+      continue;
+    }
+    if (!hasSuppliedValue) {
+      throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "请填写全部试运行输入参数");
+    }
+    const value = supplied[input.id];
+    if (!isLlmTestValueCompatible(value, input.value.valueType)) {
+      throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "试运行输入参数类型不匹配");
+    }
+    if (value === undefined) {
+      throw new BadRequestError("WORKFLOW_LLM_TEST_INPUT_INVALID", "请填写全部试运行输入参数");
+    }
+    result[input.id] = value;
+  }
+  return result;
+}
+
+function isLlmTestValueCompatible(value: unknown, valueType: WorkflowOutputValueType) {
+  if (valueType.kind === "string" || valueType.kind === "datetime") {
+    return typeof value === "string";
+  }
+  if (valueType.kind === "reference") {
+    return typeof value === "string"
+      || typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  }
+  if (valueType.kind === "number") return typeof value === "number" && Number.isFinite(value);
+  if (valueType.kind === "boolean") return typeof value === "boolean";
+  if (valueType.kind === "array") {
+    return Array.isArray(value) && value.every(item => {
+      if (valueType.itemType === "string") return typeof item === "string";
+      if (valueType.itemType === "number") return typeof item === "number" && Number.isFinite(item);
+      return typeof item === "number" && Number.isSafeInteger(item) && item > 0;
+    });
+  }
+  if (valueType.kind === "object") return isRecord(value);
+  return false;
+}
+
+function toLlmTestAttempt(record: WorkflowLlmTestAttemptRecord): WorkflowLlmTestAttempt {
+  return {
+    attemptId: record.id,
+    completedAt: record.completedAt?.toISOString() ?? null,
+    createdAt: record.createdAt.toISOString(),
+    errorMessage: record.errorMessage,
+    executionMode: "mock",
+    expiresAt: record.expiresAt.toISOString(),
+    inputValues: structuredClone(record.inputValues),
+    nodeId: record.nodeId,
+    output: record.output ? structuredClone(record.output) : null,
+    status: record.status,
+    workflowId: record.workflowId,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

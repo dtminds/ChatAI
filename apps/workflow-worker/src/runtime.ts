@@ -3,6 +3,7 @@ import type {
   WorkflowInboxRepository,
   WorkflowInferenceRepository,
   WorkflowJavaInferencePort,
+  WorkflowLlmTestAttemptRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
 import {
@@ -20,6 +21,8 @@ import {
 } from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
+import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-mock-adapter.js";
 import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
 import type { reconcileWorkflowRuntime } from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
@@ -79,6 +82,9 @@ export async function startWorkflowWorkerRuntime(input: {
   inferenceAdapter: WorkflowJavaInferencePort;
   inferenceRepository: WorkflowInferenceRepository;
   inferenceWorker(input: Parameters<typeof processWorkflowInferenceBatch>[0]): ReturnType<typeof processWorkflowInferenceBatch>;
+  llmTestAdapter?: WorkflowLlmTestAdapter;
+  llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
+  llmTestAttemptWorker?: typeof processWorkflowLlmTestAttemptBatch;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
@@ -148,8 +154,12 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("inference")) {
-      loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, () =>
-        input.inferenceWorker({
+      if (input.config.llmTestMode === "mock"
+        && (!input.llmTestAdapter || !input.llmTestAttemptRepository || !input.llmTestAttemptWorker)) {
+        throw new Error("Workflow LLM test Attempt worker is not configured");
+      }
+      loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, async () => {
+        const inference = input.inferenceWorker({
           adapter: input.inferenceAdapter,
           heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
           leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
@@ -160,7 +170,23 @@ export async function startWorkflowWorkerRuntime(input: {
           now,
           repository: input.inferenceRepository,
           retryDelayMs: input.config.runtime.inferenceRetryDelayMs,
-        })));
+        });
+        if (input.config.llmTestMode !== "mock") return inference;
+        const llmTestAttempt = input.llmTestAttemptWorker!({
+          adapter: input.llmTestAdapter!,
+          heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
+          leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.inferenceConcurrency,
+          now,
+          repository: input.llmTestAttemptRepository!,
+        });
+        const [inferenceResult, llmTestAttemptResult] = await Promise.all([
+          inference,
+          llmTestAttempt,
+        ]);
+        return { inference: inferenceResult, llmTestAttempt: llmTestAttemptResult };
+      }));
     }
     if (input.config.roles.has("outbox")) {
       loops.push(startBackgroundRole("outbox", input.config.runtime.outboxIntervalMs, () =>

@@ -1,5 +1,41 @@
 # Database Change Log
 
+## 2026-08-13 Workflow 大模型节点试运行
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_llm_test_attempt (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点稳定ID',
+  op_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '发起操作人ID',
+  execution_key VARCHAR(512) NOT NULL COMMENT '本次试运行执行唯一键',
+  contract_version INT UNSIGNED NOT NULL COMMENT '推理请求契约版本',
+  node_snapshot_json JSON NOT NULL COMMENT '节点执行配置快照',
+  input_values_json JSON NOT NULL COMMENT '本次临时输入值',
+  payload_json JSON NOT NULL COMMENT '推理请求载荷',
+  result_json JSON NULL COMMENT '推理适配器结果',
+  output_json JSON NULL COMMENT '映射后的节点输出',
+  status VARCHAR(32) NOT NULL COMMENT '状态：running、succeeded、failed、timed_out、cancelled',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '领取次数',
+  deadline_at DATETIME NOT NULL COMMENT '执行截止时间',
+  expires_at DATETIME NOT NULL COMMENT '数据过期时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  error_code VARCHAR(128) NULL COMMENT '标准错误码',
+  error_message VARCHAR(512) NULL COMMENT '脱敏错误摘要',
+  started_at DATETIME NULL COMMENT '首次开始执行时间',
+  completed_at DATETIME NULL COMMENT '终态完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_llm_test_execution (uid, execution_key),
+  KEY idx_workflow_llm_test_lookup (uid, workflow_id, id),
+  KEY idx_workflow_llm_test_claim (status, deadline_at, lease_expires_at, id),
+  KEY idx_workflow_llm_test_cleanup (expires_at, id)
+) COMMENT='营销Workflow大模型节点试运行记录表';
+```
+
 ## 2026-08-12 Workflow 异步推理任务
 
 ```sql

@@ -169,6 +169,33 @@ export interface WorkflowInferenceJobTable {
   update_time: GeneratedDate;
 }
 
+export interface WorkflowLlmTestAttemptTable {
+  attempt: number;
+  completed_at: NullableDate;
+  contract_version: number;
+  create_time: GeneratedDate;
+  deadline_at: DatabaseDate;
+  error_code: string | null;
+  error_message: string | null;
+  execution_key: string;
+  expires_at: DatabaseDate;
+  id: Generated<DatabaseId>;
+  input_values_json: JsonText;
+  lease_expires_at: NullableDate;
+  lease_owner: string | null;
+  node_id: string;
+  node_snapshot_json: JsonText;
+  op_sub_uid: DatabaseId;
+  output_json: JsonText | null;
+  payload_json: JsonText;
+  result_json: JsonText | null;
+  started_at: NullableDate;
+  status: string;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowOutboxTable {
   aggregate_id: DatabaseId;
   aggregate_type: string;
@@ -270,6 +297,7 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_event_subscription_event: WorkflowEventSubscriptionEventTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_inference_job: WorkflowInferenceJobTable;
+  xy_wap_embed_workflow_llm_test_attempt: WorkflowLlmTestAttemptTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
   xy_wap_embed_workflow_node_metric: WorkflowNodeMetricTable;
   xy_wap_embed_workflow_node_metric_event: WorkflowNodeMetricEventTable;

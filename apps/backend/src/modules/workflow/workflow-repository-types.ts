@@ -55,6 +55,7 @@ export type WorkflowCreateResult =
 export type WorkflowRepository = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
+    transitionedAt: Date;
     transition: "pause" | "stop";
     uid: number;
     workflowType: WorkflowType;
@@ -141,6 +142,7 @@ export type WorkflowRepository = {
     opSubUserId: string;
     status: WorkflowRuntimeStatus;
     statusReason: WorkflowStatusReason;
+    transitionedAt: Date;
     uid: number;
     workflowId: string;
   }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;

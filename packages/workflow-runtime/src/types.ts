@@ -35,6 +35,7 @@ export type WorkflowRuntimeRevisionRecord = {
 export type WorkflowRuntimeControlReader = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
+    transitionedAt: Date;
     transition: "pause" | "stop";
     uid: number;
     workflowType: WorkflowType;
@@ -207,6 +208,7 @@ export type WorkflowInferenceJobRecord = {
   nextAttemptAt: Date;
   nodeId: string;
   nodeKind: "ai-intent" | "llm";
+  pausedAt: Date | null;
   payload: WorkflowInferenceRequest;
   result: WorkflowInferenceResult | null;
   runId: string;
@@ -275,6 +277,12 @@ export type WorkflowInferenceRepository = {
     leaseOwner: string;
     nextAttemptAt: Date;
   }): Promise<boolean>;
+  transitionInferenceJobs(input: {
+    transitionedAt: Date;
+    transition: "cancel" | "pause" | "resume";
+    uid: number;
+    workflowIds: string[];
+  }): Promise<void>;
 };
 
 export type WorkflowNodeExecutionStatus = "completed" | "failed" | "retrying" | "running";

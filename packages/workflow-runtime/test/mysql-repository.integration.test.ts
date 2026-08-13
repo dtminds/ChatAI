@@ -99,12 +99,20 @@ describe("MySQL workflow runtime repository contract", () => {
           .where("id", "=", runId)
           .executeTakeFirstOrThrow();
       },
-      async setWorkflowRuntimeStatus(status) {
-        await contractDatabase.updateTable("xy_wap_embed_workflow_definition")
-          .set({ runtime_status: status })
-          .where("uid", "=", 9)
-          .where("id", "=", "31")
-          .executeTakeFirstOrThrow();
+      async setWorkflowRuntimeStatus(status, transitionedAt = new Date("2099-01-01T00:00:00.000Z")) {
+        await contractDatabase.transaction().execute(async transaction => {
+          await transaction.updateTable("xy_wap_embed_workflow_definition")
+            .set({ runtime_status: status })
+            .where("uid", "=", 9)
+            .where("id", "=", "31")
+            .executeTakeFirstOrThrow();
+          await new MysqlWorkflowRuntimeRepository(transaction).transitionInferenceJobs({
+            transitionedAt,
+            transition: status === "paused" ? "pause" : status === "active" ? "resume" : "cancel",
+            uid: 9,
+            workflowIds: ["31"],
+          });
+        });
       },
     };
   });

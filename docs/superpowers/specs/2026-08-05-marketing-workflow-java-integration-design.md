@@ -1200,6 +1200,11 @@ Inference Job，再由独立 Worker 调用 Java；Java 应将 `executionKey` 作
 Task 只消费结果或结束节点，不再叠加第二层调用重试。Java 请求同时携带
 `contractVersion`，双方按该版本解析下面的判别式载荷。
 
+Workflow 暂停时，未终态的 Inference Job 冻结执行超时预算；恢复时按暂停时长顺延
+`deadlineAt` 和 `nextAttemptAt`。已经领取的 Job 撤销租约并退回待领取状态，被暂停中断的尝试
+不计入调用次数；旧调用即使晚到也无法通过租约 CAS 写入结果。恢复后沿用同一
+`executionKey` 继续执行，避免暂停窗口把 Job 永久做成超时终态。
+
 两类请求必须保持独立的判别式载荷：
 
 ```ts

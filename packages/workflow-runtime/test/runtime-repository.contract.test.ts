@@ -16,8 +16,14 @@ describe("in-memory workflow runtime repository contract", () => {
         if (!run) throw new Error(`Workflow run ${runId} not found`);
         run.status = status;
       },
-      async setWorkflowRuntimeStatus(status) {
+      async setWorkflowRuntimeStatus(status, transitionedAt = new Date("2099-01-01T00:00:00.000Z")) {
         runtimeStatus = status;
+        await repository.transitionInferenceJobs({
+          transitionedAt,
+          transition: status === "paused" ? "pause" : status === "active" ? "resume" : "cancel",
+          uid: 9,
+          workflowIds: ["31"],
+        });
       },
     };
   });

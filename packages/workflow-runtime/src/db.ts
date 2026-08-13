@@ -157,6 +157,7 @@ export interface WorkflowInferenceJobTable {
   next_attempt_at: DatabaseDate;
   node_id: string;
   node_kind: string;
+  paused_at: NullableDate;
   payload_json: JsonText;
   result_json: JsonText | null;
   run_id: DatabaseId;

@@ -578,6 +578,7 @@ function createInferenceRecoveryRaceDbMock(input: {
     deadline_at: deadlineAt,
     id: "11",
     lease_owner: "inference-worker-1",
+    paused_at: null,
     run_id: "5",
     status: "running",
     task_id: "7",
@@ -589,13 +590,14 @@ function createInferenceRecoveryRaceDbMock(input: {
     selectFrom(table: string) {
       const builder = {
         forUpdate() { return builder; },
+        innerJoin() { return builder; },
         limit() { return builder; },
         orderBy() { return builder; },
         select() { return builder; },
         selectAll() { return builder; },
         where() { return builder; },
         async execute() {
-          return table === "xy_wap_embed_workflow_inference_job"
+          return table.startsWith("xy_wap_embed_workflow_inference_job")
             ? [{ ...baseJob, lease_expires_at: input.scannedLeaseExpiresAt }]
             : [];
         },

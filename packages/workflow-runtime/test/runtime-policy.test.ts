@@ -56,6 +56,7 @@ describe("Workflow runtime policy", () => {
     });
     expect(harness.applyEntitlementLoss).toHaveBeenCalledWith({
       opSubUserId: "0",
+      transitionedAt: now,
       transition,
       uid: 9,
       workflowType: "chatai_sop",

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '推理调用尝试次数',
   next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
   deadline_at DATETIME NOT NULL COMMENT '推理总截止时间',
+  paused_at DATETIME NULL COMMENT '执行预算冻结时间',
   lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
   lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
   error_code VARCHAR(128) NULL COMMENT '标准错误码',

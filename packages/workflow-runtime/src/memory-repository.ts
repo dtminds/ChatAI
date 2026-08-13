@@ -584,6 +584,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
     const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
     if (!run || !task || task.runId !== run.id) return notFound();
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: run.workflowId });
+      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (decision !== "execute") return { action: decision, kind: "workflow-unavailable" as const };
+    }
     if (run.lockVersion !== input.expectedRunLockVersion
       || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
@@ -622,6 +627,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       nextAttemptAt: clone(input.now),
       nodeId: task.nodeId,
       nodeKind: task.nodeKind,
+      pausedAt: null,
       payload: clone(input.payload),
       result: null,
       runId: run.id,
@@ -655,7 +661,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const candidates = this.inferenceJobs
       .filter(job => (job.status === "pending" || job.status === "retry_wait")
         && job.nextAttemptAt <= input.now
-        && job.deadlineAt > input.now)
+        && job.deadlineAt > input.now
+        && job.pausedAt === null)
       .sort((left, right) => compareDateAndId(left.nextAttemptAt, left.id, right.nextAttemptAt, right.id));
     const jobs: WorkflowInferenceJobRecord[] = [];
     for (const job of candidates) {
@@ -721,10 +728,24 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
     let expired = 0;
     let recovered = 0;
-    for (const job of this.inferenceJobs
-      .filter(item => item.status === "pending" || item.status === "retry_wait" || item.status === "running")
-      .sort(compareById)
-      .slice(0, Math.max(0, input.limit))) {
+    const eligible: WorkflowInferenceJobRecord[] = [];
+    for (const job of this.inferenceJobs) {
+      if ((job.status !== "pending" && job.status !== "retry_wait" && job.status !== "running")
+        || job.pausedAt !== null) continue;
+      const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
+      if (!run) continue;
+      if (this.resolveWorkflowBoundary) {
+        const boundary = await this.resolveWorkflowBoundary({ uid: job.uid, workflowId: run.workflowId });
+        if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) !== "execute") continue;
+      }
+      const leaseExpired = job.status === "running"
+        && job.leaseExpiresAt !== null
+        && job.leaseExpiresAt <= input.now;
+      const attemptsExhausted = job.attempt >= input.maxAttempts
+        && (job.status !== "running" || leaseExpired);
+      if (job.deadlineAt <= input.now || attemptsExhausted || leaseExpired) eligible.push(job);
+    }
+    for (const job of eligible.sort(compareById).slice(0, Math.max(0, input.limit))) {
       const leaseExpired = job.status === "running"
         && job.leaseExpiresAt !== null
         && job.leaseExpiresAt <= input.now;
@@ -750,6 +771,41 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       }
     }
     return { expired, recovered };
+  }
+
+  async transitionInferenceJobs(
+    input: Parameters<WorkflowRuntimeRepository["transitionInferenceJobs"]>[0],
+  ) {
+    const workflowIds = new Set(input.workflowIds);
+    for (const job of this.inferenceJobs) {
+      if (job.uid !== input.uid) continue;
+      const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
+      if (!run || !workflowIds.has(run.workflowId)) continue;
+      if (input.transition === "cancel") {
+        if (job.status !== "pending" && job.status !== "retry_wait" && job.status !== "running") continue;
+        job.status = "cancelled";
+        job.leaseExpiresAt = null;
+        job.leaseOwner = null;
+        job.pausedAt = null;
+      } else if (input.transition === "pause") {
+        if ((job.status !== "pending" && job.status !== "retry_wait" && job.status !== "running")
+          || job.pausedAt !== null
+          || job.deadlineAt <= input.transitionedAt) continue;
+        job.pausedAt = clone(input.transitionedAt);
+        if (job.status === "running") {
+          job.attempt = Math.max(0, job.attempt - 1);
+          job.status = "pending";
+        }
+        job.leaseExpiresAt = null;
+        job.leaseOwner = null;
+      } else if (job.pausedAt !== null) {
+        const pausedMs = Math.max(0, input.transitionedAt.getTime() - job.pausedAt.getTime());
+        job.deadlineAt = new Date(job.deadlineAt.getTime() + pausedMs);
+        job.nextAttemptAt = new Date(job.nextAttemptAt.getTime() + pausedMs);
+        job.pausedAt = null;
+      }
+      job.updatedAt = clone(input.transitionedAt);
+    }
   }
 
   async scheduleCapabilityRetry(

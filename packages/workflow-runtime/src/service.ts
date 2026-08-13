@@ -524,6 +524,11 @@ export class WorkflowRuntimeService {
       uid: input.input.uid,
     });
     if (waiting.kind === "already-processed") throw alreadyProcessedError();
+    if (waiting.kind === "workflow-unavailable") {
+      throw waiting.action === "defer"
+        ? runtimeStatusError("paused")
+        : workflowUnavailable();
+    }
     if (waiting.kind !== "success") throw staleTaskError();
     return { kind: "inference-waiting", type: "inference-wait" };
   }
@@ -707,6 +712,7 @@ export class WorkflowRuntimeService {
       if (decision.action === "allow") return decision.result;
       await this.controlRepository.applyEntitlementLoss({
         opSubUserId: "0",
+        transitionedAt: this.clock(),
         transition: decision.action,
         uid,
         workflowType,

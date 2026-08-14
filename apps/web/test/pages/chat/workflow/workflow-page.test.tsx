@@ -783,7 +783,7 @@ describe("Agent workflow page", () => {
     getDocumentSpy.mockRestore();
   });
 
-  it("follows a newly published revision when opening workflow data", async () => {
+  it("opens current workflow data after publishing a new revision", async () => {
     const repository = getWorkflowDraftRepository();
     const existing = getWorkflowDocument("vip-reactivation");
     const start = existing.draft.nodes.find(node => node.data.kind === "start")!;
@@ -814,7 +814,7 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("tab", { name: "数据" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/vip-reactivation/data"));
-    expect(screen.getByRole("button", { name: /当前流程 · 刚刚/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新数据" })).toBeInTheDocument();
   });
 
   it("opens workflow cards in the current tab", async () => {

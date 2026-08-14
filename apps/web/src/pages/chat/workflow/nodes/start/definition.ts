@@ -1,5 +1,7 @@
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import {
+  DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowType,
@@ -57,6 +59,7 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   sort: 0,
   validate: (node) => {
     const issues = [];
+    const entryMode = node.data.entryMode ?? "event";
     const sourceIds = getStartNodeSourceIds(node.data);
     if (sourceIds.length === 0) {
       issues.push(createCatalogIssue(
@@ -64,15 +67,15 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
         `尚未指定${isChatAiStartNodeData(node.data) ? "托管账号" : "企微成员"}`,
       ));
     }
-    if (node.data.triggers.length === 0) {
+    if (entryMode === "event" && node.data.triggers.length === 0) {
       issues.push(createCatalogIssue("start-trigger-required", "请选择触发条件"));
     }
-    if (node.data.triggers.some(trigger =>
+    if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
       issues.push(createCatalogIssue("start-tag-required", "标签触发需选择至少一个标签"));
     }
-    if (node.data.triggers.some(trigger =>
+    if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "message.received" && trigger.keywords.length === 0,
     )) {
       issues.push(createCatalogIssue(
@@ -103,15 +106,21 @@ export function createStartNodeData(
   workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop">,
 ): StartNodeData {
   const common = {
+    entryMode: "event" as const,
     entryPolicy: { maxEntries: 1, mode: "lifetime_limit" } as const,
     label: "开始",
-    metric: "待配置触发条件",
+    metric: "待配置进入方式",
     status: "warning" as const,
     title: "开始",
     triggers: [],
   };
   return workflowType === "chatai_sop"
-    ? createNodeData("start", { ...common, seatIds: [] })
+    ? createNodeData("start", {
+        ...common,
+        messageSendingWindow: DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+        pushAccountStrategy: DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
+        seatIds: [],
+      })
     : createNodeData("start", { ...common, workUserIds: [] });
 }
 
@@ -138,6 +147,9 @@ function sanitizePositiveIds(ids: number[]) {
 }
 
 function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
+  if (data.entryMode === "audience-import") {
+    return { ...data, triggers: [] } as StartNodeData;
+  }
   const triggers = data.triggers.slice(0, 1).map((trigger) => {
     if (trigger.type === "contact.tag_added") {
       return { ...trigger, tagIds: sanitizePositiveIds(trigger.tagIds) };

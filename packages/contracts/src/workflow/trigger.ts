@@ -11,6 +11,11 @@ export const WorkflowEntryEventTypeSchema = Type.Union([
   Type.Literal("message.received"),
 ]);
 
+export const WorkflowStartEntryModeSchema = Type.Union([
+  Type.Literal("event"),
+  Type.Literal("audience-import"),
+]);
+
 export const WorkflowEntryPolicySchema = Type.Union([
   Type.Object({ mode: Type.Literal("never") }, { additionalProperties: false }),
   Type.Object({
@@ -29,6 +34,27 @@ export const WorkflowEntryPolicySchema = Type.Union([
     windowSize: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_WINDOW_MAX_DAYS }),
     windowUnit: Type.Literal("day"),
   }, { additionalProperties: false }),
+]);
+
+export const DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW = {
+  endTime: "20:00",
+  startTime: "09:00",
+} as const;
+
+export const DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY = "earliest-added" as const;
+
+const WorkflowClockTimeSchema = Type.String({
+  pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+});
+
+export const WorkflowMessageSendingWindowSchema = Type.Object({
+  endTime: WorkflowClockTimeSchema,
+  startTime: WorkflowClockTimeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowPushAccountStrategySchema = Type.Union([
+  Type.Literal("earliest-added"),
+  Type.Literal("latest-added"),
 ]);
 
 const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
@@ -104,7 +130,10 @@ const WorkflowWeComStartDraftTriggerSchema = Type.Union([
 ]);
 
 export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
+  entryMode: Type.Optional(WorkflowStartEntryModeSchema),
   entryPolicy: WorkflowEntryPolicySchema,
+  messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
+  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     uniqueItems: true,
@@ -113,6 +142,7 @@ export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowWeComStartDraftConfigSchema = Type.Object({
+  entryMode: Type.Optional(WorkflowStartEntryModeSchema),
   entryPolicy: WorkflowEntryPolicySchema,
   triggers: Type.Array(WorkflowWeComStartDraftTriggerSchema, { maxItems: 1 }),
   workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
@@ -126,25 +156,51 @@ export const WorkflowStartDraftConfigSchema = Type.Union([
   WorkflowWeComStartDraftConfigSchema,
 ]);
 
-export const WorkflowChatAiStartConfigSchema = Type.Object({
+const WorkflowChatAiStartExecutionFields = {
   entryPolicy: WorkflowEntryPolicySchema,
+  messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
+  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,
     uniqueItems: true,
   }),
-  triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 1, minItems: 1 }),
-}, { additionalProperties: false });
+};
 
-export const WorkflowWeComStartConfigSchema = Type.Object({
+export const WorkflowChatAiStartConfigSchema = Type.Union([
+  Type.Object({
+    entryMode: Type.Optional(Type.Literal("event")),
+    ...WorkflowChatAiStartExecutionFields,
+    triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 1, minItems: 1 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    entryMode: Type.Literal("audience-import"),
+    ...WorkflowChatAiStartExecutionFields,
+    triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 0 }),
+  }, { additionalProperties: false }),
+]);
+
+const WorkflowWeComStartExecutionFields = {
   entryPolicy: WorkflowEntryPolicySchema,
-  triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 1, minItems: 1 }),
   workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,
     uniqueItems: true,
   }),
-}, { additionalProperties: false });
+};
+
+export const WorkflowWeComStartConfigSchema = Type.Union([
+  Type.Object({
+    entryMode: Type.Optional(Type.Literal("event")),
+    ...WorkflowWeComStartExecutionFields,
+    triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 1, minItems: 1 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    entryMode: Type.Literal("audience-import"),
+    ...WorkflowWeComStartExecutionFields,
+    triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 0 }),
+  }, { additionalProperties: false }),
+]);
 
 export const WorkflowStartConfigSchema = Type.Union([
   WorkflowChatAiStartConfigSchema,
@@ -267,6 +323,9 @@ export const WorkflowWaitEventConfigSchema = Type.Object({
 
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
+export type WorkflowStartEntryMode = Static<typeof WorkflowStartEntryModeSchema>;
+export type WorkflowMessageSendingWindow = Static<typeof WorkflowMessageSendingWindowSchema>;
+export type WorkflowPushAccountStrategy = Static<typeof WorkflowPushAccountStrategySchema>;
 export type WorkflowChatAiStartDraftConfig = Static<typeof WorkflowChatAiStartDraftConfigSchema>;
 export type WorkflowChatAiStartConfig = Static<typeof WorkflowChatAiStartConfigSchema>;
 export type WorkflowWeComStartDraftConfig = Static<typeof WorkflowWeComStartDraftConfigSchema>;

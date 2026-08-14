@@ -8,6 +8,11 @@ import type {
   WorkflowNode,
   WorkflowNodeKind,
 } from "../types";
+import type { WorkflowManagedAccountResource } from "../workflow-managed-account-resource";
+
+export type WorkflowNodeSettingsResources = {
+  managedAccounts?: WorkflowManagedAccountResource;
+};
 
 export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
   allowedEntryEventTypes?: readonly WorkflowEntryEventType[];
@@ -15,6 +20,7 @@ export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind>
   node: WorkflowNode<TKind>;
   nodes: WorkflowNode[];
   onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
+  resources?: WorkflowNodeSettingsResources;
   testContext?: WorkflowNodeTestContext;
 };
 

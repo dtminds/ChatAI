@@ -7,7 +7,11 @@ import type {
   WorkflowTriggerBindingFilter,
   WorkflowWeComStartConfig,
 } from "@chatai/contracts";
-import { normalizeWorkflowEntryPolicy } from "@chatai/contracts";
+import {
+  DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
+  normalizeWorkflowEntryPolicy,
+} from "@chatai/contracts";
 import type { WorkflowTriggerProjection } from "./event-catalog.js";
 
 export type WorkflowTriggerBindingSpec = {
@@ -17,14 +21,21 @@ export type WorkflowTriggerBindingSpec = {
 };
 
 export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): WorkflowStartConfig {
-  const triggers = normalizeTriggers(config.triggers);
+  const entryMode = config.entryMode ?? "event";
+  const triggers = entryMode === "audience-import" ? [] : normalizeTriggers(config.triggers);
   return "seatIds" in config
     ? {
+        entryMode,
         entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
+        messageSendingWindow:
+          config.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+        pushAccountStrategy:
+          config.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
         seatIds: uniqueNumbers(config.seatIds),
         triggers,
       } as WorkflowChatAiStartConfig
     : {
+        entryMode,
         entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
         triggers,
         workUserIds: uniqueNumbers(config.workUserIds),
@@ -38,6 +49,7 @@ export function getWorkflowTriggerBindings(
 ): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   assertStartConfigMatchesSubjectType(normalized, subjectType);
+  if (normalized.entryMode === "audience-import") return [];
   return normalized.triggers.map(trigger => ({
     eventType: trigger.type,
     filter: createBindingFilter(normalized, trigger, options.resolvedWorkUserIds),

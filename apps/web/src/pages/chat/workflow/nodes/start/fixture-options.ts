@@ -1,4 +1,5 @@
 export type WorkflowStartOption = {
+  avatarUrl?: string;
   id: number;
   label: string;
 };

@@ -225,7 +225,10 @@ describe("workflow node contracts", () => {
       "userPrompt",
     ]);
     expect(getWorkflowNodeContract("start").draftConfigKeys).toEqual([
+      "entryMode",
       "entryPolicy",
+      "messageSendingWindow",
+      "pushAccountStrategy",
       "seatIds",
       "triggers",
       "workUserIds",

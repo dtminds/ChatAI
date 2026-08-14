@@ -36,6 +36,7 @@ import type {
   WorkflowDraftRepository,
 } from "./workflow-draft-service";
 import { useWorkflowDocumentResource } from "./workflow-resources";
+import { useWorkflowManagedAccountResource } from "./workflow-managed-account-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
   WorkflowCreateDialog,
@@ -175,6 +176,10 @@ function WorkflowWorkspaceContent({
   const location = useLocation();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
+  const shouldLoadManagedAccounts = inspector.isOpen
+    && inspector.node?.data.kind === "start"
+    && "seatIds" in inspector.node.data;
+  const managedAccountResource = useWorkflowManagedAccountResource(shouldLoadManagedAccounts);
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
@@ -339,6 +344,13 @@ function WorkflowWorkspaceContent({
                 onNodeChange={inspector.onNodeChange}
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
+                resources={{
+                  managedAccounts: {
+                    options: managedAccountResource.options,
+                    reload: () => void managedAccountResource.reload(),
+                    status: managedAccountResource.status,
+                  },
+                }}
                 testContext={inspector.testContext}
             />
           ) : null}

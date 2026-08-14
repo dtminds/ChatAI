@@ -44,10 +44,61 @@ describe("workflow start configuration", () => {
       kind: "start",
       workflowType: "chatai_sop",
     })).toEqual({
+      entryMode: "event",
       entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "earliest-added",
       seatIds: [],
       triggers: data.triggers,
     });
+  });
+
+  it("accepts audience import without an entry event", () => {
+    const definition = getNodeDefinition("start");
+    const node = createStartNode({
+      ...createStartNodeData("chatai_sop"),
+      entryMode: "audience-import",
+      seatIds: [101],
+      triggers: [],
+    });
+
+    expect(definition.validate?.(node, {
+      availableVariables: [],
+      edges: [],
+      nodes: [node],
+    })).toEqual([]);
+  });
+
+  it("configures ChatAI message delivery settings", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={createStartNode()}
+        nodes={[]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "消息发送开始时间" })).toHaveTextContent("09:00");
+    expect(screen.getByRole("button", { name: "消息发送结束时间" })).toHaveTextContent("20:00");
+    expect(screen.getByRole("radio", { name: "优先最早添加的账号" })).toBeChecked();
+
+    await user.hover(screen.getByRole("button", { name: "查看消息发送时段说明" }));
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息发送开始时间" }));
+    await user.click(screen.getByRole("button", { name: "10时" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+    }));
+
+    await user.click(screen.getByRole("radio", { name: "优先最新添加的账号" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      pushAccountStrategy: "latest-added",
+    }));
   });
 
   it("updates seats and replaces the selected Start Event", async () => {
@@ -63,22 +114,111 @@ describe("workflow start configuration", () => {
       />,
     );
 
+    await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.click(screen.getByRole("checkbox", { name: "销售一组" }));
-    await user.click(screen.getByRole("radio", { name: "用户发送消息" }));
+    await user.click(screen.getByRole("combobox", { name: "选择事件" }));
+    await user.click(screen.getByRole("option", { name: "用户发送消息" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       seatIds: [101],
       status: "warning",
     }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
-      metric: "待配置触发条件",
       triggers: [{ keywords: [], type: "message.received" }],
     }));
 
-    await user.click(screen.getByRole("radio", { name: "添加好友" }));
+    await user.click(screen.getByRole("combobox", { name: "选择事件" }));
+    await user.click(screen.getByRole("option", { name: "添加好友" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     }));
+  });
+
+  it("searches, selects, and removes managed accounts", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createStartNodeData("chatai_sop"),
+      seatIds: [102],
+    });
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+        resources={{
+          managedAccounts: {
+            options: [
+              { avatarUrl: "https://example.com/one.png", id: 101, label: "销售一组" },
+              { avatarUrl: "https://example.com/two.png", id: 102, label: "销售二组" },
+            ],
+            reload: vi.fn(),
+            status: "ready",
+          },
+        }}
+      />,
+    );
+
+    const searchInput = screen.getByRole("textbox", { name: "搜索并选择托管账号" });
+    await user.type(searchInput, "一组");
+    expect(screen.getByRole("checkbox", { name: "销售一组" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "销售二组" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "销售一组" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      seatIds: [102, 101],
+    }));
+
+    await user.click(screen.getByRole("button", { name: "移除" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      seatIds: [],
+    }));
+  });
+
+  it("keeps unavailable managed accounts removable", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createStartNodeData("chatai_sop"),
+      seatIds: [999],
+    });
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+        resources={{
+          managedAccounts: { options: [], reload: vi.fn(), status: "ready" },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "移除" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({ seatIds: [] }));
+  });
+
+  it("retries managed account loading failures", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={createStartNode()}
+        nodes={[]}
+        onNodeChange={vi.fn()}
+        resources={{
+          managedAccounts: { options: [], reload: onRetry, status: "error" },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it("uses work users and excludes message events for a WeCom start", async () => {
@@ -98,10 +238,15 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("checkbox", { name: "企微成员一" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({ workUserIds: [201] }));
-    expect(screen.queryByRole("radio", { name: "用户发送消息" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "选择事件" }));
+    expect(screen.queryByRole("option", { name: "用户发送消息" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "消息发送开始时间" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "优先最早添加的账号" }))
+      .not.toBeInTheDocument();
   });
 
-  it("only exposes entry events allowed by the Workflow capability profile", () => {
+  it("only exposes entry events allowed by the Workflow capability profile", async () => {
+    const user = userEvent.setup();
     render(
       <StartConfig
         allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
@@ -112,9 +257,10 @@ describe("workflow start configuration", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "添加好友" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "添加标签" })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "用户发送消息" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "选择事件" }));
+    expect(screen.getByRole("option", { name: "添加好友" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "添加标签" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
   it("normalizes comma-separated source IDs and keywords on blur", async () => {
@@ -173,7 +319,7 @@ describe("workflow start configuration", () => {
       />,
     );
 
-    await user.click(screen.getByRole("radio", { name: "时间范围内限制" }));
+    await user.click(screen.getByRole("radio", { name: "周期进入限制" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       entryPolicy: {

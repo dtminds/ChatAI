@@ -1,10 +1,15 @@
-import type {
-  WorkflowExecutionNode,
-  WorkflowExecutionSpec,
-  WorkflowFlowChangedReason,
-  WorkflowNodeKind,
-  WorkflowVariableSelector,
+import {
+  getWorkflowNodeOutputContracts,
+  type WorkflowExecutionNode,
+  type WorkflowExecutionSpec,
+  type WorkflowFlowChangedReason,
+  type WorkflowNodeKind,
+  type WorkflowVariableSelector,
 } from "@chatai/contracts";
+import {
+  getWorkflowGuaranteedUpstreamNodeIds,
+  isWorkflowOutputAvailableOnSourceOutlets,
+} from "@chatai/workflow-engine";
 
 export type WorkflowForwardRouteResult =
   | { kind: "flow-changed"; reason: WorkflowFlowChangedReason }
@@ -31,7 +36,7 @@ export function resolveWorkflowForwardRoute(input: {
   if (!edge) return { kind: "flow-changed", reason: "flow_changed_outlet_deleted" };
   const target = input.latestSpec.nodes.find(node => node.id === edge.target);
   if (!target) return { kind: "flow-changed", reason: "flow_changed_outlet_deleted" };
-  if (!getRequiredContextSelectors(target).every(selector =>
+  if (!getRequiredContextSelectors(target, input.latestSpec).every(selector =>
     isWorkflowSelectorAvailable(selector, input.context))) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
   }
@@ -57,7 +62,10 @@ export function isWorkflowSelectorAvailable(
   return scope === "current-node-lifecycle" || scope === "input";
 }
 
-function getRequiredContextSelectors(node: WorkflowExecutionNode): WorkflowVariableSelector[] {
+function getRequiredContextSelectors(
+  node: WorkflowExecutionNode,
+  spec: WorkflowExecutionSpec,
+): WorkflowVariableSelector[] {
   const config = isRecord(node.config) ? node.config : {};
   if (node.kind === "message") {
     return config.contentMode === "node-output"
@@ -75,7 +83,65 @@ function getRequiredContextSelectors(node: WorkflowExecutionNode): WorkflowVaria
   }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
   if (node.kind === "message-query") return selectorsFromTimeRange(config.timeRange);
+  if (node.kind === "branch") return requiredBranchSelectors(node, spec);
   return [];
+}
+
+function requiredBranchSelectors(
+  node: WorkflowExecutionNode,
+  spec: WorkflowExecutionSpec,
+): WorkflowVariableSelector[] {
+  const config = isRecord(node.config) ? node.config : {};
+  const selectors = readArray(config.branchPaths).flatMap(path => {
+    if (!isRecord(path)) return [];
+    return readArray(path.conditions).flatMap(condition =>
+      isRecord(condition) ? selectorFrom(condition.selector) : []);
+  });
+  const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+    node.id,
+    spec.nodes.map(candidate => candidate.id),
+    spec.edges,
+  );
+  const graphEdges = spec.edges.map(edge => ({
+    source: edge.source,
+    sourceHandle: edge.sourceOutletId,
+    target: edge.target,
+  }));
+
+  return selectors.filter(selector => {
+    const [scope, sourceId, outputKey, ...rest] = selector;
+    if (scope === "subject") return sourceId === "id" && !outputKey;
+    if (scope === "trigger") return true;
+    if (scope === "current-node-lifecycle") {
+      return !outputKey && (sourceId === "enteredAt" || sourceId === "exitedAt");
+    }
+    if (scope === "node-lifecycle") {
+      return Boolean(sourceId
+        && guaranteedUpstreamIds.has(sourceId)
+        && rest.length === 0
+        && (outputKey === "enteredAt" || outputKey === "exitedAt"));
+    }
+    if (scope !== "node"
+      || !sourceId
+      || !outputKey
+      || rest.length > 0
+      || !guaranteedUpstreamIds.has(sourceId)) return false;
+
+    const sourceNode = spec.nodes.find(candidate => candidate.id === sourceId);
+    const output = sourceNode
+      ? getWorkflowNodeOutputContracts(sourceNode.kind, sourceNode.config)
+        ?.find(candidate => candidate.key === outputKey)
+      : null;
+    return Boolean(output
+      && output.usages.includes("variable")
+      && (!output.availableOnSourceOutlets
+        || isWorkflowOutputAvailableOnSourceOutlets(
+          sourceId,
+          node.id,
+          output.availableOnSourceOutlets,
+          graphEdges,
+        )));
+  });
 }
 
 function selectorsFromSegments(value: unknown) {

@@ -118,6 +118,7 @@ describe("workflow runtime repository", () => {
     ["current node kind changes", flowChangedSpec("node-kind-changed"), "flow_changed_node_kind_changed"],
     ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
+    ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
     const created = await repository.createRunWithInitialTask(createRunInput());
@@ -154,6 +155,49 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ current: -1, incomplete: 1, nodeId: "start", revision: 1 }),
     ]));
+  });
+
+  it("ends an old run before a branch that requires an unexecuted new predecessor", async () => {
+    const repository = repositoryWithLatestSpec(publishedSpecWithInsertedMessageBeforeWait());
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
+    if (created.kind !== "success") throw new Error("create failed");
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+
+    const committed = await repository.commitNodeResult({
+      context: created.run.context,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: "branch-missing-new-predecessor",
+      },
+      nodeExecution: { executionKey: `9:${created.run.id}:wait-1:1`, input: {}, output: {} },
+      runId: created.run.id,
+      sourceOutletId: "default",
+      taskId: claimed.task.id,
+      uid: 9,
+    });
+
+    expect(committed).toMatchObject({
+      kind: "success",
+      nextTask: null,
+      run: {
+        status: "cancelled",
+        terminalReason: "flow_changed_context_incompatible",
+      },
+    });
   });
 
   it("creates the latest-revision task as pending when publication wins before a paused commit", async () => {
@@ -826,7 +870,12 @@ function repositoryWithLatestSpec(executionSpec: WorkflowExecutionSpec) {
 }
 
 function flowChangedSpec(
-  scenario: "context-incompatible" | "current-node-deleted" | "node-kind-changed" | "outlet-deleted",
+  scenario:
+    | "branch-context-incompatible"
+    | "context-incompatible"
+    | "current-node-deleted"
+    | "node-kind-changed"
+    | "outlet-deleted",
 ): WorkflowExecutionSpec {
   const spec = publishedSpec();
   if (scenario === "current-node-deleted") {
@@ -845,6 +894,58 @@ function flowChangedSpec(
     };
   }
   if (scenario === "outlet-deleted") return { ...spec, edges: [] };
+  if (scenario === "branch-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch-1" },
+        { id: "branch-matched-end", source: "branch-1", sourceOutletId: "matched", target: "end" },
+        { id: "branch-default-end", source: "branch-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        {
+          ...spec.nodes[0]!,
+          config: {
+            entryMode: "event",
+            entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+            seatIds: [101],
+            triggers: [{ keywords: ["price"], type: "message.received" }],
+          },
+          requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
+        },
+        {
+          config: {
+            branchPaths: [
+              {
+                conditions: [{
+                  id: "message-id-present",
+                  operator: "greater-than",
+                  selector: ["trigger", "projection", "messageId"],
+                  value: 0,
+                  valueType: "number",
+                }],
+                id: "matched",
+                label: "Matched",
+                logic: "all",
+              },
+              {
+                conditions: [],
+                id: "default",
+                isDefault: true,
+                label: "Default",
+                logic: "all",
+              },
+            ],
+          },
+          id: "branch-1",
+          kind: "branch",
+          nodeSchemaVersion: 1,
+          requiredCapabilities: [],
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
   return {
     ...spec,
     edges: [{ id: "start-llm", source: "start", sourceOutletId: "default", target: "llm-1" }],
@@ -941,6 +1042,66 @@ function publishedSpecWithWait(): WorkflowExecutionSpec {
       spec.nodes[1]!,
     ],
     revision: 3,
+  };
+}
+
+function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
+  const spec = publishedSpec();
+  return {
+    ...spec,
+    edges: [
+      { id: "start-message", source: "start", sourceOutletId: "default", target: "message-1" },
+      { id: "message-wait", source: "message-1", sourceOutletId: "default", target: "wait-1" },
+      { id: "wait-branch", source: "wait-1", sourceOutletId: "default", target: "branch-1" },
+      { id: "branch-matched-end", source: "branch-1", sourceOutletId: "matched", target: "end" },
+      { id: "branch-default-end", source: "branch-1", sourceOutletId: "default", target: "end" },
+    ],
+    nodes: [
+      spec.nodes[0]!,
+      {
+        config: {},
+        id: "message-1",
+        kind: "message",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: { duration: 1, unit: "day" },
+        id: "wait-1",
+        kind: "wait",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: {
+          branchPaths: [
+            {
+              conditions: [{
+                id: "message-sent",
+                operator: "is-not-empty",
+                selector: ["node", "message-1", "sentAt"],
+                valueType: "datetime",
+              }],
+              id: "matched",
+              label: "Matched",
+              logic: "all",
+            },
+            {
+              conditions: [],
+              id: "default",
+              isDefault: true,
+              label: "Default",
+              logic: "all",
+            },
+          ],
+        },
+        id: "branch-1",
+        kind: "branch",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      spec.nodes[1]!,
+    ],
   };
 }
 

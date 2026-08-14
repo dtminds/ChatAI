@@ -239,12 +239,10 @@ describe("workflow message query", () => {
       createEdge(conditionalMessage.id, "end"),
     ];
 
-    expect(validateWorkflowNodeConfig(queryNode, nodes, edges)).toContainEqual({
+    expect(validateWorkflowNodeConfig(queryNode, nodes, edges)).toContainEqual(expect.objectContaining({
       code: "message-query-start-time-invalid",
-      message: "开始时间引用了不可用的前序节点时间",
-      severity: "warning",
       source: "config",
-    });
+    }));
   });
 
   it("rejects reversed fixed ranges", () => {

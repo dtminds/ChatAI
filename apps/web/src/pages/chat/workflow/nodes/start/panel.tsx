@@ -50,7 +50,7 @@ export function StartConfig({
   const isChatAi = isChatAiStartNodeData(node.data);
   const sourceIds = getStartNodeSourceIds(node.data);
   const sourceOptions = isChatAi ? seats : workUsers;
-  const sourceLabel = isChatAi ? "席位" : "企微成员";
+  const sourceLabel = isChatAi ? "托管账号" : "企微成员";
   const allowedEventTypes = new Set(allowedEntryEventTypes);
   const updateStartConfig = (patch: {
     entryPolicy?: WorkflowEntryPolicy;

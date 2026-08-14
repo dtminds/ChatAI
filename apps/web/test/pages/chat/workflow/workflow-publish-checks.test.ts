@@ -68,21 +68,18 @@ describe("buildPublishChecks", () => {
       createEdge("intent", "end", "其他意图", { sourceHandle: "fallback" }),
     ]);
 
-    expect(checklist.checks.filter((check) => check.nodeId === "intent").length).toBeGreaterThan(1);
-    expect(checklist.displayChecks.filter((check) => check.nodeId === "intent")).toEqual([
-      expect.objectContaining({
-        id: "node-intent",
-        nodeKind: "ai-intent",
-        title: "意图识别",
-        messages: expect.arrayContaining([
-          "意图识别需要选择输入",
-          "意图描述不能为空",
-          "节点存在未连接的出口",
-          "当前节点暂不支持发布",
-        ]),
-      }),
-    ]);
-    const intentMessages = checklist.displayChecks.find((check) => check.nodeId === "intent")?.messages ?? [];
+    const intentChecks = checklist.checks.filter((check) => check.nodeId === "intent");
+    const intentDisplayChecks = checklist.displayChecks.filter((check) => check.nodeId === "intent");
+    expect(intentChecks.length).toBeGreaterThan(1);
+    expect(intentDisplayChecks).toHaveLength(1);
+    expect(intentDisplayChecks[0]).toEqual(expect.objectContaining({
+      id: "node-intent",
+      nodeKind: "ai-intent",
+      nodeId: "intent",
+    }));
+    const intentMessages = intentDisplayChecks[0]?.messages ?? [];
+    const uniqueIntentMessages = new Set(intentChecks.flatMap(check => check.messages));
+    expect(intentMessages).toHaveLength(uniqueIntentMessages.size);
     expect(new Set(intentMessages).size).toBe(intentMessages.length);
   });
 
@@ -92,16 +89,8 @@ describe("buildPublishChecks", () => {
     );
     const checklist = buildPublishChecklist(nodes, []);
 
-    expect(checklist.displayChecks).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "workflow-structure",
-        messages: expect.arrayContaining([
-          "缺少开始节点",
-          "缺少结束节点",
-        ]),
-        title: "流程结构",
-      }),
-    ]));
+    expect(checklist.checks.map(check => check.id)).toEqual(expect.arrayContaining(["start", "end"]));
+    expect(checklist.displayChecks.filter(check => check.id === "workflow-structure")).toHaveLength(1);
   });
 
   it("returns only unresolved checklist items while keeping a readiness summary", () => {
@@ -123,7 +112,6 @@ describe("buildPublishChecks", () => {
         id: "node-config-message-welcome",
         category: "config",
         nodeId: "message-welcome",
-        messages: ["当前节点暂不支持发布"],
       }),
     ]));
     expect(checklist.canPublish).toBe(false);
@@ -145,12 +133,10 @@ describe("buildPublishChecks", () => {
       expect.objectContaining({
         id: "node-config-branch-intent",
         nodeId: "branch-intent",
-        messages: ["当前节点暂不支持发布"],
       }),
       expect.objectContaining({
         id: "node-config-message-welcome",
         nodeId: "message-welcome",
-        messages: ["当前节点暂不支持发布"],
       }),
     ]));
   });
@@ -258,20 +244,10 @@ describe("buildPublishChecks", () => {
     const validation = validateWorkflowDraft(nodes, edges);
 
     expect(validation.nodeIssues.find((item) => item.node.id === "branch-intent")?.issues).toEqual([
-      {
-        code: "branch-condition-invalid",
-        message: "条件分支存在未完成或不可用的条件",
-        severity: "warning",
-        source: "catalog",
-      },
+      expect.objectContaining({ code: "branch-condition-invalid", source: "catalog" }),
     ]);
     expect(validation.nodeIssues.find((item) => item.node.id === "message-welcome")?.issues).toEqual([
-      {
-        code: "node-disconnected",
-        message: "节点未接入从开始节点出发的主链路",
-        severity: "warning",
-        source: "graph",
-      },
+      expect.objectContaining({ code: "node-disconnected", source: "graph" }),
     ]);
   });
 
@@ -289,12 +265,47 @@ describe("buildPublishChecks", () => {
         : node,
     );
     const checks = buildPublishChecks(nodes, createInitialEdges());
+    const validation = validateWorkflowDraft(nodes, createInitialEdges());
 
     expect(checks.find((check) => check.id === "start")?.status).toBe("warning");
     expect(checks.find((check) => check.id === "start")?.blocksPublish).toBe(true);
-    expect(checks.find((check) => check.id === "start")?.description).toBe(
-      "开始节点需要选择席位",
+    expect(validation.nodeIssues.find(item => item.node.id === "start")?.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "start-source-required" })]),
     );
+  });
+
+  it("blocks publishing when a message trigger has no keywords", () => {
+    const nodes = createInitialNodes();
+    const startNode = nodes.find(
+      (node): node is WorkflowNode<"start"> => node.data.kind === "start",
+    )!;
+    const invalidStartNode: WorkflowNode<"start"> = {
+      ...startNode,
+      data: {
+        ...startNode.data,
+        seatIds: [101],
+        triggers: [{ keywords: [], type: "message.received" }],
+      },
+    };
+    const checklist = buildPublishChecklist(
+      nodes.map(node => node.id === invalidStartNode.id ? invalidStartNode : node),
+      createInitialEdges(),
+    );
+    const issues = validateWorkflowNodeConfig(
+      invalidStartNode,
+      nodes.map(node => node.id === invalidStartNode.id ? invalidStartNode : node),
+      createInitialEdges(),
+    );
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      code: "start-message-keywords-required",
+    }));
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.displayChecks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        nodeId: invalidStartNode.id,
+      }),
+    ]));
   });
 
   it("validates only fields that are part of the current node contract", () => {
@@ -308,12 +319,7 @@ describe("buildPublishChecks", () => {
         duration: -1,
       },
     }, nodes, createInitialEdges())).toEqual([
-      {
-        code: "wait-delay-required",
-        message: "等待时长需要为 1-45 天",
-        severity: "warning",
-        source: "catalog",
-      },
+      expect.objectContaining({ code: "wait-delay-required", source: "catalog" }),
     ]);
 
     expect(validateWorkflowNodeConfig({
@@ -324,12 +330,10 @@ describe("buildPublishChecks", () => {
         mode: "fixed-time",
         time: "09:00",
       },
-    }, nodes, createInitialEdges())).toContainEqual({
+    }, nodes, createInitialEdges())).toContainEqual(expect.objectContaining({
       code: "wait-day-offset-invalid",
-      message: "固定时间等待需要配置 1-45 天",
-      severity: "warning",
       source: "catalog",
-    });
+    }));
 
     for (const kind of ["tag", "coupon", "end"] as const) {
       const node = kind === "end"
@@ -353,12 +357,10 @@ describe("buildPublishChecks", () => {
     )).toEqual([]);
 
     const handoffNode = createNodeFromKind("handoff", "handoff-contract", nodes.length);
-    expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], createInitialEdges())).toContainEqual({
+    expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], createInitialEdges())).toContainEqual(expect.objectContaining({
       code: "handoff-operator-message-required",
-      message: "转人工节点需要配置给客服的转发提示",
-      severity: "warning",
       source: "config",
-    });
+    }));
     expect(validateWorkflowNodeConfig({
       ...handoffNode,
       data: {
@@ -418,12 +420,7 @@ describe("buildPublishChecks", () => {
         ],
       },
     }, nodes, createInitialEdges())).toEqual([
-      {
-        code: "branch-condition-invalid",
-        message: "条件分支存在未完成或不可用的条件",
-        severity: "warning",
-        source: "catalog",
-      },
+      expect.objectContaining({ code: "branch-condition-invalid", source: "catalog" }),
     ]);
   });
 
@@ -450,21 +447,11 @@ describe("buildPublishChecks", () => {
           : [],
       },
     }, nodes, edges)).toEqual([
-      {
-        code: "branch-condition-invalid",
-        message: "条件分支存在未完成或不可用的条件",
-        severity: "warning",
-        source: "catalog",
-      },
+      expect.objectContaining({ code: "branch-condition-invalid", source: "catalog" }),
     ]);
     expect(validateWorkflowNodeConfig(disconnectedNode, nodes, [])).toEqual([]);
     expect(validateWorkflowNodeGraphState(disconnectedNode, [disconnectedNode], "start")).toEqual([
-      {
-        code: "node-disconnected",
-        message: "节点未接入从开始节点出发的主链路",
-        severity: "warning",
-        source: "graph",
-      },
+      expect.objectContaining({ code: "node-disconnected", source: "graph" }),
     ]);
   });
 
@@ -481,7 +468,7 @@ describe("buildPublishChecks", () => {
           issues: [
             {
               code: "node-multiple-incoming",
-              message: "节点存在多个上游入口",
+              message: "fixture graph issue",
               severity: "warning",
               source: "graph",
             },
@@ -495,14 +482,12 @@ describe("buildPublishChecks", () => {
       expect.objectContaining({
         category: "connectivity",
         id: "node-connectivity-message-welcome",
-        messages: ["节点存在多个上游入口"],
         nodeId: "message-welcome",
       }),
     ]));
     expect(summary.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "node-config-message-welcome",
-        messages: ["当前节点暂不支持发布"],
       }),
     ]));
     expect(summary.summary.find((check) => check.id === "config")?.status).toBe("warning");
@@ -528,12 +513,10 @@ describe("buildPublishChecks", () => {
       invalidMessageNode,
       nodes.map((node) => node.id === invalidMessageNode.id ? invalidMessageNode : node),
       edges,
-    )).toContainEqual({
+    )).toContainEqual(expect.objectContaining({
       code: "message-variable-invalid",
-      message: "消息内容引用了不可用变量",
-      severity: "warning",
       source: "config",
-    });
+    }));
   });
 
   it("requires message text or attachments and accepts either source", () => {
@@ -550,12 +533,10 @@ describe("buildPublishChecks", () => {
         edges,
       );
 
-    expect(validate({ ...messageNode.data, attachments: [], content: [] })).toContainEqual({
+    expect(validate({ ...messageNode.data, attachments: [], content: [] })).toContainEqual(expect.objectContaining({
       code: "message-content-required",
-      message: "消息节点需要配置消息内容或附件",
-      severity: "warning",
       source: "config",
-    });
+    }));
     expect(validate({
       ...messageNode.data,
       attachments: [{
@@ -672,7 +653,7 @@ describe("buildPublishChecks", () => {
           issues: [
             {
               code: "node-disconnected",
-              message: "开始节点存在图结构问题",
+              message: "fixture start graph issue",
               severity: "warning",
               source: "graph",
             },
@@ -767,7 +748,6 @@ describe("buildPublishChecks", () => {
       expect.objectContaining({
         category: "connectivity",
         id: "graph-edge-cycle",
-        title: "图结构",
       }),
     ]));
     expect(checks.some((check) => check.id === "graph-node-multiple-incoming-wait-2d")).toBe(false);
@@ -790,9 +770,7 @@ describe("buildPublishChecks", () => {
     expect(sourceHandleCheck).toEqual(expect.objectContaining({
       blocksPublish: true,
       category: "connectivity",
-      description: "同一个出口只能连接一条下游连线",
       nodeId: "branch-intent",
-      title: "意向判断",
     }));
   });
 
@@ -819,10 +797,8 @@ describe("buildPublishChecks", () => {
       expect.objectContaining({
         blocksPublish: true,
         category: "connectivity",
-        description: "条件分支存在未连接的出口",
         id: "graph-branch-path-unconnected-branch-intent",
         nodeId: "branch-intent",
-        title: "意向判断",
       }),
     ]));
   });

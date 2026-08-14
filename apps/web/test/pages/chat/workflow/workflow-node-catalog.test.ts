@@ -391,7 +391,7 @@ describe("workflow node catalog", () => {
 
     expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: "sources", label: "席位" }),
+        expect.objectContaining({ id: "sources", label: "托管账号" }),
         expect.objectContaining({ id: "triggers", label: "触发条件" }),
       ]));
     expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])

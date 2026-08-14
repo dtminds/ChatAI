@@ -61,13 +61,7 @@ describe("workflow trigger matching", () => {
     }))).toBe(false);
   });
 
-  it("matches message events by seat and optional keyword", () => {
-    const anyMessage = messageBinding([]);
-    expect(matchWorkflowTrigger(anyMessage.filter, projection({
-      eventType: "message.received",
-      match: { seatId: 101 },
-    }))).toBe(true);
-
+  it("matches message events by seat and keyword", () => {
     const keywords = messageBinding(["价格", "优惠"]);
     expect(matchWorkflowTrigger(keywords.filter, projection({
       eventType: "message.received",
@@ -84,6 +78,13 @@ describe("workflow trigger matching", () => {
     expect(matchWorkflowTrigger(keywords.filter, projection({
       eventType: "message.received",
       match: { seatId: 999, text: "价格" },
+    }))).toBe(false);
+  });
+
+  it("fails closed when a message binding has no keywords", () => {
+    expect(matchWorkflowTrigger(messageBinding([]).filter, projection({
+      eventType: "message.received",
+      match: { seatId: 101, text: "价格" },
     }))).toBe(false);
   });
 
@@ -116,7 +117,7 @@ describe("workflow trigger matching", () => {
       seatIds: [101],
       triggers: [
         { sourceIds: [], type: "contact.friend_added" },
-        { keywords: [], type: "message.received" },
+        { keywords: ["价格"], type: "message.received" },
       ],
     } as unknown as WorkflowStartConfig;
 

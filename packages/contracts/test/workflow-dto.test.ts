@@ -17,6 +17,7 @@ import {
 } from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
+  WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
 } from "../src/workflow/trigger.js";
@@ -183,6 +184,16 @@ describe("workflow contracts", () => {
       seatIds: [101],
       triggers: [{ keywords: ["价格", "优惠"], type: "message.received" }],
     })).toBe(true);
+    expect(Value.Check(WorkflowStartDraftConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: [], type: "message.received" }],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: [], type: "message.received" }],
+    })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],

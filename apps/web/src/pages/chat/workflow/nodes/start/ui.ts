@@ -13,7 +13,7 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
     getFields: (data) => {
       const isChatAi = isChatAiStartNodeData(data);
       const sourceIds = getStartNodeSourceIds(data);
-      const sourceLabel = isChatAi ? "席位" : "企微成员";
+      const sourceLabel = isChatAi ? "托管账号" : "企微成员";
       return [
         {
           id: "sources",

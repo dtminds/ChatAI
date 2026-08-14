@@ -31,9 +31,16 @@ export const WorkflowEntryPolicySchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
+
 const WorkflowTriggerStringListSchema = Type.Array(
-  Type.String({ maxLength: 128, minLength: 1 }),
+  WorkflowTriggerStringSchema,
   { maxItems: 100, uniqueItems: true },
+);
+
+const WorkflowRequiredTriggerStringListSchema = Type.Array(
+  WorkflowTriggerStringSchema,
+  { maxItems: 100, minItems: 1, uniqueItems: true },
 );
 
 const WorkflowContactFriendAddedTriggerSchema = Type.Object({
@@ -59,6 +66,11 @@ const WorkflowContactTagAddedDraftTriggerSchema = Type.Object({
 }, { additionalProperties: false });
 
 const WorkflowMessageReceivedTriggerSchema = Type.Object({
+  keywords: WorkflowRequiredTriggerStringListSchema,
+  type: Type.Literal("message.received"),
+}, { additionalProperties: false });
+
+const WorkflowMessageReceivedDraftTriggerSchema = Type.Object({
   keywords: WorkflowTriggerStringListSchema,
   type: Type.Literal("message.received"),
 }, { additionalProperties: false });
@@ -83,7 +95,7 @@ export const WorkflowWeComStartTriggerSchema = Type.Union([
 const WorkflowChatAiStartDraftTriggerSchema = Type.Union([
   WorkflowContactFriendAddedTriggerSchema,
   WorkflowContactTagAddedDraftTriggerSchema,
-  WorkflowMessageReceivedTriggerSchema,
+  WorkflowMessageReceivedDraftTriggerSchema,
 ]);
 
 const WorkflowWeComStartDraftTriggerSchema = Type.Union([
@@ -167,7 +179,7 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
   Type.Object({
     entryPolicy: WorkflowEntryPolicySchema,
     eventType: Type.Literal("message.received"),
-    keywords: WorkflowTriggerStringListSchema,
+    keywords: WorkflowRequiredTriggerStringListSchema,
     seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,

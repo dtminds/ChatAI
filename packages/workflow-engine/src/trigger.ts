@@ -53,7 +53,7 @@ export function matchWorkflowTrigger(
   if (filter.eventType === "message.received") {
     const seatId = projection.match.seatId;
     if (typeof seatId !== "number" || !filter.seatIds.includes(seatId)) return false;
-    if (filter.keywords.length === 0) return true;
+    if (filter.keywords.length === 0) return false;
     const text = projection.match.text;
     return typeof text === "string" && filter.keywords.some(keyword => text.includes(keyword));
   }

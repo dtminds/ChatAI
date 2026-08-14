@@ -58,7 +58,7 @@ export function createInitialNodes(): WorkflowNode[] {
       data: {
         ...createDefaultNodeData("start"),
         seatIds: [101, 102],
-        metric: "2 个席位 · 1 个触发条件",
+        metric: "2 个托管账号 · 1 个触发条件",
         status: "running",
         title: "新人入会触发",
         triggers: [

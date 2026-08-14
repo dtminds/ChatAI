@@ -61,16 +61,24 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
     if (sourceIds.length === 0) {
       issues.push(createCatalogIssue(
         "start-source-required",
-        `开始节点需要选择${isChatAiStartNodeData(node.data) ? "席位" : "企微成员"}`,
+        `尚未指定${isChatAiStartNodeData(node.data) ? "托管账号" : "企微成员"}`,
       ));
     }
     if (node.data.triggers.length === 0) {
-      issues.push(createCatalogIssue("start-trigger-required", "开始节点需要选择触发条件"));
+      issues.push(createCatalogIssue("start-trigger-required", "请选择触发条件"));
     }
     if (node.data.triggers.some(trigger =>
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
-      issues.push(createCatalogIssue("start-tag-required", "标签触发需要选择至少一个标签"));
+      issues.push(createCatalogIssue("start-tag-required", "标签触发需选择至少一个标签"));
+    }
+    if (node.data.triggers.some(trigger =>
+      trigger.type === "message.received" && trigger.keywords.length === 0,
+    )) {
+      issues.push(createCatalogIssue(
+        "start-message-keywords-required",
+        "消息触发条件需要填写至少一个关键词",
+      ));
     }
     return issues;
   },

@@ -120,7 +120,7 @@ describe("WorkflowTopBar lifecycle", () => {
         onPublish={vi.fn()}
         onPublishCheck={onPublishCheck}
         publishedAt={null}
-        publishReady
+        publishReady={false}
         publishState="idle"
         saveState="saved"
         workflowName="新客培育"
@@ -133,6 +133,24 @@ describe("WorkflowTopBar lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "发布检查" }));
     expect(onPublishCheck).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
+  });
+
+  it("hides publish checks when all real-time checks pass", () => {
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        publishedAt={null}
+        publishReady
+        publishState="idle"
+        saveState="saved"
+        workflowName="新客培育"
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "发布检查" })).not.toBeInTheDocument();
   });
 
   it("allows publishing to surface failed real-time checks", async () => {

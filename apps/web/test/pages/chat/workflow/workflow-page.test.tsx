@@ -621,6 +621,20 @@ describe("Agent workflow page", () => {
     expect(within(pausedCard).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
+  it("shows each workflow type on its card", async () => {
+    await getWorkflowDraftRepository().createDocument({
+      name: "企微客户旅程",
+      workflowType: "wecom_sop",
+    });
+
+    renderWorkflowPage("/chat/workflows");
+
+    const chataiCard = await screen.findByRole("article", { name: "新人转化旅程" });
+    const wecomCard = screen.getByRole("article", { name: "企微客户旅程" });
+    expect(within(chataiCard).getByText("ChatAI SOP")).toBeInTheDocument();
+    expect(within(wecomCard).getByText("企微客户 SOP")).toBeInTheDocument();
+  });
+
   it("finds workflows by description", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");

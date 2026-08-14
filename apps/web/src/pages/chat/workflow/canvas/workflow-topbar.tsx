@@ -291,21 +291,20 @@ export function WorkflowTopBar({
                 >
                   {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
                 </Button>
-                <Button
-                  aria-label="发布检查"
-                  className={cn(
-                    "size-9 rounded-lg",
-                    publishReady ? "text-muted-foreground" : "text-destructive",
-                  )}
-                  disabled={!canPublish}
-                  onClick={onPublishCheck}
-                  size="icon"
-                  title="发布检查"
-                  type="button"
-                  variant="secondary"
-                >
-                  <HugeiconsIcon icon={AlertCircleIcon} size={18} strokeWidth={1.8} />
-                </Button>
+                {!publishReady ? (
+                  <Button
+                    aria-label="发布检查"
+                    className="size-9 rounded-lg text-destructive"
+                    disabled={!canPublish}
+                    onClick={onPublishCheck}
+                    size="icon"
+                    title="发布检查"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <HugeiconsIcon icon={AlertCircleIcon} size={18} strokeWidth={1.8} />
+                  </Button>
+                ) : null}
                 {publishErrorCode === "conflict" && onReloadDocument ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -64,10 +64,15 @@ export function WorkflowListCard({
       aria-labelledby={titleId}
       className="relative flex flex-col rounded-[14px] border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_10px_24px_var(--shadow-soft)]"
     >
-      <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
-        <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
-        {status.label}
-      </Badge>
+      <div className="flex items-center justify-between gap-2">
+        <Badge className="w-fit rounded-md px-1.5 py-0.5" variant="outline">
+          {getWorkflowTypeLabel(workflow.workflowType)}
+        </Badge>
+        <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
+          <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
+          {status.label}
+        </Badge>
+      </div>
 
       <div className="mt-2 min-w-0">
         <Link
@@ -359,6 +364,12 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
+}
+
+function getWorkflowTypeLabel(workflowType: WorkflowListItem["workflowType"]) {
+  if (workflowType === "chatai_sop") return "ChatAI SOP";
+  if (workflowType === "wecom_sop") return "企微客户 SOP";
+  return "会员 SOP";
 }
 
 export function splitWorkflowTriggers(trigger: string) {

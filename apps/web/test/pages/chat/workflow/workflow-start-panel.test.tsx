@@ -36,7 +36,7 @@ describe("StartConfig", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "席位" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "触发条件" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "添加好友" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "添加标签" })).toBeInTheDocument();

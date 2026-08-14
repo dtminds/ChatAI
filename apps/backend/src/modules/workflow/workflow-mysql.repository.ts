@@ -11,6 +11,7 @@ import {
   decodeWorkflowType,
   encodeWorkflowSubjectType,
   encodeWorkflowType,
+  cancelMysqlEntitlementRuns,
   transitionMysqlWorkflowInferenceJobs,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
@@ -37,7 +38,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
 
   async applyEntitlementLoss(input: Parameters<WorkflowRepository["applyEntitlementLoss"]>[0]) {
-    return this.db.transaction().execute(async (transaction) => {
+    const workflowIds = await this.db.transaction().execute(async (transaction) => {
       const workflowType = encodeWorkflowType(input.workflowType);
       const targetStatuses = input.transition === "pause"
         ? ["active"]
@@ -50,78 +51,31 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .where("runtime_status", "in", targetStatuses)
         .forUpdate()
         .execute();
-      if (definitions.length === 0) return { affectedDefinitions: 0 };
+      if (definitions.length === 0) return [];
 
-      const workflowIds = definitions.map((definition) => definition.id);
+      const ids = definitions.map((definition) => definition.id);
       await transaction.updateTable(DEFINITION_TABLE).set({
         op_sub_uid: input.opSubUserId,
         runtime_status: input.transition === "pause" ? "paused" : "stopped",
         status_reason: "entitlement_revoked",
-      }).where("id", "in", workflowIds).executeTakeFirstOrThrow();
-
-      if (input.transition === "pause") {
-        await transitionMysqlWorkflowInferenceJobs(transaction, {
-          transitionedAt: input.transitionedAt,
-          transition: "pause",
-          uid: input.uid,
-          workflowIds: workflowIds.map(normalizeId),
-        });
-      } else {
-        await transitionMysqlWorkflowInferenceJobs(transaction, {
-          transitionedAt: input.transitionedAt,
-          transition: "cancel",
-          uid: input.uid,
-          workflowIds: workflowIds.map(normalizeId),
-        });
-        const now = input.transitionedAt;
-        const runs = await transaction.selectFrom("xy_wap_embed_workflow_run")
-          .select("id")
-          .where("uid", "=", input.uid)
-          .where("workflow_id", "in", workflowIds)
-          .where("status", "in", ["queued", "running", "waiting"])
-          .forUpdate()
-          .execute();
-        const runIds = runs.map((run) => run.id);
-        if (runIds.length > 0) {
-          await transaction.updateTable("xy_wap_embed_workflow_run").set({
-            completed_at: now,
-            lock_version: sql<number>`lock_version + 1`,
-            next_execute_at: null,
-            status: "cancelled",
-            terminal_reason: "entitlement_revoked",
-          }).where("id", "in", runIds).executeTakeFirstOrThrow();
-          await transaction.updateTable("xy_wap_embed_workflow_task").set({
-            lease_expires_at: null,
-            lease_owner: null,
-            status: "cancelled",
-            task_version: sql<number>`task_version + 1`,
-          }).where("run_id", "in", runIds)
-            .where("status", "in", ["pending", "leased", "dispatched", "running"])
-            .executeTakeFirstOrThrow();
-          await transaction.updateTable("xy_wap_embed_workflow_node_execution").set({
-            completed_at: now,
-            error_code: "WORKFLOW_ENTITLEMENT_REVOKED",
-            error_message: "Workflow entitlement was revoked",
-            failure_kind: null,
-            status: "failed",
-          }).where("run_id", "in", runIds)
-            .where("status", "in", ["running", "retrying"])
-            .executeTakeFirstOrThrow();
-          await transaction.updateTable("xy_wap_embed_workflow_outbox").set({
-            lease_expires_at: null,
-            lease_owner: null,
-            status: "dead",
-          }).where("aggregate_type", "=", "workflow_task")
-            .where("aggregate_id", "in", transaction.selectFrom("xy_wap_embed_workflow_task")
-              .select("id")
-              .where("run_id", "in", runIds))
-            .where("status", "in", ["pending", "leased", "republished"])
-            .executeTakeFirstOrThrow();
-        }
-      }
-
-      return { affectedDefinitions: definitions.length };
+      }).where("id", "in", ids).executeTakeFirstOrThrow();
+      await transitionMysqlWorkflowInferenceJobs(transaction, {
+        transitionedAt: input.transitionedAt,
+        transition: input.transition === "pause" ? "pause" : "cancel",
+        uid: input.uid,
+        workflowIds: ids.map(normalizeId),
+      });
+      return ids;
     });
+    if (workflowIds.length === 0) return { affectedDefinitions: 0 };
+    if (input.transition !== "pause") {
+      await cancelMysqlEntitlementRuns(this.db, {
+        now: input.transitionedAt,
+        uid: input.uid,
+        workflowIds,
+      });
+    }
+    return { affectedDefinitions: workflowIds.length };
   }
 
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {

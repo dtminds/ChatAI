@@ -431,16 +431,24 @@ function createEntitlementLossDbMock() {
     table: string;
     wheres: unknown[][];
   }> = [];
+  let runExecuteCount = 0;
   const db = {
     updates,
     selectFrom(table: string) {
       const builder = {
+        distinct() { return builder; },
         forUpdate() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
         select() { return builder; },
+        skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
           if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
-          if (table === "xy_wap_embed_workflow_run") return [{ id: "101" }];
+          if (table === "xy_wap_embed_workflow_run") {
+            runExecuteCount += 1;
+            return runExecuteCount === 1 ? [{ id: "101" }] : [];
+          }
           return [];
         },
       };
@@ -468,6 +476,9 @@ function createEntitlementLossDbMock() {
         where(...args: unknown[]) {
           state.wheres.push(args);
           return builder;
+        },
+        async executeTakeFirst() {
+          return { numUpdatedRows: 1n };
         },
         async executeTakeFirstOrThrow() {
           return { numUpdatedRows: 1n };

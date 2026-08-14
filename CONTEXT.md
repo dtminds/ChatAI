@@ -72,6 +72,38 @@ _Avoid_: Runtime whitelist, node visibility
 A versioned event-source or business-operation dependency frozen into a Workflow Revision by compilation. Production Availability requires the current environment to provide every Capability Requirement used by that Revision.
 _Avoid_: Current deployment status, tenant entitlement
 
+**Workflow Revision**:
+An immutable published execution snapshot of a Workflow's graph, node configuration, and Capability Requirements.
+_Avoid_: Mutable current graph, Run lifetime version
+
+**Workflow Run**:
+The durable journey of one Workflow Subject through a Workflow. An active Run has exactly one current Task; completed nodes are never replayed after a newer Revision is published.
+_Avoid_: Revision instance, event delivery
+
+**Workflow Task**:
+The scheduling unit for one node visit on a Run. Creating a Task is Node Arrival and pins that visit's Node ID, Node Kind, Revision, and configuration until the node completes or is cancelled.
+_Avoid_: MQ message, whole Workflow Run
+
+**Node Arrival**:
+The creation of the current Task for a node. From that moment the visit is pinned to that Task's Revision and configuration, independent of when a Worker later executes it.
+_Avoid_: Worker pickup, execution start
+
+**Workflow Live Revision Routing**:
+The rule that a Run finishes the current node on its pinned Revision, then resolves the next node from the latest published Revision. If the latest published graph cannot continue safely, the Run takes a Flow Changed Exit.
+_Avoid_: Hot-swapping the current node, migrating all in-flight Runs at publish time
+
+**Flow Changed Exit**:
+A non-fault unfinished outcome used when a newly published graph or required context no longer offers a safe next node for an in-progress Run.
+_Avoid_: Runtime failure, automatic compensation
+
+**Workflow Node ID**:
+The stable runtime identity of a node across Revisions. Changing title, configuration, or edges does not change it; deleting and recreating a node must mint a new ID.
+_Avoid_: Display title, array index
+
+**Source Outlet ID**:
+The stable identity of a node's execution exit across Revisions, including Branch Path IDs and AI Intent IDs. Deleting and recreating an exit must mint a new ID.
+_Avoid_: Display label, array index
+
 **Product Entitlement**:
 A tenant's purchased or enabled product capability. It controls commercial access independently from the semantic boundaries of a Workflow Type.
 _Avoid_: Workflow Type

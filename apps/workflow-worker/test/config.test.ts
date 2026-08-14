@@ -255,6 +255,21 @@ describe("workflow worker config", () => {
     }))).toThrow("WORKFLOW_INFERENCE_CONCURRENCY must be an integer from 1 to 100");
   });
 
+  it("rejects oversized workflow batch counts", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BATCH_SIZE: "1001",
+    }))).toThrow("WORKFLOW_BATCH_SIZE must be an integer from 1 to 1000");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE: "1001",
+    }))).toThrow("WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE must be an integer from 1 to 1000");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_INBOX_CLEANUP_BATCH_SIZE: "1001",
+    }))).toThrow("WORKFLOW_INBOX_CLEANUP_BATCH_SIZE must be an integer from 1 to 1000");
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BATCH_SIZE: "1000",
+    })).runtime.batchSize).toBe(1000);
+  });
+
   it("rejects an invalid health port independently from durations", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_HEALTH_PORT: "65536",

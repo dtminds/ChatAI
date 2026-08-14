@@ -2,10 +2,11 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Kysely, MysqlDialect } from "kysely";
 import mysql from "mysql2";
-import { afterAll, beforeAll, beforeEach, describe } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   MysqlWorkflowRuntimeRepository,
   MysqlWorkflowLlmTestAttemptRepository,
+  WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   type WorkflowDatabase,
 } from "../src/index.js";
 import { runWorkflowRuntimeRepositoryContract } from "./support/runtime-repository-contract.js";
@@ -124,6 +125,46 @@ describe("MySQL workflow runtime repository contract", () => {
       if (!database) throw new Error("MySQL contract database is not initialized");
       return new MysqlWorkflowLlmTestAttemptRepository(database);
     });
+  });
+
+  it("keeps a MySQL outbox write chunk below one sixteenth of max_allowed_packet", async () => {
+    if (!workflowPool) throw new Error("MySQL contract database is not initialized");
+    const [rows] = await workflowPool.promise().query(
+      "SELECT @@SESSION.max_allowed_packet AS max_allowed_packet",
+    );
+    const maxAllowedPacket = Number((rows as Array<{ max_allowed_packet: number }>)[0]?.max_allowed_packet);
+    expect(maxAllowedPacket).toBeGreaterThan(0);
+    const now = new Date("2026-07-10T00:01:00.000Z");
+    const compiled = new Kysely({ dialect: new MysqlDialect({ pool: {} as never }) })
+      .insertInto("xy_wap_embed_workflow_outbox")
+      .values(Array.from({ length: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE }, (_, index) => ({
+        aggregate_id: String(1_000_000 + index),
+        aggregate_type: "workflow_task",
+        attempt: 0,
+        event_type: "workflow.task.ready",
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: now,
+        payload_json: JSON.stringify({
+          messageId: `workflow-task:${1_000_000 + index}:v1`,
+          occurredAt: now.toISOString(),
+          runId: String(2_000_000 + index),
+          shardId: 255,
+          taskId: String(1_000_000 + index),
+          taskVersion: 1,
+          uid: "9007199254740991",
+        }),
+        sent_at: null,
+        status: "pending",
+        task_version: 1,
+        uid: 8,
+      })))
+      .compile();
+    const sqlBytes = Buffer.byteLength(compiled.sql, "utf8")
+      + compiled.parameters.reduce((total, parameter) => (
+        total + Buffer.byteLength(String(parameter ?? ""), "utf8")
+      ), 0);
+    expect(sqlBytes).toBeLessThan(maxAllowedPacket / 16);
   });
 });
 

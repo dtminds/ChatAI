@@ -5,6 +5,7 @@ import {
 import {
   assertWorkflowLlmTestModeAllowed,
   parseWorkflowLlmTestMode,
+  WORKFLOW_RUNTIME_BATCH_LIMIT,
   type WorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
 import {
@@ -183,16 +184,17 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         "WORKFLOW_CAPABILITY_RETRY_DELAY_MS",
       ),
       capabilityTimeoutMs,
-      batchSize: parseCount(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
+      batchSize: parseInteger(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE", WORKFLOW_RUNTIME_BATCH_LIMIT),
       dispatchTimeoutMs: parseDurationMs(
         env.WORKFLOW_DISPATCH_TIMEOUT_MS,
         300_000,
         "WORKFLOW_DISPATCH_TIMEOUT_MS",
       ),
-      historyCleanupBatchSize: parseCount(
+      historyCleanupBatchSize: parseInteger(
         env.WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE,
         1_000,
         "WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE",
+        WORKFLOW_RUNTIME_BATCH_LIMIT,
       ),
       historyCleanupIntervalMs: parseDurationMs(
         env.WORKFLOW_HISTORY_CLEANUP_INTERVAL_MS,
@@ -232,10 +234,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         600_000,
         "WORKFLOW_INFERENCE_TOTAL_TIMEOUT_MS",
       ),
-      inboxCleanupBatchSize: parseCount(
+      inboxCleanupBatchSize: parseInteger(
         env.WORKFLOW_INBOX_CLEANUP_BATCH_SIZE,
         1_000,
         "WORKFLOW_INBOX_CLEANUP_BATCH_SIZE",
+        WORKFLOW_RUNTIME_BATCH_LIMIT,
       ),
       leaseDurationMs,
       maxTaskAttempts: parseCount(

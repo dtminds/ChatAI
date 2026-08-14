@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Kysely, MysqlDialect } from "kysely";
-import { MysqlWorkflowRuntimeRepository } from "../src/index.js";
+import {
+  MysqlWorkflowRuntimeRepository,
+  WORKFLOW_MYSQL_MIN_MAX_ALLOWED_PACKET_BYTES,
+  WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+  WORKFLOW_RUNTIME_BATCH_LIMIT,
+} from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
   it("locks the run and task before creating a capability execution ledger", async () => {
@@ -368,7 +373,58 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 2 });
     expect(db.definitionShareLocks).toBe(1);
     expect(db.taskUpdates).toBe(1);
-    expect(db.outboxInserts).toEqual(2);
+    expect(db.outboxInsertSizes).toEqual([2]);
+  });
+
+  it("chunks a due-task outbox insert and clamps oversized scheduler limits", async () => {
+    const overflow = 50;
+    const db = createDispatchDueTasksDbMock(WORKFLOW_MYSQL_WRITE_CHUNK_SIZE + overflow);
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.dispatchDueTasks({
+      limit: 1_000_000,
+      now: new Date("2026-07-10T00:01:00.000Z"),
+    })).resolves.toEqual({
+      cancelled: 0,
+      deferred: 0,
+      dispatched: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE + overflow,
+    });
+    expect(db.claimedLimits).toEqual([WORKFLOW_RUNTIME_BATCH_LIMIT, WORKFLOW_RUNTIME_BATCH_LIMIT]);
+    expect(db.outboxInsertSizes).toEqual([WORKFLOW_MYSQL_WRITE_CHUNK_SIZE, overflow]);
+  });
+
+  it("keeps a MySQL outbox write chunk below one sixteenth of max_allowed_packet", () => {
+    const now = new Date("2026-07-10T00:01:00.000Z");
+    const compiler = new Kysely({ dialect: new MysqlDialect({ pool: {} as never }) });
+    const compiled = compiler.insertInto("xy_wap_embed_workflow_outbox").values(
+      Array.from({ length: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE }, (_, index) => ({
+        aggregate_id: String(1_000_000 + index),
+        aggregate_type: "workflow_task",
+        attempt: 0,
+        event_type: "workflow.task.ready",
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: now,
+        payload_json: JSON.stringify({
+          messageId: `workflow-task:${1_000_000 + index}:v1`,
+          occurredAt: now.toISOString(),
+          runId: String(2_000_000 + index),
+          shardId: 255,
+          taskId: String(1_000_000 + index),
+          taskVersion: 1,
+          uid: "9007199254740991",
+        }),
+        sent_at: null,
+        status: "pending",
+        task_version: 1,
+        uid: 8,
+      })),
+    ).compile();
+    const sqlBytes = Buffer.byteLength(compiled.sql, "utf8")
+      + compiled.parameters.reduce((total, parameter) => (
+        total + Buffer.byteLength(String(parameter ?? ""), "utf8")
+      ), 0);
+    expect(sqlBytes).toBeLessThan(WORKFLOW_MYSQL_MIN_MAX_ALLOWED_PACKET_BYTES / 16);
   });
 
   it("casts the unsigned current counter before applying a negative delta", async () => {
@@ -1677,7 +1733,7 @@ function createOutboxDeadDbMock() {
   return db;
 }
 
-function createDispatchDueTasksDbMock() {
+function createDispatchDueTasksDbMock(taskCount = 2) {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const taskRow = (id: string) => ({
     attempt: 0,
@@ -1701,15 +1757,17 @@ function createDispatchDueTasksDbMock() {
     update_time: now,
     workflow_id: "42",
   });
+  const claimedTasks = Array.from({ length: taskCount }, (_, index) => taskRow(String(7 + index)));
   const db = {
+    claimedLimits: [] as number[],
     definitionShareLocks: 0,
-    outboxInserts: 0,
+    outboxInsertSizes: [] as number[],
     taskUpdates: 0,
     insertInto(table: string) {
       const builder = {
         values(values: unknown) {
           if (table === "xy_wap_embed_workflow_outbox") {
-            db.outboxInserts = Array.isArray(values) ? values.length : 1;
+            db.outboxInsertSizes.push(Array.isArray(values) ? values.length : 1);
           }
           return builder;
         },
@@ -1727,7 +1785,10 @@ function createDispatchDueTasksDbMock() {
         forUpdate() { locked = true; return builder; },
         innerJoin() { return builder; },
         leftJoin() { return builder; },
-        limit() { return builder; },
+        limit(value?: number) {
+          if (typeof value === "number") db.claimedLimits.push(value);
+          return builder;
+        },
         orderBy() { return builder; },
         select() { return builder; },
         selectAll() { return builder; },
@@ -1735,7 +1796,7 @@ function createDispatchDueTasksDbMock() {
         where() { return builder; },
         async execute() {
           if (table.startsWith("xy_wap_embed_workflow_task")) {
-            return locked ? [taskRow("7"), taskRow("8")] : [];
+            return locked ? claimedTasks : [];
           }
           if (table === "xy_wap_embed_workflow_definition") {
             return [{ biz_status: 1, id: "42", runtime_status: "active", uid: 8 }];
@@ -1757,7 +1818,7 @@ function createDispatchDueTasksDbMock() {
           return builder;
         },
         where() { return builder; },
-        async executeTakeFirstOrThrow() { return { numUpdatedRows: 2n }; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: BigInt(taskCount) }; },
       };
       return builder;
     },

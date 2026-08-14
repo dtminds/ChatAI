@@ -1,5 +1,13 @@
 export const WORKFLOW_NODE_OUTPUT_MAX_BYTES = 8 * 1024;
 export const WORKFLOW_RUN_CONTEXT_MAX_BYTES = 128 * 1024;
+/** Scheduler/reconciler/env batch ceiling. Larger values are rejected or clamped. */
+export const WORKFLOW_RUNTIME_BATCH_LIMIT = 1_000;
+/**
+ * Multi-row INSERT chunk. A task outbox row compiles to well under 2 KiB, so 100
+ * rows stay under 200 KiB — 1/80 of MySQL's historical 16 MiB max_allowed_packet.
+ */
+export const WORKFLOW_MYSQL_WRITE_CHUNK_SIZE = 100;
+export const WORKFLOW_MYSQL_MIN_MAX_ALLOWED_PACKET_BYTES = 16 * 1024 * 1024;
 
 type WorkflowRuntimeValueScope = "node-output" | "run-context";
 

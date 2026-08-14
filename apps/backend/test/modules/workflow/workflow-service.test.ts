@@ -432,7 +432,7 @@ describe("WorkflowService", () => {
   it.each([
     { endTime: "09:00", startTime: "20:00" },
     { endTime: "09:00", startTime: "09:00" },
-  ])("rejects an invalid message sending window when saving a draft", async (
+  ])("allows an incomplete message sending window when saving a draft", async (
     messageSendingWindow,
   ) => {
     const service = createService();
@@ -441,7 +441,7 @@ describe("WorkflowService", () => {
     await expect(service.saveDraft(operator, created.id, {
       draft: withStartConfig(created.draft, { messageSendingWindow }),
       expectedDraftVersion: created.draftVersion,
-    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_NODE_CONFIG_INVALID", statusCode: 400 });
+    })).resolves.toMatchObject({ draftVersion: created.draftVersion + 1 });
   });
 
   it.each([

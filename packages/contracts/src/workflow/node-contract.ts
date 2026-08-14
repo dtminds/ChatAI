@@ -416,8 +416,7 @@ export function isWorkflowNodeDraftConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
-  return Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value)
-    && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+  return Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value);
 }
 
 export function getUnknownWorkflowNodeDraftDataKeys(

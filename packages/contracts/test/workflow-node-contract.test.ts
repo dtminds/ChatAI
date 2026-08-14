@@ -279,7 +279,9 @@ describe("workflow node contracts", () => {
   it.each([
     { endTime: "09:00", startTime: "20:00" },
     { endTime: "09:00", startTime: "09:00" },
-  ])("rejects an invalid message sending window: $startTime-$endTime", (messageSendingWindow) => {
+  ])("keeps an invalid message sending window draft-only: $startTime-$endTime", (
+    messageSendingWindow,
+  ) => {
     const config = {
       entryPolicy: { mode: "never" },
       messageSendingWindow,
@@ -287,7 +289,7 @@ describe("workflow node contracts", () => {
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     };
 
-    expect(isWorkflowNodeDraftConfig("start", config)).toBe(false);
+    expect(isWorkflowNodeDraftConfig("start", config)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("start", config)).toBe(false);
   });
 

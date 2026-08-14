@@ -6,7 +6,7 @@ const inconsistentBefore = new Date("2026-07-10T00:01:00.000Z");
 const reconcileAt = new Date("2026-07-10T00:02:00.000Z");
 
 describe("workflow run/task consistency reconciliation", () => {
-  it("keeps a waiting run whose authoritative task points to the delayed successor", async () => {
+  it("keeps a waiting run whose authoritative task remains on the wait node", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
     const created = await repository.createRunWithInitialTask({
       ...createRunInput(),
@@ -22,7 +22,8 @@ describe("workflow run/task consistency reconciliation", () => {
       uid: created.task.uid,
     });
     if (claimed.kind !== "success") throw new Error("claim failed");
-    await repository.commitNodeResult({
+    await repository.beginFixedWait({
+      dueAt: new Date("2026-07-11T00:00:00.000Z"),
       expectedRunLockVersion: created.run.lockVersion,
       expectedTaskVersion: claimed.task.taskVersion,
       inbox: {
@@ -30,14 +31,7 @@ describe("workflow run/task consistency reconciliation", () => {
         expiresAt: new Date("2026-08-10T00:00:00.000Z"),
         messageId: "wait-completed",
       },
-      nextTask: {
-        dispatchImmediately: false,
-        dueAt: new Date("2026-07-11T00:00:00.000Z"),
-        nodeId: "end",
-        nodeKind: "end",
-        taskType: "wait",
-      },
-      nodeExecution: { executionKey: "wait", input: {}, output: {} },
+      now: admittedAt,
       runId: created.run.id,
       taskId: created.task.id,
       uid: created.run.uid,
@@ -55,7 +49,8 @@ describe("workflow run/task consistency reconciliation", () => {
       terminalRunTasksCancelled: 0,
     });
     expect(repository.runs[0]).toMatchObject({ currentNodeId: "wait-1", status: "waiting" });
-    expect(repository.tasks.at(-1)).toMatchObject({ nodeId: "end", status: "pending" });
+    expect(repository.tasks).toHaveLength(1);
+    expect(repository.tasks[0]).toMatchObject({ nodeId: "wait-1", status: "pending", taskType: "wait" });
   });
 
   it("leaves an unavailable run for the cancellation reconciler", async () => {
@@ -77,7 +72,11 @@ describe("workflow run/task consistency reconciliation", () => {
 
   it("fails an old active run that has no authoritative task", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
-    const created = await repository.createRunWithInitialTask(createRunInput());
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
     if (created.kind !== "success") throw new Error("create failed");
     repository.tasks.splice(0);
 
@@ -94,7 +93,11 @@ describe("workflow run/task consistency reconciliation", () => {
   it("uses the latest run transition time for the inconsistency grace period", async () => {
     let now = admittedAt;
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const created = await repository.createRunWithInitialTask(createRunInput());
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
     if (created.kind !== "success") throw new Error("create failed");
     const claimed = await repository.claimTask({
       expectedTaskVersion: created.task.taskVersion,
@@ -105,7 +108,8 @@ describe("workflow run/task consistency reconciliation", () => {
     });
     if (claimed.kind !== "success") throw new Error("claim failed");
     now = new Date("2026-07-10T00:01:30.000Z");
-    const committed = await repository.commitNodeResult({
+    const waiting = await repository.beginFixedWait({
+      dueAt: new Date("2026-07-11T00:00:00.000Z"),
       expectedRunLockVersion: created.run.lockVersion,
       expectedTaskVersion: claimed.task.taskVersion,
       inbox: {
@@ -113,21 +117,13 @@ describe("workflow run/task consistency reconciliation", () => {
         expiresAt: new Date("2026-08-10T00:00:00.000Z"),
         messageId: "advanced",
       },
-      nextTask: {
-        dueAt: now,
-        nodeId: "end",
-        nodeKind: "end",
-        taskType: "execute",
-      },
-      nodeExecution: { executionKey: "advanced", input: {}, output: {} },
+      now,
       runId: created.run.id,
       taskId: created.task.id,
       uid: created.run.uid,
     });
-    if (committed.kind !== "success" || !committed.nextTask) throw new Error("commit failed");
-    repository.tasks.splice(repository.tasks.indexOf(
-      repository.tasks.find(task => task.id === committed.nextTask?.id)!,
-    ), 1);
+    if (waiting.kind !== "success") throw new Error("wait failed");
+    repository.tasks.splice(0);
 
     const result = await repository.reconcileRunTaskConsistency({
       inconsistentBefore,
@@ -136,7 +132,7 @@ describe("workflow run/task consistency reconciliation", () => {
     });
 
     expect(result.inconsistentRunsFailed).toBe(0);
-    expect(repository.runs[0]?.status).toBe("running");
+    expect(repository.runs[0]?.status).toBe("waiting");
   });
 
   it("does not extend the grace period when re-claiming an already-running run", async () => {

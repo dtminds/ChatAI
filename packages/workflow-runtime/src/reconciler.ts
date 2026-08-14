@@ -45,6 +45,53 @@ export class WorkflowRuntimeReconciler {
     return this.repository.cleanupProcessedNodeMetricEvents(input);
   }
 
+  async processRevisionCleanups(input: {
+    leaseDurationMs: number;
+    leaseOwner: string;
+    limit: number;
+    maxAttempts: number;
+    now: Date;
+    retryDelayMs: number;
+  }) {
+    const requests = await this.repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date(input.now.getTime() + input.leaseDurationMs),
+      leaseOwner: input.leaseOwner,
+      limit: input.limit,
+      maxAttempts: input.maxAttempts,
+      now: input.now,
+    });
+    let cancelled = 0;
+    let failed = 0;
+    let obsolete = 0;
+    for (const request of requests) {
+      try {
+        const result = await this.repository.processRevisionCleanupBatch({
+          cleanupId: request.id,
+          leaseOwner: input.leaseOwner,
+          limit: input.limit,
+          now: input.now,
+        });
+        if (result.kind !== "success") {
+          throw new Error(`Workflow Revision cleanup ${result.kind}`);
+        }
+        cancelled += result.cancelled;
+        if (result.status === "obsolete") obsolete += 1;
+      } catch (error) {
+        failed += 1;
+        await this.repository.failRevisionCleanup({
+          cleanupId: request.id,
+          errorCode: error instanceof Error
+            ? error.message.slice(0, 128)
+            : "WORKFLOW_REVISION_CLEANUP_FAILED",
+          leaseOwner: input.leaseOwner,
+          maxAttempts: input.maxAttempts,
+          nextAttemptAt: new Date(input.now.getTime() + input.retryDelayMs),
+        });
+      }
+    }
+    return { cancelled, claimed: requests.length, failed, obsolete };
+  }
+
   async cancelStoppedWorkflow(input: {
     afterRunId?: string;
     limit: number;

@@ -119,11 +119,13 @@ describe("WorkflowRuntimeService", () => {
       workerId: "worker-1",
     });
 
+    expect(waited.kind).toBe("waiting");
     expect(waited.run.status).toBe("waiting");
-    expect(waited.nextTask).toMatchObject({
+    expect(waited.task).toMatchObject({
       dueAt: new Date("2026-07-12T00:00:01.000Z"),
-      nodeId: "end",
+      nodeId: "wait",
       status: "pending",
+      taskType: "wait",
     });
   });
 

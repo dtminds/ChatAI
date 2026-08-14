@@ -4,6 +4,7 @@ export type WorkflowNodeMetricDelta = {
   completed: number;
   current: number;
   entered: number;
+  incomplete: number;
   nodeId: string;
   passed: number;
 };
@@ -27,33 +28,23 @@ export function createNodeMetricDeltas(
 ): WorkflowNodeMetricDelta[] {
   if (transition.kind === "entered") {
     return transition.nodeKind === "start"
-      ? [delta(transition.nodeId, { entered: 1 })]
+      ? [delta(transition.nodeId, { current: 1, entered: 1 })]
       : [];
   }
   if (transition.kind === "completed") {
     return transition.nodeKind === "end"
-      ? [delta(transition.nodeId, { completed: 1 })]
+      ? [delta(transition.nodeId, { completed: 1, current: -1 })]
       : [];
   }
   if (transition.kind === "left-incomplete") {
-    return isTrackedCurrentNode(transition.nodeKind)
-      ? [delta(transition.nodeId, { current: -1 })]
-      : [];
+    return [delta(transition.nodeId, { current: -1, incomplete: 1 })];
   }
   if (transition.kind !== "advanced") return [];
 
   const deltas: WorkflowNodeMetricDelta[] = [];
-  if (isTrackedCurrentNode(transition.fromNodeKind)) {
-    deltas.push(delta(transition.fromNodeId, { current: -1, passed: 1 }));
-  }
-  if (isTrackedCurrentNode(transition.toNodeKind)) {
-    deltas.push(delta(transition.toNodeId, { current: 1 }));
-  }
+  deltas.push(delta(transition.fromNodeId, { current: -1, passed: 1 }));
+  deltas.push(delta(transition.toNodeId, { current: 1 }));
   return deltas;
-}
-
-function isTrackedCurrentNode(kind: WorkflowNodeKind) {
-  return kind !== "start" && kind !== "end";
 }
 
 function delta(
@@ -64,6 +55,7 @@ function delta(
     completed: values.completed ?? 0,
     current: values.current ?? 0,
     entered: values.entered ?? 0,
+    incomplete: values.incomplete ?? 0,
     nodeId,
     passed: values.passed ?? 0,
   };

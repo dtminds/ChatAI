@@ -50,6 +50,14 @@ type WorkflowReconciler = {
     now: Date;
   }): Promise<number>;
   recoverExpiredOutboxLeases(input: { limit: number; now: Date }): Promise<number>;
+  processRevisionCleanups(input: {
+    leaseDurationMs: number;
+    leaseOwner: string;
+    limit: number;
+    maxAttempts: number;
+    now: Date;
+    retryDelayMs: number;
+  }): Promise<{ cancelled: number; claimed: number; failed: number; obsolete: number }>;
 };
 
 export async function reconcileWorkflowRuntime(input: {
@@ -65,10 +73,13 @@ export async function reconcileWorkflowRuntime(input: {
   };
   historyCleanupBatchSize: number;
   inboxCleanupBatchSize: number;
+  leaseDurationMs: number;
+  leaseOwner: string;
   limit: number;
   maxTaskAttempts: number;
   now: Date;
   reconciler: WorkflowReconciler;
+  retryDelayMs: number;
 }) {
   const nodeMetricEventsAggregated = await input.reconciler.aggregateNodeMetricEvents({
     limit: input.limit,
@@ -80,6 +91,14 @@ export async function reconcileWorkflowRuntime(input: {
   const cancellation = await input.reconciler.cancelUnavailableRuns({
     afterRunId: input.afterRunId,
     limit: input.limit,
+  });
+  const revisionCleanup = await input.reconciler.processRevisionCleanups({
+    leaseDurationMs: input.leaseDurationMs,
+    leaseOwner: input.leaseOwner,
+    limit: input.limit,
+    maxAttempts: input.maxTaskAttempts,
+    now: input.now,
+    retryDelayMs: input.retryDelayMs,
   });
   const eventSubscriptions = await input.reconciler.reconcileEventSubscriptions({
     afterSubscriptionId: input.afterEventSubscriptionId,
@@ -124,6 +143,10 @@ export async function reconcileWorkflowRuntime(input: {
       };
   return {
     cancelled: cancellation.cancelled,
+    revisionCleanupCancelled: revisionCleanup.cancelled,
+    revisionCleanupClaimed: revisionCleanup.claimed,
+    revisionCleanupFailed: revisionCleanup.failed,
+    revisionCleanupObsolete: revisionCleanup.obsolete,
     historyCleanupHasMore: history.hasMore,
     inboxDeleted,
     inconsistentRunsFailed: consistency.inconsistentRunsFailed,

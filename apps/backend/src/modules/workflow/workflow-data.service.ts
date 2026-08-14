@@ -7,13 +7,12 @@ import { ForbiddenError } from "../../shared/errors.js";
 import type { WorkflowOperatorScope } from "./workflow.service.js";
 
 export type WorkflowDataReader = {
-  getOverview(input: { revision: number; uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
+  getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
   getRecord(input: { recordId: string; uid: number; workflowId: string }): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
     cursor?: string;
     limit: number;
     nodeId?: string;
-    revision: number;
     status?: string;
     uid: number;
     workflowId: string;
@@ -23,9 +22,9 @@ export type WorkflowDataReader = {
 export class WorkflowDataService {
   constructor(private readonly reader: WorkflowDataReader) {}
 
-  getOverview(scope: WorkflowOperatorScope, workflowId: string, revision: number) {
+  getOverview(scope: WorkflowOperatorScope, workflowId: string) {
     assertAccess(scope);
-    return this.reader.getOverview({ revision, uid: scope.uid, workflowId });
+    return this.reader.getOverview({ uid: scope.uid, workflowId });
   }
 
   listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid">) {

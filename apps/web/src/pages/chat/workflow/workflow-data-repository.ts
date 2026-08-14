@@ -7,13 +7,12 @@ import type {
 import { http } from "@/lib/request";
 
 export type WorkflowDataRepository = {
-  getOverview(workflowId: string, revision: number): Promise<WorkflowDataOverview>;
+  getOverview(workflowId: string): Promise<WorkflowDataOverview>;
   getRecord(workflowId: string, recordId: string): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
     cursor?: string;
     limit?: number;
     nodeId?: string;
-    revision: number;
     status?: string;
     workflowId: string;
   }): Promise<WorkflowEntryRecordPage>;
@@ -21,8 +20,8 @@ export type WorkflowDataRepository = {
 
 export function createWorkflowDataRepository(): WorkflowDataRepository {
   return {
-    async getOverview(workflowId, revision) {
-      return unwrap(await http.get(`/server/workflows/${workflowId}/data`, { params: { revision } }));
+    async getOverview(workflowId) {
+      return unwrap(await http.get(`/server/workflows/${workflowId}/data`));
     },
     async getRecord(workflowId, recordId) {
       return unwrap(await http.get(`/server/workflows/${workflowId}/records/${recordId}`));

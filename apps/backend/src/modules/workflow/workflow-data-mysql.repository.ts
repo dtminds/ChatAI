@@ -1,12 +1,15 @@
 import {
   WORKFLOW_RUN_RETENTION_DAYS,
+  WorkflowFlowChangedReasonSchema,
   type WorkflowDataOverview,
   type WorkflowEntryRecordDetail,
   type WorkflowEntryRecordPage,
   type WorkflowEntryRecordStepNodeKind,
   type WorkflowEntryRecordStatus,
+  type WorkflowFlowChangedReason,
   type WorkflowNodeKind,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
 import { sql, type Kysely } from "kysely";
 import {
   decodeWorkflowSubjectType,
@@ -26,35 +29,69 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     this.db = db as unknown as Kysely<DataDatabase>;
   }
 
-  async getOverview(input: { revision: number; uid: number; workflowId: string }): Promise<WorkflowDataOverview> {
-    const rows = await this.db.selectFrom("xy_wap_embed_workflow_node_metric")
-      .select(["completed_count", "current_count", "entered_count", "node_id", "passed_count", "update_time"])
+  async getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview> {
+    const definition = await this.db.selectFrom("xy_wap_embed_workflow_definition")
+      .select("published_revision")
+      .where("uid", "=", input.uid)
+      .where("id", "=", input.workflowId)
+      .where("biz_status", "=", 1)
+      .executeTakeFirst();
+    if (!definition?.published_revision) {
+      throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow 尚未发布");
+    }
+    const revision = await this.db.selectFrom("xy_wap_embed_workflow_revision")
+      .select("draft_json")
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
-      .where("revision", "=", input.revision)
+      .where("revision", "=", definition.published_revision)
+      .executeTakeFirst();
+    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    const currentNodeIds = readNodeIds(revision.draft_json);
+    const rows = await this.db.selectFrom("xy_wap_embed_workflow_node_metric")
+      .select([
+        "completed_count",
+        "current_count",
+        "entered_count",
+        "incomplete_count",
+        "node_id",
+        "passed_count",
+        "update_time",
+      ])
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
       .execute();
     const nodes = new Map<string, WorkflowDataOverview["nodes"][number]>();
+    const summary = { completed: 0, current: 0, entered: 0, incomplete: 0 };
     let calculatedAt = new Date(0);
     for (const row of rows) {
-      const metric = nodes.get(row.node_id) ?? {
-        completed: 0,
-        current: 0,
-        entered: 0,
-        nodeId: row.node_id,
-        passed: 0,
-      };
-      metric.completed += Number(row.completed_count);
-      metric.current += Number(row.current_count);
-      metric.entered += Number(row.entered_count);
-      metric.passed += Number(row.passed_count);
-      nodes.set(row.node_id, metric);
+      summary.completed += Number(row.completed_count);
+      summary.current += Number(row.current_count);
+      summary.entered += Number(row.entered_count);
+      summary.incomplete += Number(row.incomplete_count);
+      if (currentNodeIds.has(row.node_id)) {
+        const metric = nodes.get(row.node_id) ?? {
+          completed: 0,
+          current: 0,
+          entered: 0,
+          incomplete: 0,
+          nodeId: row.node_id,
+          passed: 0,
+        };
+        metric.completed += Number(row.completed_count);
+        metric.current += Number(row.current_count);
+        metric.entered += Number(row.entered_count);
+        metric.incomplete += Number(row.incomplete_count);
+        metric.passed += Number(row.passed_count);
+        nodes.set(row.node_id, metric);
+      }
       const updatedAt = toDate(row.update_time);
       if (updatedAt > calculatedAt) calculatedAt = updatedAt;
     }
     return {
       calculatedAt: (calculatedAt.getTime() === 0 ? new Date() : calculatedAt).toISOString(),
       nodes: [...nodes.values()],
-      revision: input.revision,
+      publishedRevision: definition.published_revision,
+      summary,
     };
   }
 
@@ -73,7 +110,6 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       ])
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
-      .where("revision", "=", input.revision)
       .where(eb => eb.or([
         eb("status", "in", ["queued", "running", "waiting"]),
         eb("completed_at", ">=", sql<Date>`CURRENT_TIMESTAMP - INTERVAL ${WORKFLOW_RUN_RETENTION_DAYS} DAY`),
@@ -118,6 +154,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         "status",
         "subject_id",
         "subject_type",
+        "terminal_reason",
         "update_time",
       ])
       .where("uid", "=", input.uid)
@@ -129,45 +166,52 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       ]))
       .executeTakeFirst();
     if (!run) throw new NotFoundError("WORKFLOW_RECORD_NOT_FOUND", "运行记录不存在");
-    const [executions, revision, customers] = await Promise.all([
+    const [executions, customers] = await Promise.all([
       this.db.selectFrom("xy_wap_embed_workflow_node_execution")
-        .select(["completed_at", "create_time", "error_message", "node_id", "node_kind", "status"])
+        .select(["completed_at", "create_time", "error_message", "node_id", "node_kind", "revision", "status"])
         .where("uid", "=", input.uid)
         .where("run_id", "=", input.recordId)
         .where("status", "in", ["completed", "failed"])
         .orderBy("sequence", "asc")
         .execute(),
-      this.db.selectFrom("xy_wap_embed_workflow_revision")
-        .select("draft_json")
-        .where("uid", "=", input.uid)
-        .where("workflow_id", "=", input.workflowId)
-        .where("revision", "=", run.revision)
-        .executeTakeFirst(),
       this.loadSubjects(input.uid, [{
         subjectId: run.subject_id,
         subjectType: decodeWorkflowSubjectType(run.subject_type),
       }]),
     ]);
-    const titles = readNodeTitles(revision?.draft_json);
+    const revisionNumbers = [...new Set([...executions.map(row => row.revision), run.revision])];
+    const revisions = await this.db.selectFrom("xy_wap_embed_workflow_revision")
+      .select(["draft_json", "revision"])
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("revision", "in", revisionNumbers)
+      .execute();
+    const titlesByRevision = new Map(revisions.map(item => [
+      item.revision,
+      readNodeTitles(item.draft_json),
+    ]));
     const steps: WorkflowEntryRecordDetail["steps"] = executions.map(row => {
       const nodeKind = parseRecordNodeKind(row.node_kind);
+      const metadata = titlesByRevision.get(row.revision)?.get(row.node_id);
       return {
         ...(row.error_message ? { description: row.error_message } : {}),
         occurredAt: toDate(row.completed_at ?? row.create_time).toISOString(),
         nodeId: row.node_id,
         nodeKind,
+        revision: row.revision,
         status: row.status === "failed" ? "failed" : "completed",
-        title: titles.get(row.node_id)?.title ?? fallbackNodeTitle(nodeKind),
+        title: metadata?.title ?? fallbackNodeTitle(nodeKind),
       };
     });
     if (run.status === "queued" || run.status === "running" || run.status === "waiting") {
-      const metadata = titles.get(run.current_node_id);
+      const metadata = titlesByRevision.get(run.revision)?.get(run.current_node_id);
       const previousStep = steps.at(-1)?.nodeId === run.current_node_id ? steps.at(-1) : undefined;
       const currentKind = metadata?.kind ?? previousStep?.nodeKind ?? "unknown";
       const currentStep = {
         occurredAt: toDate(run.update_time).toISOString(),
         nodeId: run.current_node_id,
         nodeKind: currentKind,
+        revision: run.revision,
         status: "current" as const,
         title: metadata?.title ?? previousStep?.title ?? fallbackNodeTitle(currentKind),
       };
@@ -187,6 +231,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       revision: run.revision,
       status: parseStatus(run.status),
       subjectType: decodeWorkflowSubjectType(run.subject_type),
+      terminalReason: parseFlowChangedReason(run.terminal_reason),
       steps,
     };
   }
@@ -257,6 +302,12 @@ function parseRecordNodeKind(value: string): WorkflowEntryRecordStepNodeKind {
   return parseKnownNodeKind(value) ?? "unknown";
 }
 
+function parseFlowChangedReason(value: string | null): WorkflowFlowChangedReason | null {
+  return Value.Check(WorkflowFlowChangedReasonSchema, value)
+    ? value as WorkflowFlowChangedReason
+    : null;
+}
+
 function readNodeTitles(value: unknown) {
   const result = new Map<string, { kind: WorkflowNodeKind | null; title: string }>();
   let draft = value;
@@ -277,6 +328,27 @@ function readNodeTitles(value: unknown) {
     }
   }
   return result;
+}
+
+function readNodeIds(value: unknown) {
+  return new Set(readDraftNodes(value).flatMap(node =>
+    node && typeof node === "object" && "id" in node && typeof node.id === "string"
+      ? [node.id]
+      : []));
+}
+
+function readDraftNodes(value: unknown): unknown[] {
+  let draft = value;
+  if (typeof value === "string") {
+    try {
+      draft = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  return draft && typeof draft === "object" && "nodes" in draft && Array.isArray(draft.nodes)
+    ? draft.nodes
+    : [];
 }
 
 function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {

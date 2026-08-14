@@ -23,6 +23,7 @@ import {
   transitionTask,
 } from "@chatai/workflow-engine";
 import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
+import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
@@ -45,6 +46,7 @@ import type {
 import type {
   WorkflowCapabilityExecutionFailureInput,
   WorkflowBeginEventWaitInput,
+  WorkflowBeginFixedWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
   WorkflowEventSubscriptionEventRecord,
@@ -55,6 +57,7 @@ import type {
   WorkflowNodeMetricRecord,
   WorkflowNodeExecutionRecord,
   WorkflowRunRecord,
+  WorkflowRevisionCleanupRecord,
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
@@ -75,6 +78,7 @@ const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as const;
 const NODE_METRIC_TABLE = "xy_wap_embed_workflow_node_metric" as const;
+const REVISION_CLEANUP_TABLE = "xy_wap_embed_workflow_revision_cleanup" as const;
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting"] as const;
 const ACTIVE_TASK_STATUSES = ["pending", "leased", "dispatched", "running"] as const;
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
@@ -278,6 +282,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).executeTakeFirstOrThrow();
         const runId = normalizeId(runInsert.insertId);
         const task = await insertTask(trx, {
+          createdAt: admittedAt,
           dueAt: admittedAt,
           nodeId: input.initialNodeId,
           nodeKind: input.initialNodeKind,
@@ -485,6 +490,90 @@ export class MysqlWorkflowRuntimeRepository implements
           leaseOwner: null,
           status: "pending" as const,
           taskType: "wait-event",
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  beginFixedWait(input: WorkflowBeginFixedWaitInput) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow || normalizeId(taskRow.run_id) !== input.runId) {
+        return { kind: "not-found" as const };
+      }
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (run.lockVersion !== input.expectedRunLockVersion
+        || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.status !== "running"
+        || task.nodeKind !== "wait"
+        || task.taskType !== "execute"
+        || input.dueAt <= input.now) return { kind: "conflict" as const };
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      await trx.insertInto(INBOX_TABLE).values({
+        consumer: input.inbox.consumer,
+        expires_at: input.inbox.expiresAt,
+        message_id: input.inbox.messageId,
+        processed_at: input.now,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.dueAt),
+        due_at: input.dueAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: transitionTask(task.status, "pending"),
+        task_type: "wait",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion)
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.dueAt,
+        status: transitionRun(run.status, "waiting"),
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion)
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: {
+          ...run,
+          lockVersion: run.lockVersion + 1,
+          nextExecuteAt: input.dueAt,
+          status: "waiting" as const,
+        },
+        task: {
+          ...task,
+          dueAt: input.dueAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: "pending" as const,
+          taskType: "wait",
           taskVersion: task.taskVersion + 1,
         },
       };
@@ -764,7 +853,7 @@ export class MysqlWorkflowRuntimeRepository implements
         || candidate.taskVersion !== input.expectedTaskVersion) return { kind: "conflict" as const };
 
       const runRow = await trx.selectFrom(RUN_TABLE)
-        .select(["current_node_id", "revision", "shard_id", "status", "workflow_id"])
+        .select(["current_node_id", "revision", "sequence", "shard_id", "status", "workflow_id"])
         .where("uid", "=", input.uid)
         .where("id", "=", candidate.runId)
         .forUpdate()
@@ -780,7 +869,12 @@ export class MysqlWorkflowRuntimeRepository implements
       const task = mapTask(taskRow);
       if ((task.status !== "pending" && task.status !== "dispatched")
         || task.taskVersion !== input.expectedTaskVersion
-        || task.runId !== candidate.runId) return { kind: "conflict" as const };
+        || task.runId !== candidate.runId
+        || task.sequence !== runRow.sequence
+        || task.revision !== runRow.revision
+        || task.nodeId !== runRow.current_node_id
+        || task.workflowId !== normalizeId(runRow.workflow_id)
+        || task.shardId !== runRow.shard_id) return { kind: "conflict" as const };
 
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
         .select(["biz_status", "runtime_status"])
@@ -818,34 +912,6 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("id", "=", task.runId)
         .where("status", "in", ["queued", "waiting"])
         .executeTakeFirst();
-      if (runRow.current_node_id !== task.nodeId) {
-        const previousTask = await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind"])
-          .where("uid", "=", input.uid)
-          .where("run_id", "=", task.runId)
-          .where("sequence", "=", task.sequence - 1)
-          .executeTakeFirst();
-        if (previousTask) {
-          await insertNodeMetricEvents(trx, {
-            eventKey: `${task.runId}:${task.sequence}:activated`,
-            runId: task.runId,
-            runRevision: runRow.revision,
-            runShardId: runRow.shard_id,
-            uid: input.uid,
-            workflowId: normalizeId(runRow.workflow_id),
-          }, createNodeMetricDeltas({
-            fromNodeId: previousTask.node_id,
-            fromNodeKind: parseNodeKind(previousTask.node_kind),
-            kind: "advanced",
-            toNodeId: task.nodeId,
-            toNodeKind: task.nodeKind,
-          }));
-          await trx.updateTable(RUN_TABLE).set({ current_node_id: task.nodeId })
-            .where("uid", "=", input.uid)
-            .where("id", "=", task.runId)
-            .where("current_node_id", "=", runRow.current_node_id)
-            .executeTakeFirst();
-        }
-      }
       return {
         kind: "success" as const,
         task: {
@@ -1042,6 +1108,7 @@ export class MysqlWorkflowRuntimeRepository implements
         node_kind: task.nodeKind,
         output_json: stringifyJson({}),
         run_id: run.id,
+        revision: task.revision,
         sequence: task.sequence,
         started_at: input.now,
         status: "running",
@@ -1058,6 +1125,7 @@ export class MysqlWorkflowRuntimeRepository implements
           nodeKind: task.nodeKind,
           output: {},
           runId: run.id,
+          revision: task.revision,
           sequence: task.sequence,
           status: "running" as const,
           uid: input.uid,
@@ -1074,21 +1142,6 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("message_id", "=", input.inbox.messageId)
         .executeTakeFirst();
       if (processed) return { kind: "already-processed" as const };
-      const runIdentity = await trx.selectFrom(RUN_TABLE).select("workflow_id")
-        .where("uid", "=", input.uid).where("id", "=", input.runId)
-        .executeTakeFirst();
-      if (!runIdentity) return { kind: "not-found" as const };
-      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
-        .select(["biz_status", "runtime_status"])
-        .where("uid", "=", input.uid).where("id", "=", runIdentity.workflow_id)
-        .forShare().executeTakeFirst();
-      const decision = definition ? getWorkflowExecutionBoundaryDecision({
-        bizStatus: definition.biz_status === 1 ? 1 : 0,
-        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
-      }) : "cancel";
-      if (decision !== "execute") {
-        return { action: decision, kind: "workflow-unavailable" as const };
-      }
       const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
         .where("uid", "=", input.uid).where("id", "=", input.runId)
         .forUpdate().executeTakeFirst();
@@ -1103,6 +1156,17 @@ export class MysqlWorkflowRuntimeRepository implements
         || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
         || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
         || input.deadlineAt <= input.now) return { kind: "conflict" as const };
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      if (decision !== "execute") {
+        return { action: decision, kind: "workflow-unavailable" as const };
+      }
       const existingRow = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
         .where("uid", "=", input.uid)
         .where("execution_key", "=", input.executionKey)
@@ -1335,10 +1399,6 @@ export class MysqlWorkflowRuntimeRepository implements
       .orderBy("job.id", "asc").limit(limit).execute();
     if (scanned.length === 0) return { expired: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
-      const definitionByKey = await loadDefinitionsForShare(trx, scanned.map(row => ({
-        uid: normalizeTenantId(row.uid),
-        workflowId: normalizeId(row.workflow_id),
-      })));
       const runIds = uniqueSortedIds(scanned.map(row => row.run_id));
       const taskIds = uniqueSortedIds(scanned.map(row => row.task_id));
       const jobIds = uniqueSortedIds(scanned.map(row => row.id));
@@ -1346,6 +1406,10 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("id", "in", runIds).orderBy("id", "asc").forUpdate().execute();
       const taskRows = await trx.selectFrom(TASK_TABLE).selectAll()
         .where("id", "in", taskIds).orderBy("id", "asc").forUpdate().execute();
+      const definitionByKey = await loadDefinitionsForShare(trx, scanned.map(row => ({
+        uid: normalizeTenantId(row.uid),
+        workflowId: normalizeId(row.workflow_id),
+      })));
       const locked = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
         .where("id", "in", jobIds)
         .where("paused_at", "is", null)
@@ -1491,21 +1555,18 @@ export class MysqlWorkflowRuntimeRepository implements
       const candidate = await trx.selectFrom(INFERENCE_JOB_TABLE).select(["run_id", "task_id", "uid"])
         .where("id", "=", input.id).executeTakeFirst();
       if (!candidate) return false;
-      const runIdentity = await trx.selectFrom(RUN_TABLE).select("workflow_id")
-        .where("uid", "=", candidate.uid).where("id", "=", candidate.run_id)
-        .executeTakeFirst();
-      const definition = runIdentity
-        ? await trx.selectFrom("xy_wap_embed_workflow_definition")
-            .select(["biz_status", "runtime_status"])
-            .where("uid", "=", candidate.uid).where("id", "=", runIdentity.workflow_id)
-            .forShare().executeTakeFirst()
-        : undefined;
       const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
         .where("uid", "=", candidate.uid).where("id", "=", candidate.run_id)
         .forUpdate().executeTakeFirst();
       const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
         .where("uid", "=", candidate.uid).where("id", "=", candidate.task_id)
         .forUpdate().executeTakeFirst();
+      const definition = runRow
+        ? await trx.selectFrom("xy_wap_embed_workflow_definition")
+            .select(["biz_status", "runtime_status"])
+            .where("uid", "=", candidate.uid).where("id", "=", runRow.workflow_id)
+            .forShare().executeTakeFirst()
+        : undefined;
       let query = trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
         .where("id", "=", input.id);
       query = input.allowUnleased
@@ -1853,11 +1914,14 @@ export class MysqlWorkflowRuntimeRepository implements
       const run = mapRun(runRow);
       const task = mapTask(taskRow);
       if (run.lockVersion !== input.expectedRunLockVersion
+        || run.status !== "running"
         || task.taskVersion !== input.expectedTaskVersion
-        || task.status !== "running") return { kind: "conflict" as const };
+        || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId) return { kind: "conflict" as const };
 
       const failed = input.nodeExecution.errorCode !== undefined;
-      if (failed && input.nextTask) return { kind: "conflict" as const };
       const now = new Date();
       const existingExecution = await trx.selectFrom(EXECUTION_TABLE).selectAll()
         .where("uid", "=", input.uid)
@@ -1865,9 +1929,58 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("sequence", "=", task.sequence)
         .forUpdate()
         .executeTakeFirst();
+      if (existingExecution
+        && (existingExecution.execution_key !== input.nodeExecution.executionKey
+          || existingExecution.revision !== task.revision
+          || existingExecution.status !== "running")) {
+        return { kind: "conflict" as const };
+      }
+
+      const nextContext = !failed && input.context
+        ? structuredClone(input.context)
+        : run.context;
+      let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
+      let latestRevision: number | null = null;
+      let forwardRoute: ReturnType<typeof resolveWorkflowForwardRoute> | null = null;
+      if (!failed && input.sourceOutletId) {
+        const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+          .select(["biz_status", "published_revision", "runtime_status"])
+          .where("uid", "=", input.uid)
+          .where("id", "=", run.workflowId)
+          .forShare()
+          .executeTakeFirst();
+        boundaryDecision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (boundaryDecision === "cancel") {
+          return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+        }
+        if (definition?.published_revision === null || definition?.published_revision === undefined) {
+          return { kind: "conflict" as const };
+        }
+        const revisionRow = await trx.selectFrom(REVISION_TABLE)
+          .select(["execution_spec_json", "revision"])
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", run.workflowId)
+          .where("revision", "=", definition.published_revision)
+          .executeTakeFirst();
+        if (!revisionRow) return { kind: "conflict" as const };
+        latestRevision = revisionRow.revision;
+        forwardRoute = resolveWorkflowForwardRoute({
+          context: nextContext,
+          currentNodeId: task.nodeId,
+          currentNodeKind: task.nodeKind,
+          latestSpec: normalizeWorkflowExecutionSpec(
+            parseJson(revisionRow.execution_spec_json) as WorkflowStoredExecutionSpec,
+          ),
+          sourceOutletId: input.sourceOutletId,
+        });
+      }
+
       if (existingExecution) {
-        if (existingExecution.execution_key !== input.nodeExecution.executionKey
-          || existingExecution.status !== "running") return { kind: "conflict" as const };
         await trx.updateTable(EXECUTION_TABLE).set({
           completed_at: now,
           error_code: input.nodeExecution.errorCode ?? null,
@@ -1891,6 +2004,7 @@ export class MysqlWorkflowRuntimeRepository implements
           node_id: task.nodeId,
           node_kind: task.nodeKind,
           output_json: stringifyJson(input.nodeExecution.output),
+          revision: task.revision,
           run_id: run.id,
           sequence: task.sequence,
           started_at: now,
@@ -1917,19 +2031,19 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nextSequence = run.sequence + 1;
       let nextTask: WorkflowTaskRecord | null = null;
-      if (!failed && input.nextTask) {
-        const dispatchImmediately = input.nextTask.dispatchImmediately !== false
-          && input.nextTask.taskType !== "wait";
+      if (forwardRoute?.kind === "success" && latestRevision !== null) {
+        const dispatchImmediately = boundaryDecision === "execute";
         nextTask = await insertTask(trx, {
-          dueAt: input.nextTask.dueAt,
-          nodeId: input.nextTask.nodeId,
-          nodeKind: input.nextTask.nodeKind,
-          revision: run.revision,
+          createdAt: now,
+          dueAt: now,
+          nodeId: forwardRoute.target.id,
+          nodeKind: forwardRoute.target.kind,
+          revision: latestRevision,
           runId: run.id,
           sequence: nextSequence,
           shardId: run.shardId,
           status: dispatchImmediately ? "dispatched" : "pending",
-          taskType: input.nextTask.taskType,
+          taskType: "execute",
           uid: input.uid,
           workflowId: run.workflowId,
         });
@@ -1938,38 +2052,51 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nextRun: WorkflowRunRecord = {
         ...run,
-        context: !failed && input.context ? structuredClone(input.context) : run.context,
-        currentNodeId: !failed && input.nextTask && input.nextTask.taskType !== "wait"
-          ? input.nextTask.nodeId
+        context: nextContext,
+        currentNodeId: forwardRoute?.kind === "success"
+          ? forwardRoute.target.id
           : run.currentNodeId,
         lockVersion: run.lockVersion + 1,
-        nextExecuteAt: !failed ? input.nextTask?.dueAt ?? null : null,
-        sequence: !failed && input.nextTask ? nextSequence : run.sequence,
+        nextExecuteAt: forwardRoute?.kind === "success" ? now : null,
+        revision: forwardRoute?.kind === "success" && latestRevision !== null
+          ? latestRevision
+          : run.revision,
+        sequence: forwardRoute?.kind === "success" ? nextSequence : run.sequence,
         status: transitionRun(
           run.status,
           failed
             ? "failed"
-            : input.nextTask
-              ? input.nextTask.taskType === "wait" ? "waiting" : "running"
-              : "completed",
+            : forwardRoute?.kind === "flow-changed"
+              ? "cancelled"
+              : forwardRoute?.kind === "success"
+                ? "running"
+                : "completed",
         ),
+        terminalReason: failed
+          ? input.nodeExecution.errorCode ?? null
+          : forwardRoute?.kind === "flow-changed"
+            ? forwardRoute.reason
+            : null,
       };
       await trx.updateTable(RUN_TABLE).set({
-        completed_at: nextRun.status === "completed" || nextRun.status === "failed" ? now : null,
+        completed_at: TERMINAL_RUN_STATUSES.includes(nextRun.status as typeof TERMINAL_RUN_STATUSES[number])
+          ? now
+          : null,
         context_json: stringifyJson(nextRun.context),
         current_node_id: nextRun.currentNodeId,
         lock_version: nextRun.lockVersion,
         next_execute_at: nextRun.nextExecuteAt,
+        revision: nextRun.revision,
         sequence: nextRun.sequence,
         status: nextRun.status,
-        terminal_reason: input.nodeExecution.errorCode ?? null,
+        terminal_reason: nextRun.terminalReason,
       }).where("uid", "=", input.uid).where("id", "=", run.id)
         .where("lock_version", "=", run.lockVersion).executeTakeFirstOrThrow();
       if (failed) {
         await insertNodeMetricEvents(trx, {
           eventKey: `${run.id}:${task.sequence}:failed`,
           runId: run.id,
-          runRevision: run.revision,
+          runRevision: task.revision,
           runShardId: run.shardId,
           uid: input.uid,
           workflowId: run.workflowId,
@@ -1978,26 +2105,48 @@ export class MysqlWorkflowRuntimeRepository implements
           nodeId: task.nodeId,
           nodeKind: task.nodeKind,
         }));
-      } else if (input.nextTask && input.nextTask.taskType !== "wait") {
+      } else if (forwardRoute?.kind === "flow-changed") {
         await insertNodeMetricEvents(trx, {
-          eventKey: `${run.id}:${task.sequence}:advanced`,
+          eventKey: `${run.id}:${task.sequence}:flow-changed`,
           runId: run.id,
-          runRevision: run.revision,
+          runRevision: task.revision,
           runShardId: run.shardId,
           uid: input.uid,
           workflowId: run.workflowId,
         }, createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+        }));
+      } else if (forwardRoute?.kind === "success" && latestRevision !== null) {
+        const deltas = createNodeMetricDeltas({
           fromNodeId: task.nodeId,
           fromNodeKind: task.nodeKind,
           kind: "advanced",
-          toNodeId: input.nextTask.nodeId,
-          toNodeKind: input.nextTask.nodeKind,
-        }));
-      } else if (!input.nextTask) {
+          toNodeId: forwardRoute.target.id,
+          toNodeKind: forwardRoute.target.kind,
+        });
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:advanced:left`,
+          runId: run.id,
+          runRevision: task.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, deltas.filter(delta => delta.nodeId === task.nodeId));
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:advanced:entered`,
+          runId: run.id,
+          runRevision: latestRevision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, deltas.filter(delta => delta.nodeId === forwardRoute.target.id));
+      } else {
         await insertNodeMetricEvents(trx, {
           eventKey: `${run.id}:${task.sequence}:completed`,
           runId: run.id,
-          runRevision: run.revision,
+          runRevision: task.revision,
           runShardId: run.shardId,
           uid: input.uid,
           workflowId: run.workflowId,
@@ -2187,7 +2336,7 @@ export class MysqlWorkflowRuntimeRepository implements
           || authoritativeTask.workflowId !== normalizeId(run.workflow_id)
           || authoritativeTask.revision !== run.revision
           || authoritativeTask.shardId !== run.shard_id
-          || (run.status !== "waiting" && authoritativeTask.nodeId !== run.current_node_id)
+          || authoritativeTask.nodeId !== run.current_node_id
           || (run.status === "waiting" && (
             (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
               && authoritativeTask.taskType !== "inference")
@@ -2198,31 +2347,11 @@ export class MysqlWorkflowRuntimeRepository implements
         for (const task of runTasks) taskIdsToCancel.add(task.id);
       }
 
-      const waitingRuns = runsToFail.filter(run => run.status === "waiting");
-      const completedWaitTasks = waitingRuns.length === 0
-        ? []
-        : await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind", "run_id", "sequence"])
-            .where(eb => eb.or(waitingRuns.map(run => eb.and([
-              eb("uid", "=", normalizeTenantId(run.uid)),
-              eb("run_id", "=", run.id),
-              eb("sequence", "=", run.sequence - 1),
-              eb("node_id", "=", run.current_node_id),
-            ]))))
-            .where("status", "=", "completed")
-            .where("node_kind", "=", "wait")
-            .execute();
-      const completedWaitTaskByRunId = new Map(completedWaitTasks.map(task => [
-        normalizeId(task.run_id),
-        { nodeId: task.node_id, nodeKind: parseNodeKind(task.node_kind) },
-      ]));
       for (const run of runsToFail) {
         const runId = normalizeId(run.id);
         const runTasks = tasks.filter(task => task.runId === runId);
         const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
-        const metricTask = activeMetricTask
-          ? { nodeId: activeMetricTask.nodeId, nodeKind: activeMetricTask.nodeKind }
-          : completedWaitTaskByRunId.get(runId);
-        if (!metricTask) continue;
+        if (!activeMetricTask) continue;
         await insertNodeMetricEvents(trx, {
           eventKey: `${runId}:runtime-state-inconsistent`,
           runId,
@@ -2232,8 +2361,8 @@ export class MysqlWorkflowRuntimeRepository implements
           workflowId: normalizeId(run.workflow_id),
         }, createNodeMetricDeltas({
           kind: "left-incomplete",
-          nodeId: metricTask.nodeId,
-          nodeKind: metricTask.nodeKind,
+          nodeId: activeMetricTask.nodeId,
+          nodeKind: activeMetricTask.nodeKind,
         }));
       }
 
@@ -2451,6 +2580,243 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
+  async claimRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimRevisionCleanupBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where(eb => eb.or([
+          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
+          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
+        ]))
+        .executeTakeFirst();
+      const rows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where(eb => eb.or([
+          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
+          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
+        ]))
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      if (rows.length === 0) return [];
+      const ids = rows.map(row => row.id);
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }).where("id", "in", ids).executeTakeFirstOrThrow();
+      return rows.map(row => mapRevisionCleanup({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }));
+    });
+  }
+
+  async processRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["processRevisionCleanupBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { kind: "conflict" as const };
+    const request = await this.db.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+      .where("id", "=", input.cleanupId)
+      .executeTakeFirst();
+    if (!request) return { kind: "not-found" as const };
+    if (request.status !== "leased" || request.lease_owner !== input.leaseOwner) {
+      return { kind: "conflict" as const };
+    }
+    return this.db.transaction().execute(async (trx) => {
+      let runQuery = trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", normalizeTenantId(request.uid))
+        .where("workflow_id", "=", request.workflow_id)
+        .where("status", "in", ACTIVE_RUN_STATUSES)
+        .where("current_node_id", "=", request.node_id)
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate();
+      // Cursor pagination must wait for locked Runs or it can advance past them permanently.
+      if (request.after_run_id !== null) runQuery = runQuery.where("id", ">", request.after_run_id);
+      const candidateRuns = await runQuery.execute();
+      const selectedRuns = candidateRuns.slice(0, limit);
+      const runIds = selectedRuns.map(run => run.id);
+      const taskRows = runIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("run_id", "in", runIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select("published_revision")
+        .where("uid", "=", normalizeTenantId(request.uid))
+        .where("id", "=", request.workflow_id)
+        .forShare()
+        .executeTakeFirst();
+      const revision = definition?.published_revision === null || definition?.published_revision === undefined
+        ? null
+        : await trx.selectFrom(REVISION_TABLE)
+            .select("execution_spec_json")
+            .where("uid", "=", normalizeTenantId(request.uid))
+            .where("workflow_id", "=", request.workflow_id)
+            .where("revision", "=", definition.published_revision)
+            .executeTakeFirst();
+      if (!revision) return { kind: "conflict" as const };
+      const cleanupRow = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("id", "=", request.id)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!cleanupRow || cleanupRow.status !== "leased" || cleanupRow.lease_owner !== input.leaseOwner) {
+        return { kind: "conflict" as const };
+      }
+      const latestSpec = normalizeWorkflowExecutionSpec(
+        parseJson(revision.execution_spec_json) as WorkflowStoredExecutionSpec,
+      );
+      if (latestSpec.nodes.some(node => node.id === request.node_id)) {
+        await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "obsolete",
+        }).where("id", "=", request.id)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirstOrThrow();
+        return {
+          cancelled: 0,
+          hasMore: false,
+          kind: "success" as const,
+          status: "obsolete" as const,
+        };
+      }
+
+      const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
+      const expectedTaskType = nodeKind === "wait" ? "wait" : "wait-event";
+      const taskByRunId = new Map(selectedRuns.flatMap(run => {
+        const runId = normalizeId(run.id);
+        const task = taskRows.find(candidate => normalizeId(candidate.run_id) === runId
+          && candidate.sequence === run.sequence
+          && candidate.node_id === request.node_id
+          && candidate.node_kind === nodeKind
+          && (candidate.task_type === "execute" || candidate.task_type === expectedTaskType));
+        return task ? [[runId, task] as const] : [];
+      }));
+      const runsToCancel = selectedRuns.filter(run => {
+        const task = taskByRunId.get(normalizeId(run.id));
+        return task?.sequence === run.sequence
+          && task.revision === run.revision
+          && task.node_id === run.current_node_id;
+      });
+      const taskIds = runsToCancel.flatMap(run => {
+        const task = taskByRunId.get(normalizeId(run.id));
+        return task ? [task.id] : [];
+      });
+      if (taskIds.length > 0) {
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "flow_changed_current_node_deleted",
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "cancelled",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", taskIds)
+          .where("status", "in", ACTIVE_TASK_STATUSES)
+          .executeTakeFirstOrThrow();
+      }
+      const cancelledRunIds = runsToCancel.map(run => run.id);
+      if (cancelledRunIds.length > 0) {
+        await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
+          status: "cancelled",
+          update_time: input.now,
+        }).where("run_id", "in", cancelledRunIds)
+          .where("status", "in", ["waiting", "triggered"])
+          .executeTakeFirst();
+        await insertNodeMetricEventsBulk(trx, runsToCancel.map(run => {
+          const task = taskByRunId.get(normalizeId(run.id))!;
+          return {
+            context: {
+              eventKey: `${normalizeId(run.id)}:revision-cleanup:${normalizeId(request.id)}`,
+              runId: normalizeId(run.id),
+              runRevision: task.revision,
+              runShardId: run.shard_id,
+              uid: normalizeTenantId(run.uid),
+              workflowId: normalizeId(run.workflow_id),
+            },
+            deltas: createNodeMetricDeltas({
+              kind: "left-incomplete" as const,
+              nodeId: task.node_id,
+              nodeKind,
+            }),
+          };
+        }));
+        await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "cancelled",
+          terminal_reason: "flow_changed_current_node_deleted",
+        }).where("id", "in", cancelledRunIds)
+          .where("status", "in", ACTIVE_RUN_STATUSES)
+          .executeTakeFirstOrThrow();
+      }
+
+      const hasMore = candidateRuns.length > selectedRuns.length;
+      const nextStatus = hasMore ? "pending" as const : "done" as const;
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        after_run_id: selectedRuns.at(-1)?.id ?? request.after_run_id,
+        attempt: 0,
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        status: nextStatus,
+      }).where("id", "=", request.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirstOrThrow();
+      return {
+        cancelled: runsToCancel.length,
+        hasMore,
+        kind: "success" as const,
+        status: nextStatus,
+      };
+    });
+  }
+
+  async failRevisionCleanup(
+    input: Parameters<WorkflowRuntimeRepository["failRevisionCleanup"]>[0],
+  ) {
+    const row = await this.db.selectFrom(REVISION_CLEANUP_TABLE)
+      .select("attempt")
+      .where("id", "=", input.cleanupId)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    if (!row) return false;
+    const result = await this.db.updateTable(REVISION_CLEANUP_TABLE).set({
+      last_error_code: input.errorCode,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: row.attempt >= input.maxAttempts ? "dead" : "pending",
+    }).where("id", "=", input.cleanupId)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
   async cleanupWorkflowHistory(
     input: Parameters<WorkflowRuntimeRepository["cleanupWorkflowHistory"]>[0],
   ) {
@@ -2594,6 +2960,7 @@ export class MysqlWorkflowRuntimeRepository implements
         completed: number;
         current: number;
         entered: number;
+        incomplete: number;
         nodeId: string;
         passed: number;
         revision: number;
@@ -2607,6 +2974,7 @@ export class MysqlWorkflowRuntimeRepository implements
           completed: 0,
           current: 0,
           entered: 0,
+          incomplete: 0,
           nodeId: event.node_id,
           passed: 0,
           revision: event.revision,
@@ -2617,6 +2985,7 @@ export class MysqlWorkflowRuntimeRepository implements
         current.completed += Number(event.completed_delta);
         current.current += Number(event.current_delta);
         current.entered += Number(event.entered_delta);
+        current.incomplete += Number(event.incomplete_delta);
         current.passed += Number(event.passed_delta);
         aggregated.set(key, current);
       }
@@ -2625,6 +2994,7 @@ export class MysqlWorkflowRuntimeRepository implements
           completed_count: metric.completed,
           current_count: Math.max(0, metric.current),
           entered_count: metric.entered,
+          incomplete_count: metric.incomplete,
           node_id: metric.nodeId,
           passed_count: metric.passed,
           revision: metric.revision,
@@ -2635,6 +3005,7 @@ export class MysqlWorkflowRuntimeRepository implements
           completed_count: sql<number>`completed_count + ${metric.completed}`,
           current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + ${metric.current})`,
           entered_count: sql<number>`entered_count + ${metric.entered}`,
+          incomplete_count: sql<number>`incomplete_count + ${metric.incomplete}`,
           passed_count: sql<number>`passed_count + ${metric.passed}`,
         }).executeTakeFirstOrThrow();
       }
@@ -2681,6 +3052,7 @@ export class MysqlWorkflowRuntimeRepository implements
       completed: Number(row.completed_count),
       current: Number(row.current_count),
       entered: Number(row.entered_count),
+      incomplete: Number(row.incomplete_count),
       nodeId: row.node_id,
       passed: Number(row.passed_count),
       revision: row.revision,
@@ -2934,6 +3306,7 @@ async function insertTask(
   const inserted = await trx.insertInto(TASK_TABLE).values({
     attempt: 0,
     bucket_time: floorToMinute(input.dueAt),
+    create_time: input.createdAt,
     due_at: input.dueAt,
     last_error_code: null,
     lease_expires_at: null,
@@ -3013,6 +3386,7 @@ async function insertNodeMetricEventsBulk(
     completed_delta: delta.completed,
     current_delta: delta.current,
     entered_delta: delta.entered,
+    incomplete_delta: delta.incomplete,
     event_key: `${context.eventKey}:${delta.nodeId}`,
     node_id: delta.nodeId,
     passed_delta: delta.passed,
@@ -3260,6 +3634,7 @@ function createRunRecord(id: string, input: WorkflowCreateRunInput, admittedAt: 
     status: "queued",
     subjectId: input.subjectId,
     subjectType: input.subjectType,
+    terminalReason: null,
     uid: input.uid,
     workflowId: input.workflowId,
   };
@@ -3280,6 +3655,7 @@ function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
     status: parseRunStatus(row.status),
     subjectId: row.subject_id,
     subjectType: decodeWorkflowSubjectType(row.subject_type),
+    terminalReason: row.terminal_reason,
     uid: normalizeTenantId(row.uid),
     workflowId: normalizeId(row.workflow_id),
   };
@@ -3341,6 +3717,7 @@ async function findRunAndInitialTaskByEntryEvent(
 function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {
   return {
     attempt: row.attempt,
+    createdAt: row.create_time,
     dueAt: row.due_at,
     id: normalizeId(row.id),
     leaseExpiresAt: row.lease_expires_at,
@@ -3370,10 +3747,41 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
     nodeKind: parseNodeKind(row.node_kind),
     output: row.output_json ? parseJson(row.output_json) : {},
     runId: normalizeId(row.run_id),
+    revision: row.revision,
     sequence: row.sequence,
     status: parseNodeExecutionStatus(row.status),
     uid: normalizeTenantId(row.uid),
   };
+}
+
+function mapRevisionCleanup(
+  row: Selectable<WorkflowDatabase[typeof REVISION_CLEANUP_TABLE]>,
+): WorkflowRevisionCleanupRecord {
+  const status = row.status;
+  if (status !== "pending" && status !== "leased" && status !== "done"
+    && status !== "obsolete" && status !== "dead") {
+    throw new Error(`Unknown Workflow Revision cleanup status: ${status}`);
+  }
+  return {
+    afterRunId: row.after_run_id === null ? null : normalizeId(row.after_run_id),
+    attempt: row.attempt,
+    id: normalizeId(row.id),
+    lastErrorCode: row.last_error_code,
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    nodeId: row.node_id,
+    nodeKind: parseRevisionCleanupNodeKind(row.node_kind),
+    revision: row.revision,
+    status,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function parseRevisionCleanupNodeKind(value: string): "wait" | "wait-event" {
+  if (value === "wait" || value === "wait-event") return value;
+  throw new Error(`Unknown Workflow Revision cleanup node kind: ${value}`);
 }
 
 async function lockCapabilityExecutionState(

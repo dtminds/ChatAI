@@ -230,10 +230,13 @@ export async function startWorkflowWorkerRuntime(input: {
           historyCleanupBatchSize: input.config.runtime.historyCleanupBatchSize,
           historyRetention,
           inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
+          leaseDurationMs: input.config.runtime.leaseDurationMs,
+          leaseOwner: input.workerId,
           limit: input.config.runtime.batchSize,
           maxTaskAttempts: input.config.runtime.maxTaskAttempts,
           now: currentTime,
           reconciler: input.reconcilerService,
+          retryDelayMs: input.config.runtime.retryDelayMs,
         });
         afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;

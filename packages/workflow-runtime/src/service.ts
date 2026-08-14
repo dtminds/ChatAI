@@ -114,6 +114,13 @@ export class WorkflowRuntimeService {
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
+    this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
+      const definition = await this.controlRepository.findDefinition(uid, workflowId);
+      if (definition?.publishedRevision === null || definition?.publishedRevision === undefined) {
+        return null;
+      }
+      return this.controlRepository.findRevision(uid, workflowId, definition.publishedRevision);
+    });
     if (!Number.isSafeInteger(this.capabilityTimeoutMs) || this.capabilityTimeoutMs <= 0) {
       throw new Error("Workflow capability timeout must be a positive integer");
     }
@@ -264,7 +271,9 @@ export class WorkflowRuntimeService {
     if (!task) throw new WorkflowRuntimeError("WORKFLOW_TASK_NOT_FOUND", "Workflow Task 不存在", 404);
     const run = await this.runtimeRepository.findRun(input.uid, task.runId);
     if (!run) throw new WorkflowRuntimeError("WORKFLOW_RUN_NOT_FOUND", "Workflow Run 不存在", 404);
-    const revision = await this.controlRepository.findRevision(input.uid, run.workflowId, run.revision);
+    if (task.revision !== run.revision || task.sequence !== run.sequence
+      || task.nodeId !== run.currentNodeId) throw staleTaskError();
+    const revision = await this.controlRepository.findRevision(input.uid, run.workflowId, task.revision);
     if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
     if (revision.subjectType !== run.subjectType) throw staleDefinitionError();
     const node = requireExecutionNode(revision.executionSpec, task.nodeId);
@@ -318,7 +327,6 @@ export class WorkflowRuntimeService {
         existingSubscription: existingEventSubscription,
         input,
         node,
-        revision: revision.executionSpec,
         run,
       });
     }
@@ -347,7 +355,13 @@ export class WorkflowRuntimeService {
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      executionResult = inferenceNode
+      executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
+        ? {
+            output: { dueAt: claimed.task.dueAt.toISOString() },
+            sourceOutletId: "default",
+            type: "advance" as const,
+          }
+        : inferenceNode
         ? await this.executeInferenceTask({
             claimedTask: claimed.task,
             input,
@@ -368,7 +382,7 @@ export class WorkflowRuntimeService {
           : await this.executors.execute(node, createExecutionContext(
             run,
             input.now,
-            claimed.task.dueAt,
+            claimed.task.createdAt,
           ));
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
@@ -379,9 +393,29 @@ export class WorkflowRuntimeService {
         "node-output",
         WORKFLOW_NODE_OUTPUT_MAX_BYTES,
       );
+      if (executionResult.type === "wait") {
+        const waiting = await this.runtimeRepository.beginFixedWait({
+          dueAt: new Date(executionResult.dueAt),
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimed.task.taskVersion,
+          inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
+          now: input.now,
+          runId: run.id,
+          taskId: task.id,
+          uid: input.uid,
+        });
+        if (waiting.kind === "already-processed") throw alreadyProcessedError();
+        if (waiting.kind === "workflow-unavailable") {
+          throw waiting.action === "defer"
+            ? runtimeStatusError("paused")
+            : workflowUnavailable();
+        }
+        if (waiting.kind !== "success") throw staleTaskError();
+        return { kind: "waiting" as const, run: waiting.run, task: waiting.task };
+      }
       nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
-        enteredAt: claimed.task.dueAt,
-        exitedAt: executionResult.type === "wait" ? new Date(executionResult.dueAt) : input.now,
+        enteredAt: claimed.task.createdAt,
+        exitedAt: input.now,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
@@ -442,7 +476,6 @@ export class WorkflowRuntimeService {
         task: scheduled.task,
       };
     }
-    const nextTask = createNextTask(revision.executionSpec, node, executionResult, input.now);
     const commitInput: WorkflowCommitNodeResultInput = {
       context: nextContext,
       expectedRunLockVersion: run.lockVersion,
@@ -455,8 +488,10 @@ export class WorkflowRuntimeService {
         input: createNodeInputSnapshot(run),
         output: executionResult.output,
       },
-      nextTask,
       runId: run.id,
+      ...(executionResult.type === "advance"
+        ? { sourceOutletId: executionResult.sourceOutletId }
+        : {}),
       taskId: task.id,
       uid: input.uid,
     };
@@ -539,7 +574,6 @@ export class WorkflowRuntimeService {
     existingSubscription: WorkflowEventSubscriptionRecord | null;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
-    revision: WorkflowExecutionSpec;
     run: WorkflowRunRecord;
   }) {
     if (!input.existingSubscription) {
@@ -631,11 +665,6 @@ export class WorkflowRuntimeService {
       });
     }
 
-    const nextTask = createNextTask(input.revision, input.node, {
-      output,
-      sourceOutletId,
-      type: "advance",
-    }, input.input.now);
     const committed = await this.runtimeRepository.commitNodeResult({
       context: nextContext,
       expectedRunLockVersion: input.run.lockVersion,
@@ -646,13 +675,13 @@ export class WorkflowRuntimeService {
         input.input.taskVersion,
         input.input.now,
       ),
-      nextTask,
       nodeExecution: {
         executionKey: input.nodeExecutionKey,
         input: createNodeInputSnapshot(input.run),
         output,
       },
       runId: input.run.id,
+      sourceOutletId,
       taskId: input.claimedTask.id,
       uid: input.input.uid,
     });
@@ -926,31 +955,6 @@ function createInbox(messageId: string | undefined, taskId: string, taskVersion:
     consumer: "workflow-task",
     expiresAt: new Date(now.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000),
     messageId: messageId ?? `task:${taskId}:v${taskVersion}`,
-  };
-}
-
-function createNextTask(
-  spec: WorkflowExecutionSpec,
-  node: WorkflowExecutionNode,
-  result: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>,
-  now: Date,
-) {
-  if (result.type === "complete") return undefined;
-  if (result.type === "event-wait") {
-    throw new Error("Wait Event must establish its subscription before routing");
-  }
-  const sourceOutletId = result.type === "wait" ? "default" : result.sourceOutletId;
-  const edge = spec.edges.find((item) =>
-    item.source === node.id && item.sourceOutletId === sourceOutletId,
-  );
-  if (!edge) throw new WorkflowRuntimeError("WORKFLOW_EDGE_NOT_FOUND", "Workflow 执行出口不存在", 500);
-  const target = requireExecutionNode(spec, edge.target);
-  return {
-    dispatchImmediately: result.type !== "wait",
-    dueAt: result.type === "wait" ? new Date(result.dueAt) : now,
-    nodeId: target.id,
-    nodeKind: target.kind,
-    taskType: result.type === "wait" ? "wait" : "execute",
   };
 }
 

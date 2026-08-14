@@ -391,11 +391,12 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowDataOverviewSchema, {
       calculatedAt: "2026-07-12T10:00:00.000Z",
       nodes: [
-        { completed: 0, current: 0, entered: 120, nodeId: "start", passed: 0 },
-        { completed: 0, current: 18, entered: 0, nodeId: "wait-1", passed: 102 },
-        { completed: 96, current: 0, entered: 0, nodeId: "end", passed: 0 },
+        { completed: 0, current: 0, entered: 120, incomplete: 0, nodeId: "start", passed: 0 },
+        { completed: 0, current: 18, entered: 0, incomplete: 0, nodeId: "wait-1", passed: 102 },
+        { completed: 96, current: 0, entered: 0, incomplete: 0, nodeId: "end", passed: 0 },
       ],
-      revision: 3,
+      publishedRevision: 3,
+      summary: { completed: 96, current: 18, entered: 120, incomplete: 6 },
     })).toBe(true);
     expect(Value.Check(WorkflowEntryRecordPageSchema, {
       items: [{
@@ -418,10 +419,12 @@ describe("workflow contracts", () => {
       revision: 3,
       status: "waiting",
       subjectType: "chatai_contact",
+      terminalReason: null,
       steps: [{
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "start",
         nodeKind: "start",
+        revision: 1,
         status: "completed",
         title: "进入流程",
       }],
@@ -434,10 +437,12 @@ describe("workflow contracts", () => {
       revision: 3,
       status: "waiting",
       subjectType: "chatai_contact",
+      terminalReason: "flow_changed_current_node_deleted",
       steps: [{
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "future-action",
         nodeKind: "unknown",
+        revision: 3,
         status: "current",
         title: "未来动作",
       }],

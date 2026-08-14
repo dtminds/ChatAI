@@ -1,6 +1,7 @@
 import type {
   WorkflowCapabilityExecutionFailureInput,
   WorkflowBeginEventWaitInput,
+  WorkflowBeginFixedWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
   WorkflowEventSubscriptionEventRecord,
@@ -8,7 +9,10 @@ import type {
   WorkflowInferenceJobRecord,
   WorkflowNodeExecutionRecord,
   WorkflowOutboxRecord,
+  WorkflowPublishedRevisionResolver,
+  WorkflowRevisionCleanupRecord,
   WorkflowRunRecord,
+  WorkflowRuntimeRevisionRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
 } from "./types.js";
@@ -18,6 +22,7 @@ import {
   transitionTask,
 } from "@chatai/workflow-engine";
 import { createNodeMetricDeltas } from "./node-metrics.js";
+import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -28,6 +33,7 @@ type NodeMetricEvent = {
   completed: number;
   current: number;
   entered: number;
+  incomplete: number;
   eventKey: string;
   nodeId: string;
   passed: number;
@@ -45,6 +51,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeExecutions: WorkflowNodeExecutionRecord[] = [];
   readonly nodeMetricEvents: NodeMetricEvent[] = [];
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
+  readonly revisionCleanups: WorkflowRevisionCleanupRecord[] = [];
   readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
   readonly eventSubscriptionEvents: WorkflowEventSubscriptionEventRecord[] = [];
   readonly inferenceJobs: WorkflowInferenceJobRecord[] = [];
@@ -58,7 +65,156 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   constructor(
     private readonly resolveWorkflowBoundary?: WorkflowBoundaryResolver,
     private readonly now: () => Date = () => new Date(),
+    private resolvePublishedRevision?: WorkflowPublishedRevisionResolver,
   ) {}
+
+  configurePublishedRevisionResolver(resolver: WorkflowPublishedRevisionResolver) {
+    this.resolvePublishedRevision = resolver;
+  }
+
+  addRevisionCleanupRequest(input: {
+    nodeId: string;
+    nodeKind: "wait" | "wait-event";
+    revision: number;
+    uid: number;
+    workflowId: string;
+  }) {
+    const existing = this.revisionCleanups.find(item => item.uid === input.uid
+      && item.workflowId === input.workflowId
+      && item.revision === input.revision
+      && item.nodeId === input.nodeId);
+    if (existing) return clone(existing);
+    const cleanup: WorkflowRevisionCleanupRecord = {
+      afterRunId: null,
+      attempt: 0,
+      id: this.createId(),
+      lastErrorCode: null,
+      leaseExpiresAt: null,
+      leaseOwner: null,
+      nextAttemptAt: this.now(),
+      nodeId: input.nodeId,
+      nodeKind: input.nodeKind,
+      revision: input.revision,
+      status: "pending",
+      uid: input.uid,
+      workflowId: input.workflowId,
+    };
+    this.revisionCleanups.push(cleanup);
+    return clone(cleanup);
+  }
+
+  async claimRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimRevisionCleanupBatch"]>[0],
+  ) {
+    const claimable = this.revisionCleanups
+      .filter(item => (item.status === "pending" && item.nextAttemptAt <= input.now)
+        || (item.status === "leased" && item.leaseExpiresAt !== null && item.leaseExpiresAt <= input.now))
+      .sort(compareById);
+    const claimed: WorkflowRevisionCleanupRecord[] = [];
+    for (const cleanup of claimable) {
+      if (cleanup.attempt >= input.maxAttempts) {
+        cleanup.status = "dead";
+        cleanup.leaseOwner = null;
+        cleanup.leaseExpiresAt = null;
+        continue;
+      }
+      if (claimed.length >= Math.max(0, input.limit)) break;
+      cleanup.attempt += 1;
+      cleanup.status = "leased";
+      cleanup.leaseOwner = input.leaseOwner;
+      cleanup.leaseExpiresAt = clone(input.leaseExpiresAt);
+      claimed.push(clone(cleanup));
+    }
+    return claimed;
+  }
+
+  async processRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["processRevisionCleanupBatch"]>[0],
+  ) {
+    const cleanup = this.revisionCleanups.find(item => item.id === input.cleanupId);
+    if (!cleanup) return { kind: "not-found" as const };
+    if (cleanup.status !== "leased" || cleanup.leaseOwner !== input.leaseOwner) {
+      return { kind: "conflict" as const };
+    }
+    if (!this.resolvePublishedRevision) return { kind: "conflict" as const };
+    const publishedRevision = await this.resolvePublishedRevision({
+      uid: cleanup.uid,
+      workflowId: cleanup.workflowId,
+    });
+    if (!publishedRevision) return { kind: "conflict" as const };
+    if (publishedRevision.executionSpec.nodes.some(node => node.id === cleanup.nodeId)) {
+      cleanup.status = "obsolete";
+      cleanup.leaseOwner = null;
+      cleanup.leaseExpiresAt = null;
+      return { cancelled: 0, hasMore: false, kind: "success" as const, status: "obsolete" as const };
+    }
+
+    const candidates = this.runs
+      .filter(run => run.uid === cleanup.uid
+        && run.workflowId === cleanup.workflowId
+        && run.currentNodeId === cleanup.nodeId
+        && (run.status === "queued" || run.status === "running" || run.status === "waiting")
+        && (cleanup.afterRunId === null || BigInt(run.id) > BigInt(cleanup.afterRunId)))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selected = candidates.slice(0, Math.max(0, input.limit));
+    let cancelled = 0;
+    for (const run of selected) {
+      const task = this.tasks.find(item => item.uid === run.uid
+        && item.runId === run.id
+        && item.sequence === run.sequence
+        && item.nodeId === cleanup.nodeId
+        && item.status !== "completed"
+        && item.status !== "cancelled"
+        && item.status !== "dead");
+      const expectedTaskType = cleanup.nodeKind === "wait" ? "wait" : "wait-event";
+      if (!task
+        || task.nodeKind !== cleanup.nodeKind
+        || (task.taskType !== "execute" && task.taskType !== expectedTaskType)) continue;
+      cancelTask(task);
+      run.status = "cancelled";
+      run.terminalReason = "flow_changed_current_node_deleted";
+      run.lockVersion += 1;
+      run.nextExecuteAt = null;
+      this.cancelEventSubscriptions(new Set([run.id]));
+      this.appendNodeMetricEvents(run, `${run.id}:revision-cleanup:${cleanup.id}`, createNodeMetricDeltas({
+        kind: "left-incomplete",
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+      }), task.revision);
+      this.touchRun(run);
+      cancelled += 1;
+    }
+    cleanup.afterRunId = selected.at(-1)?.id ?? cleanup.afterRunId;
+    const hasMore = candidates.length > selected.length;
+    cleanup.status = hasMore ? "pending" : "done";
+    cleanup.attempt = 0;
+    cleanup.lastErrorCode = null;
+    cleanup.nextAttemptAt = clone(input.now);
+    cleanup.leaseOwner = null;
+    cleanup.leaseExpiresAt = null;
+    return {
+      cancelled,
+      hasMore,
+      kind: "success" as const,
+      status: cleanup.status,
+    };
+  }
+
+  async failRevisionCleanup(
+    input: Parameters<WorkflowRuntimeRepository["failRevisionCleanup"]>[0],
+  ) {
+    const cleanup = this.revisionCleanups.find(item => item.id === input.cleanupId
+      && item.status === "leased"
+      && item.leaseOwner === input.leaseOwner);
+    if (!cleanup) return false;
+    cleanup.status = cleanup.attempt >= input.maxAttempts ? "dead" : "pending";
+    cleanup.lastErrorCode = input.errorCode;
+    cleanup.nextAttemptAt = clone(input.nextAttemptAt);
+    cleanup.leaseOwner = null;
+    cleanup.leaseExpiresAt = null;
+    return true;
+  }
 
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
     if (this.resolveWorkflowBoundary) {
@@ -108,10 +264,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       status: "queued",
       subjectId: input.subjectId,
       subjectType: input.subjectType,
+      terminalReason: null,
       uid: input.uid,
       workflowId: input.workflowId,
     };
     const task = createTask(this.createId(), run, {
+      createdAt: admittedAt,
       dispatchImmediately: true,
       dueAt: admittedAt,
       nodeId: input.initialNodeId,
@@ -218,6 +376,40 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       subscription: clone(subscription),
       task: clone(task),
     };
+  }
+
+  async beginFixedWait(input: WorkflowBeginFixedWaitInput) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || task.nodeKind !== "wait"
+      || task.taskType !== "execute"
+      || input.dueAt <= input.now) return conflict();
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: run.workflowId });
+      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+    }
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    task.dueAt = clone(input.dueAt);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "pending");
+    task.taskType = "wait";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.dueAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
   async listMatchingEventSubscriptions(
@@ -373,6 +565,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (!run || (run.status !== "queued" && run.status !== "running" && run.status !== "waiting")) {
       return conflict();
     }
+    if (task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
+      || task.workflowId !== run.workflowId
+      || task.shardId !== run.shardId) return conflict();
     if (this.resolveWorkflowBoundary) {
       const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: task.workflowId });
       const decision = boundary
@@ -392,32 +589,15 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       return conflict();
     }
     const previousRunStatus = run.status;
-    const previousNodeId = run.currentNodeId;
     task.status = transitionTask(task.status, "running");
     task.attempt += 1;
     task.taskVersion += 1;
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
-    if (run.currentNodeId !== task.nodeId) {
-      const previousTask = this.tasks.find(candidate => candidate.runId === run.id
-        && candidate.sequence === task.sequence - 1);
-      if (previousTask) {
-        this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:activated`, createNodeMetricDeltas({
-          fromNodeId: previousTask.nodeId,
-          fromNodeKind: previousTask.nodeKind,
-          kind: "advanced",
-          toNodeId: task.nodeId,
-          toNodeKind: task.nodeKind,
-        }));
-      }
-      run.currentNodeId = task.nodeId;
-    }
     if (run.status === "queued" || run.status === "waiting") {
       run.status = transitionRun(run.status, "running");
     }
-    if (run.status !== previousRunStatus || run.currentNodeId !== previousNodeId) {
-      this.touchRun(run);
-    }
+    if (run.status !== previousRunStatus) this.touchRun(run);
     return { kind: "success" as const, task: clone(task) };
   }
 
@@ -570,6 +750,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       nodeKind: task.nodeKind,
       output: {},
       runId: run.id,
+      revision: task.revision,
       sequence: task.sequence,
       status: "running",
       uid: input.uid,
@@ -885,26 +1066,45 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!run || !task || task.runId !== run.id) return notFound();
     if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
-      || task.status !== "running") return conflict();
+      || task.status !== "running"
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId) return conflict();
 
     const failed = input.nodeExecution.errorCode !== undefined;
-    if (failed && input.nextTask) return conflict();
-    const nextSequence = run.sequence + 1;
+    const nextContext = !failed && input.context ? clone(input.context) : run.context;
+    let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
+    let forwardRoute: ReturnType<typeof resolveWorkflowForwardRoute> | null = null;
+    let publishedRevision: WorkflowRuntimeRevisionRecord | null = null;
+    if (!failed && input.sourceOutletId) {
+      if (this.resolveWorkflowBoundary) {
+        const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: run.workflowId });
+        boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      }
+      if (boundaryDecision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      if (!this.resolvePublishedRevision) return conflict();
+      publishedRevision = await this.resolvePublishedRevision({ uid: input.uid, workflowId: run.workflowId });
+      if (!publishedRevision) return conflict();
+      forwardRoute = resolveWorkflowForwardRoute({
+        context: nextContext,
+        currentNodeId: task.nodeId,
+        currentNodeKind: task.nodeKind,
+        latestSpec: publishedRevision.executionSpec,
+        sourceOutletId: input.sourceOutletId,
+      });
+    }
+
     const nextTaskStatus = transitionTask(task.status, failed ? "dead" : "completed");
-    const nextRunStatus = transitionRun(
-      run.status,
-      failed
-        ? "failed"
-        : input.nextTask
-          ? input.nextTask.taskType === "wait" ? "waiting" : "running"
-          : "completed",
-    );
     const existingExecution = this.nodeExecutions.find(item => item.uid === input.uid
       && item.runId === run.id
       && item.sequence === task.sequence);
     if (existingExecution) {
       if (existingExecution.executionKey !== input.nodeExecution.executionKey
+        || existingExecution.revision !== task.revision
         || existingExecution.status !== "running") return conflict();
       existingExecution.errorCode = input.nodeExecution.errorCode ?? null;
       existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
@@ -922,6 +1122,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         nodeKind: task.nodeKind,
         output: clone(input.nodeExecution.output),
         runId: run.id,
+        revision: task.revision,
         sequence: task.sequence,
         status: failed ? "failed" : "completed",
         uid: input.uid,
@@ -939,41 +1140,72 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
     let nextTask: WorkflowTaskRecord | null = null;
     if (failed) {
-      run.status = nextRunStatus;
+      run.status = transitionRun(run.status, "failed");
       run.nextExecuteAt = null;
+      run.terminalReason = input.nodeExecution.errorCode ?? null;
       this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:failed`, createNodeMetricDeltas({
         kind: "left-incomplete",
         nodeId: task.nodeId,
         nodeKind: task.nodeKind,
-      }));
-    } else if (input.nextTask) {
-      const delayedSuccessor = input.nextTask.taskType === "wait";
-      if (!delayedSuccessor) run.currentNodeId = input.nextTask.nodeId;
+      }), task.revision);
+    } else if (forwardRoute?.kind === "flow-changed") {
+      run.status = transitionRun(run.status, "cancelled");
+      run.nextExecuteAt = null;
+      run.terminalReason = forwardRoute.reason;
+      this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:flow-changed`, createNodeMetricDeltas({
+        kind: "left-incomplete",
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+      }), task.revision);
+    } else if (forwardRoute?.kind === "success" && publishedRevision) {
+      const nextSequence = run.sequence + 1;
+      const arrivedAt = this.now();
+      run.currentNodeId = forwardRoute.target.id;
+      run.revision = publishedRevision.revision;
       run.sequence = nextSequence;
-      run.status = nextRunStatus;
-      run.nextExecuteAt = input.nextTask.dueAt;
-      nextTask = createTask(this.createId(), run, input.nextTask);
+      run.status = transitionRun(run.status, "running");
+      run.nextExecuteAt = clone(arrivedAt);
+      run.terminalReason = null;
+      nextTask = createTask(this.createId(), run, {
+        createdAt: arrivedAt,
+        dispatchImmediately: boundaryDecision === "execute",
+        dueAt: arrivedAt,
+        nodeId: forwardRoute.target.id,
+        nodeKind: forwardRoute.target.kind,
+        taskType: "execute",
+      });
       this.tasks.push(nextTask);
       if (nextTask.status === "dispatched") {
-        this.outbox.push(createOutbox(this.createId(), nextTask, this.now()));
+        this.outbox.push(createOutbox(this.createId(), nextTask, arrivedAt));
       }
-      if (!delayedSuccessor) {
-        this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:advanced`, createNodeMetricDeltas({
-          fromNodeId: task.nodeId,
-          fromNodeKind: task.nodeKind,
-          kind: "advanced",
-          toNodeId: input.nextTask.nodeId,
-          toNodeKind: input.nextTask.nodeKind,
-        }));
-      }
+      const deltas = createNodeMetricDeltas({
+        fromNodeId: task.nodeId,
+        fromNodeKind: task.nodeKind,
+        kind: "advanced",
+        toNodeId: forwardRoute.target.id,
+        toNodeKind: forwardRoute.target.kind,
+      });
+      this.appendNodeMetricEvents(
+        run,
+        `${run.id}:${task.sequence}:advanced:left`,
+        deltas.filter(delta => delta.nodeId === task.nodeId),
+        task.revision,
+      );
+      this.appendNodeMetricEvents(
+        run,
+        `${run.id}:${task.sequence}:advanced:entered`,
+        deltas.filter(delta => delta.nodeId === forwardRoute.target.id),
+        publishedRevision.revision,
+      );
     } else {
-      run.status = nextRunStatus;
+      run.status = transitionRun(run.status, "completed");
       run.nextExecuteAt = null;
+      run.terminalReason = null;
       this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:completed`, createNodeMetricDeltas({
         kind: "completed",
         nodeId: task.nodeId,
         nodeKind: task.nodeKind,
-      }));
+      }), task.revision);
     }
     this.touchRun(run);
     return {
@@ -1060,7 +1292,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.workflowId !== run.workflowId
         || authoritativeTask.revision !== run.revision
         || authoritativeTask.shardId !== run.shardId
-        || (run.status !== "waiting" && authoritativeTask.nodeId !== run.currentNodeId)
+        || authoritativeTask.nodeId !== run.currentNodeId
         || (run.status === "waiting" && (
           (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
             && authoritativeTask.taskType !== "inference")
@@ -1292,6 +1524,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           completed: 0,
           current: 0,
           entered: 0,
+          incomplete: 0,
           nodeId: event.nodeId,
           passed: 0,
           revision: event.revision,
@@ -1305,6 +1538,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       metric.completed += event.completed;
       metric.current = Math.max(0, metric.current + event.current);
       metric.entered += event.entered;
+      metric.incomplete += event.incomplete;
       metric.passed += event.passed;
       metric.updatedAt = this.now();
       event.processedAt = this.now();
@@ -1466,6 +1700,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       nodeMetricEvents: this.nodeMetricEvents,
       nodeMetrics: this.nodeMetrics,
       outbox: this.outbox,
+      revisionCleanups: this.revisionCleanups,
       runs: this.runs,
       tasks: this.tasks,
     });
@@ -1565,6 +1800,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     run: WorkflowRunRecord,
     eventKey: string,
     deltas: ReturnType<typeof createNodeMetricDeltas>,
+    revision = run.revision,
   ) {
     for (const delta of deltas) {
       const key = `${eventKey}:${delta.nodeId}`;
@@ -1573,7 +1809,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         ...delta,
         eventKey: key,
         processedAt: null,
-        revision: run.revision,
+        revision,
         runId: run.id,
         shardId: run.shardId % 16,
         uid: run.uid,
@@ -1617,10 +1853,18 @@ function canEnterWorkflow(
 function createTask(
   id: string,
   run: WorkflowRunRecord,
-  input: NonNullable<WorkflowCommitNodeResultInput["nextTask"]>,
+  input: {
+    createdAt: Date;
+    dispatchImmediately: boolean;
+    dueAt: Date;
+    nodeId: string;
+    nodeKind: WorkflowTaskRecord["nodeKind"];
+    taskType: string;
+  },
 ): WorkflowTaskRecord {
   return {
     attempt: 0,
+    createdAt: clone(input.createdAt),
     dueAt: input.dueAt,
     id,
     leaseExpiresAt: null,

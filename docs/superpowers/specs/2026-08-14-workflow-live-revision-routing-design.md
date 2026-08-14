@@ -147,7 +147,7 @@ Backend 比较旧 Revision 和新 Revision 的 Node ID 集合，得到删除节�
 
 每个请求以 `uid + workflow_id + revision + node_id` 幂等，其中 `revision` 表示删除该 Node ID 的发布 Revision。Worker 每批处理时必须：
 
-1. 锁定候选 Run 和 Authoritative Task，并确认 Run 仍停留在该 Node，Task 仍为 Fixed Wait 或 Wait Event。
+1. 锁定候选 Run 和 Authoritative Task，并确认 Run 仍停留在该 Node，Task 的 Node Kind 仍为 Fixed Wait 或 Wait Event。Task 可以尚处于首次执行的 `execute` 阶段，也可以已经进入 `wait` / `wait-event` 阶段。
 2. 按第 7 节锁序对 Definition 加 `FOR SHARE`，读取当前 `published_revision` 并加载其 Execution Spec。
 3. 如果当前发布图已经重新出现该 `node_id`，不得取消任何候选 Run；将清退请求标记为 `obsolete` 并结束处理。扫描不到候选 Run、准备标记 `done` 前也必须执行同一检查。
 4. 只有当前发布图仍不存在该 Node ID 时，才取消仍满足条件的 Run。已经唤醒、前移或终止的 Run 直接跳过。

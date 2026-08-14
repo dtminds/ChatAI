@@ -319,6 +319,35 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.definitionUpdate).toMatchObject({ published_revision: 1, runtime_status: "active" });
   });
 
+  it("writes cleanup requests for wait nodes removed by a published revision", async () => {
+    const previousSpec = executionSpecWithWait();
+    const db = createPublicationDbMock({
+      previousExecutionSpec: previousSpec,
+      publishedRevision: 1,
+    });
+    const repository = new MysqlWorkflowRepository(db as never);
+    const input = enableInput();
+
+    const result = await repository.publishRevision({
+      ...input,
+      executionSpec: { ...input.executionSpec, revision: 2 },
+      expectedPublishedRevision: 1,
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.revisionCleanupInserts).toEqual([
+      expect.objectContaining({
+        node_id: "wait-1",
+        node_kind: "wait",
+        revision: 2,
+        status: "pending",
+        uid: 8,
+        workflow_id: "42",
+      }),
+    ]);
+    expect(db.definitionUpdate).toMatchObject({ published_revision: 2, runtime_status: "active" });
+  });
+
   it("rejects first enable when fifty tenant Workflows are already active", async () => {
     const db = createPublicationDbMock({ activeDefinitionCount: 50 });
     const repository = new MysqlWorkflowRepository(db as never);
@@ -490,7 +519,11 @@ function createEntitlementLossDbMock() {
   return db;
 }
 
-function createPublicationDbMock(options: { activeDefinitionCount?: number } = {}) {
+function createPublicationDbMock(options: {
+  activeDefinitionCount?: number;
+  previousExecutionSpec?: ReturnType<typeof executionSpecWithWait>;
+  publishedRevision?: number | null;
+} = {}) {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const definition = {
     biz_status: 1,
@@ -502,8 +535,8 @@ function createPublicationDbMock(options: { activeDefinitionCount?: number } = {
     id: 42,
     name: "新客培育",
     op_sub_uid: 19,
-    published_revision: null,
-    runtime_status: "inactive",
+    published_revision: options.publishedRevision ?? null,
+    runtime_status: options.publishedRevision ? "active" : "inactive",
     status_reason: null,
     uid: 8,
     update_time: now,
@@ -519,12 +552,16 @@ function createPublicationDbMock(options: { activeDefinitionCount?: number } = {
       wheres: unknown[][];
     }>,
     transactionCount: 0,
+    revisionCleanupInserts: [] as Array<Record<string, unknown>>,
     triggerBindingInserts: [] as Array<Record<string, unknown>>,
     insertInto(table: string) {
       const builder = {
         values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
           if (table === "xy_wap_embed_workflow_trigger_binding") {
             db.triggerBindingInserts = Array.isArray(values) ? values : [values];
+          }
+          if (table === "xy_wap_embed_workflow_revision_cleanup") {
+            db.revisionCleanupInserts = Array.isArray(values) ? values : [values];
           }
           return builder;
         },
@@ -554,6 +591,11 @@ function createPublicationDbMock(options: { activeDefinitionCount?: number } = {
           return createActiveDefinitionRows(options.activeDefinitionCount ?? 0);
         },
         async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_revision") {
+            return options.previousExecutionSpec
+              ? { execution_spec_json: JSON.stringify(options.previousExecutionSpec) }
+              : undefined;
+          }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
             : definition;
@@ -656,6 +698,28 @@ function enableInput() {
     uid: 8,
     workflowId: "42",
     workflowType: "chatai_sop" as const,
+  };
+}
+
+function executionSpecWithWait() {
+  const input = enableInput();
+  return {
+    ...input.executionSpec,
+    edges: [
+      { id: "edge-start-wait", source: "start", sourceOutletId: "default", target: "wait-1" },
+      { id: "edge-wait-end", source: "wait-1", sourceOutletId: "default", target: "end" },
+    ],
+    nodes: [
+      input.executionSpec.nodes[0]!,
+      {
+        config: { duration: 1, unit: "day" },
+        id: "wait-1",
+        kind: "wait" as const,
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      input.executionSpec.nodes[1]!,
+    ],
   };
 }
 

@@ -1,5 +1,75 @@
 # Database Change Log
 
+## 2026-08-14 Workflow 在途 Run 前向 Revision 路由
+
+- `run.revision` 改为当前节点 Task 使用的 Revision；Task 与 Node Execution 保存各自实际执行 Revision。
+- Fixed Wait 不再提前创建下游 Task；发布删除 Wait/Wait Event 时写入耐久清退请求。
+- 节点指标增加未完成累计，并支持按当前 Node ID 跨 Revision 聚合。
+- 数据页不再按 Revision 过滤 Run，替换相关查询索引。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN revision INT UNSIGNED NULL COMMENT '本次节点执行使用的Revision' AFTER run_id;
+
+UPDATE xy_wap_embed_workflow_node_execution AS execution
+JOIN xy_wap_embed_workflow_run AS run
+  ON run.uid = execution.uid
+ AND run.id = execution.run_id
+SET execution.revision = run.revision
+WHERE execution.revision IS NULL;
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点执行使用的Revision';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '当前节点Task使用的Revision',
+  DROP KEY idx_workflow_run_records,
+  DROP KEY idx_workflow_run_status_records,
+  DROP KEY idx_workflow_run_retained_records,
+  DROP KEY idx_workflow_run_node_records,
+  ADD KEY idx_workflow_run_records (uid, workflow_id, id),
+  ADD KEY idx_workflow_run_status_records (uid, workflow_id, status, id),
+  ADD KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),
+  ADD KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),
+  ADD KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id);
+
+ALTER TABLE xy_wap_embed_workflow_task
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点到达固定使用的Revision';
+
+ALTER TABLE xy_wap_embed_workflow_event_subscription
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '创建订阅的Wait Event Task Revision';
+
+ALTER TABLE xy_wap_embed_workflow_node_metric_event
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '该节点指标所属Revision',
+  ADD COLUMN incomplete_delta BIGINT NOT NULL DEFAULT 0 COMMENT '未完成增量' AFTER completed_delta;
+
+ALTER TABLE xy_wap_embed_workflow_node_metric
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '该节点指标所属Revision',
+  ADD COLUMN incomplete_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计未完成记录数' AFTER completed_count,
+  ADD KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision_cleanup (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT '删除目标节点的发布Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '被删除的等待节点ID',
+  node_kind VARCHAR(32) NOT NULL COMMENT '被删除的等待节点类型',
+  status VARCHAR(32) NOT NULL COMMENT '状态：pending、leased、done、obsolete、dead',
+  after_run_id BIGINT UNSIGNED NULL COMMENT '已处理Run游标',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前游标连续处理尝试次数',
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下次允许领取时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_revision_cleanup_node (uid, workflow_id, revision, node_id),
+  KEY idx_workflow_revision_cleanup_claim (status, next_attempt_at, lease_expires_at, id)
+) COMMENT='营销Workflow发布节点清退请求表';
+```
+
 ## 2026-08-13 Workflow 单入口事件与 Trigger Binding 筛选
 
 - 本期一个 Workflow 最多配置一个 Start Event；Binding 按 Revision 和 Event Type 持久化，为未来多事件保留数组模型。

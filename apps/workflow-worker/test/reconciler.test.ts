@@ -16,6 +16,12 @@ describe("workflow reconciler", () => {
         tasksDeleted: 13,
       })),
       recoverExpiredLeases: vi.fn(async () => ({ dead: 1, recovered: 2 })),
+      processRevisionCleanups: vi.fn(async () => ({
+        cancelled: 14,
+        claimed: 15,
+        failed: 1,
+        obsolete: 2,
+      })),
       reconcileEventSubscriptions: vi.fn(async () => ({
         cancelled: 2,
         checked: 12,
@@ -51,9 +57,12 @@ describe("workflow reconciler", () => {
       },
       historyCleanupBatchSize: 1_000,
       limit: 100,
+      leaseDurationMs: 30_000,
+      leaseOwner: "reconciler-1",
       maxTaskAttempts: 5,
       now: new Date("2026-07-11T00:00:00.000Z"),
       reconciler,
+      retryDelayMs: 5_000,
     })).resolves.toEqual({
       cancelled: 4,
       historyCleanupHasMore: false,
@@ -71,6 +80,10 @@ describe("workflow reconciler", () => {
       outboxLeasesRecovered: 3,
       outboxDeleted: 11,
       runsDeleted: 12,
+      revisionCleanupCancelled: 14,
+      revisionCleanupClaimed: 15,
+      revisionCleanupFailed: 1,
+      revisionCleanupObsolete: 2,
       taskLeasesDead: 1,
       taskLeasesRecovered: 2,
       tasksDeleted: 13,
@@ -95,6 +108,14 @@ describe("workflow reconciler", () => {
     expect(reconciler.reconcileEventSubscriptions).toHaveBeenCalledWith({
       afterSubscriptionId: "70",
       limit: 100,
+    });
+    expect(reconciler.processRevisionCleanups).toHaveBeenCalledWith({
+      leaseDurationMs: 30_000,
+      leaseOwner: "reconciler-1",
+      limit: 100,
+      maxAttempts: 5,
+      now: new Date("2026-07-11T00:00:00.000Z"),
+      retryDelayMs: 5_000,
     });
     expect(reconciler.cleanupWorkflowHistory).toHaveBeenCalledWith({
       limit: 1_000,

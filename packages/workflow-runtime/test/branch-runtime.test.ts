@@ -113,7 +113,7 @@ describe("Branch runtime", () => {
 
     const startResult = await service.executeTask(taskInput(started.task));
     if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Wait task missing");
-    const waitResult = await service.executeTask(taskInput(startResult.nextTask));
+    const waitResult = await completeFixedWait(service, startResult.nextTask);
     if (!("nextTask" in waitResult) || !waitResult.nextTask) throw new Error("Branch task missing");
 
     const branchTask = waitResult.nextTask;
@@ -259,7 +259,7 @@ async function executeBranch(
 
   const startResult = await service.executeTask(taskInput(started.task));
   if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Wait task missing");
-  const waitResult = await service.executeTask(taskInput(startResult.nextTask));
+  const waitResult = await completeFixedWait(service, startResult.nextTask);
   if (!("nextTask" in waitResult) || !waitResult.nextTask) throw new Error("Branch task missing");
   const branchResult = await service.executeTask(taskInput(waitResult.nextTask));
   if (!("nextTask" in branchResult)) throw new Error("Branch result missing");
@@ -293,6 +293,18 @@ function taskInput(task: { id: string; taskVersion: number }, now = enteredAt) {
     uid: 9,
     workerId: "worker-1",
   };
+}
+
+async function completeFixedWait(
+  service: WorkflowRuntimeService,
+  task: { id: string; taskVersion: number },
+) {
+  const waiting = await service.executeTask(taskInput(task));
+  if (!("kind" in waiting) || waiting.kind !== "waiting") throw new Error("Wait did not start");
+  return service.executeTask(taskInput(
+    waiting.task,
+    new Date(enteredAt.getTime() + 60_000),
+  ));
 }
 
 function branchDraft(

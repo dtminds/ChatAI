@@ -44,12 +44,10 @@ const WorkflowRevisionParamsSchema = Type.Intersect([
 type WorkflowParams = Static<typeof WorkflowParamsSchema>;
 type WorkflowRevisionParams = Static<typeof WorkflowRevisionParamsSchema>;
 
-const WorkflowDataQuerySchema = Type.Object({ revision: Type.Integer({ minimum: 1 }) });
 const WorkflowRecordsQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ pattern: "^[1-9][0-9]*$" })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   nodeId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
-  revision: Type.Integer({ minimum: 1 }),
   status: Type.Optional(WorkflowEntryRecordStatusSchema),
 });
 const WorkflowRecordParamsSchema = Type.Intersect([
@@ -91,11 +89,11 @@ export async function registerWorkflowRoutes(
     new MysqlWorkflowDataReader(app.db),
   );
 
-  app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowDataQuerySchema> }>(
+  app.get<{ Params: WorkflowParams }>(
     "/api/server/workflows/:workflowId/data",
-    { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowDataQuerySchema } },
+    { ...authenticated, schema: { params: WorkflowParamsSchema } },
     async request => apiSuccess(await dataService.getOverview(
-      getWorkflowScope(request), request.params.workflowId, request.query.revision,
+      getWorkflowScope(request), request.params.workflowId,
     )),
   );
 
@@ -106,7 +104,6 @@ export async function registerWorkflowRoutes(
       cursor: request.query.cursor,
       limit: request.query.limit ?? 50,
       nodeId: request.query.nodeId,
-      revision: request.query.revision,
       status: request.query.status,
       workflowId: request.params.workflowId,
     })),

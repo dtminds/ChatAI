@@ -2,6 +2,7 @@ import { PlayIcon } from "@hugeicons/core-free-icons";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
   DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
+  isWorkflowMessageSendingWindowValid,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowType,
@@ -81,6 +82,15 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       issues.push(createCatalogIssue(
         "start-message-keywords-required",
         "消息触发条件需要填写至少一个关键词",
+      ));
+    }
+    if (isChatAiStartNodeData(node.data)
+      && !isWorkflowMessageSendingWindowValid(
+        node.data.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+      )) {
+      issues.push(createCatalogIssue(
+        "start-message-sending-window-invalid",
+        "消息发送时段的结束时间需要晚于开始时间",
       ));
     }
     return issues;

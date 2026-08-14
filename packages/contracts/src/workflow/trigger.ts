@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import {
   WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
@@ -339,3 +340,10 @@ export type WorkflowTriggerBindingFilter = Static<typeof WorkflowTriggerBindingF
 export type WorkflowWaitConfig = Static<typeof WorkflowWaitConfigSchema>;
 export type WorkflowWaitEventDraftConfig = Static<typeof WorkflowWaitEventDraftConfigSchema>;
 export type WorkflowWaitEventConfig = Static<typeof WorkflowWaitEventConfigSchema>;
+
+export function isWorkflowMessageSendingWindowValid(
+  value: unknown,
+): value is WorkflowMessageSendingWindow {
+  if (!Value.Check(WorkflowMessageSendingWindowSchema, value)) return false;
+  return value.startTime < value.endTime;
+}

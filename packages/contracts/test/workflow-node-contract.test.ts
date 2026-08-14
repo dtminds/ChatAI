@@ -276,6 +276,21 @@ describe("workflow node contracts", () => {
     expect(isWorkflowNodeExecutionConfig("start", incompleteTagStart)).toBe(false);
   });
 
+  it.each([
+    { endTime: "09:00", startTime: "20:00" },
+    { endTime: "09:00", startTime: "09:00" },
+  ])("rejects an invalid message sending window: $startTime-$endTime", (messageSendingWindow) => {
+    const config = {
+      entryPolicy: { mode: "never" },
+      messageSendingWindow,
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    };
+
+    expect(isWorkflowNodeDraftConfig("start", config)).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("start", config)).toBe(false);
+  });
+
   it("requires semantically complete LLM and AI Intent execution configs", () => {
     const llm = draftConfigs.llm;
     const intent = {

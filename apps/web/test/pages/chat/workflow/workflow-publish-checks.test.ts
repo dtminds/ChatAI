@@ -308,6 +308,35 @@ describe("buildPublishChecks", () => {
     ]));
   });
 
+  it("blocks publishing when the message sending window is not increasing", () => {
+    const nodes = createInitialNodes();
+    const startNode = nodes.find(
+      (node): node is WorkflowNode<"start"> => node.data.kind === "start",
+    )!;
+    const invalidStartNode: WorkflowNode<"start"> = {
+      ...startNode,
+      data: {
+        ...startNode.data,
+        messageSendingWindow: { endTime: "09:00", startTime: "20:00" },
+        seatIds: [101],
+        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      },
+    };
+    const workflowNodes = nodes.map(node =>
+      node.id === invalidStartNode.id ? invalidStartNode : node);
+    const checklist = buildPublishChecklist(workflowNodes, createInitialEdges());
+    const issues = validateWorkflowNodeConfig(
+      invalidStartNode,
+      workflowNodes,
+      createInitialEdges(),
+    );
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      code: "start-message-sending-window-invalid",
+    }));
+    expect(checklist.canPublish).toBe(false);
+  });
+
   it("validates only fields that are part of the current node contract", () => {
     const nodes = createInitialNodes();
     const waitNode = nodes.find((node) => node.id === "wait-2d") as WorkflowNode<"wait">;

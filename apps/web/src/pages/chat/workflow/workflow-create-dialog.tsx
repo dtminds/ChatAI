@@ -24,12 +24,12 @@ const workflowTypeOptions: Array<{
   value: WorkflowCreateInput["workflowType"];
 }> = [
   {
-    description: "支持消息、Agent 和 ChatAI 相关节点",
+    description: "使用 AI 和自动化能力流转 SOP",
     label: "ChatAI SOP",
     value: "chatai_sop",
   },
   {
-    description: "面向企微客户的营销自动化",
+    description: "灵活编排和执行企微营销任务",
     label: "企微客户 SOP",
     value: "wecom_sop",
   },
@@ -82,7 +82,11 @@ export function WorkflowCreateDialog({
       }}
       open={open}
     >
-      <DialogContent aria-describedby={undefined} closeButtonDisabled={pending}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="sm:max-w-[720px]"
+        closeButtonDisabled={pending}
+      >
         <DialogHeader>
           <DialogTitle>新建 Workflow</DialogTitle>
         </DialogHeader>
@@ -96,7 +100,7 @@ export function WorkflowCreateDialog({
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Workflow 类型</legend>
             <RadioGroup
-              className="grid gap-2"
+              className="grid gap-2 sm:grid-cols-2"
               onValueChange={(value) => {
                 const nextWorkflowType = value as WorkflowCreateInput["workflowType"];
                 if (nextWorkflowType !== workflowType) onWorkflowTypeChange?.();

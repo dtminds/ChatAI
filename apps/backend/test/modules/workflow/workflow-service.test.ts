@@ -430,6 +430,21 @@ describe("WorkflowService", () => {
   });
 
   it.each([
+    { endTime: "09:00", startTime: "20:00" },
+    { endTime: "09:00", startTime: "09:00" },
+  ])("allows an incomplete message sending window when saving a draft", async (
+    messageSendingWindow,
+  ) => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+
+    await expect(service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, { messageSendingWindow }),
+      expectedDraftVersion: created.draftVersion,
+    })).resolves.toMatchObject({ draftVersion: created.draftVersion + 1 });
+  });
+
+  it.each([
     {
       expectedStatus: "paused",
       unentitledSince: "2026-08-09T00:00:00.000Z",
@@ -516,7 +531,7 @@ describe("WorkflowService", () => {
       draft: withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ keywords: [], type: "message.received" }],
+        triggers: [{ keywords: ["价格"], type: "message.received" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -706,6 +721,41 @@ describe("WorkflowService", () => {
         revision: 2,
         workflowId: created.id,
       }]);
+  });
+
+  it("publishes audience imports without resolving or creating trigger bindings", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const resolveActiveSeatWorkUserIds = vi.fn(async () => new Map<number, number>());
+    const service = createService(repository, {
+      sourceIdentityResolver: { resolveActiveSeatWorkUserIds },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "audience-import",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await service.publish(operator, created.id, { expectedDraftVersion: saved.draftVersion });
+    await service.enable(operator, created.id);
+
+    expect(resolveActiveSeatWorkUserIds).not.toHaveBeenCalled();
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "contact.friend_added",
+    )).resolves.toEqual([]);
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "contact.tag_added",
+    )).resolves.toEqual([]);
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "message.received",
+    )).resolves.toEqual([]);
   });
 
   it("retains trigger bindings across pause and hides them after stop or deletion", async () => {

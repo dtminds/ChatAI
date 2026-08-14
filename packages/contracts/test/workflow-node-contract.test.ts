@@ -225,7 +225,10 @@ describe("workflow node contracts", () => {
       "userPrompt",
     ]);
     expect(getWorkflowNodeContract("start").draftConfigKeys).toEqual([
+      "entryMode",
       "entryPolicy",
+      "messageSendingWindow",
+      "pushAccountStrategy",
       "seatIds",
       "triggers",
       "workUserIds",
@@ -271,6 +274,23 @@ describe("workflow node contracts", () => {
     expect(isWorkflowNodeExecutionConfig("start", emptyChatAiStart)).toBe(false);
     expect(isWorkflowNodeDraftConfig("start", incompleteTagStart)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("start", incompleteTagStart)).toBe(false);
+  });
+
+  it.each([
+    { endTime: "09:00", startTime: "20:00" },
+    { endTime: "09:00", startTime: "09:00" },
+  ])("keeps an invalid message sending window draft-only: $startTime-$endTime", (
+    messageSendingWindow,
+  ) => {
+    const config = {
+      entryPolicy: { mode: "never" },
+      messageSendingWindow,
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    };
+
+    expect(isWorkflowNodeDraftConfig("start", config)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("start", config)).toBe(false);
   });
 
   it("requires semantically complete LLM and AI Intent execution configs", () => {

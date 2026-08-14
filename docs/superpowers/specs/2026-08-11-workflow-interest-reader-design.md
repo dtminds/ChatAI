@@ -341,13 +341,10 @@ AND tagIds contains payload.tagId
 ```text
 seatIds contains payload.seatId
 AND
-(
-  keywords is empty
-  OR payload.text contains any keyword
-)
+payload.text contains any keyword
 ```
 
-`keywords=[]` 表示任意新消息。关键词只支持“包含任意一个”，不支持 `all`、正则、分词或大小写规则。`keywords` 非空而事件缺少 `text` 时不匹配。
+`keywords` 必须至少包含一项。关键词只支持“包含任意一个”，不支持 `all`、正则、分词或大小写规则。事件缺少 `text` 时不匹配。
 
 ### 6.4 未知 Filter
 

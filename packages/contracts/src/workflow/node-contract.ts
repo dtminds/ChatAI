@@ -14,6 +14,7 @@ import {
   WorkflowWaitConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowWaitEventDraftConfigSchema,
+  isWorkflowMessageSendingWindowValid,
   type WorkflowStartTrigger,
 } from "./trigger.js";
 
@@ -436,7 +437,16 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
-  return schema !== null && Value.Check(schema, value);
+  return schema !== null
+    && Value.Check(schema, value)
+    && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+function isWorkflowStartMessageSendingWindowValid(value: unknown) {
+  const config = value as { messageSendingWindow?: unknown; seatIds?: unknown };
+  return config.seatIds === undefined
+    || config.messageSendingWindow === undefined
+    || isWorkflowMessageSendingWindowValid(config.messageSendingWindow);
 }
 
 export function getWorkflowNodeOutputContracts(

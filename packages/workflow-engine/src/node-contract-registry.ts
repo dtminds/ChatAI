@@ -1,4 +1,6 @@
 import {
+  DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   extractWorkflowNodeDraftConfig,
   getWorkflowNodeContract,
   isWorkflowBranchConfigComplete,
@@ -43,15 +45,23 @@ export function projectWorkflowNodeExecutionConfig({
     const resolvedWorkflowType = workflowType ?? ("seatIds" in draftConfig
       ? "chatai_sop"
       : "wecom_sop");
+    const entryMode = draftConfig.entryMode ?? "event";
+    const triggers = entryMode === "audience-import" ? [] : draftConfig.triggers;
     return cloneJsonRecord(resolvedWorkflowType === "chatai_sop"
       ? {
+          entryMode,
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
+          messageSendingWindow:
+            draftConfig.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+          pushAccountStrategy:
+            draftConfig.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
           seatIds: draftConfig.seatIds,
-          triggers: draftConfig.triggers,
+          triggers,
         }
       : {
+          entryMode,
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
-          triggers: draftConfig.triggers,
+          triggers,
           workUserIds: draftConfig.workUserIds,
         });
   }
@@ -154,7 +164,7 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
     case "ai-intent":
       return "AI Intent node requires an input and complete unique intents";
     case "start":
-      return "Start node requires accounts, triggers, and an entry policy";
+      return "Start node requires accounts, a valid entry mode, and complete entry settings";
     case "llm":
       return "LLM node requires a model, complete inputs, prompts, and outputs";
     case "wait":

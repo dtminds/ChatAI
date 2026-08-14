@@ -13,16 +13,16 @@ describe("WorkflowChecks", () => {
         checks={[{
           blocksPublish: true,
           category: "config",
-          description: "意图识别需要选择输入",
+          description: "fixture issue one",
           id: "node-intent",
           messages: [
-            "意图识别需要选择输入",
-            "意图描述不能为空",
+            "fixture issue one",
+            "fixture issue two",
           ],
           nodeId: "intent",
           nodeKind: "ai-intent",
           status: "warning",
-          title: "意图识别",
+          title: "测试节点",
         }]}
         onClose={vi.fn()}
         onNavigateToNode={onNavigateToNode}
@@ -30,7 +30,7 @@ describe("WorkflowChecks", () => {
       />,
     );
 
-    const nodeIssue = screen.getByRole("button", { name: /意图识别/ });
+    const nodeIssue = screen.getByRole("button", { name: /测试节点/ });
     expect(nodeIssue.querySelector('[data-node-icon-kind="ai-intent"]')).toBeInTheDocument();
 
     await user.click(nodeIssue);

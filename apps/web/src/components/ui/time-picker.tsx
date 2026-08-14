@@ -18,12 +18,14 @@ export function TimePicker({
   disabled = false,
   onValueChange,
   value,
+  variant = "outline",
 }: {
   "aria-label": string;
   className?: string;
   disabled?: boolean;
   onValueChange(value: string): void;
   value: string;
+  variant?: "outline" | "secondary";
 }) {
   const [open, setOpen] = useState(false);
   const parsedTime = parseTime(value);
@@ -45,7 +47,7 @@ export function TimePicker({
           className={cn("h-9 w-28 justify-between rounded-[10px] px-2.5 font-normal", className)}
           disabled={disabled}
           type="button"
-          variant="outline"
+          variant={variant}
         >
           <span className={cn(!parsedTime && "text-muted-foreground")}>
             {parsedTime ? `${hour}:${minute}` : "未配置"}

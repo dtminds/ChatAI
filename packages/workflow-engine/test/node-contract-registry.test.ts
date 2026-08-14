@@ -36,6 +36,21 @@ describe("workflow node projection registry", () => {
     }
   });
 
+  it("projects ChatAI delivery defaults into the Start execution config", () => {
+    expect(projectWorkflowNodeExecutionConfig({
+      data: projectableDraftData.start,
+      kind: "start",
+      workflowType: "chatai_sop",
+    })).toEqual({
+      entryMode: "event",
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "earliest-added",
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    });
+  });
+
   it("fails closed for placeholder kinds", () => {
     for (const kind of placeholderKinds) {
       expect(() => projectWorkflowNodeExecutionConfig({ data: {}, kind }))

@@ -17,6 +17,7 @@ import {
 } from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
+  WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
 } from "../src/workflow/trigger.js";
@@ -170,6 +171,8 @@ describe("workflow contracts", () => {
   it("validates production start and wait configurations", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "earliest-added",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     })).toBe(true);
@@ -179,10 +182,38 @@ describe("workflow contracts", () => {
       workUserIds: [201],
     })).toBe(true);
     expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "audience-import",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "audience-import",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "event",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
       triggers: [{ keywords: ["价格", "优惠"], type: "message.received" }],
     })).toBe(true);
+    expect(Value.Check(WorkflowStartDraftConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: [], type: "message.received" }],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: [], type: "message.received" }],
+    })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
@@ -195,6 +226,26 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      workUserIds: [201],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "25:00" },
+      pushAccountStrategy: "earliest-added",
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "random",
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
     })).toBe(false);
     expect(Value.Check(WorkflowWaitConfigSchema, {

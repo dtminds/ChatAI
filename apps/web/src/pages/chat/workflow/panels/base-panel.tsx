@@ -47,7 +47,7 @@ export function BasePanel({
         onRenameNode={onRenameNode}
         readOnly={readOnly}
       />
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-4">{children}</div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8">{children}</div>
     </aside>
   );
 }

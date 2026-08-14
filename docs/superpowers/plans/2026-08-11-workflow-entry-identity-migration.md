@@ -95,7 +95,7 @@ type WeComWorkflowStartConfig = {
 - 配置 Schema 必须由 Workflow Type 判别，不能允许 WeCom SOP 写入 `seatIds`。
 - Draft `triggers` 最多一个；Execution `triggers` 必须恰好一个。
 - ChatAI SOP 的 `message.received` 编译为 `seatId` Match。
-- `message.received` 支持可选 `keywords`；空数组表示任意消息，否则正文包含任意关键词时命中。
+- `message.received` 必须配置至少一个 `keyword`；正文包含任意关键词时命中。
 - ChatAI SOP 的企微事件把 `seatId` 权威解析为 `workUserId` 后编译 Match。
 - WeCom SOP 的企微事件直接编译 `workUserId` Match。
 - `contact.friend_added` 支持可选 `sourceIds`；空数组表示任意来源，否则按 `sourceId` 精确命中。

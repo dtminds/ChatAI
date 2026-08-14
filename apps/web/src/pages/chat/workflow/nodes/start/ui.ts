@@ -13,7 +13,7 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
     getFields: (data) => {
       const isChatAi = isChatAiStartNodeData(data);
       const sourceIds = getStartNodeSourceIds(data);
-      const sourceLabel = isChatAi ? "席位" : "企微成员";
+      const sourceLabel = isChatAi ? "托管账号" : "企微成员";
       return [
         {
           id: "sources",
@@ -24,8 +24,10 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
         },
       {
         id: "triggers",
-        label: "触发条件",
-        value: data.triggers.length
+        label: "进入方式",
+        value: data.entryMode === "audience-import"
+          ? { kind: "text", text: "导入人群" }
+          : data.triggers.length
           ? {
               kind: "text",
               maxLines: 2,
@@ -50,6 +52,6 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
 
 function formatEntryPolicy(policy: import("@chatai/contracts").WorkflowEntryPolicy) {
   if (policy.mode === "never") return "不允许重复进入";
-  if (policy.mode === "lifetime_limit") return `最多进入 ${policy.maxEntries} 次`;
+  if (policy.mode === "lifetime_limit") return `每个客户最多进入 ${policy.maxEntries} 次`;
   return `${policy.windowSize} ${policy.windowUnit === "hour" ? "小时" : "天"}内最多进入 ${policy.maxEntries} 次`;
 }

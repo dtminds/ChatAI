@@ -479,8 +479,11 @@ describe("workflow DSL", () => {
     const configByKind = new Map(graph.nodes.map((node) => [node.kind, node.config]));
 
     expect(configByKind.get("start")).toEqual({
-      seatIds: [101, 102],
+      entryMode: "event",
       entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "earliest-added",
+      seatIds: [101, 102],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
     expect(configByKind.get("wait")).toEqual({

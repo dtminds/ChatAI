@@ -24,7 +24,10 @@ describe("compileWorkflowDraft", () => {
       requiredCapabilities: [],
     });
     expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
+      entryMode: "event",
       entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      pushAccountStrategy: "earliest-added",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
@@ -36,6 +39,28 @@ describe("compileWorkflowDraft", () => {
     ]);
     expect(spec.schemaVersion).toBe(2);
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
+  });
+
+  it("compiles audience import without entry event capabilities", () => {
+    const draft = createDraft();
+    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+      entryMode: "audience-import",
+      triggers: [],
+    });
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual(expect.objectContaining({
+      entryMode: "audience-import",
+      triggers: [],
+    }));
+    expect(spec.nodes.find((node) => node.id === "start")?.requiredCapabilities).toEqual([]);
+    expect(spec.requiredCapabilities).toEqual([]);
   });
 
   it("compiles fixed-time wait configuration without duration fields", () => {
@@ -525,7 +550,7 @@ describe("compileWorkflowDraft", () => {
 
     expectCompilationIssue(incompleteStart, {
       code: "invalid-node-config",
-      message: "Start node requires accounts, triggers, and an entry policy",
+      message: "Start node requires accounts, a valid entry mode, and complete entry settings",
       nodeId: "start",
     });
 

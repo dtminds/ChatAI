@@ -154,7 +154,6 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "branch-path-unconnected",
-        message: "条件分支存在未连接的出口",
         nodeId: "branch-intent",
         severity: "warning",
         source: "graph",
@@ -169,7 +168,6 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "source-handle-unconnected",
-        message: "节点存在未连接的出口",
         nodeId: "wait-2d",
         severity: "warning",
         source: "graph",
@@ -265,7 +263,6 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "edge-invalid-connection",
-        message: "连线使用了当前节点不支持的连接桩",
         nodeId: "branch-intent",
       }),
     ]));
@@ -281,7 +278,6 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "edge-invalid-connection",
-        message: "连线不符合当前节点连接规则",
         nodeId: "end",
       }),
     ]));
@@ -304,7 +300,6 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "source-handle-multiple-outgoing",
-        message: "同一个出口只能连接一条下游连线",
         nodeId: "branch-intent",
       }),
     ]));

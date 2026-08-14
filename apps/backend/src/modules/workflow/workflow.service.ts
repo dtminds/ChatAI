@@ -575,6 +575,7 @@ export class WorkflowService {
       throw new Error("Compiled Workflow has an invalid Start configuration");
     }
     const config = entryNode.config as WorkflowStartConfig;
+    if (config.entryMode === "audience-import") return [];
     if (subjectType !== "chatai_contact" || !("seatIds" in config)) {
       return getWorkflowTriggerBindings(config, subjectType);
     }
@@ -748,8 +749,8 @@ function toRevision(record: WorkflowRevisionRecord): WorkflowRevision {
 
 function createInitialWorkflowDraft(workflowType: WorkflowType): WorkflowDraft {
   const startConfig = workflowType === "chatai_sop"
-    ? { entryPolicy: { mode: "never" as const }, seatIds: [], triggers: [] }
-    : { entryPolicy: { mode: "never" as const }, triggers: [], workUserIds: [] };
+    ? { entryMode: "event" as const, entryPolicy: { mode: "never" as const }, seatIds: [], triggers: [] }
+    : { entryMode: "event" as const, entryPolicy: { mode: "never" as const }, triggers: [], workUserIds: [] };
   return {
     edges: [{ id: "edge-start-end", source: "start", target: "end", type: "workflowEdge" }],
     nodes: [

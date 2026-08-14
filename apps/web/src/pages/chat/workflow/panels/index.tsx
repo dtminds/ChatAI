@@ -19,6 +19,7 @@ export function NodeConfigPanel({
   onNodeChange,
   onRenameNode,
   readOnly = false,
+  resources,
   testContext,
 }: {
   allowedEntryEventTypes: readonly WorkflowEntryEventType[];
@@ -30,6 +31,7 @@ export function NodeConfigPanel({
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
   onRenameNode: (nodeId: string, title: string) => void;
   readOnly?: boolean;
+  resources?: NodeSettingsProps["resources"];
   testContext?: WorkflowNodeTestContext;
 }) {
   if (!node) {
@@ -67,6 +69,7 @@ export function NodeConfigPanel({
               node={node}
               nodes={nodes}
               onNodeChange={onNodeChange}
+              resources={resources}
               testContext={testContext}
             />
             {!getNodeDefinition(node.data.kind).ownsOutputConfiguration

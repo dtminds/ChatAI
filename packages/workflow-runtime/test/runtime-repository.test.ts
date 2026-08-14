@@ -847,19 +847,41 @@ function flowChangedSpec(
   if (scenario === "outlet-deleted") return { ...spec, edges: [] };
   return {
     ...spec,
-    edges: [{ id: "start-message", source: "start", sourceOutletId: "default", target: "message-1" }],
+    edges: [{ id: "start-llm", source: "start", sourceOutletId: "default", target: "llm-1" }],
     nodes: [
-      spec.nodes[0]!,
+      {
+        ...spec.nodes[0]!,
+        config: {
+          entryMode: "event",
+          entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+          seatIds: [101],
+          triggers: [{ keywords: ["price"], type: "message.received" }],
+        },
+        requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
+      },
       {
         config: {
-          attachments: [],
-          contentMode: "node-output",
-          outputSelector: ["node", "missing", "text"],
+          inputs: [{
+            id: "message-id",
+            name: "messageId",
+            value: {
+              kind: "variable",
+              selector: ["trigger", "projection", "messageId"],
+              valueType: { kind: "number" },
+            },
+          }],
+          modelId: "model-1",
+          output: {
+            field: { description: "", id: "result", name: "result", type: "string" },
+            format: "text",
+          },
+          systemPrompt: [{ type: "text", value: "Classify" }],
+          userPrompt: [{ selector: ["input", "message-id"], type: "variable" }],
         },
-        id: "message-1",
-        kind: "message",
+        id: "llm-1",
+        kind: "llm",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
+        requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
       },
       spec.nodes[1]!,
     ],

@@ -120,6 +120,7 @@ function requiresRecoveryWarning(
   if (role === "reconciler") {
     return hasPositive(result, [
       "outboxLeasesRecovered",
+      "revisionCleanupFailed",
       "inconsistentRunsFailed",
       "staleTasksCancelled",
       "stalledTasksRepublished",

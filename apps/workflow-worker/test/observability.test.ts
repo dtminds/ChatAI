@@ -158,6 +158,22 @@ describe("workflow worker observability", () => {
     }, "workflow worker role reported warning counters");
   });
 
+  it("warns when a revision cleanup batch fails", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: { revisionCleanupFailed: 1 },
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: "workflow.worker.role.warning",
+      revisionCleanupFailed: 1,
+      role: "reconciler",
+    }), "workflow worker role reported warning counters");
+  });
+
   it("keeps consistency scans without repairs at debug level", () => {
     const logger = createLogger();
 

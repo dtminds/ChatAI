@@ -322,6 +322,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running"
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
       || task.nodeKind !== "wait-event"
       || input.expiresAt <= input.effectiveFrom) return conflict();
     if (this.resolveWorkflowBoundary) {
@@ -346,7 +349,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       expiresAt: clone(input.expiresAt),
       id: this.createId(),
       nodeId: task.nodeId,
-      revision: run.revision,
+      revision: task.revision,
       runId: run.id,
       seatId: input.seatId,
       status: "waiting",
@@ -388,6 +391,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running"
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
       || task.nodeKind !== "wait"
       || task.taskType !== "execute"
       || input.dueAt <= input.now) return conflict();
@@ -774,6 +780,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running"
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
       || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
       || input.deadlineAt <= input.now) return conflict();
     const existing = this.inferenceJobs.find(item => item.uid === input.uid

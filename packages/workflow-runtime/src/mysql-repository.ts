@@ -385,6 +385,9 @@ export class MysqlWorkflowRuntimeRepository implements
         || run.status !== "running"
         || task.taskVersion !== input.expectedTaskVersion
         || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
         || task.nodeKind !== "wait-event"
         || input.expiresAt <= input.effectiveFrom) return { kind: "conflict" as const };
 
@@ -411,7 +414,7 @@ export class MysqlWorkflowRuntimeRepository implements
         event_type: input.eventType,
         expires_at: input.expiresAt,
         node_id: task.nodeId,
-        revision: run.revision,
+        revision: task.revision,
         run_id: run.id,
         seat_id: input.seatId,
         status: "waiting",
@@ -462,7 +465,7 @@ export class MysqlWorkflowRuntimeRepository implements
         expiresAt: input.expiresAt,
         id: normalizeId(inserted.insertId),
         nodeId: task.nodeId,
-        revision: run.revision,
+        revision: task.revision,
         runId: run.id,
         seatId: input.seatId,
         status: "waiting",
@@ -518,6 +521,9 @@ export class MysqlWorkflowRuntimeRepository implements
         || run.status !== "running"
         || task.taskVersion !== input.expectedTaskVersion
         || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
         || task.nodeKind !== "wait"
         || task.taskType !== "execute"
         || input.dueAt <= input.now) return { kind: "conflict" as const };
@@ -1154,6 +1160,9 @@ export class MysqlWorkflowRuntimeRepository implements
       if (task.runId !== run.id) return { kind: "not-found" as const };
       if (run.lockVersion !== input.expectedRunLockVersion || run.status !== "running"
         || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
         || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
         || input.deadlineAt <= input.now) return { kind: "conflict" as const };
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")

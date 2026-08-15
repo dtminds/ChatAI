@@ -179,7 +179,7 @@ function VariableGroupSubMenu({
       <DropdownMenuSubContent className="w-56">
         {outputVariables.length && showNodeSections
           ? (
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-1.5 text-[11px] font-normal text-muted-foreground/60">
                 节点输出
               </DropdownMenuLabel>
             )
@@ -187,7 +187,7 @@ function VariableGroupSubMenu({
         {renderVariableItems(outputVariables, onSelect)}
         {attributeVariables.length
           ? (
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-normal text-muted-foreground/60">
                 节点属性
               </DropdownMenuLabel>
             )
@@ -217,7 +217,7 @@ function renderVariableItems(
       }}
     >
       <span className="min-w-0 flex-1 truncate">{variable.label}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">
+      <span className="shrink-0 text-[11px] text-muted-foreground/70">
         {getWorkflowOutputTypeLabel(variable.valueType)}
       </span>
     </DropdownMenuItem>

@@ -7,7 +7,6 @@ import {
   isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
-  type WorkflowDynamicTimeReference,
   type WorkflowExecutionNode,
   type WorkflowExecutionSpec,
   type WorkflowNodeOutputUsage,
@@ -155,6 +154,7 @@ function validateWorkflowNodeReferences(
           edges,
         ),
         nodeById,
+        allowedSourceKinds: ["node-output"],
         requiredUsage: "intent-input",
         selector: node.config.inputSelector,
         targetNodeId: node.id,
@@ -179,11 +179,19 @@ function validateWorkflowNodeReferences(
         edges,
       );
       const referencesAvailable = [node.config.timeRange.start, node.config.timeRange.end]
-        .every(reference => validateWorkflowMessageQueryTimeReference({
+        .every(selector => validateWorkflowVariableSelector({
+          allowedSourceKinds: [
+            "context",
+            "current-node-lifecycle",
+            "node-lifecycle",
+            "node-output",
+          ],
           edges,
+          expectedValueType: { kind: "datetime" },
           guaranteedUpstreamIds,
           nodeById,
-          reference,
+          requiredUsage: "time-reference",
+          selector,
           targetNodeId: node.id,
           workflowType,
           entryEventTypes,
@@ -209,36 +217,8 @@ function validateWorkflowNodeReferences(
   return issues;
 }
 
-function validateWorkflowMessageQueryTimeReference(input: {
-  edges: WorkflowDraft["edges"];
-  guaranteedUpstreamIds: Set<string>;
-  nodeById: Map<string, WorkflowExecutionNode>;
-  reference: WorkflowDynamicTimeReference;
-  targetNodeId: string;
-  workflowType: WorkflowType;
-  entryEventTypes: readonly WorkflowStartTrigger["type"][];
-}) {
-  if (input.reference.kind === "workflow-trigger"
-    || input.reference.kind === "current-node-lifecycle") {
-    return true;
-  }
-  if (input.reference.kind === "node-lifecycle") {
-    return input.guaranteedUpstreamIds.has(input.reference.nodeId);
-  }
-  return validateWorkflowVariableSelector({
-    edges: input.edges,
-    expectedValueType: { kind: "datetime" },
-    guaranteedUpstreamIds: input.guaranteedUpstreamIds,
-    nodeById: input.nodeById,
-    requiredUsage: "time-reference",
-    selector: input.reference.selector,
-    targetNodeId: input.targetNodeId,
-    workflowType: input.workflowType,
-    entryEventTypes: input.entryEventTypes,
-  });
-}
-
 function validateWorkflowVariableSelector(input: {
+  allowedSourceKinds?: readonly WorkflowVariableSourceKind[];
   edges: WorkflowDraft["edges"];
   expectedValueType?: WorkflowOutputValueType;
   guaranteedUpstreamIds: Set<string>;
@@ -251,17 +231,35 @@ function validateWorkflowVariableSelector(input: {
 }) {
   const [scope, sourceId, outputKey, ...rest] = input.selector;
   if (scope === "subject" || scope === "trigger") {
+    if (!allowsVariableSource(input.allowedSourceKinds, "context")) return false;
     const valueType = getWorkflowContextVariableValueType(
       input.selector,
       input.workflowType,
       input.entryEventTypes,
     );
-    return !input.requiredUsage
-      && valueType !== null
+    return valueType !== null
       && (!input.expectedValueType
         || isWorkflowOutputValueTypeEqual(valueType, input.expectedValueType));
   }
+  if (scope === "current-node-lifecycle") {
+    return allowsVariableSource(input.allowedSourceKinds, "current-node-lifecycle")
+      && sourceId === "enteredAt"
+      && outputKey === undefined
+      && rest.length === 0
+      && (!input.expectedValueType
+        || isWorkflowOutputValueTypeEqual({ kind: "datetime" }, input.expectedValueType));
+  }
+  if (scope === "node-lifecycle") {
+    return allowsVariableSource(input.allowedSourceKinds, "node-lifecycle")
+      && sourceId !== undefined
+      && (outputKey === "enteredAt" || outputKey === "exitedAt")
+      && rest.length === 0
+      && input.guaranteedUpstreamIds.has(sourceId)
+      && (!input.expectedValueType
+        || isWorkflowOutputValueTypeEqual({ kind: "datetime" }, input.expectedValueType));
+  }
   if (scope !== "node"
+    || !allowsVariableSource(input.allowedSourceKinds, "node-output")
     || !sourceId
     || !outputKey
     || rest.length > 0
@@ -286,6 +284,19 @@ function validateWorkflowVariableSelector(input: {
       output.availableOnSourceOutlets,
       input.edges,
     );
+}
+
+type WorkflowVariableSourceKind =
+  | "context"
+  | "current-node-lifecycle"
+  | "node-lifecycle"
+  | "node-output";
+
+function allowsVariableSource(
+  allowedSourceKinds: readonly WorkflowVariableSourceKind[] | undefined,
+  sourceKind: WorkflowVariableSourceKind,
+) {
+  return !allowedSourceKinds || allowedSourceKinds.includes(sourceKind);
 }
 
 function getWorkflowEntryEventTypes(nodes: WorkflowExecutionNode[]) {

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
-import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
+import { createEdge, createInitialNodes, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import {
   LLM_INPUT_MAX_COUNT,
   LLM_OUTPUT_FIELD_MAX_COUNT,
@@ -414,6 +414,46 @@ describe("workflow LLM node", () => {
           selector: ["node", query.id, "messageIds"],
           valueType: { itemType: "bigint", kind: "array", semantic: "message" },
         },
+      })],
+    }));
+  });
+
+  it("groups Start and current-node lifecycle values under their actual node titles", async () => {
+    const user = userEvent.setup();
+    const start = createInitialNodes().find(node => node.data.kind === "start")!;
+    start.data.title = "客户进入";
+    const llm = createLlmNode({ inputs: [createInput("input-source", "source")] });
+    llm.data.title = "分析客户需求";
+    const onNodeChange = vi.fn();
+
+    render(<StatefulLlmConfig
+      edges={[createEdge(start.id, llm.id)]}
+      initialNode={llm}
+      nodes={[start, llm]}
+      onNodeChange={onNodeChange}
+    />);
+
+    await screen.findByRole("combobox", { name: "模型" });
+    await user.click(screen.getByRole("button", { name: "引用变量" }));
+    await user.click(screen.getByRole("menuitem", { name: start.data.title }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      inputs: [expect.objectContaining({
+        value: expect.objectContaining({
+          selector: ["node-lifecycle", start.id, "enteredAt"],
+        }),
+      })],
+    }));
+
+    await user.click(screen.getByRole("button", { name: "引用变量" }));
+    await user.click(screen.getByRole("menuitem", { name: llm.data.title }));
+    expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      inputs: [expect.objectContaining({
+        value: expect.objectContaining({
+          selector: ["current-node-lifecycle", "enteredAt"],
+        }),
       })],
     }));
   });

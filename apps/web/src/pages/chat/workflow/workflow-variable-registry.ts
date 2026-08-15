@@ -30,8 +30,16 @@ export function getWorkflowContextVariables(nodes: WorkflowNode[]) {
     workflowType,
     startNode.data.triggers.map(trigger => trigger.type),
   ));
-  return workflowContextVariables.filter(variable =>
-    available.has(variable.selector.join(".")));
+  return workflowContextVariables
+    .filter(variable => available.has(variable.selector.join(".")))
+    .map(variable => variable.scope === "trigger"
+      ? {
+          ...variable,
+          sourceNodeId: startNode.id,
+          sourceNodeKind: startNode.data.kind,
+          sourceNodeTitle: startNode.data.title,
+        }
+      : variable);
 }
 
 function createContextVariable(

@@ -1,11 +1,10 @@
 import type {
   MessageQueryNodeData,
-  WorkflowDynamicTimeReference,
   WorkflowTimeRange,
   WorkflowVariableSelector,
 } from "../../types";
 import {
-  areWorkflowDynamicTimeReferencesEqual,
+  areWorkflowVariableSelectorsEqual,
   isWorkflowMessageQueryExecutionConfigComplete,
 } from "@chatai/contracts";
 
@@ -13,9 +12,9 @@ export const MESSAGE_QUERY_LIMIT_MIN = 1;
 export const MESSAGE_QUERY_LIMIT_MAX = 50;
 export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {
   return {
-    end: { field: "enteredAt", kind: "current-node-lifecycle" },
+    end: ["current-node-lifecycle", "enteredAt"],
     mode: "dynamic",
-    start: { field: "occurredAt", kind: "workflow-trigger" },
+    start: ["trigger", "occurredAt"],
   };
 }
 
@@ -32,14 +31,14 @@ export function normalizeMessageQueryTimeRange(value: unknown): WorkflowTimeRang
 
   if (value.mode === "dynamic") {
     return {
-      end: normalizeDynamicTimeReference(
+      end: normalizeTimeReferenceSelector(
         value.end,
-        { field: "enteredAt", kind: "current-node-lifecycle" },
+        ["current-node-lifecycle", "enteredAt"],
       ),
       mode: "dynamic",
-      start: normalizeDynamicTimeReference(
+      start: normalizeTimeReferenceSelector(
         value.start,
-        { field: "occurredAt", kind: "workflow-trigger" },
+        ["trigger", "occurredAt"],
       ),
     };
   }
@@ -73,66 +72,29 @@ export function getMessageQueryStatus(data: Pick<MessageQueryNodeData, "timeRang
   return configured ? "ready" as const : "warning" as const;
 }
 
-export const areDynamicTimeReferencesEqual = areWorkflowDynamicTimeReferencesEqual;
+export const areDynamicTimeReferencesEqual = areWorkflowVariableSelectorsEqual;
 
 export function getDynamicTimeReferenceLabel(
-  reference: WorkflowDynamicTimeReference,
-  resolveNodeTitle: (nodeId: string) => string | undefined,
-  resolveOutputLabel: (selector: WorkflowVariableSelector) => string | undefined,
+  selector: WorkflowVariableSelector,
+  resolveLabel: (selector: WorkflowVariableSelector) => string | undefined,
 ) {
-  const source = reference.kind === "workflow-trigger"
-    ? "开始.触发时间"
-    : reference.kind === "current-node-lifecycle"
-      ? "当前节点.进入时间"
-      : reference.kind === "node-lifecycle"
-        ? `${resolveNodeTitle(reference.nodeId) ?? "前序节点不可用"}.${reference.field === "enteredAt" ? "进入时间" : "退出时间"}`
-        : resolveOutputLabel(reference.selector) ?? "前序节点时间不可用";
-
-  return source;
+  return resolveLabel(selector) ?? "时间变量不可用";
 }
 
-function normalizeDynamicTimeReference(
+function normalizeTimeReferenceSelector(
   value: unknown,
-  fallback: WorkflowDynamicTimeReference,
-): WorkflowDynamicTimeReference {
-  if (!isRecord(value)) return cloneDynamicTimeReference(fallback);
-
-  if (value.kind === "workflow-trigger" && value.field === "occurredAt") {
-    return { field: "occurredAt", kind: "workflow-trigger" };
-  }
-  if (value.kind === "current-node-lifecycle" && value.field === "enteredAt") {
-    return { field: "enteredAt", kind: "current-node-lifecycle" };
-  }
-  if (
-    value.kind === "node-lifecycle"
-    && typeof value.nodeId === "string"
-    && value.nodeId.trim()
-    && (value.field === "enteredAt" || value.field === "exitedAt")
-  ) {
-    return { field: value.field, kind: "node-lifecycle", nodeId: value.nodeId };
-  }
-  if (value.kind === "node-output") {
-    const selector = normalizeSelector(value.selector);
-    if (selector) return { kind: "node-output", selector };
-  }
-
-  return cloneDynamicTimeReference(fallback);
+  fallback: WorkflowVariableSelector,
+): WorkflowVariableSelector {
+  return normalizeSelector(value) ?? [...fallback];
 }
 
 function normalizeSelector(value: unknown) {
-  return Array.isArray(value)
-    && value.length === 3
-    && value[0] === "node"
-    && value.every((part) => typeof part === "string" && part.trim())
-    ? [...value]
-    : undefined;
-}
-
-function cloneDynamicTimeReference(reference: WorkflowDynamicTimeReference) {
-  return {
-    ...reference,
-    ...(reference.kind === "node-output" ? { selector: [...reference.selector] } : {}),
-  } as WorkflowDynamicTimeReference;
+  return !Array.isArray(value)
+    || value.length < 2
+    || value.length > 4
+    || !value.every((part) => typeof part === "string" && part.trim())
+    ? undefined
+    : [...value] as WorkflowVariableSelector;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

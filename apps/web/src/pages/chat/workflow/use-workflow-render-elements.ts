@@ -12,8 +12,7 @@ import {
   getAvailableBranchVariablesForNode,
   getAvailableIntentInputOutputsForNode,
   getAvailableMessageContentOutputsForNode,
-  getAvailableTimeReferenceNodesForNode,
-  getAvailableTimeReferenceOutputsForNode,
+  getAvailableTimeReferenceVariablesForNode,
   getAvailableVariablesForNode,
 } from "./workflow-variables";
 import { validateWorkflowNodeConfig } from "./validation/workflow-validation";
@@ -244,23 +243,14 @@ function createWorkflowRenderNodes({
       ? getAvailableMessageContentOutputsForNode(node.id, nodes, edges)
       : undefined;
     const availableTimeReferences = node.data.kind === "message-query"
-      ? {
-          nodes: getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((sourceNode) => ({
-            id: sourceNode.id,
-            title: sourceNode.data.title,
-          })),
-          outputs: getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges),
-        }
+      ? getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges)
       : undefined;
     const availableTimeReferenceKey = availableTimeReferences
-      ? [
-          ...availableTimeReferences.nodes.map((sourceNode) => `${sourceNode.id}:${sourceNode.title}`),
-          ...availableTimeReferences.outputs.map((output) => [
-            output.selector.join("."),
-            output.sourceNodeTitle,
-            output.label,
-          ].join(":")),
-        ].join("|")
+      ? availableTimeReferences.map((variable) => [
+          variable.selector.join("."),
+          variable.sourceNodeTitle,
+          variable.label,
+        ].join(":")).join("|")
       : "";
     const availableVariableKey = availableVariables.map((variable) => [
       variable.selector.join("."),

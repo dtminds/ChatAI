@@ -7,7 +7,6 @@ import type {
   WorkflowBranchLogic as SharedWorkflowBranchLogic,
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
-  WorkflowDynamicTimeReference as SharedWorkflowDynamicTimeReference,
   WorkflowIntentOption as SharedWorkflowIntentOption,
   WorkflowHandoffDraftConfig,
   WorkflowLlmDraftConfig,
@@ -87,8 +86,6 @@ export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-lis
 export type WorkflowVariableSelector = SharedWorkflowVariableSelector;
 export type WorkflowNodeOutputUsage = SharedWorkflowNodeOutputUsage;
 export type WorkflowOutputValueType = SharedWorkflowOutputValueType;
-
-export type WorkflowDynamicTimeReference = SharedWorkflowDynamicTimeReference;
 
 export type WorkflowTimeRange = SharedWorkflowTimeRange;
 
@@ -179,10 +176,7 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
 export type WorkflowNodeRuntimeData = {
   availableIntentInputs?: WorkflowVariableDefinition[];
   availableMessageContentOutputs?: WorkflowVariableDefinition[];
-  availableTimeReferences?: {
-    nodes: Array<{ id: string; title: string }>;
-    outputs: WorkflowVariableDefinition[];
-  };
+  availableTimeReferences?: WorkflowVariableDefinition[];
   availableVariables?: WorkflowVariableDefinition[];
   dataMetric?: WorkflowNodeMetric;
   insertMenuOpen?: boolean;

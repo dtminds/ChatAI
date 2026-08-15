@@ -69,9 +69,9 @@ const draftConfigs = {
     limit: 10,
     take: "latest",
     timeRange: {
-      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      end: ["current-node-lifecycle", "enteredAt"],
       mode: "dynamic",
-      start: { field: "occurredAt", kind: "workflow-trigger" },
+      start: ["trigger", "occurredAt"],
     },
   },
   "order-query": {},
@@ -201,12 +201,12 @@ describe("workflow node contracts", () => {
       },
     })).toBe(true);
     expect(isWorkflowDynamicTimeRangeProvablyInvalid(
-      { field: "enteredAt", kind: "current-node-lifecycle" },
-      { field: "occurredAt", kind: "workflow-trigger" },
+      ["current-node-lifecycle", "enteredAt"],
+      ["trigger", "occurredAt"],
     )).toBe(true);
     expect(isWorkflowDynamicTimeRangeProvablyInvalid(
-      { field: "occurredAt", kind: "workflow-trigger" },
-      { field: "enteredAt", kind: "current-node-lifecycle" },
+      ["trigger", "occurredAt"],
+      ["current-node-lifecycle", "enteredAt"],
     )).toBe(false);
   });
 
@@ -372,6 +372,30 @@ describe("workflow node contracts", () => {
         },
       }],
     })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [{
+        id: "input-1",
+        name: "previousExit",
+        value: {
+          kind: "variable",
+          selector: ["node-lifecycle", "wait-1", "exitedAt"],
+          valueType: { kind: "datetime" },
+        },
+      }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [{
+        id: "input-1",
+        name: "currentEntry",
+        value: {
+          kind: "variable",
+          selector: ["current-node-lifecycle", "enteredAt"],
+          valueType: { kind: "datetime" },
+        },
+      }],
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("llm", {
       ...llm,
       inputs: [

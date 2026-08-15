@@ -14,7 +14,7 @@ import {
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 import {
   getAvailableIntentInputOutputsForNode,
-  getAvailableTimeReferenceOutputsForNode,
+  getAvailableTimeReferenceVariablesForNode,
   getAvailableVariablesForNode,
 } from "@/pages/chat/workflow/workflow-variables";
 import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
@@ -118,16 +118,20 @@ describe("workflow wait event", () => {
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ selector: ["node", waitEventNode.id, "textContent"] }),
       ]));
-    expect(getAvailableTimeReferenceOutputsForNode(triggeredNode.id, nodes, edges))
+    expect(getAvailableTimeReferenceVariablesForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ selector: ["node", waitEventNode.id, "lastMessageAt"] }),
       ]));
     expect(getAvailableIntentInputOutputsForNode(timeoutNode.id, nodes, edges)).toEqual([]);
+    expect(getAvailableVariablesForNode(timeoutNode.id, nodes, edges)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "enteredAt"] }),
+      expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "exitedAt"] }),
+    ]));
     expect(getAvailableVariablesForNode(timeoutNode.id, nodes, edges).some((variable) =>
-      variable.sourceNodeId === waitEventNode.id,
+      variable.scope === "node" && variable.sourceNodeId === waitEventNode.id,
     )).toBe(false);
     expect(getAvailableVariablesForNode(mergedNode.id, nodes, edges).some((variable) =>
-      variable.sourceNodeId === waitEventNode.id,
+      variable.scope === "node" && variable.sourceNodeId === waitEventNode.id,
     )).toBe(false);
   });
 

@@ -93,6 +93,57 @@ describe("workflow inference payloads", () => {
       });
   });
 
+  it("resolves upstream and current-node lifecycle values for LLM inputs", () => {
+    const node = llmNode({
+      inputs: [
+        {
+          id: "input-1",
+          name: "previousExit",
+          value: {
+            kind: "variable",
+            selector: ["node-lifecycle", "wait-1", "exitedAt"],
+            valueType: { kind: "datetime" },
+          },
+        },
+        {
+          id: "input-2",
+          name: "currentEntry",
+          value: {
+            kind: "variable",
+            selector: ["current-node-lifecycle", "enteredAt"],
+            valueType: { kind: "datetime" },
+          },
+        },
+      ],
+      systemPrompt: [
+        { selector: ["input", "input-1"], type: "variable" },
+        { type: "text", value: " -> " },
+        { selector: ["input", "input-2"], type: "variable" },
+      ],
+    });
+    const workflowRun = run();
+    workflowRun.context = {
+      ...workflowRun.context,
+      nodeLifecycle: {
+        "wait-1": {
+          enteredAt: "2026-08-14T01:00:00.000Z",
+          exitedAt: "2026-08-14T02:00:00.000Z",
+        },
+      },
+    };
+
+    expect(createWorkflowInferenceRequest(
+      node,
+      workflowRun,
+      { enteredAt: "2026-08-14T02:00:01.000Z" },
+    )).toEqual(expect.objectContaining({
+      messageList: [{
+        content: "2026-08-14T02:00:00.000Z -> 2026-08-14T02:00:01.000Z",
+        role: "system",
+      }],
+    }));
+  });
+
   it("rejects unavailable selectors, unknown intent codes, and mismatched JSON fields", () => {
     expect(() => createWorkflowInferenceRequest(llmNode({
       inputs: [{

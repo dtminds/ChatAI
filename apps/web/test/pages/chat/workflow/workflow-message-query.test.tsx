@@ -20,9 +20,9 @@ describe("workflow message query", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: { field: "occurredAt", kind: "workflow-trigger" },
+        start: ["trigger", "occurredAt"],
       },
     });
     expect(definition.getOutputVariables?.(createMessageQueryNode())).toEqual([
@@ -42,9 +42,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          end: { field: "exitedAt" as const, kind: "node-lifecycle" as const, nodeId: waitNode.id },
+          end: ["node-lifecycle", waitNode.id, "exitedAt"],
           mode: "dynamic" as const,
-          start: { field: "enteredAt" as const, kind: "node-lifecycle" as const, nodeId: waitNode.id },
+          start: ["node-lifecycle", waitNode.id, "enteredAt"],
         },
       },
     };
@@ -139,20 +139,17 @@ describe("workflow message query", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
-    await user.hover(screen.getByRole("menuitem", { name: "发送活动邀约" }));
-    expect(await screen.findByRole("menuitem", { name: "进入时间" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "退出时间" })).toBeInTheDocument();
-    fireEvent.pointerDown(screen.getByRole("menuitem", { name: "发送成功时间" }));
+    await user.click(screen.getByRole("menuitem", { name: "发送活动邀约" }));
+    expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /退出时间.*日期时间/ })).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /发送成功时间.*日期时间/ }));
 
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       timeRange: expect.objectContaining({
-        start: {
-          kind: "node-output",
-          selector: ["node", messageNode.id, "sentAt"],
-        },
+        start: ["node", messageNode.id, "sentAt"],
       }),
     }));
-    expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("当前节点.进入时间");
+    expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("消息查询.进入时间");
   });
 
   it("shows trigger time under start and only entry time under the current node", async () => {
@@ -169,18 +166,20 @@ describe("workflow message query", () => {
 
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
     const startMenuItem = screen.getByRole("menuitem", { name: "开始" });
-    expect(startMenuItem.querySelector('[data-node-icon="start"]')).toBeInTheDocument();
-    await user.hover(startMenuItem);
-    expect(await screen.findByRole("menuitem", { name: "触发时间" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "进入时间" })).toBeInTheDocument();
+    await user.click(startMenuItem);
+    expect(await screen.findByRole("menuitem", { name: /触发时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /退出时间.*日期时间/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
-    const currentNodeMenuItem = screen.getByRole("menuitem", { name: "当前节点" });
-    expect(currentNodeMenuItem.querySelector('[data-node-icon="message-query"]')).toBeInTheDocument();
+    const currentNodeMenuItem = screen.getByRole("menuitem", { name: "消息查询" });
+    await user.click(currentNodeMenuItem);
+    expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();
     await user.hover(currentNodeMenuItem);
-    expect(await screen.findByRole("menuitem", { name: "进入时间" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "退出时间" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();
   });
 
   it("switches between fixed and dynamic ranges and keeps query limits bounded", async () => {
@@ -221,13 +220,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          end: { field: "enteredAt" as const, kind: "current-node-lifecycle" as const },
+          end: ["current-node-lifecycle", "enteredAt"],
           mode: "dynamic" as const,
-          start: {
-            field: "exitedAt" as const,
-            kind: "node-lifecycle" as const,
-            nodeId: conditionalMessage.id,
-          },
+          start: ["node-lifecycle", conditionalMessage.id, "exitedAt"],
         },
       },
     };
@@ -288,9 +283,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          end: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+          end: ["trigger", "occurredAt"],
           mode: "dynamic" as const,
-          start: { field: "enteredAt" as const, kind: "current-node-lifecycle" as const },
+          start: ["current-node-lifecycle", "enteredAt"],
         },
       },
     };
@@ -319,9 +314,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          end: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+          end: ["trigger", "occurredAt"],
           mode: "dynamic" as const,
-          start: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+          start: ["trigger", "occurredAt"],
         },
       },
     };

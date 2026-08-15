@@ -8,9 +8,9 @@ describe("Workflow Message Query binding", () => {
         limit: 10,
         take: "latest",
         timeRange: {
-          end: { field: "enteredAt", kind: "current-node-lifecycle" },
+          end: ["current-node-lifecycle", "enteredAt"],
           mode: "dynamic",
-          start: { field: "occurredAt", kind: "workflow-trigger" },
+          start: ["trigger", "occurredAt"],
         },
       },
       context: context(),
@@ -57,12 +57,9 @@ describe("Workflow Message Query binding", () => {
         limit: 5,
         take: "latest",
         timeRange: {
-          end: {
-            kind: "node-output",
-            selector: ["node", "querySource", "rangeEnd"],
-          },
+          end: ["node", "querySource", "rangeEnd"],
           mode: "dynamic",
-          start: { field: "exitedAt", kind: "node-lifecycle", nodeId: "wait" },
+          start: ["node-lifecycle", "wait", "exitedAt"],
         },
       },
       context: commandContext,
@@ -81,9 +78,9 @@ describe("Workflow Message Query binding", () => {
         limit: 10,
         take: "latest",
         timeRange: {
-          end: { field: "enteredAt", kind: "current-node-lifecycle" },
+          end: ["current-node-lifecycle", "enteredAt"],
           mode: "dynamic",
-          start: { field: "occurredAt", kind: "workflow-trigger" },
+          start: ["trigger", "occurredAt"],
         },
       },
       context: commandContext,

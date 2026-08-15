@@ -125,6 +125,16 @@ describe("workflow variables", () => {
         expect.objectContaining({
           selector: ["node", queryNode.id, "textContent"],
         }),
+        expect.objectContaining({
+          selector: ["node-lifecycle", queryNode.id, "enteredAt"],
+        }),
+        expect.objectContaining({
+          selector: ["node-lifecycle", queryNode.id, "exitedAt"],
+        }),
+        expect.objectContaining({
+          selector: ["current-node-lifecycle", "enteredAt"],
+          sourceNodeTitle: llmNode.data.title,
+        }),
       ]));
     expect(getAvailableVariablesForNode(llmNode.id, nodes, edges))
       .not.toEqual(expect.arrayContaining([
@@ -162,7 +172,7 @@ describe("workflow variables", () => {
     ], variables)).toEqual([["node", "missing", "result"]]);
   });
 
-  it("exposes current and guaranteed predecessor lifecycle variables only to Branch", () => {
+  it("exposes current and guaranteed predecessor lifecycle variables through one catalog", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
     const branchVariables = getAvailableBranchVariablesForNode("branch-intent", nodes, edges);
@@ -184,8 +194,34 @@ describe("workflow variables", () => {
     expect(branchVariables).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["node-lifecycle", "message-welcome", "enteredAt"] }),
     ]));
-    expect(getAvailableVariablesForNode("branch-intent", nodes, edges)).not.toEqual(expect.arrayContaining([
+    expect(getAvailableVariablesForNode("branch-intent", nodes, edges)).toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["current-node-lifecycle", "enteredAt"] }),
+    ]));
+    expect(branchVariables.find(variable => variable.selector[0] === "trigger"))
+      .toEqual(expect.objectContaining({
+        sourceNodeId: "start",
+        sourceNodeTitle: nodes.find(node => node.id === "start")?.data.title,
+      }));
+  });
+
+  it("keeps lifecycle values but hides outputs that are not guaranteed on every source outlet", () => {
+    const startNode = createInitialNodes().find(node => node.data.kind === "start")!;
+    const waitEventNode = createNodeFromKind("wait-event", "wait-event", 1);
+    const llmNode = createNodeFromKind("llm", "llm", 2);
+    const nodes = [startNode, waitEventNode, llmNode];
+    const edges = [
+      createEdge(startNode.id, waitEventNode.id),
+      createEdge(waitEventNode.id, llmNode.id, undefined, { sourceHandle: "triggered" }),
+      createEdge(waitEventNode.id, llmNode.id, undefined, { sourceHandle: "timeout" }),
+    ];
+    const variables = getAvailableLlmInputVariablesForNode(llmNode.id, nodes, edges);
+
+    expect(variables).toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "enteredAt"] }),
+      expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "exitedAt"] }),
+    ]));
+    expect(variables).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ selector: ["node", waitEventNode.id, "textContent"] }),
     ]));
   });
 

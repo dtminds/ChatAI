@@ -3,10 +3,10 @@ import {
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
-  type WorkflowDynamicTimeReference,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
   type WorkflowSubjectType,
+  type WorkflowVariableSelector,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
@@ -113,20 +113,13 @@ function resolveMessageQueryRange(
 }
 
 function resolveDynamicTimeReference(
-  reference: WorkflowDynamicTimeReference,
+  selector: WorkflowVariableSelector,
   context: WorkflowMessageQueryCommandContext,
 ) {
-  let value: unknown;
-  if (reference.kind === "workflow-trigger") {
-    value = context.trigger.occurredAt;
-  } else if (reference.kind === "current-node-lifecycle") {
-    value = context.currentNodeLifecycle.enteredAt;
-  } else if (reference.kind === "node-lifecycle") {
-    value = context.nodeLifecycle[reference.nodeId]?.[reference.field];
-  } else {
-    value = resolveSelector(reference.selector, context);
-  }
-  return parseTimestamp(value, `Message Query ${reference.kind} time reference is unavailable`);
+  return parseTimestamp(
+    resolveSelector(selector, context),
+    `Message Query ${selector.join(".")} time reference is unavailable`,
+  );
 }
 
 function resolveSelector(

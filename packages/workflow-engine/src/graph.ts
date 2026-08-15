@@ -4,7 +4,7 @@ import {
   WorkflowDraft,
   WorkflowDraftEdge,
   WorkflowDraftNode,
-  type WorkflowDynamicTimeReference,
+  type WorkflowVariableSelector,
 } from "@chatai/contracts";
 import type { WorkflowCompilationIssue } from "./errors.js";
 import { getWorkflowNodeDraftConfigError } from "./node-contract-registry.js";
@@ -177,21 +177,25 @@ export function getWorkflowGuaranteedUpstreamNodeIds(
 
 export function isWorkflowDynamicTimeRangeProvablyInvalidInGraph(input: {
   edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[];
-  end: WorkflowDynamicTimeReference;
+  end: WorkflowVariableSelector;
   nodeIds: readonly string[];
-  start: WorkflowDynamicTimeReference;
+  start: WorkflowVariableSelector;
 }) {
   if (isWorkflowDynamicTimeRangeProvablyInvalid(input.start, input.end)) return true;
-  if (input.start.kind !== "node-lifecycle"
-    || input.end.kind !== "node-lifecycle"
-    || input.start.nodeId === input.end.nodeId) {
+  const [startScope, startNodeId] = input.start;
+  const [endScope, endNodeId] = input.end;
+  if (startScope !== "node-lifecycle"
+    || endScope !== "node-lifecycle"
+    || !startNodeId
+    || !endNodeId
+    || startNodeId === endNodeId) {
     return false;
   }
   return getWorkflowGuaranteedUpstreamNodeIds(
-    input.start.nodeId,
+    startNodeId,
     input.nodeIds,
     input.edges,
-  ).has(input.end.nodeId);
+  ).has(endNodeId);
 }
 
 export function isWorkflowOutputAvailableOnSourceOutlets(

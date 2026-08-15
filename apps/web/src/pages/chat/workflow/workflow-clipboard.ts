@@ -280,7 +280,7 @@ function remapWorkflowNodeReferences(value: unknown, idMapping: Map<string, stri
   if (Array.isArray(value)) {
     if (
       value.length >= 2
-      && value[0] === "node"
+      && (value[0] === "node" || value[0] === "node-lifecycle")
       && typeof value[1] === "string"
       && idMapping.has(value[1])
     ) {

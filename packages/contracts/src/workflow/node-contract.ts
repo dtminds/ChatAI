@@ -136,26 +136,6 @@ export const WorkflowMessageExecutionConfigSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
-export const WorkflowDynamicTimeReferenceSchema = Type.Union([
-  Type.Object({
-    field: Type.Literal("occurredAt"),
-    kind: Type.Literal("workflow-trigger"),
-  }, { additionalProperties: false }),
-  Type.Object({
-    field: Type.Literal("enteredAt"),
-    kind: Type.Literal("current-node-lifecycle"),
-  }, { additionalProperties: false }),
-  Type.Object({
-    field: Type.Union([Type.Literal("enteredAt"), Type.Literal("exitedAt")]),
-    kind: Type.Literal("node-lifecycle"),
-    nodeId: Type.String({ minLength: 1, maxLength: 128 }),
-  }, { additionalProperties: false }),
-  Type.Object({
-    kind: Type.Literal("node-output"),
-    selector: WorkflowVariableSelectorSchema,
-  }, { additionalProperties: false }),
-]);
-
 export const WorkflowTimeRangeSchema = Type.Union([
   Type.Object({
     endAt: Type.String({ maxLength: 32 }),
@@ -163,9 +143,9 @@ export const WorkflowTimeRangeSchema = Type.Union([
     startAt: Type.String({ maxLength: 32 }),
   }, { additionalProperties: false }),
   Type.Object({
-    end: WorkflowDynamicTimeReferenceSchema,
+    end: WorkflowVariableSelectorSchema,
     mode: Type.Literal("dynamic"),
-    start: WorkflowDynamicTimeReferenceSchema,
+    start: WorkflowVariableSelectorSchema,
   }, { additionalProperties: false }),
 ]);
 
@@ -285,7 +265,6 @@ export type WorkflowNodeOutputContract = {
 export type WorkflowVariableContentSegment = Static<typeof WorkflowVariableContentSegmentSchema>;
 export type WorkflowMessageDraftConfig = Static<typeof WorkflowMessageDraftConfigSchema>;
 export type WorkflowMessageExecutionConfig = Static<typeof WorkflowMessageExecutionConfigSchema>;
-export type WorkflowDynamicTimeReference = Static<typeof WorkflowDynamicTimeReferenceSchema>;
 export type WorkflowTimeRange = Static<typeof WorkflowTimeRangeSchema>;
 export type WorkflowMessageQueryConfig = Static<typeof WorkflowMessageQueryConfigSchema>;
 export type WorkflowHandoffDraftConfig = Static<typeof WorkflowHandoffDraftConfigSchema>;
@@ -363,7 +342,7 @@ export const workflowNodeContractRegistry = {
   ),
   "message-query": runtimeReadyContract(
     "query",
-    1,
+    2,
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
   ),
@@ -459,35 +438,30 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
   );
 }
 
-export function areWorkflowDynamicTimeReferencesEqual(
-  left: WorkflowDynamicTimeReference,
-  right: WorkflowDynamicTimeReference,
+export function areWorkflowVariableSelectorsEqual(
+  left: WorkflowVariableSelector,
+  right: WorkflowVariableSelector,
 ) {
-  if (left.kind !== right.kind) return false;
-  if (left.kind === "workflow-trigger" || left.kind === "current-node-lifecycle") return true;
-  if (left.kind === "node-lifecycle" && right.kind === "node-lifecycle") {
-    return left.nodeId === right.nodeId && left.field === right.field;
-  }
-  return left.kind === "node-output"
-    && right.kind === "node-output"
-    && left.selector.length === right.selector.length
-    && left.selector.every((part, index) => part === right.selector[index]);
+  return left.length === right.length
+    && left.every((part, index) => part === right[index]);
 }
 
 export function isWorkflowDynamicTimeRangeProvablyInvalid(
-  start: WorkflowDynamicTimeReference,
-  end: WorkflowDynamicTimeReference,
+  start: WorkflowVariableSelector,
+  end: WorkflowVariableSelector,
 ) {
-  if (areWorkflowDynamicTimeReferencesEqual(start, end)) return true;
-  if (start.kind === "current-node-lifecycle") {
-    return end.kind === "workflow-trigger" || end.kind === "node-lifecycle";
+  if (areWorkflowVariableSelectorsEqual(start, end)) return true;
+  const [startScope, startNodeId, startField] = start;
+  const [endScope, endNodeId, endField] = end;
+  if (startScope === "current-node-lifecycle") {
+    return endScope === "trigger" || endScope === "node-lifecycle";
   }
-  if (start.kind !== "node-lifecycle") return false;
-  if (end.kind === "workflow-trigger") return true;
-  return end.kind === "node-lifecycle"
-    && start.nodeId === end.nodeId
-    && start.field === "exitedAt"
-    && end.field === "enteredAt";
+  if (startScope !== "node-lifecycle") return false;
+  if (endScope === "trigger") return true;
+  return endScope === "node-lifecycle"
+    && startNodeId === endNodeId
+    && startField === "exitedAt"
+    && endField === "enteredAt";
 }
 
 function isWorkflowStartMessageSendingWindowValid(value: unknown) {
@@ -705,6 +679,9 @@ function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelecto
   if (!scope || !key) return false;
   if (scope === "subject") return key === "id" && path.length === 0;
   if (scope === "trigger" || scope === "node") return true;
+  if (scope === "current-node-lifecycle") {
+    return key === "enteredAt" && path.length === 0;
+  }
   return scope === "node-lifecycle"
     && path.length === 1
     && (path[0] === "enteredAt" || path[0] === "exitedAt");

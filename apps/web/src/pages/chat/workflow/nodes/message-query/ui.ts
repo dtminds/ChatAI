@@ -9,7 +9,6 @@ import {
   type WorkflowNodeSummarySegment,
 } from "../../workflow-node-summary";
 import type {
-  WorkflowDynamicTimeReference,
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "../../types";
@@ -18,11 +17,7 @@ export const messageQueryNodeUi: WorkflowNodeUiBinding<"message-query"> = {
   body: {
     getFields: (data) => {
       const timeRange = normalizeMessageQueryTimeRange(data.timeRange);
-      const titleByNodeId = new Map((data.availableTimeReferences?.nodes ?? []).map((node) => [
-        node.id,
-        node.title,
-      ]));
-      const outputBySelector = new Map((data.availableTimeReferences?.outputs ?? []).map((variable) => [
+      const variableBySelector = new Map((data.availableTimeReferences ?? []).map((variable) => [
         variable.selector.join("."),
         variable,
       ]));
@@ -35,14 +30,12 @@ export const messageQueryNodeUi: WorkflowNodeUiBinding<"message-query"> = {
         : [
             ...createDynamicTimeReferenceSegments(
               timeRange.start,
-              (nodeId) => titleByNodeId.get(nodeId),
-              (selector) => outputBySelector.get(selector.join(".")),
+              (selector) => variableBySelector.get(selector.join(".")),
             ),
             { kind: "operator" as const, text: " 至 " },
             ...createDynamicTimeReferenceSegments(
               timeRange.end,
-              (nodeId) => titleByNodeId.get(nodeId),
-              (selector) => outputBySelector.get(selector.join(".")),
+              (selector) => variableBySelector.get(selector.join(".")),
             ),
           ];
 
@@ -80,31 +73,14 @@ function createFixedTimeSegment(value: string): WorkflowNodeSummarySegment {
 }
 
 function createDynamicTimeReferenceSegments(
-  reference: WorkflowDynamicTimeReference,
-  resolveNodeTitle: (nodeId: string) => string | undefined,
-  resolveOutput: (selector: WorkflowVariableSelector) => WorkflowVariableDefinition | undefined,
+  selector: WorkflowVariableSelector,
+  resolveVariable: (selector: WorkflowVariableSelector) => WorkflowVariableDefinition | undefined,
 ): WorkflowNodeSummarySegment[] {
-  if (reference.kind === "workflow-trigger") {
-    return createWorkflowReferenceSummarySegments({ source: "开始", variable: "触发时间" });
-  }
-  if (reference.kind === "current-node-lifecycle") {
-    return createWorkflowReferenceSummarySegments({ source: "当前节点", variable: "进入时间" });
-  }
-  if (reference.kind === "node-lifecycle") {
-    const source = resolveNodeTitle(reference.nodeId);
-    return source
-      ? createWorkflowReferenceSummarySegments({
-          source,
-          variable: reference.field === "enteredAt" ? "进入时间" : "退出时间",
-        })
-      : [{ kind: "value", text: "前序节点不可用", tone: "warning" }];
-  }
-
-  const output = resolveOutput(reference.selector);
-  return output
+  const variable = resolveVariable(selector);
+  return variable?.sourceNodeTitle
     ? createWorkflowReferenceSummarySegments({
-        source: output.sourceNodeTitle,
-        variable: output.label,
+        source: variable.sourceNodeTitle,
+        variable: variable.label,
       })
-    : [{ kind: "value", text: "前序节点时间不可用", tone: "warning" }];
+    : [{ kind: "value", text: "时间变量不可用", tone: "warning" }];
 }

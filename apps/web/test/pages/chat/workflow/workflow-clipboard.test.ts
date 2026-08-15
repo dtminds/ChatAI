@@ -282,9 +282,9 @@ describe("workflow clipboard", () => {
     const branch = createNodeFromKind("branch", "branch-target", 14);
     const llm = createNodeFromKind("llm", "llm-target", 15);
     query.data.timeRange = {
-      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      end: ["current-node-lifecycle", "enteredAt"],
       mode: "dynamic",
-      start: { field: "exitedAt", kind: "node-lifecycle", nodeId: wait.id },
+      start: ["node-lifecycle", wait.id, "exitedAt"],
     };
     intent.data.inputSelector = ["node", query.id, "messageIds"];
     message.data.content = [
@@ -363,9 +363,9 @@ describe("workflow clipboard", () => {
     ) return;
 
     expect(pastedQuery.data.timeRange).toEqual({
-      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      end: ["current-node-lifecycle", "enteredAt"],
       mode: "dynamic",
-      start: { field: "exitedAt", kind: "node-lifecycle", nodeId: "wait-pasted" },
+      start: ["node-lifecycle", "wait-pasted", "exitedAt"],
     });
     expect(pastedIntent.data.inputSelector).toEqual(["node", "message-query-pasted", "messageIds"]);
     expect(pastedMessage.data.outputSelector).toEqual(["node", "message-query-pasted", "textContent"]);

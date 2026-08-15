@@ -1,6 +1,5 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  Clock01Icon,
   InputCursorTextIcon,
   Search01Icon,
   UserIcon,
@@ -103,13 +102,14 @@ function VariableOptions({ variables, onSelect }: {
     "current-node-lifecycle",
   ];
   const nodeVariableGroups = groupNodeVariables(
-    variables.filter((variable) => variable.scope === "node" || variable.scope === "node-lifecycle"),
+    variables.filter((variable) => variable.sourceNodeId && variable.sourceNodeTitle),
   );
 
   return (
     <>
       {contextScopes.map((scope) => {
-        const scoped = variables.filter((variable) => variable.scope === scope);
+        const scoped = variables.filter((variable) =>
+          variable.scope === scope && !variable.sourceNodeId);
         if (!scoped.length) return null;
 
         return (
@@ -244,7 +244,7 @@ const scopeLabels: Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycl
 };
 
 const scopeIcons = {
-  "current-node-lifecycle": Clock01Icon,
+  "current-node-lifecycle": InputCursorTextIcon,
   input: InputCursorTextIcon,
   subject: UserIcon,
   trigger: ZapIcon,

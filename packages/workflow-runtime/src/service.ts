@@ -562,7 +562,11 @@ export class WorkflowRuntimeService {
       );
     }
     if (existing?.status === "cancelled") throw staleTaskError();
-    const payload = existing?.payload ?? createWorkflowInferenceRequest(input.node, input.run);
+    const payload = existing?.payload ?? createWorkflowInferenceRequest(
+      input.node,
+      input.run,
+      { enteredAt: input.claimedTask.createdAt.toISOString() },
+    );
     const waiting = await this.runtimeRepository.beginInference({
       contractVersion: 1,
       deadlineAt: existing?.deadlineAt

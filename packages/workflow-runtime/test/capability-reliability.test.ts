@@ -199,9 +199,9 @@ describe("workflow capability reliability", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: { field: "occurredAt", kind: "workflow-trigger" },
+        start: ["trigger", "occurredAt"],
       },
     };
     const service = createService(runtime, async () => ({}), {
@@ -1137,9 +1137,9 @@ function messageQuerySpec(): WorkflowExecutionSpec {
           limit: 10,
           take: "latest",
           timeRange: {
-            end: { field: "enteredAt", kind: "current-node-lifecycle" },
+            end: ["current-node-lifecycle", "enteredAt"],
             mode: "dynamic",
-            start: { field: "occurredAt", kind: "workflow-trigger" },
+            start: ["trigger", "occurredAt"],
           },
         },
         id: "capability",

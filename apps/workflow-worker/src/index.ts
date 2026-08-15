@@ -8,6 +8,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -23,6 +24,7 @@ import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
 import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
+import { WorkflowWorkerCapabilityPort } from "./message-query-capability.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -40,16 +42,22 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     mode: config.entitlement.mode,
     token: config.entitlement.token,
   });
-  const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
-    capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
-    capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
-    capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
-    deploymentCapabilities: config.deploymentCapabilities,
-    entitlementPort,
-    maxTaskAttempts: config.runtime.maxTaskAttempts,
-    inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
-    taskLeaseDurationMs: config.runtime.leaseDurationMs,
-  });
+  const runtimeService = new WorkflowRuntimeService(
+    repository,
+    repository,
+    new WorkflowWorkerCapabilityPort(database),
+    {
+      capabilityBindings: [WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING],
+      capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
+      capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
+      capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
+      deploymentCapabilities: config.deploymentCapabilities,
+      entitlementPort,
+      maxTaskAttempts: config.runtime.maxTaskAttempts,
+      inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
+      taskLeaseDurationMs: config.runtime.leaseDurationMs,
+    },
+  );
   const reconcilerService = new WorkflowRuntimeReconciler(repository);
   let broker: Awaited<ReturnType<typeof createWorkflowBroker>>;
   try {

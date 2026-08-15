@@ -11,6 +11,8 @@ import {
   isWorkflowNodeExecutionConfig,
   isWorkflowOutputValueTypeEqual,
   WorkflowNodeKindSchema,
+  WorkflowMessageQueryCommandSchema,
+  WorkflowMessageQueryResultSchema,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
@@ -157,11 +159,37 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "end", "llm", "start", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "end", "llm", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["handoff", "message", "message-query"]);
+      .toEqual(["handoff", "message"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
+  });
+
+  it("validates the Message Query capability command and node output", () => {
+    expect(Value.Check(WorkflowMessageQueryCommandSchema, {
+      limit: 10,
+      rangeEnd: 1_786_742_400_000,
+      rangeStart: 1_786_738_800_000,
+      seatId: 101,
+      take: "latest",
+    })).toBe(true);
+    expect(Value.Check(WorkflowMessageQueryResultSchema, {
+      messageCount: 1,
+      messageIds: [9001],
+      rangeEnd: "2026-08-15T02:00:00.000Z",
+      rangeStart: "2026-08-15T01:00:00.000Z",
+      textContent: "客户: 价格是多少",
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-08-15T09:00",
+        mode: "fixed",
+        startAt: "2026-08-15T10:00",
+      },
+    })).toBe(false);
   });
 
   it("assigns every node kind one stable execution class", () => {

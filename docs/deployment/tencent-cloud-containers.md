@@ -232,7 +232,7 @@ NODE_ENV=production
 LOG_LEVEL=info
 WORKFLOW_ENVIRONMENT=dev
 WORKFLOW_BROKER=pulsar
-WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
+WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1,operation.chatai.message.query@1
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
 WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
@@ -273,7 +273,7 @@ WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
 
-`WORKFLOW_DEPLOYMENT_CAPABILITIES` 只声明当前环境真实可用的 Entry Event 契约。发布和运行都会校验 Workflow Revision 所需能力是否包含在该集合中；部署尚未接通某类 Java 事件时，不要提前写入对应能力。当前可用值为 `event.message.received@1`、`event.contact.friend_added@1` 和 `event.contact.tag_added@1`。
+`WORKFLOW_DEPLOYMENT_CAPABILITIES` 声明当前环境真实可用的 Entry Event 或 operation 契约。发布和运行都会校验 Workflow Revision 所需能力是否包含在该集合中；部署尚未接通某类 Java 事件时，不要提前写入对应能力。当前可用值为 `event.message.received@1`、`event.contact.friend_added@1`、`event.contact.tag_added@1` 和由 Workflow Worker 本地提供的 `operation.chatai.message.query@1`。
 
 `WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
 
@@ -332,7 +332,7 @@ REDIS_COMMAND_TIMEOUT_MS=500
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
-WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
+WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1,operation.chatai.message.query@1
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 ```
 

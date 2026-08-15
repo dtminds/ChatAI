@@ -3,9 +3,11 @@ import {
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  isWorkflowMessageQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
+  type WorkflowDynamicTimeReference,
   type WorkflowExecutionNode,
   type WorkflowExecutionSpec,
   type WorkflowNodeOutputUsage,
@@ -79,13 +81,13 @@ export function compileWorkflowDraft({
       requiredCapabilities: getWorkflowNodeCapabilityRequirements(node.data.kind, config),
     };
   });
-  const inferenceReferenceIssues = validateWorkflowInferenceReferences(
+  const referenceIssues = validateWorkflowNodeReferences(
     nodes,
     normalizedDraft.edges,
     workflowType,
   );
-  if (inferenceReferenceIssues.length > 0) {
-    throw new WorkflowCompilationError(inferenceReferenceIssues);
+  if (referenceIssues.length > 0) {
+    throw new WorkflowCompilationError(referenceIssues);
   }
 
   return {
@@ -105,7 +107,7 @@ export function compileWorkflowDraft({
   };
 }
 
-function validateWorkflowInferenceReferences(
+function validateWorkflowNodeReferences(
   nodes: WorkflowExecutionNode[],
   edges: WorkflowDraft["edges"],
   workflowType: WorkflowType,
@@ -128,7 +130,7 @@ function validateWorkflowInferenceReferences(
       );
       const valid = node.config.inputs.every(input =>
         input.value.kind === "literal"
-        || validateWorkflowInferenceSelector({
+        || validateWorkflowVariableSelector({
           edges,
           expectedValueType: input.value.valueType,
           guaranteedUpstreamIds,
@@ -150,7 +152,7 @@ function validateWorkflowInferenceReferences(
     if (node.kind === "ai-intent"
       && isWorkflowAiIntentExecutionConfigComplete(node.config)
       && node.config.inputSelector) {
-      const valid = validateWorkflowInferenceSelector({
+      const valid = validateWorkflowVariableSelector({
         edges,
         guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
           node.id,
@@ -172,12 +174,68 @@ function validateWorkflowInferenceReferences(
         });
       }
     }
+
+    if (node.kind === "message-query"
+      && isWorkflowMessageQueryExecutionConfigComplete(node.config)
+      && node.config.timeRange.mode === "dynamic") {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const valid = [node.config.timeRange.start, node.config.timeRange.end]
+        .every(reference => validateWorkflowMessageQueryTimeReference({
+          edges,
+          guaranteedUpstreamIds,
+          nodeById,
+          reference,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Message Query node references unavailable time data",
+          nodeId: node.id,
+        });
+      }
+    }
   }
 
   return issues;
 }
 
-function validateWorkflowInferenceSelector(input: {
+function validateWorkflowMessageQueryTimeReference(input: {
+  edges: WorkflowDraft["edges"];
+  guaranteedUpstreamIds: Set<string>;
+  nodeById: Map<string, WorkflowExecutionNode>;
+  reference: WorkflowDynamicTimeReference;
+  targetNodeId: string;
+  workflowType: WorkflowType;
+  entryEventTypes: readonly WorkflowStartTrigger["type"][];
+}) {
+  if (input.reference.kind === "workflow-trigger"
+    || input.reference.kind === "current-node-lifecycle") {
+    return true;
+  }
+  if (input.reference.kind === "node-lifecycle") {
+    return input.guaranteedUpstreamIds.has(input.reference.nodeId);
+  }
+  return validateWorkflowVariableSelector({
+    edges: input.edges,
+    expectedValueType: { kind: "datetime" },
+    guaranteedUpstreamIds: input.guaranteedUpstreamIds,
+    nodeById: input.nodeById,
+    requiredUsage: "time-reference",
+    selector: input.reference.selector,
+    targetNodeId: input.targetNodeId,
+    workflowType: input.workflowType,
+    entryEventTypes: input.entryEventTypes,
+  });
+}
+
+function validateWorkflowVariableSelector(input: {
   edges: WorkflowDraft["edges"];
   expectedValueType?: WorkflowOutputValueType;
   guaranteedUpstreamIds: Set<string>;

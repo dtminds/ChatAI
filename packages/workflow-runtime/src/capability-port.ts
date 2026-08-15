@@ -62,6 +62,8 @@ export interface WorkflowCapabilityPort {
 }
 
 export type WorkflowCapabilityCommandContext = {
+  currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
+  nodeLifecycle: Record<string, { enteredAt?: string; exitedAt?: string }>;
   outputs: Record<string, Record<string, unknown>>;
   subjectId: string;
   trigger: Record<string, unknown>;

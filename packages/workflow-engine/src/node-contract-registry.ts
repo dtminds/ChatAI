@@ -171,6 +171,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":
       return "Wait Event node requires a supported event and timeout";
+    case "message-query":
+      return "Message Query node requires a valid time range";
     case "branch":
       return "Branch node requires complete ordered paths and conditions";
     default:

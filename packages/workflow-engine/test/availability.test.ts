@@ -15,16 +15,17 @@ import {
 describe("workflow production availability", () => {
   it("parses a canonical deployment capability set and rejects unknown declarations", () => {
     const left = parseWorkflowDeploymentCapabilities(
-      "event.message.received@1,event.contact.friend_added@1",
+      "event.message.received@1,event.contact.friend_added@1,operation.chatai.message.query@1",
     );
     const right = parseWorkflowDeploymentCapabilities(
-      "event.contact.friend_added@1, event.message.received@1",
+      "operation.chatai.message.query@1,event.contact.friend_added@1, event.message.received@1",
     );
 
     expect(left).toEqual(right);
     expect(left.capabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
       { capabilityKey: "event.message.received", contractVersion: 1 },
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
     expect(left.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(() => parseWorkflowDeploymentCapabilities("event.message.received@2"))

@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
 
 export const WorkflowBranchValueTypeSchema = Type.Union([
   Type.Literal("boolean"),
@@ -122,11 +123,13 @@ export function isWorkflowBranchConditionValueComplete(
   if (condition.operator === "datetime-between") {
     return Array.isArray(condition.value)
       && condition.value.length === 2
-      && condition.value.every(isValidLocalDateTime)
+      && condition.value.every(isValidWorkflowLocalDateTime)
       && condition.value[0] <= condition.value[1];
   }
   if (condition.valueType === "number") return typeof condition.value === "number" && Number.isFinite(condition.value);
-  if (condition.valueType === "datetime") return typeof condition.value === "string" && isValidLocalDateTime(condition.value);
+  if (condition.valueType === "datetime") {
+    return typeof condition.value === "string" && isValidWorkflowLocalDateTime(condition.value);
+  }
   if (condition.valueType === "boolean") return typeof condition.value === "boolean";
   if (condition.valueType === "message-id-list") return false;
   return typeof condition.value === "string" && condition.value.trim().length > 0;
@@ -234,19 +237,6 @@ function parseDateTime(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function isValidLocalDateTime(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
-  const [date = "", time = ""] = value.split("T");
-  const [year = 0, month = 0, day = 0] = date.split("-").map(Number);
-  const [hour = 0, minute = 0] = time.split(":").map(Number);
-  const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  return candidate.getUTCFullYear() === year
-    && candidate.getUTCMonth() === month - 1
-    && candidate.getUTCDate() === day
-    && candidate.getUTCHours() === hour
-    && candidate.getUTCMinutes() === minute;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

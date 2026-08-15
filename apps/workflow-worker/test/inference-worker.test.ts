@@ -1,4 +1,4 @@
-import type { WorkflowExecutionSpec } from "@chatai/contracts";
+import type { WorkflowExecutionNode, WorkflowExecutionSpec } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -9,6 +9,13 @@ import { processWorkflowInferenceBatch } from "../src/inference-worker.js";
 import { FakeJavaInferenceAdapter } from "./support/fake-java-inference-adapter.js";
 
 const now = new Date("2099-01-01T00:00:00.000Z");
+
+class InferenceTestRuntimeService extends WorkflowRuntimeService {
+  protected override assertNodeExecutable(node: WorkflowExecutionNode) {
+    if (node.kind === "llm" || node.kind === "ai-intent") return;
+    super.assertNodeExecutable(node);
+  }
+}
 
 describe("workflow inference worker", () => {
   it("completes a claimed job and wakes the waiting Workflow Task", async () => {
@@ -174,7 +181,7 @@ describe("workflow inference worker", () => {
   }) => {
     const spec = inferenceSpec(nodeKind);
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = new WorkflowRuntimeService(control(spec), repository, undefined, {
+    const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
     });
@@ -249,7 +256,7 @@ describe("workflow inference worker", () => {
   it("fails a resumed Task once after the Java job reaches a terminal state", async () => {
     const spec = inferenceSpec("llm");
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = new WorkflowRuntimeService(control(spec), repository, undefined, {
+    const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
       maxTaskAttempts: 5,

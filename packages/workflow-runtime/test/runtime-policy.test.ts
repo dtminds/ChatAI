@@ -94,6 +94,57 @@ describe("Workflow runtime policy", () => {
     expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
   });
 
+  it("defers an unsupported node before claiming its Task", async () => {
+    const executionSpec = createExecutionSpec("chatai-workflow");
+    executionSpec.nodes.splice(1, 0, {
+      config: {},
+      id: "message",
+      kind: "message",
+      nodeSchemaVersion: 1,
+    });
+    executionSpec.edges = [
+      { id: "start-message", source: "start", sourceOutletId: "default", target: "message" },
+      { id: "message-end", source: "message", sourceOutletId: "default", target: "end" },
+    ];
+    const harness = createHarness({
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      executionSpec,
+    });
+    const claimTask = vi.spyOn(harness.runtime, "claimTask");
+    const created = await harness.runtime.createRunWithInitialTask({
+      context: { outputs: {}, trigger: {} },
+      entryEventId: "existing-message-task",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "message",
+      initialNodeKind: "message",
+      occurredAt: now,
+      revision: 1,
+      shardId: 7,
+      subjectId: "shared-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "chatai-workflow",
+      workflowType: "chatai_sop",
+    });
+    if (created.kind !== "success") throw new Error("Run was not created");
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: created.task.id,
+      taskVersion: created.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_NODE_UNSUPPORTED" });
+
+    expect(claimTask).not.toHaveBeenCalled();
+    await expect(harness.runtime.findTask(9, created.task.id)).resolves.toMatchObject({
+      attempt: 0,
+      dueAt: new Date(now.getTime() + 60_000),
+      status: "pending",
+      taskVersion: 2,
+    });
+  });
+
   it("does not create a Run containing a node that is not runtime-ready", async () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {

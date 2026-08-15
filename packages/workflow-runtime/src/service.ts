@@ -150,7 +150,7 @@ export class WorkflowRuntimeService {
     }
   }
 
-  private assertNodeExecutable(node: WorkflowExecutionNode) {
+  protected assertNodeExecutable(node: WorkflowExecutionNode) {
     if (isWorkflowRuntimeSupportedNodeKind(node.kind)) return;
     throw runtimeNodeUnsupportedError(node);
   }
@@ -306,10 +306,12 @@ export class WorkflowRuntimeService {
 
     try {
       await this.requireEntitlement(input.uid, revision.workflowType);
+      this.assertNodeExecutable(node);
     } catch (error) {
       if (error instanceof WorkflowRuntimeError
         && (error.code === "WORKFLOW_ENTITLEMENT_UNAVAILABLE"
-          || error.code === "WORKFLOW_RUNTIME_PAUSED")) {
+          || error.code === "WORKFLOW_RUNTIME_PAUSED"
+          || error.code === "WORKFLOW_RUNTIME_NODE_UNSUPPORTED")) {
         await this.deferTaskOrThrowStale(task, input.now);
       }
       throw error;

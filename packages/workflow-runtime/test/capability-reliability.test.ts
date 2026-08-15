@@ -1,4 +1,4 @@
-import type { WorkflowExecutionSpec } from "@chatai/contracts";
+import type { WorkflowExecutionNode, WorkflowExecutionSpec } from "@chatai/contracts";
 import { Type } from "@sinclair/typebox";
 import {
   WorkflowCapabilityExecutionError,
@@ -18,7 +18,7 @@ const now = new Date("2026-07-13T00:00:00.000Z");
 describe("workflow capability reliability", () => {
   it("does not let a capability port bypass node maturity at Run admission", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({}));
+    const service = createService(runtime, async () => ({}), { strictNodeMaturity: true });
 
     await expect(service.startRun({
       entryEventId: "unsupported-action",
@@ -956,13 +956,17 @@ function createService(
     maxTaskAttempts?: number;
     messageQueryExecute?: (input: WorkflowMessageQueryRequest) => Promise<unknown>;
     spec?: WorkflowExecutionSpec;
+    strictNodeMaturity?: boolean;
     taskLeaseDurationMs?: number;
   } = {},
 ) {
   const capabilityPort: WorkflowCapabilityPort = {
     execute: async (_definition, request) => executeCapability(request),
   };
-  return new WorkflowRuntimeService(createControlReader(options.spec), runtime, capabilityPort, {
+  const RuntimeService = options.strictNodeMaturity
+    ? WorkflowRuntimeService
+    : CapabilityReliabilityRuntimeService;
+  return new RuntimeService(createControlReader(options.spec), runtime, capabilityPort, {
     capabilityMaxRetryDelayMs: 60_000,
     capabilityRetryDelayMs: 5_000,
     capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
@@ -979,6 +983,13 @@ function createService(
       : undefined,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
+}
+
+class CapabilityReliabilityRuntimeService extends WorkflowRuntimeService {
+  protected override assertNodeExecutable(node: WorkflowExecutionNode) {
+    if (node.kind === "message") return;
+    super.assertNodeExecutable(node);
+  }
 }
 
 const TEST_MESSAGE_CAPABILITY_BINDING: WorkflowCapabilityExecutionBinding = {

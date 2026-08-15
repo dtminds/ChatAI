@@ -6,14 +6,14 @@ export const WorkflowExecutionNodeSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 128 }),
   kind: WorkflowNodeKindSchema,
   nodeSchemaVersion: Type.Integer({ minimum: 1 }),
-});
+}, { additionalProperties: false });
 
 export const WorkflowExecutionEdgeSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 256 }),
   source: Type.String({ minLength: 1, maxLength: 128 }),
   sourceOutletId: Type.String({ minLength: 1, maxLength: 128 }),
   target: Type.String({ minLength: 1, maxLength: 128 }),
-});
+}, { additionalProperties: false });
 
 export const WorkflowExecutionSpecSchema = Type.Object({
   edges: Type.Array(WorkflowExecutionEdgeSchema, { maxItems: 500 }),
@@ -23,7 +23,7 @@ export const WorkflowExecutionSpecSchema = Type.Object({
   schemaVersion: Type.Literal(3),
   terminalNodeId: Type.String({ minLength: 1, maxLength: 128 }),
   workflowId: WorkflowIdSchema,
-});
+}, { additionalProperties: false });
 
 export const WorkflowStoredExecutionSpecSchema = WorkflowExecutionSpecSchema;
 

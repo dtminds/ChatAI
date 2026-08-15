@@ -31,10 +31,18 @@ export const WORKFLOW_INFERENCE_CAPABILITIES = {
   },
 } as const satisfies Partial<Record<WorkflowNodeKind, WorkflowCapabilityRequirement>>;
 
+export const WORKFLOW_QUERY_CAPABILITIES = {
+  "message-query": {
+    capabilityKey: "operation.chatai.message.query",
+    contractVersion: 1,
+  },
+} as const satisfies Partial<Record<WorkflowNodeKind, WorkflowCapabilityRequirement>>;
+
 export const KNOWN_WORKFLOW_CAPABILITIES = canonicalizeWorkflowCapabilityRequirements(
   [
     ...Object.values(WORKFLOW_ENTRY_EVENT_CAPABILITIES),
     ...Object.values(WORKFLOW_INFERENCE_CAPABILITIES),
+    ...Object.values(WORKFLOW_QUERY_CAPABILITIES),
   ],
 );
 
@@ -44,6 +52,9 @@ export function getWorkflowNodeCapabilityRequirements(
 ): WorkflowCapabilityRequirement[] {
   if (kind === "llm" || kind === "ai-intent") {
     return [WORKFLOW_INFERENCE_CAPABILITIES[kind]];
+  }
+  if (kind === "message-query") {
+    return [WORKFLOW_QUERY_CAPABILITIES[kind]];
   }
   if (kind === "wait-event") {
     const event = config.event;

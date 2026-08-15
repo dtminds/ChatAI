@@ -89,6 +89,68 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
+  it("freezes the local Message Query capability requirement", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: { field: "occurredAt", kind: "workflow-trigger" },
+      },
+    }));
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.kind === "message-query")?.requiredCapabilities).toEqual([
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
+    ]);
+    expect(spec.requiredCapabilities).toEqual([
+      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
+    ]);
+  });
+
+  it("rejects incomplete or unavailable Message Query time ranges", () => {
+    const invalidFixedRange = createDraft();
+    invalidFixedRange.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-08-15T09:00",
+        mode: "fixed",
+        startAt: "2026-08-15T10:00",
+      },
+    }));
+    expectCompilationIssue(invalidFixedRange, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
+
+    const unavailableLifecycle = createDraft();
+    unavailableLifecycle.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: { field: "enteredAt", kind: "node-lifecycle", nodeId: "end" },
+      },
+    }));
+    expectCompilationIssue(unavailableLifecycle, {
+      code: "invalid-node-config",
+      message: "Message Query node references unavailable time data",
+      nodeId: "wait",
+    });
+  });
+
   it("freezes Wait Event capability and both runtime outlets", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("wait-event", "wait-event", {

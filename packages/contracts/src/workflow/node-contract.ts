@@ -3,6 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { QUICK_REPLY_ATTACHMENT_MAX_COUNT } from "../chat/quick-reply-content.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
+import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -360,7 +361,7 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageDraftConfigSchema,
     WorkflowMessageExecutionConfigSchema,
   ),
-  "message-query": draftReadyContract(
+  "message-query": runtimeReadyContract(
     "query",
     1,
     WorkflowMessageQueryConfigSchema,
@@ -436,10 +437,38 @@ export function isWorkflowNodeExecutionConfig(
 ) {
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
+  if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
     && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+export function isWorkflowMessageQueryExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowMessageQueryConfig {
+  if (!Value.Check(WorkflowMessageQueryConfigSchema, value)) return false;
+  if (value.timeRange.mode === "fixed") {
+    return isValidWorkflowLocalDateTime(value.timeRange.startAt)
+      && isValidWorkflowLocalDateTime(value.timeRange.endAt)
+      && value.timeRange.startAt < value.timeRange.endAt;
+  }
+  return !areWorkflowDynamicTimeReferencesEqual(value.timeRange.start, value.timeRange.end);
+}
+
+export function areWorkflowDynamicTimeReferencesEqual(
+  left: WorkflowDynamicTimeReference,
+  right: WorkflowDynamicTimeReference,
+) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "workflow-trigger" || left.kind === "current-node-lifecycle") return true;
+  if (left.kind === "node-lifecycle" && right.kind === "node-lifecycle") {
+    return left.nodeId === right.nodeId && left.field === right.field;
+  }
+  return left.kind === "node-output"
+    && right.kind === "node-output"
+    && left.selector.length === right.selector.length
+    && left.selector.every((part, index) => part === right.selector[index]);
 }
 
 function isWorkflowStartMessageSendingWindowValid(value: unknown) {

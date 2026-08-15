@@ -110,7 +110,13 @@ function invocation(input: {
 }) {
   return {
     binding: input.binding,
-    commandContext: { outputs: {}, subjectId: "contact-1", trigger: {} },
+    commandContext: {
+      currentNodeLifecycle: {},
+      nodeLifecycle: {},
+      outputs: {},
+      subjectId: "contact-1",
+      trigger: {},
+    },
     config: { value: "hello" },
     deadlineAt: new Date("2026-08-10T00:00:15.000Z"),
     execution: {

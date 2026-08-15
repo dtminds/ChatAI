@@ -25,12 +25,19 @@ describe("workflow production availability", () => {
     expect(left.capabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
       { capabilityKey: "event.message.received", contractVersion: 1 },
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
     expect(left.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(() => parseWorkflowDeploymentCapabilities("event.message.received@2"))
       .toThrow(WorkflowDeploymentCapabilityConfigError);
     expect(() => parseWorkflowDeploymentCapabilities("event.message.received@1,event.message.received@1"))
       .toThrow(WorkflowDeploymentCapabilityConfigError);
+  });
+
+  it("includes code-bundled capabilities without environment configuration", () => {
+    expect(parseWorkflowDeploymentCapabilities(undefined).capabilities).toEqual([
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
+    ]);
   });
 
   it("returns all runtime, deployment, and entitlement blockers together", () => {

@@ -419,6 +419,8 @@ trigger.occurredAt
 
 当前 `message`、`message-query`、`wait-event`、`handoff` 和 `agent` 节点表达的是 ChatAI 会话能力。未来如果 WeCom SOP 支持企微触达，应增加明确的企微消息 operation 或节点能力，不能复用同一个名称后在 Java 内部猜测渠道。
 
+`message-query` 的 `operation.chatai.message.query@1` 由 Node Workflow Worker 直接只读平台消息事实表实现，不经过 Java Capability。查询先按托管账号解析 `third_userid`，再按租户、平台、`third_user_id`、`third_external_id` 和 `msgtime` 查询私聊消息；平台表不由 Node 写入，也不在本能力中增加或修改索引。固定时间选择精确到分钟，开始时间从该分钟的 `00.000` 起算，结束时间包含该分钟直到 `59.999`；动态时间引用保持原始毫秒精度。
+
 ### 5.4 Runtime 实现与生产启用的双重门槛
 
 最终 Production Availability 按以下规则计算：

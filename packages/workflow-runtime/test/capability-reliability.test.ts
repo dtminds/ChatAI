@@ -10,6 +10,7 @@ import {
   type WorkflowCapabilityPort,
   type WorkflowCapabilityExecutionBinding,
   InMemoryWorkflowRuntimeRepository,
+  WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
@@ -176,6 +177,61 @@ describe("workflow capability reliability", () => {
       ]));
     },
   );
+
+  it("executes Message Query with Runtime trigger and node lifecycle context", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const requests: unknown[] = [];
+    const spec = capabilitySpec("message-query");
+    spec.nodes[1]!.config = {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: { field: "occurredAt", kind: "workflow-trigger" },
+      },
+    };
+    const service = createService(runtime, async (request) => {
+      requests.push(request);
+      return {
+        messageCount: 0,
+        messageIds: [],
+        rangeEnd: now.toISOString(),
+        rangeStart: "2026-07-12T23:00:00.000Z",
+        textContent: "",
+      };
+    }, {
+      capabilityBindings: [WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING],
+      spec,
+    });
+    const capabilityTask = await startCapability(service, {
+      occurredAt: "2026-07-12T23:00:00.000Z",
+      projection: { seatId: 101 },
+    });
+
+    await expect(service.executeTask({
+      now,
+      taskId: capabilityTask.id,
+      taskVersion: capabilityTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "success" });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      command: {
+        limit: 10,
+        rangeEnd: now.getTime(),
+        rangeStart: Date.parse("2026-07-12T23:00:00.000Z"),
+        seatId: 101,
+        take: "latest",
+      },
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 9,
+    });
+    expect(requests[0]).not.toHaveProperty("idempotencyKey");
+  });
 
   it("fails an action whose projected output exceeds 8 KiB in UTF-8", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);

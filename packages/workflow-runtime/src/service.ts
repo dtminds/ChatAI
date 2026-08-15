@@ -374,6 +374,7 @@ export class WorkflowRuntimeService {
             nodeExecutionKey,
             capabilityTimeoutMs: this.capabilityTimeoutMs,
             binding: capabilityBinding,
+            enteredAt: claimed.task.createdAt,
             node,
             port: this.capabilityPort,
             run,
@@ -810,6 +811,7 @@ async function executeWithCapabilityTimeout(input: {
   nodeExecutionKey: string;
   capabilityTimeoutMs: number;
   binding: WorkflowCapabilityExecutionBinding | undefined;
+  enteredAt: Date;
   node: WorkflowExecutionNode;
   port: WorkflowCapabilityPort | undefined;
   run: WorkflowRunRecord;
@@ -851,6 +853,13 @@ async function executeWithCapabilityTimeout(input: {
       executeWorkflowCapability({
         binding: input.binding,
         commandContext: {
+          currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+          nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
+            ? input.run.context.nodeLifecycle as Record<
+              string,
+              { enteredAt?: string; exitedAt?: string }
+            >
+            : {},
           outputs: isRecord(input.run.context.outputs)
             ? input.run.context.outputs as Record<string, Record<string, unknown>>
             : {},

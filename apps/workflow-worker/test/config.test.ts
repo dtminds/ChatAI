@@ -111,6 +111,7 @@ describe("workflow worker config", () => {
     expect(config.deploymentCapabilities.capabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
       { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
+      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
     expect(config.deploymentCapabilities.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(config.entitlement).toEqual({

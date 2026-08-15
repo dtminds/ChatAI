@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
-  KNOWN_WORKFLOW_CAPABILITIES,
   normalizeWorkflowExecutionSpec,
   validateWorkflowTypePolicy,
+  WORKFLOW_INFERENCE_CAPABILITIES,
   WORKFLOW_PRODUCTION_CAPABILITIES,
 } from "../src/index.js";
 
@@ -18,17 +18,12 @@ describe("workflow production availability", () => {
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
       { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
       { capabilityKey: "event.message.received", contractVersion: 1 },
-      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
     expect(WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint)
-      .toBe("fd47ea46d838e47ed1eef6b27accb8d0d57b54515e38ea9ac97c588bae6c4ee0");
-    expect(KNOWN_WORKFLOW_CAPABILITIES).toEqual(expect.arrayContaining([
-      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
-      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
-    ]));
+      .toBe("9ec22a3359540080297511f667d250184ead2aafbad98eab81af252d2e715418");
     expect(WORKFLOW_PRODUCTION_CAPABILITIES.capabilities).not.toEqual(expect.arrayContaining([
-      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
-      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
+      WORKFLOW_INFERENCE_CAPABILITIES["ai-intent"],
+      WORKFLOW_INFERENCE_CAPABILITIES.llm,
     ]));
   });
 

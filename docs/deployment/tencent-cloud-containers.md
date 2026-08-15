@@ -272,7 +272,7 @@ WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
 
-生产可用 Capability 由 `packages/workflow-engine` 的 `WORKFLOW_PRODUCTION_CAPABILITIES` 统一声明，Backend 发布门禁和 Workflow Worker 运行门禁共享同一集合及 fingerprint，不再通过环境变量重复配置。当前注册 `event.message.received@1`、`event.contact.friend_added@1`、`event.contact.tag_added@1` 和 `operation.chatai.message.query@1`。只有端到端实现完成并验证后才能通过代码评审加入新 Capability；代码已认识但尚未接通真实 Adapter 的 LLM、AI Intent 能力仍保持关闭。
+生产可用的外部 Capability 由 `packages/workflow-engine` 的 `WORKFLOW_PRODUCTION_CAPABILITIES` 统一声明，Backend 发布门禁和 Workflow Worker 运行门禁共享同一集合及 fingerprint，不再通过环境变量重复配置。当前注册 `event.message.received@1`、`event.contact.friend_added@1` 和 `event.contact.tag_added@1`。Node 进程内部实现的节点随代码发布，不进入该注册表；依赖外部系统的能力只有在端到端实现完成并验证后才能通过代码评审加入。尚未接通真实 Adapter 的 LLM、AI Intent 能力仍保持关闭。
 
 `WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
 

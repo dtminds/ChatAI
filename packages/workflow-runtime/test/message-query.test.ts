@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING } from "../src/index.js";
+import { createWorkflowMessageQueryCommand } from "../src/index.js";
 
 describe("Workflow Message Query binding", () => {
   it("resolves the default dynamic range and seat identity", () => {
-    expect(WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING.createCommand({
+    expect(createWorkflowMessageQueryCommand({
       config: {
         limit: 10,
         take: "latest",
@@ -24,7 +24,7 @@ describe("Workflow Message Query binding", () => {
   });
 
   it("resolves fixed UTC+8 times and includes the complete end minute", () => {
-    expect(WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING.createCommand({
+    expect(createWorkflowMessageQueryCommand({
       config: {
         limit: 5,
         take: "earliest",
@@ -52,7 +52,7 @@ describe("Workflow Message Query binding", () => {
     };
     commandContext.outputs.querySource = { rangeEnd: "2026-08-15T01:50:00.000Z" };
 
-    expect(WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING.createCommand({
+    expect(createWorkflowMessageQueryCommand({
       config: {
         limit: 5,
         take: "latest",
@@ -76,7 +76,7 @@ describe("Workflow Message Query binding", () => {
     const commandContext = context();
     commandContext.trigger = { occurredAt: "2026-08-15T01:00:00.000Z" };
 
-    expect(() => WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING.createCommand({
+    expect(() => createWorkflowMessageQueryCommand({
       config: {
         limit: 10,
         take: "latest",

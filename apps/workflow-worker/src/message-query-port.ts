@@ -1,6 +1,4 @@
 import {
-  type WorkflowCapabilityKind,
-  WorkflowMessageQueryCommandSchema,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryResult,
 } from "@chatai/contracts";
@@ -9,13 +7,10 @@ import {
   assertWorkflowRuntimeValue,
   WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   WorkflowRuntimeValueError,
-  type WorkflowCapabilityDefinition,
-  type WorkflowCapabilityPort,
-  type WorkflowCapabilityRequest,
   type WorkflowDatabase,
+  type WorkflowMessageQueryPort,
+  type WorkflowMessageQueryRequest,
 } from "@chatai/workflow-runtime";
-import { Value } from "@sinclair/typebox/value";
-import type { Static, TSchema } from "@sinclair/typebox";
 import type { Kysely } from "kysely";
 
 const CHATAI_PLATFORM = 5;
@@ -70,29 +65,10 @@ type WorkflowMessageQueryDatabase = WorkflowDatabase & {
   xy_wap_embed_user_seat: WorkflowMessageQuerySeatTable;
 };
 
-export class WorkflowWorkerCapabilityPort implements WorkflowCapabilityPort {
+export class MysqlWorkflowMessageQueryPort implements WorkflowMessageQueryPort {
   constructor(private readonly database: Kysely<WorkflowDatabase>) {}
 
-  async execute<TCommandSchema extends TSchema,
-    TResultSchema extends TSchema,
-    TKind extends WorkflowCapabilityKind>(
-    definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
-    request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
-  ): Promise<unknown> {
-    if (definition.capabilityKey !== "operation.chatai.message.query"
-      || definition.contractVersion !== 1
-      || definition.kind !== "query") {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        `Unsupported local workflow capability: ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
-    if (!Value.Check(WorkflowMessageQueryCommandSchema, request.command)) {
-      throw terminalError(
-        "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID",
-        "Message Query command failed schema validation",
-      );
-    }
+  async execute(request: WorkflowMessageQueryRequest): Promise<unknown> {
     if (request.subjectType !== "chatai_contact") {
       throw terminalError(
         "WORKFLOW_MESSAGE_QUERY_SUBJECT_INVALID",

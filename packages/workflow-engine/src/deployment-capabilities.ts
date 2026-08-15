@@ -4,7 +4,6 @@ import {
   canonicalizeWorkflowCapabilityRequirements,
   getWorkflowCapabilityIdentity,
   WORKFLOW_ENTRY_EVENT_CAPABILITIES,
-  WORKFLOW_QUERY_CAPABILITIES,
 } from "./capability-requirements.js";
 
 export type WorkflowDeploymentCapabilities = {
@@ -23,8 +22,9 @@ export function createWorkflowDeploymentCapabilities(
 }
 
 export const WORKFLOW_PRODUCTION_CAPABILITIES = createWorkflowDeploymentCapabilities([
-  ...Object.values(WORKFLOW_ENTRY_EVENT_CAPABILITIES),
-  ...Object.values(WORKFLOW_QUERY_CAPABILITIES),
+  WORKFLOW_ENTRY_EVENT_CAPABILITIES["contact.friend_added"],
+  WORKFLOW_ENTRY_EVENT_CAPABILITIES["contact.tag_added"],
+  WORKFLOW_ENTRY_EVENT_CAPABILITIES["message.received"],
 ]);
 
 export function hasWorkflowDeploymentCapability(

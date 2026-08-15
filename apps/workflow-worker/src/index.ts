@@ -8,7 +8,6 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
-  WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -24,7 +23,7 @@ import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
 import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
-import { WorkflowWorkerCapabilityPort } from "./message-query-capability.js";
+import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -45,14 +44,14 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const runtimeService = new WorkflowRuntimeService(
     repository,
     repository,
-    new WorkflowWorkerCapabilityPort(database),
+    undefined,
     {
-      capabilityBindings: [WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING],
       capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
+      messageQueryPort: new MysqlWorkflowMessageQueryPort(database),
       inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
       taskLeaseDurationMs: config.runtime.leaseDurationMs,
     },

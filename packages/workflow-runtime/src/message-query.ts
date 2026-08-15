@@ -4,58 +4,101 @@ import {
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
   type WorkflowDynamicTimeReference,
+  type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
+  type WorkflowSubjectType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
-import type {
-  WorkflowCapabilityCommandContext,
-  WorkflowCapabilityExecutionBinding,
-} from "./capability-port.js";
+
+export type WorkflowMessageQueryCommandContext = {
+  currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
+  nodeLifecycle: Record<string, { enteredAt?: string; exitedAt?: string }>;
+  outputs: Record<string, Record<string, unknown>>;
+  subjectId: string;
+  trigger: Record<string, unknown>;
+};
+
+export type WorkflowMessageQueryRequest = {
+  command: WorkflowMessageQueryCommand;
+  signal: AbortSignal;
+  subjectId: string;
+  subjectType: WorkflowSubjectType;
+  uid: number;
+};
+
+export interface WorkflowMessageQueryPort {
+  execute(request: WorkflowMessageQueryRequest): Promise<unknown>;
+}
 
 const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
 const ONE_MINUTE_MILLISECONDS = 60 * 1_000;
 const FIXED_LOCAL_DATE_TIME_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
 
-export const WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING = {
-  createCommand: ({ config, context }) => {
-    if (!Value.Check(WorkflowMessageQueryConfigSchema, config)) {
-      throw invalidMessageQueryCommand("Message Query config failed schema validation");
-    }
-    const seatId = getSeatId(context.trigger);
-    if (seatId === null) {
-      throw invalidMessageQueryCommand("Message Query requires trigger.projection.seatId");
-    }
-    const range = resolveMessageQueryRange(config.timeRange, context);
-    if (range.rangeStart >= range.rangeEnd) {
-      throw invalidMessageQueryCommand("Message Query requires rangeStart before rangeEnd");
-    }
-    return {
-      limit: config.limit,
-      rangeEnd: range.rangeEnd,
-      rangeStart: range.rangeStart,
-      seatId,
-      take: config.take,
-    };
-  },
-  definition: {
-    capabilityKey: "operation.chatai.message.query",
-    commandSchema: WorkflowMessageQueryCommandSchema,
-    contractVersion: 1,
-    kind: "query",
-    resultSchema: WorkflowMessageQueryResultSchema,
-  },
-  nodeKind: "message-query",
-} satisfies WorkflowCapabilityExecutionBinding<
-  typeof WorkflowMessageQueryCommandSchema,
-  typeof WorkflowMessageQueryResultSchema,
-  "query"
->;
+export function createWorkflowMessageQueryCommand(input: {
+  config: Record<string, unknown>;
+  context: WorkflowMessageQueryCommandContext;
+}): WorkflowMessageQueryCommand {
+  if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
+    throw invalidMessageQueryCommand("Message Query config failed schema validation");
+  }
+  const config = input.config as WorkflowMessageQueryConfig;
+  const seatId = getSeatId(input.context.trigger);
+  if (seatId === null) {
+    throw invalidMessageQueryCommand("Message Query requires trigger.projection.seatId");
+  }
+  const range = resolveMessageQueryRange(config.timeRange, input.context);
+  if (range.rangeStart >= range.rangeEnd) {
+    throw invalidMessageQueryCommand("Message Query requires rangeStart before rangeEnd");
+  }
+  const command = {
+    limit: config.limit,
+    rangeEnd: range.rangeEnd,
+    rangeStart: range.rangeStart,
+    seatId,
+    take: config.take,
+  };
+  if (!Value.Check(WorkflowMessageQueryCommandSchema, command)) {
+    throw invalidMessageQueryCommand("Message Query command failed schema validation");
+  }
+  return command;
+}
+
+export async function executeWorkflowMessageQuery(input: {
+  config: Record<string, unknown>;
+  context: WorkflowMessageQueryCommandContext;
+  port: WorkflowMessageQueryPort;
+  signal: AbortSignal;
+  subjectId: string;
+  subjectType: WorkflowSubjectType;
+  uid: number;
+}): Promise<Record<string, unknown>> {
+  const result = await input.port.execute({
+    command: createWorkflowMessageQueryCommand({
+      config: input.config,
+      context: input.context,
+    }),
+    signal: input.signal,
+    subjectId: input.subjectId,
+    subjectType: input.subjectType,
+    uid: input.uid,
+  });
+  if (!Value.Check(WorkflowMessageQueryResultSchema, result)
+    || !result || typeof result !== "object" || Array.isArray(result)) {
+    throw new WorkflowCapabilityExecutionError(
+      "terminal",
+      "WORKFLOW_MESSAGE_QUERY_OUTPUT_INVALID",
+      "节点返回的数据无法处理，流程已停止",
+      { diagnosticMessage: "Message Query result failed schema validation" },
+    );
+  }
+  return structuredClone(result) as Record<string, unknown>;
+}
 
 function resolveMessageQueryRange(
   timeRange: WorkflowMessageQueryConfig["timeRange"],
-  context: WorkflowCapabilityCommandContext,
+  context: WorkflowMessageQueryCommandContext,
 ) {
   if (timeRange.mode === "fixed") {
     return {
@@ -71,7 +114,7 @@ function resolveMessageQueryRange(
 
 function resolveDynamicTimeReference(
   reference: WorkflowDynamicTimeReference,
-  context: WorkflowCapabilityCommandContext,
+  context: WorkflowMessageQueryCommandContext,
 ) {
   let value: unknown;
   if (reference.kind === "workflow-trigger") {
@@ -88,7 +131,7 @@ function resolveDynamicTimeReference(
 
 function resolveSelector(
   selector: readonly string[],
-  context: WorkflowCapabilityCommandContext,
+  context: WorkflowMessageQueryCommandContext,
 ) {
   const [scope, key, ...path] = selector;
   let value: unknown;

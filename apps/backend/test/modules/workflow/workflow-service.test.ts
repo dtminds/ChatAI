@@ -538,6 +538,25 @@ describe("WorkflowService", () => {
     })).resolves.toMatchObject({ validatedOnly: true });
   });
 
+  it("keeps LLM publication closed under the default production capabilities", async () => {
+    const service = createService(new InMemoryWorkflowRepository(), {
+      deploymentCapabilities: undefined,
+    });
+    const configured = await createConfigured(service);
+    const saved = await service.saveDraft(operator, configured.id, {
+      draft: withPublishableLlmNode(withStartConfig(configured.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [{ keywords: ["价格"], type: "message.received" }],
+      })),
+      expectedDraftVersion: configured.draftVersion,
+    });
+
+    await expect(service.publish(operator, configured.id, {
+      expectedDraftVersion: saved.draftVersion,
+    })).rejects.toMatchObject({ code: "WORKFLOW_PRODUCTION_UNAVAILABLE" });
+  });
+
   it("rejects an inactive seat during publish validation for message-only Start", async () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       sourceIdentityResolver: {
@@ -1105,6 +1124,35 @@ function withLlmNode(
       llmNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
+  };
+}
+
+function withPublishableLlmNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  const next = withLlmNode(draft);
+  return {
+    ...next,
+    nodes: next.nodes.map(node => node.id === "llm-1"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            inputs: [
+              {
+                id: "input-message",
+                name: "message",
+                value: { kind: "literal" as const, value: "请处理这个客户" },
+              },
+              {
+                id: "input-tone",
+                name: "tone",
+                value: { kind: "literal" as const, value: "简洁" },
+              },
+            ],
+          },
+        }
+      : node),
   };
 }
 

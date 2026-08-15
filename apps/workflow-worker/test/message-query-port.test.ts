@@ -17,9 +17,9 @@ import {
   buildMessageQuerySeatQuery,
   executeMessageQuery,
   formatMessageQueryRow,
-} from "../src/message-query-capability.js";
+} from "../src/message-query-port.js";
 
-describe("Workflow Message Query capability", () => {
+describe("Workflow Message Query port", () => {
   it("builds an isolated msgtime query without joins", () => {
     const database = createCompileOnlyDatabase();
     const seatQuery = buildMessageQuerySeatQuery(database, { seatId: 101, uid: 9 }).compile();

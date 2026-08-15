@@ -49,6 +49,10 @@ import {
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
 } from "./inference.js";
+import {
+  executeWorkflowMessageQuery,
+  type WorkflowMessageQueryPort,
+} from "./message-query.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -80,6 +84,7 @@ export class WorkflowRuntimeService {
   private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
+  private readonly messageQueryPort?: WorkflowMessageQueryPort;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
@@ -97,6 +102,7 @@ export class WorkflowRuntimeService {
       entitlementPort?: WorkflowEntitlementPort;
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
+      messageQueryPort?: WorkflowMessageQueryPort;
       taskLeaseDurationMs?: number;
     } = {},
   ) {
@@ -114,6 +120,7 @@ export class WorkflowRuntimeService {
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
+    this.messageQueryPort = options.messageQueryPort;
     this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
       const definition = await this.controlRepository.findDefinition(uid, workflowId);
       if (definition?.publishedRevision === null || definition?.publishedRevision === undefined) {
@@ -369,6 +376,15 @@ export class WorkflowRuntimeService {
             nodeExecutionKey,
             run,
           })
+        : node.kind === "message-query"
+          ? await executeMessageQueryWithTimeout({
+              capabilityTimeoutMs: this.capabilityTimeoutMs,
+              enteredAt: claimed.task.createdAt,
+              node,
+              port: this.messageQueryPort,
+              run,
+              startedAt: this.clock(),
+            })
         : capabilityNode
           ? await executeWithCapabilityTimeout({
             nodeExecutionKey,
@@ -876,6 +892,68 @@ async function executeWithCapabilityTimeout(input: {
           workflowId: input.run.workflowId,
         },
         executionKey: input.nodeExecutionKey,
+        port: input.port,
+        signal: controller.signal,
+        subjectId: input.run.subjectId,
+        subjectType: input.run.subjectType,
+        uid: input.run.uid,
+      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function executeMessageQueryWithTimeout(input: {
+  capabilityTimeoutMs: number;
+  enteredAt: Date;
+  node: WorkflowExecutionNode;
+  port: WorkflowMessageQueryPort | undefined;
+  run: WorkflowRunRecord;
+  startedAt: Date;
+}) {
+  if (!input.port) {
+    throw new WorkflowCapabilityExecutionError(
+      "terminal",
+      "WORKFLOW_MESSAGE_QUERY_PORT_UNAVAILABLE",
+      "节点能力暂不可用",
+      { diagnosticMessage: "Workflow Message Query port is not configured" },
+    );
+  }
+  const controller = new AbortController();
+  const deadlineAt = new Date(input.startedAt.getTime() + input.capabilityTimeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new WorkflowCapabilityExecutionError(
+        "unknown",
+        "WORKFLOW_CAPABILITY_TIMEOUT",
+        "节点执行超时",
+        { diagnosticMessage: `Workflow Message Query exceeded its ${input.capabilityTimeoutMs}ms deadline` },
+      );
+      reject(error);
+      controller.abort(error);
+    }, input.capabilityTimeoutMs);
+  });
+  try {
+    return await Promise.race([
+      executeWorkflowMessageQuery({
+        config: input.node.config,
+        context: {
+          currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+          nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
+            ? input.run.context.nodeLifecycle as Record<
+              string,
+              { enteredAt?: string; exitedAt?: string }
+            >
+            : {},
+          outputs: isRecord(input.run.context.outputs)
+            ? input.run.context.outputs as Record<string, Record<string, unknown>>
+            : {},
+          subjectId: input.run.subjectId,
+          trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+        },
         port: input.port,
         signal: controller.signal,
         subjectId: input.run.subjectId,

@@ -10,7 +10,7 @@ import {
   type WorkflowCapabilityPort,
   type WorkflowCapabilityExecutionBinding,
   InMemoryWorkflowRuntimeRepository,
-  WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING,
+  type WorkflowMessageQueryRequest,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
@@ -119,15 +119,12 @@ describe("workflow capability reliability", () => {
     }
   });
 
-  it.each([
-    { capabilityKind: "query", nodeKind: "message-query" },
-  ] as const)(
-    "persists $capabilityKind retries and terminal failures without an external idempotency key",
-    async ({ capabilityKind, nodeKind }) => {
-      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-      const requests: unknown[] = [];
-      let attempt = 0;
-      const service = createService(runtime, async (request) => {
+  it("persists Query retries and terminal failures without an external idempotency key", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const requests: WorkflowMessageQueryRequest[] = [];
+    let attempt = 0;
+    const service = createService(runtime, async () => ({}), {
+      messageQueryExecute: async (request) => {
         requests.push(request);
         attempt += 1;
         throw new WorkflowCapabilityExecutionError(
@@ -135,53 +132,54 @@ describe("workflow capability reliability", () => {
           attempt === 1 ? "DOWNSTREAM_TEMPORARY" : "DOWNSTREAM_REJECTED",
           "节点能力调用失败",
         );
-      }, {
-        capabilityBindings: [testCapabilityBinding(capabilityKind, nodeKind)],
-        spec: capabilitySpec(nodeKind),
-      });
-      const capabilityTask = await startCapability(service);
+      },
+      spec: messageQuerySpec(),
+    });
+    const capabilityTask = await startCapability(service, {
+      occurredAt: "2026-07-12T23:00:00.000Z",
+      projection: { seatId: 101 },
+    });
 
-      await expect(service.executeTask({
-        now,
-        taskId: capabilityTask.id,
-        taskVersion: capabilityTask.taskVersion,
-        uid: 9,
-        workerId: "worker-1",
-      })).resolves.toMatchObject({
-        errorCode: "DOWNSTREAM_TEMPORARY",
-        kind: "retry-scheduled",
-      });
-      const retryTask = await runtime.findTask(9, capabilityTask.id);
-      if (!retryTask) throw new Error("capability retry task was not created");
+    await expect(service.executeTask({
+      now,
+      taskId: capabilityTask.id,
+      taskVersion: capabilityTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "DOWNSTREAM_TEMPORARY",
+      kind: "retry-scheduled",
+    });
+    const retryTask = await runtime.findTask(9, capabilityTask.id);
+    if (!retryTask) throw new Error("query retry task was not created");
 
-      await expect(service.executeTask({
-        now: retryTask.dueAt,
-        taskId: retryTask.id,
-        taskVersion: retryTask.taskVersion,
-        uid: 9,
-        workerId: "worker-2",
-      })).resolves.toMatchObject({
+    await expect(service.executeTask({
+      now: retryTask.dueAt,
+      taskId: retryTask.id,
+      taskVersion: retryTask.taskVersion,
+      uid: 9,
+      workerId: "worker-2",
+    })).resolves.toMatchObject({
+      errorCode: "DOWNSTREAM_REJECTED",
+      kind: "failed",
+    });
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) expect(request).not.toHaveProperty("idempotencyKey");
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
         errorCode: "DOWNSTREAM_REJECTED",
-        kind: "failed",
-      });
-
-      expect(requests).toHaveLength(2);
-      for (const request of requests) expect(request).not.toHaveProperty("idempotencyKey");
-      expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          errorCode: "DOWNSTREAM_REJECTED",
-          executionKey: "9:1:capability:2",
-          nodeKind,
-          status: "failed",
-        }),
-      ]));
-    },
-  );
+        executionKey: "9:1:capability:2",
+        nodeKind: "message-query",
+        status: "failed",
+      }),
+    ]));
+  });
 
   it("executes Message Query with Runtime trigger and node lifecycle context", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const requests: unknown[] = [];
-    const spec = capabilitySpec("message-query");
+    const spec = messageQuerySpec();
     spec.nodes[1]!.config = {
       limit: 10,
       take: "latest",
@@ -191,17 +189,17 @@ describe("workflow capability reliability", () => {
         start: { field: "occurredAt", kind: "workflow-trigger" },
       },
     };
-    const service = createService(runtime, async (request) => {
-      requests.push(request);
-      return {
-        messageCount: 0,
-        messageIds: [],
-        rangeEnd: now.toISOString(),
-        rangeStart: "2026-07-12T23:00:00.000Z",
-        textContent: "",
-      };
-    }, {
-      capabilityBindings: [WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING],
+    const service = createService(runtime, async () => ({}), {
+      messageQueryExecute: async (request) => {
+        requests.push(request);
+        return {
+          messageCount: 0,
+          messageIds: [],
+          rangeEnd: now.toISOString(),
+          rangeStart: "2026-07-12T23:00:00.000Z",
+          textContent: "",
+        };
+      },
       spec,
     });
     const capabilityTask = await startCapability(service, {
@@ -941,6 +939,7 @@ function createService(
     executors?: WorkflowNodeExecutorRegistry;
     inferenceTotalTimeoutMs?: number;
     maxTaskAttempts?: number;
+    messageQueryExecute?: (input: WorkflowMessageQueryRequest) => Promise<unknown>;
     spec?: WorkflowExecutionSpec;
     taskLeaseDurationMs?: number;
   } = {},
@@ -961,6 +960,9 @@ function createService(
     executors: options.executors,
     inferenceTotalTimeoutMs: options.inferenceTotalTimeoutMs,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
+    messageQueryPort: options.messageQueryExecute
+      ? { execute: options.messageQueryExecute }
+      : undefined,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
 }
@@ -976,23 +978,6 @@ const TEST_MESSAGE_CAPABILITY_BINDING: WorkflowCapabilityExecutionBinding = {
   },
   nodeKind: "message",
 };
-
-function testCapabilityBinding(
-  capabilityKind: "inference" | "query",
-  nodeKind: "llm" | "message-query",
-): WorkflowCapabilityExecutionBinding {
-  return {
-    createCommand: () => ({}),
-    definition: {
-      capabilityKey: `operation.test.${capabilityKind}`,
-      commandSchema: Type.Record(Type.String(), Type.Unknown()),
-      contractVersion: 1,
-      kind: capabilityKind,
-      resultSchema: Type.Record(Type.String(), Type.Unknown()),
-    },
-    nodeKind,
-  };
-}
 
 async function startCapability(
   service: WorkflowRuntimeService,
@@ -1112,7 +1097,7 @@ function actionSpec(): WorkflowExecutionSpec {
   };
 }
 
-function capabilitySpec(nodeKind: "llm" | "message-query"): WorkflowExecutionSpec {
+function messageQuerySpec(): WorkflowExecutionSpec {
   return {
     edges: [
       { id: "start-capability", source: "start", sourceOutletId: "default", target: "capability" },
@@ -1128,9 +1113,17 @@ function capabilitySpec(nodeKind: "llm" | "message-query"): WorkflowExecutionSpe
         requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
       },
       {
-        config: {},
+        config: {
+          limit: 10,
+          take: "latest",
+          timeRange: {
+            end: { field: "enteredAt", kind: "current-node-lifecycle" },
+            mode: "dynamic",
+            start: { field: "occurredAt", kind: "workflow-trigger" },
+          },
+        },
         id: "capability",
-        kind: nodeKind,
+        kind: "message-query",
         nodeSchemaVersion: 1,
         requiredCapabilities: [],
       },

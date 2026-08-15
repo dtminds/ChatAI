@@ -89,7 +89,7 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
-  it("freezes the local Message Query capability requirement", () => {
+  it("keeps the local Message Query implementation out of deployment requirements", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10,
@@ -108,12 +108,9 @@ describe("compileWorkflowDraft", () => {
       workflowType: "chatai_sop",
     });
 
-    expect(spec.nodes.find(node => node.kind === "message-query")?.requiredCapabilities).toEqual([
-      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
-    ]);
+    expect(spec.nodes.find(node => node.kind === "message-query")?.requiredCapabilities).toEqual([]);
     expect(spec.requiredCapabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
   });
 

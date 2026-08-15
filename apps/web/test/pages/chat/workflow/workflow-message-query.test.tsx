@@ -34,7 +34,7 @@ describe("workflow message query", () => {
     ]);
   });
 
-  it("shows lifecycle references with their upstream node titles on the canvas node", () => {
+  it("shows global and lifecycle references correctly on the canvas node", () => {
     const waitNode = createNodeFromKind("wait", "wait", 0);
     waitNode.data.title = "等待";
     const queryNode = {
@@ -44,7 +44,7 @@ describe("workflow message query", () => {
         timeRange: {
           end: ["node-lifecycle", waitNode.id, "exitedAt"],
           mode: "dynamic" as const,
-          start: ["node-lifecycle", waitNode.id, "enteredAt"],
+          start: ["trigger", "occurredAt"],
         },
       },
     };
@@ -78,9 +78,7 @@ describe("workflow message query", () => {
       id: "time-range",
       value: {
         items: [
-          { kind: "source", text: "等待" },
-          { kind: "text", text: ".", tone: "muted" },
-          { kind: "variable", text: "进入时间" },
+          { kind: "variable", text: "触发时间" },
           { kind: "operator", text: " 至 " },
           { kind: "source", text: "等待" },
           { kind: "text", text: ".", tone: "muted" },

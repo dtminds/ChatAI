@@ -77,7 +77,7 @@ function createDynamicTimeReferenceSegments(
   resolveVariable: (selector: WorkflowVariableSelector) => WorkflowVariableDefinition | undefined,
 ): WorkflowNodeSummarySegment[] {
   const variable = resolveVariable(selector);
-  return variable?.sourceNodeTitle
+  return variable
     ? createWorkflowReferenceSummarySegments({
         source: variable.sourceNodeTitle,
         variable: variable.label,

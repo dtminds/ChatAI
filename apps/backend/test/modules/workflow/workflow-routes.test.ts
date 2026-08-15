@@ -58,7 +58,7 @@ describe("workflow routes", () => {
         label: "消息查询",
         limit: 10,
         metric: "最新 10 条消息",
-        schemaVersion: 2,
+        schemaVersion: 1,
         status: "ready",
         take: "latest",
         timeRange: {

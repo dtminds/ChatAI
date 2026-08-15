@@ -342,7 +342,7 @@ export const workflowNodeContractRegistry = {
   ),
   "message-query": runtimeReadyContract(
     "query",
-    2,
+    1,
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
   ),

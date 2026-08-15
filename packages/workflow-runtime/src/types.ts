@@ -665,7 +665,8 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
   >;
   beginFixedWait(input: WorkflowBeginFixedWaitInput): Promise<
     | { kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord }
-    | WorkflowRuntimeFailure
+    | Exclude<WorkflowRuntimeFailure, { action: "cancel" | "defer"; kind: "workflow-unavailable" }>
+    | { action: "cancel"; kind: "workflow-unavailable" }
   >;
   createRunWithInitialTask(input: WorkflowCreateRunInput): Promise<
     | {

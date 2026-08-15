@@ -515,6 +515,8 @@ Stopped 或逻辑删除继续取消全部活动 Run，不等待节点边界，�
 
 Revision 数据本身继续按审计和运行记录保留要求保存，不因没有活动 Task 立即删除。历史页面通过 Revision 快照或稳定展示元数据还原标题和配置，不要求保留能够再次执行该 Revision 的 Runtime Handler。
 
+本能力上线前尚无生产运行数据，因此数据库升级采用一次性运行态重置，不兼容旧模型下已经创建的 Run。升级脚本清空 Run、Task、Wait Event Subscription、Inference Job、Node Execution、Outbox、Inbox、Entry Guard 和派生 Metric 数据；Workflow Definition、Draft、Revision 与 Trigger Binding 继续保留。这样既不会让旧模型的“当前节点与提前创建的下游 Task 不一致”被新 Reconciler 误判，也不会让旧指标口径污染新的 `entered = current + completed + incomplete` 汇总。
+
 ## 16. 非目标
 
 本期不实现：

@@ -406,9 +406,7 @@ export class WorkflowRuntimeService {
         });
         if (waiting.kind === "already-processed") throw alreadyProcessedError();
         if (waiting.kind === "workflow-unavailable") {
-          throw waiting.action === "defer"
-            ? runtimeStatusError("paused")
-            : workflowUnavailable();
+          throw workflowUnavailable();
         }
         if (waiting.kind !== "success") throw staleTaskError();
         return { kind: "waiting" as const, run: waiting.run, task: waiting.task };

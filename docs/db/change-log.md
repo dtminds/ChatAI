@@ -6,20 +6,25 @@
 - Fixed Wait 不再提前创建下游 Task；发布删除 Wait/Wait Event 时写入耐久清退请求。
 - 节点指标增加未完成累计，并支持按当前 Node ID 跨 Revision 聚合。
 - 数据页不再按 Revision 过滤 Run，替换相关查询索引。
+- 当前尚无生产运行数据；升级时一次性清空旧执行态和派生指标，保留 Workflow Definition、Draft、Revision 与 Trigger Binding。
 
 ```sql
-ALTER TABLE xy_wap_embed_workflow_node_execution
-  ADD COLUMN revision INT UNSIGNED NULL COMMENT '本次节点执行使用的Revision' AFTER run_id;
+-- 执行以下一次性重置前，先停止 Workflow Worker 和 Workflow 写入。
+DELETE FROM xy_wap_embed_workflow_event_subscription_event;
+DELETE FROM xy_wap_embed_workflow_event_subscription;
+DELETE FROM xy_wap_embed_workflow_inference_job;
+DELETE FROM xy_wap_embed_workflow_node_execution;
+DELETE FROM xy_wap_embed_workflow_outbox;
+DELETE FROM xy_wap_embed_workflow_inbox;
+DELETE FROM xy_wap_embed_workflow_task;
+DELETE FROM xy_wap_embed_workflow_run;
+DELETE FROM xy_wap_embed_workflow_entry_guard;
+DELETE FROM xy_wap_embed_workflow_daily_metric;
+DELETE FROM xy_wap_embed_workflow_node_metric_event;
+DELETE FROM xy_wap_embed_workflow_node_metric;
 
-UPDATE xy_wap_embed_workflow_node_execution AS execution
-JOIN xy_wap_embed_workflow_run AS run
-  ON run.uid = execution.uid
- AND run.id = execution.run_id
-SET execution.revision = run.revision
-WHERE execution.revision IS NULL;
-
 ALTER TABLE xy_wap_embed_workflow_node_execution
-  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点执行使用的Revision';
+  ADD COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点执行使用的Revision' AFTER run_id;
 
 ALTER TABLE xy_wap_embed_workflow_run
   MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '当前节点Task使用的Revision',

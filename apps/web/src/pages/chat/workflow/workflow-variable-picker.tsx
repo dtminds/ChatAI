@@ -65,12 +65,12 @@ export function WorkflowVariablePicker({
             <HugeiconsIcon
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
               icon={Search01Icon}
-              size={14}
-              strokeWidth={1.8}
+              size={13}
+              strokeWidth={1.6}
             />
             <Input
               aria-label="搜索变量"
-              className="h-8 pl-8 text-xs"
+              className="h-7 pl-8 text-xs"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
               placeholder="搜索"
@@ -126,10 +126,9 @@ function VariableOptions({ variables, onSelect }: {
         return (
           <VariableGroupSubMenu
             icon={visual?.icon}
+            isCurrentNode={group.isCurrentNode}
             key={group.sourceNodeId}
-            label={group.isCurrentNode
-              ? `${group.sourceNodeTitle}（当前节点）`
-              : group.sourceNodeTitle}
+            label={group.sourceNodeTitle}
             onSelect={onSelect}
             showNodeSections
             variables={group.variables}
@@ -142,12 +141,14 @@ function VariableOptions({ variables, onSelect }: {
 
 function VariableGroupSubMenu({
   icon,
+  isCurrentNode = false,
   label,
   onSelect,
   showNodeSections = false,
   variables,
 }: {
   icon?: typeof UserIcon;
+  isCurrentNode?: boolean;
   label: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
   showNodeSections?: boolean;
@@ -163,18 +164,27 @@ function VariableGroupSubMenu({
 
   return (
     <DropdownMenuSub onOpenChange={setOpen} open={open}>
-      <DropdownMenuSubTrigger onClick={() => setOpen(true)}>
+      <DropdownMenuSubTrigger
+        indicatorClassName="!size-3.5 text-muted-foreground/60"
+        onClick={() => setOpen(true)}
+      >
         {icon ? (
           <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
             <HugeiconsIcon
+              className="!size-3.5"
               color="currentColor"
               icon={icon}
-              size={13}
-              strokeWidth={1.8}
+              size={14}
+              strokeWidth={1.6}
             />
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {label}
+          {isCurrentNode
+            ? <span className="text-muted-foreground/70">（当前节点）</span>
+            : null}
+        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-56">
         {outputVariables.length && showNodeSections

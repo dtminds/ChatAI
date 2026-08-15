@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
+import { isWorkflowDynamicTimeRangeProvablyInvalidInGraph } from "@chatai/workflow-engine/graph";
 import {
   getAvailableBranchVariablesForNode,
   getAvailableIntentInputOutputsForNode,
@@ -191,13 +192,26 @@ function validateNodeVariableContent(
         ]
       : [];
 
-    if (
-      timeRange.mode === "dynamic"
-      && areDynamicTimeReferencesEqual(timeRange.start, timeRange.end)
-    ) {
+    const dynamicReferencesIdentical = timeRange.mode === "dynamic"
+      && areDynamicTimeReferencesEqual(timeRange.start, timeRange.end);
+    if (dynamicReferencesIdentical) {
       issues.push(createVariableContentIssue(
         "message-query-time-range-identical",
         "消息查询的开始和结束时间不能相同",
+      ));
+    }
+
+    if (timeRange.mode === "dynamic"
+      && !dynamicReferencesIdentical
+      && isWorkflowDynamicTimeRangeProvablyInvalidInGraph({
+        edges,
+        end: timeRange.end,
+        nodeIds: nodes.map(candidate => candidate.id),
+        start: timeRange.start,
+      })) {
+      issues.push(createVariableContentIssue(
+        "message-query-time-range-invalid",
+        "消息查询的开始时间不能晚于结束时间",
       ));
     }
 
@@ -205,7 +219,7 @@ function validateNodeVariableContent(
       timeRange.mode === "fixed"
       && timeRange.startAt
       && timeRange.endAt
-      && timeRange.startAt >= timeRange.endAt
+      && timeRange.startAt > timeRange.endAt
     ) {
       issues.push(createVariableContentIssue(
         "message-query-time-range-invalid",

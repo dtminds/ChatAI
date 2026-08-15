@@ -26,8 +26,9 @@ type MessageQueryRow = {
 };
 
 type MessageQueryOutputRow = {
+  content: string;
   id: number;
-  text: string;
+  role: string;
 };
 
 type MessageQueryResultInput = {
@@ -130,10 +131,7 @@ export async function executeMessageQuery(
   return fitMessageQueryResult({
     rangeEnd: new Date(input.command.rangeEnd).toISOString(),
     rangeStart: new Date(input.command.rangeStart).toISOString(),
-    rows: chronologicalRows.map(row => ({
-      id: normalizeMessageId(row.id),
-      text: formatMessageQueryRow(row),
-    })),
+    rows: chronologicalRows.map(createMessageQueryOutputRow),
     take: input.command.take,
   });
 }
@@ -186,14 +184,29 @@ function asMessageQueryDatabase(database: Kysely<WorkflowDatabase>) {
 }
 
 export function formatMessageQueryRow(row: MessageQueryRow) {
-  const role = row.from_type === 2
+  return `${getMessageQueryRole(row.from_type)}: ${readMessageText(row.msgtype, row.content)}`;
+}
+
+function createMessageQueryOutputRow(row: MessageQueryRow): MessageQueryOutputRow {
+  return {
+    content: readMessageText(row.msgtype, row.content),
+    id: normalizeMessageId(row.id),
+    role: getMessageQueryRole(row.from_type),
+  };
+}
+
+function getMessageQueryRole(fromType: number | null) {
+  return fromType === 2
     ? "客户"
-    : row.from_type === 1
+    : fromType === 1
       ? "托管账号"
-      : row.from_type === 3
+      : fromType === 3
         ? "机器人"
         : "消息";
-  return `${role}: ${readMessageText(row.msgtype, row.content)}`;
+}
+
+function formatMessageQueryOutputRow(row: MessageQueryOutputRow) {
+  return `${row.role}: ${row.content}`;
 }
 
 function readMessageText(msgtype: string, rawContent: string | null) {
@@ -223,32 +236,35 @@ const MESSAGE_TYPE_LABELS: Record<string, string> = {
 };
 
 function fitMessageQueryResult(input: MessageQueryResultInput) {
-  let rows = input.rows;
+  let visibleRows = input.rows;
   let omittedRows = false;
-  while (rows.length > 1) {
-    const candidate = createMessageQueryResult(input, rows, omittedRows);
+  while (visibleRows.length > 1) {
+    const candidate = createMessageQueryResult(input, visibleRows, omittedRows);
     if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
     omittedRows = true;
-    rows = input.take === "latest" ? rows.slice(1) : rows.slice(0, -1);
+    visibleRows = input.take === "latest" ? visibleRows.slice(1) : visibleRows.slice(0, -1);
   }
 
-  const candidate = createMessageQueryResult(input, rows, omittedRows);
+  const candidate = createMessageQueryResult(input, visibleRows, omittedRows);
   if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
+  const visibleRow = visibleRows[0];
+  if (!visibleRow) return candidate;
   return truncateMessageQueryText(
-    createMessageQueryResult(input, rows, false),
+    createMessageQueryResult(input, visibleRows, false),
+    visibleRow,
     input.take,
   );
 }
 
 function createMessageQueryResult(
-  input: Pick<MessageQueryResultInput, "rangeEnd" | "rangeStart" | "take">,
-  rows: MessageQueryOutputRow[],
+  input: MessageQueryResultInput,
+  visibleRows: MessageQueryOutputRow[],
   omittedRows: boolean,
 ): WorkflowMessageQueryResult {
-  const content = rows.map(row => row.text).join("\n");
+  const content = visibleRows.map(formatMessageQueryOutputRow).join("\n");
   return {
-    messageCount: rows.length,
-    messageIds: rows.map(row => row.id),
+    messageCount: input.rows.length,
+    messageIds: input.rows.map(row => row.id),
     rangeEnd: input.rangeEnd,
     rangeStart: input.rangeStart,
     textContent: omittedRows
@@ -261,22 +277,23 @@ function createMessageQueryResult(
 
 function truncateMessageQueryText(
   result: WorkflowMessageQueryResult,
+  row: MessageQueryOutputRow,
   take: WorkflowMessageQueryCommand["take"],
 ) {
-  const characters = Array.from(result.textContent);
+  const characters = Array.from(row.content);
   let lower = 0;
   let upper = characters.length;
   let fitted = { ...result, textContent: "" };
   while (lower <= upper) {
     const length = Math.floor((lower + upper) / 2);
-    const visibleText = take === "latest"
+    const visibleContent = take === "latest"
       ? characters.slice(characters.length - length).join("")
       : characters.slice(0, length).join("");
     const candidate = {
       ...result,
       textContent: take === "latest"
-        ? `[内容已截断]\n${visibleText}`
-        : `${visibleText}\n[内容已截断]`,
+        ? `${row.role}: [内容已截断]${visibleContent ? ` ${visibleContent}` : ""}`
+        : `${row.role}: ${visibleContent}\n[内容已截断]`,
     };
     if (isWorkflowMessageQueryResultWithinLimit(candidate)) {
       fitted = candidate;

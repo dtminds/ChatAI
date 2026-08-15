@@ -23,7 +23,7 @@ describe("Workflow Message Query binding", () => {
     });
   });
 
-  it("resolves fixed UTC+8 times and includes the complete end minute", () => {
+  it("allows one fixed UTC+8 minute and includes the complete end minute", () => {
     expect(createWorkflowMessageQueryCommand({
       config: {
         limit: 5,
@@ -31,14 +31,14 @@ describe("Workflow Message Query binding", () => {
         timeRange: {
           endAt: "2026-08-15T10:00",
           mode: "fixed",
-          startAt: "2026-08-15T09:00",
+          startAt: "2026-08-15T10:00",
         },
       },
       context: context(),
     })).toEqual({
       limit: 5,
       rangeEnd: Date.parse("2026-08-15T02:00:59.999Z"),
-      rangeStart: Date.parse("2026-08-15T01:00:00.000Z"),
+      rangeStart: Date.parse("2026-08-15T02:00:00.000Z"),
       seatId: 101,
       take: "earliest",
     });

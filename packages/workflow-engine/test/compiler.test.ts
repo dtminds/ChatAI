@@ -120,6 +120,22 @@ describe("compileWorkflowDraft", () => {
       nodeId: "wait",
     });
 
+    const reversedDynamicRange = createDraft();
+    reversedDynamicRange.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "occurredAt", kind: "workflow-trigger" },
+        mode: "dynamic",
+        start: { field: "enteredAt", kind: "current-node-lifecycle" },
+      },
+    }));
+    expectCompilationIssue(reversedDynamicRange, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
+
     const unavailableLifecycle = createDraft();
     unavailableLifecycle.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10,
@@ -134,6 +150,36 @@ describe("compileWorkflowDraft", () => {
       code: "invalid-node-config",
       message: "Message Query node references unavailable time data",
       nodeId: "wait",
+    });
+
+    const reversedLifecycleRange = {
+      edges: [
+        { id: "start-first", source: "start", target: "first" },
+        { id: "first-second", source: "first", target: "second" },
+        { id: "second-query", source: "second", target: "query" },
+        { id: "query-end", source: "query", target: "end" },
+      ],
+      nodes: [
+        node("start", "start", startConfig()),
+        node("first", "wait", { duration: 1, mode: "duration", unit: "day" }),
+        node("second", "wait", { duration: 1, mode: "duration", unit: "day" }),
+        node("query", "message-query", {
+          limit: 10,
+          take: "latest",
+          timeRange: {
+            end: { field: "exitedAt", kind: "node-lifecycle", nodeId: "first" },
+            mode: "dynamic",
+            start: { field: "enteredAt", kind: "node-lifecycle", nodeId: "second" },
+          },
+        }),
+        node("end", "end"),
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+    expectCompilationIssue(reversedLifecycleRange, {
+      code: "invalid-node-config",
+      message: "Message Query node time range is causally reversed",
+      nodeId: "query",
     });
   });
 

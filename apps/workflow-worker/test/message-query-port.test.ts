@@ -166,8 +166,8 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ messageCount: 1, messageIds: [9003] });
-    expect(result.textContent).toMatch(/^\[内容已截断\]/);
+    expect(result).toMatchObject({ messageCount: 3, messageIds: [9001, 9002, 9003] });
+    expect(result.textContent).toMatch(/^客户: \[内容已截断\]/);
     expect(result.textContent).not.toContain("LATEST-START-");
     expect(result.textContent).toMatch(/-LATEST-END$/);
     expect(result.textContent).not.toContain("MIDDLE-");

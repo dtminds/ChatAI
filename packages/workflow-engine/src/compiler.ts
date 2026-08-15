@@ -20,6 +20,7 @@ import { WorkflowCompilationError } from "./errors.js";
 import {
   getWorkflowGuaranteedUpstreamNodeIds,
   getWorkflowSourceOutletId,
+  isWorkflowDynamicTimeRangeProvablyInvalidInGraph,
   isWorkflowOutputAvailableOnSourceOutlets,
   validateWorkflowGraph,
 } from "./graph.js";
@@ -177,7 +178,7 @@ function validateWorkflowNodeReferences(
         nodeIds,
         edges,
       );
-      const valid = [node.config.timeRange.start, node.config.timeRange.end]
+      const referencesAvailable = [node.config.timeRange.start, node.config.timeRange.end]
         .every(reference => validateWorkflowMessageQueryTimeReference({
           edges,
           guaranteedUpstreamIds,
@@ -187,10 +188,18 @@ function validateWorkflowNodeReferences(
           workflowType,
           entryEventTypes,
         }));
-      if (!valid) {
+      const rangeInvalid = isWorkflowDynamicTimeRangeProvablyInvalidInGraph({
+        edges,
+        end: node.config.timeRange.end,
+        nodeIds,
+        start: node.config.timeRange.start,
+      });
+      if (!referencesAvailable || rangeInvalid) {
         issues.push({
           code: "invalid-node-config",
-          message: "Message Query node references unavailable time data",
+          message: rangeInvalid
+            ? "Message Query node time range is causally reversed"
+            : "Message Query node references unavailable time data",
           nodeId: node.id,
         });
       }

@@ -4,6 +4,7 @@ import {
   canonicalizeWorkflowCapabilityRequirements,
   getWorkflowCapabilityIdentity,
   KNOWN_WORKFLOW_CAPABILITIES,
+  WORKFLOW_QUERY_CAPABILITIES,
 } from "./capability-requirements.js";
 
 export type WorkflowDeploymentCapabilities = {
@@ -14,6 +15,9 @@ export type WorkflowDeploymentCapabilities = {
 const KNOWN_CAPABILITY_IDENTITIES = new Set(
   KNOWN_WORKFLOW_CAPABILITIES.map(getWorkflowCapabilityIdentity),
 );
+export const WORKFLOW_BUILT_IN_CAPABILITIES = [
+  WORKFLOW_QUERY_CAPABILITIES["message-query"],
+] as const satisfies readonly WorkflowCapabilityRequirement[];
 const CAPABILITY_TOKEN_PATTERN = /^((?:event|operation)\.[a-z0-9]+(?:[._-][a-z0-9]+)*)@([1-9][0-9]*)$/;
 
 export class WorkflowDeploymentCapabilityConfigError extends Error {
@@ -65,7 +69,10 @@ export function parseWorkflowDeploymentCapabilities(
 export function createWorkflowDeploymentCapabilities(
   requirements: readonly WorkflowCapabilityRequirement[],
 ): WorkflowDeploymentCapabilities {
-  const capabilities = canonicalizeWorkflowCapabilityRequirements(requirements);
+  const capabilities = canonicalizeWorkflowCapabilityRequirements([
+    ...WORKFLOW_BUILT_IN_CAPABILITIES,
+    ...requirements,
+  ]);
   const fingerprint = createHash("sha256")
     .update(JSON.stringify(capabilities))
     .digest("hex");

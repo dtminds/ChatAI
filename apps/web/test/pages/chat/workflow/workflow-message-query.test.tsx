@@ -173,7 +173,8 @@ describe("workflow message query", () => {
 
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
-    const currentNodeMenuItem = screen.getByRole("menuitem", { name: "消息查询" });
+    await user.type(screen.getByRole("textbox", { name: "搜索变量" }), "当前节点");
+    const currentNodeMenuItem = screen.getByRole("menuitem", { name: "消息查询（当前节点）" });
     await user.click(currentNodeMenuItem);
     expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();

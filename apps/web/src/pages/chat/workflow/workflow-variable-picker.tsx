@@ -3,7 +3,6 @@ import {
   InputCursorTextIcon,
   Search01Icon,
   UserIcon,
-  ZapIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -21,7 +20,6 @@ import { cn } from "@/lib/utils";
 import { nodeVisuals } from "./node-definitions";
 import type {
   WorkflowVariableDefinition,
-  WorkflowVariableScope,
 } from "./types";
 import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
 
@@ -43,7 +41,9 @@ export function WorkflowVariablePicker({
     const normalizedQuery = query.trim().toLowerCase();
     return normalizedQuery
       ? variables.filter((variable) =>
-          `${variable.label} ${variable.sourceNodeTitle ?? ""} ${variable.selector.join(".")}`
+          `${variable.label} ${variable.sourceNodeTitle ?? ""} ${variable.selector.join(".")} ${
+            variable.scope === "current-node-lifecycle" ? "当前节点" : ""
+          }`
             .toLowerCase()
             .includes(normalizedQuery))
       : variables;
@@ -95,35 +95,30 @@ function VariableOptions({ variables, onSelect }: {
     return <p className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用变量</p>;
   }
 
-  const contextScopes: Exclude<WorkflowVariableScope, "node" | "node-lifecycle">[] = [
-    "input",
-    "subject",
-    "trigger",
-    "current-node-lifecycle",
-  ];
+  const contextVariableGroups = contextScopes.flatMap((scope) => {
+    const scoped = variables.filter((variable) =>
+      variable.scope === scope && !variable.sourceNodeId);
+    return scoped.length ? [{ scope, variables: scoped }] : [];
+  });
   const nodeVariableGroups = groupNodeVariables(
     variables.filter((variable) => variable.sourceNodeId && variable.sourceNodeTitle),
   );
 
   return (
     <>
-      {contextScopes.map((scope) => {
-        const scoped = variables.filter((variable) =>
-          variable.scope === scope && !variable.sourceNodeId);
-        if (!scoped.length) return null;
+      {contextVariableGroups.map(group => (
+        <VariableGroupSubMenu
+          icon={scopeIcons[group.scope]}
+          key={group.scope}
+          label={scopeLabels[group.scope]}
+          onSelect={onSelect}
+          variables={group.variables}
+        />
+      ))}
 
-        return (
-          <VariableGroupSubMenu
-            icon={scopeIcons[scope]}
-            key={scope}
-            label={scopeLabels[scope]}
-            onSelect={onSelect}
-            variables={scoped}
-          />
-        );
-      })}
-
-      {nodeVariableGroups.length ? <DropdownMenuSeparator /> : null}
+      {contextVariableGroups.length && nodeVariableGroups.length
+        ? <DropdownMenuSeparator />
+        : null}
 
       {nodeVariableGroups.map((group) => {
         const visual = group.sourceNodeKind ? nodeVisuals[group.sourceNodeKind] : undefined;
@@ -133,7 +128,9 @@ function VariableOptions({ variables, onSelect }: {
             icon={visual?.icon}
             iconAccentRgb={visual?.accentRgb}
             key={group.sourceNodeId}
-            label={group.sourceNodeTitle}
+            label={group.isCurrentNode
+              ? `${group.sourceNodeTitle}（当前节点）`
+              : group.sourceNodeTitle}
             onSelect={onSelect}
             variables={group.variables}
           />
@@ -213,6 +210,7 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
     sourceNodeId: string;
     sourceNodeKind: WorkflowVariableDefinition["sourceNodeKind"];
     sourceNodeTitle: string;
+    isCurrentNode: boolean;
     variables: WorkflowVariableDefinition[];
   }>();
 
@@ -221,6 +219,7 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 
     const current = groups.get(variable.sourceNodeId);
     if (current) {
+      current.isCurrentNode ||= variable.scope === "current-node-lifecycle";
       current.variables.push(variable);
       return;
     }
@@ -229,6 +228,7 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
       sourceNodeId: variable.sourceNodeId,
       sourceNodeKind: variable.sourceNodeKind,
       sourceNodeTitle: variable.sourceNodeTitle,
+      isCurrentNode: variable.scope === "current-node-lifecycle",
       variables: [variable],
     });
   });
@@ -236,16 +236,15 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
   return [...groups.values()];
 }
 
-const scopeLabels: Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, string> = {
-  "current-node-lifecycle": "当前节点时间",
+const contextScopes = ["input", "subject"] as const;
+type ContextScope = typeof contextScopes[number];
+
+const scopeLabels: Record<ContextScope, string> = {
   input: "输入参数",
   subject: "主体变量",
-  trigger: "触发变量",
 };
 
 const scopeIcons = {
-  "current-node-lifecycle": InputCursorTextIcon,
   input: InputCursorTextIcon,
   subject: UserIcon,
-  trigger: ZapIcon,
-} satisfies Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, typeof UserIcon>;
+} satisfies Record<ContextScope, typeof UserIcon>;

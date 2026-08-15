@@ -43,6 +43,10 @@ describe("Workflow Message Query capability", () => {
     expect(messageQuery.sql).toContain("`platform` = ?");
     expect(messageQuery.sql).toContain("`third_user_id` = ?");
     expect(messageQuery.sql).toContain("`third_external_id` = ?");
+    expect(messageQuery.sql).toContain("`chat_type` = ?");
+    expect(messageQuery.sql).toContain("`status` = ?");
+    expect(messageQuery.sql).toContain("`revoke_status` = ?");
+    expect(messageQuery.sql).toContain("`revoke_status` is null");
     expect(messageQuery.sql).toContain("`msgtime` >= ?");
     expect(messageQuery.sql).toContain("`msgtime` <= ?");
     expect(messageQuery.sql).not.toContain("create_time");
@@ -132,8 +136,84 @@ describe("Workflow Message Query capability", () => {
       uid: 9,
     });
 
+    expect(result).toMatchObject({ messageCount: 1, messageIds: [9001] });
+    expect(result.textContent).toMatch(/^客户: 很长的消息/);
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
-    expect(result.textContent).toContain("[内容已截断]");
+    expect(result.textContent).toMatch(/\[内容已截断\]$/);
+  });
+
+  it("drops older messages first when the latest result exceeds the output envelope", async () => {
+    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
+      ? { rows: [{ third_userid: "work-user-1" }] }
+      : {
+          rows: [
+            messageRow(9003, `LATEST-START-${"c".repeat(10_000)}-LATEST-END`),
+            messageRow(9002, `MIDDLE-${"b".repeat(5_000)}`),
+            messageRow(9001, `EARLIEST-${"a".repeat(5_000)}`),
+          ],
+        });
+
+    const result = await executeMessageQuery(database, {
+      command: {
+        limit: 3,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({ messageCount: 1, messageIds: [9003] });
+    expect(result.textContent).toMatch(/^\[内容已截断\]/);
+    expect(result.textContent).not.toContain("LATEST-START-");
+    expect(result.textContent).toMatch(/-LATEST-END$/);
+    expect(result.textContent).not.toContain("MIDDLE-");
+    expect(result.textContent).not.toContain("EARLIEST-");
+    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
+  });
+
+  it("returns an empty result when no messages match", async () => {
+    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
+      ? { rows: [{ third_userid: "work-user-1" }] }
+      : { rows: [] });
+
+    await expect(executeMessageQuery(database, {
+      command: {
+        limit: 10,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    })).resolves.toMatchObject({
+      messageCount: 0,
+      messageIds: [],
+      textContent: "",
+    });
+  });
+
+  it("stops before querying messages when the managed account is unavailable", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
+
+    await expect(executeMessageQuery(database, {
+      command: {
+        limit: 10,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    })).rejects.toMatchObject({ code: "WORKFLOW_MESSAGE_QUERY_SEAT_UNAVAILABLE" });
+    expect(queries).toHaveLength(1);
   });
 
   it("formats non-text messages without exposing raw payloads", () => {
@@ -141,18 +221,25 @@ describe("Workflow Message Query capability", () => {
       content: JSON.stringify({ fileSerialNo: "secret" }),
       from_type: 2,
       id: 1,
-      msgtime: 1,
       msgtype: "image",
     })).toBe("客户: [图片]");
     expect(formatMessageQueryRow({
       content: JSON.stringify({ text: "自动回复" }),
       from_type: 3,
       id: 2,
-      msgtime: 2,
       msgtype: "text",
     })).toBe("机器人: 自动回复");
   });
 });
+
+function messageRow(id: number, text: string) {
+  return {
+    content: JSON.stringify({ text }),
+    from_type: 2,
+    id,
+    msgtype: "text",
+  };
+}
 
 function createCompileOnlyDatabase() {
   return new Kysely<WorkflowDatabase>({

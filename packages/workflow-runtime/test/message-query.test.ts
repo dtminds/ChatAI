@@ -23,7 +23,7 @@ describe("Workflow Message Query binding", () => {
     });
   });
 
-  it("resolves fixed UTC+8 wall-clock times to msgtime milliseconds", () => {
+  it("resolves fixed UTC+8 times and includes the complete end minute", () => {
     expect(WORKFLOW_MESSAGE_QUERY_CAPABILITY_BINDING.createCommand({
       config: {
         limit: 5,
@@ -37,7 +37,7 @@ describe("Workflow Message Query binding", () => {
       context: context(),
     })).toEqual({
       limit: 5,
-      rangeEnd: Date.parse("2026-08-15T02:00:00.000Z"),
+      rangeEnd: Date.parse("2026-08-15T02:00:59.999Z"),
       rangeStart: Date.parse("2026-08-15T01:00:00.000Z"),
       seatId: 101,
       take: "earliest",

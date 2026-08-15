@@ -14,6 +14,7 @@ import type {
 } from "./capability-port.js";
 
 const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
+const ONE_MINUTE_MILLISECONDS = 60 * 1_000;
 const FIXED_LOCAL_DATE_TIME_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -58,7 +59,7 @@ function resolveMessageQueryRange(
 ) {
   if (timeRange.mode === "fixed") {
     return {
-      rangeEnd: parseFixedLocalDateTime(timeRange.endAt),
+      rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
     };
   }

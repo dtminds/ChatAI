@@ -30,6 +30,18 @@ type MessageQueryRow = {
   msgtype: string;
 };
 
+type MessageQueryOutputRow = {
+  id: number;
+  text: string;
+};
+
+type MessageQueryResultInput = {
+  rangeEnd: string;
+  rangeStart: string;
+  rows: MessageQueryOutputRow[];
+  take: WorkflowMessageQueryCommand["take"];
+};
+
 interface WorkflowMessageQueryMessageTable {
   chat_type: number;
   content: string | null;
@@ -140,11 +152,13 @@ export async function executeMessageQuery(
     ? [...rows].reverse()
     : rows;
   return fitMessageQueryResult({
-    messageCount: chronologicalRows.length,
-    messageIds: chronologicalRows.map(row => normalizeMessageId(row.id)),
     rangeEnd: new Date(input.command.rangeEnd).toISOString(),
     rangeStart: new Date(input.command.rangeStart).toISOString(),
-    textContent: chronologicalRows.map(formatMessageQueryRow).join("\n"),
+    rows: chronologicalRows.map(row => ({
+      id: normalizeMessageId(row.id),
+      text: formatMessageQueryRow(row),
+    })),
+    take: input.command.take,
   });
 }
 
@@ -232,35 +246,79 @@ const MESSAGE_TYPE_LABELS: Record<string, string> = {
   weapp: "小程序",
 };
 
-function fitMessageQueryResult(result: WorkflowMessageQueryResult) {
+function fitMessageQueryResult(input: MessageQueryResultInput) {
+  let rows = input.rows;
+  let omittedRows = false;
+  while (rows.length > 1) {
+    const candidate = createMessageQueryResult(input, rows, omittedRows);
+    if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
+    omittedRows = true;
+    rows = input.take === "latest" ? rows.slice(1) : rows.slice(0, -1);
+  }
+
+  const candidate = createMessageQueryResult(input, rows, omittedRows);
+  if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
+  return truncateMessageQueryText(
+    createMessageQueryResult(input, rows, false),
+    input.take,
+  );
+}
+
+function createMessageQueryResult(
+  input: Pick<MessageQueryResultInput, "rangeEnd" | "rangeStart" | "take">,
+  rows: MessageQueryOutputRow[],
+  omittedRows: boolean,
+): WorkflowMessageQueryResult {
+  const content = rows.map(row => row.text).join("\n");
+  return {
+    messageCount: rows.length,
+    messageIds: rows.map(row => row.id),
+    rangeEnd: input.rangeEnd,
+    rangeStart: input.rangeStart,
+    textContent: omittedRows
+      ? input.take === "latest"
+        ? `[内容已截断]\n${content}`
+        : `${content}\n[内容已截断]`
+      : content,
+  };
+}
+
+function truncateMessageQueryText(
+  result: WorkflowMessageQueryResult,
+  take: WorkflowMessageQueryCommand["take"],
+) {
+  const characters = Array.from(result.textContent);
+  let lower = 0;
+  let upper = characters.length;
+  let fitted = { ...result, textContent: "" };
+  while (lower <= upper) {
+    const length = Math.floor((lower + upper) / 2);
+    const visibleText = take === "latest"
+      ? characters.slice(characters.length - length).join("")
+      : characters.slice(0, length).join("");
+    const candidate = {
+      ...result,
+      textContent: take === "latest"
+        ? `[内容已截断]\n${visibleText}`
+        : `${visibleText}\n[内容已截断]`,
+    };
+    if (isWorkflowMessageQueryResultWithinLimit(candidate)) {
+      fitted = candidate;
+      lower = length + 1;
+    } else {
+      upper = length - 1;
+    }
+  }
+  return fitted;
+}
+
+function isWorkflowMessageQueryResultWithinLimit(result: WorkflowMessageQueryResult) {
   try {
     assertWorkflowRuntimeValue(result, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
-    return result;
+    return true;
   } catch (error) {
-    if (!(error instanceof WorkflowRuntimeValueError) || error.reason !== "too-large") throw error;
-    const characters = Array.from(result.textContent);
-    let lower = 0;
-    let upper = characters.length;
-    let fitted = { ...result, textContent: "" };
-    while (lower <= upper) {
-      const middle = Math.floor((lower + upper) / 2);
-      const truncated = middle < characters.length;
-      const candidate = {
-        ...result,
-        textContent: `${characters.slice(0, middle).join("")}${truncated ? "\n[内容已截断]" : ""}`,
-      };
-      try {
-        assertWorkflowRuntimeValue(candidate, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
-        fitted = candidate;
-        lower = middle + 1;
-      } catch (error) {
-        if (!(error instanceof WorkflowRuntimeValueError) || error.reason !== "too-large") {
-          throw error;
-        }
-        upper = middle - 1;
-      }
-    }
-    return fitted;
+    if (error instanceof WorkflowRuntimeValueError && error.reason === "too-large") return false;
+    throw error;
   }
 }
 

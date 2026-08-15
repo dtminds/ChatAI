@@ -1,8 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
+  Globe02Icon,
   InputCursorTextIcon,
   Search01Icon,
-  UserIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -95,11 +95,23 @@ function VariableOptions({ variables, onSelect }: {
     return <p className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用变量</p>;
   }
 
-  const contextVariableGroups = contextScopes.flatMap((scope) => {
-    const scoped = variables.filter((variable) =>
-      variable.scope === scope && !variable.sourceNodeId);
-    return scoped.length ? [{ scope, variables: scoped }] : [];
-  });
+  const contextVariableGroups = [
+    {
+      icon: InputCursorTextIcon,
+      key: "input",
+      label: "输入参数",
+      variables: variables.filter(variable =>
+        variable.scope === "input" && !variable.sourceNodeId),
+    },
+    {
+      icon: Globe02Icon,
+      key: "global",
+      label: "全局变量",
+      variables: variables.filter(variable =>
+        (variable.scope === "subject" || variable.scope === "trigger")
+        && !variable.sourceNodeId),
+    },
+  ].filter(group => group.variables.length);
   const nodeVariableGroups = groupNodeVariables(
     variables.filter((variable) => variable.sourceNodeId && variable.sourceNodeTitle),
   );
@@ -108,9 +120,9 @@ function VariableOptions({ variables, onSelect }: {
     <>
       {contextVariableGroups.map(group => (
         <VariableGroupSubMenu
-          icon={scopeIcons[group.scope]}
-          key={group.scope}
-          label={scopeLabels[group.scope]}
+          icon={group.icon}
+          key={group.key}
+          label={group.label}
           onSelect={onSelect}
           variables={group.variables}
         />
@@ -147,7 +159,7 @@ function VariableGroupSubMenu({
   showNodeSections = false,
   variables,
 }: {
-  icon?: typeof UserIcon;
+  icon?: typeof Globe02Icon;
   isCurrentNode?: boolean;
   label: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
@@ -198,7 +210,7 @@ function VariableGroupSubMenu({
         {attributeVariables.length
           ? (
               <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-normal text-muted-foreground/60">
-                节点属性
+                节点事件
               </DropdownMenuLabel>
             )
           : null}
@@ -268,16 +280,3 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 
   return [...groups.values()];
 }
-
-const contextScopes = ["input", "subject"] as const;
-type ContextScope = typeof contextScopes[number];
-
-const scopeLabels: Record<ContextScope, string> = {
-  input: "输入参数",
-  subject: "主体变量",
-};
-
-const scopeIcons = {
-  input: InputCursorTextIcon,
-  subject: UserIcon,
-} satisfies Record<ContextScope, typeof UserIcon>;

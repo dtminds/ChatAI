@@ -25,14 +25,10 @@ describe("workflow variables", () => {
   it("registers stable context selectors by scope", () => {
     expect(workflowContextVariables.map((variable) => variable.selector)).toEqual([
       ["subject", "id"],
-      ["trigger", "eventType"],
       ["trigger", "occurredAt"],
+      ["trigger", "projection", "externalUserId"],
       ["trigger", "projection", "workUserId"],
       ["trigger", "projection", "seatId"],
-      ["trigger", "projection", "externalUserId"],
-      ["trigger", "projection", "thirdExternalUserId"],
-      ["trigger", "projection", "tagId"],
-      ["trigger", "projection", "messageId"],
     ]);
   });
 
@@ -46,11 +42,9 @@ describe("workflow variables", () => {
     expect(variables).toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["trigger", "projection", "workUserId"] }),
       expect.objectContaining({ selector: ["trigger", "projection", "externalUserId"] }),
-      expect.objectContaining({ selector: ["trigger", "projection", "tagId"] }),
     ]));
     expect(variables).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["trigger", "projection", "seatId"] }),
-      expect.objectContaining({ selector: ["trigger", "projection", "messageId"] }),
     ]));
   });
 
@@ -64,11 +58,9 @@ describe("workflow variables", () => {
     expect(variables).toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["trigger", "projection", "workUserId"] }),
       expect.objectContaining({ selector: ["trigger", "projection", "seatId"] }),
-      expect.objectContaining({ selector: ["trigger", "projection", "thirdExternalUserId"] }),
-      expect.objectContaining({ selector: ["trigger", "projection", "messageId"] }),
     ]));
     expect(variables).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ selector: ["trigger", "projection", "tagId"] }),
+      expect.objectContaining({ selector: ["trigger", "projection", "externalUserId"] }),
     ]));
   });
 
@@ -147,7 +139,7 @@ describe("workflow variables", () => {
 
     expect(getWorkflowVariableSelectorKey(["subject", "id"])).toBe("subject.id");
     expect(resolveWorkflowVariable(variables, ["subject", "id"])).toEqual(expect.objectContaining({
-      label: "主体ID",
+      label: "客户 ID",
       scope: "subject",
     }));
     expect(resolveWorkflowVariable(variables, ["node", "missing", "result"])).toBeUndefined();
@@ -165,7 +157,7 @@ describe("workflow variables", () => {
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["subject", "id"],
-    )!)).toBe("主体ID");
+    )!)).toBe("客户 ID");
     expect(getInvalidVariableContentSelectors([
       { selector: ["subject", "id"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
@@ -197,11 +189,9 @@ describe("workflow variables", () => {
     expect(getAvailableVariablesForNode("branch-intent", nodes, edges)).toEqual(expect.arrayContaining([
       expect.objectContaining({ selector: ["current-node-lifecycle", "enteredAt"] }),
     ]));
-    expect(branchVariables.find(variable => variable.selector[0] === "trigger"))
-      .toEqual(expect.objectContaining({
-        sourceNodeId: "start",
-        sourceNodeTitle: nodes.find(node => node.id === "start")?.data.title,
-      }));
+    const triggerVariable = branchVariables.find(variable => variable.selector[0] === "trigger");
+    expect(triggerVariable).toEqual(expect.objectContaining({ scope: "trigger" }));
+    expect(triggerVariable?.sourceNodeId).toBeUndefined();
   });
 
   it("keeps lifecycle values but hides outputs that are not guaranteed on every source outlet", () => {

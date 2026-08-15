@@ -476,7 +476,7 @@ describe("workflow node contracts", () => {
     )).toBe(false);
     expect(getWorkflowContextVariableValueType(
       ["trigger", "projection", "messageId"],
-    )).toEqual({ kind: "number" });
+    )).toBeNull();
     expect(getWorkflowContextVariableValueType(
       ["trigger", "projection", "workUserId"],
       "wecom_sop",
@@ -490,11 +490,9 @@ describe("workflow node contracts", () => {
       ["contact.tag_added", "message.received"],
     )).toEqual([
       "subject.id",
-      "trigger.eventType",
       "trigger.occurredAt",
       "trigger.projection.workUserId",
       "trigger.projection.seatId",
-      "trigger.projection.thirdExternalUserId",
     ]);
     expect(getWorkflowContextVariableValueType(
       ["trigger", "projection", "messageId"],

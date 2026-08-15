@@ -582,16 +582,12 @@ export function getWorkflowContextVariableValueType(
     return null;
   }
   if (key === "subject.id") return { kind: "string" };
-  if (key === "trigger.eventType") return { kind: "string" };
   if (key === "trigger.occurredAt") return { kind: "datetime" };
   if (key === "trigger.projection.workUserId"
-    || key === "trigger.projection.seatId"
-    || key === "trigger.projection.tagId"
-    || key === "trigger.projection.messageId") {
+    || key === "trigger.projection.seatId") {
     return { kind: "number" };
   }
-  if (key === "trigger.projection.externalUserId"
-    || key === "trigger.projection.thirdExternalUserId") {
+  if (key === "trigger.projection.externalUserId") {
     return { kind: "string" };
   }
   return null;

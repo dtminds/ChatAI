@@ -1125,17 +1125,17 @@ describe("Agent workflow page", () => {
 
     const operatorSection = operatorMessage.closest("section")!;
     await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
+    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
 
     const customerSection = customerMessage.closest("section")!;
     await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
+    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
 
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服提示：{主体ID}");
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("对客话术：{主体ID}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服提示：{客户 ID}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("对客话术：{客户 ID}");
     });
     expect(within(panel).queryByText("0/100")).not.toBeInTheDocument();
   });
@@ -1360,14 +1360,14 @@ describe("Agent workflow page", () => {
       expect(within(panel).getByText("生成营销文案.output")).toBeInTheDocument();
     });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "主体变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /主体ID/ }));
+    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
 
     await waitFor(() => {
-      expect(within(panel).getByText("主体ID")).toBeInTheDocument();
+      expect(within(panel).getByText("客户 ID")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.output} {主体ID}");
+      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.output} {客户 ID}");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });

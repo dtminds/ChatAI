@@ -152,7 +152,7 @@ describe("workflow message query", () => {
     expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("消息查询.进入时间");
   });
 
-  it("shows trigger time under start and only entry time under the current node", async () => {
+  it("keeps trigger time global and shows lifecycle values under their nodes", async () => {
     const user = userEvent.setup();
     const queryNode = createMessageQueryNode();
     render(
@@ -167,9 +167,14 @@ describe("workflow message query", () => {
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
     const startMenuItem = screen.getByRole("menuitem", { name: "开始" });
     await user.click(startMenuItem);
-    expect(await screen.findByRole("menuitem", { name: /触发时间.*日期时间/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /退出时间.*日期时间/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /触发时间.*日期时间/ })).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
+    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
+    expect(await screen.findByRole("menuitem", { name: /触发时间.*日期时间/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "结束时间时间点" }));

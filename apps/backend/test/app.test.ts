@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { buildApp, type AppBuildOptions } from "../src/app";
 import { createMemoryWorkbenchService } from "./fixtures/workbench-memory.service";
 import {
@@ -159,10 +158,6 @@ describe("backend app", () => {
 
   it("serves the workflow control-plane lifecycle through formal authentication", async () => {
     const workflowService = new WorkflowService(new InMemoryWorkflowRepository(), {
-      deploymentCapabilities: createWorkflowDeploymentCapabilities([{
-        capabilityKey: "event.contact.friend_added",
-        contractVersion: 1,
-      }]),
       entitlementPort: {
         check: async () => ({ entitled: true, unentitledSince: null }),
       },

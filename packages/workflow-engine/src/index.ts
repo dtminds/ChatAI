@@ -1,7 +1,5 @@
 export * from "./availability.js";
-export * from "./capability-requirements.js";
 export * from "./compiler.js";
-export * from "./deployment-capabilities.js";
 export * from "./errors.js";
 export * from "./event-catalog.js";
 export * from "./execution-spec.js";

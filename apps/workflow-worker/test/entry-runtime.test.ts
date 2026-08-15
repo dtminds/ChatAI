@@ -4,9 +4,6 @@ import {
   type WorkflowExecutionSpec,
 } from "@chatai/contracts";
 import {
-  createWorkflowDeploymentCapabilities,
-} from "@chatai/workflow-engine";
-import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeService,
   type WorkflowTriggerBindingRecord,
@@ -15,11 +12,6 @@ import { describe, expect, it, vi } from "vitest";
 import { startEntryConsumer } from "../src/entry-consumer.js";
 import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 import { createFakeWorkflowEventCatalog } from "./support/fake-workflow-event-catalog.js";
-
-const ENTRY_CAPABILITY = {
-  capabilityKey: "event.contact.friend_added",
-  contractVersion: 1,
-} as const;
 
 describe("Workflow Entry runtime composition", () => {
   it("fans one event out to matching Workflows and absorbs a repeated event through the Inbox", async () => {
@@ -43,7 +35,6 @@ describe("Workflow Entry runtime composition", () => {
       })),
     }, repository, undefined, {
       clock: () => now,
-      deploymentCapabilities: createWorkflowDeploymentCapabilities([ENTRY_CAPABILITY]),
       entitlementPort: {
         check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
       },
@@ -110,17 +101,14 @@ function executionSpec(workflowId: string): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [ENTRY_CAPABILITY],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [ENTRY_CAPABILITY],
     schemaVersion: 1,
   };
 }

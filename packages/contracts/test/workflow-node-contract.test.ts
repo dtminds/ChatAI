@@ -7,6 +7,7 @@ import {
   getWorkflowNodeOutputContracts,
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowNodeContract,
+  isWorkflowDynamicTimeRangeProvablyInvalid,
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
   isWorkflowOutputValueTypeEqual,
@@ -159,9 +160,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "end", "llm", "message-query", "start", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["handoff", "message"]);
+      .toEqual(["ai-intent", "handoff", "llm", "message"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
   });
@@ -190,6 +191,23 @@ describe("workflow node contracts", () => {
         startAt: "2026-08-15T10:00",
       },
     })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-08-15T10:00",
+        mode: "fixed",
+        startAt: "2026-08-15T10:00",
+      },
+    })).toBe(true);
+    expect(isWorkflowDynamicTimeRangeProvablyInvalid(
+      { field: "enteredAt", kind: "current-node-lifecycle" },
+      { field: "occurredAt", kind: "workflow-trigger" },
+    )).toBe(true);
+    expect(isWorkflowDynamicTimeRangeProvablyInvalid(
+      { field: "occurredAt", kind: "workflow-trigger" },
+      { field: "enteredAt", kind: "current-node-lifecycle" },
+    )).toBe(false);
   });
 
   it("assigns every node kind one stable execution class", () => {

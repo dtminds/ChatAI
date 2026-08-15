@@ -2,7 +2,7 @@
 
 ## Context
 
-The marketing workflow canvas is a product frontend module, not a disposable demo. The Node control plane, persistence model, compiler and Runtime kernel now exist; Java business events and production Capability Adapters are connected incrementally behind explicit availability gates.
+The marketing workflow canvas is a product frontend module, not a disposable demo. The Node control plane, persistence model, compiler and Runtime kernel now exist; node execution support is declared by node maturity, while Java business events are exposed only after the Worker Event Catalog supports them.
 
 The workflow module lives at:
 

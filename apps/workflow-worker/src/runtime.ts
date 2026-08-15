@@ -54,7 +54,6 @@ export async function startWorkflowWorker(input: {
     throw error;
   }
   input.logger.info({
-    capabilityFingerprint: input.config.deploymentCapabilities.fingerprint,
     environment: input.config.environment,
     event: "workflow.worker.started",
     roles: [...input.config.roles],

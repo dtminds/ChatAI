@@ -225,9 +225,7 @@ describe("workflow DSL", () => {
 
     expect(graph.nodes.find((node) => node.id === waitEventNode.id)?.config).toEqual({
       event: {
-        capabilityKey: "event.message.received",
         collectWindowSeconds: 10,
-        contractVersion: 1,
         type: "message.received",
       },
       timeout: { duration: 24, unit: "hour" },

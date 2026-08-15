@@ -382,6 +382,24 @@ describe("workflow worker runtime", () => {
     expect(runtimeClose).toHaveBeenCalledTimes(1);
   });
 
+  it("logs stable worker identity metadata on startup", async () => {
+    const logger = { info: vi.fn() };
+    const worker = await startWorkflowWorker({
+      config: config(),
+      logger,
+      startHealth: vi.fn(async () => ({ close: vi.fn(async () => {}) })),
+      startRuntime: vi.fn(async () => ({
+        close: vi.fn(async () => {}),
+        getReadiness: () => ({ broker: true, database: true, roles: {} }),
+      })),
+    });
+
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: "workflow.worker.started",
+    }), "workflow worker started");
+    await worker.close();
+  });
+
 });
 
 function createResources() {
@@ -541,7 +559,6 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     broker: "pulsar" as const,
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
-    deploymentCapabilities: { capabilities: [], fingerprint: "test-fingerprint" },
     entitlement: { apiUrl: null, mode: "enforce" as const, token: null },
     environment: "dev" as const,
     healthPort: 3002,

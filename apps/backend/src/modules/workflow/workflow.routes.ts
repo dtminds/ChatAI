@@ -25,7 +25,6 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   parseWorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
-import { parseWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
 import { MysqlWorkflowSourceIdentityResolver } from "./workflow-source-identity.js";
@@ -71,9 +70,6 @@ export async function registerWorkflowRoutes(
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
-      deploymentCapabilities: parseWorkflowDeploymentCapabilities(
-        process.env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
-      ),
       entitlementPort: createWorkflowEntitlementPort({
         endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
         mode: process.env.WORKFLOW_ENTITLEMENT_MODE,

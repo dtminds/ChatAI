@@ -16,14 +16,11 @@ import {
   type WorkflowType,
   type WorkflowVariableSelector,
 } from "@chatai/contracts";
-import {
-  getWorkflowAggregateCapabilityRequirements,
-  getWorkflowNodeCapabilityRequirements,
-} from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
 import {
   getWorkflowGuaranteedUpstreamNodeIds,
   getWorkflowSourceOutletId,
+  isWorkflowDynamicTimeRangeProvablyInvalidInGraph,
   isWorkflowOutputAvailableOnSourceOutlets,
   validateWorkflowGraph,
 } from "./graph.js";
@@ -78,7 +75,6 @@ export function compileWorkflowDraft({
       id: node.id,
       kind: node.data.kind,
       nodeSchemaVersion: node.data.schemaVersion,
-      requiredCapabilities: getWorkflowNodeCapabilityRequirements(node.data.kind, config),
     };
   });
   const referenceIssues = validateWorkflowNodeReferences(
@@ -99,9 +95,8 @@ export function compileWorkflowDraft({
     })),
     entryNodeId: validation.entryNode.id,
     nodes,
-    requiredCapabilities: getWorkflowAggregateCapabilityRequirements(nodes),
     revision,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: validation.terminalNode.id,
     workflowId,
   };
@@ -183,7 +178,7 @@ function validateWorkflowNodeReferences(
         nodeIds,
         edges,
       );
-      const valid = [node.config.timeRange.start, node.config.timeRange.end]
+      const referencesAvailable = [node.config.timeRange.start, node.config.timeRange.end]
         .every(reference => validateWorkflowMessageQueryTimeReference({
           edges,
           guaranteedUpstreamIds,
@@ -193,10 +188,18 @@ function validateWorkflowNodeReferences(
           workflowType,
           entryEventTypes,
         }));
-      if (!valid) {
+      const rangeInvalid = isWorkflowDynamicTimeRangeProvablyInvalidInGraph({
+        edges,
+        end: node.config.timeRange.end,
+        nodeIds,
+        start: node.config.timeRange.start,
+      });
+      if (!referencesAvailable || rangeInvalid) {
         issues.push({
           code: "invalid-node-config",
-          message: "Message Query node references unavailable time data",
+          message: rangeInvalid
+            ? "Message Query node time range is causally reversed"
+            : "Message Query node references unavailable time data",
           nodeId: node.id,
         });
       }

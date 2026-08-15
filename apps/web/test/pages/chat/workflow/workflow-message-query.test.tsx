@@ -245,7 +245,7 @@ describe("workflow message query", () => {
     }));
   });
 
-  it("rejects reversed fixed ranges", () => {
+  it("allows one complete minute and rejects reversed fixed ranges", () => {
     const queryNode = {
       ...createMessageQueryNode(),
       data: {
@@ -254,6 +254,43 @@ describe("workflow message query", () => {
           endAt: "2026-07-10T10:00",
           mode: "fixed" as const,
           startAt: "2026-07-10T11:00",
+        },
+      },
+    };
+
+    expect(validateWorkflowNodeConfig(
+      queryNode,
+      [createStartNode(), queryNode],
+      [createEdge("start", queryNode.id)],
+    )).toContainEqual(expect.objectContaining({ code: "message-query-time-range-invalid" }));
+
+    const sameMinuteNode = {
+      ...createMessageQueryNode(),
+      data: {
+        ...createDefaultNodeData("message-query"),
+        timeRange: {
+          endAt: "2026-07-10T10:00",
+          mode: "fixed" as const,
+          startAt: "2026-07-10T10:00",
+        },
+      },
+    };
+    expect(validateWorkflowNodeConfig(
+      sameMinuteNode,
+      [createStartNode(), sameMinuteNode],
+      [createEdge("start", sameMinuteNode.id)],
+    )).not.toContainEqual(expect.objectContaining({ code: "message-query-time-range-invalid" }));
+  });
+
+  it("rejects causally reversed dynamic ranges", () => {
+    const queryNode = {
+      ...createMessageQueryNode(),
+      data: {
+        ...createDefaultNodeData("message-query"),
+        timeRange: {
+          end: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+          mode: "dynamic" as const,
+          start: { field: "enteredAt" as const, kind: "current-node-lifecycle" as const },
         },
       },
     };

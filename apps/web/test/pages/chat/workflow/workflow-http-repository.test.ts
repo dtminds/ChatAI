@@ -335,8 +335,6 @@ function envelope<T>(data: T): ApiSuccessEnvelope<T> {
 function createDefinition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
     capabilitySummary: {
-      deploymentCapabilities: [],
-      deploymentFingerprint: "0".repeat(64),
       runtimeSupportedNodeKinds: ["start", "wait", "end"],
     },
     createdAt: "2026-07-10T00:00:00.000Z",

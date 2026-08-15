@@ -314,9 +314,7 @@ export const WorkflowWaitEventDraftConfigSchema = Type.Object({
 
 export const WorkflowWaitEventConfigSchema = Type.Object({
   event: Type.Object({
-    capabilityKey: Type.Literal("event.message.received"),
     collectWindowSeconds: Type.Literal(WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS),
-    contractVersion: Type.Literal(1),
     type: Type.Literal("message.received"),
   }, { additionalProperties: false }),
   timeout: WorkflowWaitEventTimeoutSchema,

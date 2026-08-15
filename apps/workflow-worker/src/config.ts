@@ -8,10 +8,6 @@ import {
   WORKFLOW_RUNTIME_BATCH_LIMIT,
   type WorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
-import {
-  parseWorkflowDeploymentCapabilities,
-  type WorkflowDeploymentCapabilities,
-} from "@chatai/workflow-engine";
 
 export type WorkflowEnvironment = "dev" | "test01";
 export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
@@ -19,7 +15,6 @@ export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "re
 export type WorkflowWorkerConfig = {
   broker: "pulsar";
   databaseUrl: string;
-  deploymentCapabilities: WorkflowDeploymentCapabilities;
   entitlement: {
     apiUrl: string | null;
     mode: "allow" | "enforce";
@@ -95,9 +90,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   const databaseUrl = requireValue(env, "DATABASE_URL");
   const environment = parseEnvironment(env.WORKFLOW_ENVIRONMENT);
   const broker = parseBroker(env.WORKFLOW_BROKER);
-  const deploymentCapabilities = parseWorkflowDeploymentCapabilities(
-    env.WORKFLOW_DEPLOYMENT_CAPABILITIES,
-  );
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
   const pulsarClusterId = optionalValue(env.WORKFLOW_PULSAR_CLUSTER_ID);
@@ -155,7 +147,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   return {
     broker,
     databaseUrl,
-    deploymentCapabilities,
     entitlement: {
       apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
       mode: entitlementMode,

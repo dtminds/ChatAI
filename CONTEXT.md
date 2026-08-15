@@ -60,20 +60,12 @@ _Avoid_: Node group, maturity, runtime support
 The closed category of a typed external Capability invocation: `action`, `query`, or `inference`. An Action causes an externally visible side effect and carries an idempotency key. A Query is read-only. Inference is non-deterministic model execution. Query and Inference carry no additional call key; their execution metadata provides correlation.
 _Avoid_: Arbitrary operation type, node kind
 
-**Workflow Deployment Capability**:
-An environment-level declaration that a Runtime-supported event source or business operation is intentionally connected and enabled for production use. It is independent of transient service health and tenant-specific Product Entitlement.
-_Avoid_: Runtime Support, tenant allowlist, health check
-
 **Workflow Production Availability**:
-The effective permission to publish, enable, or progress a Workflow capability after intersecting its Workflow Capability Profile, Workflow Runtime Support, Workflow Deployment Capability, Product Entitlement, and required business resources.
+The effective permission to publish or enable a Workflow after intersecting its Workflow Capability Profile, Workflow Runtime Support, Event Catalog support, Product Entitlement, and required business resources. Runtime dependency failures are handled by the node's normal retry, deadline, and recovery semantics rather than a separate deployment switch.
 _Avoid_: Runtime whitelist, node visibility
 
-**Workflow Capability Requirement**:
-A versioned event-source or business-operation dependency frozen into a Workflow Revision by compilation. Production Availability requires the current environment to provide every Capability Requirement used by that Revision.
-_Avoid_: Current deployment status, tenant entitlement
-
 **Workflow Revision**:
-An immutable published execution snapshot of a Workflow's graph, node configuration, and Capability Requirements.
+An immutable published execution snapshot of a Workflow's graph and node configuration.
 _Avoid_: Mutable current graph, Run lifetime version
 
 **Workflow Run**:

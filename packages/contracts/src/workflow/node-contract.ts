@@ -328,7 +328,7 @@ type WorkflowNodeContractDefinition<
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
   "ai-collect": placeholderContract("composite"),
-  "ai-intent": runtimeReadyContract(
+  "ai-intent": draftReadyContract(
     "inference",
     1,
     WorkflowAiIntentDraftConfigSchema,
@@ -349,7 +349,7 @@ export const workflowNodeContractRegistry = {
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
   ),
-  llm: runtimeReadyContract(
+  llm: draftReadyContract(
     "inference",
     1,
     WorkflowLlmDraftConfigSchema,
@@ -451,9 +451,12 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
   if (value.timeRange.mode === "fixed") {
     return isValidWorkflowLocalDateTime(value.timeRange.startAt)
       && isValidWorkflowLocalDateTime(value.timeRange.endAt)
-      && value.timeRange.startAt < value.timeRange.endAt;
+      && value.timeRange.startAt <= value.timeRange.endAt;
   }
-  return !areWorkflowDynamicTimeReferencesEqual(value.timeRange.start, value.timeRange.end);
+  return !isWorkflowDynamicTimeRangeProvablyInvalid(
+    value.timeRange.start,
+    value.timeRange.end,
+  );
 }
 
 export function areWorkflowDynamicTimeReferencesEqual(
@@ -469,6 +472,22 @@ export function areWorkflowDynamicTimeReferencesEqual(
     && right.kind === "node-output"
     && left.selector.length === right.selector.length
     && left.selector.every((part, index) => part === right.selector[index]);
+}
+
+export function isWorkflowDynamicTimeRangeProvablyInvalid(
+  start: WorkflowDynamicTimeReference,
+  end: WorkflowDynamicTimeReference,
+) {
+  if (areWorkflowDynamicTimeReferencesEqual(start, end)) return true;
+  if (start.kind === "current-node-lifecycle") {
+    return end.kind === "workflow-trigger" || end.kind === "node-lifecycle";
+  }
+  if (start.kind !== "node-lifecycle") return false;
+  if (end.kind === "workflow-trigger") return true;
+  return end.kind === "node-lifecycle"
+    && start.nodeId === end.nodeId
+    && start.field === "exitedAt"
+    && end.field === "enteredAt";
 }
 
 function isWorkflowStartMessageSendingWindowValid(value: unknown) {

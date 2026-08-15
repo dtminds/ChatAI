@@ -17,9 +17,9 @@ import {
   buildMessageQuerySeatQuery,
   executeMessageQuery,
   formatMessageQueryRow,
-} from "../src/message-query-capability.js";
+} from "../src/message-query-port.js";
 
-describe("Workflow Message Query capability", () => {
+describe("Workflow Message Query port", () => {
   it("builds an isolated msgtime query without joins", () => {
     const database = createCompileOnlyDatabase();
     const seatQuery = buildMessageQuerySeatQuery(database, { seatId: 101, uid: 9 }).compile();
@@ -166,8 +166,8 @@ describe("Workflow Message Query capability", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ messageCount: 1, messageIds: [9003] });
-    expect(result.textContent).toMatch(/^\[内容已截断\]/);
+    expect(result).toMatchObject({ messageCount: 3, messageIds: [9001, 9002, 9003] });
+    expect(result.textContent).toMatch(/^客户: \[内容已截断\]/);
     expect(result.textContent).not.toContain("LATEST-START-");
     expect(result.textContent).toMatch(/-LATEST-END$/);
     expect(result.textContent).not.toContain("MIDDLE-");

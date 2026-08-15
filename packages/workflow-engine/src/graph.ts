@@ -1,8 +1,10 @@
 import {
   extractWorkflowNodeDraftConfig,
+  isWorkflowDynamicTimeRangeProvablyInvalid,
   WorkflowDraft,
   WorkflowDraftEdge,
   WorkflowDraftNode,
+  type WorkflowDynamicTimeReference,
 } from "@chatai/contracts";
 import type { WorkflowCompilationIssue } from "./errors.js";
 import { getWorkflowNodeDraftConfigError } from "./node-contract-registry.js";
@@ -171,6 +173,25 @@ export function getWorkflowGuaranteedUpstreamNodeIds(
   const guaranteed = new Set(dominators.get(targetNodeId) ?? []);
   guaranteed.delete(targetNodeId);
   return guaranteed;
+}
+
+export function isWorkflowDynamicTimeRangeProvablyInvalidInGraph(input: {
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[];
+  end: WorkflowDynamicTimeReference;
+  nodeIds: readonly string[];
+  start: WorkflowDynamicTimeReference;
+}) {
+  if (isWorkflowDynamicTimeRangeProvablyInvalid(input.start, input.end)) return true;
+  if (input.start.kind !== "node-lifecycle"
+    || input.end.kind !== "node-lifecycle"
+    || input.start.nodeId === input.end.nodeId) {
+    return false;
+  }
+  return getWorkflowGuaranteedUpstreamNodeIds(
+    input.start.nodeId,
+    input.nodeIds,
+    input.edges,
+  ).has(input.end.nodeId);
 }
 
 export function isWorkflowOutputAvailableOnSourceOutlets(

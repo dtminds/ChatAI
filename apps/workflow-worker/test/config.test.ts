@@ -101,19 +101,12 @@ describe("workflow worker config", () => {
       .toThrow("WORKFLOW_BROKER must be pulsar");
   });
 
-  it("loads deployment capabilities and the Java entitlement endpoint", () => {
+  it("loads the Java entitlement endpoint", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
       JAVA_INTERNAL_API_TOKEN: "internal-token",
-      WORKFLOW_DEPLOYMENT_CAPABILITIES: "event.contact.tag_added@1,event.contact.friend_added@1",
       WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
     }));
 
-    expect(config.deploymentCapabilities.capabilities).toEqual([
-      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
-      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
-    ]);
-    expect(config.deploymentCapabilities.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(config.entitlement).toEqual({
       apiUrl: "https://java.example.com/internal/workflow/entitlement",
       mode: "enforce",

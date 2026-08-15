@@ -19,13 +19,12 @@ import {
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
-  createWorkflowDeploymentCapabilities,
   createWorkflowNodeExecutionKey,
-  hasWorkflowDeploymentCapability,
+  isWorkflowRuntimeSupportedNodeKind,
+  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCapabilityExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
-  type WorkflowDeploymentCapabilities,
 } from "@chatai/workflow-engine";
 import {
   executeWorkflowCapability,
@@ -49,6 +48,10 @@ import {
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
 } from "./inference.js";
+import {
+  executeWorkflowMessageQuery,
+  type WorkflowMessageQueryPort,
+} from "./message-query.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -77,9 +80,9 @@ export class WorkflowRuntimeService {
   private readonly taskLeaseDurationMs: number;
   private readonly deferredTaskDelayMs: number;
   private readonly inferenceTotalTimeoutMs: number;
-  private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
+  private readonly messageQueryPort?: WorkflowMessageQueryPort;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
@@ -93,10 +96,10 @@ export class WorkflowRuntimeService {
       clock?: () => Date;
       deferredTaskDelayMs?: number;
       inferenceTotalTimeoutMs?: number;
-      deploymentCapabilities?: WorkflowDeploymentCapabilities;
       entitlementPort?: WorkflowEntitlementPort;
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
+      messageQueryPort?: WorkflowMessageQueryPort;
       taskLeaseDurationMs?: number;
     } = {},
   ) {
@@ -109,11 +112,10 @@ export class WorkflowRuntimeService {
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
     this.deferredTaskDelayMs = options.deferredTaskDelayMs ?? 60_000;
     this.inferenceTotalTimeoutMs = options.inferenceTotalTimeoutMs ?? 600_000;
-    this.deploymentCapabilities = options.deploymentCapabilities
-      ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
+    this.messageQueryPort = options.messageQueryPort;
     this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
       const definition = await this.controlRepository.findDefinition(uid, workflowId);
       if (definition?.publishedRevision === null || definition?.publishedRevision === undefined) {
@@ -131,6 +133,30 @@ export class WorkflowRuntimeService {
       || this.inferenceTotalTimeoutMs <= 0) {
       throw new Error("Workflow inference timeout must be a positive integer");
     }
+  }
+
+  assertRuntimeComposition() {
+    const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
+      if (kind === "message-query") return this.messageQueryPort === undefined;
+      const executionClass = getWorkflowNodeContract(kind).executionClass;
+      if (executionClass === "core") return !this.executors.has(kind);
+      if (executionClass === "inference") return false;
+      return this.capabilityPort === undefined || !this.capabilityBindings.has(kind);
+    });
+    if (missingNodeKinds.length > 0) {
+      throw new Error(
+        `Workflow runtime-ready nodes lack production executors: ${missingNodeKinds.join(", ")}`,
+      );
+    }
+  }
+
+  protected assertNodeExecutable(node: WorkflowExecutionNode) {
+    if (isWorkflowRuntimeSupportedNodeKind(node.kind)) return;
+    throw runtimeNodeUnsupportedError(node);
+  }
+
+  private assertSpecExecutable(spec: WorkflowExecutionSpec) {
+    for (const node of spec.nodes) this.assertNodeExecutable(node);
   }
 
   async startRun(input: {
@@ -159,10 +185,7 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     await this.requireEntitlement(input.uid, revision.workflowType);
-    if (!revision.executionSpec.requiredCapabilities.every((requirement) =>
-      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
-      throw deploymentCapabilityDisabledError();
-    }
+    this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
     const startConfig = requireStartConfig(entryNode);
 
@@ -238,15 +261,12 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     const node = requireExecutionNode(revision.executionSpec, input.subscription.nodeId);
+    this.assertNodeExecutable(node);
     const config = requireWaitEventConfig(node);
     if (config.event.type !== input.eventType
       || (input.subscription.seatId !== null
         && input.match.seatId !== input.subscription.seatId)) {
       return { kind: "not-matched" as const };
-    }
-    if (!node.requiredCapabilities.every((requirement) =>
-      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
-      throw deploymentCapabilityDisabledError();
     }
     const collectUntil = input.subscription.status === "waiting"
       ? new Date(input.recordedAt.getTime() + config.event.collectWindowSeconds * 1_000)
@@ -286,20 +306,16 @@ export class WorkflowRuntimeService {
 
     try {
       await this.requireEntitlement(input.uid, revision.workflowType);
+      this.assertNodeExecutable(node);
     } catch (error) {
       if (error instanceof WorkflowRuntimeError
         && (error.code === "WORKFLOW_ENTITLEMENT_UNAVAILABLE"
-          || error.code === "WORKFLOW_RUNTIME_PAUSED")) {
+          || error.code === "WORKFLOW_RUNTIME_PAUSED"
+          || error.code === "WORKFLOW_RUNTIME_NODE_UNSUPPORTED")) {
         await this.deferTaskOrThrowStale(task, input.now);
       }
       throw error;
     }
-    if (!node.requiredCapabilities.every((requirement) =>
-      hasWorkflowDeploymentCapability(this.deploymentCapabilities, requirement))) {
-      await this.deferTaskOrThrowStale(task, input.now);
-      throw deploymentCapabilityDisabledError();
-    }
-
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
       leaseExpiresAt: new Date(input.now.getTime() + this.taskLeaseDurationMs),
@@ -369,6 +385,15 @@ export class WorkflowRuntimeService {
             nodeExecutionKey,
             run,
           })
+        : node.kind === "message-query"
+          ? await executeMessageQueryWithTimeout({
+              capabilityTimeoutMs: this.capabilityTimeoutMs,
+              enteredAt: claimed.task.createdAt,
+              node,
+              port: this.messageQueryPort,
+              run,
+              startedAt: this.clock(),
+            })
         : capabilityNode
           ? await executeWithCapabilityTimeout({
             nodeExecutionKey,
@@ -889,6 +914,68 @@ async function executeWithCapabilityTimeout(input: {
   }
 }
 
+async function executeMessageQueryWithTimeout(input: {
+  capabilityTimeoutMs: number;
+  enteredAt: Date;
+  node: WorkflowExecutionNode;
+  port: WorkflowMessageQueryPort | undefined;
+  run: WorkflowRunRecord;
+  startedAt: Date;
+}) {
+  if (!input.port) {
+    throw new WorkflowCapabilityExecutionError(
+      "terminal",
+      "WORKFLOW_MESSAGE_QUERY_PORT_UNAVAILABLE",
+      "节点能力暂不可用",
+      { diagnosticMessage: "Workflow Message Query port is not configured" },
+    );
+  }
+  const controller = new AbortController();
+  const deadlineAt = new Date(input.startedAt.getTime() + input.capabilityTimeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new WorkflowCapabilityExecutionError(
+        "unknown",
+        "WORKFLOW_CAPABILITY_TIMEOUT",
+        "节点执行超时",
+        { diagnosticMessage: `Workflow Message Query exceeded its ${input.capabilityTimeoutMs}ms deadline` },
+      );
+      reject(error);
+      controller.abort(error);
+    }, input.capabilityTimeoutMs);
+  });
+  try {
+    return await Promise.race([
+      executeWorkflowMessageQuery({
+        config: input.node.config,
+        context: {
+          currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+          nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
+            ? input.run.context.nodeLifecycle as Record<
+              string,
+              { enteredAt?: string; exitedAt?: string }
+            >
+            : {},
+          outputs: isRecord(input.run.context.outputs)
+            ? input.run.context.outputs as Record<string, Record<string, unknown>>
+            : {},
+          subjectId: input.run.subjectId,
+          trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+        },
+        port: input.port,
+        signal: controller.signal,
+        subjectId: input.run.subjectId,
+        subjectType: input.run.subjectType,
+        uid: input.run.uid,
+      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function toCapabilityExecutionError(error: unknown) {
   if (error instanceof WorkflowCapabilityExecutionError) return error;
   if (!(error instanceof WorkflowRuntimeValueError)) return null;
@@ -1096,10 +1183,10 @@ function workflowUnavailable() {
   return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
 }
 
-function deploymentCapabilityDisabledError() {
+function runtimeNodeUnsupportedError(node: WorkflowExecutionNode) {
   return new WorkflowRuntimeError(
-    "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED",
-    "Workflow 依赖的部署能力未开启",
+    "WORKFLOW_RUNTIME_NODE_UNSUPPORTED",
+    `Workflow 节点暂不可执行: ${node.kind}`,
     503,
   );
 }

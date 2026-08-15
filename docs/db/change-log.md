@@ -1,5 +1,32 @@
 # Database Change Log
 
+## 2026-08-15 Workflow Execution Spec v3
+
+- Execution Spec v3 删除节点级和聚合级 `requiredCapabilities`，Wait Event 配置不再持久化 `capabilityKey` / `contractVersion`。
+- 当前仍处于开发阶段，不保留 Execution Spec v1/v2 兼容读取，也不迁移已有 Draft、Revision 或运行数据。
+- `xy_wap_embed_workflow_inference_job.contract_version` 和 `xy_wap_embed_workflow_llm_test_attempt.contract_version` 是真实推理请求契约版本，继续保留。
+- 本次没有表结构变更。部署新代码前停止 Backend 与 Workflow Worker，并一次性清空全部 Workflow 数据。
+
+```sql
+DELETE FROM xy_wap_embed_workflow_event_subscription_event;
+DELETE FROM xy_wap_embed_workflow_event_subscription;
+DELETE FROM xy_wap_embed_workflow_inference_job;
+DELETE FROM xy_wap_embed_workflow_llm_test_attempt;
+DELETE FROM xy_wap_embed_workflow_node_execution;
+DELETE FROM xy_wap_embed_workflow_outbox;
+DELETE FROM xy_wap_embed_workflow_inbox;
+DELETE FROM xy_wap_embed_workflow_task;
+DELETE FROM xy_wap_embed_workflow_run;
+DELETE FROM xy_wap_embed_workflow_entry_guard;
+DELETE FROM xy_wap_embed_workflow_daily_metric;
+DELETE FROM xy_wap_embed_workflow_node_metric_event;
+DELETE FROM xy_wap_embed_workflow_node_metric;
+DELETE FROM xy_wap_embed_workflow_revision_cleanup;
+DELETE FROM xy_wap_embed_workflow_trigger_binding;
+DELETE FROM xy_wap_embed_workflow_revision;
+DELETE FROM xy_wap_embed_workflow_definition;
+```
+
 ## 2026-08-14 Workflow 在途 Run 前向 Revision 路由
 
 - `run.revision` 改为当前节点 Task 使用的 Revision；Task 与 Node Execution 保存各自实际执行 Revision。

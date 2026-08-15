@@ -182,7 +182,6 @@ function llmNode(format: "json" | "markdown" | "text"): WorkflowExecutionNode {
     id: "llm-1",
     kind: "llm",
     nodeSchemaVersion: 1,
-    requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
   };
 }
 

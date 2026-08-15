@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import {
   getWorkflowJsonDepth,
   getWorkflowJsonEncodedByteLength,
+  WORKFLOW_CAPABILITY_PROFILES,
   WORKFLOW_ENTRY_JSON_MAX_DEPTH,
   WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH,
   validateWorkflowEntryEvent,
@@ -33,6 +34,23 @@ const fixtureRoot = new URL("../../contracts/test/fixtures/workflow/", import.me
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", fixtureRoot), "utf8")) as FixtureManifest;
 
 describe("workflow event catalog", () => {
+  it("supports every Entry Event exposed by an enabled Workflow type", () => {
+    for (const profile of Object.values(WORKFLOW_CAPABILITY_PROFILES)) {
+      if (profile.availability !== "enabled") continue;
+      for (const eventType of profile.allowedEntryEventTypes) {
+        expect(WORKFLOW_EVENT_CATALOG.supports(eventType, profile.subjectType)).toBe(true);
+      }
+    }
+  });
+
+  it("reports event support by Subject type without exposing payload versions", () => {
+    expect(WORKFLOW_EVENT_CATALOG.supports("contact.friend_added", "chatai_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("contact.friend_added", "wecom_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("message.received", "chatai_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("message.received", "wecom_contact")).toBe(false);
+    expect(WORKFLOW_EVENT_CATALOG.supports("order.created", "chatai_contact")).toBe(false);
+  });
+
   it("projects a validated shared fixture without retaining the raw payload", () => {
     const event = readEvent("entry/v1/valid/contact-friend-added.json");
     const expectedProjection = JSON.parse(readFileSync(

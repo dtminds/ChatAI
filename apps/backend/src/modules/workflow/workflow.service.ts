@@ -32,10 +32,8 @@ import {
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
-  createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
-  getWorkflowNodeCapabilityRequirements,
   getWorkflowNodeExecutionConfigError,
   projectWorkflowNodeExecutionConfig,
   normalizeWorkflowDraft,
@@ -43,7 +41,6 @@ import {
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCapabilityExecutionError,
   WorkflowCompilationError,
-  type WorkflowDeploymentCapabilities,
   type WorkflowTriggerBindingSpec,
 } from "@chatai/workflow-engine";
 import {
@@ -73,7 +70,6 @@ export type WorkflowOperatorScope = { roles: string[]; subUserId: string; uid: n
 
 export type WorkflowServiceOptions = {
   clock?: () => Date;
-  deploymentCapabilities?: WorkflowDeploymentCapabilities;
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
@@ -84,7 +80,6 @@ export type WorkflowServiceOptions = {
 
 export class WorkflowService {
   private readonly clock: () => Date;
-  private readonly deploymentCapabilities: WorkflowDeploymentCapabilities;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
@@ -97,8 +92,6 @@ export class WorkflowService {
     options: WorkflowServiceOptions = {},
   ) {
     this.clock = options.clock ?? (() => new Date());
-    this.deploymentCapabilities = options.deploymentCapabilities
-      ?? createWorkflowDeploymentCapabilities([]);
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver
@@ -142,7 +135,6 @@ export class WorkflowService {
       id: draftNode.id,
       kind: "llm" as const,
       nodeSchemaVersion: draftNode.data.schemaVersion,
-      requiredCapabilities: getWorkflowNodeCapabilityRequirements("llm", config),
     };
     const inputValues = resolveLlmTestInputValues(config.inputs, input.inputValues);
     try {
@@ -353,7 +345,7 @@ export class WorkflowService {
 
     if (definition.publishedRevision === null) {
       const executionSpec = this.compile(normalizedDefinition, 1);
-      this.assertProductionAvailability(executionSpec, entitlement);
+      this.assertProductionAvailability(executionSpec, entitlement, subjectType);
       await this.createTriggerBindings(scope.uid, executionSpec, subjectType);
       const validated = this.unwrapMutation(await this.repository.markValidated({
         expectedDraftVersion: input.expectedDraftVersion,
@@ -366,7 +358,7 @@ export class WorkflowService {
 
     const nextRevision = definition.publishedRevision + 1;
     const executionSpec = this.compile(normalizedDefinition, nextRevision);
-    this.assertProductionAvailability(executionSpec, entitlement);
+    this.assertProductionAvailability(executionSpec, entitlement, subjectType);
     const triggerBindings = await this.createTriggerBindings(
       scope.uid,
       executionSpec,
@@ -427,7 +419,7 @@ export class WorkflowService {
     );
     const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
     const executionSpec = this.compile({ ...definition, draft: normalizedDraft }, 1);
-    this.assertProductionAvailability(executionSpec, entitlement);
+    this.assertProductionAvailability(executionSpec, entitlement, subjectType);
     const triggerBindings = await this.createTriggerBindings(
       scope.uid,
       executionSpec,
@@ -475,7 +467,7 @@ export class WorkflowService {
       definition.publishedRevision,
     );
     if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
-    this.assertProductionAvailability(revision.executionSpec, entitlement);
+    this.assertProductionAvailability(revision.executionSpec, entitlement, revision.subjectType);
     return this.changeStatus(scope, workflowId, ["paused"], "active");
   }
 
@@ -629,11 +621,12 @@ export class WorkflowService {
   private assertProductionAvailability(
     executionSpec: ReturnType<typeof compileWorkflowDraft>,
     entitlement: WorkflowTypeEntitlementResult,
+    subjectType: WorkflowRevisionRecord["subjectType"],
   ) {
     const availability = evaluateWorkflowProductionAvailability({
-      deployment: this.deploymentCapabilities,
       entitlement,
       spec: executionSpec,
+      subjectType,
     });
     if (!availability.available) {
       throw new BadRequestError(
@@ -681,7 +674,7 @@ export class WorkflowService {
   }
 
   private toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
-    return toDefinition(record, this.deploymentCapabilities);
+    return toDefinition(record);
   }
 }
 
@@ -703,14 +696,9 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
   }
 }
 
-function toDefinition(
-  record: WorkflowDefinitionRecord,
-  deploymentCapabilities: WorkflowDeploymentCapabilities,
-): WorkflowDefinition {
+function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
   return {
     capabilitySummary: {
-      deploymentCapabilities: structuredClone(deploymentCapabilities.capabilities),
-      deploymentFingerprint: deploymentCapabilities.fingerprint,
       runtimeSupportedNodeKinds: [...WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS],
     },
     createdAt: record.createdAt.toISOString(),

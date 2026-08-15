@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
@@ -518,6 +517,44 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
+  it("returns the runtime-ready node kinds used by publish checks", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+
+    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
+      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "end"]));
+    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
+      .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
+    await expect(service.publish(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    })).resolves.toMatchObject({ validatedOnly: true });
+  });
+
+  it("keeps draft-ready LLM nodes out of published revisions", async () => {
+    const service = createService();
+    const configured = await createConfigured(service);
+    const saved = await service.saveDraft(operator, configured.id, {
+      draft: withPublishableLlmNode(withStartConfig(configured.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [{ keywords: ["价格"], type: "message.received" }],
+      })),
+      expectedDraftVersion: configured.draftVersion,
+    });
+
+    await expect(service.publish(operator, configured.id, {
+      expectedDraftVersion: saved.draftVersion,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_VALIDATION_FAILED",
+      details: {
+        issues: expect.arrayContaining([expect.objectContaining({
+          code: "unsupported-runtime-node",
+          nodeId: "llm-1",
+        })]),
+      },
+    });
+  });
+
   it("rejects an inactive seat during publish validation for message-only Start", async () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       sourceIdentityResolver: {
@@ -982,16 +1019,6 @@ function createService(
   options: ConstructorParameters<typeof WorkflowService>[1] = {},
 ) {
   return new WorkflowService(repository, {
-    deploymentCapabilities: createWorkflowDeploymentCapabilities([{
-      capabilityKey: "event.contact.friend_added",
-      contractVersion: 1,
-    }, {
-      capabilityKey: "event.contact.tag_added",
-      contractVersion: 1,
-    }, {
-      capabilityKey: "event.message.received",
-      contractVersion: 1,
-    }]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
     },
@@ -1085,6 +1112,35 @@ function withLlmNode(
       llmNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
+  };
+}
+
+function withPublishableLlmNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  const next = withLlmNode(draft);
+  return {
+    ...next,
+    nodes: next.nodes.map(node => node.id === "llm-1"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            inputs: [
+              {
+                id: "input-message",
+                name: "message",
+                value: { kind: "literal" as const, value: "请处理这个客户" },
+              },
+              {
+                id: "input-tone",
+                name: "tone",
+                value: { kind: "literal" as const, value: "简洁" },
+              },
+            ],
+          },
+        }
+      : node),
   };
 }
 

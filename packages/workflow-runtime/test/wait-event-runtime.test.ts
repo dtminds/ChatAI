@@ -1,5 +1,4 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -7,10 +6,6 @@ import {
   type WorkflowEventSubscriptionRecord,
 } from "../src/index.js";
 
-const WAIT_EVENT_CAPABILITY = {
-  capabilityKey: "event.message.received",
-  contractVersion: 1,
-} as const;
 const ENTERED_AT = new Date("2026-08-10T00:00:00.000Z");
 const EXPIRES_AT = new Date("2026-08-10T00:01:00.000Z");
 const COLLECT_UNTIL = new Date("2026-08-10T00:00:15.000Z");
@@ -124,25 +119,6 @@ describe("Wait Event runtime", () => {
     });
   });
 
-  it("does not consume a subscription while its deployment capability is disabled", async () => {
-    const deploymentCapabilities = createWorkflowDeploymentCapabilities([WAIT_EVENT_CAPABILITY]);
-    const harness = await createHarness(deploymentCapabilities);
-    const waiting = await enterWaitEvent(harness);
-    deploymentCapabilities.capabilities.length = 0;
-
-    await expect(recordMessage(harness, waiting.subscription, {
-      eventId: "message-event-disabled",
-      messageId: 101,
-      occurredAt: new Date("2026-08-10T00:00:05.000Z"),
-      recordedAt: new Date("2026-08-10T00:00:05.000Z"),
-      text: "不会被收集",
-    })).rejects.toMatchObject({ code: "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED" });
-    await expect(harness.repository.findEventSubscriptionByTask(
-      9,
-      waiting.task.id,
-    )).resolves.toMatchObject({ status: "waiting" });
-  });
-
   it("rejects an event from a different Subject identity", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
@@ -162,9 +138,7 @@ describe("Wait Event runtime", () => {
   });
 });
 
-async function createHarness(
-  deploymentCapabilities = createWorkflowDeploymentCapabilities([WAIT_EVENT_CAPABILITY]),
-) {
+async function createHarness() {
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => ENTERED_AT);
   const spec = executionSpec();
   const service = new WorkflowRuntimeService({
@@ -184,7 +158,6 @@ async function createHarness(
     })),
   }, repository, undefined, {
     clock: () => ENTERED_AT,
-    deploymentCapabilities,
     entitlementPort: {
       check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
     },
@@ -290,9 +263,7 @@ function executionSpec(): WorkflowExecutionSpec {
       {
         config: {
           event: {
-            capabilityKey: "event.message.received",
             collectWindowSeconds: 10,
-            contractVersion: 1,
             type: "message.received",
           },
           timeout: { duration: 1, unit: "minute" },
@@ -300,19 +271,16 @@ function executionSpec(): WorkflowExecutionSpec {
         id: "wait-event",
         kind: "wait-event",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [WAIT_EVENT_CAPABILITY],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [WAIT_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };

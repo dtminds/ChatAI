@@ -26,12 +26,12 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 | --- | --- | --- | --- | --- |
 | `placeholder` | 只有节点入口和基础画布展示，业务配置尚未定义 | 是，仅允许空配置 | 否，DSL 中 `config: null` | 否 |
 | `draft-ready` | Draft、Setting UI 和执行形状已定义，但 Runtime 尚未闭环 | 是 | 是 | 否 |
-| `runtime-ready` | Schema、Compiler、Executor、输出、错误处理与恢复均已闭环 | 是 | 是 | 是，但仍需满足 Workflow Capability Profile、Deployment Capability 和 Product Entitlement |
+| `runtime-ready` | Schema、Compiler、Executor、输出、错误处理与恢复均已闭环 | 是 | 是 | 是，但仍需满足 Workflow Capability Profile、Event Catalog、Product Entitlement 和资源校验 |
 
 当前分类：
 
-- `draft-ready`：`message`、`handoff`
-- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`llm`、`ai-intent`、`message-query`、`end`
+- `draft-ready`：`message`、`handoff`、`llm`、`ai-intent`
+- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`message-query`、`end`
 - `placeholder`：`tag`、`coupon`、`agent`、`order-query`、`tag-query`、`customer-update`、`ai-collect`
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
@@ -104,7 +104,7 @@ Contracts 不依赖 React、画布状态、Java Adapter 或数据库实现。
 
 - Draft 到 Execution 的唯一投影
 - 发布所需的图与节点完整性校验
-- Capability Requirement 提取
+- Event Catalog 支持校验
 - placeholder fail-closed
 
 投影函数接收 `kind + Draft Config + Workflow Type`，返回纯 JSON Execution Config。它不得读取 Node UI Definition，也不得通过默认 `{}` 掩盖未实现节点。
@@ -184,10 +184,10 @@ Capability 节点调用外部能力时，Execution Config 必须先由 Engine �
 1. Contracts：Draft Schema、Execution Schema、版本、字段白名单、执行类别、共享类型与资源上限。
 2. Web Definition：默认值、sanitize、validate、Node UI 摘要、Handle 和输出变量。
 3. Setting UI：完整编辑路径、变量约束、失效状态和必要行为测试。
-4. Engine：唯一 Execution 投影、严格校验和 Capability Requirement。
+4. Engine：唯一 Execution 投影、严格校验和 Event Catalog 支持判断。
 5. Adapter：类型化 Action、Query 或 Inference Command；落实 Action 幂等键、Query 无调用键和 Inference 稳定 `executionKey` 的语义。
 6. Runtime：Executor、输出上限、错误分类、Retry/Wait/恢复行为。
-7. 发布门控：确认 Workflow Capability Profile、Runtime Support、Deployment Capability 和 Product Entitlement 全部对齐。
+7. 发布门控：确认 Workflow Capability Profile、Runtime Support、Event Catalog、Product Entitlement 和业务资源全部对齐。
 8. 验证：Contracts、Engine、Runtime、Backend、Web 的受影响测试与 build，以及 `git diff --check`。
 
 未完成第 4 至第 7 步的节点只能保持 `draft-ready`，不得仅因为前端交互完成而开放发布。

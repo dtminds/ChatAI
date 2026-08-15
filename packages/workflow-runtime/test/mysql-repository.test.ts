@@ -223,7 +223,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.taskUpdate).toEqual({});
   });
 
-  it("removes a failed waiting run from its completed wait-node metric", async () => {
+  it("removes a failed waiting run from its authoritative wait-node metric", async () => {
     const db = createWaitingConsistencyDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
@@ -241,8 +241,6 @@ describe("MysqlWorkflowRuntimeRepository", () => {
         node_id: "wait-1",
       }),
     ]);
-    expect(db.taskWhereCalls).toContainEqual(["status", "=", "completed"]);
-    expect(db.taskWhereCalls).toContainEqual(["node_kind", "=", "wait"]);
   });
 
   it("checks the workflow boundary in the same transaction before creating a run", async () => {
@@ -360,7 +358,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       now,
     })).resolves.toEqual({ expired: 0, recovered: 0 });
     expect(db.inferenceUpdateCount).toBe(0);
-    expect(db.lockOrder).toEqual(["definition", "run", "task", "job"]);
+    expect(db.lockOrder).toEqual(["run", "task", "definition", "job"]);
   });
 
   it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
@@ -1075,7 +1073,7 @@ function createClaimDbMock(runtimeStatus = "active", runStatus = "waiting") {
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_run") {
-            return { current_node_id: "start", revision: 1, shard_id: 1, status: runStatus, workflow_id: "42" };
+            return { current_node_id: "start", revision: 1, sequence: 1, shard_id: 1, status: runStatus, workflow_id: "42" };
           }
           return { biz_status: 1, runtime_status: runtimeStatus };
         },
@@ -1538,7 +1536,7 @@ function createWaitingConsistencyDbMock() {
     update_time: new Date("2026-07-10T00:00:00.000Z"),
     workflow_id: "31",
   };
-  const successorTask = {
+  const authoritativeWaitTask = {
     attempt: 0,
     bucket_time: new Date("2026-07-11T00:00:00.000Z"),
     create_time: new Date("2026-07-10T00:00:00.000Z"),
@@ -1547,24 +1545,18 @@ function createWaitingConsistencyDbMock() {
     last_error_code: null,
     lease_expires_at: null,
     lease_owner: null,
-    node_id: "end",
-    node_kind: "end",
-    revision: 2,
+    node_id: "wait-1",
+    node_kind: "wait",
+    revision: 1,
     run_id: "1",
     sequence: 2,
     shard_id: 7,
     status: "pending",
-    task_type: "wait",
+    task_type: "execute",
     task_version: 1,
     uid: 9,
     update_time: new Date("2026-07-10T00:00:00.000Z"),
     workflow_id: "31",
-  };
-  const completedWaitTask = {
-    node_id: "wait-1",
-    node_kind: "wait",
-    run_id: "1",
-    sequence: 1,
   };
   let runSelectCount = 0;
   let taskExecuteCount = 0;
@@ -1591,8 +1583,7 @@ function createWaitingConsistencyDbMock() {
           }
           if (table === "xy_wap_embed_workflow_task") {
             taskExecuteCount += 1;
-            if (taskExecuteCount === 1) return [successorTask];
-            if (taskExecuteCount === 2) return [completedWaitTask];
+            if (taskExecuteCount === 1) return [authoritativeWaitTask];
             return [];
           }
           if (table === "xy_wap_embed_workflow_definition") {
@@ -1715,6 +1706,14 @@ function createOutboxDeadDbMock() {
       return {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
       };
+    },
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
     },
     updateTable(table: string) {
       const builder = {

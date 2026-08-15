@@ -124,11 +124,30 @@ export interface WorkflowNodeExecutionTable {
   node_kind: string;
   output_json: JsonText | null;
   run_id: DatabaseId;
+  revision: number;
   sequence: number;
   started_at: NullableDate;
   status: string;
   uid: number;
   update_time: GeneratedDate;
+}
+
+export interface WorkflowRevisionCleanupTable {
+  after_run_id: DatabaseId | null;
+  attempt: number;
+  create_time: GeneratedDate;
+  id: Generated<DatabaseId>;
+  last_error_code: string | null;
+  lease_expires_at: NullableDate;
+  lease_owner: string | null;
+  next_attempt_at: DatabaseDate;
+  node_id: string;
+  node_kind: string;
+  revision: number;
+  status: string;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
 }
 
 export interface WorkflowInferenceJobTable {
@@ -254,6 +273,7 @@ export interface WorkflowNodeMetricEventTable {
   entered_delta: number;
   event_key: string;
   id: Generated<DatabaseId>;
+  incomplete_delta: number;
   node_id: string;
   passed_delta: number;
   processed_at: NullableDate;
@@ -271,6 +291,7 @@ export interface WorkflowNodeMetricTable {
   current_count: number;
   entered_count: number;
   id: Generated<DatabaseId>;
+  incomplete_count: number;
   node_id: string;
   passed_count: number;
   revision: number;
@@ -293,6 +314,7 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_node_metric_event: WorkflowNodeMetricEventTable;
   xy_wap_embed_workflow_outbox: WorkflowOutboxTable;
   xy_wap_embed_workflow_revision: WorkflowRevisionTable;
+  xy_wap_embed_workflow_revision_cleanup: WorkflowRevisionCleanupTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;
   xy_wap_embed_workflow_task: WorkflowTaskTable;
   xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;

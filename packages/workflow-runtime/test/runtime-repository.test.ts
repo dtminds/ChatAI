@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { WorkflowExecutionSpec } from "@chatai/contracts";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeReconciler,
@@ -73,7 +74,7 @@ describe("workflow runtime repository", () => {
   });
 
   it("commits execution and the next task under run and task version fences", async () => {
-    const repository = new InMemoryWorkflowRuntimeRepository();
+    const repository = repositoryWithPublishedSpec();
     const created = await repository.createRunWithInitialTask(createRunInput());
     const claimed = await repository.claimTask({
       expectedTaskVersion: 1,
@@ -93,12 +94,7 @@ describe("workflow runtime repository", () => {
         input: {},
         output: {},
       },
-      nextTask: {
-        dueAt: new Date("2026-07-10T00:00:00.000Z"),
-        nodeId: "end",
-        nodeKind: "end",
-        taskType: "execute",
-      },
+      sourceOutletId: "default",
       runId: created.run.id,
       taskId: claimed.task.id,
       uid: 9,
@@ -106,11 +102,276 @@ describe("workflow runtime repository", () => {
 
     expect(committed).toMatchObject({ kind: "success", run: { lockVersion: 2, sequence: 2 } });
     expect(repository.snapshot().nodeExecutions).toHaveLength(1);
+    expect(repository.snapshot().nodeExecutions[0]).toMatchObject({ revision: 1 });
     expect(repository.snapshot().inbox).toHaveLength(1);
     expect(repository.snapshot().tasks).toHaveLength(2);
+    expect(repository.snapshot().tasks[1]).toMatchObject({ nodeId: "end", revision: 2 });
     expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ current: 0, entered: 1, nodeId: "start" }),
+      expect.objectContaining({ current: 1, entered: 1, nodeId: "start" }),
+      expect.objectContaining({ current: -1, nodeId: "start", revision: 1 }),
+      expect.objectContaining({ current: 1, nodeId: "end", revision: 2 }),
     ]));
+  });
+
+  it.each([
+    ["current node is deleted", flowChangedSpec("current-node-deleted"), "flow_changed_current_node_deleted"],
+    ["current node kind changes", flowChangedSpec("node-kind-changed"), "flow_changed_node_kind_changed"],
+    ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
+    ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
+    ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
+  ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
+    const repository = repositoryWithLatestSpec(spec);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+
+    const committed = await repository.commitNodeResult({
+      context: created.run.context,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: `flow-changed:${reason}`,
+      },
+      nodeExecution: { executionKey: `9:${created.run.id}:start:1`, input: {}, output: {} },
+      runId: created.run.id,
+      sourceOutletId: "default",
+      taskId: created.task.id,
+      uid: 9,
+    });
+
+    expect(committed).toMatchObject({
+      kind: "success",
+      nextTask: null,
+      run: { status: "cancelled", terminalReason: reason },
+    });
+    expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ current: -1, incomplete: 1, nodeId: "start", revision: 1 }),
+    ]));
+  });
+
+  it("ends an old run before a branch that requires an unexecuted new predecessor", async () => {
+    const repository = repositoryWithLatestSpec(publishedSpecWithInsertedMessageBeforeWait());
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
+    if (created.kind !== "success") throw new Error("create failed");
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+
+    const committed = await repository.commitNodeResult({
+      context: created.run.context,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: "branch-missing-new-predecessor",
+      },
+      nodeExecution: { executionKey: `9:${created.run.id}:wait-1:1`, input: {}, output: {} },
+      runId: created.run.id,
+      sourceOutletId: "default",
+      taskId: claimed.task.id,
+      uid: 9,
+    });
+
+    expect(committed).toMatchObject({
+      kind: "success",
+      nextTask: null,
+      run: {
+        status: "cancelled",
+        terminalReason: "flow_changed_context_incompatible",
+      },
+    });
+  });
+
+  it("creates the latest-revision task as pending when publication wins before a paused commit", async () => {
+    let runtimeStatus = "active" as const | "paused";
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      async () => ({ bizStatus: 1, runtimeStatus }),
+      () => new Date("2026-07-10T00:00:00.000Z"),
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    runtimeStatus = "paused";
+
+    const committed = await repository.commitNodeResult({
+      context: created.run.context,
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: "paused-forward-route",
+      },
+      nodeExecution: { executionKey: `9:${created.run.id}:start:1`, input: {}, output: {} },
+      runId: created.run.id,
+      sourceOutletId: "default",
+      taskId: created.task.id,
+      uid: 9,
+    });
+
+    expect(committed).toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end", revision: 2, status: "pending" },
+      run: { currentNodeId: "end", revision: 2, status: "running" },
+    });
+    expect(repository.snapshot().outbox).toHaveLength(1);
+  });
+
+  it("cleans deleted wait nodes across more pages than the retry limit", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => new Date("2026-07-10T00:00:00.000Z"),
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    await Promise.all(["cleanup-1", "cleanup-2", "cleanup-3"].map(entryEventId =>
+      createWaitingRun(repository, entryEventId)));
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "wait-1",
+      nodeKind: "wait",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+
+    for (let page = 0; page < 3; page += 1) {
+      const claimed = await repository.claimRevisionCleanupBatch({
+        leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+        leaseOwner: "cleanup-worker",
+        limit: 1,
+        maxAttempts: 1,
+        now: new Date("2026-07-10T00:00:00.000Z"),
+      });
+      expect(claimed).toHaveLength(1);
+      await expect(repository.processRevisionCleanupBatch({
+        cleanupId: cleanup.id,
+        leaseOwner: "cleanup-worker",
+        limit: 1,
+        now: new Date("2026-07-10T00:00:00.000Z"),
+      })).resolves.toMatchObject({ cancelled: 1, kind: "success" });
+    }
+
+    expect(repository.revisionCleanups[0]).toMatchObject({ attempt: 0, status: "done" });
+    expect(repository.runs.every(run => run.status === "cancelled")).toBe(true);
+  });
+
+  it("cleans a deleted wait node before its initial task establishes the wait", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => new Date("2026-07-10T00:00:00.000Z"),
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "wait-1",
+      nodeKind: "wait",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+    await repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      maxAttempts: 5,
+      now: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    await expect(repository.processRevisionCleanupBatch({
+      cleanupId: cleanup.id,
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      now: new Date("2026-07-10T00:00:00.000Z"),
+    })).resolves.toMatchObject({ cancelled: 1, kind: "success", status: "done" });
+    expect(repository.runs.find(run => run.id === created.run.id)).toMatchObject({
+      status: "cancelled",
+      terminalReason: "flow_changed_current_node_deleted",
+    });
+    expect(repository.tasks.find(task => task.id === created.task.id)?.status).toBe("cancelled");
+  });
+
+  it("obsoletes a cleanup request when the deleted node is published again", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => new Date("2026-07-10T00:00:00.000Z"),
+      async () => ({
+        executionSpec: publishedSpecWithWait(),
+        revision: 3,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const waiting = await createWaitingRun(repository, "cleanup-obsolete");
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "wait-1",
+      nodeKind: "wait",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+    await repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      maxAttempts: 5,
+      now: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    await expect(repository.processRevisionCleanupBatch({
+      cleanupId: cleanup.id,
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      now: new Date("2026-07-10T00:00:00.000Z"),
+    })).resolves.toEqual({
+      cancelled: 0,
+      hasMore: false,
+      kind: "success",
+      status: "obsolete",
+    });
+    expect(repository.runs.find(run => run.id === waiting.run.id)?.status).toBe("waiting");
   });
 
   it("aggregates pending node metric events once", async () => {
@@ -120,7 +381,7 @@ describe("workflow runtime repository", () => {
     await expect(repository.aggregateNodeMetricEvents({ limit: 100 })).resolves.toBe(1);
     await expect(repository.aggregateNodeMetricEvents({ limit: 100 })).resolves.toBe(0);
     expect(repository.snapshot().nodeMetrics).toEqual([
-      expect.objectContaining({ completed: 0, current: 0, entered: 1, nodeId: "start", passed: 0 }),
+      expect.objectContaining({ completed: 0, current: 1, entered: 1, nodeId: "start", passed: 0 }),
     ]);
     await expect(repository.cleanupProcessedNodeMetricEvents({
       limit: 100,
@@ -129,7 +390,7 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().nodeMetricEvents).toHaveLength(0);
   });
 
-  it("keeps a run on a wait node until the delayed successor is claimed", async () => {
+  it("keeps a run and its authoritative task on the wait node until it is due", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     const created = await repository.createRunWithInitialTask({
       ...createRunInput(),
@@ -145,39 +406,31 @@ describe("workflow runtime repository", () => {
     });
     if (claimedWait.kind !== "success") throw new Error("claim failed");
 
-    const committed = await repository.commitNodeResult({
+    const waiting = await repository.beginFixedWait({
+      dueAt: new Date("2026-07-13T00:00:00.000Z"),
       expectedRunLockVersion: 1,
       expectedTaskVersion: claimedWait.task.taskVersion,
       inbox: { consumer: "workflow-task", expiresAt: new Date("2026-08-10T00:00:00.000Z"), messageId: "wait-1" },
-      nextTask: {
-        dispatchImmediately: false,
-        dueAt: new Date("2026-07-13T00:00:00.000Z"),
-        nodeId: "message-1",
-        nodeKind: "message",
-        taskType: "wait",
-      },
-      nodeExecution: { executionKey: "wait", input: {}, output: {} },
+      now: new Date("2026-07-10T00:00:00.000Z"),
       runId: created.run.id,
       taskId: created.task.id,
       uid: 9,
     });
-    if (committed.kind !== "success" || !committed.nextTask) throw new Error("commit failed");
+    if (waiting.kind !== "success") throw new Error("wait failed");
 
-    expect(committed.run).toMatchObject({ currentNodeId: "wait-1", status: "waiting" });
+    expect(waiting.run).toMatchObject({ currentNodeId: "wait-1", status: "waiting" });
+    expect(waiting.task).toMatchObject({ nodeId: "wait-1", status: "pending", taskType: "wait" });
 
     const claimedSuccessor = await repository.claimTask({
-      expectedTaskVersion: 1,
+      expectedTaskVersion: waiting.task.taskVersion,
       leaseExpiresAt: new Date("2026-07-13T00:01:00.000Z"),
       leaseOwner: "worker-1",
-      taskId: committed.nextTask.id,
+      taskId: waiting.task.id,
       uid: 9,
     });
     expect(claimedSuccessor).toMatchObject({ kind: "success" });
-    expect(repository.runs[0]).toMatchObject({ currentNodeId: "message-1", status: "running" });
-    expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ current: -1, nodeId: "wait-1", passed: 1 }),
-      expect.objectContaining({ current: 1, nodeId: "message-1", passed: 0 }),
-    ]));
+    expect(repository.runs[0]).toMatchObject({ currentNodeId: "wait-1", status: "running" });
+    expect(repository.snapshot().tasks).toHaveLength(1);
   });
 
   it("removes a cancelled waiting run from the wait node instead of its delayed successor", async () => {
@@ -195,23 +448,17 @@ describe("workflow runtime repository", () => {
       uid: 9,
     });
     if (claimed.kind !== "success") throw new Error("claim failed");
-    const committed = await repository.commitNodeResult({
+    const waiting = await repository.beginFixedWait({
+      dueAt: new Date("2026-07-13T00:00:00.000Z"),
       expectedRunLockVersion: 1,
       expectedTaskVersion: claimed.task.taskVersion,
       inbox: { consumer: "workflow-task", expiresAt: new Date("2026-08-10T00:00:00.000Z"), messageId: "waiting-cancel" },
-      nextTask: {
-        dispatchImmediately: false,
-        dueAt: new Date("2026-07-13T00:00:00.000Z"),
-        nodeId: "message-1",
-        nodeKind: "message",
-        taskType: "wait",
-      },
-      nodeExecution: { executionKey: "waiting-cancel", input: {}, output: {} },
+      now: new Date("2026-07-10T00:00:00.000Z"),
       runId: created.run.id,
       taskId: created.task.id,
       uid: 9,
     });
-    if (committed.kind !== "success") throw new Error("commit failed");
+    if (waiting.kind !== "success") throw new Error("wait failed");
 
     await repository.cancelWorkflowBatch({ limit: 100, uid: 9, workflowId: "31" });
 
@@ -243,23 +490,17 @@ describe("workflow runtime repository", () => {
       uid: 9,
     });
     if (claimed.kind !== "success") throw new Error("claim failed");
-    const committed = await repository.commitNodeResult({
+    const waiting = await repository.beginFixedWait({
+      dueAt: new Date("2026-07-13T00:00:00.000Z"),
       expectedRunLockVersion: 1,
       expectedTaskVersion: claimed.task.taskVersion,
       inbox: { consumer: "workflow-task", expiresAt: new Date("2026-08-10T00:00:00.000Z"), messageId: "unavailable-waiting-cancel" },
-      nextTask: {
-        dispatchImmediately: false,
-        dueAt: new Date("2026-07-13T00:00:00.000Z"),
-        nodeId: "message-1",
-        nodeKind: "message",
-        taskType: "wait",
-      },
-      nodeExecution: { executionKey: "unavailable-waiting-cancel", input: {}, output: {} },
+      now: new Date("2026-07-10T00:00:00.000Z"),
       runId: created.run.id,
       taskId: created.task.id,
       uid: 9,
     });
-    if (committed.kind !== "success") throw new Error("commit failed");
+    if (waiting.kind !== "success") throw new Error("wait failed");
     runtimeStatus = "stopped";
 
     await repository.cancelUnavailableWorkflowRuns({ limit: 100 });
@@ -293,7 +534,7 @@ describe("workflow runtime repository", () => {
       runId: created.run.id,
       taskId: created.task.id,
       uid: 9,
-    })).rejects.toThrow("Invalid workflow run transition");
+    })).resolves.toEqual({ kind: "conflict" });
   });
 
   it("recovers expired running task leases without per-task writes", async () => {
@@ -580,7 +821,7 @@ describe("workflow runtime repository", () => {
     expect(first).toMatchObject({ cancelled: 1, done: false });
     expect(second).toMatchObject({ cancelled: 1 });
     expect(repository.snapshot().runs.every((run) => run.status === "cancelled")).toBe(true);
-    expect(repository.snapshot().nodeMetricEvents.filter(event => event.current === -1)).toHaveLength(0);
+    expect(repository.snapshot().nodeMetricEvents.filter(event => event.current === -1)).toHaveLength(2);
   });
 });
 
@@ -600,4 +841,303 @@ function createRunInput(): WorkflowCreateRunInput {
     workflowId: "31",
     workflowType: "chatai_sop",
   };
+}
+
+function repositoryWithPublishedSpec() {
+  return new InMemoryWorkflowRuntimeRepository(
+    undefined,
+    () => new Date("2026-07-10T00:00:00.000Z"),
+    async () => ({
+      executionSpec: publishedSpec(),
+      revision: 2,
+      subjectType: "chatai_contact",
+      workflowType: "chatai_sop",
+    }),
+  );
+}
+
+function repositoryWithLatestSpec(executionSpec: WorkflowExecutionSpec) {
+  return new InMemoryWorkflowRuntimeRepository(
+    undefined,
+    () => new Date("2026-07-10T00:00:00.000Z"),
+    async () => ({
+      executionSpec,
+      revision: executionSpec.revision,
+      subjectType: "chatai_contact",
+      workflowType: "chatai_sop",
+    }),
+  );
+}
+
+function flowChangedSpec(
+  scenario:
+    | "branch-context-incompatible"
+    | "context-incompatible"
+    | "current-node-deleted"
+    | "node-kind-changed"
+    | "outlet-deleted",
+): WorkflowExecutionSpec {
+  const spec = publishedSpec();
+  if (scenario === "current-node-deleted") {
+    return { ...spec, edges: [], entryNodeId: "end", nodes: [spec.nodes[1]!] };
+  }
+  if (scenario === "node-kind-changed") {
+    return {
+      ...spec,
+      nodes: [{
+        config: { duration: 1, unit: "day" },
+        id: "start",
+        kind: "wait",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      }, spec.nodes[1]!],
+    };
+  }
+  if (scenario === "outlet-deleted") return { ...spec, edges: [] };
+  if (scenario === "branch-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch-1" },
+        { id: "branch-matched-end", source: "branch-1", sourceOutletId: "matched", target: "end" },
+        { id: "branch-default-end", source: "branch-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        {
+          ...spec.nodes[0]!,
+          config: {
+            entryMode: "event",
+            entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+            seatIds: [101],
+            triggers: [{ keywords: ["price"], type: "message.received" }],
+          },
+          requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
+        },
+        {
+          config: {
+            branchPaths: [
+              {
+                conditions: [{
+                  id: "message-id-present",
+                  operator: "greater-than",
+                  selector: ["trigger", "projection", "messageId"],
+                  value: 0,
+                  valueType: "number",
+                }],
+                id: "matched",
+                label: "Matched",
+                logic: "all",
+              },
+              {
+                conditions: [],
+                id: "default",
+                isDefault: true,
+                label: "Default",
+                logic: "all",
+              },
+            ],
+          },
+          id: "branch-1",
+          kind: "branch",
+          nodeSchemaVersion: 1,
+          requiredCapabilities: [],
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
+  return {
+    ...spec,
+    edges: [{ id: "start-llm", source: "start", sourceOutletId: "default", target: "llm-1" }],
+    nodes: [
+      {
+        ...spec.nodes[0]!,
+        config: {
+          entryMode: "event",
+          entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+          seatIds: [101],
+          triggers: [{ keywords: ["price"], type: "message.received" }],
+        },
+        requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
+      },
+      {
+        config: {
+          inputs: [{
+            id: "message-id",
+            name: "messageId",
+            value: {
+              kind: "variable",
+              selector: ["trigger", "projection", "messageId"],
+              valueType: { kind: "number" },
+            },
+          }],
+          modelId: "model-1",
+          output: {
+            field: { description: "", id: "result", name: "result", type: "string" },
+            format: "text",
+          },
+          systemPrompt: [{ type: "text", value: "Classify" }],
+          userPrompt: [{ selector: ["input", "message-id"], type: "variable" }],
+        },
+        id: "llm-1",
+        kind: "llm",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
+      },
+      spec.nodes[1]!,
+    ],
+  };
+}
+
+function publishedSpec(): WorkflowExecutionSpec {
+  return {
+    edges: [{ id: "start-end", source: "start", sourceOutletId: "default", target: "end" }],
+    entryNodeId: "start",
+    nodes: [
+      {
+        config: {
+          entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+          eventType: "contact.friend_added",
+          filter: { sourceIds: [] },
+          seatIds: [101],
+        },
+        id: "start",
+        kind: "start",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: {},
+        id: "end",
+        kind: "end",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+    ],
+    requiredCapabilities: [],
+    revision: 2,
+    schemaVersion: 2,
+    terminalNodeId: "end",
+    workflowId: "31",
+  };
+}
+
+function publishedSpecWithWait(): WorkflowExecutionSpec {
+  const spec = publishedSpec();
+  return {
+    ...spec,
+    edges: [
+      { id: "start-wait", source: "start", sourceOutletId: "default", target: "wait-1" },
+      { id: "wait-end", source: "wait-1", sourceOutletId: "default", target: "end" },
+    ],
+    nodes: [
+      spec.nodes[0]!,
+      {
+        config: { duration: 1, unit: "day" },
+        id: "wait-1",
+        kind: "wait",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      spec.nodes[1]!,
+    ],
+    revision: 3,
+  };
+}
+
+function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
+  const spec = publishedSpec();
+  return {
+    ...spec,
+    edges: [
+      { id: "start-message", source: "start", sourceOutletId: "default", target: "message-1" },
+      { id: "message-wait", source: "message-1", sourceOutletId: "default", target: "wait-1" },
+      { id: "wait-branch", source: "wait-1", sourceOutletId: "default", target: "branch-1" },
+      { id: "branch-matched-end", source: "branch-1", sourceOutletId: "matched", target: "end" },
+      { id: "branch-default-end", source: "branch-1", sourceOutletId: "default", target: "end" },
+    ],
+    nodes: [
+      spec.nodes[0]!,
+      {
+        config: {},
+        id: "message-1",
+        kind: "message",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: { duration: 1, unit: "day" },
+        id: "wait-1",
+        kind: "wait",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      {
+        config: {
+          branchPaths: [
+            {
+              conditions: [{
+                id: "message-sent",
+                operator: "is-not-empty",
+                selector: ["node", "message-1", "sentAt"],
+                valueType: "datetime",
+              }],
+              id: "matched",
+              label: "Matched",
+              logic: "all",
+            },
+            {
+              conditions: [],
+              id: "default",
+              isDefault: true,
+              label: "Default",
+              logic: "all",
+            },
+          ],
+        },
+        id: "branch-1",
+        kind: "branch",
+        nodeSchemaVersion: 1,
+        requiredCapabilities: [],
+      },
+      spec.nodes[1]!,
+    ],
+  };
+}
+
+async function createWaitingRun(
+  repository: InMemoryWorkflowRuntimeRepository,
+  entryEventId: string,
+) {
+  const created = await repository.createRunWithInitialTask({
+    ...createRunInput(),
+    entryEventId,
+    initialNodeId: "wait-1",
+    initialNodeKind: "wait",
+  });
+  if (created.kind !== "success") throw new Error("create failed");
+  const claimed = await repository.claimTask({
+    expectedTaskVersion: created.task.taskVersion,
+    leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    leaseOwner: "task-worker",
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (claimed.kind !== "success") throw new Error("claim failed");
+  const waiting = await repository.beginFixedWait({
+    dueAt: new Date("2026-07-11T00:00:00.000Z"),
+    expectedRunLockVersion: created.run.lockVersion,
+    expectedTaskVersion: claimed.task.taskVersion,
+    inbox: {
+      consumer: "workflow-task",
+      expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+      messageId: `wait:${entryEventId}`,
+    },
+    now: new Date("2026-07-10T00:00:00.000Z"),
+    runId: created.run.id,
+    taskId: claimed.task.id,
+    uid: 9,
+  });
+  if (waiting.kind !== "success") throw new Error("wait failed");
+  return waiting;
 }

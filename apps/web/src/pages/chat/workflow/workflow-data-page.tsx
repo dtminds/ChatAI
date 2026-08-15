@@ -1,5 +1,4 @@
 import {
-  ArrowDown01Icon,
   Cancel01Icon,
   RefreshIcon,
   Task01Icon,
@@ -12,14 +11,9 @@ import {
   type WorkflowEntryRecord,
   type WorkflowEntryRecordDetail,
   type WorkflowEntryRecordPage,
+  type WorkflowFlowChangedReason,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Sheet,
@@ -43,16 +37,14 @@ type WorkflowRecordsSelection = {
   nodeId?: string;
 };
 
-function resolveWorkflowDataDraft(document: WorkflowDocument, revision: number) {
-  const version = document.versionHistory.find(item => item.revision === revision);
-  const revisionDraft = version?.draft
-    ?? (revision === document.publishedRevision ? document.publishedDraft : null);
-  if (!revisionDraft || revision !== document.publishedRevision) return revisionDraft;
+function resolveWorkflowDataDraft(document: WorkflowDocument) {
+  const publishedDraft = document.publishedDraft;
+  if (!publishedDraft) return null;
 
   const currentPositions = new Map(document.draft.nodes.map(node => [node.id, node.position]));
   return {
-    ...revisionDraft,
-    nodes: revisionDraft.nodes.map(node => {
+    ...publishedDraft,
+    nodes: publishedDraft.nodes.map(node => {
       const currentPosition = currentPositions.get(node.id);
       return currentPosition
         ? { ...node, position: { ...currentPosition } }
@@ -65,22 +57,16 @@ export function WorkflowDataPage({
   document,
   refreshVersion = 0,
   repository = defaultWorkflowDataRepository,
-  revision: selectedRevision,
 }: {
   document: WorkflowDocument;
   refreshVersion?: number;
   repository?: WorkflowDataRepository;
-  revision?: number;
 }) {
   const [recordsSelection, setRecordsSelection] = useState<WorkflowRecordsSelection | null>(null);
-  const revision = selectedRevision ?? document.publishedRevision;
-  const draft = useMemo(
-    () => revision === null ? null : resolveWorkflowDataDraft(document, revision),
-    [document, revision],
-  );
-  useEffect(() => setRecordsSelection(null), [revision]);
+  const draft = useMemo(() => resolveWorkflowDataDraft(document), [document]);
+  useEffect(() => setRecordsSelection(null), [document.publishedRevision]);
 
-  if (revision === null || !draft) {
+  if (document.publishedRevision === null || !draft) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">发布后可查看运行数据</div>;
   }
 
@@ -94,54 +80,29 @@ export function WorkflowDataPage({
         recordsPanel={recordsSelection ? (
           <WorkflowRecordsView
             document={document}
-            key={`${revision}:${recordsSelection.nodeId ?? "all"}`}
+            key={recordsSelection.nodeId ?? "all"}
             nodeId={recordsSelection.nodeId}
             onClose={() => setRecordsSelection(null)}
             refreshVersion={refreshVersion}
             repository={repository}
-            revision={revision}
           />
         ) : null}
         refreshVersion={refreshVersion}
         repository={repository}
-        revision={revision}
       />
     </div>
   );
 }
 
 export function WorkflowDataActions({
-  label,
   onRefresh,
-  onSelectRevision,
-  versions = [],
 }: {
-  label: string;
   onRefresh?: () => void;
-  onSelectRevision?: (revision: number) => void;
-  versions?: Array<{ label: string; revision: number }>;
 }) {
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button className="h-9 gap-2 px-3" size="sm" type="button" variant="outline">
-            {label}
-            <HugeiconsIcon icon={ArrowDown01Icon} size={15} strokeWidth={1.8} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {versions.map(version => (
-            <DropdownMenuItem key={version.revision} onSelect={() => onSelectRevision?.(version.revision)}>
-              {version.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Button aria-label="刷新数据" className="size-9" onClick={onRefresh} size="icon" type="button" variant="outline">
-        <HugeiconsIcon icon={RefreshIcon} size={17} strokeWidth={1.8} />
-      </Button>
-    </>
+    <Button aria-label="刷新数据" className="size-9" onClick={onRefresh} size="icon" type="button" variant="outline">
+      <HugeiconsIcon icon={RefreshIcon} size={17} strokeWidth={1.8} />
+    </Button>
   );
 }
 
@@ -153,7 +114,6 @@ function WorkflowDataOverviewView({
   recordsPanel,
   refreshVersion,
   repository,
-  revision,
 }: {
   document: WorkflowDocument;
   draft: WorkflowDraft;
@@ -162,7 +122,6 @@ function WorkflowDataOverviewView({
   recordsPanel: ReactNode;
   refreshVersion: number;
   repository: WorkflowDataRepository;
-  revision: number;
 }) {
   const [overview, setOverview] = useState<WorkflowDataOverview | null>(null);
   const [error, setError] = useState(false);
@@ -171,7 +130,7 @@ function WorkflowDataOverviewView({
     let active = true;
     setLoading(true);
     setError(false);
-    void repository.getOverview(document.id, revision).then(value => {
+    void repository.getOverview(document.id).then(value => {
       if (active) setOverview(value);
     }).catch(() => {
       if (active) setError(true);
@@ -179,21 +138,22 @@ function WorkflowDataOverviewView({
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [document.id, repository, revision]);
+  }, [document.id, repository]);
   useEffect(load, [load, refreshVersion]);
   const metrics = useMemo(() => new Map(overview?.nodes.map(item => [item.nodeId, item]) ?? []), [overview]);
-  const totals = useMemo(() => draft.nodes.reduce((result, node) => {
-    const metric = metrics.get(node.id);
-    result.current += metric?.current ?? 0;
-    if (node.data.kind === "start") result.entered += metric?.entered ?? 0;
-    if (node.data.kind === "end") result.completed += metric?.completed ?? 0;
-    return result;
-  }, { completed: 0, current: 0, entered: 0 }), [draft.nodes, metrics]);
+  const totals = overview?.summary ?? { completed: 0, current: 0, entered: 0, incomplete: 0 };
   const nodes = useMemo(() => draft.nodes.map(node => ({
     ...node,
     data: {
       ...node.data,
-      dataMetric: metrics.get(node.id) ?? { completed: 0, current: 0, entered: 0, nodeId: node.id, passed: 0 },
+      dataMetric: metrics.get(node.id) ?? {
+        completed: 0,
+        current: 0,
+        entered: 0,
+        incomplete: 0,
+        nodeId: node.id,
+        passed: 0,
+      },
       onDataMetricClick: () => node.data.kind === "start" ? onViewAllRecords() : onViewNodeRecords(node.id),
     },
   })) as WorkflowRenderNode[], [draft.nodes, metrics, onViewAllRecords, onViewNodeRecords]);
@@ -203,11 +163,12 @@ function WorkflowDataOverviewView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <section aria-label="运行汇总" className="flex shrink-0 items-stretch border-b bg-background" role="region">
-        <dl className="grid min-w-0 flex-1 grid-cols-3">
+        <dl className="grid min-w-0 flex-1 grid-cols-4">
           {([
             ["进入次数", totals.entered],
             ["当前停留", totals.current],
             ["已完成", totals.completed],
+            ["未完成", totals.incomplete],
           ] as const).map(([label, value], index) => (
             <div className={cn("min-w-0 px-6 py-3", index > 0 && "border-l")} key={label}>
               <dt className="truncate text-xs text-muted-foreground">{label}</dt>
@@ -238,7 +199,7 @@ function WorkflowDataOverviewView({
   );
 }
 
-function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, repository, revision }: { document: WorkflowDocument; nodeId?: string; onClose(): void; refreshVersion: number; repository: WorkflowDataRepository; revision: number }) {
+function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, repository }: { document: WorkflowDocument; nodeId?: string; onClose(): void; refreshVersion: number; repository: WorkflowDataRepository }) {
   const [page, setPage] = useState<WorkflowEntryRecordPage | null>(null);
   const [detail, setDetail] = useState<WorkflowEntryRecordDetail | null>(null);
   const [error, setError] = useState(false);
@@ -252,7 +213,6 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
       cursor,
       ...(nodeId ? { nodeId } : {}),
       workflowId: document.id,
-      revision,
     }).then(value => {
       if (active) setPage(current => cursor && current
         ? { items: [...current.items, ...value.items], nextCursor: value.nextCursor }
@@ -260,12 +220,14 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
     }).catch(() => { if (active) setError(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [document.id, nodeId, repository, revision]);
+  }, [document.id, nodeId, repository]);
   useEffect(() => load(), [load, refreshVersion]);
   const openDetail = useCallback((record: WorkflowEntryRecord) => {
     void repository.getRecord(document.id, record.recordId).then(setDetail);
   }, [document.id, repository]);
-  const title = nodeId ? nodeTitle(document, revision, nodeId) : "全部进入记录";
+  const title = nodeId && document.publishedRevision
+    ? nodeTitle(document, document.publishedRevision, nodeId)
+    : "全部进入记录";
   const panelLabel = nodeId ? `${title}进入记录` : title;
   return (
     <section
@@ -319,7 +281,7 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
   return (
     <Sheet onOpenChange={onOpenChange} open={Boolean(detail)}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-[min(680px,calc(100vw-48px))]">
-        {detail ? <><SheetHeader><SheetTitle>{detail.customer.name}</SheetTitle><SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription></SheetHeader><div className="border-t px-6 py-5"><h3 className="mb-5 text-sm font-semibold">运行轨迹</h3><ol className="space-y-0">{detail.steps.map((step, index) => <li className="relative flex gap-4 pb-6" key={`${step.nodeId}-${index}`}><span className={cn("mt-1 size-2.5 rounded-full", step.status === "failed" ? "bg-destructive" : step.status === "current" ? "bg-warning" : "bg-success")} />{index < detail.steps.length - 1 ? <span className="absolute left-[4px] top-3 h-full w-px bg-border" /> : null}<div><div className="text-sm font-medium">{step.title}</div><div className="mt-1 text-xs text-muted-foreground">{formatDate(step.occurredAt)}</div>{step.description ? <div className="mt-1 text-xs text-muted-foreground">{step.description}</div> : null}</div></li>)}</ol></div></> : null}
+        {detail ? <><SheetHeader><SheetTitle>{detail.customer.name}</SheetTitle><SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription>{detail.terminalReason ? <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">{flowChangedReasonLabel(detail.terminalReason)}</p> : null}</SheetHeader><div className="border-t px-6 py-5"><h3 className="mb-5 text-sm font-semibold">运行轨迹</h3><ol className="space-y-0">{detail.steps.map((step, index) => <li className="relative flex gap-4 pb-6" key={`${step.nodeId}-${index}`}><span className={cn("mt-1 size-2.5 rounded-full", step.status === "failed" ? "bg-destructive" : step.status === "current" ? "bg-warning" : "bg-success")} />{index < detail.steps.length - 1 ? <span className="absolute left-[4px] top-3 h-full w-px bg-border" /> : null}<div><div className="text-sm font-medium">{step.title}</div><div className="mt-1 text-xs text-muted-foreground">{formatDate(step.occurredAt)}</div>{step.description ? <div className="mt-1 text-xs text-muted-foreground">{step.description}</div> : null}</div></li>)}</ol></div></> : null}
       </SheetContent>
     </Sheet>
   );
@@ -331,6 +293,15 @@ function RecordStatus({ record }: { record: WorkflowEntryRecord }) {
 
 function statusLabel(status: WorkflowEntryRecord["status"]) {
   return ({ cancelled: "未完成", completed: "已完成", failed: "未完成", queued: "准备中", running: "进行中", waiting: "等待中" } as const)[status];
+}
+
+function flowChangedReasonLabel(reason: WorkflowFlowChangedReason) {
+  return ({
+    flow_changed_context_incompatible: "流程配置已更新，后续节点所需数据不可用",
+    flow_changed_current_node_deleted: "流程配置已更新，当前节点已删除",
+    flow_changed_node_kind_changed: "流程配置已更新，当前节点类型已变更",
+    flow_changed_outlet_deleted: "流程配置已更新，当前节点出口已删除",
+  } as const)[reason];
 }
 
 function nodeTitle(document: WorkflowDocument, revision: number, nodeId: string) {

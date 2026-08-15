@@ -1,7 +1,9 @@
 # 营销 Workflow 当前实现与 Java 协作落地方案
 
+> Revision 运行语义更新：本文中“已运行 Run 始终固定使用进入时 Revision”的描述已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代。Java 与 Node 的职责边界、不可变 Revision、Trigger Binding 和 Capability Contract 继续有效。
+
 - 日期：2026-08-05
-- 最后更新：2026-08-11
+- 最后更新：2026-08-14
 - 状态：Meeting Draft
 - 适用对象：Java 平台团队、ChatAI Node 团队、产品与测试
 - 会议目标：让团队快速理解当前 Workflow 已完成的设计和实现，确定 Java / Node 边界，并形成可以立即领取的开发任务
@@ -30,7 +32,7 @@
 | Node Workflow Outbox | Node | Node 已有的 Workflow 内部任务发件箱，对应 `xy_wap_embed_workflow_outbox`。Node 在推进 Run/Task 的同一事务中写入记录，随后投递到 Pulsar `workflow-task`。它不能与 Java Event Outbox 共用。 |
 | Entry Event | Java 生产，Node 消费 | 可以触发 Start 或唤醒 Wait Event 的标准业务事实。事件携带来源身份和可用的 Subject 引用；Node 匹配具体 Binding 后才确定每个 Run 的唯一 Subject。通过 Pulsar `workflow-entry` 传递。 |
 | `eventId` | Java 生成，Node 使用 | 业务事件的稳定唯一标识。同一业务事实重试和重复投递时必须保持不变，Node 用它防止同一 Workflow 重复创建 Run。 |
-| Revision | Node | Workflow 每次正式启用或执行语义发生变化时生成的不可变执行快照。新 Run 使用最新 Revision，已经运行的 Run 始终固定使用进入时的 Revision。 |
+| Revision | Node | Workflow 每次正式启用或执行语义发生变化时生成的不可变执行快照。Task 固定使用到达当前节点时的 Revision；节点完成后，Run 按最新发布 Revision 解析下一跳。 |
 | Trigger Binding / Binding | Node | 从已发布 Revision 的 Start 节点编译出的触发索引，记录 Event Type、目标 Subject Type 和完整 `filter_spec_json`。Binding 按 Revision 和 Event Type 持久化；本期因 Start Event 单选，当前 Revision 实际只有一条。Java 预匹配、Node 最终匹配和 Subject 解析都以当前 Revision Binding 为准。 |
 | Run | Node | 某个 `subjectType + subjectId` 成功进入某个 Workflow 后产生的一次运行实例。同一主体重复进入同一 Workflow 会形成不同 Run，但必须满足 Start 的重复进入规则。 |
 | Task | Node | Run 当前等待执行或即将执行的最小调度单元，记录节点、状态、执行版本、`due_at`、租约和重试次数。1.0 中一个 Run 同一时刻最多有一个有效 Task。 |
@@ -337,7 +339,7 @@ uid + subjectType + subjectId
 
 不要求同一个自然人在客户域、会员域和 ChatAI 域中使用相同 ID，也不要求 Workflow 1.0 先建设统一身份图谱。
 
-Workflow Type 创建后不可修改。Definition 只保存 Workflow Type；发布时将 Workflow Type 和由 Capability Profile 得到的 Subject Type 固化到不可变 Revision 的普通列。Execution Spec 继续只表达执行图，Runtime Revision Record 将两个类型字段与 Execution Spec 一起返回。已经运行的 Run 始终使用进入时 Revision 中的类型和主体语义。
+Workflow Type 创建后不可修改。Definition 只保存 Workflow Type；发布时将 Workflow Type 和由 Capability Profile 得到的 Subject Type 固化到不可变 Revision 的普通列。Execution Spec 继续只表达执行图，Runtime Revision Record 将两个类型字段与 Execution Spec 一起返回。Run 的 Subject Type 和 Subject ID 在进入后不变；当前 Task 使用自己的 Revision，后续节点按最新发布 Revision 前向路由。
 
 领域契约、Java 事件信封和 DTO 使用可读的字符串值；MySQL 普通列使用稳定的 `TINYINT UNSIGNED` 编码，减少 Run、Entry Guard、Subscription 和联合索引中的重复存储：
 
@@ -492,7 +494,7 @@ Deployment Capability 被关闭时不修改 Workflow 的 `active` 状态，也�
 
 #### 版本兼容与下线
 
-Capability Requirement 必须带契约版本。环境升级期间可以同时支持 v1/v2；只要仍有 Active Revision 或未完成 Run 引用旧 Node Kind 或旧 contract version，对应 Runtime handler 就不得删除。正常下线先禁止新发布，再等待或迁移存量；安全事故先关闭 Deployment Capability，不能直接部署一个无法读取旧 Revision 的 Worker。
+Capability Requirement 必须带契约版本。环境升级期间可以同时支持 v1/v2；只要可继续运行的 Workflow 当前发布 Revision，或活动 Task、Wait Event Subscription、Inference Job、Retry/Lease Recovery 仍引用旧 Node Kind 或旧 contract version，对应 Runtime handler 就不得删除。正常下线先禁止新发布，再等待存量旧节点执行完成；安全事故先关闭 Deployment Capability，不能直接部署一个无法读取旧 Revision 的 Worker。仅被保留期运行历史引用不要求保留可执行 Handler，历史回显使用不可变 Revision 快照。
 
 Runtime 对新入口仍校验事件 Subject Type 与 Revision/Binding 一致，但已发布 Revision 和运行中的 Run 不重新套用当前 Type Policy。新增允许能力是兼容扩展；普通版本禁止直接删除或收紧已开放的 Type Policy。收紧必须作为独立迁移处理受影响 Workflow。1.0 不增加 `capabilityPolicyVersion`。
 
@@ -829,7 +831,7 @@ void recordWorkflowEvent(DomainFact fact) {
   -> 对每个命中的 Workflow：
        - eventId 幂等检查
        - 重复进入策略检查
-       - 创建固定 Revision 的 Run
+       - 创建使用当前发布 Revision 的 Run 与首个 Task
        - 创建首个 Task 和 Node Outbox
   -> 所有匹配处理完成后 ACK Pulsar
 ```
@@ -1289,7 +1291,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Runtime 已实现但 Deployment 未启用时无法 Publish/Enable，以及只修改 Runtime 注册表不能开放 Java 依赖节点。
 - 覆盖 `requiredCapabilities` 版本冻结、Backend/Worker 未知能力 fail-closed、配置格式非法启动失败和清单漂移时 Worker 不误执行。
 - 覆盖紧急关闭后不创建新 Run、受影响 Task 不消耗业务重试、Wait Event 不触发且恢复后重新调度。
-- 覆盖旧 Capability 版本仍被 Active Revision 或未完成 Run 引用时对应 Runtime handler 不得移除。
+- 覆盖旧 Capability 版本仍被可继续运行的当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 引用时对应 Runtime handler 不得移除。
 - 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。
 - CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test01 TDMQ 和真实 Java 入口做手动 Smoke。
@@ -1480,7 +1482,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - test01 完成真实 Pulsar、重复投递、暂停/停止和数据库短暂异常 Smoke。
 - test01 完成 Deployment Capability 关闭与恢复 Smoke，确认不创建受影响的新 Run、Pending Task 可恢复且未产生额外业务重试。
 - 至少有 Interest、Java Outbox、Pulsar Backlog、Entry Consumer 和 Run 创建指标。
-- 旧 Runtime handler 和 capability contract version 在仍被 Active Revision 或未完成 Run 引用时不会被移除。
+- 旧 Runtime handler 和 capability contract version 在仍被可继续运行的当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 引用时不会被移除；仅有保留期历史引用时允许移除可执行 Handler。
 
 ## 18. 代码定位
 

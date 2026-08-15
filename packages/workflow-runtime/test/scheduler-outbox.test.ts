@@ -17,15 +17,15 @@ describe("workflow scheduler repository", () => {
     expect(first.dispatched + second.dispatched).toBe(1);
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "dispatched",
-      taskVersion: 2,
+      taskVersion: 4,
     });
     expect(repository.snapshot().outbox).toHaveLength(2);
     expect(repository.snapshot().outbox.at(-1)?.payload).toMatchObject({
-      messageId: `workflow-task:${created.nextTask!.id}:v2`,
+      messageId: `workflow-task:${created.nextTask!.id}:v4`,
       runId: created.run.id,
       shardId: 7,
       taskId: created.nextTask!.id,
-      taskVersion: 2,
+      taskVersion: 4,
       uid: "9",
     });
   });
@@ -44,7 +44,7 @@ describe("workflow scheduler repository", () => {
     expect(result).toMatchObject({ cancelled: 0, deferred: 1, dispatched: 0 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "pending",
-      taskVersion: 1,
+      taskVersion: 3,
     });
   });
 
@@ -62,7 +62,7 @@ describe("workflow scheduler repository", () => {
     expect(result).toMatchObject({ cancelled: 1, deferred: 0, dispatched: 0 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "cancelled",
-      taskVersion: 2,
+      taskVersion: 4,
     });
   });
 
@@ -336,6 +336,8 @@ async function createWaitingTask(
   const created = await repository.createRunWithInitialTask({
     ...createRunInput(),
     entryEventId,
+    initialNodeId: "wait",
+    initialNodeKind: "wait",
     workflowId,
   });
   const claimed = await repository.claimTask({
@@ -346,10 +348,8 @@ async function createWaitingTask(
     uid: 9,
   });
   if (claimed.kind !== "success") throw new Error("claim failed");
-  const run = repository.runs.find(item => item.id === created.run.id);
-  if (!run) throw new Error("run missing");
-  run.status = "running";
-  const committed = await repository.commitNodeResult({
+  const waiting = await repository.beginFixedWait({
+    dueAt,
     expectedRunLockVersion: 1,
     expectedTaskVersion: claimed.task.taskVersion,
     inbox: {
@@ -357,24 +357,13 @@ async function createWaitingTask(
       expiresAt: new Date("2026-08-11T00:00:00.000Z"),
       messageId: `message-${workflowId}-${entryEventId}`,
     },
-    nextTask: {
-      dispatchImmediately: false,
-      dueAt,
-      nodeId: "end",
-      nodeKind: "end",
-      taskType: "wait",
-    },
-    nodeExecution: {
-      executionKey: `9:${created.run.id}:start:1`,
-      input: {},
-      output: {},
-    },
+    now,
     runId: created.run.id,
     taskId: claimed.task.id,
     uid: 9,
   });
-  if (committed.kind !== "success") throw new Error("commit failed");
-  return committed;
+  if (waiting.kind !== "success") throw new Error("wait failed");
+  return { nextTask: waiting.task, run: waiting.run };
 }
 
 function createRunInput() {

@@ -155,10 +155,11 @@ describe("database schema document", () => {
     const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
 
     expect(runTable.match(/^  KEY .+$/gm)).toEqual([
-      "  KEY idx_workflow_run_records (uid, workflow_id, revision, id),",
-      "  KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),",
-      "  KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id),",
-      "  KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),",
+      "  KEY idx_workflow_run_records (uid, workflow_id, id),",
+      "  KEY idx_workflow_run_status_records (uid, workflow_id, status, id),",
+      "  KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),",
+      "  KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),",
+      "  KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id),",
       "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
       "  KEY idx_workflow_run_status_reconcile (status, id),",
       "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",

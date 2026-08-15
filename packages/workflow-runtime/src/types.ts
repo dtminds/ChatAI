@@ -36,6 +36,11 @@ export type WorkflowRuntimeRevisionRecord = {
   workflowType: WorkflowType;
 };
 
+export type WorkflowPublishedRevisionResolver = (input: {
+  uid: number;
+  workflowId: string;
+}) => Promise<WorkflowRuntimeRevisionRecord | null>;
+
 export type WorkflowRuntimeControlReader = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
@@ -131,12 +136,14 @@ export type WorkflowRunRecord = {
   status: WorkflowRunStatus;
   subjectId: string;
   subjectType: WorkflowSubjectType;
+  terminalReason: string | null;
   uid: number;
   workflowId: string;
 };
 
 export type WorkflowTaskRecord = {
   attempt: number;
+  createdAt: Date;
   dueAt: Date;
   id: string;
   leaseExpiresAt: Date | null;
@@ -172,6 +179,7 @@ export type WorkflowNodeMetricRecord = {
   completed: number;
   current: number;
   entered: number;
+  incomplete: number;
   nodeId: string;
   passed: number;
   revision: number;
@@ -389,9 +397,33 @@ export type WorkflowNodeExecutionRecord = {
   nodeKind: WorkflowNodeKind;
   output: Record<string, unknown>;
   runId: string;
+  revision: number;
   sequence: number;
   status: WorkflowNodeExecutionStatus;
   uid: number;
+};
+
+export type WorkflowRevisionCleanupStatus =
+  | "pending"
+  | "leased"
+  | "done"
+  | "obsolete"
+  | "dead";
+
+export type WorkflowRevisionCleanupRecord = {
+  afterRunId: string | null;
+  attempt: number;
+  id: string;
+  lastErrorCode: string | null;
+  leaseExpiresAt: Date | null;
+  leaseOwner: string | null;
+  nextAttemptAt: Date;
+  nodeId: string;
+  nodeKind: "wait" | "wait-event";
+  revision: number;
+  status: WorkflowRevisionCleanupStatus;
+  uid: number;
+  workflowId: string;
 };
 
 export type WorkflowSchedulerRepository = {
@@ -476,13 +508,6 @@ export type WorkflowCommitNodeResultInput = {
     expiresAt: Date;
     messageId: string;
   };
-  nextTask?: {
-    dispatchImmediately?: boolean;
-    dueAt: Date;
-    nodeId: string;
-    nodeKind: WorkflowNodeKind;
-    taskType: string;
-  };
   nodeExecution: {
     errorCode?: string;
     errorMessage?: string;
@@ -490,6 +515,18 @@ export type WorkflowCommitNodeResultInput = {
     input: Record<string, unknown>;
     output: Record<string, unknown>;
   };
+  runId: string;
+  sourceOutletId?: string;
+  taskId: string;
+  uid: number;
+};
+
+export type WorkflowBeginFixedWaitInput = {
+  dueAt: Date;
+  expectedRunLockVersion: number;
+  expectedTaskVersion: number;
+  inbox: WorkflowCommitNodeResultInput["inbox"];
+  now: Date;
   runId: string;
   taskId: string;
   uid: number;
@@ -543,6 +580,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
   & WorkflowInferenceRepository
   & WorkflowOutboxRepository
   & WorkflowSchedulerRepository & {
+  configurePublishedRevisionResolver?(resolver: WorkflowPublishedRevisionResolver): void;
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
@@ -551,6 +589,34 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     runBefore: Date;
     taskOutboxBefore: Date;
   }): Promise<WorkflowHistoryCleanupResult>;
+  claimRevisionCleanupBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<WorkflowRevisionCleanupRecord[]>;
+  failRevisionCleanup(input: {
+    cleanupId: string;
+    errorCode: string;
+    leaseOwner: string;
+    maxAttempts: number;
+    nextAttemptAt: Date;
+  }): Promise<boolean>;
+  processRevisionCleanupBatch(input: {
+    cleanupId: string;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<
+    | {
+        cancelled: number;
+        hasMore: boolean;
+        kind: "success";
+        status: "done" | "obsolete" | "pending";
+      }
+    | { kind: "conflict" | "not-found" }
+  >;
   cancelUnavailableWorkflowRuns(input: {
     afterRunId?: string;
     limit: number;
@@ -596,6 +662,11 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
         task: WorkflowTaskRecord;
       }
     | WorkflowRuntimeFailure
+  >;
+  beginFixedWait(input: WorkflowBeginFixedWaitInput): Promise<
+    | { kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord }
+    | Exclude<WorkflowRuntimeFailure, { action: "cancel" | "defer"; kind: "workflow-unavailable" }>
+    | { action: "cancel"; kind: "workflow-unavailable" }
   >;
   createRunWithInitialTask(input: WorkflowCreateRunInput): Promise<
     | {

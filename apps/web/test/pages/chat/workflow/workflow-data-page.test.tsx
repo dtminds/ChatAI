@@ -48,7 +48,8 @@ describe("WorkflowDataPage", () => {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
         nodes: [],
-        revision: document.publishedRevision!,
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
       })),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
@@ -79,8 +80,9 @@ describe("WorkflowDataPage", () => {
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
-        nodes: [{ completed: 0, current: 0, entered: 9, nodeId: startNode.id, passed: 0 }],
-        revision: document.publishedRevision!,
+        nodes: [{ completed: 0, current: 0, entered: 9, incomplete: 0, nodeId: startNode.id, passed: 0 }],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 9, incomplete: 0 },
       })),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({ items: [], nextCursor: null })),
@@ -95,7 +97,6 @@ describe("WorkflowDataPage", () => {
     expect(within(records).getByText("已结束记录仅保留最近 180 天")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith({
       cursor: undefined,
-      revision: document.publishedRevision!,
       workflowId: document.id,
     });
   });
@@ -110,11 +111,12 @@ describe("WorkflowDataPage", () => {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
         nodes: [
-          { completed: 0, current: 0, entered: 126, nodeId: startNode.id, passed: 0 },
-          { completed: 0, current: 18, entered: 0, nodeId: waitNode.id, passed: 102 },
-          { completed: 92, current: 0, entered: 0, nodeId: endNode.id, passed: 0 },
+          { completed: 0, current: 0, entered: 126, incomplete: 0, nodeId: startNode.id, passed: 0 },
+          { completed: 0, current: 18, entered: 0, incomplete: 0, nodeId: waitNode.id, passed: 102 },
+          { completed: 92, current: 0, entered: 0, incomplete: 0, nodeId: endNode.id, passed: 0 },
         ],
-        revision: document.publishedRevision!,
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 92, current: 18, entered: 126, incomplete: 16 },
       })),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({
@@ -139,6 +141,7 @@ describe("WorkflowDataPage", () => {
     expect(within(summary).getByText("126")).toBeInTheDocument();
     expect(within(summary).getByText("18")).toBeInTheDocument();
     expect(within(summary).getByText("92")).toBeInTheDocument();
+    expect(within(summary).getByText("16")).toBeInTheDocument();
 
     await user.click(within(summary).getByRole("button", { name: "查看全部记录" }));
 
@@ -146,7 +149,6 @@ describe("WorkflowDataPage", () => {
     expect(within(records).getByText("全部记录客户")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith({
       cursor: undefined,
-      revision: document.publishedRevision!,
       workflowId: document.id,
     });
   });
@@ -158,17 +160,19 @@ describe("WorkflowDataPage", () => {
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
-        nodes: [{ completed: 0, current: 18, entered: 0, nodeId: waitNode.id, passed: 102 }],
-        revision: document.publishedRevision!,
+        nodes: [{ completed: 0, current: 18, entered: 0, incomplete: 0, nodeId: waitNode.id, passed: 102 }],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 18, entered: 18, incomplete: 0 },
       })),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T09:00:00.000Z",
         customer: { avatar: null, name: "张三" },
         recordId: "31",
         revision: document.publishedRevision!,
-        status: "waiting" as const,
+        status: "cancelled" as const,
         subjectType: "chatai_contact" as const,
-        steps: [{ occurredAt: "2026-07-12T09:00:00.000Z", nodeId: waitNode.id, nodeKind: "wait" as const, status: "current" as const, title: waitNode.data.title }],
+        terminalReason: "flow_changed_outlet_deleted" as const,
+        steps: [{ occurredAt: "2026-07-12T09:00:00.000Z", nodeId: waitNode.id, nodeKind: "wait" as const, revision: document.publishedRevision!, status: "current" as const, title: waitNode.data.title }],
       })),
       listRecords: vi.fn(async () => ({
         items: [{
@@ -199,10 +203,11 @@ describe("WorkflowDataPage", () => {
 
     await user.click(within(records).getByText("张三"));
     expect(await screen.findByRole("heading", { name: "运行轨迹" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "流程变更说明" })).toBeInTheDocument();
     expect(repository.getRecord).toHaveBeenCalledWith(document.id, "31");
   });
 
-  it("closes node records when switching to a different revision", async () => {
+  it("closes node records when the published revision changes", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
     const baseVersion = document.versionHistory[0]!;
@@ -229,10 +234,11 @@ describe("WorkflowDataPage", () => {
     };
     const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
     const repository = {
-      getOverview: vi.fn(async (_workflowId: string, revision: number) => ({
+      getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
-        nodes: [{ completed: 0, current: 1, entered: 0, nodeId: waitNode.id, passed: 0 }],
-        revision,
+        nodes: [{ completed: 0, current: 1, entered: 0, incomplete: 0, nodeId: waitNode.id, passed: 0 }],
+        publishedRevision: 1,
+        summary: { completed: 0, current: 1, entered: 1, incomplete: 0 },
       })),
       getRecord: vi.fn(),
       listRecords: vi.fn().mockResolvedValue(oldPage),
@@ -240,7 +246,7 @@ describe("WorkflowDataPage", () => {
     const user = userEvent.setup();
     const view = render(
       <ReactFlowProvider>
-        <WorkflowDataPage document={documentWithHistory} repository={repository} revision={1} />
+        <WorkflowDataPage document={documentWithHistory} repository={repository} />
       </ReactFlowProvider>,
     );
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
@@ -249,7 +255,10 @@ describe("WorkflowDataPage", () => {
 
     view.rerender(
       <ReactFlowProvider>
-        <WorkflowDataPage document={documentWithHistory} repository={repository} revision={2} />
+        <WorkflowDataPage
+          document={{ ...documentWithHistory, publishedRevision: 2 }}
+          repository={repository}
+        />
       </ReactFlowProvider>,
     );
 
@@ -266,8 +275,9 @@ describe("WorkflowDataPage", () => {
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
-        nodes: [{ completed: 0, current: 1, entered: 0, nodeId: waitNode.id, passed: 0 }],
-        revision: 1,
+        nodes: [{ completed: 0, current: 1, entered: 0, incomplete: 0, nodeId: waitNode.id, passed: 0 }],
+        publishedRevision: 1,
+        summary: { completed: 0, current: 1, entered: 1, incomplete: 0 },
       })),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({

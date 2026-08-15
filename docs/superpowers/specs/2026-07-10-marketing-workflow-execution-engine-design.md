@@ -1,5 +1,7 @@
 # 营销 Workflow 1.0 执行引擎设计
 
+> Revision 运行语义更新：本文中“Run 始终固定在进入时 Revision”的决策已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代。不可变 Revision、首次启用和发布规则继续有效。
+
 - 日期：2026-07-10
 - 状态：Draft
 - 适用范围：营销 Workflow 的后端控制面、执行面、持久化和消息调度
@@ -52,7 +54,7 @@ Node.js 24 LTS + TypeScript
 - Redis 不作为 1.0 必需依赖；即使复用现有 Redis，也只能用于缓存或辅助限流，不能参与正确性保证。
 - 长期等待保存为数据库中的 `due_at`，不使用进程内 Timer、Redis ZSet、BullMQ delayed job 或 MQ 长延迟消息作为事实来源。
 - 采用 at-least-once 投递与端到端幂等，不承诺 exactly-once。
-- 首次启用产生 Revision 1；首次启用后只有执行语义变化的发布才产生新的不可变 Revision，运行实例始终固定在进入时的 Revision。
+- 首次启用产生 Revision 1；首次启用后只有执行语义变化的发布才产生新的不可变 Revision。Run 的当前节点固定使用到达该节点时的 Revision，节点完成后按最新发布 Revision 解析下一跳，详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md)。
 - 1.0 不引入 Temporal、Inngest、CKafka、ClickHouse 或专用归档服务。
 
 ## 3. 目标与非目标
@@ -72,7 +74,7 @@ Node.js 24 LTS + TypeScript
 
 - 通用 BPMN 或任意代码工作流。
 - 并行分支、Join、循环、子流程、补偿事务和人工审批。
-- 运行中实例自动迁移到新 Revision。
+- 发布时批量迁移或重写整个运行中实例到新 Revision；节点边界上的前向路由按 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 执行，不属于此处的批量迁移。
 - 毫秒级营销调度。
 - 使用 MQ 或 Redis 实现 exactly-once。
 - 1.0 建设统一客户事件平台或实时数仓。
@@ -266,7 +268,7 @@ apps/workflow-worker/src/
 
 1. `WorkflowDraft`：画布编辑数据，包括节点位置、Viewport 和 UI 所需字段。
 2. `WorkflowRevision`：首次启用及启用后的发布所生成的不可变执行快照。
-3. `WorkflowRun`：某个客户基于固定 Revision 创建的运行实例。
+3. `WorkflowRun`：某个客户在 Workflow 中的一次持久运行实例；当前节点由固定 Revision 的 Task 执行，后续节点可在节点边界跟随最新发布 Revision。
 
 前端当前的 `WorkflowDslDocument` 可以作为迁移基础，但正式发布时后端必须重新校验并编译执行图，不能信任浏览器提交的 `executionGraph`。
 
@@ -309,8 +311,7 @@ Viewport、坐标、卡片样式、Metric、Summary、图标和 UI Runtime 回�
 - Stopped 或已逻辑删除的 Workflow 不允许继续发布。
 - Revision 发布后不可修改，只能发布下一 Revision。
 - 新进入客户使用当前已发布 Revision。
-- 已运行客户继续使用原 Revision。
-- 1.0 不支持运行中 Revision 迁移。
+- 已有 Run 的当前节点保持到达该节点时的 Revision；节点完成后按最新发布 Revision 解析下一跳，不在发布时批量迁移 Run。详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md)。
 - 发布使用乐观锁，客户端必须提交其读取到的草稿版本或 Revision 条件。
 - DSL Schema Version 与 Node Schema Version 分开演进。
 
@@ -1123,7 +1124,7 @@ executionKey
 - Web 草稿可以保存到真实后端，并通过乐观锁避免覆盖。
 - 从未启用时发布只完成后端编译和校验，不创建 Revision。
 - 首次启用生成 Revision 1；启用后只有执行语义变化的发布生成新的、不可变且可查询的 Revision，纯布局变化复用当前 Revision。
-- 新 Run 固定 Revision，后续发布不影响已有 Run。
+- 新 Run 从当前发布 Revision 进入；已有 Run 的当前节点保持原 Revision，后续发布从下一节点路由边界开始生效。
 - 首批节点可以通过统一 Executor Registry 执行，不在 Worker 中散落 `switch` 业务逻辑。
 - Wait 使用数据库时间桶，重启所有 Node 进程后仍可恢复。
 - MQ 重复、乱序和 Worker 崩溃不会造成重复业务动作。

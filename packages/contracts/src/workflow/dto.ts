@@ -166,6 +166,7 @@ export const WorkflowNodeMetricSchema = Type.Object({
   completed: Type.Integer({ minimum: 0 }),
   current: Type.Integer({ minimum: 0 }),
   entered: Type.Integer({ minimum: 0 }),
+  incomplete: Type.Integer({ minimum: 0 }),
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
   passed: Type.Integer({ minimum: 0 }),
 });
@@ -173,7 +174,13 @@ export const WorkflowNodeMetricSchema = Type.Object({
 export const WorkflowDataOverviewSchema = Type.Object({
   calculatedAt: Type.String(),
   nodes: Type.Array(WorkflowNodeMetricSchema, { maxItems: 200 }),
-  revision: Type.Integer({ minimum: 1 }),
+  publishedRevision: Type.Integer({ minimum: 1 }),
+  summary: Type.Object({
+    completed: Type.Integer({ minimum: 0 }),
+    current: Type.Integer({ minimum: 0 }),
+    entered: Type.Integer({ minimum: 0 }),
+    incomplete: Type.Integer({ minimum: 0 }),
+  }),
 });
 
 export const WorkflowEntryRecordStatusSchema = Type.Union([
@@ -217,9 +224,17 @@ export const WorkflowEntryRecordStepSchema = Type.Object({
   occurredAt: Type.String(),
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
   nodeKind: WorkflowEntryRecordStepNodeKindSchema,
+  revision: Type.Integer({ minimum: 1 }),
   status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("current")]),
   title: Type.String(),
 });
+
+export const WorkflowFlowChangedReasonSchema = Type.Union([
+  Type.Literal("flow_changed_context_incompatible"),
+  Type.Literal("flow_changed_current_node_deleted"),
+  Type.Literal("flow_changed_node_kind_changed"),
+  Type.Literal("flow_changed_outlet_deleted"),
+]);
 
 export const WorkflowEntryRecordDetailSchema = Type.Object({
   createdAt: Type.String(),
@@ -228,11 +243,13 @@ export const WorkflowEntryRecordDetailSchema = Type.Object({
   revision: Type.Integer({ minimum: 1 }),
   status: WorkflowEntryRecordStatusSchema,
   subjectType: WorkflowSubjectTypeSchema,
+  terminalReason: Type.Union([WorkflowFlowChangedReasonSchema, Type.Null()]),
   steps: Type.Array(WorkflowEntryRecordStepSchema),
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
 export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
+export type WorkflowFlowChangedReason = Static<typeof WorkflowFlowChangedReasonSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowStatusReason = Static<typeof WorkflowStatusReasonSchema>;
 export type WorkflowCapabilitySummary = Static<typeof WorkflowCapabilitySummarySchema>;

@@ -15,7 +15,12 @@ describe("workflow data routes", () => {
 
   it("serves node metrics, cursor-paged entry records, and one record trajectory", async () => {
     const dataService = {
-      getOverview: vi.fn(async () => ({ calculatedAt: "2026-07-12T10:00:00.000Z", nodes: [], revision: 3 })),
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [],
+        publishedRevision: 3,
+        summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
+      })),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T09:00:00.000Z",
         customer: { avatar: null, name: "张三" },
@@ -28,9 +33,9 @@ describe("workflow data routes", () => {
     };
     const app = await createApp(dataService);
 
-    expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/data?revision=3" })).json().data)
-      .toMatchObject({ revision: 3 });
-    expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/records?revision=3&nodeId=wait-1&cursor=40&limit=20" })).json().data)
+    expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/data" })).json().data)
+      .toMatchObject({ publishedRevision: 3 });
+    expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/records?nodeId=wait-1&cursor=40&limit=20" })).json().data)
       .toMatchObject({ nextCursor: "29" });
     expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/records/31" })).json().data)
       .toMatchObject({ customer: { name: "张三" }, recordId: "31" });
@@ -39,7 +44,6 @@ describe("workflow data routes", () => {
       cursor: "40",
       limit: 20,
       nodeId: "wait-1",
-      revision: 3,
       workflowId: "12",
     }));
   });
@@ -56,13 +60,45 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it("aggregates metrics across revisions while returning only current graph nodes", async () => {
+    const reader = new MysqlWorkflowDataReader(createOverviewDbMock() as never);
+
+    const overview = await reader.getOverview({ uid: 9, workflowId: "12" });
+
+    expect(overview).toMatchObject({
+      publishedRevision: 3,
+      summary: { completed: 96, current: 20, entered: 120, incomplete: 6 },
+    });
+    expect(overview.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entered: 120, nodeId: "start" }),
+      expect.objectContaining({ current: 18, nodeId: "wait-1" }),
+    ]));
+    expect(overview.nodes.some(node => node.nodeId === "removed-wait")).toBe(false);
+  });
+
+  it("returns a stable flow-change reason without exposing other terminal codes", async () => {
+    const changedReader = new MysqlWorkflowDataReader(createRecordDbMock({
+      runStatus: "cancelled",
+      terminalReason: "flow_changed_outlet_deleted",
+    }) as never);
+    const failedReader = new MysqlWorkflowDataReader(createRecordDbMock({
+      runStatus: "failed",
+      terminalReason: "WORKFLOW_CAPABILITY_FAILED",
+    }) as never);
+
+    await expect(changedReader.getRecord({ recordId: "31", uid: 9, workflowId: "12" }))
+      .resolves.toMatchObject({ terminalReason: "flow_changed_outlet_deleted" });
+    await expect(failedReader.getRecord({ recordId: "31", uid: 9, workflowId: "12" }))
+      .resolves.toMatchObject({ terminalReason: null });
+  });
+
   it("lists active runs and only terminal runs inside the 180-day record window", async () => {
     const listDb = createRecordListDbMock();
     const detailDb = createRecordDbMock({ runStatus: "completed" });
     const listReader = new MysqlWorkflowDataReader(listDb as never);
     const detailReader = new MysqlWorkflowDataReader(detailDb as never);
 
-    await listReader.listRecords({ limit: 20, revision: 3, uid: 9, workflowId: "12" });
+    await listReader.listRecords({ limit: 20, uid: 9, workflowId: "12" });
     await detailReader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
 
     expect(listDb.retentionConditions).toEqual([
@@ -176,7 +212,7 @@ describe("workflow data routes", () => {
     };
     const app = await createApp(new WorkflowDataService(reader as never), ["viewer"]);
 
-    const response = await app.inject({ method: "GET", url: "/api/server/workflows/12/data?revision=3" });
+    const response = await app.inject({ method: "GET", url: "/api/server/workflows/12/data" });
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_ACCESS_FORBIDDEN" } });
@@ -198,12 +234,70 @@ describe("workflow data routes", () => {
   }
 });
 
+function createOverviewDbMock() {
+  const updatedAt = new Date("2026-07-12T10:00:00.000Z");
+  return {
+    selectFrom(table: string) {
+      const builder = {
+        select() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_definition") return { published_revision: 3 };
+          if (table === "xy_wap_embed_workflow_revision") {
+            return {
+              draft_json: JSON.stringify({
+                nodes: [{ id: "start" }, { id: "wait-1" }, { id: "end" }],
+              }),
+            };
+          }
+          return undefined;
+        },
+        async execute() {
+          if (table !== "xy_wap_embed_workflow_node_metric") return [];
+          return [
+            metricRow("start", { entered: 70 }, updatedAt),
+            metricRow("start", { entered: 50 }, updatedAt),
+            metricRow("wait-1", { current: 10, passed: 40 }, updatedAt),
+            metricRow("wait-1", { current: 8, passed: 56 }, updatedAt),
+            metricRow("end", { completed: 96 }, updatedAt),
+            metricRow("removed-wait", { current: 2, incomplete: 6 }, updatedAt),
+          ];
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+function metricRow(
+  nodeId: string,
+  values: Partial<{
+    completed: number;
+    current: number;
+    entered: number;
+    incomplete: number;
+    passed: number;
+  }>,
+  updatedAt: Date,
+) {
+  return {
+    completed_count: values.completed ?? 0,
+    current_count: values.current ?? 0,
+    entered_count: values.entered ?? 0,
+    incomplete_count: values.incomplete ?? 0,
+    node_id: nodeId,
+    passed_count: values.passed ?? 0,
+    update_time: updatedAt,
+  };
+}
+
 function createRecordDbMock(options: {
   draftJson?: unknown;
   executionKind?: string;
   executionStatus?: string;
   runCurrentNodeId?: string;
   runStatus?: string;
+  terminalReason?: string | null;
 } = {}) {
   const draftJson = options.draftJson ?? JSON.stringify({
     nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
@@ -238,8 +332,12 @@ function createRecordDbMock(options: {
               error_message: null,
               node_id: options.runCurrentNodeId ?? "wait-1",
               node_kind: options.executionKind ?? "wait",
+              revision: 3,
               status: options.executionStatus ?? "completed",
             }];
+          }
+          if (table === "xy_wap_embed_workflow_revision") {
+            return [{ draft_json: draftJson, revision: 3 }];
           }
           return [];
         },
@@ -253,6 +351,7 @@ function createRecordDbMock(options: {
               status: options.runStatus ?? "waiting",
               subject_id: "customer-1",
               subject_type: 1,
+              terminal_reason: options.terminalReason ?? null,
               update_time: now,
             };
           }

@@ -26,6 +26,7 @@ import type {
 
 const DEFINITION_TABLE = "xy_wap_embed_workflow_definition" as const;
 const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
+const REVISION_CLEANUP_TABLE = "xy_wap_embed_workflow_revision_cleanup" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 
 type WorkflowDbExecutor = Kysely<WorkflowDatabase> | Transaction<WorkflowDatabase>;
@@ -302,6 +303,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       }
 
       const publishedAt = new Date();
+      const removedWaitNodes = definition.publishedRevision === null
+        ? []
+        : await findRemovedWaitNodes(transaction, {
+            nextSpec: input.executionSpec,
+            previousRevision: definition.publishedRevision,
+            uid: input.uid,
+            workflowId: input.workflowId,
+          });
       const insert = await transaction.insertInto(REVISION_TABLE).values({
         draft_json: stringifyJson(input.draft),
         dsl_schema_version: input.executionSpec.schemaVersion,
@@ -328,6 +337,22 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
           revision: input.executionSpec.revision,
           status: 1,
           subject_type: encodeWorkflowSubjectType(binding.subjectType),
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }))).executeTakeFirstOrThrow();
+      }
+      if (removedWaitNodes.length > 0) {
+        await transaction.insertInto(REVISION_CLEANUP_TABLE).values(removedWaitNodes.map(node => ({
+          after_run_id: null,
+          attempt: 0,
+          last_error_code: null,
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: publishedAt,
+          node_id: node.id,
+          node_kind: node.kind,
+          revision: input.executionSpec.revision,
+          status: "pending",
           uid: input.uid,
           workflow_id: input.workflowId,
         }))).executeTakeFirstOrThrow();
@@ -401,6 +426,31 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       .executeTakeFirst();
     return row ? mapDefinition(row) : null;
   }
+}
+
+async function findRemovedWaitNodes(
+  transaction: Transaction<WorkflowDatabase>,
+  input: {
+    nextSpec: WorkflowExecutionSpec;
+    previousRevision: number;
+    uid: number;
+    workflowId: string;
+  },
+) {
+  const previous = await transaction.selectFrom(REVISION_TABLE)
+    .select("execution_spec_json")
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "=", input.workflowId)
+    .where("revision", "=", input.previousRevision)
+    .executeTakeFirst();
+  if (!previous) throw new Error("Published Workflow Revision does not exist");
+  const previousSpec = normalizeWorkflowExecutionSpec(
+    parseJson(previous.execution_spec_json) as WorkflowStoredExecutionSpec,
+  );
+  const nextNodeIds = new Set(input.nextSpec.nodes.map(node => node.id));
+  return previousSpec.nodes.filter(node =>
+    (node.kind === "wait" || node.kind === "wait-event")
+    && !nextNodeIds.has(node.id));
 }
 
 async function selectDefinitionForUpdate(db: WorkflowDbExecutor, uid: number, workflowId: string) {

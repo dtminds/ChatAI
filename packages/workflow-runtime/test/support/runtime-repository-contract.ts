@@ -850,9 +850,9 @@ export function runWorkflowRuntimeRepositoryContract(
       taskId: created.task.id,
       uid: 9,
     };
-    await expect(harness.repository.commitNodeResult(commitInput)).rejects.toThrow(
-      "Invalid workflow run transition",
-    );
+    await expect(harness.repository.commitNodeResult(commitInput)).resolves.toEqual({
+      kind: "conflict",
+    });
     expect(await harness.repository.findTask(9, created.task.id)).toMatchObject({
       status: "running",
       taskVersion: claimed.task.taskVersion,

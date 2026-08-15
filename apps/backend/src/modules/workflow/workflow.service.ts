@@ -32,7 +32,6 @@ import {
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
-  createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
   getWorkflowNodeCapabilityRequirements,
@@ -40,6 +39,7 @@ import {
   projectWorkflowNodeExecutionConfig,
   normalizeWorkflowDraft,
   validateWorkflowTypePolicy,
+  WORKFLOW_PRODUCTION_CAPABILITIES,
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCapabilityExecutionError,
   WorkflowCompilationError,
@@ -98,7 +98,7 @@ export class WorkflowService {
   ) {
     this.clock = options.clock ?? (() => new Date());
     this.deploymentCapabilities = options.deploymentCapabilities
-      ?? createWorkflowDeploymentCapabilities([]);
+      ?? WORKFLOW_PRODUCTION_CAPABILITIES;
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver

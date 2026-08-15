@@ -6,38 +6,30 @@ import { describe, expect, it } from "vitest";
 import {
   createWorkflowDeploymentCapabilities,
   evaluateWorkflowProductionAvailability,
+  KNOWN_WORKFLOW_CAPABILITIES,
   normalizeWorkflowExecutionSpec,
-  parseWorkflowDeploymentCapabilities,
   validateWorkflowTypePolicy,
-  WorkflowDeploymentCapabilityConfigError,
+  WORKFLOW_PRODUCTION_CAPABILITIES,
 } from "../src/index.js";
 
 describe("workflow production availability", () => {
-  it("parses a canonical deployment capability set and rejects unknown declarations", () => {
-    const left = parseWorkflowDeploymentCapabilities(
-      "event.message.received@1,event.contact.friend_added@1",
-    );
-    const right = parseWorkflowDeploymentCapabilities(
-      "event.contact.friend_added@1, event.message.received@1",
-    );
-
-    expect(left).toEqual(right);
-    expect(left.capabilities).toEqual([
+  it("publishes the production capability registry with a stable fingerprint", () => {
+    expect(WORKFLOW_PRODUCTION_CAPABILITIES.capabilities).toEqual([
       { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
+      { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
       { capabilityKey: "event.message.received", contractVersion: 1 },
       { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
     ]);
-    expect(left.fingerprint).toMatch(/^[a-f0-9]{64}$/);
-    expect(() => parseWorkflowDeploymentCapabilities("event.message.received@2"))
-      .toThrow(WorkflowDeploymentCapabilityConfigError);
-    expect(() => parseWorkflowDeploymentCapabilities("event.message.received@1,event.message.received@1"))
-      .toThrow(WorkflowDeploymentCapabilityConfigError);
-  });
-
-  it("includes code-bundled capabilities without environment configuration", () => {
-    expect(parseWorkflowDeploymentCapabilities(undefined).capabilities).toEqual([
-      { capabilityKey: "operation.chatai.message.query", contractVersion: 1 },
-    ]);
+    expect(WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint)
+      .toBe("fd47ea46d838e47ed1eef6b27accb8d0d57b54515e38ea9ac97c588bae6c4ee0");
+    expect(KNOWN_WORKFLOW_CAPABILITIES).toEqual(expect.arrayContaining([
+      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
+      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
+    ]));
+    expect(WORKFLOW_PRODUCTION_CAPABILITIES.capabilities).not.toEqual(expect.arrayContaining([
+      { capabilityKey: "operation.intent.classify", contractVersion: 1 },
+      { capabilityKey: "operation.llm.generate", contractVersion: 1 },
+    ]));
   });
 
   it("returns all runtime, deployment, and entitlement blockers together", () => {

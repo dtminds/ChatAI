@@ -51,7 +51,6 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
-      deploymentCapabilities: config.deploymentCapabilities,
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,

@@ -19,9 +19,9 @@ import {
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
-  createWorkflowDeploymentCapabilities,
   createWorkflowNodeExecutionKey,
   hasWorkflowDeploymentCapability,
+  WORKFLOW_PRODUCTION_CAPABILITIES,
   WorkflowCapabilityExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
@@ -110,7 +110,7 @@ export class WorkflowRuntimeService {
     this.deferredTaskDelayMs = options.deferredTaskDelayMs ?? 60_000;
     this.inferenceTotalTimeoutMs = options.inferenceTotalTimeoutMs ?? 600_000;
     this.deploymentCapabilities = options.deploymentCapabilities
-      ?? createWorkflowDeploymentCapabilities([]);
+      ?? WORKFLOW_PRODUCTION_CAPABILITIES;
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);

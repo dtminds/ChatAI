@@ -232,7 +232,6 @@ NODE_ENV=production
 LOG_LEVEL=info
 WORKFLOW_ENVIRONMENT=dev
 WORKFLOW_BROKER=pulsar
-WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
 WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
@@ -273,7 +272,7 @@ WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
 
-`WORKFLOW_DEPLOYMENT_CAPABILITIES` 声明当前环境真实可用的外部 Entry Event 契约。发布和运行都会校验 Workflow Revision 所需能力是否包含在该集合中；部署尚未接通某类 Java 事件时，不要提前写入对应能力。当前可用值为 `event.message.received@1`、`event.contact.friend_added@1` 和 `event.contact.tag_added@1`。Workflow Worker 本地提供的 `operation.chatai.message.query@1` 随代码自动启用，无需加入环境变量。
+生产可用 Capability 由 `packages/workflow-engine` 的 `WORKFLOW_PRODUCTION_CAPABILITIES` 统一声明，Backend 发布门禁和 Workflow Worker 运行门禁共享同一集合及 fingerprint，不再通过环境变量重复配置。当前注册 `event.message.received@1`、`event.contact.friend_added@1`、`event.contact.tag_added@1` 和 `operation.chatai.message.query@1`。只有端到端实现完成并验证后才能通过代码评审加入新 Capability；代码已认识但尚未接通真实 Adapter 的 LLM、AI Intent 能力仍保持关闭。
 
 `WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
 
@@ -332,7 +331,6 @@ REDIS_COMMAND_TIMEOUT_MS=500
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
-WORKFLOW_DEPLOYMENT_CAPABILITIES=event.message.received@1,event.contact.friend_added@1,event.contact.tag_added@1
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 ```
 
@@ -366,7 +364,7 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
 - 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
 - `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作。代码允许 `JAVA_INTERNAL_API_TOKEN` 为空，但接入 Workflow Entitlement 后，测试和生产部署应配置 Token。
-- Backend 与 Workflow Worker 必须使用相同的 `WORKFLOW_DEPLOYMENT_CAPABILITIES` 和 `WORKFLOW_ENTITLEMENT_API_URL`。前者决定哪些 Revision 可以发布，后者用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
+- Backend 与 Workflow Worker 应部署包含同一 `WORKFLOW_PRODUCTION_CAPABILITIES` 注册表的代码版本，并使用相同的 `WORKFLOW_ENTITLEMENT_API_URL`。代码注册表决定哪些 Revision 可以发布和执行，权益接口用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。

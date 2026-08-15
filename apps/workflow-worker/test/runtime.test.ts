@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import pino from "pino";
+import { WORKFLOW_PRODUCTION_CAPABILITIES } from "@chatai/workflow-engine";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "../src/broker/types.js";
 import type { startRoleLoop } from "../src/role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "../src/runtime.js";
@@ -382,6 +383,25 @@ describe("workflow worker runtime", () => {
     expect(runtimeClose).toHaveBeenCalledTimes(1);
   });
 
+  it("logs the shared production capability fingerprint on startup", async () => {
+    const logger = { info: vi.fn() };
+    const worker = await startWorkflowWorker({
+      config: config(),
+      logger,
+      startHealth: vi.fn(async () => ({ close: vi.fn(async () => {}) })),
+      startRuntime: vi.fn(async () => ({
+        close: vi.fn(async () => {}),
+        getReadiness: () => ({ broker: true, database: true, roles: {} }),
+      })),
+    });
+
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      capabilityFingerprint: WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint,
+      event: "workflow.worker.started",
+    }), "workflow worker started");
+    await worker.close();
+  });
+
 });
 
 function createResources() {
@@ -541,7 +561,6 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     broker: "pulsar" as const,
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
-    deploymentCapabilities: { capabilities: [], fingerprint: "test-fingerprint" },
     entitlement: { apiUrl: null, mode: "enforce" as const, token: null },
     environment: "dev" as const,
     healthPort: 3002,

@@ -8,6 +8,7 @@ import type {
 } from "@chatai/workflow-runtime";
 import {
   EMPTY_WORKFLOW_EVENT_CATALOG,
+  WORKFLOW_PRODUCTION_CAPABILITIES,
   type WorkflowEventCatalog,
 } from "@chatai/workflow-engine";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "./broker/types.js";
@@ -54,7 +55,7 @@ export async function startWorkflowWorker(input: {
     throw error;
   }
   input.logger.info({
-    capabilityFingerprint: input.config.deploymentCapabilities.fingerprint,
+    capabilityFingerprint: WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint,
     environment: input.config.environment,
     event: "workflow.worker.started",
     roles: [...input.config.roles],

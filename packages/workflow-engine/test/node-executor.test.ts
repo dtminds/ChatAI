@@ -59,9 +59,7 @@ describe("core node executors", () => {
   it("starts a Wait Event with an absolute timeout", async () => {
     await expect(registry.execute(node("wait-event", {
       event: {
-        capabilityKey: "event.message.received",
         collectWindowSeconds: 10,
-        contractVersion: 1,
         type: "message.received",
       },
       timeout: { duration: 2, unit: "hour" },
@@ -75,18 +73,14 @@ describe("core node executors", () => {
   it("rejects Wait Event specs that exceed the frozen timeout or collection contract", async () => {
     await expect(registry.execute(node("wait-event", {
       event: {
-        capabilityKey: "event.message.received",
         collectWindowSeconds: 10,
-        contractVersion: 1,
         type: "message.received",
       },
       timeout: { duration: 16, unit: "day" },
     }), context())).rejects.toThrow("Wait Event node requires a supported event and timeout");
     await expect(registry.execute(node("wait-event", {
       event: {
-        capabilityKey: "event.message.received",
         collectWindowSeconds: 30,
-        contractVersion: 1,
         type: "message.received",
       },
       timeout: { duration: 15, unit: "day" },
@@ -230,7 +224,7 @@ function node(
   kind: "branch" | "end" | "message" | "start" | "wait" | "wait-event",
   config: Record<string, unknown> = {},
 ) {
-  return { config, id: kind, kind, nodeSchemaVersion: 1, requiredCapabilities: [] };
+  return { config, id: kind, kind, nodeSchemaVersion: 1 };
 }
 
 function context(

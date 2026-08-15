@@ -122,7 +122,6 @@ function transition(
 }
 
 function executionSpec(workflowId: string): WorkflowExecutionSpec {
-  const capability = { capabilityKey: "event.message.received", contractVersion: 1 } as const;
   return {
     edges: [{ id: "start-end", source: "start", sourceOutletId: "default", target: "end" }],
     entryNodeId: "start",
@@ -136,19 +135,16 @@ function executionSpec(workflowId: string): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [capability],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [capability],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId,
   };

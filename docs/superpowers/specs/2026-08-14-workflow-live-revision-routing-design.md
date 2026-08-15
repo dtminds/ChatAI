@@ -29,7 +29,7 @@ Workflow 采用以下运行模型：
 Revision 继续承担以下职责：
 
 - 保存发布时经过后端校验和 Compiler 编译的不可变 Execution Spec。
-- 保存节点配置、Capability Requirement、Workflow Type 和 Subject Type 的发布快照。
+- 保存节点配置、Workflow Type 和 Subject Type 的发布快照。
 - 为 Task、Wait Event Subscription、Inference 和 Capability 调用提供可恢复的执行依据。
 - 为单人运行路径还原当时的节点标题、配置和契约。
 - 支持恢复历史版本到 Draft 后重新发布为新 Revision。
@@ -100,7 +100,7 @@ Revision 不进入 Node Execution Key。一次 Node Arrival 的重试必须复�
 
 ### 5.1 不可变发布
 
-发布继续执行完整 Compiler、Runtime Support、Deployment Capability、Product Entitlement 和资源校验。执行语义发生变化时：
+发布继续执行完整 Compiler、Runtime 节点支持、Event Catalog 事件支持、Product Entitlement 和资源校验。执行语义发生变化时：
 
 1. 插入新 Revision。
 2. 失效旧 Trigger Binding。
@@ -178,14 +178,14 @@ Capability Retry、Inference Retry、Lease Recovery 和 MQ 重投继续使用：
 
 发布新 Revision 不重置 Task Attempt，不生成新的 Node Execution，也不改变已持久化 Inference Payload。
 
-### 6.3 Capability 暂不可用
+### 6.3 执行依赖暂不可用
 
-Deployment Capability、Product Entitlement、业务资源或下游服务暂不可用时，继续使用现有 fail-closed 和 defer 语义。
+Product Entitlement、业务资源或下游服务暂不可用时，继续使用对应节点已有的 fail-closed、retry 和 defer 语义。
 
-Capability 不可用不是 `flow_changed`：
+执行依赖暂不可用不是 `flow_changed`：
 
-- Backend 原则上已经拒绝发布生产不可用的 Revision。
-- Worker 运行时发现不可用通常表示部署漂移、灰度过程或暂时故障。
+- Backend 原则上已经拒绝发布 Runtime 或 Event Catalog 不支持的 Revision。
+- Worker 运行时发现权益、资源或下游服务不可用，通常表示暂时故障。
 - Runtime 应保持 Task Pending 并延后调度，不永久丢弃客户。
 
 ## 7. 事务内前向路由
@@ -356,7 +356,7 @@ Task 从创建到终态不得原地切换 Revision。
 revision INT UNSIGNED NOT NULL COMMENT '本次节点执行使用的Revision'
 ```
 
-Node Execution 必须保存实际 Task Revision。只保存标题不足以还原节点配置、Capability Requirement 和变量契约。
+Node Execution 必须保存实际 Task Revision。只保存标题不足以还原节点配置、节点契约和变量契约。
 
 ### 11.4 Event Subscription
 
@@ -572,9 +572,9 @@ Workflow 从好友添加事件改为消息事件。新 Run 使用消息 Trigger 
 
 不存在事务外读取 Revision 后提交已过时下一跳的窗口。
 
-### 17.10 Capability 暂不可用
+### 17.10 执行依赖暂不可用
 
-下一 Task 已按新 Revision 创建，但 Worker 暂时缺少对应 Deployment Capability。Task 保持 Pending 并 defer；恢复能力后继续执行，不转为 `flow_changed`。
+下一 Task 已按新 Revision 创建，但对应的 Product Entitlement、业务资源或下游服务暂时不可用。Task 按节点既有策略保持 Pending 并 retry 或 defer；依赖恢复后继续执行，不转为 `flow_changed`。
 
 ### 17.11 数据页
 

@@ -56,6 +56,10 @@ export class WorkflowNodeExecutorRegistry {
     return this;
   }
 
+  has(kind: WorkflowNodeKind) {
+    return this.executors.has(kind);
+  }
+
   async execute(node: WorkflowExecutionNode, context: WorkflowNodeExecutionContext) {
     const executor = this.executors.get(node.kind);
     if (!executor) {

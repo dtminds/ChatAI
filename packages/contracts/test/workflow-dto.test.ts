@@ -91,8 +91,6 @@ describe("workflow contracts", () => {
   it("keeps database identifiers as decimal strings", () => {
     const definition = {
       capabilitySummary: {
-        deploymentCapabilities: [],
-        deploymentFingerprint: "a".repeat(64),
         runtimeSupportedNodeKinds: ["start", "wait", "end"],
       },
       createdAt: "2026-07-10T00:00:00.000Z",

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
-import { WORKFLOW_EVENT_CATALOG } from "@chatai/workflow-engine";
+import { getWorkflowNodeContract, type WorkflowNodeKind } from "@chatai/contracts";
+import {
+  WORKFLOW_EVENT_CATALOG,
+  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
+} from "@chatai/workflow-engine";
 import {
   assertDatabaseUtc8Timezone,
   createWorkflowEntitlementPort,
@@ -28,6 +32,15 @@ import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
   const logger = createWorkflowWorkerLogger(config.logLevel);
+  const inferenceAdapter = new UnavailableWorkflowJavaInferencePort();
+  const runtimeReadyNodeKinds: readonly WorkflowNodeKind[] = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS;
+  const runtimeReadyInferenceKinds = runtimeReadyNodeKinds.filter(kind =>
+    getWorkflowNodeContract(kind).executionClass === "inference");
+  if (runtimeReadyInferenceKinds.length > 0) {
+    throw new Error(
+      `Workflow runtime-ready inference nodes lack a production adapter: ${runtimeReadyInferenceKinds.join(", ")}`,
+    );
+  }
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
   const llmTestAttemptRepository = config.llmTestMode === "mock"
@@ -59,6 +72,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const reconcilerService = new WorkflowRuntimeReconciler(repository);
   let broker: Awaited<ReturnType<typeof createWorkflowBroker>>;
   try {
+    runtimeService.assertRuntimeComposition();
     await assertDatabaseUtc8Timezone(database);
     broker = await createWorkflowBroker({
       serviceUrl: config.pulsar.serviceUrl,
@@ -81,7 +95,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       eventCatalog: WORKFLOW_EVENT_CATALOG,
       eventSubscriptionReader: repository,
       inboxRepository: repository,
-      inferenceAdapter: new UnavailableWorkflowJavaInferencePort(),
+      inferenceAdapter,
       inferenceRepository: repository,
       inferenceWorker: processWorkflowInferenceBatch,
       llmTestAdapter: llmTestWorker?.adapter,

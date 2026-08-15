@@ -1,8 +1,5 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
-import {
-  createWorkflowDeploymentCapabilities,
-  WorkflowCapabilityExecutionError,
-} from "@chatai/workflow-engine";
+import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeService,
@@ -179,18 +176,9 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new WorkflowRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
-      deploymentCapabilities: createWorkflowDeploymentCapabilities(spec.requiredCapabilities),
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
     });
-    const started = await service.startRun({
-      entryEventId: `event-${nodeKind}`,
-      expectedRevision: 1,
-      subjectId: "customer-1",
-      subjectType: "chatai_contact",
-      trigger: { text: "退款什么时候到账" },
-      uid: 9,
-      workflowId: "31",
-    });
+    const started = await seedInferenceRun(repository, `event-${nodeKind}`);
     const startResult = await service.executeTask(taskInput(started.task, "start-message"));
     if (!("nextTask" in startResult) || !startResult.nextTask) {
       throw new Error("Inference Task was not created");
@@ -263,19 +251,10 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new WorkflowRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
-      deploymentCapabilities: createWorkflowDeploymentCapabilities(spec.requiredCapabilities),
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
       maxTaskAttempts: 5,
     });
-    const started = await service.startRun({
-      entryEventId: "event-failed-inference",
-      expectedRevision: 1,
-      subjectId: "customer-1",
-      subjectType: "chatai_contact",
-      trigger: { text: "退款什么时候到账" },
-      uid: 9,
-      workflowId: "31",
-    });
+    const started = await seedInferenceRun(repository, "event-failed-inference");
     const startResult = await service.executeTask(taskInput(started.task, "start-message"));
     if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Inference Task missing");
     await service.executeTask(taskInput(startResult.nextTask, "inference-message"));
@@ -305,6 +284,29 @@ describe("workflow inference worker", () => {
     await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({ status: "failed" });
   });
 });
+
+async function seedInferenceRun(
+  repository: InMemoryWorkflowRuntimeRepository,
+  entryEventId: string,
+) {
+  const started = await repository.createRunWithInitialTask({
+    context: { outputs: {}, trigger: { text: "退款什么时候到账" } },
+    entryEventId,
+    entryPolicy: { mode: "never" },
+    initialNodeId: "start",
+    initialNodeKind: "start",
+    occurredAt: now,
+    revision: 1,
+    shardId: 7,
+    subjectId: "customer-1",
+    subjectType: "chatai_contact",
+    uid: 9,
+    workflowId: "31",
+    workflowType: "chatai_sop",
+  });
+  if (started.kind !== "success") throw new Error("Inference Run was not created");
+  return started;
+}
 
 async function createWaitingJob(
   entryEventId = "event-1",
@@ -361,9 +363,6 @@ async function createWaitingJob(
 }
 
 function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
-  const inferenceCapability = nodeKind === "llm"
-    ? { capabilityKey: "operation.llm.generate", contractVersion: 1 as const }
-    : { capabilityKey: "operation.intent.classify", contractVersion: 1 as const };
   const inferenceNode = nodeKind === "llm"
     ? {
         config: {
@@ -387,7 +386,6 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
         id: "inference",
         kind: nodeKind,
         nodeSchemaVersion: 1,
-        requiredCapabilities: [inferenceCapability],
       }
     : {
         config: {
@@ -401,7 +399,6 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
         id: "inference",
         kind: nodeKind,
         nodeSchemaVersion: 1,
-        requiredCapabilities: [inferenceCapability],
       };
   return {
     edges: [
@@ -424,18 +421,13 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [{ capabilityKey: "event.contact.friend_added", contractVersion: 1 }],
       },
       inferenceNode,
-      { config: {}, id: "refund", kind: "end", nodeSchemaVersion: 1, requiredCapabilities: [] },
-      { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1, requiredCapabilities: [] },
-    ],
-    requiredCapabilities: [
-      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      inferenceCapability,
+      { config: {}, id: "refund", kind: "end", nodeSchemaVersion: 1 },
+      { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
     ],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };

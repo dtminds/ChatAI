@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowRepository,
   InMemoryWorkflowRuntimeRepository,
@@ -256,7 +255,6 @@ async function createEnabledWorkflow(
 
 function createWorkflowService(repository: InMemoryWorkflowRepository) {
   return new WorkflowService(repository, {
-    deploymentCapabilities: deploymentCapabilities(),
     entitlementPort: entitledPort(),
     sourceIdentityResolver: {
       async resolveActiveSeatWorkUserIds(_uid, seatIds) {
@@ -273,16 +271,8 @@ function createRuntimeService(
 ) {
   return new WorkflowRuntimeService(control, runtime, undefined, {
     ...options,
-    deploymentCapabilities: deploymentCapabilities(),
     entitlementPort: entitledPort(),
   });
-}
-
-function deploymentCapabilities() {
-  return createWorkflowDeploymentCapabilities([{
-    capabilityKey: "event.contact.friend_added",
-    contractVersion: 1,
-  }]);
 }
 
 function entitledPort() {

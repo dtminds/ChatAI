@@ -16,15 +16,6 @@ export const WorkflowSubjectTypeSchema = Type.Union([
   Type.Literal("miniapp_member"),
 ]);
 
-export const WorkflowCapabilityRequirementSchema = Type.Object({
-  capabilityKey: Type.String({
-    maxLength: 128,
-    minLength: 1,
-    pattern: "^(?:event|operation)\\.[a-z0-9]+(?:[._-][a-z0-9]+)*$",
-  }),
-  contractVersion: Type.Integer({ minimum: 1, maximum: 65_535 }),
-}, { additionalProperties: false });
-
 export const WorkflowTypeEntitlementResultSchema = Type.Union([
   Type.Object({
     entitled: Type.Literal(true),
@@ -40,7 +31,6 @@ export const WorkflowTypeEntitlementResultSchema = Type.Union([
 
 export type WorkflowType = Static<typeof WorkflowTypeSchema>;
 export type WorkflowSubjectType = Static<typeof WorkflowSubjectTypeSchema>;
-export type WorkflowCapabilityRequirement = Static<typeof WorkflowCapabilityRequirementSchema>;
 export type WorkflowTypeEntitlementResult = Static<typeof WorkflowTypeEntitlementResultSchema>;
 
 export type WorkflowCapabilityProfile = {

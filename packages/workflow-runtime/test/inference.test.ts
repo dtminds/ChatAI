@@ -67,7 +67,6 @@ describe("workflow inference payloads", () => {
       id: "intent-1",
       kind: "ai-intent",
       nodeSchemaVersion: 1,
-      requiredCapabilities: [{ capabilityKey: "operation.intent.classify", contractVersion: 1 }],
     };
 
     expect(createWorkflowInferenceRequest(node, run())).toEqual({
@@ -113,7 +112,6 @@ describe("workflow inference payloads", () => {
       id: "intent-1",
       kind: "ai-intent",
       nodeSchemaVersion: 1,
-      requiredCapabilities: [],
     };
     expect(() => mapWorkflowInferenceResult(intentNode, { matchedCode: "I2", reason: "wrong" }))
       .toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_OUTPUT_INVALID" }));
@@ -176,7 +174,6 @@ function llmNode(overrides: Record<string, unknown> = {}): WorkflowExecutionNode
     id: "llm-1",
     kind: "llm",
     nodeSchemaVersion: 1,
-    requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
   };
 }
 

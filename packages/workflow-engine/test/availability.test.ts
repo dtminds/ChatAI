@@ -1,57 +1,36 @@
-import type {
-  WorkflowExecutionSpec,
-  WorkflowLegacyExecutionSpec,
-} from "@chatai/contracts";
+import type { WorkflowExecutionSpec } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  createWorkflowDeploymentCapabilities,
+  EMPTY_WORKFLOW_EVENT_CATALOG,
   evaluateWorkflowProductionAvailability,
-  normalizeWorkflowExecutionSpec,
   validateWorkflowTypePolicy,
-  WORKFLOW_INFERENCE_CAPABILITIES,
-  WORKFLOW_PRODUCTION_CAPABILITIES,
 } from "../src/index.js";
 
 describe("workflow production availability", () => {
-  it("publishes the production capability registry with a stable fingerprint", () => {
-    expect(WORKFLOW_PRODUCTION_CAPABILITIES.capabilities).toEqual([
-      { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      { capabilityKey: "event.contact.tag_added", contractVersion: 1 },
-      { capabilityKey: "event.message.received", contractVersion: 1 },
-    ]);
-    expect(WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint)
-      .toBe("9ec22a3359540080297511f667d250184ead2aafbad98eab81af252d2e715418");
-    expect(WORKFLOW_PRODUCTION_CAPABILITIES.capabilities).not.toEqual(expect.arrayContaining([
-      WORKFLOW_INFERENCE_CAPABILITIES["ai-intent"],
-      WORKFLOW_INFERENCE_CAPABILITIES.llm,
-    ]));
-  });
-
-  it("returns all runtime, deployment, and entitlement blockers together", () => {
+  it("returns runtime, event catalog, and entitlement blockers together", () => {
     const spec = executionSpec();
     spec.nodes.splice(1, 0, {
       config: {},
       id: "message",
       kind: "message",
       nodeSchemaVersion: 1,
-      requiredCapabilities: [],
     });
 
     expect(evaluateWorkflowProductionAvailability({
-      deployment: createWorkflowDeploymentCapabilities([]),
       entitlement: {
         entitled: false,
         unentitledSince: "2026-08-01T00:00:00+08:00",
       },
+      eventCatalog: EMPTY_WORKFLOW_EVENT_CATALOG,
       spec,
+      subjectType: "chatai_contact",
     })).toEqual({
       available: false,
       blockers: [
         {
-          capabilityKey: "event.contact.friend_added",
-          code: "deployment-capability-disabled",
-          contractVersion: 1,
-          dimension: "deployment",
+          code: "event-type-unsupported",
+          dimension: "event",
+          eventType: "contact.friend_added",
           nodeId: "start",
           nodeKind: "start",
         },
@@ -69,14 +48,12 @@ describe("workflow production availability", () => {
     });
   });
 
-  it("treats Wait Event as runtime-supported while keeping its deployment capability closed", () => {
+  it("rejects a Wait Event when the Catalog does not support its Subject type", () => {
     const spec = executionSpec();
     spec.nodes.splice(1, 0, {
       config: {
         event: {
-          capabilityKey: "event.message.received",
           collectWindowSeconds: 10,
-          contractVersion: 1,
           type: "message.received",
         },
         timeout: { duration: 15, unit: "minute" },
@@ -84,32 +61,30 @@ describe("workflow production availability", () => {
       id: "wait-event",
       kind: "wait-event",
       nodeSchemaVersion: 1,
-      requiredCapabilities: [
-        { capabilityKey: "event.message.received", contractVersion: 1 },
-      ],
-    });
-    spec.requiredCapabilities.push({
-      capabilityKey: "event.message.received",
-      contractVersion: 1,
     });
 
     expect(evaluateWorkflowProductionAvailability({
-      deployment: createWorkflowDeploymentCapabilities([
-        { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      ]),
       entitlement: { entitled: true, unentitledSince: null },
       spec,
+      subjectType: "wecom_contact",
     })).toEqual({
       available: false,
       blockers: [{
-        capabilityKey: "event.message.received",
-        code: "deployment-capability-disabled",
-        contractVersion: 1,
-        dimension: "deployment",
+        code: "event-type-unsupported",
+        dimension: "event",
+        eventType: "message.received",
         nodeId: "wait-event",
         nodeKind: "wait-event",
       }],
     });
+  });
+
+  it("accepts events implemented by the default Catalog", () => {
+    expect(evaluateWorkflowProductionAvailability({
+      entitlement: { entitled: true, unentitledSince: null },
+      spec: executionSpec(),
+      subjectType: "chatai_contact",
+    })).toEqual({ available: true, blockers: [] });
   });
 
   it("enforces workflow type policy without treating runtime progress as product policy", () => {
@@ -130,79 +105,32 @@ describe("workflow production availability", () => {
     }]);
   });
 
-  it("derives deployment requirements when normalizing legacy execution specs", () => {
-    const legacy: WorkflowLegacyExecutionSpec = {
-      edges: [
-        { id: "start-wait", source: "start", sourceOutletId: "default", target: "wait" },
-        { id: "wait-end", source: "wait", sourceOutletId: "default", target: "end" },
-      ],
-      entryNodeId: "start",
-      nodes: [
-        {
-          config: {
-            entryPolicy: { mode: "never" },
-            seatIds: [1],
-            triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-          },
-          id: "start",
-          kind: "start",
-          nodeSchemaVersion: 1,
-        },
-        { config: { duration: 46, unit: "day" }, id: "wait", kind: "wait", nodeSchemaVersion: 1 },
-        { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
-      ],
-      revision: 1,
-      schemaVersion: 1,
-      terminalNodeId: "end",
-      workflowId: "42",
-    };
-
-    expect(normalizeWorkflowExecutionSpec(legacy)).toMatchObject({
-      nodes: [
-        {
-          id: "start",
-          requiredCapabilities: [
-            { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-          ],
-        },
-        { config: { duration: 46, unit: "day" }, id: "wait", requiredCapabilities: [] },
-        { id: "end", requiredCapabilities: [] },
-      ],
-      requiredCapabilities: [
-        { capabilityKey: "event.contact.friend_added", contractVersion: 1 },
-      ],
-      schemaVersion: 2,
-    });
-  });
 });
 
 function executionSpec(): WorkflowExecutionSpec {
-  const requiredCapability = {
-    capabilityKey: "event.contact.friend_added",
-    contractVersion: 1,
-  };
   return {
     edges: [{ id: "start-end", source: "start", sourceOutletId: "default", target: "end" }],
     entryNodeId: "start",
     nodes: [
       {
-        config: {},
+        config: {
+          entryPolicy: { mode: "never" },
+          seatIds: [1],
+          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        },
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [requiredCapability],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [requiredCapability],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "42",
   };

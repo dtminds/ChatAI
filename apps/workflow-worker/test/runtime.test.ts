@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import pino from "pino";
-import { WORKFLOW_PRODUCTION_CAPABILITIES } from "@chatai/workflow-engine";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "../src/broker/types.js";
 import type { startRoleLoop } from "../src/role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "../src/runtime.js";
@@ -383,7 +382,7 @@ describe("workflow worker runtime", () => {
     expect(runtimeClose).toHaveBeenCalledTimes(1);
   });
 
-  it("logs the shared production capability fingerprint on startup", async () => {
+  it("logs stable worker identity metadata on startup", async () => {
     const logger = { info: vi.fn() };
     const worker = await startWorkflowWorker({
       config: config(),
@@ -396,7 +395,6 @@ describe("workflow worker runtime", () => {
     });
 
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
-      capabilityFingerprint: WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint,
       event: "workflow.worker.started",
     }), "workflow worker started");
     await worker.close();

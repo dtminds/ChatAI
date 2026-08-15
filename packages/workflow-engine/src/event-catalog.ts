@@ -63,6 +63,7 @@ export type WorkflowEventCatalogResult =
 
 export type WorkflowEventCatalog = {
   project(event: WorkflowEntryEvent): WorkflowEventCatalogResult;
+  supports(eventType: string, subjectType: WorkflowSubjectType): boolean;
 };
 
 export const EMPTY_WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([]);
@@ -166,6 +167,12 @@ export function createWorkflowEventCatalog(
       } catch {
         return { code: "projection_invalid", kind: "rejected" };
       }
+    },
+    supports(eventType, subjectType) {
+      const definitions = definitionsByType.get(eventType);
+      return definitions !== undefined
+        && [...definitions.values()].some(definition =>
+          definition.subjectTypes.includes(subjectType));
     },
   };
 }

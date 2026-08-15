@@ -1,6 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
 import {
-  WorkflowCapabilityRequirementSchema,
   WorkflowSubjectTypeSchema,
   WorkflowTypeSchema,
 } from "./policy.js";
@@ -93,8 +92,6 @@ export const WorkflowStatusReasonSchema = Type.Union([
 ]);
 
 export const WorkflowCapabilitySummarySchema = Type.Object({
-  deploymentCapabilities: Type.Array(WorkflowCapabilityRequirementSchema),
-  deploymentFingerprint: Type.String({ pattern: "^[a-f0-9]{64}$" }),
   runtimeSupportedNodeKinds: Type.Array(WorkflowNodeKindSchema, { uniqueItems: true }),
 });
 

@@ -33,6 +33,14 @@ const fixtureRoot = new URL("../../contracts/test/fixtures/workflow/", import.me
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", fixtureRoot), "utf8")) as FixtureManifest;
 
 describe("workflow event catalog", () => {
+  it("reports event support by Subject type without exposing payload versions", () => {
+    expect(WORKFLOW_EVENT_CATALOG.supports("contact.friend_added", "chatai_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("contact.friend_added", "wecom_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("message.received", "chatai_contact")).toBe(true);
+    expect(WORKFLOW_EVENT_CATALOG.supports("message.received", "wecom_contact")).toBe(false);
+    expect(WORKFLOW_EVENT_CATALOG.supports("order.created", "chatai_contact")).toBe(false);
+  });
+
   it("projects a validated shared fixture without retaining the raw payload", () => {
     const event = readEvent("entry/v1/valid/contact-friend-added.json");
     const expectedProjection = JSON.parse(readFileSync(

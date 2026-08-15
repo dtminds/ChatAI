@@ -4,10 +4,6 @@ import type {
   WorkflowType,
   WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
-import {
-  createWorkflowDeploymentCapabilities,
-  WORKFLOW_INFERENCE_CAPABILITIES,
-} from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -15,11 +11,6 @@ import {
 } from "../src/index.js";
 
 const now = new Date("2026-08-10T00:00:00.000Z");
-const entryEventCapability = {
-  capabilityKey: "event.contact.friend_added",
-  contractVersion: 1,
-} as const;
-
 describe("Workflow runtime policy", () => {
   it("admits an entry when the Workflow type remains entitled", async () => {
     const harness = createHarness({
@@ -103,66 +94,27 @@ describe("Workflow runtime policy", () => {
     expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
   });
 
-  it("does not create a Run when an entry capability is disabled in this deployment", async () => {
-    const harness = createHarness({
-      deploymentCapabilities: createWorkflowDeploymentCapabilities([]),
-      entitlement: async () => ({ entitled: true, unentitledSince: null }),
-    });
-
-    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
-      code: "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED",
-    });
-    expect(harness.runtime.runs).toHaveLength(0);
-  });
-
-  it("does not create a Run for Inference excluded from the production registry", async () => {
+  it("does not create a Run containing a node that is not runtime-ready", async () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
-    const inferenceCapability = WORKFLOW_INFERENCE_CAPABILITIES.llm;
     executionSpec.nodes.splice(1, 0, {
       config: {},
       id: "llm",
       kind: "llm",
       nodeSchemaVersion: 1,
-      requiredCapabilities: [inferenceCapability],
     });
     executionSpec.edges = [
       { id: "start-llm", source: "start", sourceOutletId: "default", target: "llm" },
       { id: "llm-end", source: "llm", sourceOutletId: "default", target: "end" },
     ];
-    executionSpec.requiredCapabilities.push(inferenceCapability);
     const harness = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
       executionSpec,
     });
 
     await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
-      code: "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED",
+      code: "WORKFLOW_RUNTIME_NODE_UNSUPPORTED",
     });
     expect(harness.runtime.runs).toHaveLength(0);
-  });
-
-  it("defers a task without consuming an attempt when its deployment capability is removed", async () => {
-    const deploymentCapabilities = createWorkflowDeploymentCapabilities([entryEventCapability]);
-    const harness = createHarness({
-      deploymentCapabilities,
-      entitlement: async () => ({ entitled: true, unentitledSince: null }),
-    });
-    const started = await harness.service.startRun(entryInput());
-    deploymentCapabilities.capabilities.length = 0;
-
-    await expect(harness.service.executeTask({
-      now,
-      taskId: started.task.id,
-      taskVersion: started.task.taskVersion,
-      uid: 9,
-      workerId: "worker-1",
-    })).rejects.toMatchObject({ code: "WORKFLOW_DEPLOYMENT_CAPABILITY_DISABLED" });
-
-    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
-      attempt: 0,
-      status: "pending",
-      taskVersion: 2,
-    });
   });
 
   it("keeps identical Subject ids isolated by Subject type", async () => {
@@ -180,12 +132,26 @@ describe("Workflow runtime policy", () => {
     expect(chatai.run.subjectType).not.toBe(wecom.run.subjectType);
     expect(chatai.run.shardId).not.toBe(wecom.run.shardId);
   });
+
+  it("validates that every runtime-ready node has a composed execution path", () => {
+    const incomplete = createHarness({
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+    });
+    expect(() => incomplete.service.assertRuntimeComposition())
+      .toThrow("message-query");
+
+    const complete = createHarness({
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      messageQueryPort: true,
+    });
+    expect(() => complete.service.assertRuntimeComposition()).not.toThrow();
+  });
 });
 
 function createHarness(options: {
-  deploymentCapabilities?: ReturnType<typeof createWorkflowDeploymentCapabilities>;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
+  messageQueryPort?: boolean;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
   const applyEntitlementLoss = vi.fn(async () => ({ affectedDefinitions: 1 }));
@@ -214,8 +180,8 @@ function createHarness(options: {
   const service = new WorkflowRuntimeService(control, runtime, undefined, {
     clock: () => now,
     entitlementPort: { check: options.entitlement },
-    ...(options.deploymentCapabilities
-      ? { deploymentCapabilities: options.deploymentCapabilities }
+    ...(options.messageQueryPort
+      ? { messageQueryPort: { execute: async () => ({}) } }
       : {}),
   });
   return { applyEntitlementLoss, runtime, service };
@@ -263,19 +229,16 @@ function createExecutionSpec(workflowId: string): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [entryEventCapability],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [entryEventCapability],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId,
   };

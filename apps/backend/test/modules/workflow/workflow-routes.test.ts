@@ -1,5 +1,4 @@
 import Fastify from "fastify";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import { InMemoryWorkflowLlmTestAttemptRepository } from "@chatai/workflow-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
@@ -321,10 +320,6 @@ describe("workflow routes", () => {
     });
     await registerWorkflowRoutes(app, {
       service: new WorkflowService(new InMemoryWorkflowRepository(), {
-        deploymentCapabilities: createWorkflowDeploymentCapabilities([{
-          capabilityKey: "event.contact.friend_added",
-          contractVersion: 1,
-        }]),
         entitlementPort: {
           check: async () => ({ entitled: true, unentitledSince: null }),
         },

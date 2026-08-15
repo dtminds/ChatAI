@@ -22,9 +22,7 @@
 | Workflow Type | Node | 新建 Workflow 时选择的稳定业务类型，例如 WeCom SOP、ChatAI SOP，以及后续开放的 Member SOP。它决定主 Subject Type、可选 Start 事件、允许的节点、系统变量和业务能力边界，不是单纯的前端分类。 |
 | Workflow Capability Profile | Node 定义，双方遵守 | Workflow Type 对应的语义能力策略，描述允许的事件、节点和用户变量。它不表达 Runtime 实现进度、部署能力或租户产品权益。 |
 | Workflow Runtime Support | Node | 当前 Node Runtime 是否已经完整实现某种节点语义，包括 Schema、Compiler、Executor、输出、失败处理、恢复和测试。它不代表 Java 或当前环境已经接通。 |
-| Workflow Deployment Capability | Node/运维配置 | 某个环境是否明确接通并启用了事件源或 Java operation。它是环境级生产开关，不表示瞬时健康状态，也不承载租户权限。 |
-| Workflow Capability Requirement | Node Compiler 生成 | Revision 冻结的带版本事件源或业务 operation 依赖，例如 `event.message.received@1`。当前环境必须满足全部 Requirement 才能生产执行。 |
-| Workflow Production Availability | Node 权威判断 | Workflow Capability Profile、Runtime Support、Deployment Capability、Product Entitlement 和业务资源状态的最终交集。 |
+| Workflow Production Availability | Node 权威判断 | Workflow Capability Profile、Runtime Support、Event Catalog Support、Product Entitlement 和业务资源状态的最终交集。 |
 | Workflow Draft | Node | 当前可编辑的画布草稿，包含节点配置、连线和画布位置。Draft 可以反复修改，不能被 Worker 直接执行。 |
 | Node Workflow Kernel | Node | Workflow 的持久化编排内核，负责 Revision、Binding、Run、Task、等待、分支、变量、重试、恢复和执行历史。 |
 | Java Workflow Business Capability Layer | Java | Java 向 Workflow 提供的业务能力边界，负责消息、订单、标签、客户、优惠券、人工接管等查询、校验和实际业务动作。 |
@@ -101,7 +99,7 @@ Java 业务事实
 10. **Java 的读表结果只是流量优化，不是最终正确性判断。** Java 只判断“有没有可能需要这个事件”；Node 收到事件后仍按当前有效 Trigger Binding 或 Wait Event Subscription 做权威匹配。
 11. **读表异常必须 fail-open。** 无法判断时仍写入 Java Outbox 并投递事件，不能因为优化组件故障而静默丢失营销事件。
 12. **事件和动作都采用 at-least-once + 幂等。** Java 使用 Transactional Outbox 发布事件；Node 用事件 ID 防止重复进入，用稳定 `idempotencyKey` 调用 Java 动作接口。
-13. **生产可用性是五层交集。** Workflow Type 语义、Runtime 完整实现、环境 Deployment Capability、租户 Product Entitlement 和已配置业务资源必须同时满足；不能把实现进度、环境开关或套餐差异编码成更多 Workflow Type。
+13. **生产可用性是五层交集。** Workflow Type 语义、Runtime 完整实现、Event Catalog 支持、租户 Product Entitlement 和已配置业务资源必须同时满足；不能把实现进度或套餐差异编码成更多 Workflow Type。
 14. **Runtime 实现完成不等于生产启用。** 当前真正可执行的节点只有 `start / wait / end`；其他节点即使完成前端配置或 Node Runtime，也必须等所需事件源或 Java operation 在当前环境明确启用后才能发布。
 15. **Node 不再承载平台业务规则。** Node 只解析变量、形成类型化业务命令、调用 Java 并保存受控输出；Java 完成业务查询、权限与资源校验、身份解析和实际副作用。
 16. **不能建设接收原始节点配置的万能 Java 执行器。** Java 能力可以共用信封和错误格式，但每种 operation 必须有独立、可验证的输入输出契约。
@@ -419,7 +417,7 @@ trigger.occurredAt
 
 当前 `message`、`message-query`、`wait-event`、`handoff` 和 `agent` 节点表达的是 ChatAI 会话能力。未来如果 WeCom SOP 支持企微触达，应增加明确的企微消息 operation 或节点能力，不能复用同一个名称后在 Java 内部猜测渠道。
 
-`message-query` 是 Node Workflow Worker 内部实现，不声明 Deployment Capability，也不经过 Java Capability。查询先按托管账号解析 `third_userid`，再按租户、平台、`third_user_id`、`third_external_id` 和 `msgtime` 查询私聊消息；平台表不由 Node 写入，也不在本节点中增加或修改索引。固定时间选择精确到分钟，开始时间从该分钟的 `00.000` 起算，结束时间包含该分钟直到 `59.999`；动态时间引用保持原始毫秒精度。
+`message-query` 是 Node Workflow Worker 内部实现，不经过 Java。查询先按托管账号解析 `third_userid`，再按租户、平台、`third_user_id`、`third_external_id` 和 `msgtime` 查询私聊消息；平台表不由 Node 写入，也不在本节点中增加或修改索引。固定时间选择精确到分钟，开始时间从该分钟的 `00.000` 起算，结束时间包含该分钟直到 `59.999`；动态时间引用保持原始毫秒精度。
 
 ### 5.4 Runtime 实现与生产启用的双重门槛
 
@@ -428,7 +426,7 @@ trigger.occurredAt
 ```text
 Workflow Capability Profile
   INTERSECT Workflow Runtime Support
-  INTERSECT Workflow Deployment Capability
+  INTERSECT Workflow Event Catalog Support
   INTERSECT Product Entitlement
   INTERSECT required business resources
 ```
@@ -439,7 +437,7 @@ Workflow Capability Profile
 | --- | --- | --- |
 | Capability Profile | 该事件、节点或变量是否属于这个 Workflow Type | 共享 contracts 中的唯一只读 Type Policy |
 | Runtime Support | 当前 Node 版本是否能完整编译和执行该节点 | Workflow Engine 的可执行节点注册表 |
-| Deployment Capability | 当前环境是否明确接通并启用了所需事件源或 Java operation | Backend 与 Worker 共用的环境配置 |
+| Event Catalog Support | Start 或 Wait Event 使用的事件是否由 Node 认识，并支持该 Workflow Subject Type | Workflow Engine Event Catalog |
 | Product Entitlement | 当前租户是否有权创建和运行该 Workflow Type | Java 同步查询接口 |
 | Business Resource | 节点引用的账号、Agent、标签、优惠券等是否可用 | Java 资源校验与执行时权威检查 |
 
@@ -449,24 +447,19 @@ Workflow Capability Profile
 
 一个节点只有同时完成正式 Schema、Compiler、Executor、输出契约、配置与变量校验、失败分类、重试或恢复语义以及关键回归测试后，才能进入 Runtime Support。1.0 不允许只开放一个节点的部分产品模式：只要编辑器当前暴露的任一模式尚未闭环，整个 Node Kind 仍为 Runtime Unsupported。
 
-#### Deployment Capability
+#### Event Catalog 与外部依赖
 
-Runtime Support 只证明 Node 会执行，不证明外部依赖已经接通。Deployment Capability 使用稳定的 `capabilityKey + contractVersion` 声明当前环境有意开放的能力，例如：
+Event Catalog 是 Start 和 Wait Event 的代码侧权威来源，提供 `supports(eventType, subjectType)` 与运行时 `project(event)`。Publish、Enable 和 Resume 必须确认 Revision 使用的每个事件都受 Catalog 支持。`payloadVersion` 只属于 Java 发出的 Entry Event Envelope，用于选择 Payload Schema 和投影器，不冻结到 Workflow Revision。
 
-```text
-event.message.received@1
-operation.chatai.message.send@1
-```
+Node 不再为节点或外部调用维护 `operation.*` 注册表、Deployment Capability、环境白名单或 capability fingerprint。节点能否发布只由 maturity 对应的 Runtime Support 决定；真正调用 Java、数据库或其他系统时，瞬时不可用继续走该节点既有的 timeout、retry、deadline 和恢复语义。LLM 与 AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
 
-Start 和 Wait Event 声明所需事件能力，依赖 Java 的查询或 Action 节点声明所需 operation。Compiler 将这些依赖生成为 Revision 内不可变的 `requiredCapabilities`；Publish、Enable 和 Runtime 必须确认当前环境支持其全部键和版本。
-
-Deployment Capability 是环境级配置，不是服务健康检查、租户权限或普通灰度名单。1.0 不建设数据库能力表、配置中心、Node 投影或租户 allowlist；紧急关闭通过修改部署配置并重启相关 Backend/Worker 完成。Backend 与 Worker 使用同一个配置解析模块和同一组部署参数，并暴露低基数能力清单指纹用于发现配置漂移。配置格式非法时进程启动失败，未知键、未知版本和未声明能力一律 fail-closed。
+事件接入必须遵守硬发布顺序：Java 先发布但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动完成并具备新 Catalog 定义后，Backend/Web 才开放新事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不能依赖消息重试等待新 Worker 接手。
 
 #### 统一判断入口与阻断结果
 
-Node Workflow Kernel 提供唯一的 Production Availability 判断模块，发布、启用、恢复、Entry 和 Task 都通过该模块组合各层门槛。Web 只消费 Backend 返回的 Runtime/Deployment 摘要和最终校验结果，不自行成为权威判断者，也不在打开编辑器时调用 Java Entitlement 或资源接口。
+Node Workflow Kernel 提供唯一的 Production Availability 判断模块，发布、启用和恢复通过该模块组合各层门槛。Web 只消费 Backend 返回的 Runtime Support 摘要和最终校验结果，不自行成为权威判断者，也不在打开编辑器时调用 Java Entitlement 或资源接口。
 
-校验一次返回完整 `blockers[]`，每项至少包含阻断维度、`nodeId`、`nodeKind` 和内部 `capabilityKey`。用户界面只展示简短业务原因，例如“该节点尚未开放”“当前无对应产品权益”“所选资源不可用”；Java 接口名称、部署配置和契约版本只进入受控日志。
+校验一次返回完整 `blockers[]`，每项至少包含阻断维度、`nodeId` 和 `nodeKind`；事件问题额外包含 `eventType`。用户界面只展示简短业务原因，例如“该节点尚未开放”“当前无对应产品权益”“所选资源不可用”；Java 接口名称和内部诊断只进入受控日志。
 
 语义上允许但 Runtime 或 Java 尚未就绪的节点仍可进入 Draft 并完成配置。前端只隐藏 Type Policy 明确禁止的节点；能力摘要请求失败不影响编辑和保存，但 Publish 仍由 Backend fail-closed。
 
@@ -475,32 +468,23 @@ Node Workflow Kernel 提供唯一的 Production Availability 判断模块，发�
 | 边界 | 检查规则 |
 | --- | --- |
 | Save Draft | 权威执行 Type Policy 和基本数据安全检查；允许配置不完整或尚未生产开放的节点 |
-| Publish | 重新检查 Type Policy、配置完整性、Runtime Support、Deployment Capability、Entitlement 和资源状态 |
+| Publish | 重新检查 Type Policy、配置完整性、Runtime Support、Event Catalog、Entitlement 和资源状态 |
 | Enable / Resume | 不复用旧校验结论，重新执行全部生产门槛 |
 | Active Workflow 发布新 Revision | 在写入新 Revision 前重新执行全部生产门槛 |
-| Entry | 检查候选 Revision 的全部 Capability Requirement 及当前 Entitlement，再决定是否创建 Run |
-| Task / Retry / Wait 到期 | 检查当前节点所需 Deployment Capability 及 Entitlement，再决定是否推进或调用 Java |
+| Entry | 检查候选 Revision 的 Runtime Support、Subject Type 和当前 Entitlement，再决定是否创建 Run |
+| Task / Retry / Wait 到期 | 检查当前 Entitlement；节点依赖故障走自身可靠性语义 |
 
-Revision 只持久化不可变的 Capability Requirement，不持久化“当前已可用”的布尔结果。`validatedDraftVersion` 可以证明草稿自上次校验后未变化，但不能替代 Enable 时对 Deployment、Entitlement 和资源的实时复查。
-
-#### 紧急关闭与恢复
-
-Deployment Capability 被关闭时不修改 Workflow 的 `active` 状态，也不复用权益暂停或停止语义：
-
-- 依赖该能力的 Revision 不再创建新 Run；同一事件仍可正常匹配不依赖该能力的其他 Workflow。
-- 已有 Run 到达受影响节点时保持 Task Pending 并延后调度，不消耗业务失败重试次数，也不新增 Workflow 或 Task 状态。
-- Wait Event 能力关闭期间不触发受影响 Subscription 的 CAS，事件处理后正常 ACK 且不补跑；对应超时 Task 同样保持 Pending。能力恢复后重新调度，若届时已超过截止时间，再走超时出口。
-- 配置恢复后 Pending Task 自动继续，不要求用户重新启用 Workflow。
-
-这类开关表示有意停止自动化，不承诺补偿关闭期间本应触发的新 Run。瞬时 Java 或网络故障不修改 Deployment Capability，而是继续使用既有 Retry 和幂等机制处理。
+Execution Spec v3 只持久化执行图和节点配置，不持久化当前可用性的布尔结果或能力键。`validatedDraftVersion` 可以证明草稿自上次校验后未变化，但不能替代 Enable 时对 Runtime Support、Event Catalog、Entitlement 和资源的实时复查。
 
 #### 版本兼容与下线
 
-Capability Requirement 必须带契约版本。环境升级期间可以同时支持 v1/v2；只要可继续运行的 Workflow 当前发布 Revision，或活动 Task、Wait Event Subscription、Inference Job、Retry/Lease Recovery 仍引用旧 Node Kind 或旧 contract version，对应 Runtime handler 就不得删除。正常下线先禁止新发布，再等待存量旧节点执行完成；安全事故先关闭 Deployment Capability，不能直接部署一个无法读取旧 Revision 的 Worker。仅被保留期运行历史引用不要求保留可执行 Handler，历史回显使用不可变 Revision 快照。
+Node Schema、Entry Event Envelope 和 Java Inference Request 各自保留真实协议版本。只要当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 仍引用旧 Node Schema 或请求版本，对应 Runtime handler 就不得删除。正常下线先禁止新发布，再等待存量旧节点执行完成；仅被保留期运行历史引用不要求保留可执行 Handler，历史回显使用不可变 Revision 快照。
+
+本次 Execution Spec v2 到 v3 发生在开发阶段，升级时一次性清空全部 Workflow 数据，不提供 v1/v2 长期兼容读取。进入生产后再次升级 Execution Spec，必须提供明确迁移或兼容窗口。
 
 Runtime 对新入口仍校验事件 Subject Type 与 Revision/Binding 一致，但已发布 Revision 和运行中的 Run 不重新套用当前 Type Policy。新增允许能力是兼容扩展；普通版本禁止直接删除或收紧已开放的 Type Policy。收紧必须作为独立迁移处理受影响 Workflow。1.0 不增加 `capabilityPolicyVersion`。
 
-这套门槛允许前端和 Node 提前完成节点模型，同时保证仅修改 UI、共享枚举或 Runtime 注册表都无法单独把 Java 依赖能力开放到生产。
+这套门槛允许前端提前完成节点模型，同时保证只有把 maturity 改为 `runtime-ready` 并通过 Worker 生产组合校验后，节点才能进入发布链路。
 
 ### 5.5 Product Entitlement 失效语义
 
@@ -1112,8 +1096,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - `workflow_entitlement_check_total{workflowType,resultCode}`
 - `workflow_entitlement_transition_total{workflowType,targetStatus,reason}`
 - `workflow_production_availability_check_total{phase,dimension,resultCode}`
-- `workflow_deployment_capability_block_total{capabilityKey,phase}`
-- Backend 与 Worker 在健康信息和启动日志中输出相同格式的 Deployment Capability 清单指纹。
+- `workflow_event_catalog_block_total{eventType,subjectType,phase}`
+- Backend 与 Worker 启动日志输出构建 Commit SHA，用于确认滚动发布版本。
 - `workflow_entry_received_total{subjectType,eventType}`
 - `workflow_entry_processed_total{eventType,resultCode}`，其中 `resultCode` 仅使用 6.6 定义的低基数结果码
 - `workflow_entry_binding_matched_total{workflowType,eventType}`
@@ -1142,7 +1126,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | --- | --- | --- | --- |
 | 冻结 Workflow Type | 产品、Node | Java | 本期使用 `wecom_sop`、`chatai_sop`；`member_sop` 只保留稳定枚举且不可用，并确认主 Subject Type 和不可转换规则 |
 | 冻结 Capability Profile | 产品、Node | Java | 每种类型明确语义上允许的 Start 事件、节点和用户变量，不把 Runtime 进度、Java operation 或套餐差异编码成类型 |
-| 冻结 Deployment Capability 键与版本 | Node、Java | 运维 | 每个事件源和 operation 使用稳定 `capabilityKey + contractVersion`，明确各环境启用集合和 Backend/Worker 共用配置 |
+| 冻结事件 Catalog 与发布顺序 | Node、Java | 运维 | 每个事件明确 Event Type、Payload Version 和 Subject Type；Java、Worker、Backend/Web 按硬顺序发布 |
 | 对接 Workflow Type Entitlement | Java | Node、产品 | Java 接口按 `uid + workflowType` 返回 `entitled + unentitledSince`；Node 按本文定义的惰性边界执行暂停、七天后停止和恢复检查 |
 | 确认首批事件目录 | 产品 | Java、Node | 本期固定 `message.received`、`contact.friend_added`、`contact.tag_added` 及其适用 Subject Type |
 | 确认 Subject 映射 | Java | Node | 每种事件都能得到稳定的 `subjectType + subjectId`，并明确同一事实多 Subject 投影规则 |
@@ -1212,12 +1196,12 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 建立唯一的 Capability Profile 注册表，包含 availability、Subject Type、允许的事件、节点和用户变量。
 - 新建 Workflow 时先选择类型，并将 `workflow_type` 持久化到 Definition。
 - 类型创建后不可修改；复制 Workflow 时允许选择目标类型，但必须重新校验并移除不兼容配置。
-- 前端按 Profile 展示语义目录，并读取 Backend 的 Runtime/Deployment 摘要提前提示；打开编辑器不查询 Java Entitlement 或资源状态。
+- 前端按 Profile 展示语义目录，并读取 Backend 的 Runtime Support 摘要提前提示；打开编辑器不查询 Java Entitlement 或资源状态。
 - Backend 在创建、保存和发布时执行同一语义校验，拒绝绕过前端写入的不兼容节点。
 - 创建、发布、启用和恢复时调用 Java Workflow Type Entitlement 接口；保存 Draft 不要求权益仍有效。
 - 在 Entry 和 Task 推进边界惰性检查权益；失效不足七天批量暂停同类型 Workflow，满七天后批量停止并取消未完成运行数据。
 - 记录系统状态原因、审计和按失效周期去重的租户级汇总通知，不新增权益事件、Node 权益投影或定时扫描任务。
-- 将 Runtime Support 从共享 contracts 迁入 Workflow Engine 可执行节点注册表，并建立统一 Production Availability 模块、Deployment 配置解析和完整 blockers。
+- 将 Runtime Support 收敛到节点契约 maturity，并建立统一 Production Availability、Event Catalog 校验和完整 blockers。
 - 本轮不增加 Runtime Node Kind，支持集合保持 `start / wait / end`；Fake Entitlement Adapter 只允许由测试组合根直接注入，不能进入正常 Worker 或 Backend 配置。
 - 验收：WeCom SOP 无法保存 ChatAI 消息或 Agent 节点，`member_sop` 无法创建，ChatAI SOP 在权益满足时可以使用。
 
@@ -1268,7 +1252,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - Action 强制稳定 `idempotencyKey`，Query 不携带下游调用键，Inference Job 使用稳定 `executionKey`；Port 支持 deadline、AbortSignal 和 `retryable / terminal / unknown` 错误分类，Retry 仍由 Workflow Runtime 管理。
 - 使用测试专属 Capability Definition 和 Fake Adapter 覆盖命令/结果校验、超时、幂等、三类错误、8 KiB 节点输出和 128 KiB Run Context 上限。
 - 从 Core Executor Registry 移除当前 `message / tag / coupon / handoff` 通用 Action 注册；真实 Action 以后按独立 Execution Definition 和 Adapter 逐个开放。
-- 本轮不增加任何 Action Runtime Support 或生产 Deployment Capability。
+- 本轮不增加任何 Action Runtime Support。
 
 **N7：生产可观测性和 Entry DLQ 恢复**
 
@@ -1290,17 +1274,16 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖固定 10 秒收集窗口内多消息乱序、重复投递、首事件与超时竞争，以及 Trigger Projection 的输出上限。
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
 - 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 不携带调用键，Inference 使用稳定 `executionKey`，Fake Adapter 不进入生产注册。
-- 覆盖 Runtime 已实现但 Deployment 未启用时无法 Publish/Enable，以及只修改 Runtime 注册表不能开放 Java 依赖节点。
-- 覆盖 `requiredCapabilities` 版本冻结、Backend/Worker 未知能力 fail-closed、配置格式非法启动失败和清单漂移时 Worker 不误执行。
-- 覆盖紧急关闭后不创建新 Run、受影响 Task 不消耗业务重试、Wait Event 不触发且恢复后重新调度。
-- 覆盖旧 Capability 版本仍被可继续运行的当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 引用时对应 Runtime handler 不得移除。
+- 覆盖 Event Catalog 不支持事件或 Subject Type 时无法 Publish/Enable，以及 Worker 生产组合缺少 `runtime-ready` 执行路径时启动失败。
+- 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，LLM/AI Intent 在真实 Adapter 接通前保持 `draft-ready`。
+- 覆盖旧 Node Schema、Event Payload Version 或 Inference Request Version 仍被活动数据引用时对应 handler 不得移除。
 - 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。
 - CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test01 TDMQ 和真实 Java 入口做手动 Smoke。
 
 ### 14.5 Java 未就绪期间的验证边界
 
-Java 未就绪时可以完成的是 **Node Workflow 子系统验收**，不是 Java 与 Node 的真实端到端验收，也不能据此开启生产 Deployment Capability。测试范围从公共契约开始，覆盖 Node 的控制面、事件消费、持久化、调度和执行结果；Java 的业务事实生成、身份解析、权益判断、资源规则和真实副作用不在 Fake 中复制。
+Java 未就绪时可以完成的是 **Node Workflow 子系统验收**，不是 Java 与 Node 的真实端到端验收，也不能据此把依赖 Java 的节点改为 `runtime-ready` 或开放新事件配置。测试范围从公共契约开始，覆盖 Node 的控制面、事件消费、持久化、调度和执行结果；Java 的业务事实生成、身份解析、权益判断、资源规则和真实副作用不在 Fake 中复制。
 
 验证分为四层：
 
@@ -1309,7 +1292,7 @@ Java 未就绪时可以完成的是 **Node Workflow 子系统验收**，不是 J
 | 共享契约 Fixture | 版本化原始 JSON 和期望结果清单 | Java DTO 与 Node TypeBox 对公共信封、Subject 和错误分类理解一致 | 真实业务 payload 来源和 Java 内部业务规则正确 |
 | Package 行为测试 | 确定性 Clock/ID、内存 Repository、测试专属 Executor/Adapter | Compiler、Executor、输出、失败、Retry、幂等和状态机契约正确 | MySQL 事务、Pulsar 传输和进程组合正确 |
 | Worker 组合测试 | 测试组合根直接注入 Fake Broker、Fake Event Producer 和测试 Adapter | Consumer 到 Repository、Run/Task/Subscription、路由和恢复的 Node 子系统闭环 | 真实 TDMQ、Java Producer/API、鉴权和环境配置正确 |
-| test01 联调 Smoke | 真实 Java 入口、TDMQ Pulsar、Node Worker、MySQL、隔离测试租户 | 当前环境具备真实 Deployment Capability | 不能由任何 Fake 或直投 MQ 工具替代 |
+| test01 联调 Smoke | 真实 Java 入口、TDMQ Pulsar、Node Worker、MySQL、隔离测试租户 | 真实事件或节点依赖已端到端接通 | 不能由任何 Fake 或直投 MQ 工具替代 |
 
 #### 共享 JSON Fixture
 
@@ -1327,7 +1310,7 @@ manifest.json
 
 `manifest.json` 为每个输入记录稳定 `fixtureId`、文件路径、预期接受/拒绝结果和低基数结果码。Entry 非法样例至少覆盖 `invalid_json`、`envelope_too_large`、`unsupported_schema_version`、`unknown_event_type`、`unsupported_payload_version` 和 `payload_invalid`；合法样例覆盖不同 Subject Type、时间格式、幂等 `eventId` 和 Trigger Projection 上限。
 
-Fixture 只冻结公共 Entry Event Envelope、Subject 语义、受控 Projection 和 Capability Port 信封。真实 `message.received`、标签、订单等 payload 未经双方确认前，不在 Fixture 中臆造其业务字段。Node 测试可以注册 `test.*` Event Type 和测试专属 Capability Definition，但这些定义只能存在于测试代码，不能进入 Workflow Capability Profile、Runtime Support 或 Deployment Capability。Java 后续通过固定版本的仓库检出直接运行同一批 JSON，不允许手工复制后形成两套样例。
+Fixture 只冻结公共 Entry Event Envelope、Subject 语义、受控 Projection 和 Capability Port 信封。真实 `message.received`、标签、订单等 payload 未经双方确认前，不在 Fixture 中臆造其业务字段。Node 测试可以注册 `test.*` Event Type 和测试专属 Capability Definition，但这些定义只能存在于测试代码，不能进入生产 Event Catalog 或 Runtime Support。Java 后续通过固定版本的仓库检出直接运行同一批 JSON，不允许手工复制后形成两套样例。
 
 #### Package 与 Repository 验证
 
@@ -1357,29 +1340,29 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
 - 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
 - LLM Mock Attempt 只允许在开发或测试环境显式启用，响应必须标记 `executionMode=mock`；生产 Backend 和 Workflow Worker 均强制 `disabled`。Java Adapter 接通前，该结果只验证变量替换、请求构造和输出映射，不代表真实模型效果。
-- 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test01 联调和后续生产 Deployment Capability 验收中。
+- 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test01 联调和后续生产启用验收中。
 
 #### Smoke 工具边界
 
 当前 `smoke-entry.ts` 会读取 Binding 并由 Node 拼接联系人、标签和消息 payload，这会重复未来 Java Event Catalog 的业务语义。迭代实施时应删除该生成逻辑：
 
 - Java 接通后的真实端到端 Smoke 必须从 Java 的受支持测试入口触发，让 Java 生成 Event、写 Outbox 并投递 TDMQ。
-- 如保留 Node 直投工具，它只能在 test01 的隔离 Topic 上发布一份已校验的共享 Fixture，且强制使用真实 Pulsar；该工具只验证 Broker 传输和 Node Consumer，不计入 Java 联调或 Deployment Capability 开启条件。
+- 如保留 Node 直投工具，它只能在 test01 的隔离 Topic 上发布一份已校验的共享 Fixture，且强制使用真实 Pulsar；该工具只验证 Broker 传输和 Node Consumer，不计入 Java 联调或事件开放条件。
 - Smoke 不是客户功能，不出现在 Web，也不接受 Workflow ID 后替用户生成业务事件。
 
 #### 三次迭代的最低验证集
 
 | 迭代 | Java 缺席时必须通过的 Node 验证 |
 | --- | --- |
-| Iteration 1 | 正式鉴权下的 Create/Save/Publish/Enable；Workflow Type 不可转换；Member SOP 禁用；跨 Subject Type 隔离；Entitlement success/失效/超时；Runtime/Deployment 双门槛；MySQL Repository Contract |
+| Iteration 1 | 正式鉴权下的 Create/Save/Publish/Enable；Workflow Type 不可转换；Member SOP 禁用；跨 Subject Type 隔离；Entitlement success/失效/超时；Runtime Support 门槛；MySQL Repository Contract |
 | Iteration 2 | JSON Fixture -> Fake Event Catalog -> Fake Broker -> Entry Consumer -> Run/Wait Subscription -> Event/Timeout -> End；非法事件 DLQ、重复投递、扇出、CAS、暂停/停止、Outbox 重投和崩溃接管 |
 | Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、Query 无调用键、错误分类和输出上限 |
 
-三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/Capability、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开启对应 Deployment Capability。
+三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/API、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开放对应事件或把节点改为 `runtime-ready`。
 
 ## 15. Java 未就绪期间的 Node 三迭代顺序
 
-三次迭代按顺序累积，但每次都必须形成可独立合并、可回滚且不依赖长期并行分支的完整变更。Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 只允许由测试组合根直接注入，不能进入正常 Backend/Worker 配置，也不能写入生产 Deployment Capability。
+三次迭代按顺序累积，但每次都必须形成可独立合并、可回滚且不依赖长期并行分支的完整变更。Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 只允许由测试组合根直接注入，不能进入正常 Backend/Worker 组合根。
 
 ### Iteration 1：Workflow Type、Subject 与生产门槛底座
 
@@ -1391,10 +1374,10 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Definition、Revision、Trigger Binding、Run、Entry Guard 的稳定 TINYINT 类型字段、索引和 Repository 转换。
 - Workflow Type 不可转换、Capability Profile 唯一注册表、Web 目录和 Backend Save/Publish 校验。
 - Java Entitlement Port 及 Fake Adapter；创建、Publish、Enable、Resume、Entry 和 Task 的惰性权益边界。
-- Runtime Support 迁入 Workflow Engine 注册表；Production Availability、Deployment 配置解析、完整 blockers 和 Web 只读摘要。
+- Runtime Support 收敛到节点契约 maturity；Production Availability、Event Catalog 校验、完整 blockers 和 Web 只读摘要。
 - 删除无生产数据依据的默认类型、旧类型别名和 Subject 回退逻辑。
 
-开放结果：Runtime Support 仍只有 `start / wait / end`。没有真实 Java Entry Deployment Capability 时，本轮不形成新的生产端到端链路。
+开放结果：Runtime Support 仍只有 `start / wait / end`。没有真实 Java Entry 时，本轮不形成新的生产端到端链路。
 
 合并验收：contracts、workflow-engine、workflow-runtime、backend、workflow-worker 和 web 的受影响 CI 全部通过；类型不可转换、Member SOP 禁用、跨 Subject Type 隔离、权益 fail-closed、Production Availability 各边界以及当前 Wait 兼容行为均有回归保护。
 
@@ -1409,7 +1392,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 3. Event Subscription 持久化、事件/超时 CAS、暂停/停止/恢复和 Reconciler。
 4. Wait Event Compiler、Executor、固定 10 秒消息收集及 Triggered/Timeout 路由。
 
-开放结果：`wait-event` 在全部当前产品模式完成后加入 Runtime Support；`event.message.received@1` 等真实 Deployment Capability 默认关闭，因此 Java Producer 未接通时仍禁止生产发布。旧 `customer.message.received` 直接删除，不做兼容。
+开放结果：`wait-event` 在全部当前产品模式完成后加入 Runtime Support；对应 Event Type 只有在 Java Producer 接通、Worker Catalog 全量滚动完成后才由 Backend/Web 开放配置。旧 `customer.message.received` 直接删除，不做兼容。
 
 合并验收：Fake Broker 与 Fake Event Catalog 覆盖非法事件、DLQ、重复投递、一个事件扇出多个 Workflow、跨 Subject Type 同值 ID、Entry 幂等、Subscription CAS、10 秒收集窗口、输出上限、暂停/停止/恢复和 Worker 崩溃恢复；MySQL Repository 行为与内存实现一致。
 
@@ -1424,7 +1407,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 3. 建立类型化 Capability Definition、Java Capability Port 和测试专属 Fake Adapter。
 4. 移除 Core Registry 中现有通用 Action Executor，不开放任何真实业务 Action。
 
-开放结果：`branch` 完整闭环后加入 Runtime Support；它不产生 Java Capability Requirement，在 Workflow 其他门槛满足时可生产发布。Message、Message Query、Tag、Coupon、Handoff 等 Java 依赖节点全部保持 Runtime Unsupported 和 Deployment Disabled。
+开放结果：`branch` 完整闭环后加入 Runtime Support，在 Workflow 其他门槛满足时可生产发布。未闭环的 Message、Tag、Coupon、Handoff 等节点保持 Runtime Unsupported。
 
 合并验收：Branch 从真实 Draft 编译到 Runtime 的所有操作符、`all / any`、首个匹配、默认分支、变量不可用、routing-only 和恢复路径均通过；Capability Port 通过类型化 Command/Result、Action 幂等、Query 无调用键、deadline、AbortSignal、错误分类和输出限制测试，且无法接收原始 Node 或 nodeConfig。
 
@@ -1432,7 +1415,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 - 迭代合并门槛是 Fake 依赖下的完整 CI、数据库 Repository 测试和行为回归。
 - Runtime Support 门槛是对应 Node Kind 已满足本节的完整实现与测试要求。
-- Production Deployment 门槛是 Java 真实事件源或 operation 接通后，另行完成 test01 Pulsar/API Smoke，再开启对应 Deployment Capability。
+- Production Deployment 门槛是 Java 真实事件源或 API 接通后，另行完成 test01 Pulsar/API Smoke，再开放对应事件配置或节点 maturity。
 - Java 未就绪不能阻止三次 Node 迭代合并，但 Fake 测试绝不能替代生产启用验收。
 
 ## 16. 明天会议必须确认的事项
@@ -1463,11 +1446,11 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - 新建 Workflow 必须选择 Workflow Type，类型已固化到 Definition 和不可变 Revision，不能原地转换。
 - Start 事件、节点和变量已按 Capability Profile 校验；Java operation 按 Node Execution Definition 和 Operation Descriptor 校验，Backend 能拒绝绕过前端的不兼容配置。
 - Runtime Support 由 Workflow Engine 的可执行节点注册表提供；共享 contracts 和 Web 不再独立拥有运行白名单。
-- Revision 冻结全部带版本 Capability Requirement；Publish、Enable、Resume、再次 Publish、Entry 和 Task 均按规定边界执行 Production Availability 检查。
-- Backend 与 Worker 使用同一 Deployment Capability 配置解析器和部署参数；非法配置启动失败，未知能力或版本 fail-closed，清单指纹可用于排查漂移。
-- Java 依赖节点只有在 Runtime 完整实现且当前环境明确启用对应事件源或 operation 后才能发布；仅加入 Runtime 注册表不能生产开放。
-- Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 不会被生产配置加载，也不能产生生产 Deployment Capability。
-- Wait Event 完整实现后仍需真实事件源和 Event Catalog v1 的 test01 Smoke 才能开启对应 Deployment Capability；Branch 完整实现后无需 Java operation 即可进入 Runtime Support。
+- Execution Spec v3 只冻结执行图和节点配置；Publish、Enable、Resume、再次 Publish 和 Entry 均按规定边界执行 Production Availability 检查。
+- Backend 发布侧和 Worker 投影侧共享同一个 Event Catalog；未知 Event Type、Payload Version 或 Subject Type 均 fail-closed。
+- Java 依赖节点只有在 Runtime、真实 Adapter 和可靠性链路完整后才能改为 `runtime-ready`；Worker 启动会校验所有 runtime-ready 节点的生产执行路径。
+- Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 不会被生产组合根加载。
+- Wait Event 完整实现后仍需真实事件源和 Event Catalog 的 test01 Smoke；Branch 完整实现后无需 Java API 即可进入 Runtime Support。
 - Java Capability Port 不能接收原始 Node、nodeConfig 或变量表达式；仅完成 Port 不会开放任何 Message、Query、Tag、Coupon 或 Handoff 节点。
 - 创建、发布、启用、恢复、Entry 和 Task 推进均执行 Workflow Type Entitlement 检查；Java 查询失败不会被当作无权益，也不会继续执行业务动作。
 - Binding 明确目标 `subjectType`，Run、Entry Guard 和 Wait Event Subscription 使用 `subjectType + subjectId`；Entry Event 与 Partition Key 使用事件来源域身份，并由 Node 解析候选 Run Subject。
@@ -1482,7 +1465,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Node 最终匹配仍校验 Active Definition 和当前 Revision Binding。
 - Java 和 Node 的 MySQL Session 均满足 UTC+8 契约。
 - test01 完成真实 Pulsar、重复投递、暂停/停止和数据库短暂异常 Smoke。
-- test01 完成 Deployment Capability 关闭与恢复 Smoke，确认不创建受影响的新 Run、Pending Task 可恢复且未产生额外业务重试。
+- test01 完成 Java/API 短暂故障与恢复 Smoke，确认节点按既定 Retry、Deadline 和恢复语义处理。
 - 至少有 Interest、Java Outbox、Pulsar Backlog、Entry Consumer 和 Run 创建指标。
 - 旧 Runtime handler 和 capability contract version 在仍被可继续运行的当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 引用时不会被移除；仅有保留期历史引用时允许移除可执行 Handler。
 

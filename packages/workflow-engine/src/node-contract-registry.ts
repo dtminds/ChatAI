@@ -84,9 +84,7 @@ export function projectWorkflowNodeExecutionConfig({
     const event = isRecord(draftConfig.event) ? draftConfig.event : {};
     return cloneJsonRecord({
       event: {
-        capabilityKey: "event.message.received",
         collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
-        contractVersion: 1,
         type: event.type,
       },
       timeout: draftConfig.timeout,

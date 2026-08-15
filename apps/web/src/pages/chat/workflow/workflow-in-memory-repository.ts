@@ -519,9 +519,7 @@ function createNewWorkflowDocument(
 
 function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
   return {
-    deploymentCapabilities: [],
-    deploymentFingerprint: "0".repeat(64),
-    runtimeSupportedNodeKinds: ["start", "wait", "wait-event", "branch", "end"],
+    runtimeSupportedNodeKinds: ["start", "wait", "wait-event", "branch", "message-query", "end"],
   };
 }
 

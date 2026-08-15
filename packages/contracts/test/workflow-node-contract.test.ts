@@ -159,9 +159,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "end", "llm", "message-query", "start", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["handoff", "message"]);
+      .toEqual(["ai-intent", "handoff", "llm", "message"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
   });

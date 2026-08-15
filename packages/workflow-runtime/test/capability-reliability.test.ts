@@ -1,7 +1,6 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
 import { Type } from "@sinclair/typebox";
 import {
-  createWorkflowDeploymentCapabilities,
   WorkflowCapabilityExecutionError,
   WorkflowNodeExecutorRegistry,
 } from "@chatai/workflow-engine";
@@ -17,6 +16,22 @@ import {
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow capability reliability", () => {
+  it("does not let a capability port bypass node maturity at Run admission", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({}));
+
+    await expect(service.startRun({
+      entryEventId: "unsupported-action",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+      workflowId: "31",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_NODE_UNSUPPORTED" });
+    expect(runtime.runs).toHaveLength(0);
+  });
+
   it("requires the capability timeout to fit within half of the task lease", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
 
@@ -52,7 +67,7 @@ describe("workflow capability reliability", () => {
   it("fails a capability node through its execution ledger when its binding is unavailable", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}), { capabilityBindings: [] });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -87,7 +102,7 @@ describe("workflow capability reliability", () => {
         clock: () => actionStartedAt,
         taskLeaseDurationMs: 1_000,
       });
-      const actionTask = await startCapability(service);
+      const actionTask = await startCapability(runtime, service);
 
       const execution = service.executeTask({
         now,
@@ -135,7 +150,7 @@ describe("workflow capability reliability", () => {
       },
       spec: messageQuerySpec(),
     });
-    const capabilityTask = await startCapability(service, {
+    const capabilityTask = await startCapability(runtime, service, {
       occurredAt: "2026-07-12T23:00:00.000Z",
       projection: { seatId: 101 },
     });
@@ -202,7 +217,7 @@ describe("workflow capability reliability", () => {
       },
       spec,
     });
-    const capabilityTask = await startCapability(service, {
+    const capabilityTask = await startCapability(runtime, service, {
       occurredAt: "2026-07-12T23:00:00.000Z",
       projection: { seatId: 101 },
     });
@@ -234,7 +249,7 @@ describe("workflow capability reliability", () => {
   it("fails an action whose projected output exceeds 8 KiB in UTF-8", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: "中".repeat(2_800) }));
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     const result = await service.executeTask({
       now,
@@ -266,7 +281,7 @@ describe("workflow capability reliability", () => {
   it("fails an action that returns a non-JSON output", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: 1n }) as never);
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -284,7 +299,7 @@ describe("workflow capability reliability", () => {
   it("fails when a valid action output would push the Run Context over its budget", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({ value: "y".repeat(3_000) }));
-    const actionTask = await startCapability(service, {
+    const actionTask = await startCapability(runtime, service, {
       padding: "x".repeat(128 * 1024 - 2_000),
     });
 
@@ -307,7 +322,7 @@ describe("workflow capability reliability", () => {
   it("fails the current core node when its output pushes the Run Context over budget", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
-    const service = createService(runtime, executeAction);
+    const service = createService(runtime, executeAction, { spec: coreOutputSpec() });
     const emptyContextBytes = Buffer.byteLength(JSON.stringify({
       outputs: {},
       trigger: { padding: "" },
@@ -405,7 +420,7 @@ describe("workflow capability reliability", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
     const service = createService(runtime, executeAction);
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
     const run = runtime.runs.find(item => item.id === actionTask.runId);
     if (!run) throw new Error("run was not created");
     run.context = {
@@ -428,7 +443,7 @@ describe("workflow capability reliability", () => {
 
   it("rejects an entry context above the runtime context budget", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({}));
+    const service = createService(runtime, async () => ({}), { spec: coreOutputSpec() });
 
     await expect(service.startRun({
       entryEventId: "oversized-context",
@@ -444,7 +459,7 @@ describe("workflow capability reliability", () => {
 
   it("rejects an entry context that cannot be represented as JSON", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({}));
+    const service = createService(runtime, async () => ({}), { spec: coreOutputSpec() });
 
     await expect(service.startRun({
       entryEventId: "invalid-context",
@@ -461,7 +476,7 @@ describe("workflow capability reliability", () => {
   it("starts legacy revisions with the current rolling entry maximum", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const createRun = vi.spyOn(runtime, "createRunWithInitialTask");
-    const spec = actionSpec();
+    const spec = coreOutputSpec();
     spec.nodes.find(node => node.kind === "start")!.config.entryPolicy = {
       maxEntries: 2,
       mode: "rolling_window",
@@ -499,7 +514,7 @@ describe("workflow capability reliability", () => {
       receivedKeys.push(readIdempotencyKey(input));
       return { messageId: "downstream-1" };
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await service.executeTask({
       now,
@@ -535,7 +550,7 @@ describe("workflow capability reliability", () => {
         if (attempt === 1) throw createActionError(failureKind, "DOWNSTREAM_TEMPORARY");
         return { messageId: "downstream-1" };
       });
-      const actionTask = await startCapability(service);
+      const actionTask = await startCapability(runtime, service);
 
       const firstResult = await service.executeTask({
         now,
@@ -588,7 +603,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("terminal", "DOWNSTREAM_REJECTED");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     const result = await service.executeTask({
       now,
@@ -628,7 +643,7 @@ describe("workflow capability reliability", () => {
         { diagnosticMessage: "Java messaging API returned 503" },
       );
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     const result = await service.executeTask({
       now,
@@ -655,7 +670,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
     }, { maxTaskAttempts: 1 });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     const result = await service.executeTask({
       now,
@@ -674,7 +689,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("terminal", `CODE_${"X".repeat(200)}`, "错".repeat(600));
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await service.executeTask({
       now,
@@ -694,7 +709,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw new Error("programming failure");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -720,7 +735,7 @@ describe("workflow capability reliability", () => {
       if (attempt === 1) throw new Error("worker crashed after the side effect");
       return { messageId: "downstream-1" };
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -755,7 +770,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw new Error("unclassified failure");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -785,7 +800,7 @@ describe("workflow capability reliability", () => {
       await runtime.cancelWorkflowBatch({ limit: 100, uid: 9, workflowId: "31" });
       throw new Error("action result arrived after stop");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -809,7 +824,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await service.executeTask({
       now,
@@ -832,7 +847,7 @@ describe("workflow capability reliability", () => {
   it("rejects preparing an action after its run is no longer running", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}));
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
     const claimed = await runtime.claimTask({
       expectedTaskVersion: actionTask.taskVersion,
       leaseExpiresAt: new Date("2026-07-13T00:01:00.000Z"),
@@ -861,7 +876,7 @@ describe("workflow capability reliability", () => {
     async (operation) => {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
       const service = createService(runtime, async () => ({}));
-      const actionTask = await startCapability(service);
+      const actionTask = await startCapability(runtime, service);
       const claimed = await runtime.claimTask({
         expectedTaskVersion: actionTask.taskVersion,
         leaseExpiresAt: new Date("2026-07-13T00:01:00.000Z"),
@@ -917,7 +932,7 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async () => {
       throw createActionError(failureKind, "DOWNSTREAM_FAILURE");
     });
-    const actionTask = await startCapability(service);
+    const actionTask = await startCapability(runtime, service);
 
     await expect(service.executeTask({
       now,
@@ -953,7 +968,6 @@ function createService(
     capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
     capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
-    deploymentCapabilities: createWorkflowDeploymentCapabilities([ENTRY_EVENT_CAPABILITY]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
     },
@@ -980,18 +994,26 @@ const TEST_MESSAGE_CAPABILITY_BINDING: WorkflowCapabilityExecutionBinding = {
 };
 
 async function startCapability(
+  runtime: InMemoryWorkflowRuntimeRepository,
   service: WorkflowRuntimeService,
   trigger: Record<string, unknown> = {},
 ) {
-  const started = await service.startRun({
+  const started = await runtime.createRunWithInitialTask({
+    context: { outputs: {}, trigger },
     entryEventId: "event-1",
-    expectedRevision: 1,
+    entryPolicy: startConfig().entryPolicy,
+    initialNodeId: "start",
+    initialNodeKind: "start",
+    occurredAt: now,
+    revision: 1,
+    shardId: 7,
     subjectId: "customer-1",
     subjectType: "chatai_contact",
-    trigger,
     uid: 9,
     workflowId: "31",
+    workflowType: "chatai_sop",
   });
+  if (started.kind !== "success") throw new Error("Capability Run was not created");
   const advanced = await service.executeTask({
     now,
     taskId: started.task.id,
@@ -1024,11 +1046,6 @@ function createControlReader(spec = actionSpec()) {
   };
 }
 
-const ENTRY_EVENT_CAPABILITY = {
-  capabilityKey: "event.contact.friend_added",
-  contractVersion: 1,
-} as const;
-
 function coreOutputSpec(): WorkflowExecutionSpec {
   return {
     edges: [
@@ -1041,19 +1058,16 @@ function coreOutputSpec(): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };
@@ -1072,26 +1086,22 @@ function actionSpec(): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
       },
       {
         config: {},
         id: "message",
         kind: "message",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };
@@ -1110,7 +1120,6 @@ function messageQuerySpec(): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
       },
       {
         config: {
@@ -1125,19 +1134,16 @@ function messageQuerySpec(): WorkflowExecutionSpec {
         id: "capability",
         kind: "message-query",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [ENTRY_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };

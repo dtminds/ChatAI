@@ -272,7 +272,9 @@ WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
 
-生产可用的外部 Capability 由 `packages/workflow-engine` 的 `WORKFLOW_PRODUCTION_CAPABILITIES` 统一声明，Backend 发布门禁和 Workflow Worker 运行门禁共享同一集合及 fingerprint，不再通过环境变量重复配置。当前注册 `event.message.received@1`、`event.contact.friend_added@1` 和 `event.contact.tag_added@1`。Node 进程内部实现的节点随代码发布，不进入该注册表；依赖外部系统的能力只有在端到端实现完成并验证后才能通过代码评审加入。尚未接通真实 Adapter 的 LLM、AI Intent 能力仍保持关闭。
+Workflow 不维护环境级 Capability 白名单。节点是否可发布由共享节点契约中的 maturity 决定；Worker 启动会确认每个 `runtime-ready` 节点都有生产执行路径。Start 和 Wait Event 额外由 Workflow Event Catalog 校验 Event Type 与 Subject Type。LLM、AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
+
+新增事件必须按固定顺序发布：Java 先上线但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动到包含新 Catalog 定义的版本；最后才由 Backend/Web 开放该事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不会等待新 Worker 重试。
 
 `WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
 
@@ -309,7 +311,7 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 
 真实端到端 Smoke 必须从 Java 提供的受支持测试入口触发，由 Java 生成标准 Entry Event、写入 Event Outbox 并投递 TDMQ。Node Worker 不再根据 Trigger Binding 生成联系人、标签或消息 payload，也不提供按 `workflowId` 直投业务事件的命令。
 
-共享 JSON Fixture 和 Fake Event Catalog 只用于 Node 子系统自动化测试。它们不能替代 Java Producer、真实 TDMQ 和隔离测试租户上的 test01 联调，也不能作为开启生产 Deployment Capability 的依据。
+共享 JSON Fixture 和 Fake Event Catalog 只用于 Node 子系统自动化测试。它们不能替代 Java Producer、真实 TDMQ 和隔离测试租户上的 test01 联调，也不能作为开放生产事件或节点 maturity 的依据。
 
 正常 Worker 入口只接受 Pulsar 配置，不提供 Fake Broker 运行模式。单元测试和组合测试直接注入 `test/support` 中的 Fake Broker，不启动正常 Worker 进程，也不访问 TDMQ。
 
@@ -364,7 +366,7 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
 - 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
 - `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作。代码允许 `JAVA_INTERNAL_API_TOKEN` 为空，但接入 Workflow Entitlement 后，测试和生产部署应配置 Token。
-- Backend 与 Workflow Worker 应部署包含同一 `WORKFLOW_PRODUCTION_CAPABILITIES` 注册表的代码版本，并使用相同的 `WORKFLOW_ENTITLEMENT_API_URL`。代码注册表决定哪些 Revision 可以发布和执行，权益接口用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
+- Backend 与 Workflow Worker 应部署同一代码版本，并使用相同的 `WORKFLOW_ENTITLEMENT_API_URL`。共享节点 maturity 和 Event Catalog 决定哪些 Revision 可以发布和执行，权益接口用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。

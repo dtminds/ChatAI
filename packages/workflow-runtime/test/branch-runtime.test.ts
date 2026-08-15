@@ -6,10 +6,7 @@ import type {
   WorkflowBranchValueType,
   WorkflowDraft,
 } from "@chatai/contracts";
-import {
-  compileWorkflowDraft,
-  createWorkflowDeploymentCapabilities,
-} from "@chatai/workflow-engine";
+import { compileWorkflowDraft } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -17,11 +14,6 @@ import {
 } from "../src/index.js";
 
 const enteredAt = new Date("2026-08-10T00:00:00.000Z");
-const entryCapability = {
-  capabilityKey: "event.contact.friend_added",
-  contractVersion: 1,
-} as const;
-
 const branchOperatorCases: Array<{
   condition: WorkflowBranchCondition;
   label: string;
@@ -98,7 +90,6 @@ describe("Branch runtime", () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => enteredAt);
     const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
       clock: () => enteredAt,
-      deploymentCapabilities: createWorkflowDeploymentCapabilities([entryCapability]),
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
     });
     const started = await service.startRun({
@@ -240,7 +231,6 @@ async function executeBranch(
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => enteredAt);
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
     clock: () => enteredAt,
-    deploymentCapabilities: createWorkflowDeploymentCapabilities([entryCapability]),
     entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
   });
   const started = await service.startRun({

@@ -16,10 +16,6 @@ import {
   type WorkflowType,
   type WorkflowVariableSelector,
 } from "@chatai/contracts";
-import {
-  getWorkflowAggregateCapabilityRequirements,
-  getWorkflowNodeCapabilityRequirements,
-} from "./capability-requirements.js";
 import { WorkflowCompilationError } from "./errors.js";
 import {
   getWorkflowGuaranteedUpstreamNodeIds,
@@ -78,7 +74,6 @@ export function compileWorkflowDraft({
       id: node.id,
       kind: node.data.kind,
       nodeSchemaVersion: node.data.schemaVersion,
-      requiredCapabilities: getWorkflowNodeCapabilityRequirements(node.data.kind, config),
     };
   });
   const referenceIssues = validateWorkflowNodeReferences(
@@ -99,9 +94,8 @@ export function compileWorkflowDraft({
     })),
     entryNodeId: validation.entryNode.id,
     nodes,
-    requiredCapabilities: getWorkflowAggregateCapabilityRequirements(nodes),
     revision,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: validation.terminalNode.id,
     workflowId,
   };

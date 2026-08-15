@@ -101,13 +101,12 @@ describe("workflow worker config", () => {
       .toThrow("WORKFLOW_BROKER must be pulsar");
   });
 
-  it("loads the Java entitlement endpoint without a deployment capability setting", () => {
+  it("loads the Java entitlement endpoint", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
       JAVA_INTERNAL_API_TOKEN: "internal-token",
       WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
     }));
 
-    expect(config).not.toHaveProperty("deploymentCapabilities");
     expect(config.entitlement).toEqual({
       apiUrl: "https://java.example.com/internal/workflow/entitlement",
       mode: "enforce",

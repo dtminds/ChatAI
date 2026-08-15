@@ -1,29 +1,28 @@
 import type {
-  WorkflowCapabilityRequirement,
   WorkflowExecutionSpec,
   WorkflowNodeKind,
+  WorkflowSubjectType,
   WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
-import type { WorkflowDeploymentCapabilities } from "./deployment-capabilities.js";
-import { hasWorkflowDeploymentCapability } from "./deployment-capabilities.js";
-import { getWorkflowCapabilityIdentity } from "./capability-requirements.js";
+import {
+  WORKFLOW_EVENT_CATALOG,
+  type WorkflowEventCatalog,
+} from "./event-catalog.js";
 import { isWorkflowRuntimeSupportedNodeKind } from "./runtime-support.js";
 
 export type WorkflowProductionAvailabilityBlocker = {
-  capabilityKey?: string;
   code:
     | "runtime-node-unsupported"
-    | "deployment-capability-disabled"
+    | "event-type-unsupported"
     | "workflow-type-unentitled"
     | "business-resource-unavailable";
-  contractVersion?: number;
-  dimension: "runtime" | "deployment" | "entitlement" | "resource";
+  dimension: "runtime" | "event" | "entitlement" | "resource";
+  eventType?: string;
   nodeId?: string;
   nodeKind?: WorkflowNodeKind;
 };
 
 export type WorkflowResourceAvailabilityBlocker = {
-  capabilityKey?: string;
   nodeId: string;
   nodeKind: WorkflowNodeKind;
 };
@@ -34,15 +33,17 @@ export type WorkflowProductionAvailability = {
 };
 
 export function evaluateWorkflowProductionAvailability({
-  deployment,
   entitlement,
+  eventCatalog = WORKFLOW_EVENT_CATALOG,
   resourceBlockers = [],
   spec,
+  subjectType,
 }: {
-  deployment: WorkflowDeploymentCapabilities;
   entitlement: WorkflowTypeEntitlementResult;
+  eventCatalog?: WorkflowEventCatalog;
   resourceBlockers?: readonly WorkflowResourceAvailabilityBlocker[];
   spec: WorkflowExecutionSpec;
+  subjectType: WorkflowSubjectType;
 }): WorkflowProductionAvailability {
   const blockers: WorkflowProductionAvailabilityBlocker[] = [];
 
@@ -56,20 +57,16 @@ export function evaluateWorkflowProductionAvailability({
       });
     }
 
-    for (const requirement of node.requiredCapabilities) {
-      if (!hasWorkflowDeploymentCapability(deployment, requirement)) {
-        blockers.push(createDeploymentBlocker(requirement, node.id, node.kind));
+    for (const eventType of getRequiredEventTypes(node)) {
+      if (!eventCatalog.supports(eventType, subjectType)) {
+        blockers.push({
+          code: "event-type-unsupported",
+          dimension: "event",
+          eventType,
+          nodeId: node.id,
+          nodeKind: node.kind,
+        });
       }
-    }
-  }
-
-  const nodeRequirementIdentities = new Set(
-    spec.nodes.flatMap((node) => node.requiredCapabilities.map(getWorkflowCapabilityIdentity)),
-  );
-  for (const requirement of spec.requiredCapabilities) {
-    if (!nodeRequirementIdentities.has(getWorkflowCapabilityIdentity(requirement))
-      && !hasWorkflowDeploymentCapability(deployment, requirement)) {
-      blockers.push(createDeploymentBlocker(requirement));
     }
   }
 
@@ -92,21 +89,6 @@ export function evaluateWorkflowProductionAvailability({
   return { available: uniqueBlockers.length === 0, blockers: uniqueBlockers };
 }
 
-function createDeploymentBlocker(
-  requirement: WorkflowCapabilityRequirement,
-  nodeId?: string,
-  nodeKind?: WorkflowNodeKind,
-): WorkflowProductionAvailabilityBlocker {
-  return {
-    capabilityKey: requirement.capabilityKey,
-    code: "deployment-capability-disabled",
-    contractVersion: requirement.contractVersion,
-    dimension: "deployment",
-    ...(nodeId ? { nodeId } : {}),
-    ...(nodeKind ? { nodeKind } : {}),
-  };
-}
-
 function deduplicateBlockers(
   blockers: WorkflowProductionAvailabilityBlocker[],
 ) {
@@ -114,4 +96,24 @@ function deduplicateBlockers(
     JSON.stringify(blocker),
     blocker,
   ])).values()];
+}
+
+function getRequiredEventTypes(
+  node: WorkflowExecutionSpec["nodes"][number],
+): string[] {
+  if (node.kind === "start") {
+    return Array.isArray(node.config.triggers)
+      ? node.config.triggers.flatMap((trigger) =>
+        isRecord(trigger) && typeof trigger.type === "string" ? [trigger.type] : [])
+      : [];
+  }
+  if (node.kind === "wait-event" && isRecord(node.config.event)
+    && typeof node.config.event.type === "string") {
+    return [node.config.event.type];
+  }
+  return [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

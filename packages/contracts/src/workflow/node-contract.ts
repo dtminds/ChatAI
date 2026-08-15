@@ -328,7 +328,7 @@ type WorkflowNodeContractDefinition<
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
   "ai-collect": placeholderContract("composite"),
-  "ai-intent": runtimeReadyContract(
+  "ai-intent": draftReadyContract(
     "inference",
     1,
     WorkflowAiIntentDraftConfigSchema,
@@ -349,7 +349,7 @@ export const workflowNodeContractRegistry = {
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
   ),
-  llm: runtimeReadyContract(
+  llm: draftReadyContract(
     "inference",
     1,
     WorkflowLlmDraftConfigSchema,

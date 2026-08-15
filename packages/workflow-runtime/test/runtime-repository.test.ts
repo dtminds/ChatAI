@@ -889,7 +889,6 @@ function flowChangedSpec(
         id: "start",
         kind: "wait",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       }, spec.nodes[1]!],
     };
   }
@@ -911,7 +910,6 @@ function flowChangedSpec(
             seatIds: [101],
             triggers: [{ keywords: ["price"], type: "message.received" }],
           },
-          requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
         },
         {
           config: {
@@ -940,7 +938,6 @@ function flowChangedSpec(
           id: "branch-1",
           kind: "branch",
           nodeSchemaVersion: 1,
-          requiredCapabilities: [],
         },
         spec.nodes[1]!,
       ],
@@ -958,7 +955,6 @@ function flowChangedSpec(
           seatIds: [101],
           triggers: [{ keywords: ["price"], type: "message.received" }],
         },
-        requiredCapabilities: [{ capabilityKey: "event.message.received", contractVersion: 1 }],
       },
       {
         config: {
@@ -982,7 +978,6 @@ function flowChangedSpec(
         id: "llm-1",
         kind: "llm",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [{ capabilityKey: "operation.llm.generate", contractVersion: 1 }],
       },
       spec.nodes[1]!,
     ],
@@ -1004,19 +999,16 @@ function publishedSpec(): WorkflowExecutionSpec {
         id: "start",
         kind: "start",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [],
     revision: 2,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };
@@ -1037,7 +1029,6 @@ function publishedSpecWithWait(): WorkflowExecutionSpec {
         id: "wait-1",
         kind: "wait",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       spec.nodes[1]!,
     ],
@@ -1063,14 +1054,12 @@ function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
         id: "message-1",
         kind: "message",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       {
         config: { duration: 1, unit: "day" },
         id: "wait-1",
         kind: "wait",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       {
         config: {
@@ -1098,7 +1087,6 @@ function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
         id: "branch-1",
         kind: "branch",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
       spec.nodes[1]!,
     ],

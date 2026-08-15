@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createWorkflowDeploymentCapabilities,
-  WORKFLOW_PRODUCTION_CAPABILITIES,
-} from "@chatai/workflow-engine";
-import {
   InMemoryWorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
 import {
@@ -521,27 +517,21 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
-  it("uses the shared production capabilities without a deployment override", async () => {
-    const service = createService(new InMemoryWorkflowRepository(), {
-      deploymentCapabilities: undefined,
-    });
+  it("returns the runtime-ready node kinds used by publish checks", async () => {
+    const service = createService();
     const created = await createConfigured(service);
 
-    expect(created.capabilitySummary.deploymentCapabilities).toEqual(
-      WORKFLOW_PRODUCTION_CAPABILITIES.capabilities,
-    );
-    expect(created.capabilitySummary.deploymentFingerprint).toBe(
-      WORKFLOW_PRODUCTION_CAPABILITIES.fingerprint,
-    );
+    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
+      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "end"]));
+    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
+      .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
     await expect(service.publish(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
     })).resolves.toMatchObject({ validatedOnly: true });
   });
 
-  it("keeps LLM publication closed under the default production capabilities", async () => {
-    const service = createService(new InMemoryWorkflowRepository(), {
-      deploymentCapabilities: undefined,
-    });
+  it("keeps draft-ready LLM nodes out of published revisions", async () => {
+    const service = createService();
     const configured = await createConfigured(service);
     const saved = await service.saveDraft(operator, configured.id, {
       draft: withPublishableLlmNode(withStartConfig(configured.draft, {
@@ -554,7 +544,15 @@ describe("WorkflowService", () => {
 
     await expect(service.publish(operator, configured.id, {
       expectedDraftVersion: saved.draftVersion,
-    })).rejects.toMatchObject({ code: "WORKFLOW_PRODUCTION_UNAVAILABLE" });
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_VALIDATION_FAILED",
+      details: {
+        issues: expect.arrayContaining([expect.objectContaining({
+          code: "unsupported-runtime-node",
+          nodeId: "llm-1",
+        })]),
+      },
+    });
   });
 
   it("rejects an inactive seat during publish validation for message-only Start", async () => {
@@ -1021,16 +1019,6 @@ function createService(
   options: ConstructorParameters<typeof WorkflowService>[1] = {},
 ) {
   return new WorkflowService(repository, {
-    deploymentCapabilities: createWorkflowDeploymentCapabilities([{
-      capabilityKey: "event.contact.friend_added",
-      contractVersion: 1,
-    }, {
-      capabilityKey: "event.contact.tag_added",
-      contractVersion: 1,
-    }, {
-      capabilityKey: "event.message.received",
-      contractVersion: 1,
-    }]),
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
     },

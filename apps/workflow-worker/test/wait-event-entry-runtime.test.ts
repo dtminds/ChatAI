@@ -3,7 +3,6 @@ import {
   type WorkflowEntryEvent,
   type WorkflowExecutionSpec,
 } from "@chatai/contracts";
-import { createWorkflowDeploymentCapabilities } from "@chatai/workflow-engine";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeService,
@@ -15,11 +14,6 @@ import { scheduleWorkflowTasks } from "../src/scheduler.js";
 import { startTaskConsumer } from "../src/task-consumer.js";
 import { createFakeWorkflowEventCatalog } from "./support/fake-workflow-event-catalog.js";
 import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
-
-const WAIT_EVENT_CAPABILITY = {
-  capabilityKey: "event.message.received",
-  contractVersion: 1,
-} as const;
 
 describe("Wait Event Entry runtime composition", () => {
   it("collects Entry messages for ten seconds and reaches the triggered terminal path", async () => {
@@ -131,7 +125,6 @@ async function createHarness() {
     })),
   }, repository, undefined, {
     clock: () => now,
-    deploymentCapabilities: createWorkflowDeploymentCapabilities([WAIT_EVENT_CAPABILITY]),
     entitlementPort: {
       check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
     },
@@ -258,9 +251,7 @@ function executionSpec(): WorkflowExecutionSpec {
       {
         config: {
           event: {
-            capabilityKey: "event.message.received",
             collectWindowSeconds: 10,
-            contractVersion: 1,
             type: "message.received",
           },
           timeout: { duration: 1, unit: "minute" },
@@ -268,19 +259,16 @@ function executionSpec(): WorkflowExecutionSpec {
         id: "wait-event",
         kind: "wait-event",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [WAIT_EVENT_CAPABILITY],
       },
       {
         config: {},
         id: "end",
         kind: "end",
         nodeSchemaVersion: 1,
-        requiredCapabilities: [],
       },
     ],
-    requiredCapabilities: [WAIT_EVENT_CAPABILITY],
     revision: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     terminalNodeId: "end",
     workflowId: "31",
   };

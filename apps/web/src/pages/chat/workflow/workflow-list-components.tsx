@@ -309,7 +309,7 @@ export function WorkflowDeleteDialog({
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>确认要删除该 SOP 吗？</AlertDialogTitle>
-          <AlertDialogDescription>删除后无法恢复，未完成的审核也会失效</AlertDialogDescription>
+          <AlertDialogDescription>删除后无法恢复</AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
         <AlertDialogFooter>

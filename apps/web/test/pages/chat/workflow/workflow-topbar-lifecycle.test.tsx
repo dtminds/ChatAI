@@ -16,8 +16,18 @@ describe("WorkflowTopBar review lifecycle", () => {
     });
 
     expect(screen.getByText("草稿")).toBeInTheDocument();
+    expect(screen.queryByText("有尚未发布的修改")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "提交审核" }));
     expect(onSubmitReview).toHaveBeenCalledOnce();
+  });
+
+  it("shows the unpublished-change indicator only after a version has been published", () => {
+    renderTopBar({
+      hasUnpublishedChanges: true,
+      publishedRevision: 1,
+    });
+
+    expect(screen.getByText("有尚未发布的修改")).toBeInTheDocument();
   });
 
   it("shows explicit rejected wording for first and subsequent versions", () => {

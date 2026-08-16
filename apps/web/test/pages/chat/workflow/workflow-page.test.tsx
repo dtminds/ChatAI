@@ -664,6 +664,7 @@ describe("Agent workflow page", () => {
     await screen.findByText("新人转化旅程");
     expect(screen.getByRole("tab", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "运行中" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "待处理" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "待启用" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已停止" })).toBeInTheDocument();

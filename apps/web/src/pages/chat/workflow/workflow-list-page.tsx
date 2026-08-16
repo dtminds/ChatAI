@@ -1,5 +1,6 @@
 import {
   Add01Icon,
+  Archive04Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -43,12 +44,11 @@ export function WorkflowPage({ repository }: { repository?: WorkflowDraftReposit
   return <WorkflowListPage repository={repository} />;
 }
 
-type WorkflowStatusFilter = "all" | "active" | "pending" | "ready" | "draft" | "stopped";
+type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
 
 const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
   { label: "全部", value: "all" },
   { label: "运行中", value: "active" },
-  { label: "待处理", value: "pending" },
   { label: "待启用", value: "ready" },
   { label: "草稿", value: "draft" },
   { label: "已停止", value: "stopped" },
@@ -75,12 +75,6 @@ export function WorkflowListPage({
   const filteredItems = useMemo(() => items.filter((workflow) => {
     const matchesStatus = statusFilter === "all"
       || (statusFilter === "draft" && workflow.publishedRevision === null)
-      || (statusFilter === "pending" && (
-        workflow.currentReview?.status === "pending"
-        || workflow.currentReview?.status === "approved"
-        || (workflow.currentReview?.status === "rejected"
-          && (workflow.publishedRevision === null || workflow.hasUnpublishedChanges))
-      ))
       || (statusFilter === "ready" && (
         workflow.runtimeStatus === "paused"
         || (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null)
@@ -276,10 +270,16 @@ export function WorkflowListPage({
         ) : null}
 
         {status === "ready" && filteredItems.length === 0 ? (
-          <WorkflowListState
-            description={normalizedQuery || statusFilter !== "all" ? "没有匹配的 Workflow" : "创建第一个营销流程"}
-            title={normalizedQuery || statusFilter !== "all" ? "暂无搜索结果" : "暂无 Workflow"}
-          />
+          <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="text-muted-foreground/60"
+              icon={Archive04Icon}
+              size={40}
+              strokeWidth={1}
+            />
+            <p className="text-sm leading-6 text-muted-foreground">暂无数据</p>
+          </div>
         ) : null}
 
         {filteredItems.length > 0 ? (

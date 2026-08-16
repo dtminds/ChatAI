@@ -7,6 +7,7 @@ import type {
 } from "@chatai/contracts";
 import {
   Add01Icon,
+  Archive04Icon,
   MoreHorizontalIcon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
@@ -23,7 +24,6 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -54,8 +54,6 @@ import {
 } from "@/pages/chat/tickets/ticket-display";
 
 const pageSize = 20;
-const emptyStateIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 const ticketSummaryTagClass =
   "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-xs font-medium";
 const ticketFilters: Array<{
@@ -288,14 +286,13 @@ function ConversationTicketsPanelContent({
           className="min-h-0 flex-1 gap-3 border-0 px-6 py-8"
           role="status"
         >
-          <EmptyMedia className="mb-0">
-            <img
-              alt=""
-              aria-hidden="true"
-              className="h-[100px] w-[135px] object-contain opacity-40"
-              src={emptyStateIllustrationUrl}
-            />
-          </EmptyMedia>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="text-muted-foreground/60"
+            icon={Archive04Icon}
+            size={40}
+            strokeWidth={1}
+          />
           <EmptyHeader>
             <EmptyDescription>暂无数据</EmptyDescription>
           </EmptyHeader>

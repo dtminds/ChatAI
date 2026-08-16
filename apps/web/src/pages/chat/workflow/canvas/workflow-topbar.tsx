@@ -242,7 +242,7 @@ export function WorkflowTopBar({
                   {getSaveStateLabel(saveState, lastSavedAt)}
                 </span>
               )}
-              {hasUnpublishedChanges ? (
+              {hasUnpublishedChanges && publishedRevision !== null ? (
                 <span className="inline-flex shrink-0 items-center gap-1 !rounded-[2px] bg-warning-muted px-1.5 py-0.5 text-warning">
                   <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={2} />
                   有尚未发布的修改

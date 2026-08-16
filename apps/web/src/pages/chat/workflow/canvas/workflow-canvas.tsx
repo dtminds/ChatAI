@@ -17,9 +17,9 @@ import {
 } from "@xyflow/react";
 import {
   Add01Icon,
-  DashboardSquare02Icon,
+  ArtboardIcon,
+  LocationUser04Icon,
   MinusSignIcon,
-  Navigation04Icon,
   PlusSignIcon,
   Redo03Icon,
   SquareArrowExpand01Icon,
@@ -598,7 +598,7 @@ function WorkflowBottomToolbar({
             variant="ghost"
             size="icon"
           >
-            <HugeiconsIcon icon={DashboardSquare02Icon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon icon={ArtboardIcon} size={16} strokeWidth={1.8} />
           </Button>
         </WorkflowToolbarTooltip>
         </> : null}
@@ -614,7 +614,7 @@ function WorkflowBottomToolbar({
               variant="ghost"
               size="icon"
             >
-              <HugeiconsIcon icon={Navigation04Icon} size={16} strokeWidth={1.8} />
+              <HugeiconsIcon icon={LocationUser04Icon} size={16} strokeWidth={1.8} />
             </Button>
           </WorkflowToolbarTooltip>
         </div>

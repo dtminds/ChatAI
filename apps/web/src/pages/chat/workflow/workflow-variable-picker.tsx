@@ -1,8 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Globe02Icon,
   InputCursorTextIcon,
-  Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -16,7 +15,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { nodeVisuals } from "./node-definitions";
 import type {
   WorkflowVariableDefinition,
@@ -36,51 +34,16 @@ export function WorkflowVariablePicker({
   open: boolean;
   variables: WorkflowVariableDefinition[];
 }) {
-  const [query, setQuery] = useState("");
-  const filteredVariables = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return normalizedQuery
-      ? variables.filter((variable) =>
-          `${variable.label} ${variable.sourceNodeTitle ?? ""} ${variable.selector.join(".")} ${
-            variable.scope === "current-node-lifecycle" ? "当前节点" : ""
-          }`
-            .toLowerCase()
-            .includes(normalizedQuery))
-      : variables;
-  }, [query, variables]);
-
   return (
     <DropdownMenu
       modal={false}
-      onOpenChange={(nextOpen) => {
-        onOpenChange(nextOpen);
-        if (!nextOpen) setQuery("");
-      }}
+      onOpenChange={onOpenChange}
       open={open}
     >
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-0" sideOffset={6}>
-        <div className="p-2">
-          <div className="relative">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={13}
-              strokeWidth={1.6}
-            />
-            <Input
-              aria-label="搜索变量"
-              className="h-7 pl-8 text-xs"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-              placeholder="搜索"
-              value={query}
-              variant="soft"
-            />
-          </div>
-        </div>
         <div className="max-h-72 overflow-y-auto p-1">
-          <VariableOptions variables={filteredVariables} onSelect={onSelect} />
+          <VariableOptions variables={variables} onSelect={onSelect} />
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

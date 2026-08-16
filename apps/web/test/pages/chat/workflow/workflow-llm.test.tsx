@@ -446,7 +446,6 @@ describe("workflow LLM node", () => {
     }));
 
     await user.click(screen.getByRole("button", { name: "引用变量" }));
-    await user.type(screen.getByRole("textbox", { name: "搜索变量" }), "当前节点");
     await user.click(screen.getByRole("menuitem", { name: `${llm.data.title}（当前节点）` }));
     expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ }));

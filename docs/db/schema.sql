@@ -591,9 +591,10 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   biz_status TINYINT NOT NULL DEFAULT 1 COMMENT '业务状态：1正常，0已删除',
   draft_schema_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿DSL Schema版本',
   draft_json JSON NOT NULL COMMENT '画布草稿JSON',
+  draft_semantic_hash VARCHAR(64) NOT NULL COMMENT '忽略布局后的草稿语义SHA-256',
   draft_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿乐观锁版本',
-  validated_draft_version INT UNSIGNED NULL COMMENT '最近一次发布校验通过的草稿版本',
   published_revision INT UNSIGNED NULL COMMENT '当前发布Revision，首次启用前为空',
+  published_semantic_hash VARCHAR(64) NULL COMMENT '当前发布Revision的草稿语义SHA-256',
   client_request_id VARCHAR(128) NULL COMMENT '创建请求幂等ID',
   op_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '最近操作子账号ID',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -616,6 +617,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   execution_spec_json JSON NOT NULL COMMENT '后端编译后的执行定义',
   spec_hash VARCHAR(64) NOT NULL COMMENT '执行定义SHA-256',
   publish_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '发布子账号ID',
+  review_id BIGINT UNSIGNED NOT NULL COMMENT '授权本次发布的审核ID',
   publish_time DATETIME NOT NULL COMMENT '发布时间',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -623,6 +625,37 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   UNIQUE KEY uk_workflow_revision_uid_workflow_revision (uid, workflow_id, revision),
   KEY idx_workflow_revision_uid_workflow_time (uid, workflow_id, publish_time, id)
 ) COMMENT='营销Workflow不可变Revision表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型',
+  source_draft_version INT UNSIGNED NOT NULL COMMENT '提交审核的草稿版本',
+  base_published_revision INT UNSIGNED NULL COMMENT '提交时基准发布Revision',
+  draft_json JSON NOT NULL COMMENT '冻结的审核草稿',
+  execution_spec_json JSON NOT NULL COMMENT '冻结的执行定义',
+  trigger_bindings_json JSON NOT NULL COMMENT '冻结的触发绑定',
+  candidate_hash VARCHAR(64) NOT NULL COMMENT '候选执行语义SHA-256',
+  draft_semantic_hash VARCHAR(64) NOT NULL COMMENT '候选草稿语义SHA-256',
+  change_summary_json JSON NOT NULL COMMENT '相对当前发布版的变更摘要',
+  status VARCHAR(32) NOT NULL COMMENT 'pending、approved、rejected、withdrawn、obsolete、published',
+  submit_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '提交人子账号ID',
+  submit_time DATETIME NOT NULL COMMENT '提交时间',
+  checked_at DATETIME NOT NULL COMMENT '自动检查完成时间',
+  review_sub_uid BIGINT UNSIGNED NULL COMMENT '审核或撤回操作人子账号ID',
+  review_comment VARCHAR(1000) NULL COMMENT '审核意见或驳回原因',
+  review_time DATETIME NULL COMMENT '审核或撤回时间',
+  publish_sub_uid BIGINT UNSIGNED NULL COMMENT '发布人子账号ID',
+  resulting_revision INT UNSIGNED NULL COMMENT '发布后Revision',
+  publish_time DATETIME NULL COMMENT '发布时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_workflow_publish_review_candidate (uid, workflow_id, source_draft_version),
+  KEY idx_workflow_publish_review_current (uid, workflow_id, id)
+) COMMENT='营销Workflow发布审核表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

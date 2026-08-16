@@ -130,6 +130,33 @@ function WorkflowPrimaryAction({
   operationPending: boolean;
   workflow: WorkflowListItem;
 }) {
+  if (workflow.currentReview?.status === "pending") {
+    return (
+      <Button asChild className="h-8 flex-1 gap-1.5" size="sm">
+        <Link to={`/chat/workflows/${workflow.id}?panel=review`}>审核</Link>
+      </Button>
+    );
+  }
+
+  if (workflow.currentReview?.status === "approved") {
+    return (
+      <Button asChild className="h-8 flex-1 gap-1.5" size="sm">
+        <Link to={`/chat/workflows/${workflow.id}`}>去发布</Link>
+      </Button>
+    );
+  }
+
+  if (workflow.currentReview?.status === "rejected") {
+    return (
+      <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
+        <Link to={`/chat/workflows/${workflow.id}`}>
+          <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+          编辑
+        </Link>
+      </Button>
+    );
+  }
+
   if (workflow.runtimeStatus === "active") {
     return (
       <Button
@@ -155,12 +182,12 @@ function WorkflowPrimaryAction({
         variant="secondary"
       >
         <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-        启用
+        {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
       </Button>
     );
   }
 
-  if (workflow.runtimeStatus === "inactive" && workflow.activationReady) {
+  if (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null) {
     return (
       <Button
         className="h-8 flex-1 gap-1.5"
@@ -170,7 +197,7 @@ function WorkflowPrimaryAction({
         variant="secondary"
       >
         <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-        启用
+        {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
       </Button>
     );
   }
@@ -206,16 +233,19 @@ function WorkflowCardMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {workflow.runtimeStatus === "inactive" && workflow.activationReady ? (
+        {workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null ? (
           <DropdownMenuItem
             disabled={!workflow.canOperate || operationPending}
             onSelect={() => onLifecycleAction("enable")}
           >
             <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-            启用
+            {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem onSelect={onRename}>
+        <DropdownMenuItem
+          disabled={workflow.currentReview?.status === "pending" || workflow.currentReview?.status === "approved"}
+          onSelect={onRename}
+        >
           <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
           编辑信息
         </DropdownMenuItem>
@@ -257,7 +287,7 @@ export function WorkflowDeleteDialog({
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>确认要删除该 SOP 吗？</AlertDialogTitle>
-          <AlertDialogDescription>删除后无法恢复</AlertDialogDescription>
+          <AlertDialogDescription>删除后无法恢复，未完成的审核也会失效</AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
         <AlertDialogFooter>
@@ -294,7 +324,7 @@ export function WorkflowStopDialog({
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>确认要停止该 SOP 吗？</AlertDialogTitle>
-          <AlertDialogDescription>停止后将无法恢复</AlertDialogDescription>
+          <AlertDialogDescription>停止后将无法恢复，未完成的审核也会失效</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
@@ -351,19 +381,37 @@ function WorkflowMetric({ label, value }: { label: string; value: string }) {
 }
 
 function getWorkflowStatus(workflow: WorkflowListItem) {
-  if (workflow.runtimeStatus === "active") {
-    return { className: "bg-success-muted text-success", icon: Tick02Icon, label: "运行中" };
-  }
-  if (workflow.runtimeStatus === "paused") {
-    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
-  }
   if (workflow.runtimeStatus === "stopped") {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
-  if (workflow.activationReady) {
-    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
+  const base = workflow.publishedRevision === null
+    ? "草稿"
+    : workflow.runtimeStatus === "active"
+      ? "运行中"
+      : workflow.runtimeStatus === "paused"
+        ? "待启用"
+        : "未启用";
+  const review = workflow.currentReview;
+  if (review?.status === "pending") {
+    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: `${base} · ${workflow.publishedRevision === null ? "待审核" : "新版本待审核"}` };
   }
-  return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
+  if (review?.status === "approved") {
+    return { className: "bg-warning-muted text-warning", icon: Tick02Icon, label: `${base} · ${workflow.publishedRevision === null ? "审核通过" : "新版本审核通过"}` };
+  }
+  if (review?.status === "rejected" && (workflow.publishedRevision === null || workflow.hasUnpublishedChanges)) {
+    return { className: "bg-destructive/10 text-destructive", icon: AlertCircleIcon, label: `${base} · ${workflow.publishedRevision === null ? "审核驳回" : "新版本审核驳回"}` };
+  }
+  if (workflow.publishedRevision === null) {
+    return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: base };
+  }
+  if (workflow.hasUnpublishedChanges) {
+    return { className: "bg-warning-muted text-warning", icon: Edit02Icon, label: `${base} · 有未提交的新版本` };
+  }
+  return {
+    className: workflow.runtimeStatus === "active" ? "bg-success-muted text-success" : "bg-muted text-muted-foreground",
+    icon: workflow.runtimeStatus === "active" ? Tick02Icon : PauseIcon,
+    label: `${base} · ${workflow.runtimeStatus === "inactive" ? "已发布" : "已是最新版本"}`,
+  };
 }
 
 function getWorkflowTypeLabel(workflowType: WorkflowListItem["workflowType"]) {

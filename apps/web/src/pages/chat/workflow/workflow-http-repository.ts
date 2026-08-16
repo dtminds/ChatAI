@@ -2,6 +2,7 @@ import type {
   ApiSuccessEnvelope,
   WorkflowDefinition as ApiWorkflowDefinition,
   WorkflowPublishResult as ApiWorkflowPublishResult,
+  WorkflowPublishReview,
   WorkflowRevision as ApiWorkflowRevision,
 } from "@chatai/contracts";
 import { http, RequestNormalizedError } from "@/lib/request";
@@ -108,51 +109,90 @@ export function createHttpWorkflowDraftRepository(
       return { ...result, importedAt: result.savedAt } satisfies WorkflowDraftImportResult;
     },
 
-    async publishDraft(workflowId) {
-      try {
-        const current = await requireCachedDefinition(client, definitions, workflowId);
-        const result = unwrap<ApiWorkflowPublishResult>(await client.post(
-          `/server/workflows/${workflowId}/publish`,
-          { expectedDraftVersion: current.draftVersion },
-        ));
-        definitions.set(workflowId, result.definition);
-        const nextRevisions = result.revision
-          ? [result.revision, ...(revisions.get(workflowId) ?? []).filter((item) => item.revision !== result.revision!.revision)]
-          : revisions.get(workflowId) ?? [];
-        revisions.set(workflowId, nextRevisions);
-        const document = toDocument(result.definition, nextRevisions);
-        const draft = cloneWorkflowDraft(document.draft);
-        const draftHash = createWorkflowDraftHash(draft);
-
-        if (result.validatedOnly || !result.revision) {
-          return {
-            document,
-            draft,
-            draftHash,
-            publishedAt: null,
-            publishedRevision: null,
-            revision: document.revision,
-            updatedAt: document.updatedAt,
-            validatedOnly: true,
-            version: null,
-          } satisfies WorkflowDraftPublishResult;
+    async submitReview(workflowId) {
+      return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
+        try {
+          const current = await requireCachedDefinition(client, definitions, workflowId);
+          await client.post(
+            `/server/workflows/${workflowId}/reviews`,
+            { expectedDraftVersion: current.draftVersion },
+          );
+          return await refreshDocument(client, definitions, revisions, workflowId);
+        } catch (error) {
+          throw normalizeHttpError(error);
         }
+      });
+    },
 
-        const version = toVersionHistoryItem(result.revision);
-        return {
-          document,
-          draft,
-          draftHash,
-          publishedAt: result.revision.publishedAt,
-          publishedRevision: result.revision.revision,
-          revision: document.revision,
-          updatedAt: document.updatedAt,
-          validatedOnly: false,
-          version,
-        } satisfies WorkflowDraftPublishResult;
+    async listReviews(workflowId) {
+      try {
+        return unwrap<WorkflowPublishReview[]>(await client.get(`/server/workflows/${workflowId}/reviews`));
       } catch (error) {
         throw normalizeHttpError(error);
       }
+    },
+
+    approveReview: (workflowId, reviewId, comment) => mutateReview(
+      client,
+      definitions,
+      revisions,
+      workflowId,
+      reviewId,
+      "approve",
+      comment ? { comment } : {},
+    ),
+    rejectReview: (workflowId, reviewId, reason) => mutateReview(
+      client,
+      definitions,
+      revisions,
+      workflowId,
+      reviewId,
+      "reject",
+      { reason },
+    ),
+    withdrawReview: (workflowId, reviewId) => mutateReview(
+      client,
+      definitions,
+      revisions,
+      workflowId,
+      reviewId,
+      "withdraw",
+    ),
+    continueEditing: (workflowId, reviewId) => mutateReview(
+      client,
+      definitions,
+      revisions,
+      workflowId,
+      reviewId,
+      "continue-editing",
+    ),
+
+    async publishReview(workflowId, reviewId) {
+      return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
+        try {
+          const result = unwrap<ApiWorkflowPublishResult>(await client.post(
+            `/server/workflows/${workflowId}/publish`,
+            { reviewId },
+          ));
+          definitions.set(workflowId, result.definition);
+          const nextRevisions = await getRevisions(client, workflowId);
+          revisions.set(workflowId, nextRevisions);
+          const document = toDocument(result.definition, nextRevisions);
+          const version = toVersionHistoryItem(result.revision);
+          return {
+            document,
+            draft: cloneWorkflowDraft(result.revision.draft as WorkflowDraft),
+            draftHash: createWorkflowDraftHash(result.revision.draft as WorkflowDraft),
+            publishedAt: result.revision.publishedAt,
+            publishedRevision: result.revision.revision,
+            revision: document.revision,
+            updatedAt: document.updatedAt,
+            version,
+          } satisfies WorkflowDraftPublishResult;
+        } catch (error) {
+          throw normalizeHttpError(error);
+        }
+      });
     },
 
     async restoreVersion(workflowId, versionId) {
@@ -253,6 +293,38 @@ async function getDefinition(client: WorkflowHttpClient, workflowId: string) {
   return unwrap<ApiWorkflowDefinition>(await client.get(`/server/workflows/${workflowId}`));
 }
 
+async function refreshDocument(
+  client: WorkflowHttpClient,
+  definitions: Map<string, ApiWorkflowDefinition>,
+  revisions: Map<string, ApiWorkflowRevision[]>,
+  workflowId: string,
+) {
+  const [definition, versionHistory] = await Promise.all([
+    getDefinition(client, workflowId),
+    getRevisions(client, workflowId),
+  ]);
+  definitions.set(workflowId, definition);
+  revisions.set(workflowId, versionHistory);
+  return toDocument(definition, versionHistory);
+}
+
+async function mutateReview(
+  client: WorkflowHttpClient,
+  definitions: Map<string, ApiWorkflowDefinition>,
+  revisions: Map<string, ApiWorkflowRevision[]>,
+  workflowId: string,
+  reviewId: string,
+  action: "approve" | "reject" | "withdraw" | "continue-editing",
+  body: Record<string, unknown> = {},
+) {
+  try {
+    await client.post(`/server/workflows/${workflowId}/reviews/${reviewId}/${action}`, body);
+    return await refreshDocument(client, definitions, revisions, workflowId);
+  } catch (error) {
+    throw normalizeHttpError(error);
+  }
+}
+
 async function getRevisions(client: WorkflowHttpClient, workflowId: string) {
   return unwrap<ApiWorkflowRevision[]>(await client.get(`/server/workflows/${workflowId}/revisions`));
 }
@@ -297,17 +369,15 @@ function toDocument(
     revision: definition.draftVersion,
     runtimeStatus: definition.runtimeStatus,
     savedAt: listItem.updatedAt,
-    validatedDraftVersion: definition.validatedDraftVersion,
+    currentReview: definition.currentReview,
+    hasUnpublishedChanges: definition.hasUnpublishedChanges,
     versionHistory,
   };
 }
 
 function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
   const draft = toDraft(definition.draft);
-  const activationReady = definition.runtimeStatus === "inactive"
-    && definition.validatedDraftVersion === definition.draftVersion;
   return {
-    activationReady,
     canOperate: definition.permissions.canOperate,
     capabilitySummary: definition.capabilitySummary,
     conversion: getWorkflowConversion(draft) ?? "-",
@@ -317,6 +387,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
     name: definition.name,
     nodes: draft.nodes.length,
     owner: "当前账号",
+    publishedRevision: definition.publishedRevision,
     runtimeStatus: definition.runtimeStatus,
     status: definition.runtimeStatus === "active"
       ? "Published"
@@ -324,10 +395,12 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
         ? "Paused"
         : definition.runtimeStatus === "stopped"
           ? "Stopped"
-          : activationReady ? "Published" : "Draft",
+          : definition.publishedRevision !== null ? "Published" : "Draft",
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
     workflowType: definition.workflowType,
+    currentReview: definition.currentReview,
+    hasUnpublishedChanges: definition.hasUnpublishedChanges,
   };
 }
 

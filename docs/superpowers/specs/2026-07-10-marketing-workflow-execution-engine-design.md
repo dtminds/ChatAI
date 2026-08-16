@@ -1,6 +1,6 @@
 # 营销 Workflow 1.0 执行引擎设计
 
-> Revision 运行语义更新：本文中“Run 始终固定在进入时 Revision”的决策已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代。不可变 Revision、首次启用和发布规则继续有效。
+> 后续决策更新：本文中“Run 始终固定在进入时 Revision”的决策已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代；发布检查、首次发布与启用规则已由 [Issue #607](https://github.com/dtminds/ChatAI/issues/607) 的 Workflow 发布审核与独立发布方案替代。
 
 - 日期：2026-07-10
 - 状态：Draft
@@ -302,11 +302,10 @@ Viewport、坐标、卡片样式、Metric、Summary、图标和 UI Runtime 回�
 
 ### 7.3 版本规则
 
-- Workflow 从未启用时，保存草稿只增加 `draft_version`。
-- Workflow 从未启用时，发布只执行完整校验并记录 `validated_draft_version`，不创建 Revision。
-- 首次启用要求 `validated_draft_version === draft_version`，并以当前草稿创建 Revision 1。
-- Workflow 首次启用后，后端以 Compiler 生成的执行定义判断发布语义；执行语义变化时创建下一 Revision，Revision 单调递增。
-- 仅 Viewport、节点坐标等编辑器布局变化时继续保存 Draft，但复用当前 Revision，不替换不可变 Revision 快照。
+- Workflow Draft 保持可变；提交审核后冻结不可变候选，审核通过前不得发布。
+- 首次发布创建 Revision 1，但保持 `inactive`；启用只切换 Runtime Status，不创建 Revision。
+- 后续发布创建单调递增的新 Revision；Active 或 Paused 状态保持不变。
+- 仅 Viewport、节点坐标等编辑器布局变化时继续保存 Draft，不产生待审核的新版本。
 - Active 状态发布后继续保持 Active；Paused 状态发布后继续保持 Paused。
 - Stopped 或已逻辑删除的 Workflow 不允许继续发布。
 - Revision 发布后不可修改，只能发布下一 Revision。
@@ -423,9 +422,10 @@ runtime_status
 biz_status
 draft_schema_version
 draft_json
+draft_semantic_hash
 draft_version
-validated_draft_version
 published_revision
+published_semantic_hash
 op_sub_uid
 create_time
 update_time
@@ -436,7 +436,7 @@ update_time
 - `id` 为无业务含义自增主键。
 - 草稿保存通过 `draft_version` 乐观锁。
 - `draft_json` 是可变编辑态，不能被 Worker 直接执行。
-- `published_revision` 在首次启用前为 NULL。
+- `published_revision` 在首次发布前为 NULL。
 - 默认查询必须包含 `uid` 和 `biz_status = 1`。
 - 建议索引 `(uid, biz_status, update_time, id)`。
 
@@ -724,10 +724,11 @@ workflow-task
 1. 控制面读取当前草稿。
 2. 通过共享 Compiler 清理 UI 字段并生成执行定义。
 3. 后端重新执行图校验和节点配置校验。
-4. 从未启用时，发布只更新 `validated_draft_version`，不插入 Revision。
-5. 首次启用时再次确认 `validated_draft_version === draft_version`，在事务中插入 Revision 1、更新 `published_revision`、创建 Trigger Binding，并将状态改为 Active。
-6. 首次启用后的发布先比较当前与已发布执行定义；语义未变化时复用当前 Revision，语义变化时在事务中插入下一 Revision、更新 `published_revision` 并替换 Trigger Binding；Active 或 Paused 状态保持不变。
-7. 发布并发冲突返回明确的 Revision Conflict，不覆盖其他编辑。
+4. 用户显式提交审核，Backend 冻结 Draft、Execution Spec、Trigger Binding 和变更摘要。
+5. 审核通过后，发布再次检查生产可用性并在事务中写入下一 Revision、更新 `published_revision`、替换 Trigger Binding，并把审核记录标为已发布。
+6. 首次发布创建 Revision 1 并保持 `inactive`；后续发布保持当前 Active 或 Paused 状态。
+7. 启用独立执行，只激活当前 `published_revision`，不读取未发布 Draft，也不创建 Revision。
+8. 审核与发布并发冲突返回明确错误，不覆盖其他操作。
 
 ### 11.2 客户进入
 

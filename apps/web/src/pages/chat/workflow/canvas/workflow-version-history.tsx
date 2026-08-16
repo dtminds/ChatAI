@@ -1,6 +1,9 @@
 import { Cancel01Icon, CheckmarkCircle02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { WorkflowPublishReview } from "@chatai/contracts";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type {
   WorkflowDraftRestoreStatus,
@@ -13,6 +16,7 @@ export function WorkflowVersionHistoryPanel({
   onExitPreview,
   onRestoreVersion,
   onSelectVersion,
+  loadReviews,
   restoreState,
   versions,
 }: {
@@ -21,20 +25,30 @@ export function WorkflowVersionHistoryPanel({
   onExitPreview: () => void;
   onRestoreVersion: (versionId: string) => void;
   onSelectVersion: (versionId: string) => void;
+  loadReviews: () => Promise<WorkflowPublishReview[]>;
   restoreState: WorkflowDraftRestoreStatus;
   versions: WorkflowVersionHistoryItem[];
 }) {
   const isRestoring = restoreState === "restoring";
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
+  const [activeTab, setActiveTab] = useState<"versions" | "reviews">("versions");
+  const [reviews, setReviews] = useState<WorkflowPublishReview[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadReviews().then((items) => {
+      if (!cancelled) setReviews(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadReviews]);
 
   return (
     <div className="workflow-version-panel flex max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-popover text-popover-foreground">
       <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
-          <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">版本历史</h2>
-          <p className="workflow-version-panel-description mt-0.5 text-xs leading-[18px] text-muted-foreground">
-            选择版本后以只读方式预览
-          </p>
+          <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">历史记录</h2>
         </div>
         <Button
           aria-label="关闭版本历史"
@@ -48,8 +62,15 @@ export function WorkflowVersionHistoryPanel({
         </Button>
       </div>
 
+      <Tabs className="px-3 pb-2" onValueChange={value => setActiveTab(value as "versions" | "reviews")} value={activeTab}>
+        <TabsList className="grid h-8 w-full grid-cols-2">
+          <TabsTrigger className="h-7 text-xs" value="versions">发布版本</TabsTrigger>
+          <TabsTrigger className="h-7 text-xs" value="reviews">审核记录</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="workflow-version-list min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
-        {versions.length ? versions.map((version, index) => {
+        {activeTab === "versions" && versions.length ? versions.map((version, index) => {
           const isSelected = version.id === currentPreviewVersionId;
           const isLatest = index === 0;
 
@@ -88,17 +109,29 @@ export function WorkflowVersionHistoryPanel({
               </span>
             </button>
           );
-        }) : (
+        }) : activeTab === "versions" ? (
           <div className="workflow-version-empty flex min-h-40 flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
             <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-muted">
               <HugeiconsIcon icon={WorkflowSquare01Icon} size={18} strokeWidth={1.8} />
             </span>
             <span>暂无发布版本</span>
           </div>
+        ) : reviews.length ? reviews.map(review => (
+          <div className="rounded-lg px-2 py-2.5 hover:bg-muted" key={review.id}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-medium">{getReviewHistoryLabel(review)}</span>
+              <span className="text-[11px] text-muted-foreground">{review.submittedAt}</span>
+            </div>
+            {review.reviewComment ? (
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{review.reviewComment}</p>
+            ) : null}
+          </div>
+        )) : (
+          <div className="flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">暂无审核记录</div>
         )}
       </div>
 
-      {selectedVersion ? (
+      {activeTab === "versions" && selectedVersion ? (
         <div className="workflow-version-preview-actions grid gap-2.5 border-t-[0.5px] border-border px-3 pb-3 pt-2.5">
           <div className="workflow-version-preview-copy grid gap-0.5">
             <span className="workflow-version-preview-title text-[13px] font-bold leading-[18px] text-foreground">
@@ -131,4 +164,15 @@ export function WorkflowVersionHistoryPanel({
       ) : null}
     </div>
   );
+}
+
+function getReviewHistoryLabel(review: WorkflowPublishReview) {
+  return {
+    approved: "审核通过",
+    obsolete: "审核已失效",
+    pending: "待审核",
+    published: `已发布${review.resultingRevision ? ` Revision ${review.resultingRevision}` : ""}`,
+    rejected: "审核驳回",
+    withdrawn: "审核已撤回",
+  }[review.status];
 }

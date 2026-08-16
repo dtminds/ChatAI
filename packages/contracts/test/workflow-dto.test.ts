@@ -97,9 +97,11 @@ describe("workflow contracts", () => {
         runtimeSupportedNodeKinds: ["start", "wait", "end"],
       },
       createdAt: "2026-07-10T00:00:00.000Z",
+      currentReview: null,
       description: "引导新客完成首购",
       draft: createDraft("branch"),
       draftVersion: 1,
+      hasUnpublishedChanges: true,
       id: "9007199254740993",
       name: "新客培育",
       permissions: {
@@ -113,7 +115,6 @@ describe("workflow contracts", () => {
       runtimeStatus: "inactive",
       statusReason: null,
       updatedAt: "2026-07-10T00:00:00.000Z",
-      validatedDraftVersion: null,
       workflowType: "chatai_sop",
     };
 

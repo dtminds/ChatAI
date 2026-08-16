@@ -15,7 +15,6 @@ import {
 import type {
   SyncWorkflowDraftRepository,
   WorkflowDraftRepository,
-  WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
@@ -138,18 +137,18 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.readOnly).toBe(true);
   });
 
-  it("derives activation readiness from the in-memory draft revision", () => {
+  it("locks the canvas while a review is pending", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
+    const document = repository.submitReview("newcomer-conversion");
     const { result } = renderHook(() => useWorkflowWorkspace(
       document.id,
       repository,
       document,
     ));
 
-    expect(document.draftVersion).toBeUndefined();
-    expect(document.validatedDraftVersion).toBe(document.revision);
-    expect(result.current.topBar.validatedForActivation).toBe(true);
+    expect(result.current.readOnlyReason).toBe("review-locked");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.document.currentReview?.status).toBe("pending");
   });
 
   it("selects nodes and opens the inspector while keeping checks open", () => {
@@ -597,7 +596,7 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
-      await result.current.topBar.onPublish();
+      await result.current.topBar.onSubmitReview();
     });
 
     expect(result.current.checks.isOpen).toBe(true);
@@ -624,9 +623,13 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishReady).toBe(true);
 
       await act(async () => {
-        const publishPromise = result.current.topBar.onPublish();
+        const submitPromise = result.current.topBar.onSubmitReview();
         await vi.advanceTimersByTimeAsync(500);
-        await publishPromise;
+        await submitPromise;
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+        await result.current.topBar.onPublish();
       });
 
       expect(result.current.topBar.publishState).toBe("published");
@@ -649,6 +652,12 @@ describe("useWorkflowWorkspace", () => {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const publishedKeyword = getCanvasStartSourceMarker(result.current.canvas);
 
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
       await act(async () => {
         await result.current.topBar.onPublish();
       });
@@ -697,6 +706,12 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    await act(async () => {
+      await result.current.review.onApprove();
+    });
+    await act(async () => {
       await result.current.topBar.onPublish();
     });
     expect(result.current.topBar.publishState).toBe("published");
@@ -724,6 +739,12 @@ describe("useWorkflowWorkspace", () => {
       importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
       await act(async () => {
         await result.current.topBar.onPublish();
       });
@@ -838,6 +859,8 @@ describe("useWorkflowWorkspace", () => {
   it("allows viewport navigation while publishing without saving a draft change", async () => {
     const repository = createDeferredPublishRepository();
     repository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraftFromRepository(repository));
+    const submitted = repository.submitReview("newcomer-conversion");
+    repository.approveReview("newcomer-conversion", submitted.currentReview!.id);
     const initialRevision = repository.getDocument("newcomer-conversion").revision;
     const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
@@ -1103,24 +1126,22 @@ function toRuntimeSupportedDraft(draft: WorkflowDraft): WorkflowDraft {
 
 function createDeferredPublishRepository() {
   const baseRepository = createInMemoryWorkflowDraftRepository();
-  type PublishResult = ReturnType<typeof baseRepository.publishDraft>;
+  type PublishResult = ReturnType<typeof baseRepository.publishReview>;
   const pendingPublishes: Array<{
-    draft: WorkflowDraft;
-    options?: WorkflowDraftPublishOptions;
     reject: (error: Error) => void;
     resolve: (document: PublishResult) => void;
+    reviewId: string;
     workflowId: string;
   }> = [];
 
   return {
     ...baseRepository,
     pendingPublishes,
-    publishDraft: (workflowId, draft, options) => new Promise((resolve, reject) => {
+    publishReview: (workflowId: string, reviewId: string) => new Promise<PublishResult>((resolve, reject) => {
       pendingPublishes.push({
-        draft,
-        options,
         reject,
         resolve,
+        reviewId,
         workflowId,
       });
     }),
@@ -1131,10 +1152,9 @@ function createDeferredPublishRepository() {
         return;
       }
 
-      pendingPublish.resolve(baseRepository.publishDraft(
+      pendingPublish.resolve(baseRepository.publishReview(
         pendingPublish.workflowId,
-        pendingPublish.draft,
-        pendingPublish.options,
+        pendingPublish.reviewId,
       ));
     },
   } satisfies WorkflowDraftRepository & {

@@ -95,12 +95,56 @@ export const WorkflowCapabilitySummarySchema = Type.Object({
   runtimeSupportedNodeKinds: Type.Array(WorkflowNodeKindSchema, { uniqueItems: true }),
 });
 
+export const WorkflowPublishReviewStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("approved"),
+  Type.Literal("rejected"),
+  Type.Literal("withdrawn"),
+  Type.Literal("obsolete"),
+  Type.Literal("published"),
+]);
+
+export const WorkflowPublishReviewNodeSummarySchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 128 }),
+  kind: WorkflowNodeKindSchema,
+  title: Type.String(),
+});
+
+export const WorkflowPublishReviewChangeSummarySchema = Type.Object({
+  addedNodes: Type.Array(WorkflowPublishReviewNodeSummarySchema),
+  changedNodes: Type.Array(WorkflowPublishReviewNodeSummarySchema),
+  firstPublication: Type.Boolean(),
+  pathChanged: Type.Boolean(),
+  removedNodes: Type.Array(WorkflowPublishReviewNodeSummarySchema),
+  triggerChanged: Type.Boolean(),
+});
+
+export const WorkflowPublishReviewSchema = Type.Object({
+  basePublishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  changeSummary: WorkflowPublishReviewChangeSummarySchema,
+  checkedAt: Type.String(),
+  id: WorkflowIdSchema,
+  publishedAt: Type.Union([Type.String(), Type.Null()]),
+  publishedBySubUserId: Type.Union([WorkflowIdSchema, Type.Null()]),
+  resultingRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  reviewComment: Type.Union([Type.String(), Type.Null()]),
+  reviewedAt: Type.Union([Type.String(), Type.Null()]),
+  reviewedBySubUserId: Type.Union([WorkflowIdSchema, Type.Null()]),
+  sourceDraftVersion: Type.Integer({ minimum: 1 }),
+  status: WorkflowPublishReviewStatusSchema,
+  submittedAt: Type.String(),
+  submittedBySubUserId: WorkflowIdSchema,
+  workflowId: WorkflowIdSchema,
+});
+
 export const WorkflowDefinitionSchema = Type.Object({
   capabilitySummary: WorkflowCapabilitySummarySchema,
   createdAt: Type.String(),
+  currentReview: Type.Union([WorkflowPublishReviewSchema, Type.Null()]),
   description: Type.String({ maxLength: 1000 }),
   draft: WorkflowDraftSchema,
   draftVersion: Type.Integer({ minimum: 1 }),
+  hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
   name: Type.String({ minLength: 1, maxLength: 100 }),
   permissions: WorkflowPermissionsSchema,
@@ -108,7 +152,6 @@ export const WorkflowDefinitionSchema = Type.Object({
   runtimeStatus: WorkflowRuntimeStatusSchema,
   statusReason: WorkflowStatusReasonSchema,
   updatedAt: Type.String(),
-  validatedDraftVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   workflowType: WorkflowTypeSchema,
 });
 
@@ -118,6 +161,7 @@ export const WorkflowRevisionSchema = Type.Object({
   draft: WorkflowDraftSchema,
   id: WorkflowIdSchema,
   publishedAt: Type.String(),
+  reviewId: WorkflowIdSchema,
   revision: Type.Integer({ minimum: 1 }),
   subjectType: WorkflowSubjectTypeSchema,
   workflowType: WorkflowTypeSchema,
@@ -145,8 +189,20 @@ export const WorkflowMetadataUpdateRequestSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 100 }),
 });
 
-export const WorkflowPublishRequestSchema = Type.Object({
+export const WorkflowReviewSubmitRequestSchema = Type.Object({
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
+});
+
+export const WorkflowReviewApproveRequestSchema = Type.Object({
+  comment: Type.Optional(Type.String({ maxLength: 1000 })),
+});
+
+export const WorkflowReviewRejectRequestSchema = Type.Object({
+  reason: Type.String({ minLength: 1, maxLength: 1000 }),
+});
+
+export const WorkflowPublishRequestSchema = Type.Object({
+  reviewId: WorkflowIdSchema,
 });
 
 export const WorkflowRestoreRequestSchema = Type.Object({
@@ -155,8 +211,7 @@ export const WorkflowRestoreRequestSchema = Type.Object({
 
 export const WorkflowPublishResultSchema = Type.Object({
   definition: WorkflowDefinitionSchema,
-  revision: Type.Union([WorkflowRevisionSchema, Type.Null()]),
-  validatedOnly: Type.Boolean(),
+  revision: WorkflowRevisionSchema,
 });
 
 export const WorkflowNodeMetricSchema = Type.Object({
@@ -250,6 +305,10 @@ export type WorkflowFlowChangedReason = Static<typeof WorkflowFlowChangedReasonS
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowStatusReason = Static<typeof WorkflowStatusReasonSchema>;
 export type WorkflowCapabilitySummary = Static<typeof WorkflowCapabilitySummarySchema>;
+export type WorkflowPublishReviewStatus = Static<typeof WorkflowPublishReviewStatusSchema>;
+export type WorkflowPublishReviewNodeSummary = Static<typeof WorkflowPublishReviewNodeSummarySchema>;
+export type WorkflowPublishReviewChangeSummary = Static<typeof WorkflowPublishReviewChangeSummarySchema>;
+export type WorkflowPublishReview = Static<typeof WorkflowPublishReviewSchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;
 export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;
 export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
@@ -261,6 +320,9 @@ export type WorkflowCreateRequest = Static<typeof WorkflowCreateRequestSchema>;
 export type WorkflowSaveDraftRequest = Static<typeof WorkflowSaveDraftRequestSchema>;
 export type WorkflowRenameRequest = Static<typeof WorkflowRenameRequestSchema>;
 export type WorkflowMetadataUpdateRequest = Static<typeof WorkflowMetadataUpdateRequestSchema>;
+export type WorkflowReviewSubmitRequest = Static<typeof WorkflowReviewSubmitRequestSchema>;
+export type WorkflowReviewApproveRequest = Static<typeof WorkflowReviewApproveRequestSchema>;
+export type WorkflowReviewRejectRequest = Static<typeof WorkflowReviewRejectRequestSchema>;
 export type WorkflowPublishRequest = Static<typeof WorkflowPublishRequestSchema>;
 export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>;
 export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;

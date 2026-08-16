@@ -210,14 +210,36 @@ describe("backend app", () => {
     expect(saved.statusCode).toBe(200);
     expect(saved.json().data.draftVersion).toBe(2);
 
-    const published = await app.inject({
+    const submitted = await app.inject({
       headers: { authorization },
       method: "POST",
       payload: { expectedDraftVersion: 2 },
+      url: `/api/server/workflows/${created.id}/reviews`,
+    });
+    expect(submitted.statusCode).toBe(200);
+    expect(submitted.json().data).toMatchObject({ status: "pending" });
+    const reviewId = submitted.json().data.id;
+
+    const approved = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {},
+      url: `/api/server/workflows/${created.id}/reviews/${reviewId}/approve`,
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json().data).toMatchObject({ status: "approved" });
+
+    const published = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: { reviewId },
       url: `/api/server/workflows/${created.id}/publish`,
     });
     expect(published.statusCode).toBe(200);
-    expect(published.json().data).toMatchObject({ revision: null, validatedOnly: true });
+    expect(published.json().data).toMatchObject({
+      definition: { publishedRevision: 1, runtimeStatus: "inactive" },
+      revision: { reviewId, revision: 1 },
+    });
 
     const enabled = await app.inject({
       headers: { authorization },

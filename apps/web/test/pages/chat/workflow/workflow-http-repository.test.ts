@@ -3,12 +3,13 @@ import type {
   ApiSuccessEnvelope,
   WorkflowDefinition,
   WorkflowPublishResult,
+  WorkflowPublishReview,
   WorkflowRevision,
 } from "@chatai/contracts";
 import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
-describe("HTTP workflow draft repository", () => {
+describe("HTTP workflow repository", () => {
   it("updates workflow metadata through the metadata endpoint", async () => {
     const definition = createDefinition({ description: "引导新客完成首购" });
     const client = createClient({ definition, revisions: [] });
@@ -78,18 +79,10 @@ describe("HTTP workflow draft repository", () => {
       publishedRevision: 1,
       updatedAt: "2026-07-11T11:21:55.000Z",
     });
-    const client = createClient({
-      definition,
-      revisions: [{
-        draft: definition.draft,
-        id: "revision-1",
-        publishedAt: "2026-07-11T07:12:06.000Z",
-        revision: 1,
-        subjectType: "chatai_contact",
-        workflowType: "chatai_sop",
-        workflowId: "42",
-      }],
+    const revision = createRevision(definition, {
+      publishedAt: "2026-07-11T07:12:06.000Z",
     });
+    const client = createClient({ definition, revisions: [revision] });
     const repository = createHttpWorkflowDraftRepository(client);
 
     const document = await repository.getDocument("42");
@@ -104,7 +97,7 @@ describe("HTTP workflow draft repository", () => {
     expect(listItem?.updatedAt).toBe("07-11 19:21:55");
   });
 
-  it("maps definitions and revision history without inventing an unpublished revision", async () => {
+  it("does not invent a revision for an unpublished workflow", async () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     const repository = createHttpWorkflowDraftRepository(client);
 
@@ -112,47 +105,13 @@ describe("HTTP workflow draft repository", () => {
 
     expect(document).toMatchObject({
       currentVersion: null,
-      id: "42",
       publishedDraft: null,
       publishedRevision: null,
-      revision: 1,
-      status: "Draft",
       versionHistory: [],
     });
   });
 
-  it("maps validated inactive definitions as published list items", async () => {
-    const definition = createDefinition({
-      publishedRevision: null,
-      runtimeStatus: "inactive",
-      validatedDraftVersion: 1,
-    });
-    const client = createClient({ definition, revisions: [] });
-    const repository = createHttpWorkflowDraftRepository(client);
-
-    const [listItem] = await repository.listDocuments();
-
-    expect(listItem).toMatchObject({
-      activationReady: true,
-      runtimeStatus: "inactive",
-      status: "Published",
-    });
-  });
-
-  it("sends the cached draft version when saving", async () => {
-    const client = createClient({ definition: createDefinition(), revisions: [] });
-    const repository = createHttpWorkflowDraftRepository(client);
-    const document = await repository.getDocument("42");
-
-    await repository.saveDraft("42", document.draft);
-
-    expect(client.put).toHaveBeenCalledWith(
-      "/server/workflows/42/draft",
-      expect.objectContaining({ expectedDraftVersion: 1 }),
-    );
-  });
-
-  it("serializes saves so each request uses the version returned by the previous save", async () => {
+  it("serializes saves using the draft version returned by the previous save", async () => {
     const client = createDeferredSaveClient(createDefinition());
     const repository = createHttpWorkflowDraftRepository(client);
     const document = await repository.getDocument("42");
@@ -160,8 +119,7 @@ describe("HTTP workflow draft repository", () => {
     const firstSave = repository.saveDraft("42", document.draft);
     const secondSave = repository.saveDraft("42", document.draft);
 
-    await vi.waitFor(() => expect(client.put).toHaveBeenCalled());
-    expect(client.put).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(client.put).toHaveBeenCalledTimes(1));
     expect(client.put).toHaveBeenNthCalledWith(
       1,
       "/server/workflows/42/draft",
@@ -198,72 +156,32 @@ describe("HTTP workflow draft repository", () => {
     await expect(nextSave).resolves.toMatchObject({ document: { draftVersion: 2 } });
   });
 
-  it("represents first publish as validation only and does not synthesize revision one", async () => {
-    const definition = createDefinition({ validatedDraftVersion: 1 });
-    const client = createClient({
-      definition,
-      publishResult: { definition, revision: null, validatedOnly: true },
-      revisions: [],
-    });
+  it("normalizes draft conflicts and review validation failures", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
     const repository = createHttpWorkflowDraftRepository(client);
     const document = await repository.getDocument("42");
-
-    const result = await repository.publishDraft("42", document.draft);
-
-    expect(result.publishedRevision).toBeNull();
-    expect("version" in result ? result.version : result.currentVersion).toBeNull();
-  });
-
-  it("normalizes backend revision conflicts", async () => {
-    const client = createClient({ definition: createDefinition(), revisions: [] });
     client.put.mockRejectedValueOnce(new RequestNormalizedError({
       code: "WORKFLOW_DRAFT_CONFLICT",
       message: "conflict",
       status: 409,
     }));
-    const repository = createHttpWorkflowDraftRepository(client);
-    const document = await repository.getDocument("42");
 
     await expect(repository.saveDraft("42", document.draft)).rejects.toMatchObject({
       code: "conflict",
     });
-  });
 
-  it("normalizes backend draft validation failures", async () => {
-    const client = createClient({ definition: createDefinition(), revisions: [] });
     client.post.mockRejectedValueOnce(new RequestNormalizedError({
       code: "WORKFLOW_VALIDATION_FAILED",
       message: "validation failed",
       status: 400,
     }));
-    const repository = createHttpWorkflowDraftRepository(client);
-    const document = await repository.getDocument("42");
-
-    await expect(repository.publishDraft("42", document.draft)).rejects.toMatchObject({
+    await expect(repository.submitReview("42")).rejects.toMatchObject({
       code: "validation",
     });
   });
 
-  it("enables a validated draft through the lifecycle endpoint", async () => {
-    const definition = createDefinition({ validatedDraftVersion: 1 });
-    const enabled = createDefinition({
-      publishedRevision: 1,
-      runtimeStatus: "active",
-      validatedDraftVersion: 1,
-    });
-    const client = createClient({ definition, revisions: [] });
-    client.post.mockResolvedValueOnce(envelope(enabled));
-    const repository = createHttpWorkflowDraftRepository(client);
-
-    const document = await repository.enableDocument?.("42");
-
-    expect(client.post).toHaveBeenCalledWith("/server/workflows/42/enable");
-    expect(document).toMatchObject({ publishedRevision: 1, runtimeStatus: "active" });
-  });
-
   it("preserves the backend business code for lifecycle conflicts", async () => {
-    const definition = createDefinition({ validatedDraftVersion: 1 });
-    const client = createClient({ definition, revisions: [] });
+    const client = createClient({ definition: createDefinition(), revisions: [] });
     client.post.mockRejectedValueOnce(new RequestNormalizedError({
       code: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
       message: "最多可同时运行 50 个 Workflow",
@@ -277,34 +195,125 @@ describe("HTTP workflow draft repository", () => {
       message: "最多可同时运行 50 个 Workflow",
     });
   });
+
+  it("loads a definition and revision history into one document", async () => {
+    const definition = createDefinition({ publishedRevision: 1 });
+    const revision = createRevision(definition);
+    const client = createClient({ definition, revisions: [revision] });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    const document = await repository.getDocument("42");
+
+    expect(document).toMatchObject({
+      currentVersion: { revision: 1 },
+      publishedRevision: 1,
+      versionHistory: [{ revision: 1 }],
+    });
+  });
+
+  it("submits review with the cached draft version and refreshes the document", async () => {
+    const definition = createDefinition();
+    const pendingDefinition = createDefinition({ currentReview: createReview() });
+    const client = createClient({ definition, revisions: [] });
+    client.post.mockImplementation(async (url: string) => {
+      if (url.endsWith("/reviews")) return envelope({});
+      throw new Error(`Unexpected POST ${url}`);
+    });
+    client.get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/revisions")) return envelope<WorkflowRevision[]>([]);
+      return envelope(pendingDefinition);
+    });
+    const repository = createHttpWorkflowDraftRepository(client);
+    await repository.getDocument("42");
+
+    const result = await repository.submitReview("42");
+
+    expect(client.post).toHaveBeenCalledWith("/server/workflows/42/reviews", {
+      expectedDraftVersion: 1,
+    });
+    expect(result.currentReview?.status).toBe("pending");
+  });
+
+  it("routes review decisions to the dedicated endpoints", async () => {
+    const review = createReview();
+    const definition = createDefinition({ currentReview: review });
+    const client = createClient({ definition, revisions: [] });
+    client.post.mockImplementation(async (_url: string) => envelope<unknown>({}));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await repository.approveReview("42", review.id, "通过");
+    await repository.rejectReview("42", review.id, "请调整");
+    await repository.withdrawReview("42", review.id);
+    await repository.continueEditing("42", review.id);
+
+    expect(client.post).toHaveBeenNthCalledWith(
+      1,
+      `/server/workflows/42/reviews/${review.id}/approve`,
+      { comment: "通过" },
+    );
+    expect(client.post).toHaveBeenNthCalledWith(
+      2,
+      `/server/workflows/42/reviews/${review.id}/reject`,
+      { reason: "请调整" },
+    );
+    expect(client.post).toHaveBeenNthCalledWith(
+      3,
+      `/server/workflows/42/reviews/${review.id}/withdraw`,
+      {},
+    );
+    expect(client.post).toHaveBeenNthCalledWith(
+      4,
+      `/server/workflows/42/reviews/${review.id}/continue-editing`,
+      {},
+    );
+  });
+
+  it("publishes by review id and refreshes the new revision", async () => {
+    const review = createReview({ status: "approved" });
+    const definition = createDefinition({ currentReview: review });
+    const revision = createRevision(definition, { reviewId: review.id, revision: 1 });
+    const result: WorkflowPublishResult = {
+      definition: createDefinition({ publishedRevision: 1, currentReview: null }),
+      revision,
+    };
+    const client = createClient({ definition, revisions: [] });
+    client.post.mockImplementation(async (url: string) => {
+      if (url.endsWith("/publish")) return envelope(result);
+      throw new Error(`Unexpected POST ${url}`);
+    });
+    client.get.mockImplementation(async (url) => {
+      if (url.endsWith("/revisions")) return envelope([revision]);
+      return envelope(result.definition);
+    });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    const published = await repository.publishReview("42", review.id);
+
+    expect(client.post).toHaveBeenCalledWith("/server/workflows/42/publish", {
+      reviewId: review.id,
+    });
+    expect("document" in published ? published.publishedRevision : null).toBe(1);
+    expect("document" in published ? published.document.currentReview : null).toBeNull();
+  });
 });
 
 function createClient({
   definition,
-  publishResult,
   revisions,
 }: {
   definition: WorkflowDefinition;
-  publishResult?: WorkflowPublishResult;
   revisions: WorkflowRevision[];
 }) {
   return {
-    delete: vi.fn(async () => ({ data: { deleted: true }, success: true })),
-    get: vi.fn(async (url: string) => {
-      if (url.endsWith("/revisions")) return envelope(revisions);
-      if (url === "/server/workflows") return envelope([definition]);
-      return envelope(definition);
+    delete: vi.fn(async (_url: string): Promise<unknown> => envelope<unknown>({})),
+    get: vi.fn(async (url: string): Promise<unknown> => {
+      if (url.endsWith("/revisions")) return envelope<WorkflowRevision[]>(revisions);
+      if (url === "/server/workflows") return envelope<WorkflowDefinition[]>([definition]);
+      return envelope<WorkflowDefinition>(definition);
     }),
-    patch: vi.fn(async () => envelope(definition)),
-    post: vi.fn(async (url: string) => {
-      if (url.endsWith("/publish")) return envelope(publishResult ?? {
-        definition,
-        revision: null,
-        validatedOnly: true,
-      });
-      return envelope(definition);
-    }),
-    put: vi.fn(async () => envelope({ ...definition, draftVersion: definition.draftVersion + 1 })),
+    patch: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
+    post: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
+    put: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
   };
 }
 
@@ -334,10 +343,9 @@ function envelope<T>(data: T): ApiSuccessEnvelope<T> {
 
 function createDefinition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
-    capabilitySummary: {
-      runtimeSupportedNodeKinds: ["start", "wait", "end"],
-    },
-    createdAt: "2026-07-10T00:00:00.000Z",
+    capabilitySummary: { runtimeSupportedNodeKinds: ["start", "wait", "end"] },
+    createdAt: "2026-08-16T00:00:00.000Z",
+    currentReview: null,
     description: "",
     draft: {
       edges: [{ id: "edge-start-end", source: "start", target: "end" }],
@@ -345,21 +353,66 @@ function createDefinition(overrides: Partial<WorkflowDefinition> = {}): Workflow
       viewport: { x: 0, y: 0, zoom: 1 },
     },
     draftVersion: 1,
+    hasUnpublishedChanges: true,
     id: "42",
     name: "新客培育",
     permissions: {
       canDelete: true,
       canEdit: true,
       canOperate: true,
-      canPublish: true,
+      canPublish: false,
       canView: true,
     },
     publishedRevision: null,
     runtimeStatus: "inactive",
     statusReason: null,
-    updatedAt: "2026-07-10T00:00:00.000Z",
-    validatedDraftVersion: null,
+    updatedAt: "2026-08-16T00:00:00.000Z",
     workflowType: "chatai_sop",
+    ...overrides,
+  };
+}
+
+function createRevision(
+  definition: WorkflowDefinition,
+  overrides: Partial<WorkflowRevision> = {},
+): WorkflowRevision {
+  return {
+    draft: definition.draft,
+    id: "revision-1",
+    publishedAt: "2026-08-16T00:00:00.000Z",
+    reviewId: "review-1",
+    revision: 1,
+    subjectType: "chatai_contact",
+    workflowId: definition.id,
+    workflowType: definition.workflowType,
+    ...overrides,
+  };
+}
+
+function createReview(overrides: Partial<WorkflowPublishReview> = {}): WorkflowPublishReview {
+  return {
+    basePublishedRevision: null,
+    changeSummary: {
+      addedNodes: [],
+      changedNodes: [],
+      firstPublication: true,
+      pathChanged: false,
+      removedNodes: [],
+      triggerChanged: false,
+    },
+    checkedAt: "2026-08-16T00:00:00.000Z",
+    id: "review-1",
+    publishedAt: null,
+    publishedBySubUserId: null,
+    resultingRevision: null,
+    reviewComment: null,
+    reviewedAt: null,
+    reviewedBySubUserId: null,
+    sourceDraftVersion: 1,
+    status: "pending",
+    submittedAt: "2026-08-16T00:00:00.000Z",
+    submittedBySubUserId: "sub-user-1",
+    workflowId: "42",
     ...overrides,
   };
 }

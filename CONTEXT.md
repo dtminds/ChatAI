@@ -68,6 +68,10 @@ _Avoid_: Runtime whitelist, node visibility
 An immutable published execution snapshot of a Workflow's graph and node configuration.
 _Avoid_: Mutable current graph, Run lifetime version
 
+**Workflow Publish Review**:
+An immutable control-plane candidate frozen from a Workflow Draft for human review before publication. A Publish Review records one review attempt and its decision, remains separate from Workflow Revision history, and can authorize publication only after approval.
+_Avoid_: Workflow Revision, mutable Draft, runtime approval node
+
 **Workflow Run**:
 The durable journey of one Workflow Subject through a Workflow. An active Run has exactly one current Task; completed nodes are never replayed after a newer Revision is published.
 _Avoid_: Revision instance, event delivery

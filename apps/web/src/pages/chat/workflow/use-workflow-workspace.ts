@@ -62,19 +62,28 @@ export function useWorkflowWorkspace(
 ) {
   const {
     document,
+    enableDocument,
     hasUnpublishedChanges,
     lastSavedAt,
+    lifecycleActionState,
+    listReviews,
     markDirty,
     metadataUpdateState,
-    publishDraft,
+    approveReview,
+    continueEditing,
+    publishReview,
     publishError,
     publishState,
+    rejectReview,
+    reviewActionState,
     retrySave,
     restoreState,
     restoreVersion,
     saveError,
     saveState,
+    submitReview,
     updateMetadata,
+    withdrawReview,
   } = useWorkflowDocument(workflowId, repository, initialDocument);
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
@@ -96,6 +105,7 @@ export function useWorkflowWorkspace(
     canPublish: document.permissions.canPublish,
     isPreviewingVersion,
     publishState,
+    reviewStatus: document.currentReview?.status,
     restoreState,
     runtimeStatus: document.runtimeStatus,
   });
@@ -463,7 +473,7 @@ export function useWorkflowWorkspace(
     closeCanvasOverlays();
   });
 
-  const publishCurrentDraft = useWorkflowStableCallback(async () => {
+  const submitCurrentDraftForReview = useWorkflowStableCallback(async () => {
     if (!permissions.canPublish) {
       return;
     }
@@ -477,8 +487,57 @@ export function useWorkflowWorkspace(
     }
 
     closeCanvasOverlays();
-    const result = await publishDraft(controller.currentDraft);
+    const result = await submitReview();
+    if (result) toast.success("已提交审核");
+  });
+
+  const publishApprovedReview = useWorkflowStableCallback(async () => {
+    const reviewId = document.currentReview?.id;
+    if (!reviewId) return;
+    const result = await publishReview(reviewId);
     if (result) toast.success("发布成功");
+  });
+
+  const enablePublishedDocument = useWorkflowStableCallback(async () => {
+    const result = await enableDocument();
+    if (result) {
+      toast.success("已启用");
+      return true;
+    }
+    toast.error("操作失败，请稍后重试");
+    return false;
+  });
+
+  const handleApproveReview = useWorkflowStableCallback(async (comment?: string) => {
+    const reviewId = document.currentReview?.id;
+    if (!reviewId) return false;
+    const result = await approveReview(reviewId, comment);
+    if (result) toast.success("审核通过");
+    return Boolean(result);
+  });
+
+  const handleRejectReview = useWorkflowStableCallback(async (reason: string) => {
+    const reviewId = document.currentReview?.id;
+    if (!reviewId) return false;
+    const result = await rejectReview(reviewId, reason);
+    if (result) toast.success("已驳回审核");
+    return Boolean(result);
+  });
+
+  const handleWithdrawReview = useWorkflowStableCallback(async () => {
+    const reviewId = document.currentReview?.id;
+    if (!reviewId) return false;
+    const result = await withdrawReview(reviewId);
+    if (result) toast.success("已撤回审核");
+    return Boolean(result);
+  });
+
+  const handleContinueEditing = useWorkflowStableCallback(async () => {
+    const reviewId = document.currentReview?.id;
+    if (!reviewId) return false;
+    const result = await continueEditing(reviewId);
+    if (result) toast.success("已恢复编辑");
+    return Boolean(result);
   });
 
   const updateWorkflowMetadata = useWorkflowStableCallback(async (metadata: { description: string; name: string }) => {
@@ -569,6 +628,15 @@ export function useWorkflowWorkspace(
   const openVersionHistory = useWorkflowStableCallback(() => {
     dispatchViewState({ type: "open-version-history" });
     closeCanvasOverlays();
+  });
+
+  const openReview = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "open-review" });
+    closeCanvasOverlays();
+  });
+
+  const closeReview = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "close-review" });
   });
 
   const selectVersionPreview = useWorkflowStableCallback((versionId: string) => {
@@ -664,15 +732,27 @@ export function useWorkflowWorkspace(
       },
     },
     topBar: {
-      canPublish: permissions.canPublish,
+      canEdit: permissions.canEditGraph,
+      canOperate: document.permissions.canOperate,
+      canPublish: document.permissions.canPublish,
       canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),
       description: document.description,
       hasUnpublishedChanges,
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
+      onOpenReview: openReview,
       onPublishCheck: handlePublishCheck,
-      onPublish: publishCurrentDraft,
+      onSubmitReview: submitCurrentDraftForReview,
+      onPublish: publishApprovedReview,
+      onApproveReview: handleApproveReview,
+      onRejectReview: handleRejectReview,
+      onWithdrawReview: handleWithdrawReview,
+      onContinueEditing: handleContinueEditing,
+      onEnable: enablePublishedDocument,
+      currentReview: document.currentReview,
+      reviewActionState,
+      lifecycleActionState,
       onUpdateMetadata: updateWorkflowMetadata,
       onRetrySave: retrySave,
       publishedAt: document.publishedAt,
@@ -682,9 +762,7 @@ export function useWorkflowWorkspace(
       metadataUpdating: metadataUpdateState === "updating",
       runtimeStatus: document.runtimeStatus,
       saveState,
-      validatedForActivation: document.runtimeStatus === "inactive"
-        && document.validatedDraftVersion != null
-        && document.validatedDraftVersion === (document.draftVersion ?? document.revision),
+      publishedRevision: document.publishedRevision,
     },
     versionHistory: {
       currentPreviewVersionId: previewVersion?.id,
@@ -697,6 +775,18 @@ export function useWorkflowWorkspace(
       previewVersion,
       restoreState,
       versions: document.versionHistory,
+      loadReviews: listReviews,
+    },
+    review: {
+      current: document.currentReview,
+      isOpen: viewState.activePanel === "review",
+      onApprove: handleApproveReview,
+      onClose: closeReview,
+      onOpen: openReview,
+      onContinueEditing: handleContinueEditing,
+      onReject: handleRejectReview,
+      onWithdraw: handleWithdrawReview,
+      pending: reviewActionState !== "idle",
     },
   };
 }

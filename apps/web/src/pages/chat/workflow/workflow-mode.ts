@@ -14,6 +14,7 @@ export type WorkflowReadOnlyReason =
   | "none"
   | "permission-denied"
   | "publishing"
+  | "review-locked"
   | "restoring"
   | "stopped"
   | "version-preview";
@@ -23,6 +24,7 @@ export type WorkflowModeState = {
   canPublish?: boolean;
   isPreviewingVersion: boolean;
   publishState?: WorkflowDraftPublishStatus;
+  reviewStatus?: "pending" | "approved" | "rejected" | "withdrawn" | "obsolete" | "published";
   restoreState?: WorkflowDraftRestoreStatus;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 };
@@ -51,6 +53,7 @@ export function deriveWorkflowMode({
   canPublish = true,
   isPreviewingVersion,
   publishState,
+  reviewStatus,
   restoreState,
   runtimeStatus,
 }: WorkflowModeState): WorkflowModeStateResult {
@@ -62,6 +65,7 @@ export function deriveWorkflowMode({
     isPreviewingVersion,
     isPublishing,
     isRestoring,
+    reviewStatus,
     runtimeStatus,
   });
   const mode = getWorkflowWorkspaceMode({
@@ -96,6 +100,7 @@ function getWorkflowWorkspaceMode({ readOnlyReason }: {
   if (readOnlyReason === "restoring") return "restoring";
   if (readOnlyReason === "version-preview") return "version-preview";
   if (readOnlyReason === "publishing") return "publishing";
+  if (readOnlyReason === "review-locked") return "read-only";
   if (readOnlyReason === "stopped") return "read-only";
   return "editing";
 }
@@ -105,12 +110,14 @@ function getWorkflowReadOnlyReason({
   isPreviewingVersion,
   isPublishing,
   isRestoring,
+  reviewStatus,
   runtimeStatus,
 }: {
   canEdit: boolean;
   isPreviewingVersion: boolean;
   isPublishing: boolean;
   isRestoring: boolean;
+  reviewStatus?: WorkflowModeState["reviewStatus"];
   runtimeStatus?: WorkflowModeState["runtimeStatus"];
 }): WorkflowReadOnlyReason {
   if (isRestoring) {
@@ -123,6 +130,10 @@ function getWorkflowReadOnlyReason({
 
   if (isPublishing) {
     return "publishing";
+  }
+
+  if (reviewStatus === "pending" || reviewStatus === "approved") {
+    return "review-locked";
   }
 
   if (runtimeStatus === "stopped") {

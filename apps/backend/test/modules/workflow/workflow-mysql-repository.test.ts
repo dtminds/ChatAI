@@ -14,6 +14,18 @@ describe("MysqlWorkflowRepository", () => {
     ]);
   });
 
+  it("derives current review state from the latest review attempt", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.findCurrentReview(8, "42");
+
+    expect(db.selectBuilders[1]).toMatchObject({
+      orderBys: [["id", "desc"]],
+      wheres: [["uid", "=", 8], ["workflow_id", "=", "42"]],
+    });
+  });
+
   it("rejects an idempotent create request bound to another Workflow type", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -22,6 +34,7 @@ describe("MysqlWorkflowRepository", () => {
       clientRequestId: "request-1",
       description: "",
       draft: createDraft(),
+      draftSemanticHash: "draft-hash",
       name: "企微客户旅程",
       opSubUserId: "19",
       uid: 8,
@@ -85,7 +98,8 @@ describe("MysqlWorkflowRepository", () => {
 
     const result = await repository.saveDraft({
       draft: createDraft(),
-      expectedDraftVersion: 3,
+      draftSemanticHash: "next-draft-hash",
+      expectedDraftVersion: 4,
       opSubUserId: "19",
       uid: 8,
       workflowId: "42",
@@ -97,9 +111,10 @@ describe("MysqlWorkflowRepository", () => {
       ["uid", "=", 8],
       ["id", "=", "42"],
       ["biz_status", "=", 1],
-      ["draft_version", "=", 3],
+      ["draft_version", "=", 4],
     ]));
-    expect(db.selectBuilders).toHaveLength(1);
+    expect(db.selectBuilders[0]).toMatchObject({ forUpdate: true });
+    expect(db.selectBuilders.at(-1)).toMatchObject({ forUpdate: false });
   });
 
   it("allows layout-only draft writes without requiring a non-stopped runtime status", async () => {
@@ -108,7 +123,8 @@ describe("MysqlWorkflowRepository", () => {
 
     const result = await repository.saveDraft({
       draft: createDraft(),
-      expectedDraftVersion: 3,
+      draftSemanticHash: "next-layout-hash",
+      expectedDraftVersion: 4,
       layoutOnly: true,
       opSubUserId: "19",
       uid: 8,
@@ -121,7 +137,10 @@ describe("MysqlWorkflowRepository", () => {
       "!=",
       "stopped",
     ]);
-    expect(db.updateBuilders[0].sets.validated_draft_version).not.toBeNull();
+    expect(db.updateBuilders[0].sets).toMatchObject({
+      draft_semantic_hash: "next-layout-hash",
+      draft_version: 5,
+    });
   });
 
   it("uses an update for logical deletion and never exposes a physical delete path", async () => {
@@ -224,56 +243,29 @@ describe("MysqlWorkflowRepository", () => {
   it("inserts all revision trigger bindings without a Workflow-level upsert", async () => {
     const db = createPublicationDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
+    const input = {
+      ...enableInput(),
+      triggerBindings: [
+        ...enableInput().triggerBindings,
+        {
+          eventType: "contact.tag_added" as const,
+          filter: {
+            entryPolicy: { mode: "never" as const },
+            tagIds: [301],
+            workUserIds: [201],
+          },
+          subjectType: "chatai_contact" as const,
+        },
+      ],
+    };
+    db.reviewRows = [createReviewRow(input)];
 
-    const result = await repository.enable({
-      draft: createDraft(),
-      executionSpec: {
-        edges: [{ id: "edge-start-end", source: "start", sourceOutletId: "default", target: "end" }],
-        entryNodeId: "start",
-        nodes: [
-          {
-            config: startConfig(),
-            id: "start",
-            kind: "start",
-            nodeSchemaVersion: 1,
-          },
-          {
-            config: {},
-            id: "end",
-            kind: "end",
-            nodeSchemaVersion: 1,
-          },
-        ],
-        revision: 1,
-        schemaVersion: 3,
-        terminalNodeId: "end",
-        workflowId: "42",
-      },
-      expectedDraftVersion: 4,
+    const result = await repository.publishRevision({
+      candidateHash: input.specHash,
       opSubUserId: "19",
-      specHash: "a".repeat(64),
-      triggerBindings: [{
-        eventType: "contact.friend_added",
-        filter: {
-          entryPolicy: { mode: "never" },
-          eventType: "contact.friend_added",
-          sourceIds: [],
-          workUserIds: [201],
-        },
-        subjectType: "chatai_contact",
-      }, {
-        eventType: "contact.tag_added",
-        filter: {
-          entryPolicy: { mode: "never" },
-          tagIds: [301],
-          workUserIds: [201],
-        },
-        subjectType: "chatai_contact",
-      }],
-      subjectType: "chatai_contact",
+      reviewId: "7",
       uid: 8,
       workflowId: "42",
-      workflowType: "chatai_sop",
     });
 
     expect(result.kind).toBe("success");
@@ -303,11 +295,26 @@ describe("MysqlWorkflowRepository", () => {
       forUpdate: true,
       wheres: [["uid", "=", 8], ["id", "=", "42"], ["biz_status", "=", 1]],
     });
-    expect(db.selectBuilders[1]).toMatchObject({
-      forUpdate: false,
-      wheres: [["uid", "=", 8], ["biz_status", "=", 1], ["runtime_status", "=", "active"]],
+    expect(db.definitionUpdate).toMatchObject({ published_revision: 1 });
+  });
+
+  it("rejects publication when the approved review no longer matches the current draft", async () => {
+    const db = createPublicationDbMock({ draftVersion: 5 });
+    const repository = new MysqlWorkflowRepository(db as never);
+    const input = enableInput();
+    db.reviewRows = [createReviewRow(input)];
+
+    const result = await repository.publishRevision({
+      candidateHash: input.specHash,
+      opSubUserId: input.opSubUserId,
+      reviewId: "7",
+      uid: input.uid,
+      workflowId: input.workflowId,
     });
-    expect(db.definitionUpdate).toMatchObject({ published_revision: 1, runtime_status: "active" });
+
+    expect(result).toEqual({ kind: "conflict" });
+    expect(db.triggerBindingInserts).toEqual([]);
+    expect(db.definitionUpdate).toEqual({});
   });
 
   it("writes cleanup requests for wait nodes removed by a published revision", async () => {
@@ -318,11 +325,17 @@ describe("MysqlWorkflowRepository", () => {
     });
     const repository = new MysqlWorkflowRepository(db as never);
     const input = enableInput();
-
-    const result = await repository.publishRevision({
+    db.reviewRows = [createReviewRow({
       ...input,
       executionSpec: { ...input.executionSpec, revision: 2 },
-      expectedPublishedRevision: 1,
+    }, 1)];
+
+    const result = await repository.publishRevision({
+      candidateHash: input.specHash,
+      opSubUserId: input.opSubUserId,
+      reviewId: "7",
+      uid: input.uid,
+      workflowId: input.workflowId,
     });
 
     expect(result.kind).toBe("success");
@@ -336,14 +349,22 @@ describe("MysqlWorkflowRepository", () => {
         workflow_id: "42",
       }),
     ]);
-    expect(db.definitionUpdate).toMatchObject({ published_revision: 2, runtime_status: "active" });
+    expect(db.definitionUpdate).toMatchObject({ published_revision: 2 });
   });
 
   it("rejects first enable when fifty tenant Workflows are already active", async () => {
-    const db = createPublicationDbMock({ activeDefinitionCount: 50 });
+    const db = createPublicationDbMock({
+      activeDefinitionCount: 50,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    });
     const repository = new MysqlWorkflowRepository(db as never);
 
-    const result = await repository.enable(enableInput());
+    const result = await repository.enable({
+      opSubUserId: "19",
+      uid: 8,
+      workflowId: "42",
+    });
 
     expect(result).toEqual({ kind: "active-limit-exceeded" });
     expect(db.triggerBindingInserts).toEqual([]);
@@ -362,16 +383,17 @@ function createWorkflowDbMock(options: {
     description: "",
     draft_json: JSON.stringify(createDraft()),
     draft_schema_version: 1,
+    draft_semantic_hash: "draft-hash",
     draft_version: 4,
     id: 42,
     name: "新客培育",
     op_sub_uid: 19,
     published_revision: null,
+    published_semantic_hash: null,
     runtime_status: options.runtimeStatus ?? "inactive",
     status_reason: null,
     uid: 8,
     update_time: new Date("2026-07-10T00:00:01.000Z"),
-    validated_draft_version: null,
     workflow_type: 1,
   };
   const db = {
@@ -398,20 +420,26 @@ function createWorkflowDbMock(options: {
       const builder = {
         select() { return builder; },
         selectAll() { return builder; },
+        limit() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
         forUpdate() { state.forUpdate = true; return builder; },
         async execute() {
+          if (table === "xy_wap_embed_workflow_publish_review") return [];
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? createActiveDefinitionRows(options.activeDefinitionCount ?? 0)
             : [row];
         },
         async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_publish_review") return undefined;
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
             : row;
         },
         async executeTakeFirstOrThrow() {
+          if (table === "xy_wap_embed_workflow_publish_review") {
+            throw new Error("review row not configured");
+          }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
             : row;
@@ -512,8 +540,10 @@ function createEntitlementLossDbMock() {
 
 function createPublicationDbMock(options: {
   activeDefinitionCount?: number;
+  draftVersion?: number;
   previousExecutionSpec?: ReturnType<typeof executionSpecWithWait>;
   publishedRevision?: number | null;
+  runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 } = {}) {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const definition = {
@@ -522,16 +552,17 @@ function createPublicationDbMock(options: {
     description: "",
     draft_json: JSON.stringify(createDraft()),
     draft_schema_version: 1,
-    draft_version: 4,
+    draft_semantic_hash: "draft-hash",
+    draft_version: options.draftVersion ?? 4,
     id: 42,
     name: "新客培育",
     op_sub_uid: 19,
     published_revision: options.publishedRevision ?? null,
-    runtime_status: options.publishedRevision ? "active" : "inactive",
+    published_semantic_hash: options.publishedRevision ? "published-hash" : null,
+    runtime_status: options.runtimeStatus ?? (options.publishedRevision ? "active" : "inactive"),
     status_reason: null,
     uid: 8,
     update_time: now,
-    validated_draft_version: 4,
     workflow_type: 1,
   };
   const db = {
@@ -545,6 +576,7 @@ function createPublicationDbMock(options: {
     transactionCount: 0,
     revisionCleanupInserts: [] as Array<Record<string, unknown>>,
     triggerBindingInserts: [] as Array<Record<string, unknown>>,
+    reviewRows: [] as Array<Record<string, unknown>>,
     insertInto(table: string) {
       const builder = {
         values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
@@ -579,9 +611,11 @@ function createPublicationDbMock(options: {
         selectAll() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         async execute() {
+          if (table === "xy_wap_embed_workflow_publish_review") return db.reviewRows;
           return createActiveDefinitionRows(options.activeDefinitionCount ?? 0);
         },
         async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_publish_review") return db.reviewRows[0];
           if (table === "xy_wap_embed_workflow_revision") {
             return options.previousExecutionSpec
               ? { execution_spec_json: JSON.stringify(options.previousExecutionSpec) }
@@ -592,6 +626,12 @@ function createPublicationDbMock(options: {
             : definition;
         },
         async executeTakeFirstOrThrow() {
+          if (table === "xy_wap_embed_workflow_publish_review") {
+            return db.reviewRows[0] ?? {
+              ...createReviewRow(enableInput()),
+              status: "approved",
+            };
+          }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
             : definition;
@@ -680,6 +720,47 @@ function enableInput() {
     uid: 8,
     workflowId: "42",
     workflowType: "chatai_sop" as const,
+  };
+}
+
+function createReviewRow(
+  input: ReturnType<typeof enableInput>,
+  basePublishedRevision: number | null = null,
+) {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  return {
+    base_published_revision: basePublishedRevision,
+    candidate_hash: input.specHash,
+    change_summary_json: JSON.stringify({
+      addedNodes: [],
+      changedNodes: [],
+      firstPublication: basePublishedRevision === null,
+      pathChanged: true,
+      removedNodes: [],
+      triggerChanged: true,
+    }),
+    checked_at: now,
+    create_time: now,
+    draft_json: JSON.stringify(input.draft),
+    draft_semantic_hash: "draft-hash",
+    execution_spec_json: JSON.stringify(input.executionSpec),
+    id: 7,
+    publish_sub_uid: null,
+    publish_time: null,
+    resulting_revision: null,
+    review_comment: null,
+    review_sub_uid: 20,
+    review_time: now,
+    source_draft_version: input.expectedDraftVersion,
+    status: "approved",
+    subject_type: 1,
+    submit_sub_uid: 19,
+    submit_time: now,
+    trigger_bindings_json: JSON.stringify(input.triggerBindings),
+    uid: input.uid,
+    update_time: now,
+    workflow_id: Number(input.workflowId),
+    workflow_type: 1,
   };
 }
 

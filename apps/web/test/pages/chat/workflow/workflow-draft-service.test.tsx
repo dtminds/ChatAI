@@ -19,7 +19,6 @@ import { createInitialDraft } from "@/pages/chat/workflow/graph";
 import type {
   WorkflowDocument,
   WorkflowDraftRepository,
-  WorkflowDraftPublishOptions,
   WorkflowDraftReader,
   WorkflowDraftWriter,
   SyncWorkflowDraftRepository,
@@ -31,7 +30,6 @@ function getBranchPaths(draft: WorkflowDraft | null | undefined) {
 
   return data?.kind === "branch" ? data.branchPaths ?? [] : [];
 }
-
 describe("workflow draft service", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
@@ -349,12 +347,12 @@ describe("workflow draft service", () => {
 
     expect(publishedDocument.status).toBe("Published");
     expect(publishedDocument.publishedAt).toBe("刚刚");
-    expect(publishedDocument.publishedRevision).toBe(2);
+    expect(publishedDocument.publishedRevision).toBe(1);
     expect(publishedDocument.currentVersion).toEqual(expect.objectContaining({
-      id: "newcomer-conversion-r2",
-      revision: 2,
+      id: "newcomer-conversion-r1",
+      revision: 1,
     }));
-    expect(publishedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
+    expect(publishedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r1"]);
     expect(getStartSourceMarker(publishedDocument.versionHistory[0]?.draft ?? createInitialDraft()))
       .toBe("发布版本的人群");
     expect(getStartSourceMarker(publishedDocument.publishedDraft ?? createInitialDraft())).toBe("发布版本的人群");
@@ -396,7 +394,7 @@ describe("workflow draft service", () => {
     expect(importedDocument.revision).toBe(3);
     expect(getStartSourceMarker(importedDocument.draft)).toBe("导入草稿的人群");
     expect(getStartSourceMarker(importedDocument.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
-    expect(importedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
+    expect(importedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r1"]);
   });
 
   it("restores a published version into the editable draft without deleting version history", () => {
@@ -404,15 +402,15 @@ describe("workflow draft service", () => {
     const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("第二版人群"));
     const restoredDocument = restoreWorkflowVersion("newcomer-conversion", firstPublishedDocument.currentVersion?.id ?? "");
 
-    expect(secondPublishedDocument.currentVersion?.id).toBe("newcomer-conversion-r3");
+    expect(secondPublishedDocument.currentVersion?.id).toBe("newcomer-conversion-r2");
     expect(restoredDocument.status).toBe("Draft");
     expect(restoredDocument.revision).toBe(4);
-    expect(restoredDocument.currentVersion?.id).toBe("newcomer-conversion-r2");
+    expect(restoredDocument.currentVersion?.id).toBe("newcomer-conversion-r1");
     expect(getStartSourceMarker(restoredDocument.draft)).toBe("第一版人群");
     expect(getStartSourceMarker(restoredDocument.publishedDraft ?? createInitialDraft())).toBe("第二版人群");
     expect(restoredDocument.versionHistory.map((version) => version.id)).toEqual([
-      "newcomer-conversion-r3",
       "newcomer-conversion-r2",
+      "newcomer-conversion-r1",
     ]);
   });
 
@@ -499,7 +497,6 @@ describe("workflow draft service", () => {
       const initialDocument = baseRepository.getDocument("newcomer-conversion");
       initialDocument.draftVersion = 7;
       initialDocument.runtimeStatus = "inactive";
-      initialDocument.validatedDraftVersion = 7;
       const repository: WorkflowDraftRepository = {
         ...baseRepository,
         saveDraft: (workflowId, draft) => {
@@ -510,7 +507,6 @@ describe("workflow draft service", () => {
               ...saved.document,
               draftVersion: 8,
               runtimeStatus: "inactive",
-              validatedDraftVersion: null,
             },
           };
         },
@@ -531,7 +527,6 @@ describe("workflow draft service", () => {
       expect(result.current.document).toMatchObject({
         draftVersion: 8,
         runtimeStatus: "inactive",
-        validatedDraftVersion: null,
       });
     }
     finally {
@@ -610,109 +605,6 @@ describe("workflow draft service", () => {
     }
   });
 
-  it("publishes through an async repository and keeps the hook draft current", async () => {
-    const repository = createDeferredWorkflowDraftRepository();
-    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-
-    await act(async () => {
-      const publishPromise = result.current.publishDraft(createDraftWithStartSourceMarker("异步发布的人群"));
-      await waitFor(() => {
-        expect(repository.pendingPublishes).toHaveLength(1);
-      });
-      repository.resolvePublish(0);
-      await publishPromise;
-    });
-
-    expect(result.current.publishState).toBe("published");
-    expect(result.current.document.status).toBe("Published");
-    expect(result.current.document.publishedRevision).toBe(2);
-    expect(getStartSourceMarker(result.current.document.draft)).toBe("异步发布的人群");
-    expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft()))
-      .toBe("异步发布的人群");
-  });
-
-  it("waits for an in-flight save before publishing", async () => {
-    vi.useFakeTimers();
-
-    try {
-      const repository = createDeferredWorkflowDraftRepository();
-      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithStartSourceMarker("保存完成后发布");
-
-      act(() => {
-        result.current.markDirty(nextDraft);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-      expect(repository.pendingSaves).toHaveLength(1);
-
-      let publishPromise: ReturnType<typeof result.current.publishDraft>;
-      act(() => {
-        publishPromise = result.current.publishDraft(nextDraft);
-      });
-      expect(repository.pendingPublishes).toHaveLength(0);
-
-      await act(async () => {
-        repository.resolveSave(0);
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(repository.pendingPublishes).toHaveLength(1);
-
-      await act(async () => {
-        repository.resolvePublish(0);
-        await publishPromise!;
-      });
-      expect(result.current.publishState).toBe("published");
-    }
-    finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not publish when the save required by publishing fails", async () => {
-    vi.useFakeTimers();
-
-    try {
-      const repository = createDeferredWorkflowDraftRepository();
-      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithStartSourceMarker("保存失败时禁止发布");
-
-      act(() => {
-        result.current.markDirty(nextDraft);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-      expect(repository.pendingSaves).toHaveLength(1);
-
-      let publishPromise: ReturnType<typeof result.current.publishDraft>;
-      act(() => {
-        publishPromise = result.current.publishDraft(nextDraft);
-      });
-
-      await act(async () => {
-        repository.rejectSave(0);
-        await Promise.resolve();
-        await Promise.resolve();
-        if (repository.pendingPublishes.length > 0) {
-          repository.resolvePublish(0);
-        }
-        await publishPromise!;
-      });
-
-      expect(repository.pendingPublishes).toHaveLength(0);
-      expect(result.current.saveState).toBe("error");
-      expect(result.current.saveError?.code).toBe("server");
-      expect(result.current.publishState).toBe("error");
-      expect(result.current.publishError?.code).toBe("server");
-    }
-    finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("persists an undo that happens while an earlier save is in flight", async () => {
     vi.useFakeTimers();
 
@@ -757,169 +649,6 @@ describe("workflow draft service", () => {
     }
   });
 
-  it("keeps publish state aligned with the editable draft and published snapshot", async () => {
-    vi.useFakeTimers();
-
-    try {
-      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
-
-      await act(async () => {
-        await result.current.publishDraft(createDraftWithStartSourceMarker("已发布的人群"));
-      });
-
-      expect(result.current.publishState).toBe("published");
-      expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft())).toBe("已发布的人群");
-
-      act(() => {
-        result.current.markDirty(createDraftWithStartSourceMarker("发布后的草稿修改"));
-      });
-
-      expect(result.current.publishState).toBe("idle");
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-
-      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("发布后的草稿修改");
-      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
-        .toBe("已发布的人群");
-
-      act(() => {
-        result.current.markDirty(createDraftWithStartSourceMarker("已发布的人群"));
-      });
-
-      expect(result.current.publishState).toBe("published");
-    }
-    finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("keeps published state for viewport-only dirty events", async () => {
-    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
-
-    await act(async () => {
-      await result.current.publishDraft(result.current.document.draft);
-    });
-
-    expect(result.current.publishState).toBe("published");
-
-    act(() => {
-      result.current.markDirty({
-        ...result.current.document.draft,
-        viewport: { x: 320, y: 180, zoom: 0.72 },
-      });
-    });
-
-    expect(result.current.publishState).toBe("published");
-    expect(result.current.saveState).toBe("saved");
-  });
-
-  it("saves position-only changes without marking them as unpublished", async () => {
-    vi.useFakeTimers();
-    try {
-      const repository = createInMemoryWorkflowDraftRepository();
-      const sourceDocument = repository.getDocument("newcomer-conversion");
-      const initialDocument = repository.publishDraft(sourceDocument.id, sourceDocument.draft).document;
-      const { result } = renderHook(() => useWorkflowDocument(
-        initialDocument.id,
-        repository,
-        initialDocument,
-      ));
-      const movedDraft = {
-        ...result.current.document.draft,
-        nodes: result.current.document.draft.nodes.map((node) => node.id === "start"
-          ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
-          : node),
-      };
-
-      act(() => {
-        result.current.markDirty(movedDraft);
-      });
-
-      expect(result.current.publishState).toBe("published");
-      expect(result.current.hasUnpublishedChanges).toBe(false);
-      expect(result.current.saveState).not.toBe("saved");
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-
-      expect(repository.getDocument(initialDocument.id).draft.nodes.find((node) => node.id === "start")?.position)
-        .toEqual(movedDraft.nodes.find((node) => node.id === "start")?.position);
-    }
-    finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("marks publish as failed when the async repository publish rejects", async () => {
-    const repository = createDeferredWorkflowDraftRepository();
-    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-
-    await act(async () => {
-      void result.current.publishDraft(createDraftWithStartSourceMarker("发布失败的人群"));
-    });
-
-    await act(async () => {
-      repository.rejectPublish(0);
-      await Promise.resolve();
-    });
-
-    expect(result.current.publishState).toBe("error");
-    expect(result.current.publishError?.code).toBe("server");
-    expect(result.current.document.status).toBe("Draft");
-  });
-
-  it("keeps unpublished changes visible after publishing a changed draft fails", async () => {
-    const baseRepository = createInMemoryWorkflowDraftRepository();
-    baseRepository.publishDraft(
-      "newcomer-conversion",
-      baseRepository.getDocument("newcomer-conversion").draft,
-    );
-    const repository: WorkflowDraftRepository = {
-      ...baseRepository,
-      publishDraft: () => {
-        throw new WorkflowRepositoryError("server", "publish failed");
-      },
-    };
-    const publishedDocument = baseRepository.getDocument("newcomer-conversion");
-    const { result } = renderHook(() => useWorkflowDocument(
-      publishedDocument.id,
-      repository,
-      publishedDocument,
-    ));
-    const changedDraft = createDraftWithStartSourceMarker("发布失败后仍未发布");
-
-    act(() => {
-      result.current.markDirty(changedDraft);
-    });
-    await act(async () => {
-      await result.current.publishDraft(changedDraft);
-    });
-
-    expect(result.current.publishState).toBe("error");
-    expect(result.current.hasUnpublishedChanges).toBe(true);
-  });
-
-  it("exposes publish conflicts separately from retryable publish failures", async () => {
-    const baseRepository = createInMemoryWorkflowDraftRepository();
-    const repository: WorkflowDraftRepository = {
-      ...baseRepository,
-      publishDraft: () => {
-        throw new WorkflowRepositoryError("conflict", "stale draft");
-      },
-    };
-    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-
-    await act(async () => {
-      await result.current.publishDraft(result.current.document.draft);
-    });
-
-    expect(result.current.publishState).toBe("error");
-    expect(result.current.publishError?.code).toBe("conflict");
-  });
-
   it("imports through an async repository and ignores stale import results after switching workflows", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { rerender, result } = renderHook(
@@ -945,174 +674,6 @@ describe("workflow draft service", () => {
     expect(result.current.document.id).toBe("vip-reactivation");
     expect(result.current.document.trigger).toBe("90 天未复购会员");
     expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("旧工作流导入结果");
-  });
-
-  it("keeps published snapshots cloned behind the repository boundary", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const publishedDocument = repository.publishDraft("newcomer-conversion", createDraftWithStartSourceMarker("发布克隆的人群")).document;
-    const fetchedDocument = repository.getDocument("newcomer-conversion");
-
-    publishedDocument.publishedDraft?.nodes.splice(0, 1);
-    publishedDocument.versionHistory[0]?.draft.nodes.splice(0, 1);
-    if (publishedDocument.currentVersion) {
-      publishedDocument.currentVersion.name = "被外部改坏的版本";
-    }
-
-    expect(fetchedDocument.publishedDraft?.nodes).toHaveLength(createInitialDraft().nodes.length);
-    expect(fetchedDocument.versionHistory[0]?.draft.nodes).toHaveLength(createInitialDraft().nodes.length);
-    expect(fetchedDocument.currentVersion?.name).toBe("版本 2");
-  });
-
-  it("keeps an existing revision when publishing an unchanged draft", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
-    const publishedDocument = repository.publishDraft("newcomer-conversion", document.draft).document;
-
-    expect(publishedDocument.revision).toBe(1);
-    expect(publishedDocument.publishedRevision).toBe(1);
-  });
-
-  it("keeps an existing revision and published draft when publishing a viewport-only draft", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
-    const publishedDocument = repository.publishDraft("newcomer-conversion", {
-      ...document.draft,
-      viewport: { x: 320, y: 180, zoom: 0.72 },
-    }).document;
-
-    expect(publishedDocument.revision).toBe(1);
-    expect(publishedDocument.publishedRevision).toBe(1);
-    expect(publishedDocument.draftHash).toBe(document.draftHash);
-    expect(publishedDocument.draft.viewport).toEqual(document.draft.viewport);
-    expect(publishedDocument.publishedDraft?.viewport).toEqual(document.draft.viewport);
-  });
-
-  it("keeps the published revision when publishing a position-only draft", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const initialDocument = repository.getDocument("newcomer-conversion");
-    const document = repository.publishDraft(initialDocument.id, initialDocument.draft).document;
-    const movedDraft = {
-      ...document.draft,
-      nodes: document.draft.nodes.map((node) => node.id === "start"
-        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
-        : node),
-    };
-    const savedDocument = repository.saveDraft(document.id, movedDraft).document;
-    const publishedDocument = repository.publishDraft(document.id, movedDraft).document;
-
-    expect(savedDocument.draftHash).not.toBe(document.draftHash);
-    expect(publishedDocument.publishedRevision).toBe(document.publishedRevision);
-    expect(publishedDocument.versionHistory).toHaveLength(document.versionHistory.length);
-  });
-
-  it("rejects stale repository publishes when the saved draft hash changed", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
-
-    repository.saveDraft("newcomer-conversion", createDraftWithStartSourceMarker("并发保存的人群"));
-
-    expect(() => repository.publishDraft("newcomer-conversion", document.draft, {
-      expectedBaseDraftHash: document.draftHash,
-    })).toThrow("Workflow draft has changed since publish started");
-    expect(repository.getDocument("newcomer-conversion").publishedDraft).toBeNull();
-    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("并发保存的人群");
-  });
-
-  it("does not apply stale async publish results after switching workflow documents", async () => {
-    const repository = createDeferredWorkflowDraftRepository();
-    const { rerender, result } = renderHook(
-      ({ workflowId }) => useWorkflowDocument(workflowId, repository),
-      { initialProps: { workflowId: "newcomer-conversion" } },
-    );
-
-    await act(async () => {
-      void result.current.publishDraft(createDraftWithStartSourceMarker("旧工作流发布结果"));
-    });
-
-    expect(repository.pendingPublishes).toHaveLength(1);
-
-    rerender({ workflowId: "vip-reactivation" });
-
-    await act(async () => {
-      repository.resolvePublish(0);
-      await Promise.resolve();
-    });
-
-    expect(result.current.document.id).toBe("vip-reactivation");
-    expect(result.current.document.publishedAt).toBe("昨天 21:04");
-    expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
-      .toBe("旧工作流发布结果");
-  });
-
-  it("ignores direct dirty writes while a publish is in progress", async () => {
-    vi.useFakeTimers();
-
-    try {
-      const repository = createDeferredWorkflowDraftRepository();
-      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-
-      await act(async () => {
-        void result.current.publishDraft(createDraftWithStartSourceMarker("旧发布请求的人群"));
-      });
-
-      expect(repository.pendingPublishes).toHaveLength(1);
-      expect(result.current.publishState).toBe("publishing");
-
-      act(() => {
-        result.current.markDirty(createDraftWithStartSourceMarker("发布期间继续编辑的人群"));
-      });
-
-      expect(result.current.publishState).toBe("publishing");
-      expect(repository.pendingSaves).toHaveLength(0);
-
-      await act(async () => {
-        repository.resolvePublish(0);
-        await Promise.resolve();
-      });
-
-      expect(result.current.publishState).toBe("published");
-      expect(result.current.document.status).toBe("Published");
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-
-      expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("旧发布请求的人群");
-      expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").publishedDraft ?? createInitialDraft()))
-        .toBe("旧发布请求的人群");
-    }
-    finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("keeps async publish results valid after a no-op dirty event", async () => {
-    const repository = createDeferredWorkflowDraftRepository();
-    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-
-    await act(async () => {
-      void result.current.publishDraft(createDraftWithStartSourceMarker("异步发布的人群"));
-    });
-
-    expect(repository.pendingPublishes).toHaveLength(1);
-    expect(result.current.publishState).toBe("publishing");
-
-    act(() => {
-      result.current.markDirty(result.current.document.draft);
-    });
-
-    expect(result.current.saveState).toBe("saved");
-    expect(result.current.publishState).toBe("publishing");
-
-    await act(async () => {
-      repository.resolvePublish(0);
-      await Promise.resolve();
-    });
-
-    expect(result.current.publishState).toBe("published");
-    expect(result.current.document.status).toBe("Published");
-    expect(getStartSourceMarker(result.current.document.publishedDraft ?? createInitialDraft()))
-      .toBe("异步发布的人群");
   });
 
   it("restores through an async repository and resets the hook document draft", async () => {
@@ -1343,20 +904,12 @@ function createDraftWithBranchPaths(): WorkflowDraft {
 function createDeferredWorkflowDraftRepository() {
   const baseRepository = createInMemoryWorkflowDraftRepository();
   type ImportResult = ReturnType<typeof baseRepository.importDraft>;
-  type PublishResult = ReturnType<typeof baseRepository.publishDraft>;
   type RestoreResult = ReturnType<typeof baseRepository.restoreVersion>;
   type SaveResult = ReturnType<typeof baseRepository.saveDraft>;
   const pendingImports: Array<{
     draft: WorkflowDraft;
     reject: (error: Error) => void;
     resolve: (document: ImportResult) => void;
-    workflowId: string;
-  }> = [];
-  const pendingPublishes: Array<{
-    draft: WorkflowDraft;
-    options?: WorkflowDraftPublishOptions;
-    reject: (error: Error) => void;
-    resolve: (document: PublishResult) => void;
     workflowId: string;
   }> = [];
   const pendingSaves: Array<{
@@ -1376,18 +929,16 @@ function createDeferredWorkflowDraftRepository() {
     & Pick<SyncWorkflowDraftRepository, "getDocument" | "listDocuments">
     & {
     pendingImports: typeof pendingImports;
-    pendingPublishes: typeof pendingPublishes;
     pendingRestores: typeof pendingRestores;
     pendingSaves: typeof pendingSaves;
     rejectImport: (index: number) => void;
-    rejectPublish: (index: number) => void;
     rejectRestore: (index: number) => void;
     rejectSave: (index: number) => void;
     resolveImport: (index: number) => void;
-    resolvePublish: (index: number) => void;
     resolveRestore: (index: number) => void;
     resolveSave: (index: number) => void;
   } = {
+    ...baseRepository,
     createDocument: baseRepository.createDocument,
     deleteDocument: baseRepository.deleteDocument,
     getDocument: baseRepository.getDocument,
@@ -1401,21 +952,8 @@ function createDeferredWorkflowDraftRepository() {
     }),
     listDocuments: baseRepository.listDocuments,
     pendingImports,
-    pendingPublishes,
     pendingRestores,
     pendingSaves,
-    publishDraft: (workflowId, draft, options) => new Promise((resolve, reject) => {
-      pendingPublishes.push({
-        draft,
-        options,
-        reject,
-        resolve,
-        workflowId,
-      });
-    }),
-    rejectPublish: (index) => {
-      pendingPublishes[index]?.reject(new Error("publish failed"));
-    },
     rejectImport: (index) => {
       pendingImports[index]?.reject(new Error("import failed"));
     },
@@ -1434,19 +972,6 @@ function createDeferredWorkflowDraftRepository() {
       }
 
       pendingImport.resolve(baseRepository.importDraft(pendingImport.workflowId, pendingImport.draft));
-    },
-    resolvePublish: (index) => {
-      const pendingPublish = pendingPublishes[index];
-
-      if (!pendingPublish) {
-        return;
-      }
-
-      pendingPublish.resolve(baseRepository.publishDraft(
-        pendingPublish.workflowId,
-        pendingPublish.draft,
-        pendingPublish.options,
-      ));
     },
     resolveRestore: (index) => {
       const pendingRestore = pendingRestores[index];

@@ -70,15 +70,16 @@ describe("MySQL workflow runtime repository contract", () => {
       description: "",
       draft_json: "{}",
       draft_schema_version: 1,
+      draft_semantic_hash: "draft-hash",
       draft_version: 1,
       id: "31",
       name: "Repository contract",
       op_sub_uid: "1",
       published_revision: 1,
+      published_semantic_hash: "published-hash",
       runtime_status: "active",
       status_reason: null,
       uid: 9,
-      validated_draft_version: 1,
       workflow_type: 1,
     }).executeTakeFirstOrThrow();
   });

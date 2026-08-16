@@ -11,7 +11,9 @@ describe("WorkflowReviewPanel", () => {
     useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
-  it("offers approval and withdrawal without self rejection", () => {
+  it("offers approval and confirms withdrawal without self rejection", async () => {
+    const user = userEvent.setup();
+    const onWithdraw = vi.fn(async () => true);
     useAuthStore.getState().setSession({
       accountType: "sub",
       displayName: "运营主管",
@@ -21,11 +23,15 @@ describe("WorkflowReviewPanel", () => {
       uid: 1,
     });
 
-    renderPanel(createReview({ submittedBySubUserId: "101" }));
+    renderPanel(createReview({ submittedBySubUserId: "101" }), { onWithdraw });
 
     expect(screen.getByRole("button", { name: "通过" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "撤回审核" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "驳回" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "撤回审核" }));
+    expect(onWithdraw).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认" }));
+    expect(onWithdraw).toHaveBeenCalledOnce();
   });
 
   it("requires another reviewer to provide a rejection reason", async () => {

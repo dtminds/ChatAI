@@ -184,6 +184,9 @@ function WorkflowWorkspaceContent({
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const canRestoreVersion = currentDocument.permissions.canEdit
+    && currentDocument.currentReview?.status !== "pending"
+    && currentDocument.currentReview?.status !== "approved";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   useEffect(() => {
     previousInspectorOpenRef.current = inspector.isOpen;
@@ -230,7 +233,7 @@ function WorkflowWorkspaceContent({
           : `/chat/workflows/${document.id}`)}
         onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
-        onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
+        onRestoreVersion={canRestoreVersion && versionHistory.currentPreviewVersionId
           ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
           : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
@@ -250,6 +253,7 @@ function WorkflowWorkspaceContent({
         saveState={topBar.saveState}
         versionHistoryContent={(
           <WorkflowVersionHistoryPanel
+            canRestore={canRestoreVersion}
             currentPreviewVersionId={versionHistory.currentPreviewVersionId}
             loadReviews={versionHistory.loadReviews}
             onClose={versionHistory.onClose}

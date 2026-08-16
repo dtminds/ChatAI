@@ -225,6 +225,9 @@ function WorkflowCardMenu({
   operationPending: boolean;
   workflow: WorkflowListItem;
 }) {
+  const reviewOccupiesPrimaryAction = workflow.currentReview?.status === "pending"
+    || workflow.currentReview?.status === "approved";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -233,6 +236,24 @@ function WorkflowCardMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {reviewOccupiesPrimaryAction && workflow.runtimeStatus === "active" ? (
+          <DropdownMenuItem
+            disabled={!workflow.canOperate || operationPending}
+            onSelect={() => onLifecycleAction("pause")}
+          >
+            <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
+            暂停
+          </DropdownMenuItem>
+        ) : null}
+        {reviewOccupiesPrimaryAction && workflow.runtimeStatus === "paused" ? (
+          <DropdownMenuItem
+            disabled={!workflow.canOperate || operationPending}
+            onSelect={() => onLifecycleAction("resume")}
+          >
+            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+            启用已发布版本
+          </DropdownMenuItem>
+        ) : null}
         {workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null ? (
           <DropdownMenuItem
             disabled={!workflow.canOperate || operationPending}

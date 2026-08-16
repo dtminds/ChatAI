@@ -457,11 +457,12 @@ export function useWorkflowDocument(
       setSaveState("saved");
       return submittedDocument;
     } catch (error) {
+      const normalizedError = normalizeWorkflowRepositoryError(error);
       if (publishRequestRef.current === requestId && workflowIdRef.current === workflowIdToSubmit) {
         setReviewActionState("idle");
-        setPublishError(normalizeWorkflowRepositoryError(error));
+        setPublishError(normalizedError);
       }
-      return undefined;
+      throw normalizedError;
     }
   }, [applyReviewDocument, flushPendingSave, repository]);
 
@@ -490,11 +491,12 @@ export function useWorkflowDocument(
       setReviewActionState("idle");
       return nextDocument;
     } catch (error) {
+      const normalizedError = normalizeWorkflowRepositoryError(error);
       if (publishRequestRef.current === requestId && workflowIdRef.current === workflowIdToUpdate) {
         setReviewActionState("idle");
-        setPublishError(normalizeWorkflowRepositoryError(error));
+        setPublishError(normalizedError);
       }
-      return undefined;
+      throw normalizedError;
     }
   }, [applyReviewDocument, repository]);
 
@@ -525,12 +527,13 @@ export function useWorkflowDocument(
       setDocument(publishedDocument);
       return normalizedPublishResult;
     } catch (error) {
+      const normalizedError = normalizeWorkflowRepositoryError(error);
       if (publishRequestRef.current === requestId && workflowIdRef.current === workflowIdToPublish) {
         publishingRef.current = false;
-        setPublishError(normalizeWorkflowRepositoryError(error));
+        setPublishError(normalizedError);
         setPublishState("error");
       }
-      return undefined;
+      throw normalizedError;
     }
   }, [repository]);
 
@@ -639,8 +642,8 @@ export function useWorkflowDocument(
       const nextDocument = await Promise.resolve(repository.enableDocument(workflowIdRef.current));
       setDocument(nextDocument);
       return nextDocument;
-    } catch {
-      return undefined;
+    } catch (error) {
+      throw normalizeWorkflowRepositoryError(error);
     } finally {
       setLifecycleActionState("idle");
     }

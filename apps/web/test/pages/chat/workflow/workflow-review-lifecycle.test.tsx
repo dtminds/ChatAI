@@ -187,7 +187,7 @@ describe("workflow draft service", () => {
       result.current.markDirty(renameStartNode(initial.draft, "保存失败版本"));
     });
     await act(async () => {
-      expect(await result.current.submitReview()).toBeUndefined();
+      await expect(result.current.submitReview()).rejects.toMatchObject({ code: "server" });
     });
 
     expect(submitReview).not.toHaveBeenCalled();
@@ -209,7 +209,7 @@ describe("workflow draft service", () => {
     const reviewId = result.current.document.currentReview!.id;
     await act(async () => {
       await result.current.approveReview(reviewId);
-      expect(await result.current.publishReview(reviewId)).toBeUndefined();
+      await expect(result.current.publishReview(reviewId)).rejects.toMatchObject({ code: "server" });
     });
 
     expect(result.current.document.currentReview?.status).toBe("approved");

@@ -34,6 +34,10 @@ import type { WorkflowDocument } from "./workflow-draft-service";
 import { useWorkflowStableCallback } from "./workflow-hooks";
 import { deriveWorkflowMode } from "./workflow-mode";
 import {
+  getWorkflowLifecycleErrorMessage,
+  getWorkflowReviewActionErrorMessage,
+} from "./workflow-error-messages";
+import {
   createDefaultWorkflowViewState,
   reduceWorkflowViewState,
 } from "./workflow-view-state";
@@ -487,22 +491,35 @@ export function useWorkflowWorkspace(
     }
 
     closeCanvasOverlays();
-    const result = await submitReview();
-    if (result) toast.success("已提交审核");
+    try {
+      const result = await submitReview();
+      if (result) toast.success("已提交审核");
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+    }
   });
 
   const publishApprovedReview = useWorkflowStableCallback(async () => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return;
-    const result = await publishReview(reviewId);
-    if (result) toast.success("发布成功");
+    try {
+      const result = await publishReview(reviewId);
+      if (result) toast.success("发布成功");
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+    }
   });
 
   const enablePublishedDocument = useWorkflowStableCallback(async () => {
-    const result = await enableDocument();
-    if (result) {
-      toast.success("已启用");
-      return true;
+    try {
+      const result = await enableDocument();
+      if (result) {
+        toast.success("已启用");
+        return true;
+      }
+    } catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage("enable", error));
+      return false;
     }
     toast.error("操作失败，请稍后重试");
     return false;
@@ -511,33 +528,53 @@ export function useWorkflowWorkspace(
   const handleApproveReview = useWorkflowStableCallback(async (comment?: string) => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
-    const result = await approveReview(reviewId, comment);
-    if (result) toast.success("审核通过");
-    return Boolean(result);
+    try {
+      const result = await approveReview(reviewId, comment);
+      if (result) toast.success("审核通过");
+      return Boolean(result);
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
   });
 
   const handleRejectReview = useWorkflowStableCallback(async (reason: string) => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
-    const result = await rejectReview(reviewId, reason);
-    if (result) toast.success("已驳回审核");
-    return Boolean(result);
+    try {
+      const result = await rejectReview(reviewId, reason);
+      if (result) toast.success("已驳回审核");
+      return Boolean(result);
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
   });
 
   const handleWithdrawReview = useWorkflowStableCallback(async () => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
-    const result = await withdrawReview(reviewId);
-    if (result) toast.success("已撤回审核");
-    return Boolean(result);
+    try {
+      const result = await withdrawReview(reviewId);
+      if (result) toast.success("已撤回审核");
+      return Boolean(result);
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
   });
 
   const handleContinueEditing = useWorkflowStableCallback(async () => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
-    const result = await continueEditing(reviewId);
-    if (result) toast.success("已恢复编辑");
-    return Boolean(result);
+    try {
+      const result = await continueEditing(reviewId);
+      if (result) toast.success("已恢复编辑");
+      return Boolean(result);
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
   });
 
   const updateWorkflowMetadata = useWorkflowStableCallback(async (metadata: { description: string; name: string }) => {

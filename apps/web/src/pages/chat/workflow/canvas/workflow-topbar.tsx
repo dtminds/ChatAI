@@ -333,6 +333,17 @@ export function WorkflowTopBar({
               <>
                 {currentReview?.status === "pending" ? (
                   <>
+                    {runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
+                      <Button
+                        disabled={!canOperate || lifecycleActionState !== "idle"}
+                        onClick={() => void onEnable()}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        {lifecycleActionState === "enabling" ? "启用中" : "启用已发布版本"}
+                      </Button>
+                    ) : null}
                     <Button
                       disabled={reviewActionState !== "idle"}
                       onClick={() => setReviewDiscardAction("withdraw")}
@@ -346,6 +357,17 @@ export function WorkflowTopBar({
                   </>
                 ) : currentReview?.status === "approved" ? (
                   <>
+                    {runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
+                      <Button
+                        disabled={!canOperate || lifecycleActionState !== "idle"}
+                        onClick={() => void onEnable()}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        {lifecycleActionState === "enabling" ? "启用中" : "启用已发布版本"}
+                      </Button>
+                    ) : null}
                     <Button
                       aria-label="查看审核详情"
                       className="size-9"

@@ -87,6 +87,31 @@ describe("WorkflowTopBar review lifecycle", () => {
     expect(onPublish).toHaveBeenCalledOnce();
   });
 
+  it("keeps activation available for the published version while review occupies the primary action", async () => {
+    const user = userEvent.setup();
+    const onEnable = vi.fn(async () => true);
+    const { rerender } = renderTopBar({
+      currentReview: createReview(),
+      hasUnpublishedChanges: true,
+      onEnable,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    });
+
+    await user.click(screen.getByRole("button", { name: "启用已发布版本" }));
+
+    rerender(createTopBar({
+      currentReview: createReview({ status: "approved" }),
+      hasUnpublishedChanges: true,
+      onEnable,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    }));
+    await user.click(screen.getByRole("button", { name: "启用已发布版本" }));
+
+    expect(onEnable).toHaveBeenCalledTimes(2);
+  });
+
   it("identifies reviewed content in design mode and published data in data mode", () => {
     const review = createReview({ status: "approved" });
     const { rerender } = renderTopBar({

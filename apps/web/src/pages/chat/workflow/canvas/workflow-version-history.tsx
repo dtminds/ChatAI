@@ -11,6 +11,7 @@ import type {
 } from "../workflow-draft-service";
 
 export function WorkflowVersionHistoryPanel({
+  canRestore,
   currentPreviewVersionId,
   onClose,
   onExitPreview,
@@ -20,6 +21,7 @@ export function WorkflowVersionHistoryPanel({
   restoreState,
   versions,
 }: {
+  canRestore: boolean;
   currentPreviewVersionId?: string;
   onClose: () => void;
   onExitPreview: () => void;
@@ -120,7 +122,7 @@ export function WorkflowVersionHistoryPanel({
           <div className="rounded-lg px-2 py-2.5 hover:bg-muted" key={review.id}>
             <div className="flex items-center justify-between gap-2">
               <span className="text-[13px] font-medium">{getReviewHistoryLabel(review)}</span>
-              <span className="text-[11px] text-muted-foreground">{review.submittedAt}</span>
+              <span className="text-[11px] text-muted-foreground">{formatReviewTime(review.submittedAt)}</span>
             </div>
             {review.reviewComment ? (
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{review.reviewComment}</p>
@@ -152,7 +154,7 @@ export function WorkflowVersionHistoryPanel({
             </Button>
             <Button
               className="h-8 rounded-lg px-3 text-xs"
-              disabled={isRestoring}
+              disabled={!canRestore || isRestoring}
               onClick={() => onRestoreVersion(selectedVersion.id)}
               type="button"
             >
@@ -175,4 +177,17 @@ function getReviewHistoryLabel(review: WorkflowPublishReview) {
     rejected: "审核驳回",
     withdrawn: "审核已撤回",
   }[review.status];
+}
+
+function formatReviewTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Shanghai",
+  }).format(date);
 }

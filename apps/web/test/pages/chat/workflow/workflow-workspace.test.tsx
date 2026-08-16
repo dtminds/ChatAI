@@ -16,10 +16,12 @@ import type {
   SyncWorkflowDraftRepository,
   WorkflowDraftRepository,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
 import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
 vi.mock("sonner", () => ({
   toast: {
+    error: vi.fn(),
     success: vi.fn(),
   },
 }));
@@ -58,6 +60,7 @@ vi.mock("@xyflow/react", async () => {
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
+    vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
   });
 
@@ -642,6 +645,92 @@ describe("useWorkflowWorkspace", () => {
     finally {
       vi.useRealTimers();
     }
+  });
+
+  it("surfaces review, publication, and activation failures", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    baseRepository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+    const initial = baseRepository.getDocument("newcomer-conversion");
+    const reviewError = new Error("审核操作失败");
+    const repository = {
+      ...baseRepository,
+      approveReview: vi.fn(async () => { throw reviewError; }),
+      continueEditing: vi.fn(async () => { throw reviewError; }),
+      enableDocument: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "最多可同时运行 50 个 Workflow",
+          { apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED" },
+        );
+      }),
+      publishReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "审核内容依赖的业务资源已变化，请处理后重试发布",
+          { apiCode: "WORKFLOW_REVIEW_RESOURCES_CHANGED" },
+        );
+      }),
+      rejectReview: vi.fn(async () => { throw reviewError; }),
+      submitReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "validation",
+          "Workflow 校验未通过",
+        );
+      }),
+      withdrawReview: vi.fn(async () => { throw reviewError; }),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("Workflow 校验未通过");
+
+    const pending = baseRepository.submitReview(initial.id);
+    const reviewId = pending.currentReview!.id;
+    const { result: pendingResult } = renderHook(() => useWorkflowWorkspace(
+      pending.id,
+      repository,
+      pending,
+    ));
+    await act(async () => {
+      await pendingResult.current.review.onApprove();
+      await pendingResult.current.review.onReject("需要调整");
+      await pendingResult.current.review.onWithdraw();
+      await pendingResult.current.review.onContinueEditing();
+    });
+    expect(repository.approveReview).toHaveBeenCalledWith(initial.id, reviewId, undefined);
+    expect(repository.rejectReview).toHaveBeenCalledWith(initial.id, reviewId, "需要调整");
+    expect(repository.withdrawReview).toHaveBeenCalledWith(initial.id, reviewId);
+    expect(repository.continueEditing).toHaveBeenCalledWith(initial.id, reviewId);
+    expect(toast.error).toHaveBeenCalledTimes(5);
+
+    const approved = baseRepository.approveReview(initial.id, reviewId);
+    const { result: approvedResult } = renderHook(() => useWorkflowWorkspace(
+      approved.id,
+      repository,
+      approved,
+    ));
+    await act(async () => {
+      await approvedResult.current.topBar.onPublish();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
+    expect(toast.error).toHaveBeenCalledTimes(6);
+
+    const inactive = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "inactive" as const,
+    };
+    const { result: inactiveResult } = renderHook(() => useWorkflowWorkspace(
+      inactive.id,
+      repository,
+      inactive,
+    ));
+    await act(async () => {
+      await inactiveResult.current.topBar.onEnable?.();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
+    expect(toast.error).toHaveBeenCalledTimes(7);
   });
 
   it("keeps publish state consistent when undo returns to the published draft", async () => {

@@ -8,6 +8,16 @@ import type { WorkflowPublishReview } from "@chatai/contracts";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -30,13 +40,15 @@ export function WorkflowReviewPanel({
   const [comment, setComment] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [validationError, setValidationError] = useState(false);
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const isSubmitter = currentSubUserId === review.submittedBySubUserId;
   const canDecide = review.status === "pending";
   const submitterLabel = isSubmitter ? "你" : "其他管理员";
   const reviewerLabel = currentSubUserId === review.reviewedBySubUserId ? "你" : "其他管理员";
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-[360px] max-w-full flex-col border-l bg-background shadow-lg">
+    <>
+      <aside className="absolute inset-y-0 right-0 z-20 flex w-[360px] max-w-full flex-col border-l bg-background shadow-lg">
       <div className="flex items-start gap-3 border-b px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -123,7 +135,7 @@ export function WorkflowReviewPanel({
       {canDecide ? (
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           {isSubmitter ? (
-            <Button disabled={pending} onClick={() => void onWithdraw()} type="button" variant="secondary">
+            <Button disabled={pending} onClick={() => setWithdrawConfirmOpen(true)} type="button" variant="secondary">
               撤回审核
             </Button>
           ) : rejecting ? (
@@ -160,7 +172,28 @@ export function WorkflowReviewPanel({
           )}
         </div>
       ) : null}
-    </aside>
+      </aside>
+      <AlertDialog onOpenChange={setWithdrawConfirmOpen} open={withdrawConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认撤回审核</AlertDialogTitle>
+            <AlertDialogDescription>撤回后将结束本次审核并恢复画布编辑</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={() => {
+                setWithdrawConfirmOpen(false);
+                void onWithdraw();
+              }}
+            >
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

@@ -36,6 +36,7 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
+import { getWorkflowLifecycleErrorMessage } from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
@@ -399,20 +400,4 @@ function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
     resume: "已启用",
     stop: "已停止",
   }[action];
-}
-
-function getWorkflowLifecycleErrorMessage(
-  action: WorkflowLifecycleAction,
-  error: unknown,
-) {
-  const repositoryError = normalizeWorkflowRepositoryError(error);
-  if (repositoryError.apiCode === "WORKFLOW_ACTIVE_LIMIT_EXCEEDED") {
-    return "最多可同时运行 50 个 Workflow";
-  }
-  if (action === "enable" && repositoryError.code === "conflict") {
-    return "请先在编辑页发布当前草稿";
-  }
-  if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
-  if (repositoryError.code === "forbidden") return "没有操作权限";
-  return "操作失败，请稍后重试";
 }

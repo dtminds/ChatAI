@@ -909,6 +909,36 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("menuitem", { name: "启用" })).not.toBeInTheDocument();
   });
 
+  it("keeps pause and resume available when review actions occupy the card primary action", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    for (const workflowId of ["vip-reactivation", "live-follow-up"]) {
+      const current = getWorkflowDocument(workflowId);
+      await repository.saveDraft(workflowId, {
+        ...current.draft,
+        nodes: current.draft.nodes.map((node, index) => index === 0
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                label: `${node.data.label} 新版本`,
+                title: `${node.data.title} 新版本`,
+              },
+            }
+          : node),
+      });
+      await repository.submitReview(workflowId);
+    }
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(await screen.findByRole("button", { name: "操作 会员复购唤醒" }));
+    expect(screen.getByRole("menuitem", { name: "暂停" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    expect(screen.getByRole("menuitem", { name: "启用已发布版本" })).toBeInTheDocument();
+  });
+
   it("does not offer activation for an unpublished draft", async () => {
     const user = userEvent.setup();
     await getWorkflowDraftRepository().createDocument({

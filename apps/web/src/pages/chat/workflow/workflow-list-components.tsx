@@ -226,7 +226,8 @@ function WorkflowCardMenu({
   workflow: WorkflowListItem;
 }) {
   const reviewOccupiesPrimaryAction = workflow.currentReview?.status === "pending"
-    || workflow.currentReview?.status === "approved";
+    || workflow.currentReview?.status === "approved"
+    || workflow.currentReview?.status === "rejected";
 
   return (
     <DropdownMenu>

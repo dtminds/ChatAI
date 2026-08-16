@@ -929,6 +929,8 @@ describe("Agent workflow page", () => {
       });
       await repository.submitReview(workflowId);
     }
+    const pausedReview = getWorkflowDocument("live-follow-up").currentReview!;
+    await repository.rejectReview("live-follow-up", pausedReview.id, "需要调整");
     renderWorkflowPage("/chat/workflows");
 
     await user.click(await screen.findByRole("button", { name: "操作 会员复购唤醒" }));

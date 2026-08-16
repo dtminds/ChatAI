@@ -177,11 +177,12 @@ function VariableGroupSubMenu({
   return (
     <DropdownMenuSub onOpenChange={setOpen} open={open}>
       <DropdownMenuSubTrigger
+        className="h-7 gap-1.5 px-2"
         indicatorClassName="!size-3.5 text-muted-foreground/60"
         onClick={() => setOpen(true)}
       >
         {icon ? (
-          <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+          <span className="flex size-4.5 shrink-0 items-center justify-center text-muted-foreground">
             <HugeiconsIcon
               className="!size-3.5"
               color="currentColor"
@@ -201,7 +202,7 @@ function VariableGroupSubMenu({
       <DropdownMenuSubContent className="w-56">
         {outputVariables.length && showNodeSections
           ? (
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-1.5 text-[11px] font-normal text-muted-foreground/60">
+              <DropdownMenuLabel className="px-2 pb-0.5 pt-1 text-[11px] font-normal text-muted-foreground/60">
                 节点输出
               </DropdownMenuLabel>
             )
@@ -209,7 +210,7 @@ function VariableGroupSubMenu({
         {renderVariableItems(outputVariables, onSelect)}
         {attributeVariables.length
           ? (
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-normal text-muted-foreground/60">
+              <DropdownMenuLabel className="px-2 pb-0.5 pt-1.5 text-[11px] font-normal text-muted-foreground/60">
                 节点事件
               </DropdownMenuLabel>
             )
@@ -226,7 +227,7 @@ function renderVariableItems(
 ) {
   return variables.map(variable => (
     <DropdownMenuItem
-      className="min-w-0"
+      className="h-7 min-w-0 gap-1.5 px-2"
       key={variable.selector.join(".")}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== " ") return;

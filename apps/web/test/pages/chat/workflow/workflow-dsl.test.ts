@@ -182,12 +182,9 @@ describe("workflow DSL", () => {
           data: {
             ...queryNode.data,
             timeRange: {
-              end: { field: "enteredAt", kind: "current-node-lifecycle" },
+              end: ["current-node-lifecycle", "enteredAt"],
               mode: "dynamic",
-              start: {
-                kind: "node-output",
-                selector: ["node", "message-welcome", "sentAt"],
-              },
+              start: ["node", "message-welcome", "sentAt"],
             },
           },
         },
@@ -198,12 +195,9 @@ describe("workflow DSL", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: {
-          kind: "node-output",
-          selector: ["node", "message-welcome", "sentAt"],
-        },
+        start: ["node", "message-welcome", "sentAt"],
       },
     });
   });

@@ -44,7 +44,6 @@ export type WorkflowCapabilityProfile = {
 
 const SHARED_WORKFLOW_VARIABLE_CATALOG = [
   "subject.id",
-  "trigger.eventType",
   "trigger.occurredAt",
 ] as const;
 
@@ -53,16 +52,12 @@ const CHATAI_WORKFLOW_VARIABLE_CATALOG = [
   "trigger.projection.workUserId",
   "trigger.projection.seatId",
   "trigger.projection.externalUserId",
-  "trigger.projection.thirdExternalUserId",
-  "trigger.projection.tagId",
-  "trigger.projection.messageId",
 ] as const;
 
 const WECOM_WORKFLOW_VARIABLE_CATALOG = [
   ...SHARED_WORKFLOW_VARIABLE_CATALOG,
   "trigger.projection.workUserId",
   "trigger.projection.externalUserId",
-  "trigger.projection.tagId",
 ] as const;
 
 const CHATAI_NODE_KINDS = [
@@ -174,7 +169,6 @@ function getWorkflowEntryEventVariableCatalog(
         ...shared,
         "trigger.projection.workUserId",
         "trigger.projection.externalUserId",
-        "trigger.projection.tagId",
       ];
     }
     return shared;
@@ -183,7 +177,6 @@ function getWorkflowEntryEventVariableCatalog(
     const contactIdentity = [
       "trigger.projection.workUserId",
       "trigger.projection.seatId",
-      "trigger.projection.thirdExternalUserId",
     ];
     if (eventType === "contact.friend_added") {
       return [...shared, ...contactIdentity, "trigger.projection.externalUserId"];
@@ -193,11 +186,10 @@ function getWorkflowEntryEventVariableCatalog(
         ...shared,
         ...contactIdentity,
         "trigger.projection.externalUserId",
-        "trigger.projection.tagId",
       ];
     }
     if (eventType === "message.received") {
-      return [...shared, ...contactIdentity, "trigger.projection.messageId"];
+      return [...shared, ...contactIdentity];
     }
   }
   return shared;

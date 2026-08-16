@@ -153,17 +153,7 @@ function selectorsFromSegments(value: unknown) {
 
 function selectorsFromTimeRange(value: unknown): WorkflowVariableSelector[] {
   if (!isRecord(value) || value.mode !== "dynamic") return [];
-  return [value.start, value.end].flatMap(reference => {
-    if (!isRecord(reference)) return [];
-    if (reference.kind === "workflow-trigger") return [["trigger", "occurredAt"]];
-    if (reference.kind === "current-node-lifecycle") {
-      return [["current-node-lifecycle", String(reference.field ?? "enteredAt")]];
-    }
-    if (reference.kind === "node-lifecycle" && typeof reference.nodeId === "string") {
-      return [["node-lifecycle", reference.nodeId, String(reference.field ?? "enteredAt")]];
-    }
-    return reference.kind === "node-output" ? selectorFrom(reference.selector) : [];
-  });
+  return [value.start, value.end].flatMap(selectorFrom);
 }
 
 function selectorFrom(value: unknown): WorkflowVariableSelector[] {

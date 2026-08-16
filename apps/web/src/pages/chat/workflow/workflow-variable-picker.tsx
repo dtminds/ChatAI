@@ -1,28 +1,23 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
-  Clock01Icon,
+  Globe02Icon,
   InputCursorTextIcon,
-  Search01Icon,
-  UserIcon,
-  ZapIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { nodeVisuals } from "./node-definitions";
 import type {
   WorkflowVariableDefinition,
-  WorkflowVariableScope,
 } from "./types";
 import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
 
@@ -39,49 +34,16 @@ export function WorkflowVariablePicker({
   open: boolean;
   variables: WorkflowVariableDefinition[];
 }) {
-  const [query, setQuery] = useState("");
-  const filteredVariables = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return normalizedQuery
-      ? variables.filter((variable) =>
-          `${variable.label} ${variable.sourceNodeTitle ?? ""} ${variable.selector.join(".")}`
-            .toLowerCase()
-            .includes(normalizedQuery))
-      : variables;
-  }, [query, variables]);
-
   return (
     <DropdownMenu
       modal={false}
-      onOpenChange={(nextOpen) => {
-        onOpenChange(nextOpen);
-        if (!nextOpen) setQuery("");
-      }}
+      onOpenChange={onOpenChange}
       open={open}
     >
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-0" sideOffset={6}>
-        <div className="border-b p-2">
-          <div className="relative">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={14}
-              strokeWidth={1.8}
-            />
-            <Input
-              aria-label="搜索变量"
-              autoFocus
-              className="h-8 pl-8 text-xs"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-              placeholder="搜索"
-              value={query}
-            />
-          </div>
-        </div>
         <div className="max-h-72 overflow-y-auto p-1">
-          <VariableOptions variables={filteredVariables} onSelect={onSelect} />
+          <VariableOptions variables={variables} onSelect={onSelect} />
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -96,34 +58,42 @@ function VariableOptions({ variables, onSelect }: {
     return <p className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可用变量</p>;
   }
 
-  const contextScopes: Exclude<WorkflowVariableScope, "node" | "node-lifecycle">[] = [
-    "input",
-    "subject",
-    "trigger",
-    "current-node-lifecycle",
-  ];
+  const contextVariableGroups = [
+    {
+      icon: InputCursorTextIcon,
+      key: "input",
+      label: "输入参数",
+      variables: variables.filter(variable =>
+        variable.scope === "input" && !variable.sourceNodeId),
+    },
+    {
+      icon: Globe02Icon,
+      key: "global",
+      label: "全局变量",
+      variables: variables.filter(variable =>
+        (variable.scope === "subject" || variable.scope === "trigger")
+        && !variable.sourceNodeId),
+    },
+  ].filter(group => group.variables.length);
   const nodeVariableGroups = groupNodeVariables(
-    variables.filter((variable) => variable.scope === "node" || variable.scope === "node-lifecycle"),
+    variables.filter((variable) => variable.sourceNodeId && variable.sourceNodeTitle),
   );
 
   return (
     <>
-      {contextScopes.map((scope) => {
-        const scoped = variables.filter((variable) => variable.scope === scope);
-        if (!scoped.length) return null;
+      {contextVariableGroups.map(group => (
+        <VariableGroupSubMenu
+          icon={group.icon}
+          key={group.key}
+          label={group.label}
+          onSelect={onSelect}
+          variables={group.variables}
+        />
+      ))}
 
-        return (
-          <VariableGroupSubMenu
-            icon={scopeIcons[scope]}
-            key={scope}
-            label={scopeLabels[scope]}
-            onSelect={onSelect}
-            variables={scoped}
-          />
-        );
-      })}
-
-      {nodeVariableGroups.length ? <DropdownMenuSeparator /> : null}
+      {contextVariableGroups.length && nodeVariableGroups.length
+        ? <DropdownMenuSeparator />
+        : null}
 
       {nodeVariableGroups.map((group) => {
         const visual = group.sourceNodeKind ? nodeVisuals[group.sourceNodeKind] : undefined;
@@ -131,10 +101,11 @@ function VariableOptions({ variables, onSelect }: {
         return (
           <VariableGroupSubMenu
             icon={visual?.icon}
-            iconAccentRgb={visual?.accentRgb}
+            isCurrentNode={group.isCurrentNode}
             key={group.sourceNodeId}
             label={group.sourceNodeTitle}
             onSelect={onSelect}
+            showNodeSections
             variables={group.variables}
           />
         );
@@ -145,67 +116,102 @@ function VariableOptions({ variables, onSelect }: {
 
 function VariableGroupSubMenu({
   icon,
-  iconAccentRgb,
+  isCurrentNode = false,
   label,
   onSelect,
+  showNodeSections = false,
   variables,
 }: {
-  icon?: typeof UserIcon;
-  iconAccentRgb?: string;
+  icon?: typeof Globe02Icon;
+  isCurrentNode?: boolean;
   label: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
+  showNodeSections?: boolean;
   variables: WorkflowVariableDefinition[];
 }) {
   const [open, setOpen] = useState(false);
+  const outputVariables = showNodeSections
+    ? variables.filter(variable => !isNodeLifecycleVariable(variable))
+    : variables;
+  const attributeVariables = showNodeSections
+    ? variables.filter(isNodeLifecycleVariable)
+    : [];
 
   return (
     <DropdownMenuSub onOpenChange={setOpen} open={open}>
-      <DropdownMenuSubTrigger onClick={() => setOpen(true)}>
+      <DropdownMenuSubTrigger
+        className="h-7 gap-1.5 px-2"
+        indicatorClassName="!size-3.5 text-muted-foreground/60"
+        onClick={() => setOpen(true)}
+      >
         {icon ? (
-          <span
-            className={cn(
-              "flex size-5 shrink-0 items-center justify-center text-muted-foreground",
-              iconAccentRgb && "workflow-variable-source-icon",
-              !iconAccentRgb && "rounded-md",
-            )}
-            style={iconAccentRgb
-              ? { "--workflow-variable-icon-rgb": iconAccentRgb } as CSSProperties
-              : undefined}
-          >
+          <span className="flex size-4.5 shrink-0 items-center justify-center text-muted-foreground">
             <HugeiconsIcon
+              className="!size-3.5"
               color="currentColor"
               icon={icon}
-              size={13}
-              strokeWidth={1.8}
+              size={14}
+              strokeWidth={1.6}
             />
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {label}
+          {isCurrentNode
+            ? <span className="text-muted-foreground/70">（当前节点）</span>
+            : null}
+        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-56">
-        {variables.map((variable) => (
-          <DropdownMenuItem
-            className="min-w-0"
-            key={variable.selector.join(".")}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              onSelect(variable);
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              onSelect(variable);
-            }}
-          >
-            <span className="min-w-0 flex-1 truncate">{variable.label}</span>
-            <span className="shrink-0 text-[11px] text-muted-foreground">
-              {getWorkflowOutputTypeLabel(variable.valueType)}
-            </span>
-          </DropdownMenuItem>
-        ))}
+        {outputVariables.length && showNodeSections
+          ? (
+              <DropdownMenuLabel className="px-2 pb-0.5 pt-1 text-[11px] font-normal text-muted-foreground/60">
+                节点输出
+              </DropdownMenuLabel>
+            )
+          : null}
+        {renderVariableItems(outputVariables, onSelect)}
+        {attributeVariables.length
+          ? (
+              <DropdownMenuLabel className="px-2 pb-0.5 pt-1.5 text-[11px] font-normal text-muted-foreground/60">
+                节点事件
+              </DropdownMenuLabel>
+            )
+          : null}
+        {renderVariableItems(attributeVariables, onSelect)}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
+}
+
+function renderVariableItems(
+  variables: WorkflowVariableDefinition[],
+  onSelect: (variable: WorkflowVariableDefinition) => void,
+) {
+  return variables.map(variable => (
+    <DropdownMenuItem
+      className="h-7 min-w-0 gap-1.5 px-2"
+      key={variable.selector.join(".")}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onSelect(variable);
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        onSelect(variable);
+      }}
+    >
+      <span className="min-w-0 flex-1 truncate">{variable.label}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground/70">
+        {getWorkflowOutputTypeLabel(variable.valueType)}
+      </span>
+    </DropdownMenuItem>
+  ));
+}
+
+function isNodeLifecycleVariable(variable: WorkflowVariableDefinition) {
+  return variable.scope === "current-node-lifecycle" || variable.scope === "node-lifecycle";
 }
 
 function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
@@ -213,6 +219,7 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
     sourceNodeId: string;
     sourceNodeKind: WorkflowVariableDefinition["sourceNodeKind"];
     sourceNodeTitle: string;
+    isCurrentNode: boolean;
     variables: WorkflowVariableDefinition[];
   }>();
 
@@ -221,6 +228,7 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 
     const current = groups.get(variable.sourceNodeId);
     if (current) {
+      current.isCurrentNode ||= variable.scope === "current-node-lifecycle";
       current.variables.push(variable);
       return;
     }
@@ -229,23 +237,10 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
       sourceNodeId: variable.sourceNodeId,
       sourceNodeKind: variable.sourceNodeKind,
       sourceNodeTitle: variable.sourceNodeTitle,
+      isCurrentNode: variable.scope === "current-node-lifecycle",
       variables: [variable],
     });
   });
 
   return [...groups.values()];
 }
-
-const scopeLabels: Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, string> = {
-  "current-node-lifecycle": "当前节点时间",
-  input: "输入参数",
-  subject: "主体变量",
-  trigger: "触发变量",
-};
-
-const scopeIcons = {
-  "current-node-lifecycle": Clock01Icon,
-  input: InputCursorTextIcon,
-  subject: UserIcon,
-  trigger: ZapIcon,
-} satisfies Record<Exclude<WorkflowVariableScope, "node" | "node-lifecycle">, typeof UserIcon>;

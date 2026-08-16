@@ -387,12 +387,9 @@ describe("workflow draft normalizer", () => {
           kind: "message-query",
           limit: 99,
           timeRange: {
-            end: { field: "enteredAt", kind: "current-node-lifecycle" },
+            end: ["current-node-lifecycle", "enteredAt"],
             mode: "dynamic",
-            start: {
-              kind: "node-output",
-              selector: ["node", "message-source", "sentAt"],
-            },
+            start: ["node", "message-source", "sentAt"],
           },
           take: "earliest",
           title: "查询邀约后的消息",
@@ -408,12 +405,9 @@ describe("workflow draft normalizer", () => {
       limit: 50,
       metric: "最早 50 条消息",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: {
-          kind: "node-output",
-          selector: ["node", "message-source", "sentAt"],
-        },
+        start: ["node", "message-source", "sentAt"],
       },
       take: "earliest",
     }));

@@ -10,6 +10,7 @@ import type {
   WorkflowNode,
   WorkflowNodeKind,
   WorkflowNodeValidationIssue,
+  WorkflowVariableSelector,
 } from "../types";
 import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
@@ -19,8 +20,7 @@ import {
   getAvailableIntentInputOutputsForNode,
   getAvailableLlmInputVariablesForNode,
   getAvailableMessageContentOutputsForNode,
-  getAvailableTimeReferenceOutputsForNode,
-  getAvailableTimeReferenceNodesForNode,
+  getAvailableTimeReferenceVariablesForNode,
   getAvailableVariablesForNode,
   getInvalidVariableContentSelectors,
   resolveWorkflowVariable,
@@ -31,7 +31,6 @@ import {
   normalizeWorkflowMessageContentMode,
   normalizeWorkflowMessageOutputSelector,
 } from "../nodes/message/content-source";
-import type { WorkflowDynamicTimeReference } from "../types";
 import { isWorkflowOutputValueTypeEqual } from "../workflow-node-outputs";
 import {
   areDynamicTimeReferencesEqual,
@@ -168,26 +167,18 @@ function validateNodeVariableContent(
 
   if (node.data.kind === "message-query") {
     const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
-    const availableTimeOutputs = getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges);
-    const availableTimeSelectorKeys = new Set(availableTimeOutputs.map((output) =>
-      output.selector.join("."),
-    ));
-    const availableNodeIds = new Set(
-      getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((candidate) => candidate.id),
-    );
+    const availableTimeVariables = getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges);
     const issues = timeRange.mode === "dynamic"
       ? [
           ...validateMessageQueryTimeReference(
             "start",
             timeRange.start,
-            availableNodeIds,
-            availableTimeSelectorKeys,
+            availableTimeVariables,
           ),
           ...validateMessageQueryTimeReference(
             "end",
             timeRange.end,
-            availableNodeIds,
-            availableTimeSelectorKeys,
+            availableTimeVariables,
           ),
         ]
       : [];
@@ -290,15 +281,12 @@ function validateNodeVariableContent(
 
 function validateMessageQueryTimeReference(
   field: "end" | "start",
-  reference: WorkflowDynamicTimeReference,
-  availableNodeIds: Set<string>,
-  availableSelectorKeys: Set<string>,
+  selector: WorkflowVariableSelector,
+  availableVariables: ReturnType<typeof getAvailableTimeReferenceVariablesForNode>,
 ) {
-  const valid = reference.kind === "workflow-trigger"
-    || reference.kind === "current-node-lifecycle"
-    || (reference.kind === "node-lifecycle" && availableNodeIds.has(reference.nodeId))
-    || (reference.kind === "node-output"
-      && availableSelectorKeys.has(reference.selector.join(".")));
+  const valid = availableVariables.some(variable =>
+    variable.selector.length === selector.length
+    && variable.selector.every((part, index) => part === selector[index]));
   if (valid) return [];
 
   return [createVariableContentIssue(

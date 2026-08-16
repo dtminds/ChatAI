@@ -30,11 +30,8 @@ export function getAvailableVariablesForNode(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
-  return [
-    ...getWorkflowContextVariables(nodes),
-    ...getAvailableNodeOutputsForNode(nodeId, nodes, edges)
-      .filter((variable) => variable.usages?.includes("variable")),
-  ];
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges)
+    .filter((variable) => supportsUsage(variable, "variable"));
 }
 
 export function getAvailableBranchVariablesForNode(
@@ -42,25 +39,7 @@ export function getAvailableBranchVariablesForNode(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
-  const upstreamLifecycleVariables = getGuaranteedUpstreamNodes(nodeId, nodes, edges)
-    .flatMap((sourceNode) => [
-      createNodeLifecycleVariable(sourceNode, "enteredAt", "进入时间"),
-      createNodeLifecycleVariable(sourceNode, "exitedAt", "退出时间"),
-    ]);
-
-  return [
-    ...getAvailableVariablesForNode(nodeId, nodes, edges),
-    {
-      key: "enteredAt",
-      label: "进入时间",
-      scope: "current-node-lifecycle",
-      selector: ["current-node-lifecycle", "enteredAt"],
-      type: "datetime",
-      usages: ["variable"],
-      valueType: { kind: "datetime" },
-    },
-    ...upstreamLifecycleVariables,
-  ];
+  return getAvailableVariablesForNode(nodeId, nodes, edges);
 }
 
 export function getAvailableLlmInputVariablesForNode(
@@ -68,10 +47,7 @@ export function getAvailableLlmInputVariablesForNode(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
-  return [
-    ...getWorkflowContextVariables(nodes),
-    ...getAvailableNodeOutputsForNode(nodeId, nodes, edges),
-  ];
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges);
 }
 
 export function getAvailableMessageContentOutputsForNode(
@@ -94,22 +70,33 @@ export function getAvailableIntentInputOutputsForNode(
   );
 }
 
-export function getAvailableTimeReferenceOutputsForNode(
+export function getAvailableTimeReferenceVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ) {
-  return getAvailableNodeOutputsForNode(nodeId, nodes, edges).filter((variable) =>
-    variable.type === "datetime" && variable.usages?.includes("time-reference"),
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges).filter((variable) =>
+    variable.type === "datetime"
+    && (variable.scope !== "node" || variable.usages?.includes("time-reference")),
   );
 }
 
-export function getAvailableTimeReferenceNodesForNode(
+export function getWorkflowVariableCatalogForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-) {
-  return getGuaranteedUpstreamNodes(nodeId, nodes, edges);
+): WorkflowVariableDefinition[] {
+  const upstreamNodes = getGuaranteedUpstreamNodes(nodeId, nodes, edges);
+  const currentNode = nodes.find(node => node.id === nodeId);
+  return [
+    ...getWorkflowContextVariables(nodes),
+    ...upstreamNodes.flatMap((sourceNode) => [
+      ...getAvailableNodeOutputsFromSource(sourceNode, nodeId, edges),
+      createNodeLifecycleVariable(sourceNode, "enteredAt", "进入时间"),
+      createNodeLifecycleVariable(sourceNode, "exitedAt", "退出时间"),
+    ]),
+    ...(currentNode ? [createCurrentNodeLifecycleVariable(currentNode)] : []),
+  ];
 }
 
 export function getGuaranteedUpstreamNodes(
@@ -138,14 +125,22 @@ function getAvailableNodeOutputsForNode(
   edges: WorkflowEdge[],
 ) {
   return getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap((sourceNode) =>
-    getNodeOutputVariables(sourceNode).filter((output) =>
-      !output.availableOnSourceHandles?.length
-      || isWorkflowOutputAvailableOnSourceOutlets(
-        sourceNode.id,
-        nodeId,
-        output.availableOnSourceHandles,
-        edges,
-      ),
+    getAvailableNodeOutputsFromSource(sourceNode, nodeId, edges),
+  );
+}
+
+function getAvailableNodeOutputsFromSource(
+  sourceNode: WorkflowNode,
+  targetNodeId: string,
+  edges: WorkflowEdge[],
+) {
+  return getNodeOutputVariables(sourceNode).filter((output) =>
+    !output.availableOnSourceHandles?.length
+    || isWorkflowOutputAvailableOnSourceOutlets(
+      sourceNode.id,
+      targetNodeId,
+      output.availableOnSourceHandles,
+      edges,
     ),
   );
 }
@@ -182,6 +177,30 @@ function createNodeLifecycleVariable(
     usages: ["variable"],
     valueType: { kind: "datetime" },
   };
+}
+
+function createCurrentNodeLifecycleVariable(
+  node: WorkflowNode,
+): WorkflowVariableDefinition {
+  return {
+    key: "enteredAt",
+    label: "进入时间",
+    scope: "current-node-lifecycle",
+    selector: ["current-node-lifecycle", "enteredAt"],
+    sourceNodeId: node.id,
+    sourceNodeKind: node.data.kind,
+    sourceNodeTitle: node.data.title,
+    type: "datetime",
+    usages: ["variable"],
+    valueType: { kind: "datetime" },
+  };
+}
+
+function supportsUsage(
+  variable: WorkflowVariableDefinition,
+  usage: WorkflowNodeOutputDefinition["usages"][number],
+) {
+  return !variable.usages || variable.usages.includes(usage);
 }
 
 export function resolveWorkflowVariable(

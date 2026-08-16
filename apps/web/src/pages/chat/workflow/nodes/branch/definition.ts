@@ -1,4 +1,4 @@
-import { GitBranchIcon } from "@hugeicons/core-free-icons";
+import { WorkflowCircle06Icon } from "@hugeicons/core-free-icons";
 import { WORKFLOW_BRANCH_NODE_WIDTH } from "../../constants";
 import type { WorkflowNode } from "../../types";
 import {
@@ -67,7 +67,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   visual: {
     accentClassName: "bg-amber-500 text-white ring-amber-500/20",
     accentRgb: "245 158 11",
-    icon: GitBranchIcon,
+    icon: WorkflowCircle06Icon,
     label: "条件分支",
   },
 };

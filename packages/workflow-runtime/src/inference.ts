@@ -20,11 +20,12 @@ import type { WorkflowRunRecord } from "./types.js";
 export function createWorkflowInferenceRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
 ): WorkflowInferenceRequest {
   const request = node.kind === "llm"
     ? createLlmRequest(node, input => input.value.kind === "literal"
         ? input.value.value
-        : requireSelectorValue(input.value.selector, run))
+        : requireSelectorValue(input.value.selector, run, currentNodeLifecycle))
     : node.kind === "ai-intent"
       ? createIntentRequest(node, run)
       : null;
@@ -194,13 +195,21 @@ function renderPrompt(
   }).join("");
 }
 
-function requireSelectorValue(selector: WorkflowVariableSelector, run: WorkflowRunRecord) {
-  const resolved = resolveSelector(selector, run);
+function requireSelectorValue(
+  selector: WorkflowVariableSelector,
+  run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
+) {
+  const resolved = resolveSelector(selector, run, currentNodeLifecycle);
   if (!resolved.available) throw inferenceConfigError("Inference input references unavailable data");
   return resolved.value;
 }
 
-function resolveSelector(selector: WorkflowVariableSelector, run: WorkflowRunRecord) {
+function resolveSelector(
+  selector: WorkflowVariableSelector,
+  run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string },
+) {
   const [scope, key, ...path] = selector;
   if (!scope || !key) return { available: false, value: undefined };
   if (scope === "subject" && key === "id" && path.length === 0) {
@@ -209,6 +218,7 @@ function resolveSelector(selector: WorkflowVariableSelector, run: WorkflowRunRec
   if (scope === "trigger") return readPath(run.context.trigger, [key, ...path]);
   if (scope === "node") return readPath(readRecord(run.context.outputs)?.[key], path);
   if (scope === "node-lifecycle") return readPath(readRecord(run.context.nodeLifecycle)?.[key], path);
+  if (scope === "current-node-lifecycle") return readPath(currentNodeLifecycle, [key, ...path]);
   return { available: false, value: undefined };
 }
 

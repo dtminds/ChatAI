@@ -86,9 +86,9 @@ describe("compileWorkflowDraft", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: { field: "occurredAt", kind: "workflow-trigger" },
+        start: ["trigger", "occurredAt"],
       },
     }));
 
@@ -125,9 +125,9 @@ describe("compileWorkflowDraft", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "occurredAt", kind: "workflow-trigger" },
+        end: ["trigger", "occurredAt"],
         mode: "dynamic",
-        start: { field: "enteredAt", kind: "current-node-lifecycle" },
+        start: ["current-node-lifecycle", "enteredAt"],
       },
     }));
     expectCompilationIssue(reversedDynamicRange, {
@@ -141,9 +141,9 @@ describe("compileWorkflowDraft", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: { field: "enteredAt", kind: "node-lifecycle", nodeId: "end" },
+        start: ["node-lifecycle", "end", "enteredAt"],
       },
     }));
     expectCompilationIssue(unavailableLifecycle, {
@@ -167,9 +167,9 @@ describe("compileWorkflowDraft", () => {
           limit: 10,
           take: "latest",
           timeRange: {
-            end: { field: "exitedAt", kind: "node-lifecycle", nodeId: "first" },
+            end: ["node-lifecycle", "first", "exitedAt"],
             mode: "dynamic",
-            start: { field: "enteredAt", kind: "node-lifecycle", nodeId: "second" },
+            start: ["node-lifecycle", "second", "enteredAt"],
           },
         }),
         node("end", "end"),

@@ -68,14 +68,17 @@ describe("workflow contracts", () => {
     });
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
     expect(getWorkflowCapabilityProfile("chatai_sop").variableCatalog).toEqual(expect.arrayContaining([
+      "subject.id",
+      "trigger.occurredAt",
+      "trigger.projection.externalUserId",
+      "trigger.projection.workUserId",
       "trigger.projection.seatId",
-      "trigger.projection.thirdExternalUserId",
-      "trigger.projection.messageId",
     ]));
     expect(getWorkflowCapabilityProfile("wecom_sop").variableCatalog).toEqual(expect.arrayContaining([
+      "subject.id",
+      "trigger.occurredAt",
       "trigger.projection.workUserId",
       "trigger.projection.externalUserId",
-      "trigger.projection.tagId",
     ]));
     expect(getWorkflowCapabilityProfile("wecom_sop").variableCatalog).not.toContain(
       "trigger.projection.seatId",

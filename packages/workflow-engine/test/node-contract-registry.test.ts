@@ -101,9 +101,9 @@ const projectableDraftData = {
     limit: 10,
     take: "latest",
     timeRange: {
-      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      end: ["current-node-lifecycle", "enteredAt"],
       mode: "dynamic",
-      start: { field: "occurredAt", kind: "workflow-trigger" },
+      start: ["trigger", "occurredAt"],
     },
   },
   start: {

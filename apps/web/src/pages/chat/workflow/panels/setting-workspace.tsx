@@ -110,6 +110,10 @@ export function SettingWorkspace({
           : "w-[26.25rem] max-xl:w-[23.5rem] max-lg:left-3 max-lg:w-auto",
       )}
       data-expanded={activeEditor ? "true" : undefined}
+      style={{
+        // Radix Select disables body pointer events while open; keep the panel above the canvas.
+        pointerEvents: "auto",
+      }}
     >
       {activeEditor ? (
         <section

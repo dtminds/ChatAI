@@ -1,17 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   SegmentedControl,
@@ -24,21 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { nodeVisuals } from "../../node-definitions";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   MessageQueryNodeData,
-  WorkflowDynamicTimeReference,
-  WorkflowNode,
   WorkflowTimeRange,
   WorkflowVariableDefinition,
+  WorkflowVariableSelector,
 } from "../../types";
 import {
-  getAvailableTimeReferenceNodesForNode,
-  getAvailableTimeReferenceOutputsForNode,
+  getAvailableTimeReferenceVariablesForNode,
   getWorkflowVariableDisplayLabel,
-  getWorkflowVariableSelectorKey,
+  resolveWorkflowVariable,
 } from "../../workflow-variables";
+import { WorkflowVariablePicker } from "../../workflow-variable-picker";
 import {
   createDefaultMessageQueryTimeRange,
   getDynamicTimeReferenceLabel,
@@ -56,8 +45,7 @@ export function MessageQueryConfig({
   nodes,
   onNodeChange,
 }: NodeSettingsProps<"message-query">) {
-  const upstreamNodes = getAvailableTimeReferenceNodesForNode(node.id, nodes, edges);
-  const timeOutputs = getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges);
+  const timeVariables = getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges);
   const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
 
   const updateConfig = (patch: Partial<Pick<
@@ -117,10 +105,8 @@ export function MessageQueryConfig({
             />
           ) : (
             <DynamicTimeRangeFields
-              currentNode={node}
               onChange={(nextRange) => updateConfig({ timeRange: nextRange })}
-              outputs={timeOutputs}
-              upstreamNodes={upstreamNodes}
+              variables={timeVariables}
               value={timeRange}
             />
           )}
@@ -197,34 +183,26 @@ function DateTimeField({ label, onChange, value }: {
 }
 
 function DynamicTimeRangeFields({
-  currentNode,
   onChange,
-  outputs,
-  upstreamNodes,
+  variables,
   value,
 }: {
-  currentNode: WorkflowNode<"message-query">;
   onChange: (value: Extract<WorkflowTimeRange, { mode: "dynamic" }>) => void;
-  outputs: WorkflowVariableDefinition[];
-  upstreamNodes: WorkflowNode[];
+  variables: WorkflowVariableDefinition[];
   value: Extract<WorkflowTimeRange, { mode: "dynamic" }>;
 }) {
   return (
     <div className="space-y-4">
       <DynamicTimeField
-        currentNode={currentNode}
         label="开始时间"
         onChange={(start) => onChange({ ...value, start })}
-        outputs={outputs}
-        upstreamNodes={upstreamNodes}
+        variables={variables}
         value={value.start}
       />
       <DynamicTimeField
-        currentNode={currentNode}
         label="结束时间"
         onChange={(end) => onChange({ ...value, end })}
-        outputs={outputs}
-        upstreamNodes={upstreamNodes}
+        variables={variables}
         value={value.end}
       />
     </div>
@@ -232,171 +210,49 @@ function DynamicTimeRangeFields({
 }
 
 function DynamicTimeField({
-  currentNode,
   label,
   onChange,
-  outputs,
-  upstreamNodes,
+  variables,
   value,
 }: {
-  currentNode: WorkflowNode<"message-query">;
   label: string;
-  onChange: (value: WorkflowDynamicTimeReference) => void;
-  outputs: WorkflowVariableDefinition[];
-  upstreamNodes: WorkflowNode[];
-  value: WorkflowDynamicTimeReference;
+  onChange: (value: WorkflowVariableSelector) => void;
+  variables: WorkflowVariableDefinition[];
+  value: WorkflowVariableSelector;
 }) {
-  const nodeTitleById = useMemo(() => new Map([
-    ...upstreamNodes.map((item) => [item.id, item.data.title] as const),
-    [currentNode.id, "当前节点"] as const,
-  ]), [currentNode.id, upstreamNodes]);
-  const outputLabelBySelector = useMemo(() => new Map(outputs.map((output) => [
-    getWorkflowVariableSelectorKey(output.selector),
-    getWorkflowVariableDisplayLabel(output),
-  ])), [outputs]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const selectedVariable = resolveWorkflowVariable(variables, value);
 
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3">
       <span className="text-sm">{label}</span>
-      <TimeReferencePicker
-        currentNode={currentNode}
-        label={label}
-        onSelect={onChange}
-        outputs={outputs}
-        upstreamNodes={upstreamNodes}
-        valueLabel={getDynamicTimeReferenceLabel(
-          value,
-          (nodeId) => nodeTitleById.get(nodeId),
-          (selector) => outputLabelBySelector.get(getWorkflowVariableSelectorKey(selector)),
-        )}
-      />
-    </div>
-  );
-}
-
-function TimeReferencePicker({
-  currentNode,
-  label,
-  onSelect,
-  outputs,
-  upstreamNodes,
-  valueLabel,
-}: {
-  currentNode: WorkflowNode<"message-query">;
-  label: string;
-  onSelect: (reference: WorkflowDynamicTimeReference) => void;
-  outputs: WorkflowVariableDefinition[];
-  upstreamNodes: WorkflowNode[];
-  valueLabel: string;
-}) {
-  const outputsByNodeId = new Map<string, WorkflowVariableDefinition[]>();
-  outputs.forEach((output) => {
-    if (!output.sourceNodeId) return;
-    outputsByNodeId.set(output.sourceNodeId, [
-      ...outputsByNodeId.get(output.sourceNodeId) ?? [],
-      output,
-    ]);
-  });
-
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+      <WorkflowVariablePicker
+        onOpenChange={setPickerOpen}
+        onSelect={(variable) => {
+          onChange(variable.selector);
+          setPickerOpen(false);
+        }}
+        open={pickerOpen}
+        variables={variables}
+      >
         <Button
           aria-label={`${label}时间点`}
           className="h-9 w-full justify-between px-3 font-normal"
           type="button"
           variant="outline"
         >
-          <span className="min-w-0 truncate">{valueLabel}</span>
+          <span className="min-w-0 truncate">
+            {getDynamicTimeReferenceLabel(
+              value,
+              () => selectedVariable
+                ? getWorkflowVariableDisplayLabel(selectedVariable)
+                : undefined,
+            )}
+          </span>
           <HugeiconsIcon className="shrink-0 text-muted-foreground" icon={ArrowDown01Icon} size={16} strokeWidth={1.8} />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        {upstreamNodes.map((upstreamNode) => (
-          <NodeTimeSubMenu
-            key={upstreamNode.id}
-            node={upstreamNode}
-            onSelect={onSelect}
-            outputs={outputsByNodeId.get(upstreamNode.id) ?? []}
-          />
-        ))}
-        <NodeTimeSubMenu
-          current
-          node={currentNode}
-          onSelect={onSelect}
-          outputs={[]}
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function NodeTimeSubMenu({ current = false, node, onSelect, outputs }: {
-  current?: boolean;
-  node: WorkflowNode;
-  onSelect: (reference: WorkflowDynamicTimeReference) => void;
-  outputs: WorkflowVariableDefinition[];
-}) {
-  const visual = nodeVisuals[node.data.kind];
-
-  return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
-        <span
-          className="workflow-variable-source-icon flex size-5 shrink-0 items-center justify-center"
-          data-node-icon={node.data.kind}
-          style={{ "--workflow-variable-icon-rgb": visual.accentRgb } as CSSProperties}
-        >
-          <HugeiconsIcon icon={visual.icon} size={13} strokeWidth={1.8} />
-        </span>
-        <span className="min-w-0 flex-1 truncate">{current ? "当前节点" : node.data.title}</span>
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-48">
-        {node.data.kind === "start" ? (
-          <TimeReferenceItem
-            label="触发时间"
-            onSelect={() => onSelect({ field: "occurredAt", kind: "workflow-trigger" })}
-          />
-        ) : null}
-        <TimeReferenceItem
-          label="进入时间"
-          onSelect={() => onSelect(current
-            ? { field: "enteredAt", kind: "current-node-lifecycle" }
-            : { field: "enteredAt", kind: "node-lifecycle", nodeId: node.id })}
-        />
-        {!current && node.data.kind !== "start" ? (
-          <TimeReferenceItem
-            label="退出时间"
-            onSelect={() => onSelect({ field: "exitedAt", kind: "node-lifecycle", nodeId: node.id })}
-          />
-        ) : null}
-        {outputs.map((output) => (
-          <TimeReferenceItem
-            key={getWorkflowVariableSelectorKey(output.selector)}
-            label={output.label}
-            onSelect={() => onSelect({ kind: "node-output", selector: output.selector })}
-          />
-        ))}
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
-  );
-}
-
-function TimeReferenceItem({ label, onSelect }: { label: string; onSelect: () => void }) {
-  return (
-    <DropdownMenuItem
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        onSelect();
-      }}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        onSelect();
-      }}
-    >
-      {label}
-    </DropdownMenuItem>
+      </WorkflowVariablePicker>
+    </div>
   );
 }
 

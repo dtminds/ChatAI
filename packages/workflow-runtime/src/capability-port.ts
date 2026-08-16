@@ -67,6 +67,7 @@ export type WorkflowCapabilityCommandContext = {
   outputs: Record<string, Record<string, unknown>>;
   subjectId: string;
   trigger: Record<string, unknown>;
+  workflow: Record<string, unknown>;
 };
 
 export type WorkflowCapabilityExecutionBinding<

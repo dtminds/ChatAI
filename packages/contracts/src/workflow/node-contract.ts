@@ -1,6 +1,11 @@
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { QUICK_REPLY_ATTACHMENT_MAX_COUNT } from "../chat/quick-reply-content.js";
+import {
+  QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  validateQuickReplyAttachment,
+  type WorkbenchQuickReplyAttachment,
+} from "../chat/quick-reply-content.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
@@ -414,6 +419,7 @@ export function isWorkflowNodeExecutionConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
+  if (kind === "message") return isWorkflowMessageExecutionConfigComplete(value);
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
@@ -421,6 +427,26 @@ export function isWorkflowNodeExecutionConfig(
   return schema !== null
     && Value.Check(schema, value)
     && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+export function isWorkflowMessageExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowMessageExecutionConfig {
+  if (!Value.Check(WorkflowMessageExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowMessageExecutionConfig;
+  if (!config.attachments.every(attachment =>
+    Boolean(attachment.materialCollectionId)
+    && Boolean(attachment.msgInfoId)
+    && validateQuickReplyAttachment(attachment as WorkbenchQuickReplyAttachment).ok)) {
+    return false;
+  }
+  if (config.contentMode === "node-output") return Boolean(config.outputSelector);
+  const literalLength = config.content.reduce((length, segment) =>
+    length + (segment.type === "text" ? segment.value.length : 0), 0);
+  const hasContent = config.content.some(segment =>
+    segment.type === "variable" || Boolean(segment.value.trim()));
+  return literalLength <= QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH
+    && (hasContent || config.attachments.length > 0);
 }
 
 export function isWorkflowMessageQueryExecutionConfigComplete(

@@ -10,6 +10,7 @@ import {
   type WorkflowCapabilityExecutionBinding,
   InMemoryWorkflowRuntimeRepository,
   type WorkflowMessageQueryRequest,
+  WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
@@ -326,6 +327,11 @@ describe("workflow capability reliability", () => {
     const emptyContextBytes = Buffer.byteLength(JSON.stringify({
       outputs: {},
       trigger: { padding: "" },
+      workflow: {
+        message: {
+          accountSelection: { seatIds: [101], strategy: "earliest-added" },
+        },
+      },
     }), "utf8");
     const started = await service.startRun({
       entryEventId: "exact-context",
@@ -536,6 +542,81 @@ describe("workflow capability reliability", () => {
         status: "completed",
       }),
     ]);
+  });
+
+  it("executes the real Message binding and reuses its idempotency key across a retry", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const requests: Array<{
+      command: Record<string, unknown>;
+      idempotencyKey: string;
+    }> = [];
+    let attempt = 0;
+    const spec = actionSpec();
+    spec.nodes.find(node => node.kind === "message")!.config = {
+      attachments: [],
+      content: [
+        { type: "text", value: "客户 " },
+        { selector: ["subject", "id"], type: "variable" },
+      ],
+      contentMode: "custom",
+    };
+    const service = createService(runtime, async (input: unknown) => {
+      const request = input as {
+        command: Record<string, unknown>;
+        idempotencyKey: string;
+      };
+      requests.push(request);
+      attempt += 1;
+      if (attempt === 1) {
+        throw createActionError("retryable", "MESSAGE_SEND_TEMPORARY");
+      }
+      return { sentAt: "2026-07-13T00:00:05.000Z" };
+    }, {
+      capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
+      spec,
+    });
+    const actionTask = await startCapability(runtime, service, {
+      projection: { seatId: 101 },
+    });
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "retry-scheduled" });
+    const retryTask = await runtime.findTask(9, actionTask.id);
+    if (!retryTask) throw new Error("Message retry task was not created");
+
+    await expect(service.executeTask({
+      now: retryTask.dueAt,
+      taskId: retryTask.id,
+      taskVersion: retryTask.taskVersion,
+      uid: 9,
+      workerId: "worker-2",
+    })).resolves.toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests.map(request => request.idempotencyKey))
+      .toEqual(["9:1:message:2", "9:1:message:2"]);
+    expect(requests[0]!.command).toEqual({
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      attachments: [],
+      content: "客户 customer-1",
+      recipient: { thirdExternalUserId: "customer-1" },
+      source: "workflow",
+    });
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        executionKey: "9:1:message:2",
+        output: { sentAt: "2026-07-13T00:00:05.000Z" },
+        status: "completed",
+      }),
+    ]));
   });
 
   it.each(["retryable", "unknown"] as const)(
@@ -1010,7 +1091,15 @@ async function startCapability(
   trigger: Record<string, unknown> = {},
 ) {
   const started = await runtime.createRunWithInitialTask({
-    context: { outputs: {}, trigger },
+    context: {
+      outputs: {},
+      trigger,
+      workflow: {
+        message: {
+          accountSelection: { seatIds: [101], strategy: "earliest-added" },
+        },
+      },
+    },
     entryEventId: "event-1",
     entryPolicy: startConfig().entryPolicy,
     initialNodeId: "start",

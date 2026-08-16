@@ -119,6 +119,7 @@ describe("workflow runtime repository", () => {
     ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Message target lacks its account snapshot", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
     const created = await repository.createRunWithInitialTask(createRunInput());
@@ -874,6 +875,7 @@ function flowChangedSpec(
     | "branch-context-incompatible"
     | "context-incompatible"
     | "current-node-deleted"
+    | "message-context-incompatible"
     | "node-kind-changed"
     | "outlet-deleted",
 ): WorkflowExecutionSpec {
@@ -893,6 +895,29 @@ function flowChangedSpec(
     };
   }
   if (scenario === "outlet-deleted") return { ...spec, edges: [] };
+  if (scenario === "message-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-message", source: "start", sourceOutletId: "default", target: "message-1" },
+        { id: "message-end", source: "message-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            attachments: [],
+            content: [{ type: "text", value: "hello" }],
+            contentMode: "custom",
+          },
+          id: "message-1",
+          kind: "message",
+          nodeSchemaVersion: 2,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
   if (scenario === "branch-context-incompatible") {
     return {
       ...spec,

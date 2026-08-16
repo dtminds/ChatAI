@@ -28,6 +28,7 @@ export * from "./workflow/entry-event.js";
 export * from "./workflow/execution.js";
 export * from "./workflow/inference.js";
 export * from "./workflow/local-date-time.js";
+export * from "./workflow/message.js";
 export * from "./workflow/message-query.js";
 export * from "./workflow/node-contract.js";
 export * from "./workflow/policy.js";

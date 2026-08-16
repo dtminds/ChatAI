@@ -263,12 +263,30 @@ describe("workflow routes", () => {
     });
     expect(saved.json().data.draftVersion).toBe(2);
 
-    const validated = await app.inject({
+    const submitted = await app.inject({
       method: "POST",
       payload: { expectedDraftVersion: 2 },
+      url: `/api/server/workflows/${definition.id}/reviews`,
+    });
+    expect(submitted.statusCode).toBe(200);
+    expect(submitted.json().data).toMatchObject({ status: "pending" });
+
+    const approved = await app.inject({
+      method: "POST",
+      payload: {},
+      url: `/api/server/workflows/${definition.id}/reviews/${submitted.json().data.id}/approve`,
+    });
+    expect(approved.json().data).toMatchObject({ status: "approved" });
+
+    const published = await app.inject({
+      method: "POST",
+      payload: { reviewId: submitted.json().data.id },
       url: `/api/server/workflows/${definition.id}/publish`,
     });
-    expect(validated.json().data).toMatchObject({ revision: null, validatedOnly: true });
+    expect(published.json().data).toMatchObject({
+      definition: { publishedRevision: 1, runtimeStatus: "inactive" },
+      revision: { revision: 1 },
+    });
 
     const enabled = await app.inject({
       method: "POST",
@@ -281,6 +299,13 @@ describe("workflow routes", () => {
       url: `/api/server/workflows/${definition.id}/revisions`,
     });
     expect(revisions.json().data).toHaveLength(1);
+    const reviews = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${definition.id}/reviews`,
+    });
+    expect(reviews.json().data).toEqual([
+      expect.objectContaining({ resultingRevision: 1, status: "published" }),
+    ]);
   });
 
   it("rejects non-admin roles and hides logically deleted definitions", async () => {

@@ -1,293 +1,208 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { WorkflowPublishReview } from "@chatai/contracts";
+import type React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkflowTopBar } from "@/pages/chat/workflow/canvas/workflow-topbar";
 
-describe("WorkflowTopBar lifecycle", () => {
-  it("switches between design and data modes from centered tabs", async () => {
+describe("WorkflowTopBar review lifecycle", () => {
+  it("submits an editable draft for review", async () => {
+    const user = userEvent.setup();
+    const onSubmitReview = vi.fn();
+    renderTopBar({
+      hasUnpublishedChanges: true,
+      onSubmitReview,
+      publishedRevision: null,
+    });
+
+    expect(screen.getByText("草稿")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "提交审核" }));
+    expect(onSubmitReview).toHaveBeenCalledOnce();
+  });
+
+  it("shows explicit rejected wording for first and subsequent versions", () => {
+    const review = createReview({ status: "rejected" });
+    const { rerender } = renderTopBar({
+      currentReview: review,
+      hasUnpublishedChanges: true,
+      publishedRevision: null,
+    });
+
+    expect(screen.getByText("草稿 · 审核驳回")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新提交审核" })).toBeInTheDocument();
+
+    rerender(createTopBar({
+      currentReview: review,
+      hasUnpublishedChanges: true,
+      publishedRevision: 2,
+      runtimeStatus: "active",
+    }));
+    expect(screen.getByText("运行中 · 新版本审核驳回")).toBeInTheDocument();
+  });
+
+  it("shows review and withdraw actions while pending", async () => {
+    const user = userEvent.setup();
+    const onOpenReview = vi.fn();
+    const onWithdrawReview = vi.fn(async () => true);
+    renderTopBar({
+      currentReview: createReview(),
+      hasUnpublishedChanges: true,
+      onOpenReview,
+      onWithdrawReview,
+      publishedRevision: 1,
+      runtimeStatus: "active",
+    });
+
+    expect(screen.getByText("运行中 · 新版本待审核")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "审核" }));
+    await user.click(screen.getByRole("button", { name: "撤回审核" }));
+    expect(onOpenReview).toHaveBeenCalledOnce();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认" }));
+    expect(onWithdrawReview).toHaveBeenCalledOnce();
+  });
+
+  it("requires confirmation before publishing an approved review", async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    const onContinueEditing = vi.fn(async () => true);
+    renderTopBar({
+      canPublish: true,
+      currentReview: createReview({ status: "approved" }),
+      hasUnpublishedChanges: true,
+      onContinueEditing,
+      onPublish,
+      publishedRevision: 1,
+    });
+
+    expect(screen.getByText("未启用 · 新版本审核通过")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "继续修改" }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认" }));
+    expect(onContinueEditing).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole("button", { name: "发布" }));
+    expect(onPublish).not.toHaveBeenCalled();
+    const publishDialog = within(screen.getByRole("alertdialog"));
+    expect(publishDialog.getByText(/已删除等待节点上的客户可能被清退/)).toBeInTheDocument();
+    await user.click(publishDialog.getByRole("button", { name: "发布" }));
+    expect(onPublish).toHaveBeenCalledOnce();
+  });
+
+  it("keeps activation available for the published version while review occupies the primary action", async () => {
+    const user = userEvent.setup();
+    const onEnable = vi.fn(async () => true);
+    const { rerender } = renderTopBar({
+      currentReview: createReview(),
+      hasUnpublishedChanges: true,
+      onEnable,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    });
+
+    await user.click(screen.getByRole("button", { name: "启用已发布版本" }));
+
+    rerender(createTopBar({
+      currentReview: createReview({ status: "approved" }),
+      hasUnpublishedChanges: true,
+      onEnable,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    }));
+    await user.click(screen.getByRole("button", { name: "启用已发布版本" }));
+
+    expect(onEnable).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifies reviewed content in design mode and published data in data mode", () => {
+    const review = createReview({ status: "approved" });
+    const { rerender } = renderTopBar({
+      currentReview: review,
+      hasUnpublishedChanges: true,
+      publishedRevision: 1,
+    });
+
+    expect(screen.getByText("已审核内容")).toBeInTheDocument();
+
+    rerender(createTopBar({
+      currentReview: review,
+      hasUnpublishedChanges: true,
+      mode: "data",
+      publishedRevision: 1,
+    }));
+    expect(screen.getByText("当前已发布版本数据")).toBeInTheDocument();
+  });
+
+  it("offers enable only after a formal version has been published", async () => {
+    const user = userEvent.setup();
+    const onEnable = vi.fn(async () => true);
+    renderTopBar({
+      hasUnpublishedChanges: false,
+      onEnable,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+    });
+
+    expect(screen.getByText("未启用 · 已发布")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "启用" }));
+    expect(onEnable).toHaveBeenCalledOnce();
+  });
+
+  it("switches between design and data modes", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();
+    renderTopBar({ onModeChange });
 
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        mode="design"
-        onModeChange={onModeChange}
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt="刚刚"
-        publishReady
-        publishState="published"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    expect(screen.getByRole("tab", { name: "设计" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("tab", { name: "数据" }));
     expect(onModeChange).toHaveBeenCalledWith("data");
   });
-  it("keeps publishing as the editor primary action for an inactive workflow", async () => {
-    const onPublish = vi.fn();
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onExitPreview={vi.fn()}
-        onOpenVersionHistory={vi.fn()}
-        onPublish={onPublish}
-        onPublishCheck={vi.fn()}
-        publishedAt={null}
-        publishReady
-        publishState="idle"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "发布" }));
-
-    expect(onPublish).toHaveBeenCalledOnce();
-  });
-
-  it("shows validated inactive and paused workflows as ready in the header", () => {
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt={null}
-        publishReady
-        publishState="published"
-        saveState="saved"
-        validatedForActivation
-        runtimeStatus="inactive"
-        workflowName="新客培育"
-      />,
-    );
-
-    expect(screen.getByText("待启用")).toBeInTheDocument();
-
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt="刚刚"
-        publishReady
-        publishState="published"
-        saveState="saved"
-        runtimeStatus="paused"
-        workflowName="暂停流程"
-      />,
-    );
-
-    expect(screen.getAllByText("待启用")).toHaveLength(2);
-  });
-
-  it("shows stopped workflows as read-only without publishing actions", () => {
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt="刚刚"
-        publishReady
-        publishState="published"
-        runtimeStatus="stopped"
-        saveState="saved"
-        workflowName="已停止流程"
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "版本历史" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
-  });
-
-  it("opens version history and publish checks from dedicated controls", async () => {
-    const user = userEvent.setup();
-    const onOpenVersionHistory = vi.fn();
-    const onPublishCheck = vi.fn();
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onBack={vi.fn()}
-        onOpenVersionHistory={onOpenVersionHistory}
-        onPublish={vi.fn()}
-        onPublishCheck={onPublishCheck}
-        publishedAt={null}
-        publishReady={false}
-        publishState="idle"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "版本历史" }));
-    expect(onOpenVersionHistory).toHaveBeenCalledOnce();
-
-    await user.click(screen.getByRole("button", { name: "发布检查" }));
-    expect(onPublishCheck).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
-  });
-
-  it("hides publish checks when all real-time checks pass", () => {
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt={null}
-        publishReady
-        publishState="idle"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "发布检查" })).not.toBeInTheDocument();
-  });
-
-  it("allows publishing to surface failed real-time checks", async () => {
-    const user = userEvent.setup();
-    const onPublish = vi.fn();
-    render(
-      <WorkflowTopBar
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={onPublish}
-        onPublishCheck={vi.fn()}
-        publishedAt={null}
-        publishReady={false}
-        publishState="idle"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    const publishButton = screen.getByRole("button", { name: "发布" });
-    expect(publishButton).toBeEnabled();
-    await user.click(publishButton);
-    expect(onPublish).toHaveBeenCalledOnce();
-  });
-
-  it("shows runtime status, description tooltip and unpublished changes", async () => {
-    const user = userEvent.setup();
-    render(
-      <WorkflowTopBar
-        description="引导新客完成首购"
-        hasUnpublishedChanges
-        lastSavedAt="21:05:30"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt="07-11 20:00:00"
-        publishReady
-        publishState="idle"
-        runtimeStatus="active"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    expect(screen.getByText("运行中")).toBeInTheDocument();
-    expect(screen.getByText("有尚未发布的修改")).toBeInTheDocument();
-    await user.hover(screen.getByRole("button", { name: "查看 Workflow 描述" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("引导新客完成首购");
-  });
-
-  it("updates workflow name and description from the metadata dialog", async () => {
-    const user = userEvent.setup();
-    const onUpdateMetadata = vi.fn().mockResolvedValue(true);
-    render(
-      <WorkflowTopBar
-        canRename
-        description="旧描述"
-        lastSavedAt="刚刚"
-        onBack={vi.fn()}
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        onUpdateMetadata={onUpdateMetadata}
-        publishedAt={null}
-        publishReady
-        publishState="idle"
-        runtimeStatus="inactive"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "编辑 Workflow 信息" }));
-    const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
-    const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
-    expect(nameInput).toHaveAttribute("maxlength", "100");
-    expect(screen.getByText("4/100")).toBeInTheDocument();
-    expect(descriptionInput).toHaveAttribute("maxlength", "1000");
-    await user.clear(nameInput);
-    await user.type(nameInput, "  新客首购旅程  ");
-    await user.clear(descriptionInput);
-    await user.type(descriptionInput, "  引导新客完成首购  ");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    expect(onUpdateMetadata).toHaveBeenCalledWith({
-      description: "引导新客完成首购",
-      name: "新客首购旅程",
-    });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("omits the description control when no description exists", () => {
-    render(
-      <WorkflowTopBar
-        description=""
-        lastSavedAt="刚刚"
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        publishedAt={null}
-        publishReady
-        publishState="idle"
-        runtimeStatus="inactive"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "查看 Workflow 描述" })).not.toBeInTheDocument();
-  });
-
-  it("cancels metadata editing with Escape", async () => {
-    const user = userEvent.setup();
-    const onUpdateMetadata = vi.fn();
-    render(
-      <WorkflowTopBar
-        canRename
-        description="旧描述"
-        lastSavedAt="刚刚"
-        onBack={vi.fn()}
-        onOpenVersionHistory={vi.fn()}
-        onPublish={vi.fn()}
-        onPublishCheck={vi.fn()}
-        onUpdateMetadata={onUpdateMetadata}
-        publishedAt={null}
-        publishReady
-        publishState="idle"
-        runtimeStatus="inactive"
-        saveState="saved"
-        workflowName="新客培育"
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "编辑 Workflow 信息" }));
-    await user.keyboard("{Escape}");
-
-    expect(onUpdateMetadata).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
 });
+
+function renderTopBar(overrides: Partial<React.ComponentProps<typeof WorkflowTopBar>> = {}) {
+  return render(createTopBar(overrides));
+}
+
+function createTopBar(overrides: Partial<React.ComponentProps<typeof WorkflowTopBar>> = {}) {
+  return (
+    <WorkflowTopBar
+      lastSavedAt="刚刚"
+      mode="design"
+      onOpenVersionHistory={vi.fn()}
+      onPublish={vi.fn()}
+      onPublishCheck={vi.fn()}
+      publishedAt={null}
+      publishReady
+      publishState="idle"
+      saveState="saved"
+      workflowName="新客培育"
+      {...overrides}
+    />
+  );
+}
+
+function createReview(overrides: Partial<WorkflowPublishReview> = {}): WorkflowPublishReview {
+  return {
+    basePublishedRevision: null,
+    changeSummary: {
+      addedNodes: [],
+      changedNodes: [],
+      firstPublication: true,
+      pathChanged: false,
+      removedNodes: [],
+      triggerChanged: false,
+    },
+    checkedAt: "2026-08-16T10:00:00.000+08:00",
+    id: "review-1",
+    publishedAt: null,
+    publishedBySubUserId: null,
+    resultingRevision: null,
+    reviewComment: null,
+    reviewedAt: null,
+    reviewedBySubUserId: null,
+    sourceDraftVersion: 1,
+    status: "pending",
+    submittedAt: "2026-08-16T10:00:00.000+08:00",
+    submittedBySubUserId: "sub-user-1",
+    workflowId: "workflow-1",
+    ...overrides,
+  };
+}

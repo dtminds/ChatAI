@@ -13,16 +13,17 @@ export interface WorkflowDefinitionTable {
   description: string;
   draft_json: JsonText;
   draft_schema_version: number;
+  draft_semantic_hash: string;
   draft_version: number;
   id: Generated<DatabaseId>;
   name: string;
   op_sub_uid: DatabaseId;
   published_revision: number | null;
+  published_semantic_hash: string | null;
   runtime_status: string;
   status_reason: string | null;
   uid: number;
   update_time: GeneratedDate;
-  validated_draft_version: number | null;
   workflow_type: number;
 }
 
@@ -34,9 +35,38 @@ export interface WorkflowRevisionTable {
   id: Generated<DatabaseId>;
   publish_sub_uid: DatabaseId;
   publish_time: DatabaseDate;
+  review_id: DatabaseId;
   revision: number;
   spec_hash: string;
   subject_type: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+  workflow_type: number;
+}
+
+export interface WorkflowPublishReviewTable {
+  base_published_revision: number | null;
+  candidate_hash: string;
+  change_summary_json: JsonText;
+  checked_at: DatabaseDate;
+  create_time: GeneratedDate;
+  draft_json: JsonText;
+  draft_semantic_hash: string;
+  execution_spec_json: JsonText;
+  id: Generated<DatabaseId>;
+  publish_sub_uid: DatabaseId | null;
+  publish_time: NullableDate;
+  resulting_revision: number | null;
+  review_comment: string | null;
+  review_sub_uid: DatabaseId | null;
+  review_time: NullableDate;
+  source_draft_version: number;
+  status: string;
+  subject_type: number;
+  submit_sub_uid: DatabaseId;
+  submit_time: DatabaseDate;
+  trigger_bindings_json: JsonText;
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
@@ -313,6 +343,7 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_node_metric: WorkflowNodeMetricTable;
   xy_wap_embed_workflow_node_metric_event: WorkflowNodeMetricEventTable;
   xy_wap_embed_workflow_outbox: WorkflowOutboxTable;
+  xy_wap_embed_workflow_publish_review: WorkflowPublishReviewTable;
   xy_wap_embed_workflow_revision: WorkflowRevisionTable;
   xy_wap_embed_workflow_revision_cleanup: WorkflowRevisionCleanupTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;

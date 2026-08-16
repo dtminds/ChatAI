@@ -1,5 +1,6 @@
 import type {
   WorkflowCapabilitySummary,
+  WorkflowPublishReview,
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowDraft } from "./types";
@@ -7,7 +8,6 @@ import type { WorkflowDraft } from "./types";
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
 
 export type WorkflowListItem = {
-  activationReady: boolean;
   canOperate: boolean;
   capabilitySummary: WorkflowCapabilitySummary;
   conversion: string;
@@ -17,11 +17,14 @@ export type WorkflowListItem = {
   name: string;
   nodes: number;
   owner: string;
+  publishedRevision: number | null;
   runtimeStatus: "active" | "inactive" | "paused" | "stopped";
   status: WorkflowDocumentStatus;
   trigger: string;
   updatedAt: string;
   workflowType: WorkflowType;
+  currentReview: WorkflowPublishReview | null;
+  hasUnpublishedChanges: boolean;
 };
 
 export type WorkflowPublishedVersion = {
@@ -55,7 +58,8 @@ export type WorkflowDocument = WorkflowListItem & {
   versionHistory: WorkflowVersionHistoryItem[];
   draftVersion?: number;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
-  validatedDraftVersion?: number | null;
+  currentReview: WorkflowPublishReview | null;
+  hasUnpublishedChanges: boolean;
 };
 
 export type WorkflowRepositoryErrorCode =
@@ -109,23 +113,10 @@ type WorkflowDraftPublishResultBase = {
   updatedAt: string;
 };
 
-export type WorkflowDraftPublishResult = WorkflowDraftPublishResultBase & (
-  | {
-      publishedAt: null;
-      publishedRevision: null;
-      validatedOnly: true;
-      version: null;
-    }
-  | {
-      publishedAt: string;
-      publishedRevision: number;
-      validatedOnly?: false;
-      version: WorkflowPublishedVersion;
-    }
-);
-
-export type WorkflowDraftPublishOptions = {
-  expectedBaseDraftHash?: string;
+export type WorkflowDraftPublishResult = WorkflowDraftPublishResultBase & {
+  publishedAt: string;
+  publishedRevision: number;
+  version: WorkflowPublishedVersion;
 };
 
 export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
@@ -139,6 +130,15 @@ export type WorkflowDraftReader = {
 };
 
 export type WorkflowDraftWriter = {
+  approveReview: (
+    workflowId: string,
+    reviewId: string,
+    comment?: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
+  continueEditing: (
+    workflowId: string,
+    reviewId: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;
@@ -150,11 +150,16 @@ export type WorkflowDraftWriter = {
     workflowId: string,
     draft: WorkflowDraft,
   ) => Promise<WorkflowDraftImportResult | WorkflowDocument> | WorkflowDraftImportResult | WorkflowDocument;
-  publishDraft: (
+  listReviews: (workflowId: string) => Promise<WorkflowPublishReview[]> | WorkflowPublishReview[];
+  publishReview: (
     workflowId: string,
-    draft: WorkflowDraft,
-    options?: WorkflowDraftPublishOptions,
+    reviewId: string,
   ) => Promise<WorkflowDraftPublishResult | WorkflowDocument> | WorkflowDraftPublishResult | WorkflowDocument;
+  rejectReview: (
+    workflowId: string,
+    reviewId: string,
+    reason: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
   restoreVersion: (
     workflowId: string,
     versionId: string,
@@ -163,6 +168,9 @@ export type WorkflowDraftWriter = {
     workflowId: string,
     draft: WorkflowDraft,
   ) => Promise<WorkflowDraftSaveResult | WorkflowDocument> | WorkflowDraftSaveResult | WorkflowDocument;
+  submitReview: (
+    workflowId: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
   updateDocumentMetadata: (
     workflowId: string,
     metadata: { description: string; name: string },
@@ -171,11 +179,17 @@ export type WorkflowDraftWriter = {
   pauseDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
   resumeDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
   stopDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  withdrawReview: (
+    workflowId: string,
+    reviewId: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
 };
 
 export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = {
+  approveReview: (workflowId: string, reviewId: string, comment?: string) => WorkflowDocument;
+  continueEditing: (workflowId: string, reviewId: string) => WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;
@@ -186,13 +200,11 @@ export type SyncWorkflowDraftRepository = {
   getDocument: (workflowId: string) => WorkflowDocument;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;
   listDocuments: () => WorkflowListItem[];
+  listReviews: (workflowId: string) => WorkflowPublishReview[];
   enableDocument: (workflowId: string) => WorkflowDocument;
   pauseDocument: (workflowId: string) => WorkflowDocument;
-  publishDraft: (
-    workflowId: string,
-    draft: WorkflowDraft,
-    options?: WorkflowDraftPublishOptions,
-  ) => WorkflowDraftPublishResult;
+  publishReview: (workflowId: string, reviewId: string) => WorkflowDraftPublishResult;
+  rejectReview: (workflowId: string, reviewId: string, reason: string) => WorkflowDocument;
   updateDocumentMetadata: (
     workflowId: string,
     metadata: { description: string; name: string },
@@ -202,4 +214,6 @@ export type SyncWorkflowDraftRepository = {
   restoreVersion: (workflowId: string, versionId: string) => WorkflowDraftRestoreResult;
   saveDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftSaveResult;
   stopDocument: (workflowId: string) => WorkflowDocument;
+  submitReview: (workflowId: string) => WorkflowDocument;
+  withdrawReview: (workflowId: string, reviewId: string) => WorkflowDocument;
 };

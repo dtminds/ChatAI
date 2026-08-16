@@ -111,17 +111,7 @@ export function normalizeWorkflowDraftPublishResult(
 
   const document = cloneWorkflowDocument(publishResult);
   if (document.publishedRevision === null) {
-    return {
-      document,
-      draft: cloneWorkflowDraft(document.draft),
-      draftHash: document.draftHash,
-      publishedAt: null,
-      publishedRevision: null,
-      revision: document.revision,
-      updatedAt: document.updatedAt,
-      validatedOnly: true,
-      version: null,
-    };
+    throw new Error("Workflow publish result does not contain a published revision");
   }
   const publishedAt = document.publishedAt ?? document.updatedAt;
   const publishedRevision = document.publishedRevision;
@@ -142,7 +132,6 @@ export function normalizeWorkflowDraftPublishResult(
     publishedRevision,
     revision: document.revision,
     updatedAt: document.updatedAt,
-    validatedOnly: false,
     version,
   };
 }
@@ -235,7 +224,13 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
 }
 
 export function createWorkflowPublishHash(draft: WorkflowDraft): string {
-  return hashWorkflowValue("publish", JSON.stringify(createWorkflowExecutionGraph(draft)));
+  const canonicalDraft = canonicalizeWorkflowDraft(draft);
+  return hashWorkflowValue("publish", JSON.stringify({
+    executionGraph: createWorkflowExecutionGraph(canonicalDraft),
+    nodeTitles: canonicalDraft.nodes
+      .map(node => ({ id: node.id, title: node.data.title }))
+      .sort((first, second) => first.id.localeCompare(second.id)),
+  }));
 }
 
 function hashWorkflowValue(prefix: "draft" | "publish", serializedValue: string) {

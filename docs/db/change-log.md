@@ -1,5 +1,53 @@
 # Database Change Log
 
+## 2026-08-16 Workflow 发布审核与独立发布
+
+- Workflow 仍在开发阶段，直接清空全部 Workflow 数据，不保留 `validated_draft_version` 兼容路径。
+- Definition 增加草稿与已发布语义哈希；Revision 关联授权发布的审核记录。
+- 新增不可变候选与审核决定表 `xy_wap_embed_workflow_publish_review`。
+
+```sql
+-- 停止 Backend 与 Workflow Worker 后，先执行 2026-08-15 的全量 Workflow DELETE。
+ALTER TABLE xy_wap_embed_workflow_definition
+  DROP COLUMN validated_draft_version,
+  ADD COLUMN draft_semantic_hash VARCHAR(64) NOT NULL COMMENT '忽略布局后的草稿语义SHA-256' AFTER draft_json,
+  ADD COLUMN published_semantic_hash VARCHAR(64) NULL COMMENT '当前发布Revision的草稿语义SHA-256' AFTER published_revision;
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  ADD COLUMN review_id BIGINT UNSIGNED NOT NULL COMMENT '授权本次发布的审核ID' AFTER publish_sub_uid;
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  uid BIGINT UNSIGNED NOT NULL,
+  workflow_id BIGINT UNSIGNED NOT NULL,
+  workflow_type TINYINT UNSIGNED NOT NULL,
+  subject_type TINYINT UNSIGNED NOT NULL,
+  source_draft_version INT UNSIGNED NOT NULL,
+  base_published_revision INT UNSIGNED NULL,
+  draft_json JSON NOT NULL,
+  execution_spec_json JSON NOT NULL,
+  trigger_bindings_json JSON NOT NULL,
+  candidate_hash VARCHAR(64) NOT NULL,
+  draft_semantic_hash VARCHAR(64) NOT NULL,
+  change_summary_json JSON NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  submit_sub_uid BIGINT UNSIGNED NOT NULL,
+  submit_time DATETIME NOT NULL,
+  checked_at DATETIME NOT NULL,
+  review_sub_uid BIGINT UNSIGNED NULL,
+  review_comment VARCHAR(1000) NULL,
+  review_time DATETIME NULL,
+  publish_sub_uid BIGINT UNSIGNED NULL,
+  resulting_revision INT UNSIGNED NULL,
+  publish_time DATETIME NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_workflow_publish_review_candidate (uid, workflow_id, source_draft_version),
+  KEY idx_workflow_publish_review_current (uid, workflow_id, id)
+) COMMENT='营销Workflow发布审核表';
+```
+
 ## 2026-08-15 Workflow Execution Spec v3
 
 - Execution Spec v3 删除节点级和聚合级 `requiredCapabilities`，Wait Event 配置不再持久化 `capabilityKey` / `contractVersion`。

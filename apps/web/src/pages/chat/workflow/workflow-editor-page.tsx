@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { WorkflowChecks } from "./canvas/workflow-checks";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
+import { WorkflowReviewPanel } from "./canvas/workflow-review-panel";
 import { WorkflowVersionHistoryPanel } from "./canvas/workflow-version-history";
 import { NodeConfigPanel } from "./panels";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
@@ -175,7 +176,7 @@ function WorkflowWorkspaceContent({
   const navigate = useNavigate();
   const location = useLocation();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
-  const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
+  const { canvas, checks, document: currentDocument, inspector, review, topBar, versionHistory } = workspace;
   const shouldLoadManagedAccounts = inspector.isOpen
     && inspector.node?.data.kind === "start"
     && "seatIds" in inspector.node.data;
@@ -183,14 +184,29 @@ function WorkflowWorkspaceContent({
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const canRestoreVersion = currentDocument.permissions.canEdit
+    && currentDocument.currentReview?.status !== "pending"
+    && currentDocument.currentReview?.status !== "approved";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   useEffect(() => {
     previousInspectorOpenRef.current = inspector.isOpen;
   }, [inspector.isOpen]);
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("panel") !== "review" || !review.current) return;
+    review.onOpen();
+    searchParams.delete("panel");
+    navigate({
+      pathname: location.pathname,
+      search: searchParams.size ? `?${searchParams.toString()}` : "",
+    }, { replace: true });
+  }, [location.pathname, location.search, navigate, review.current, review.onOpen]);
 
   return (
     <>
       <WorkflowTopBar
+        canEdit={topBar.canEdit}
+        canOperate={topBar.canOperate}
         canPublish={topBar.canPublish}
         canRename={topBar.canRename}
         canRetrySave={topBar.canRetrySave}
@@ -204,7 +220,12 @@ function WorkflowWorkspaceContent({
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
+        onOpenReview={topBar.onOpenReview}
         onPublish={topBar.onPublish}
+        onSubmitReview={topBar.onSubmitReview}
+        onWithdrawReview={topBar.onWithdrawReview}
+        onContinueEditing={topBar.onContinueEditing}
+        onEnable={topBar.onEnable}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
         onModeChange={(nextMode) => navigate(nextMode === "data"
@@ -212,7 +233,7 @@ function WorkflowWorkspaceContent({
           : `/chat/workflows/${document.id}`)}
         onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
-        onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
+        onRestoreVersion={canRestoreVersion && versionHistory.currentPreviewVersionId
           ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
           : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
@@ -223,13 +244,18 @@ function WorkflowWorkspaceContent({
         publishErrorCode={topBar.publishError?.code}
         publishState={topBar.publishState}
         publishReady={topBar.publishReady}
+        currentReview={topBar.currentReview}
+        reviewActionState={topBar.reviewActionState}
+        lifecycleActionState={topBar.lifecycleActionState}
+        publishedRevision={topBar.publishedRevision}
         restoreState={versionHistory.restoreState}
         runtimeStatus={topBar.runtimeStatus}
         saveState={topBar.saveState}
-        validatedForActivation={topBar.validatedForActivation}
         versionHistoryContent={(
           <WorkflowVersionHistoryPanel
+            canRestore={canRestoreVersion}
             currentPreviewVersionId={versionHistory.currentPreviewVersionId}
+            loadReviews={versionHistory.loadReviews}
             onClose={versionHistory.onClose}
             onExitPreview={versionHistory.onExitPreview}
             onRestoreVersion={versionHistory.onRestoreVersion}
@@ -246,6 +272,18 @@ function WorkflowWorkspaceContent({
           />
         )}
       />
+      {currentDocument.currentReview?.status === "rejected"
+        && currentDocument.currentReview.reviewComment ? (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-sm">
+            <p className="min-w-0 truncate">
+              <span className="font-medium text-destructive">审核驳回：</span>
+              <span>{currentDocument.currentReview.reviewComment}</span>
+            </p>
+            <Button onClick={review.onOpen} size="sm" type="button" variant="ghost">
+              查看详情
+            </Button>
+          </div>
+        ) : null}
 
       {mode === "data" ? (
         <div className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden">
@@ -322,6 +360,16 @@ function WorkflowWorkspaceContent({
                   },
                 }}
                 testContext={inspector.testContext}
+            />
+          ) : null}
+          {review.isOpen && review.current ? (
+            <WorkflowReviewPanel
+              onApprove={review.onApprove}
+              onClose={review.onClose}
+              onReject={review.onReject}
+              onWithdraw={review.onWithdraw}
+              pending={review.pending}
+              review={review.current}
             />
           ) : null}
         </div>

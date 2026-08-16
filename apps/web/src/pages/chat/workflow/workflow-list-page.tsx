@@ -36,17 +36,19 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
+import { getWorkflowLifecycleErrorMessage } from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
   return <WorkflowListPage repository={repository} />;
 }
 
-type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
+type WorkflowStatusFilter = "all" | "active" | "pending" | "ready" | "draft" | "stopped";
 
 const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
   { label: "全部", value: "all" },
   { label: "运行中", value: "active" },
+  { label: "待处理", value: "pending" },
   { label: "待启用", value: "ready" },
   { label: "草稿", value: "draft" },
   { label: "已停止", value: "stopped" },
@@ -72,10 +74,16 @@ export function WorkflowListPage({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredItems = useMemo(() => items.filter((workflow) => {
     const matchesStatus = statusFilter === "all"
-      || (statusFilter === "draft" && workflow.runtimeStatus === "inactive" && !workflow.activationReady)
+      || (statusFilter === "draft" && workflow.publishedRevision === null)
+      || (statusFilter === "pending" && (
+        workflow.currentReview?.status === "pending"
+        || workflow.currentReview?.status === "approved"
+        || (workflow.currentReview?.status === "rejected"
+          && (workflow.publishedRevision === null || workflow.hasUnpublishedChanges))
+      ))
       || (statusFilter === "ready" && (
         workflow.runtimeStatus === "paused"
-        || (workflow.runtimeStatus === "inactive" && workflow.activationReady)
+        || (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null)
       ))
       || workflow.runtimeStatus === statusFilter;
     const matchesQuery = !normalizedQuery
@@ -85,6 +93,9 @@ export function WorkflowListPage({
   }), [items, normalizedQuery, statusFilter]);
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
+    if (workflow.currentReview?.status === "pending" || workflow.currentReview?.status === "approved") {
+      return;
+    }
     setOperationError(null);
     setMetadataTarget(workflow);
   };
@@ -162,7 +173,7 @@ export function WorkflowListPage({
     action: WorkflowLifecycleAction,
   ) => {
     if (lifecyclePendingId) return false;
-    if (action === "enable" && !workflow.activationReady) {
+    if (action === "enable" && workflow.publishedRevision === null) {
       toast.error("请先在编辑页发布当前草稿");
       return false;
     }
@@ -389,20 +400,4 @@ function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
     resume: "已启用",
     stop: "已停止",
   }[action];
-}
-
-function getWorkflowLifecycleErrorMessage(
-  action: WorkflowLifecycleAction,
-  error: unknown,
-) {
-  const repositoryError = normalizeWorkflowRepositoryError(error);
-  if (repositoryError.apiCode === "WORKFLOW_ACTIVE_LIMIT_EXCEEDED") {
-    return "最多可同时运行 50 个 Workflow";
-  }
-  if (action === "enable" && repositoryError.code === "conflict") {
-    return "请先在编辑页发布当前草稿";
-  }
-  if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
-  if (repositoryError.code === "forbidden") return "没有操作权限";
-  return "操作失败，请稍后重试";
 }

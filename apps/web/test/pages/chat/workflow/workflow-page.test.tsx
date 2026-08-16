@@ -396,6 +396,13 @@ function getRedoButton(canvas: HTMLElement) {
   return within(canvas).getByRole("button", { name: /^重做/ });
 }
 
+async function publishInMemoryWorkflow(workflowId: string) {
+  const repository = getWorkflowDraftRepository();
+  const submitted = await repository.submitReview(workflowId);
+  await repository.approveReview(workflowId, submitted.currentReview!.id);
+  await repository.publishReview(workflowId, submitted.currentReview!.id);
+}
+
 describe("Agent workflow page", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -604,11 +611,11 @@ describe("Agent workflow page", () => {
     const card = await screen.findByRole("article", { name: "新人转化旅程" });
 
     expect(within(card).getByText("引导新客户完成首次购买")).toBeInTheDocument();
-    expect(within(card).getByText("待启用")).toBeInTheDocument();
+    expect(within(card).getByText("草稿")).toBeInTheDocument();
     expect(within(card).queryByText("8 节点")).not.toBeInTheDocument();
     expect(within(card).queryByText("运营主管")).not.toBeInTheDocument();
     expect(within(card).queryByText("今天 18:20")).not.toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "启用" })).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "编辑" })).toBeInTheDocument();
     expect(within(card).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
       "href",
       "/chat/workflows/newcomer-conversion",
@@ -617,7 +624,7 @@ describe("Agent workflow page", () => {
     const activeCard = screen.getByRole("article", { name: "会员复购唤醒" });
     const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
     expect(within(activeCard).getByRole("button", { name: "暂停" })).toBeInTheDocument();
-    expect(within(pausedCard).getByText("待启用")).toBeInTheDocument();
+    expect(within(pausedCard).getByText("待启用 · 已是最新版本")).toBeInTheDocument();
     expect(within(pausedCard).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
@@ -670,13 +677,13 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "待启用" }));
-    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
     expect(screen.getByText("直播后跟进")).toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
     expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByText("普通草稿流程")).toBeInTheDocument();
-    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "已停止" }));
     expect(screen.getByText("已停止流程")).toBeInTheDocument();
@@ -691,7 +698,9 @@ describe("Agent workflow page", () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
     const draft = await repository.createDocument({ name: "待发布流程", workflowType: "chatai_sop" });
-    await repository.publishDraft(draft.id, draft.draft);
+    const submitted = await repository.submitReview(draft.id);
+    await repository.approveReview(draft.id, submitted.currentReview!.id);
+    await repository.publishReview(draft.id, submitted.currentReview!.id);
     renderWorkflowPage("/chat/workflows");
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
@@ -699,7 +708,7 @@ describe("Agent workflow page", () => {
 
     await user.click(screen.getByRole("tab", { name: "待启用" }));
     const card = await screen.findByRole("article", { name: "待发布流程" });
-    expect(within(card).getByText("待启用")).toBeInTheDocument();
+    expect(within(card).getByText("未启用 · 已发布")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
@@ -751,11 +760,26 @@ describe("Agent workflow page", () => {
 
   it("confirms internal navigation while the draft is not saved", async () => {
     const user = setupCanvasUser();
+    const repository = getWorkflowDraftRepository();
+    const originalSaveDraft = repository.saveDraft.bind(repository);
+    let releaseSave!: () => void;
+    let saveCompleted = Promise.resolve();
+    const saveDraftSpy = vi.spyOn(repository, "saveDraft").mockImplementation((...args) => {
+      const result = (async () => {
+        await new Promise<void>((resolve) => {
+          releaseSave = resolve;
+        });
+        return originalSaveDraft(...args);
+      })();
+      saveCompleted = result.then(() => undefined);
+      return result;
+    });
     const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion");
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
 
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     await user.click(within(screen.getByRole("region", { name: "节点库" })).getByRole("button", { name: "添加 转人工节点" }));
+    await waitFor(() => expect(saveDraftSpy).toHaveBeenCalled());
 
     void router.navigate("/chat/workflows");
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
@@ -765,6 +789,9 @@ describe("Agent workflow page", () => {
     void router.navigate("/chat/workflows");
     await user.click(await screen.findByRole("button", { name: "仍然离开" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
+    releaseSave();
+    await saveCompleted;
+    saveDraftSpy.mockRestore();
   });
 
   it("switches between design and data without treating it as leaving an unsaved workflow", async () => {
@@ -789,7 +816,7 @@ describe("Agent workflow page", () => {
     const start = existing.draft.nodes.find(node => node.data.kind === "start")!;
     const wait = existing.draft.nodes.find(node => node.data.kind === "wait")!;
     const end = existing.draft.nodes.find(node => node.data.kind === "end")!;
-    await repository.publishDraft(existing.id, {
+    await repository.saveDraft(existing.id, {
       ...existing.draft,
       edges: [
         { id: "edge-start-wait", source: start.id, target: wait.id, type: "workflow" },
@@ -797,6 +824,9 @@ describe("Agent workflow page", () => {
       ],
       nodes: [start, wait, end],
     });
+    const submitted = await repository.submitReview(existing.id);
+    await repository.approveReview(existing.id, submitted.currentReview!.id);
+    await repository.publishReview(existing.id, submitted.currentReview!.id);
     const initialPublishedRevision = getWorkflowDocument(existing.id).publishedRevision!;
     const user = setupCanvasUser();
     const { router } = renderWorkflowPage("/chat/workflows/vip-reactivation");
@@ -805,9 +835,13 @@ describe("Agent workflow page", () => {
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     fireEvent.change(within(panel).getByLabelText("等待时长"), { target: { value: "3" } });
 
-    const publishButton = await screen.findByRole("button", { name: "发布" });
-    await waitFor(() => expect(publishButton).toBeEnabled());
-    await user.click(publishButton);
+    const submitButton = await screen.findByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    await user.click(submitButton);
+    await user.click(await screen.findByRole("button", { name: "审核" }));
+    await user.click(within(screen.getByRole("complementary")).getByRole("button", { name: "通过" }));
+    await user.click(await screen.findByRole("button", { name: "发布" }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(getWorkflowDocument("vip-reactivation").publishedRevision)
       .toBe(initialPublishedRevision + 1));
 
@@ -827,8 +861,22 @@ describe("Agent workflow page", () => {
     expect(editLink).not.toHaveAttribute("rel");
   });
 
+  it("consumes the review deep link once so closing the panel keeps it closed", async () => {
+    const user = userEvent.setup();
+    await getWorkflowDraftRepository().submitReview("newcomer-conversion");
+    const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion?panel=review");
+
+    expect(await screen.findByText("发布审核")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    await user.click(screen.getByRole("button", { name: "关闭审核" }));
+
+    expect(screen.queryByText("发布审核")).not.toBeInTheDocument();
+    expect(router.state.location.search).toBe("");
+  });
+
   it("offers activation from the inactive workflow row menu", async () => {
     const user = userEvent.setup();
+    await publishInMemoryWorkflow("newcomer-conversion");
     renderWorkflowPage("/chat/workflows");
 
     await screen.findByText("新人转化旅程");
@@ -838,6 +886,59 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(getWorkflowDocument("newcomer-conversion").runtimeStatus).toBe("active");
     });
+  });
+
+  it("identifies the published version when activation is secondary to a review", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    await publishInMemoryWorkflow("newcomer-conversion");
+    const published = getWorkflowDocument("newcomer-conversion");
+    await repository.saveDraft(published.id, {
+      ...published.draft,
+      nodes: published.draft.nodes.map((node, index) => index === 0 ? {
+        ...node,
+        data: { ...node.data, label: "新版本开始", title: "新版本开始" },
+      } : node),
+    });
+    await repository.submitReview(published.id);
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(await screen.findByRole("button", { name: "操作 新人转化旅程" }));
+
+    expect(screen.getByRole("menuitem", { name: "启用已发布版本" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "启用" })).not.toBeInTheDocument();
+  });
+
+  it("keeps pause and resume available when review actions occupy the card primary action", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    for (const workflowId of ["vip-reactivation", "live-follow-up"]) {
+      const current = getWorkflowDocument(workflowId);
+      await repository.saveDraft(workflowId, {
+        ...current.draft,
+        nodes: current.draft.nodes.map((node, index) => index === 0
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                label: `${node.data.label} 新版本`,
+                title: `${node.data.title} 新版本`,
+              },
+            }
+          : node),
+      });
+      await repository.submitReview(workflowId);
+    }
+    const pausedReview = getWorkflowDocument("live-follow-up").currentReview!;
+    await repository.rejectReview("live-follow-up", pausedReview.id, "需要调整");
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(await screen.findByRole("button", { name: "操作 会员复购唤醒" }));
+    expect(screen.getByRole("menuitem", { name: "暂停" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    expect(screen.getByRole("menuitem", { name: "启用已发布版本" })).toBeInTheDocument();
   });
 
   it("does not offer activation for an unpublished draft", async () => {
@@ -868,6 +969,7 @@ describe("Agent workflow page", () => {
   it("shows the active Workflow limit for both enable and resume", async () => {
     const user = userEvent.setup();
     const baseRepository = getWorkflowDraftRepository();
+    await publishInMemoryWorkflow("newcomer-conversion");
     const limitError = () => new WorkflowRepositoryError(
       "conflict",
       "最多可同时运行 50 个 Workflow",

@@ -474,7 +474,7 @@ Node Workflow Kernel 提供唯一的 Production Availability 判断模块，发�
 | Entry | 检查候选 Revision 的 Runtime Support、Subject Type 和当前 Entitlement，再决定是否创建 Run |
 | Task / Retry / Wait 到期 | 检查当前 Entitlement；节点依赖故障走自身可靠性语义 |
 
-Execution Spec v3 只持久化执行图和节点配置，不持久化当前可用性的布尔结果或能力键。`validatedDraftVersion` 可以证明草稿自上次校验后未变化，但不能替代 Enable 时对 Runtime Support、Event Catalog、Entitlement 和资源的实时复查。
+Execution Spec v3 只持久化执行图和节点配置，不持久化当前可用性的布尔结果或能力键。发布审核冻结候选内容，但不能替代 Publish、Enable 和 Resume 时对 Runtime Support、Event Catalog、Entitlement 和资源的实时复查。
 
 #### 版本兼容与下线
 

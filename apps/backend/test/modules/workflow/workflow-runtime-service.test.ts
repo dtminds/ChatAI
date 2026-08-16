@@ -249,7 +249,11 @@ async function createEnabledWorkflow(
   const service = createWorkflowService(repository);
   const created = await service.create(owner, { workflowType: "chatai_sop" });
   const saved = await service.saveDraft(owner, created.id, { draft, expectedDraftVersion: 1 });
-  await service.publish(owner, created.id, { expectedDraftVersion: saved.draftVersion });
+  const review = await service.submitReview(owner, created.id, {
+    expectedDraftVersion: saved.draftVersion,
+  });
+  await service.approveReview(owner, created.id, review.id, {});
+  await service.publish(owner, created.id, { reviewId: review.id });
   return service.enable(owner, created.id);
 }
 

@@ -1,6 +1,8 @@
 import type {
   WorkflowDraft,
   WorkflowExecutionSpec,
+  WorkflowPublishReviewChangeSummary,
+  WorkflowPublishReviewStatus,
   WorkflowRuntimeStatus,
   WorkflowStatusReason,
   WorkflowSubjectType,
@@ -14,16 +16,17 @@ export type WorkflowDefinitionRecord = {
   description: string;
   draft: WorkflowDraft;
   draftSchemaVersion: number;
+  draftSemanticHash: string;
   draftVersion: number;
   id: string;
   name: string;
   opSubUserId: string;
+  publishedSemanticHash: string | null;
   publishedRevision: number | null;
   runtimeStatus: WorkflowRuntimeStatus;
   statusReason: WorkflowStatusReason;
   uid: number;
   updatedAt: Date;
-  validatedDraftVersion: number | null;
   workflowType: WorkflowType;
 };
 
@@ -34,10 +37,39 @@ export type WorkflowRevisionRecord = {
   id: string;
   publishSubUserId: string;
   publishedAt: Date;
+  reviewId: string;
   revision: number;
   specHash: string;
   subjectType: WorkflowSubjectType;
   uid: number;
+  workflowId: string;
+  workflowType: WorkflowType;
+};
+
+export type WorkflowPublishReviewRecord = {
+  basePublishedRevision: number | null;
+  candidateHash: string;
+  changeSummary: WorkflowPublishReviewChangeSummary;
+  checkedAt: Date;
+  createdAt: Date;
+  draft: WorkflowDraft;
+  draftSemanticHash: string;
+  executionSpec: WorkflowExecutionSpec;
+  id: string;
+  publishedAt: Date | null;
+  publishedBySubUserId: string | null;
+  resultingRevision: number | null;
+  reviewComment: string | null;
+  reviewedAt: Date | null;
+  reviewedBySubUserId: string | null;
+  sourceDraftVersion: number;
+  status: WorkflowPublishReviewStatus;
+  subjectType: WorkflowSubjectType;
+  submittedAt: Date;
+  submittedBySubUserId: string;
+  triggerBindings: WorkflowTriggerBindingSpec[];
+  uid: number;
+  updatedAt: Date;
   workflowId: string;
   workflowType: WorkflowType;
 };
@@ -47,6 +79,8 @@ export type WorkflowMutationResult<T> =
   | { kind: "active-limit-exceeded" }
   | { kind: "conflict" }
   | { kind: "invalid-status"; status: WorkflowRuntimeStatus }
+  | { kind: "review-invalid-status"; status: WorkflowPublishReviewStatus }
+  | { kind: "review-locked" }
   | { kind: "not-found" };
 
 export type WorkflowCreateResult =
@@ -65,57 +99,70 @@ export type WorkflowRepository = {
     clientRequestId?: string;
     description: string;
     draft: WorkflowDraft;
+    draftSemanticHash: string;
     name: string;
     opSubUserId: string;
     uid: number;
     workflowType: WorkflowType;
   }): Promise<WorkflowCreateResult>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowDefinitionRecord | null>;
+  findReview(uid: number, workflowId: string, reviewId: string): Promise<WorkflowPublishReviewRecord | null>;
+  findCurrentReview(uid: number, workflowId: string): Promise<WorkflowPublishReviewRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRevisionRecord | null>;
   listDefinitions(uid: number): Promise<WorkflowDefinitionRecord[]>;
+  listReviews(uid: number, workflowId: string): Promise<WorkflowPublishReviewRecord[]>;
   listRevisions(uid: number, workflowId: string): Promise<WorkflowRevisionRecord[]>;
   markDeleted(input: {
     opSubUserId: string;
     uid: number;
     workflowId: string;
   }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;
-  markValidated(input: {
-    expectedDraftVersion: number;
-    opSubUserId: string;
-    uid: number;
-    workflowId: string;
-  }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;
-  publishRevision(input: {
+  submitReview(input: {
+    basePublishedRevision: number | null;
+    candidateHash: string;
+    changeSummary: WorkflowPublishReviewChangeSummary;
+    checkedAt: Date;
     draft: WorkflowDraft;
+    draftSemanticHash: string;
     executionSpec: WorkflowExecutionSpec;
     expectedDraftVersion: number;
-    expectedPublishedRevision: number;
     opSubUserId: string;
-    specHash: string;
     subjectType: WorkflowSubjectType;
     triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
     workflowType: WorkflowType;
+  }): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>>;
+  decideReview(input: {
+    comment: string | null;
+    decision: "approved" | "rejected";
+    opSubUserId: string;
+    reviewId: string;
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>>;
+  withdrawReview(input: {
+    allowedStatuses: Array<"approved" | "pending">;
+    opSubUserId: string;
+    reviewId: string;
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>>;
+  publishRevision(input: {
+    candidateHash: string;
+    opSubUserId: string;
+    reviewId: string;
+    uid: number;
+    workflowId: string;
   }): Promise<WorkflowMutationResult<{
     definition: WorkflowDefinitionRecord;
     revision: WorkflowRevisionRecord;
   }>>;
   enable(input: {
-    draft: WorkflowDraft;
-    executionSpec: WorkflowExecutionSpec;
-    expectedDraftVersion: number;
     opSubUserId: string;
-    specHash: string;
-    subjectType: WorkflowSubjectType;
-    triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
-    workflowType: WorkflowType;
-  }): Promise<WorkflowMutationResult<{
-    definition: WorkflowDefinitionRecord;
-    revision: WorkflowRevisionRecord;
-  }>>;
+  }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;
   updateDefinitionMetadata(input: {
     description?: string;
     name?: string;
@@ -125,6 +172,7 @@ export type WorkflowRepository = {
   }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;
   restoreDraft(input: {
     draft: WorkflowDraft;
+    draftSemanticHash: string;
     expectedDraftVersion: number;
     opSubUserId: string;
     uid: number;
@@ -132,6 +180,7 @@ export type WorkflowRepository = {
   }): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>>;
   saveDraft(input: {
     draft: WorkflowDraft;
+    draftSemanticHash: string;
     expectedDraftVersion: number;
     layoutOnly?: boolean;
     opSubUserId: string;

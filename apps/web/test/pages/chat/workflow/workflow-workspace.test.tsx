@@ -15,12 +15,13 @@ import {
 import type {
   SyncWorkflowDraftRepository,
   WorkflowDraftRepository,
-  WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
 import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
 vi.mock("sonner", () => ({
   toast: {
+    error: vi.fn(),
     success: vi.fn(),
   },
 }));
@@ -59,6 +60,7 @@ vi.mock("@xyflow/react", async () => {
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
+    vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
   });
 
@@ -138,18 +140,18 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.readOnly).toBe(true);
   });
 
-  it("derives activation readiness from the in-memory draft revision", () => {
+  it("locks the canvas while a review is pending", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
+    const document = repository.submitReview("newcomer-conversion");
     const { result } = renderHook(() => useWorkflowWorkspace(
       document.id,
       repository,
       document,
     ));
 
-    expect(document.draftVersion).toBeUndefined();
-    expect(document.validatedDraftVersion).toBe(document.revision);
-    expect(result.current.topBar.validatedForActivation).toBe(true);
+    expect(result.current.readOnlyReason).toBe("review-locked");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.document.currentReview?.status).toBe("pending");
   });
 
   it("selects nodes and opens the inspector while keeping checks open", () => {
@@ -597,7 +599,7 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
-      await result.current.topBar.onPublish();
+      await result.current.topBar.onSubmitReview();
     });
 
     expect(result.current.checks.isOpen).toBe(true);
@@ -624,9 +626,13 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishReady).toBe(true);
 
       await act(async () => {
-        const publishPromise = result.current.topBar.onPublish();
+        const submitPromise = result.current.topBar.onSubmitReview();
         await vi.advanceTimersByTimeAsync(500);
-        await publishPromise;
+        await submitPromise;
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+        await result.current.topBar.onPublish();
       });
 
       expect(result.current.topBar.publishState).toBe("published");
@@ -641,6 +647,92 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
+  it("surfaces review, publication, and activation failures", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    baseRepository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+    const initial = baseRepository.getDocument("newcomer-conversion");
+    const reviewError = new Error("审核操作失败");
+    const repository = {
+      ...baseRepository,
+      approveReview: vi.fn(async () => { throw reviewError; }),
+      continueEditing: vi.fn(async () => { throw reviewError; }),
+      enableDocument: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "最多可同时运行 50 个 Workflow",
+          { apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED" },
+        );
+      }),
+      publishReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "审核内容依赖的业务资源已变化，请处理后重试发布",
+          { apiCode: "WORKFLOW_REVIEW_RESOURCES_CHANGED" },
+        );
+      }),
+      rejectReview: vi.fn(async () => { throw reviewError; }),
+      submitReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "validation",
+          "Workflow 校验未通过",
+        );
+      }),
+      withdrawReview: vi.fn(async () => { throw reviewError; }),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("Workflow 校验未通过");
+
+    const pending = baseRepository.submitReview(initial.id);
+    const reviewId = pending.currentReview!.id;
+    const { result: pendingResult } = renderHook(() => useWorkflowWorkspace(
+      pending.id,
+      repository,
+      pending,
+    ));
+    await act(async () => {
+      await pendingResult.current.review.onApprove();
+      await pendingResult.current.review.onReject("需要调整");
+      await pendingResult.current.review.onWithdraw();
+      await pendingResult.current.review.onContinueEditing();
+    });
+    expect(repository.approveReview).toHaveBeenCalledWith(initial.id, reviewId, undefined);
+    expect(repository.rejectReview).toHaveBeenCalledWith(initial.id, reviewId, "需要调整");
+    expect(repository.withdrawReview).toHaveBeenCalledWith(initial.id, reviewId);
+    expect(repository.continueEditing).toHaveBeenCalledWith(initial.id, reviewId);
+    expect(toast.error).toHaveBeenCalledTimes(5);
+
+    const approved = baseRepository.approveReview(initial.id, reviewId);
+    const { result: approvedResult } = renderHook(() => useWorkflowWorkspace(
+      approved.id,
+      repository,
+      approved,
+    ));
+    await act(async () => {
+      await approvedResult.current.topBar.onPublish();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
+    expect(toast.error).toHaveBeenCalledTimes(6);
+
+    const inactive = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "inactive" as const,
+    };
+    const { result: inactiveResult } = renderHook(() => useWorkflowWorkspace(
+      inactive.id,
+      repository,
+      inactive,
+    ));
+    await act(async () => {
+      await inactiveResult.current.topBar.onEnable?.();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
+    expect(toast.error).toHaveBeenCalledTimes(7);
+  });
+
   it("keeps publish state consistent when undo returns to the published draft", async () => {
     vi.useFakeTimers();
 
@@ -649,6 +741,12 @@ describe("useWorkflowWorkspace", () => {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const publishedKeyword = getCanvasStartSourceMarker(result.current.canvas);
 
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
       await act(async () => {
         await result.current.topBar.onPublish();
       });
@@ -697,6 +795,12 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    await act(async () => {
+      await result.current.review.onApprove();
+    });
+    await act(async () => {
       await result.current.topBar.onPublish();
     });
     expect(result.current.topBar.publishState).toBe("published");
@@ -724,6 +828,12 @@ describe("useWorkflowWorkspace", () => {
       importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
       await act(async () => {
         await result.current.topBar.onPublish();
       });
@@ -838,6 +948,8 @@ describe("useWorkflowWorkspace", () => {
   it("allows viewport navigation while publishing without saving a draft change", async () => {
     const repository = createDeferredPublishRepository();
     repository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraftFromRepository(repository));
+    const submitted = repository.submitReview("newcomer-conversion");
+    repository.approveReview("newcomer-conversion", submitted.currentReview!.id);
     const initialRevision = repository.getDocument("newcomer-conversion").revision;
     const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
@@ -1103,24 +1215,22 @@ function toRuntimeSupportedDraft(draft: WorkflowDraft): WorkflowDraft {
 
 function createDeferredPublishRepository() {
   const baseRepository = createInMemoryWorkflowDraftRepository();
-  type PublishResult = ReturnType<typeof baseRepository.publishDraft>;
+  type PublishResult = ReturnType<typeof baseRepository.publishReview>;
   const pendingPublishes: Array<{
-    draft: WorkflowDraft;
-    options?: WorkflowDraftPublishOptions;
     reject: (error: Error) => void;
     resolve: (document: PublishResult) => void;
+    reviewId: string;
     workflowId: string;
   }> = [];
 
   return {
     ...baseRepository,
     pendingPublishes,
-    publishDraft: (workflowId, draft, options) => new Promise((resolve, reject) => {
+    publishReview: (workflowId: string, reviewId: string) => new Promise<PublishResult>((resolve, reject) => {
       pendingPublishes.push({
-        draft,
-        options,
         reject,
         resolve,
+        reviewId,
         workflowId,
       });
     }),
@@ -1131,10 +1241,9 @@ function createDeferredPublishRepository() {
         return;
       }
 
-      pendingPublish.resolve(baseRepository.publishDraft(
+      pendingPublish.resolve(baseRepository.publishReview(
         pendingPublish.workflowId,
-        pendingPublish.draft,
-        pendingPublish.options,
+        pendingPublish.reviewId,
       ));
     },
   } satisfies WorkflowDraftRepository & {

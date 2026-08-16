@@ -3,6 +3,9 @@ import {
   WorkflowCreateRequestSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowPublishRequestSchema,
+  WorkflowReviewApproveRequestSchema,
+  WorkflowReviewRejectRequestSchema,
+  WorkflowReviewSubmitRequestSchema,
   WorkflowRenameRequestSchema,
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
@@ -11,6 +14,9 @@ import {
   type WorkflowCreateRequest,
   type WorkflowMetadataUpdateRequest,
   type WorkflowPublishRequest,
+  type WorkflowReviewApproveRequest,
+  type WorkflowReviewRejectRequest,
+  type WorkflowReviewSubmitRequest,
   type WorkflowRenameRequest,
   type WorkflowRestoreRequest,
   type WorkflowSaveDraftRequest,
@@ -39,9 +45,14 @@ const WorkflowRevisionParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ revision: Type.Integer({ minimum: 1 }) }),
 ]);
+const WorkflowReviewParamsSchema = Type.Intersect([
+  WorkflowParamsSchema,
+  Type.Object({ reviewId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
+]);
 
 type WorkflowParams = Static<typeof WorkflowParamsSchema>;
 type WorkflowRevisionParams = Static<typeof WorkflowRevisionParamsSchema>;
+type WorkflowReviewParams = Static<typeof WorkflowReviewParamsSchema>;
 
 const WorkflowRecordsQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ pattern: "^[1-9][0-9]*$" })),
@@ -235,6 +246,62 @@ export async function registerWorkflowRoutes(
       getWorkflowScope(request),
       request.params.workflowId,
       request.body,
+    )),
+  );
+
+  app.get<{ Params: WorkflowParams }>(
+    "/api/server/workflows/:workflowId/review",
+    { ...authenticated, schema: { params: WorkflowParamsSchema } },
+    async request => apiSuccess(await service.getCurrentReview(
+      getWorkflowScope(request), request.params.workflowId,
+    )),
+  );
+
+  app.get<{ Params: WorkflowParams }>(
+    "/api/server/workflows/:workflowId/reviews",
+    { ...authenticated, schema: { params: WorkflowParamsSchema } },
+    async request => apiSuccess(await service.listReviews(
+      getWorkflowScope(request), request.params.workflowId,
+    )),
+  );
+
+  app.post<{ Body: WorkflowReviewSubmitRequest; Params: WorkflowParams }>(
+    "/api/server/workflows/:workflowId/reviews",
+    { ...authenticated, schema: { body: WorkflowReviewSubmitRequestSchema, params: WorkflowParamsSchema } },
+    async request => apiSuccess(await service.submitReview(
+      getWorkflowScope(request), request.params.workflowId, request.body,
+    )),
+  );
+
+  app.post<{ Body: WorkflowReviewApproveRequest; Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/approve",
+    { ...authenticated, schema: { body: WorkflowReviewApproveRequestSchema, params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.approveReview(
+      getWorkflowScope(request), request.params.workflowId, request.params.reviewId, request.body,
+    )),
+  );
+
+  app.post<{ Body: WorkflowReviewRejectRequest; Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/reject",
+    { ...authenticated, schema: { body: WorkflowReviewRejectRequestSchema, params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.rejectReview(
+      getWorkflowScope(request), request.params.workflowId, request.params.reviewId, request.body,
+    )),
+  );
+
+  app.post<{ Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/withdraw",
+    { ...authenticated, schema: { params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.withdrawReview(
+      getWorkflowScope(request), request.params.workflowId, request.params.reviewId,
+    )),
+  );
+
+  app.post<{ Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/continue-editing",
+    { ...authenticated, schema: { params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.continueEditing(
+      getWorkflowScope(request), request.params.workflowId, request.params.reviewId,
     )),
   );
 

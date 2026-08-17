@@ -2,7 +2,7 @@ import { AiUserIcon } from "@hugeicons/core-free-icons";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 
 export const aiCollectNodeDefinition = createStandardNodeDefinition({
-  accentClassName: "bg-emerald-600 text-white ring-emerald-600/20",
+  accentClassName: "bg-emerald-600 text-white",
   accentRgb: "5 150 105",
   badge: "ai",
   description: "通过 AI 对话收集客户资料",

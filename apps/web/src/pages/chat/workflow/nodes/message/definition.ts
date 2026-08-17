@@ -1,4 +1,4 @@
-import { Message01Icon } from "@hugeicons/core-free-icons";
+import { Sent02Icon } from "@hugeicons/core-free-icons";
 import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
 } from "@chatai/contracts";
@@ -18,10 +18,10 @@ import {
 } from "./content-source";
 
 const baseMessageNodeDefinition = createStandardNodeDefinition({
-  accentClassName: "bg-sky-500 text-white ring-sky-500/20",
-  accentRgb: "14 165 233",
-  description: "向客户发送营销消息",
-  icon: Message01Icon,
+  accentClassName: "bg-amber-500 text-white",
+  accentRgb: "245 158 11",
+  description: "通过托管账号向客户发送消息",
+  icon: Sent02Icon,
   kind: "message",
   label: "消息发送",
   metric: "待配置消息内容",

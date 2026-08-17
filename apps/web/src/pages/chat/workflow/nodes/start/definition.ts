@@ -1,4 +1,4 @@
-import { PlayIcon } from "@hugeicons/core-free-icons";
+import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
   DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
@@ -96,9 +96,9 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-blue-600 text-white ring-blue-600/20",
+    accentClassName: "bg-blue-600 text-white",
     accentRgb: "37 99 235",
-    icon: PlayIcon,
+    icon: LogoutCircle01Icon,
     label: "开始",
   },
 };

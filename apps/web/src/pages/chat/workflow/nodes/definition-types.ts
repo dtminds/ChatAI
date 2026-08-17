@@ -21,7 +21,7 @@ export type NodeVisual = {
   label: string;
 };
 
-export type WorkflowNodePaletteGroupId = "benefit" | "data" | "flow" | "message";
+export type WorkflowNodePaletteGroupId = "data" | "flow" | "message" | "operate";
 
 export type WorkflowNodePaletteGroup = {
   id: WorkflowNodePaletteGroupId;

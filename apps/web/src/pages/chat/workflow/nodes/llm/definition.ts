@@ -51,7 +51,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
     title: "大模型",
     userPrompt: [],
   }),
-  description: "调用大模型生成文本或结构化结果",
+  description: "根据设定的指令调用大模型，为不同客户生成定制化的对话内容，实现规模化下的个性化服务",
   getOutputVariables: (node) => getLlmOutputDefinitions(node.data.output),
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
@@ -192,7 +192,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-neutral-950 text-white ring-neutral-950/20",
+    accentClassName: "bg-neutral-950 text-white",
     accentRgb: "10 10 10",
     badge: "ai",
     icon: AiMagicIcon,

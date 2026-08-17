@@ -1,4 +1,4 @@
-import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
+import { LoginCircle01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createDefaultTargetHandles,
@@ -30,9 +30,9 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   getTargetHandles: createDefaultTargetHandles,
   sort: 1000,
   visual: {
-    accentClassName: "bg-slate-700 text-white ring-slate-700/20",
-    accentRgb: "51 65 85",
-    icon: LogoutCircle01Icon,
+    accentClassName: "bg-blue-600 text-white",
+    accentRgb: "37 99 235",
+    icon: LoginCircle01Icon,
     label: "结束",
   },
 };

@@ -38,7 +38,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
     status: "warning",
     title: "条件分支",
   }),
-  description: "根据前序变量按顺序匹配分支",
+  description: "根据配置的条件规则，自动将客户分流到不同的后续运营路径",
   getEstimatedHeight: getWorkflowBranchEstimatedHeight,
   getSourceHandles: createBranchSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
@@ -65,7 +65,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   sort: 20,
   validate: validateBranchNode,
   visual: {
-    accentClassName: "bg-amber-500 text-white ring-amber-500/20",
+    accentClassName: "bg-amber-500 text-white",
     accentRgb: "245 158 11",
     icon: WorkflowCircle06Icon,
     label: "条件分支",

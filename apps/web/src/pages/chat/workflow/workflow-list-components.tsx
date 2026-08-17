@@ -371,7 +371,7 @@ export function WorkflowListState({
   onRetry,
   title,
 }: {
-  description: string;
+  description?: string;
   onRetry?: () => void;
   title: string;
 }) {
@@ -382,7 +382,7 @@ export function WorkflowListState({
           <HugeiconsIcon icon={onRetry ? AlertCircleIcon : WorkflowSquare01Icon} size={20} strokeWidth={1.8} />
         </EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
+        {description ? <EmptyDescription>{description}</EmptyDescription> : null}
       </EmptyHeader>
       {onRetry ? (
         <EmptyContent>

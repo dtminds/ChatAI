@@ -39,12 +39,12 @@ export const workflowNodePaletteGroups = [
   },
   {
     id: "message",
-    label: "消息",
+    label: "会话互动",
     sort: 30,
   },
   {
-    id: "benefit",
-    label: "权益",
+    id: "operate",
+    label: "客户运营",
     sort: 40,
   },
 ] as const satisfies readonly WorkflowNodePaletteGroup[];

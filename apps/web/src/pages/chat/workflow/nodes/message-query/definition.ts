@@ -77,7 +77,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
   insertable: true,
   kind: "message-query",
   layout: compactNodeLayout,
-  paletteGroup: "message",
+  paletteGroup: "data",
   paletteLabel: "消息查询",
   sanitizeData: (data) => {
     const limit = normalizeMessageQueryLimit(data.limit);
@@ -123,7 +123,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
     return issues;
   },
   visual: {
-    accentClassName: "bg-orange-500 text-white ring-orange-500/20",
+    accentClassName: "bg-orange-500 text-white",
     accentRgb: "249 115 22",
     icon: MessageSearch01Icon,
     label: "消息查询",

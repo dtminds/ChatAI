@@ -456,19 +456,19 @@ describe("workflow node catalog", () => {
       "data",
       "data",
       "data",
+      "operate",
+      "operate",
+      "message",
       "data",
-      "data",
       "message",
       "message",
-      "message",
-      "message",
-      "benefit",
+      "operate",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
       "data",
       "message",
-      "benefit",
+      "operate",
     ]);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
@@ -481,9 +481,9 @@ describe("workflow node catalog", () => {
       items: group.items.map((item) => item.id),
     }))).toEqual([
       { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
-      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "tag", "customer-update"] },
-      { id: "message", items: ["message", "message-query", "handoff", "agent"] },
-      { id: "benefit", items: ["coupon"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
+      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "operate", items: ["tag", "customer-update", "coupon"] },
     ]);
     expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({
       id: group.id,

@@ -1,4 +1,4 @@
-import { BellDotIcon } from "@hugeicons/core-free-icons";
+import { HourglassIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createCatalogIssue,
@@ -36,7 +36,7 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
     timeout: { duration: 24, unit: "hour" },
     title: "等待事件",
   }),
-  description: "等待客户事件发生或超时后继续流程",
+  description: "流经该节点时，系统会根据设定的客户事件持续等待，直到该事件发生或超时，再自动推进至后续节点",
   getOutputVariables: (node) =>
     getWorkflowWaitEventDefinition(normalizeWaitEventType(node.data.event?.type))
       .outputDefinitions,
@@ -92,9 +92,9 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
         )];
   },
   visual: {
-    accentClassName: "bg-rose-500 text-white ring-rose-500/20",
+    accentClassName: "bg-rose-500 text-white",
     accentRgb: "244 63 94",
-    icon: BellDotIcon,
+    icon: HourglassIcon,
     label: "等待事件",
   },
 };

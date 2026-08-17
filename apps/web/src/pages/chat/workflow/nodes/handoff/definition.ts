@@ -7,9 +7,9 @@ import {
 } from "../variable-content/content";
 
 const baseHandoffNodeDefinition = createStandardNodeDefinition({
-  accentClassName: "bg-slate-600 text-white ring-slate-600/20",
-  accentRgb: "71 85 105",
-  description: "将客户转交给人工或指定团队",
+  accentClassName: "bg-cyan-600 text-white",
+  accentRgb: "8 145 178",
+  description: "遇到复杂、个性化或需人工介入的问题时，将客户转接至人工客服，可向接管客服说明客户需求和当前背景便于处理",
   icon: UserSwitchIcon,
   kind: "handoff",
   label: "转人工",

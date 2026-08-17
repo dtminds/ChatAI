@@ -77,7 +77,7 @@ function PanelHeader({
       <div className="flex items-center gap-3">
         <span
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-xl ring-1",
+            "flex size-9 shrink-0 items-center justify-center rounded-[10px]",
             visual.accentClassName,
           )}
         >

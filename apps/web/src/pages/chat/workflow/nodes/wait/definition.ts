@@ -31,7 +31,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
       title: "等待",
       unit: "day",
     }),
-  description: "按天、小时或固定窗口延迟触达",
+  description: "流经该节点时，系统会根据设定的规则暂停执行，待等待时间到达后，再自动推进至后续节点",
   insertable: true,
   kind: "wait",
   layout: compactNodeLayout,
@@ -87,7 +87,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
         )];
   },
   visual: {
-    accentClassName: "bg-indigo-500 text-white ring-indigo-500/20",
+    accentClassName: "bg-indigo-500 text-white",
     accentRgb: "99 102 241",
     icon: AlarmClockIcon,
     label: "等待",

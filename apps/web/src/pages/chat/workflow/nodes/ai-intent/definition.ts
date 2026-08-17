@@ -44,7 +44,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     status: "warning",
     title: "意图识别",
   }),
-  description: "使用 AI 将前序消息匹配到预设意图",
+  description: "使用 AI 理解客户的对话内容，根据设定的意图分类进行归类，将客户分流到不同的后续运营路径",
   getEstimatedHeight: getAiIntentEstimatedHeight,
   getOutputVariables: () => [
     {
@@ -150,7 +150,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-blue-600 text-white ring-blue-600/20",
+    accentClassName: "bg-blue-600 text-white",
     accentRgb: "37 99 235",
     badge: "ai",
     icon: AiBrain04Icon,

@@ -1,5 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  normalizeWorkflowUtcInstant,
+  WorkflowUtcInstantSchema,
+} from "./utc-instant.js";
 
 export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
@@ -81,9 +85,7 @@ export const WorkflowEntryEventNameSchema = Type.String({
 export const WorkflowEntryEventSchema = Type.Object({
   eventId: Type.String({ maxLength: 128, minLength: 1 }),
   eventType: WorkflowEntryEventNameSchema,
-  occurredAt: Type.String({
-    pattern: "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}Z$",
-  }),
+  occurredAt: WorkflowUtcInstantSchema,
   payload: WorkflowJsonObjectSchema,
   payloadVersion: Type.Integer({ maximum: 65_535, minimum: 1 }),
   schemaVersion: Type.Literal(WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION),
@@ -142,8 +144,8 @@ export function validateWorkflowEntryEvent(
   }
   const envelopeBytes = getWorkflowJsonEncodedByteLength(value);
   if (envelopeBytes === null) return { code: "envelope_invalid", kind: "rejected" };
-  if (!Value.Check(WorkflowEntryEventSchema, value)
-    || !isUtcRfc3339Milliseconds(value.occurredAt)) {
+  const occurredAt = normalizeWorkflowUtcInstant(value.occurredAt);
+  if (!Value.Check(WorkflowEntryEventSchema, value) || occurredAt === null) {
     return { code: "envelope_invalid", kind: "rejected" };
   }
   if (getWorkflowJsonDepth(value) > WORKFLOW_ENTRY_JSON_MAX_DEPTH) {
@@ -157,7 +159,9 @@ export function validateWorkflowEntryEvent(
   if (Math.max(options.encodedByteLength ?? 0, envelopeBytes) > WORKFLOW_ENTRY_EVENT_MAX_BYTES) {
     return { code: "envelope_too_large", kind: "rejected" };
   }
-  return { event: structuredClone(value) as WorkflowEntryEvent, kind: "accepted" };
+  const event = structuredClone(value) as WorkflowEntryEvent;
+  event.occurredAt = occurredAt;
+  return { event, kind: "accepted" };
 }
 
 export function getWorkflowJsonEncodedByteLength(value: unknown): number | null {
@@ -195,10 +199,4 @@ export function getWorkflowJsonDepth(value: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function isUtcRfc3339Milliseconds(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const parsed = new Date(value);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }

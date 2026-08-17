@@ -4,10 +4,7 @@ import {
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
 } from "../chat/quick-reply-content.js";
 import { WorkflowPushAccountStrategySchema } from "./trigger.js";
-
-const WorkflowUtcTimestampSchema = Type.String({
-  pattern: "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,9})?Z$",
-});
+import { WorkflowUtcInstantSchema } from "./utc-instant.js";
 
 const WorkflowMessageCommandAttachmentSchema = Type.Object({
   content: Type.Record(Type.String(), Type.Unknown()),
@@ -42,7 +39,7 @@ export const WorkflowMessageCommandSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowMessageResultSchema = Type.Object({
-  sentAt: WorkflowUtcTimestampSchema,
+  sentAt: WorkflowUtcInstantSchema,
 }, { additionalProperties: false });
 
 export type WorkflowMessageCommand = Static<typeof WorkflowMessageCommandSchema>;

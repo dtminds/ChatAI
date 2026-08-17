@@ -110,6 +110,16 @@ describe("workflow entry event envelope", () => {
     })).toMatchObject({ code: "envelope_invalid", kind: "rejected" });
   });
 
+  it.each([
+    ["2026-08-09T10:30:15Z", "2026-08-09T10:30:15.000Z"],
+    ["2026-08-09T10:30:15.123456789Z", "2026-08-09T10:30:15.123Z"],
+  ])("normalizes accepted UTC instant %s before admission", (occurredAt, expected) => {
+    expect(validateWorkflowEntryEvent(event({ occurredAt }))).toMatchObject({
+      event: { occurredAt: expected },
+      kind: "accepted",
+    });
+  });
+
   it("rejects Entry Event sources outside the frozen producer set", () => {
     expect(validateWorkflowEntryEvent({
       ...event(),

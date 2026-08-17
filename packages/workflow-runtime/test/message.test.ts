@@ -90,10 +90,10 @@ describe("Workflow Message capability", () => {
 
   it("renders a selected text output without leaking its selector to the adapter", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
-      sentAt: "2026-08-16T09:31:00.000Z",
+      sentAt: "2026-08-16T09:31:00Z",
     }));
 
-    await executeWorkflowCapability({
+    const result = await executeWorkflowCapability({
       binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
       commandContext: context,
       config: {
@@ -117,6 +117,7 @@ describe("Workflow Message capability", () => {
       uid: 9,
     });
 
+    expect(result).toEqual({ sentAt: "2026-08-16T09:31:00.000Z" });
     expect(adapter.calls[0]).toMatchObject({
       request: {
         command: {
@@ -187,9 +188,12 @@ describe("Workflow Message capability", () => {
     });
   });
 
-  it("rejects an invalid Java result as a terminal output failure", async () => {
+  it.each([
+    "2026-08-16 09:31:00",
+    "2026-02-30T09:31:00.000Z",
+  ])("rejects invalid Java result %s as a terminal output failure", async (sentAt) => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
-      sentAt: "2026-08-16 09:31:00",
+      sentAt,
     }));
 
     await expect(executeWorkflowCapability({

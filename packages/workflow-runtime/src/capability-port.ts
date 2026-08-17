@@ -81,6 +81,7 @@ export type WorkflowCapabilityExecutionBinding<
   }): unknown;
   definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>;
   nodeKind: WorkflowCapabilityNodeKind;
+  normalizeResult?(result: Static<TResultSchema>): Static<TResultSchema> | null;
 };
 
 export async function executeWorkflowCapability<
@@ -127,12 +128,25 @@ export async function executeWorkflowCapability<
   const result = await input.port.execute(input.binding.definition, request);
   if (!Value.Check(input.binding.definition.resultSchema, result)
     || !result || typeof result !== "object" || Array.isArray(result)) {
-    throw new WorkflowCapabilityExecutionError(
-      "terminal",
-      "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
-      "节点返回的数据无法处理，流程已停止",
-      { diagnosticMessage: "Workflow capability result failed schema validation" },
-    );
+    throw capabilityOutputInvalid();
   }
-  return structuredClone(result) as Record<string, unknown>;
+  const normalizedResult = input.binding.normalizeResult
+    ? input.binding.normalizeResult(structuredClone(result) as Static<TResultSchema>)
+    : structuredClone(result);
+  if (!Value.Check(input.binding.definition.resultSchema, normalizedResult)
+    || !normalizedResult
+    || typeof normalizedResult !== "object"
+    || Array.isArray(normalizedResult)) {
+    throw capabilityOutputInvalid();
+  }
+  return structuredClone(normalizedResult) as Record<string, unknown>;
+}
+
+function capabilityOutputInvalid() {
+  return new WorkflowCapabilityExecutionError(
+    "terminal",
+    "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
+    "节点返回的数据无法处理，流程已停止",
+    { diagnosticMessage: "Workflow capability result failed schema validation" },
+  );
 }

@@ -570,7 +570,7 @@ describe("workflow capability reliability", () => {
       if (attempt === 1) {
         throw createActionError("retryable", "MESSAGE_SEND_TEMPORARY");
       }
-      return { sentAt: "2026-07-13T00:00:05.000Z" };
+      return { sentAt: "2026-07-13T00:00:05.123456789Z" };
     }, {
       capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
       spec,
@@ -613,7 +613,7 @@ describe("workflow capability reliability", () => {
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         executionKey: "9:1:message:2",
-        output: { sentAt: "2026-07-13T00:00:05.000Z" },
+        output: { sentAt: "2026-07-13T00:00:05.123Z" },
         status: "completed",
       }),
     ]));

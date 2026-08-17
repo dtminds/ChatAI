@@ -134,7 +134,7 @@ describe("workflow variables", () => {
       ]));
   });
 
-  it("resolves stable selectors and rejects unavailable message references", () => {
+  it("resolves stable selectors and rejects unavailable references", () => {
     const variables = getAvailableVariablesForNode("end", createInitialNodes(), createInitialEdges());
 
     expect(getWorkflowVariableSelectorKey(["subject", "id"])).toBe("subject.id");
@@ -143,17 +143,17 @@ describe("workflow variables", () => {
       scope: "subject",
     }));
     expect(resolveWorkflowVariable(variables, ["node", "missing", "result"])).toBeUndefined();
-    expect(resolveWorkflowVariable(variables, ["node", "message-welcome", "sentAt"]))
+    expect(resolveWorkflowVariable(variables, ["node-lifecycle", "message-welcome", "exitedAt"]))
       .toEqual(expect.objectContaining({
-        label: "发送成功时间",
-        scope: "node",
+        label: "退出时间",
+        scope: "node-lifecycle",
         sourceNodeId: "message-welcome",
         sourceNodeTitle: "发送欢迎消息",
       }));
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
-      ["node", "message-welcome", "sentAt"],
-    )!)).toBe("发送欢迎消息.发送成功时间");
+      ["node-lifecycle", "message-welcome", "exitedAt"],
+    )!)).toBe("发送欢迎消息.退出时间");
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["subject", "id"],

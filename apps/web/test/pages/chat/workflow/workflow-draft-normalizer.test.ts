@@ -389,7 +389,7 @@ describe("workflow draft normalizer", () => {
           timeRange: {
             end: ["current-node-lifecycle", "enteredAt"],
             mode: "dynamic",
-            start: ["node", "message-source", "sentAt"],
+            start: ["node-lifecycle", "message-source", "exitedAt"],
           },
           take: "earliest",
           title: "查询邀约后的消息",
@@ -407,7 +407,7 @@ describe("workflow draft normalizer", () => {
       timeRange: {
         end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: ["node", "message-source", "sentAt"],
+        start: ["node-lifecycle", "message-source", "exitedAt"],
       },
       take: "earliest",
     }));

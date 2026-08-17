@@ -1,6 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { WorkflowChatAiAccountSelectionSchema } from "./chatai-action.js";
-import { WorkflowUtcInstantSchema } from "./utc-instant.js";
 
 export const WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH = 100;
 
@@ -17,9 +16,7 @@ export const WorkflowHandoffCommandSchema = Type.Object({
   source: Type.Literal("workflow"),
 }, { additionalProperties: false });
 
-export const WorkflowHandoffResultSchema = Type.Object({
-  handoffAt: WorkflowUtcInstantSchema,
-}, { additionalProperties: false });
+export const WorkflowHandoffResultSchema = Type.Object({}, { additionalProperties: false });
 
 export type WorkflowHandoffCommand = Static<typeof WorkflowHandoffCommandSchema>;
 export type WorkflowHandoffResult = Static<typeof WorkflowHandoffResultSchema>;

@@ -180,9 +180,11 @@ describe("workflow inference worker", () => {
     nodeKind,
   }) => {
     const spec = inferenceSpec(nodeKind);
+    const completedAt = new Date(now.getTime() + 5_000);
+    let runtimeNow = now;
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
-      clock: () => now,
+      clock: () => runtimeNow,
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
     });
     const started = await seedInferenceRun(repository, `event-${nodeKind}`);
@@ -210,13 +212,17 @@ describe("workflow inference worker", () => {
     const resumedTask = await repository.findTask(9, startResult.nextTask.id);
     if (!resumedTask) throw new Error("Inference Task was not resumed");
 
+    runtimeNow = completedAt;
     const resumed = await service.executeTask(taskInput(resumedTask, "resume-message"));
     expect(resumed).toMatchObject({
       kind: "success",
       nextTask: { nodeId: expectedNodeId },
     });
     await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({
-      context: { outputs: { inference: expectedOutput } },
+      context: {
+        nodeLifecycle: { inference: { exitedAt: completedAt.toISOString() } },
+        outputs: { inference: expectedOutput },
+      },
     });
     expect(repository.inferenceJobs).toHaveLength(1);
     expect(adapter.calls).toHaveLength(1);

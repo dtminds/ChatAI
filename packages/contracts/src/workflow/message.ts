@@ -4,7 +4,6 @@ import {
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
 } from "../chat/quick-reply-content.js";
 import { WorkflowChatAiAccountSelectionSchema } from "./chatai-action.js";
-import { WorkflowUtcInstantSchema } from "./utc-instant.js";
 
 const WorkflowMessageCommandAttachmentSchema = Type.Object({
   content: Type.Record(Type.String(), Type.Unknown()),
@@ -32,9 +31,7 @@ export const WorkflowMessageCommandSchema = Type.Object({
   source: Type.Literal("workflow"),
 }, { additionalProperties: false });
 
-export const WorkflowMessageResultSchema = Type.Object({
-  sentAt: WorkflowUtcInstantSchema,
-}, { additionalProperties: false });
+export const WorkflowMessageResultSchema = Type.Object({}, { additionalProperties: false });
 
 export type WorkflowMessageCommand = Static<typeof WorkflowMessageCommandSchema>;
 export type WorkflowMessageResult = Static<typeof WorkflowMessageResultSchema>;

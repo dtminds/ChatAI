@@ -1117,7 +1117,7 @@ function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
               conditions: [{
                 id: "message-sent",
                 operator: "is-not-empty",
-                selector: ["node", "message-1", "sentAt"],
+                selector: ["node-lifecycle", "message-1", "exitedAt"],
                 valueType: "datetime",
               }],
               id: "matched",

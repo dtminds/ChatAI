@@ -543,20 +543,6 @@ export function getWorkflowNodeOutputContracts(
       },
     ];
   }
-  if (kind === "message") {
-    return [{
-      key: "sentAt",
-      usages: ["time-reference", "variable"],
-      valueType: { kind: "datetime" },
-    }];
-  }
-  if (kind === "handoff") {
-    return [{
-      key: "handoffAt",
-      usages: ["time-reference", "variable"],
-      valueType: { kind: "datetime" },
-    }];
-  }
   if (kind === "wait-event") {
     return [
       {

@@ -257,16 +257,8 @@ describe("workflow node contracts", () => {
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
     })).toBe(false);
-    for (const sentAt of [
-      "2026-08-16T10:00:00Z",
-      "2026-08-16T10:00:00.000Z",
-      "2026-08-16T10:00:00.123456789Z",
-    ]) {
-      expect(Value.Check(WorkflowMessageResultSchema, { sentAt })).toBe(true);
-    }
-    expect(Value.Check(WorkflowMessageResultSchema, {
-      sentAt: "2026-08-16 10:00:00",
-    })).toBe(false);
+    expect(Value.Check(WorkflowMessageResultSchema, {})).toBe(true);
+    expect(Value.Check(WorkflowMessageResultSchema, { unexpected: true })).toBe(false);
   });
 
   it("validates complete Handoff execution configs and capability contracts", () => {
@@ -296,9 +288,8 @@ describe("workflow node contracts", () => {
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
     })).toBe(false);
-    expect(Value.Decode(WorkflowHandoffResultSchema, {
-      handoffAt: "2026-08-17T10:00:00Z",
-    })).toEqual({ handoffAt: "2026-08-17T10:00:00.000Z" });
+    expect(Value.Check(WorkflowHandoffResultSchema, {})).toBe(true);
+    expect(Value.Check(WorkflowHandoffResultSchema, { unexpected: true })).toBe(false);
   });
 
   it("assigns every node kind one stable execution class", () => {
@@ -546,16 +537,8 @@ describe("workflow node contracts", () => {
         valueType: { kind: "string" },
       },
     ]);
-    expect(getWorkflowNodeOutputContracts("message", {})).toEqual([{
-      key: "sentAt",
-      usages: ["time-reference", "variable"],
-      valueType: { kind: "datetime" },
-    }]);
-    expect(getWorkflowNodeOutputContracts("handoff", {})).toEqual([{
-      key: "handoffAt",
-      usages: ["time-reference", "variable"],
-      valueType: { kind: "datetime" },
-    }]);
+    expect(getWorkflowNodeOutputContracts("message", {})).toBeNull();
+    expect(getWorkflowNodeOutputContracts("handoff", {})).toBeNull();
     expect(getWorkflowNodeOutputContracts("wait-event", {}))
       .toContainEqual(expect.objectContaining({
         availableOnSourceOutlets: ["triggered"],

@@ -73,19 +73,17 @@ Java 负责：
 成功响应：
 
 ```json
-{
-  "handoffAt": "2026-08-17T10:00:01.000Z"
-}
+{}
 ```
 
-`handoffAt` 表示转人工复合 Action 全部成功完成的时间，必须是以 `Z` 结尾的 UTC RFC 3339 时间。小数秒可以省略，存在时允许 1-9 位；Java 可以直接使用 `Instant.toString()`。Node 接收后统一规范化为三位毫秒的 `.sssZ` 形式，再作为 Handoff 节点输出保存。
+Java 仅用空对象表示整个复合 Action 成功。Handoff 不提供独立业务时间输出；下游需要引用节点完成时间时，统一使用该节点生命周期的 `exitedAt`。
 
 ## 4. 复合 Action 与幂等
 
 - 客服接管提醒和可选对客消息共同属于一个 Handoff Action，不拆成两个 Workflow Task
 - Java 必须按 `idempotencyKey` 持久化各步骤状态；发生部分成功时，重试只补齐未完成步骤
 - Java 只有在所有必需步骤完成后才返回成功
-- 相同 `idempotencyKey` 和相同请求重复调用，返回第一次执行的同一结果
+- 相同 `idempotencyKey` 和相同请求重复调用，返回相同的成功空对象
 - 相同 `idempotencyKey` 但主体或命令不同，返回 terminal conflict
 - timeout 的执行结果未知，Node 会使用同一个 `idempotencyKey` 重试
 - 临时不可用、限流和依赖超时返回 retryable

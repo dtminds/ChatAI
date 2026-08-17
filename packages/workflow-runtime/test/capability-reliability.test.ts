@@ -480,6 +480,51 @@ describe("workflow capability reliability", () => {
     expect(runtime.snapshot().runs).toHaveLength(0);
   });
 
+  it("records a core node's actual completion time in its lifecycle", async () => {
+    const completedAt = new Date(now.getTime() + 2_000);
+    let runtimeNow = now;
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const executors = new WorkflowNodeExecutorRegistry().register("start", {
+      execute: () => {
+        runtimeNow = completedAt;
+        return { output: {}, sourceOutletId: "default", type: "advance" };
+      },
+    });
+    const service = createService(runtime, async () => ({}), {
+      clock: () => runtimeNow,
+      executors,
+      spec: coreOutputSpec(),
+    });
+    const started = await service.startRun({
+      entryEventId: "core-completion-time",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+      workflowId: "31",
+    });
+
+    await service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    await expect(runtime.findRun(9, started.run.id)).resolves.toMatchObject({
+      context: {
+        nodeLifecycle: {
+          start: {
+            enteredAt: started.task.createdAt.toISOString(),
+            exitedAt: completedAt.toISOString(),
+          },
+        },
+      },
+    });
+  });
+
   it("starts legacy revisions with the current rolling entry maximum", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const createRun = vi.spyOn(runtime, "createRunWithInitialTask");
@@ -547,6 +592,8 @@ describe("workflow capability reliability", () => {
 
   it("executes the real Message binding and reuses its idempotency key across a retry", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const completedAt = new Date(now.getTime() + 8_000);
+    let runtimeNow = now;
     const requests: Array<{
       command: Record<string, unknown>;
       idempotencyKey: string;
@@ -571,9 +618,11 @@ describe("workflow capability reliability", () => {
       if (attempt === 1) {
         throw createActionError("retryable", "MESSAGE_SEND_TEMPORARY");
       }
-      return { sentAt: "2026-07-13T00:00:05.123456789Z" };
+      runtimeNow = completedAt;
+      return {};
     }, {
       capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
+      clock: () => runtimeNow,
       spec,
     });
     const actionTask = await startCapability(runtime, service, {
@@ -614,10 +663,17 @@ describe("workflow capability reliability", () => {
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         executionKey: "9:1:message:2",
-        output: { sentAt: "2026-07-13T00:00:05.123Z" },
+        output: {},
         status: "completed",
       }),
     ]));
+    await expect(runtime.findRun(9, actionTask.runId)).resolves.toMatchObject({
+      context: {
+        nodeLifecycle: {
+          message: { exitedAt: completedAt.toISOString() },
+        },
+      },
+    });
   });
 
   it("executes Handoff as one action and reuses its idempotency key across a retry", async () => {
@@ -637,7 +693,7 @@ describe("workflow capability reliability", () => {
       if (attempt === 1) {
         throw createActionError("retryable", "HANDOFF_TEMPORARY");
       }
-      return { handoffAt: "2026-07-13T00:00:05.123456789Z" };
+      return {};
     }, {
       capabilityBindings: [WORKFLOW_HANDOFF_CAPABILITY_BINDING],
       spec: handoffSpec(),
@@ -677,7 +733,7 @@ describe("workflow capability reliability", () => {
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         executionKey: "9:1:handoff:2",
-        output: { handoffAt: "2026-07-13T00:00:05.123Z" },
+        output: {},
         status: "completed",
       }),
     ]));

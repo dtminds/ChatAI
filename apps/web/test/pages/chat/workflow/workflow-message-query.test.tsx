@@ -140,11 +140,11 @@ describe("workflow message query", () => {
     await user.click(screen.getByRole("menuitem", { name: "发送活动邀约" }));
     expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /退出时间.*日期时间/ })).toBeInTheDocument();
-    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /发送成功时间.*日期时间/ }));
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /退出时间.*日期时间/ }));
 
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       timeRange: expect.objectContaining({
-        start: ["node", messageNode.id, "sentAt"],
+        start: ["node-lifecycle", messageNode.id, "exitedAt"],
       }),
     }));
     expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("消息查询.进入时间");

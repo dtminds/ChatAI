@@ -31,9 +31,7 @@ const context = {
 
 describe("Workflow Handoff capability", () => {
   it("renders both messages into one typed idempotent action command", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
-      handoffAt: "2026-08-17T09:31:00Z",
-    }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({}));
 
     const result = await executeWorkflowCapability({
       binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING,
@@ -64,7 +62,7 @@ describe("Workflow Handoff capability", () => {
       uid: 9,
     });
 
-    expect(result).toEqual({ handoffAt: "2026-08-17T09:31:00.000Z" });
+    expect(result).toEqual({});
     expect(adapter.calls[0]).toMatchObject({
       definition: {
         capabilityKey: "chatai.conversation.handoff",
@@ -98,7 +96,7 @@ describe("Workflow Handoff capability", () => {
   });
 
   it("rejects an unavailable variable before invoking the adapter", async () => {
-    const execute = vi.fn(async () => ({ handoffAt: "2026-08-17T09:31:00.000Z" }));
+    const execute = vi.fn(async () => ({}));
     const adapter = new FakeWorkflowCapabilityAdapter(execute);
 
     await expect(executeWorkflowCapability({

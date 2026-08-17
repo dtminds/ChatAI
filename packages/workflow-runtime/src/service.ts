@@ -442,9 +442,10 @@ export class WorkflowRuntimeService {
         if (waiting.kind !== "success") throw staleTaskError();
         return { kind: "waiting" as const, run: waiting.run, task: waiting.task };
       }
+      const completedAt = this.clock();
       nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
         enteredAt: claimed.task.createdAt,
-        exitedAt: input.now,
+        exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
@@ -681,9 +682,10 @@ export class WorkflowRuntimeService {
     try {
       output = collectedEvents ? aggregateWaitEventOutput(collectedEvents) : {};
       assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
+      const completedAt = this.clock();
       nextContext = appendNodeOutput(input.run.context, input.node.id, output, {
         enteredAt: input.claimedTask.dueAt,
-        exitedAt: input.input.now,
+        exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {

@@ -165,6 +165,28 @@ describe("Workflow Message capability", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("diagnoses a missing account snapshot separately from a missing recipient", () => {
+    let error: unknown;
+    try {
+      createWorkflowMessageCommand({
+        config: {
+          attachments: [],
+          content: [{ type: "text", value: "hello" }],
+          contentMode: "custom",
+        },
+        context: { ...context, workflow: {} },
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      code: "WORKFLOW_MESSAGE_COMMAND_INVALID",
+      diagnosticMessage: "Message account selection is unavailable in the Run context",
+      failureKind: "terminal",
+    });
+  });
+
   it("rejects an invalid Java result as a terminal output failure", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
       sentAt: "2026-08-16 09:31:00",

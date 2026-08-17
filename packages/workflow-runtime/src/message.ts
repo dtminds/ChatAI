@@ -47,7 +47,10 @@ export function createWorkflowMessageCommand(input: {
     throw messageCommandError("Rendered Message command has no content or attachments");
   }
   const accountSelection = readAccountSelection(input.context.workflow);
-  if (accountSelection === null || !input.context.subjectId.trim()) {
+  if (accountSelection === null) {
+    throw messageCommandError("Message account selection is unavailable in the Run context");
+  }
+  if (!input.context.subjectId.trim()) {
     throw messageCommandError("Message recipient is unavailable in the Run context");
   }
   return {

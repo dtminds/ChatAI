@@ -1,5 +1,5 @@
 import { WORKFLOW_TAG_MAX_COUNT, type WorkflowTagOperation } from "@chatai/contracts";
-import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { WecomTagSelector } from "@/pages/chat/components/wecom-tag-selector";
 import type { NodeSettingsProps } from "../../panels/types";
 import {
@@ -30,33 +30,26 @@ export function TagConfig({ node, onNodeChange }: NodeSettingsProps<"tag">) {
   return (
     <div className="space-y-6">
       <section>
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">标签操作</h3>
-          <SegmentedControl
-            aria-label="标签操作方式"
-            className="h-9 rounded-full p-1"
-            onValueChange={(value) => {
-              if (value === "add" || value === "remove") {
-                updateTag({ operation: value });
-              }
-            }}
-            type="single"
-            value={operation}
-          >
-            <SegmentedControlItem
-              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
-              value="add"
-            >
-              添加
-            </SegmentedControlItem>
-            <SegmentedControlItem
-              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
-              value="remove"
-            >
-              移除
-            </SegmentedControlItem>
-          </SegmentedControl>
-        </div>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">标签操作</h3>
+        <RadioGroup
+          aria-label="标签操作方式"
+          className="flex items-center gap-6"
+          onValueChange={(value) => {
+            if (value === "add" || value === "remove") {
+              updateTag({ operation: value });
+            }
+          }}
+          value={operation}
+        >
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <RadioGroupItem value="add" />
+            <span>添加</span>
+          </label>
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <RadioGroupItem value="remove" />
+            <span>移除</span>
+          </label>
+        </RadioGroup>
       </section>
 
       <section className="space-y-3">

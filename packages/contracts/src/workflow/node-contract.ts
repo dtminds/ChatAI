@@ -171,7 +171,7 @@ export const WorkflowHandoffExecutionConfigSchema = Type.Object({
   operatorMessage: WorkflowVariableContentSchema,
 }, { additionalProperties: false });
 
-export const WORKFLOW_TAG_MAX_COUNT = 50;
+export const WORKFLOW_TAG_MAX_COUNT = 5;
 
 export const WorkflowTagOperationSchema = Type.Union([
   Type.Literal("add"),

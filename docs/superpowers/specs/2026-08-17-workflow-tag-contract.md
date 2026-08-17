@@ -55,7 +55,7 @@ Java 负责：
 - `wecom_contact` 的 `subjectId` 是 `externalUserId`
 - Java 必须按 `subjectType` 解析身份，禁止根据 ID 格式猜测主体域
 - `operation` 仅支持 `add` 和 `remove`
-- `tagIds` 包含 1 至 50 个不重复的正整数 ID
+- `tagIds` 包含 1 至 5 个不重复的正整数 ID
 - `source` 固定为语义枚举 `workflow`
 - `execution` 只用于排障，不参与业务判断
 

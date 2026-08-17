@@ -313,7 +313,7 @@ describe("workflow node contracts", () => {
     expect(Value.Check(WorkflowTagCommandSchema, {
       operation: "add",
       source: "workflow",
-      tagIds: Array.from({ length: 51 }, (_, index) => index + 1),
+      tagIds: Array.from({ length: 6 }, (_, index) => index + 1),
     })).toBe(false);
     expect(Value.Check(WorkflowTagResultSchema, {})).toBe(true);
     expect(Value.Check(WorkflowTagResultSchema, { updated: true })).toBe(false);

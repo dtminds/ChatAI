@@ -62,7 +62,7 @@ describe("workflow Tag node", () => {
 
     const selector = screen.getByRole("button", { name: "选择标签" });
     expect(selector).toHaveAttribute("data-allow-cross-group", "true");
-    expect(selector).toHaveAttribute("data-max-selected", "50");
+    expect(selector).toHaveAttribute("data-max-selected", "5");
     expect(selector).toHaveAttribute("data-multiple", "true");
 
     await user.click(screen.getByRole("radio", { name: "移除" }));

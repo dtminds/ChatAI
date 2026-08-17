@@ -678,6 +678,8 @@ describe("workflow capability reliability", () => {
 
   it("executes Handoff as one action and reuses its idempotency key across a retry", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const completedAt = new Date(now.getTime() + 9_000);
+    let runtimeNow = now;
     const requests: Array<{
       command: Record<string, unknown>;
       idempotencyKey: string;
@@ -693,9 +695,11 @@ describe("workflow capability reliability", () => {
       if (attempt === 1) {
         throw createActionError("retryable", "HANDOFF_TEMPORARY");
       }
+      runtimeNow = completedAt;
       return {};
     }, {
       capabilityBindings: [WORKFLOW_HANDOFF_CAPABILITY_BINDING],
+      clock: () => runtimeNow,
       spec: handoffSpec(),
     });
     const actionTask = await startCapability(runtime, service);
@@ -737,6 +741,13 @@ describe("workflow capability reliability", () => {
         status: "completed",
       }),
     ]));
+    await expect(runtime.findRun(9, actionTask.runId)).resolves.toMatchObject({
+      context: {
+        nodeLifecycle: {
+          handoff: { exitedAt: completedAt.toISOString() },
+        },
+      },
+    });
   });
 
   it.each(["retryable", "unknown"] as const)(

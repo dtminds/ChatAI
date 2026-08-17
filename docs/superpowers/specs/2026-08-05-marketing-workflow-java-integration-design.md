@@ -411,7 +411,9 @@ trigger.occurredAt
 只能暴露当前 Workflow Type 允许、并且在该 Workflow 所有已配置 Start Event 中都保证存在的
 字段。例如同时配置 `contact.tag_added` 与 `message.received` 时，`tagId` 和 `messageId`
 都不可引用，因为它们分别只存在于其中一类事件。前序节点输出和节点
-`enteredAt / exitedAt` 由图结构动态生成，不写入静态 Profile。选择器 scope 从
+`enteredAt / exitedAt` 由图结构动态生成，不写入静态 Profile。`enteredAt` 表示 Task
+到达该节点的时间，`exitedAt` 表示 Runtime 最终确认节点成功并准备提交结果的实际时间；
+重试成功时以最终成功时刻为准。选择器 scope 从
 `customer` 统一为 `subject`；删除当前无法跨类型保证的 `system.employeeId` 和
 `customer.name`。`eventId` 保留在 Runtime Context 用于幂等，不进入用户变量选择器。
 

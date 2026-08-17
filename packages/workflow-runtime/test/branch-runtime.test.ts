@@ -88,8 +88,9 @@ describe("Branch runtime", () => {
       workflowType: "chatai_sop",
     });
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => enteredAt);
+    let runtimeNow = enteredAt;
     const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
-      clock: () => enteredAt,
+      clock: () => runtimeNow,
       entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
     });
     const started = await service.startRun({
@@ -104,7 +105,13 @@ describe("Branch runtime", () => {
 
     const startResult = await service.executeTask(taskInput(started.task));
     if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Wait task missing");
-    const waitResult = await completeFixedWait(service, startResult.nextTask);
+    const waitResult = await completeFixedWait(
+      service,
+      startResult.nextTask,
+      (value) => {
+        runtimeNow = value;
+      },
+    );
     if (!("nextTask" in waitResult) || !waitResult.nextTask) throw new Error("Branch task missing");
 
     const branchTask = waitResult.nextTask;
@@ -124,7 +131,8 @@ describe("Branch runtime", () => {
     const recovered = await runtime.findTask(9, branchTask.id);
     if (!recovered) throw new Error("Recovered Branch task missing");
 
-    const branchResult = await service.executeTask(taskInput(recovered, new Date("2026-08-10T00:02:00.000Z")));
+    runtimeNow = new Date("2026-08-10T00:02:00.000Z");
+    const branchResult = await service.executeTask(taskInput(recovered, runtimeNow));
     expect(branchResult).toMatchObject({
       kind: "success",
       nextTask: { nodeId: "matched" },
@@ -229,8 +237,9 @@ async function executeBranch(
     workflowType: "chatai_sop",
   });
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => enteredAt);
+  let runtimeNow = enteredAt;
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
-    clock: () => enteredAt,
+    clock: () => runtimeNow,
     entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
   });
   const started = await service.startRun({
@@ -249,7 +258,13 @@ async function executeBranch(
 
   const startResult = await service.executeTask(taskInput(started.task));
   if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Wait task missing");
-  const waitResult = await completeFixedWait(service, startResult.nextTask);
+  const waitResult = await completeFixedWait(
+    service,
+    startResult.nextTask,
+    (value) => {
+      runtimeNow = value;
+    },
+  );
   if (!("nextTask" in waitResult) || !waitResult.nextTask) throw new Error("Branch task missing");
   const branchResult = await service.executeTask(taskInput(waitResult.nextTask));
   if (!("nextTask" in branchResult)) throw new Error("Branch result missing");
@@ -288,12 +303,15 @@ function taskInput(task: { id: string; taskVersion: number }, now = enteredAt) {
 async function completeFixedWait(
   service: WorkflowRuntimeService,
   task: { id: string; taskVersion: number },
+  setClock: (now: Date) => void = () => undefined,
 ) {
   const waiting = await service.executeTask(taskInput(task));
   if (!("kind" in waiting) || waiting.kind !== "waiting") throw new Error("Wait did not start");
+  const completedAt = new Date(enteredAt.getTime() + 60_000);
+  setClock(completedAt);
   return service.executeTask(taskInput(
     waiting.task,
-    new Date(enteredAt.getTime() + 60_000),
+    completedAt,
   ));
 }
 

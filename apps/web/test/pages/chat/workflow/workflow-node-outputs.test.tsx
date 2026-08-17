@@ -72,14 +72,14 @@ describe("workflow node outputs", () => {
   });
 
   it("rejects output declarations that drift from the shared node contract", () => {
-    const node = createNode("message", 0);
+    const node = createNode("message-query", 0);
 
     expect(validateWorkflowNodeOutputDefinitions(node, [{
-      key: "sentAt",
-      label: "发送成功时间",
+      key: "rangeStart",
+      label: "查询开始时间",
       usages: ["variable"],
       valueType: { kind: "string" },
-    }])).toContainEqual("output contract mismatch for sentAt");
+    }])).toContainEqual("output contract mismatch for rangeStart");
   });
 
   it("uses product-facing labels instead of implementation types", () => {
@@ -96,14 +96,14 @@ describe("workflow node outputs", () => {
   });
 
   it("shows declared outputs in the shared settings section and hides empty nodes", () => {
-    const messageNode = createNode("message", 0);
-    const { rerender } = render(<NodeOutputsSection node={messageNode} />);
+    const queryNode = createNode("message-query", 0);
+    const { rerender } = render(<NodeOutputsSection node={queryNode} />);
 
     expect(screen.getByText("节点输出")).toBeInTheDocument();
-    expect(screen.getByText("发送成功时间")).toBeInTheDocument();
-    expect(screen.getByText("日期时间")).toBeInTheDocument();
+    expect(screen.getByText("文本内容")).toBeInTheDocument();
+    expect(screen.getByText("文本")).toBeInTheDocument();
 
-    rerender(<NodeOutputsSection node={createNode("branch", 1)} />);
+    rerender(<NodeOutputsSection node={createNode("message", 1)} />);
     expect(screen.queryByText("节点输出")).not.toBeInTheDocument();
   });
 
@@ -130,12 +130,12 @@ describe("workflow node outputs", () => {
     ["focus", async (button: HTMLElement) => fireEvent.focus(button)],
   ])("opens output descriptions with %s", async (_interaction, openDescription) => {
     const user = userEvent.setup();
-    render(<NodeOutputsSection node={createNode("message", 0)} />);
-    const button = screen.getByRole("button", { name: "查看发送成功时间说明" });
+    render(<NodeOutputsSection node={createNode("message-query", 0)} />);
+    const button = screen.getByRole("button", { name: "查看文本内容说明" });
 
     await openDescription(button, user);
 
-    expect(await screen.findByText(/动态时间范围/)).toBeInTheDocument();
+    expect(await screen.findByText(/时间顺序/)).toBeInTheDocument();
   });
 
   it("renders only the supported output description markdown", () => {

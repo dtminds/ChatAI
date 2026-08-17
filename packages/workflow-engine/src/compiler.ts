@@ -2,6 +2,7 @@ import {
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
+  isWorkflowHandoffExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowMessageExecutionConfigComplete,
   isWorkflowMessageQueryExecutionConfigComplete,
@@ -150,6 +151,35 @@ function validateWorkflowNodeReferences(
         issues.push({
           code: "invalid-node-config",
           message: "Message node references unavailable content data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "handoff" && isWorkflowHandoffExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const selectors = [node.config.operatorMessage, node.config.customerMessage]
+        .flatMap(segments => segments.flatMap(segment =>
+          segment.type === "variable" ? [segment.selector] : []));
+      const referencesAvailable = selectors.every(selector =>
+        validateWorkflowVariableSelector({
+          edges,
+          guaranteedUpstreamIds,
+          nodeById,
+          requiredUsage: "variable",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!referencesAvailable) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Handoff node references unavailable message data",
           nodeId: node.id,
         });
       }

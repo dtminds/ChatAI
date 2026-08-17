@@ -46,13 +46,6 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     contentMode: normalizeWorkflowMessageContentMode(data.contentMode),
     outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
   }),
-  getOutputVariables: () => [{
-    description: "消息成功发送给客户的时间，可用于后续节点设置动态时间范围。",
-    key: "sentAt",
-    label: "发送成功时间",
-    usages: ["time-reference", "variable"],
-    valueType: { kind: "datetime" },
-  }],
   validate: (node) => {
     const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);
     const contentText = getVariableContentText(node.data.content).trim();

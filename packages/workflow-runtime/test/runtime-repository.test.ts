@@ -120,6 +120,7 @@ describe("workflow runtime repository", () => {
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its account snapshot", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Handoff target lacks its account snapshot", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
     const created = await repository.createRunWithInitialTask(createRunInput());
@@ -875,6 +876,7 @@ function flowChangedSpec(
     | "branch-context-incompatible"
     | "context-incompatible"
     | "current-node-deleted"
+    | "handoff-context-incompatible"
     | "message-context-incompatible"
     | "node-kind-changed"
     | "outlet-deleted",
@@ -895,6 +897,28 @@ function flowChangedSpec(
     };
   }
   if (scenario === "outlet-deleted") return { ...spec, edges: [] };
+  if (scenario === "handoff-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-handoff", source: "start", sourceOutletId: "default", target: "handoff-1" },
+        { id: "handoff-end", source: "handoff-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            customerMessage: [],
+            operatorMessage: [{ type: "text", value: "需要人工处理" }],
+          },
+          id: "handoff-1",
+          kind: "handoff",
+          nodeSchemaVersion: 1,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
   if (scenario === "message-context-incompatible") {
     return {
       ...spec,
@@ -1093,7 +1117,7 @@ function publishedSpecWithInsertedMessageBeforeWait(): WorkflowExecutionSpec {
               conditions: [{
                 id: "message-sent",
                 operator: "is-not-empty",
-                selector: ["node", "message-1", "sentAt"],
+                selector: ["node-lifecycle", "message-1", "exitedAt"],
                 valueType: "datetime",
               }],
               id: "matched",

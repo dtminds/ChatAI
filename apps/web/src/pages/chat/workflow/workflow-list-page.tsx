@@ -263,9 +263,8 @@ export function WorkflowListPage({
 
         {status === "error" ? (
           <WorkflowListState
-            description="工作流列表加载失败"
             onRetry={() => void reload()}
-            title="无法加载 Workflow"
+            title="工作流列表加载失败"
           />
         ) : null}
 

@@ -184,7 +184,7 @@ describe("workflow DSL", () => {
             timeRange: {
               end: ["current-node-lifecycle", "enteredAt"],
               mode: "dynamic",
-              start: ["node", "message-welcome", "sentAt"],
+              start: ["node-lifecycle", "message-welcome", "exitedAt"],
             },
           },
         },
@@ -197,7 +197,7 @@ describe("workflow DSL", () => {
       timeRange: {
         end: ["current-node-lifecycle", "enteredAt"],
         mode: "dynamic",
-        start: ["node", "message-welcome", "sentAt"],
+        start: ["node-lifecycle", "message-welcome", "exitedAt"],
       },
     });
   });

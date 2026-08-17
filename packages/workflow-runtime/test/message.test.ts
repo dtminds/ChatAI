@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createWorkflowChatAiRunContext,
   createWorkflowMessageCommand,
-  createWorkflowMessageRunContext,
   executeWorkflowCapability,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
 } from "../src/index.js";
@@ -42,7 +42,7 @@ describe("Workflow Message capability", () => {
       triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
     };
 
-    const runContext = createWorkflowMessageRunContext(startConfig);
+    const runContext = createWorkflowChatAiRunContext(startConfig);
     startConfig.seatIds.push(103);
 
     expect(runContext).toEqual({
@@ -89,9 +89,7 @@ describe("Workflow Message capability", () => {
   });
 
   it("renders a selected text output without leaking its selector to the adapter", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
-      sentAt: "2026-08-16T09:31:00Z",
-    }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({}));
 
     const result = await executeWorkflowCapability({
       binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
@@ -117,7 +115,7 @@ describe("Workflow Message capability", () => {
       uid: 9,
     });
 
-    expect(result).toEqual({ sentAt: "2026-08-16T09:31:00.000Z" });
+    expect(result).toEqual({});
     expect(adapter.calls[0]).toMatchObject({
       request: {
         command: {
@@ -134,7 +132,7 @@ describe("Workflow Message capability", () => {
   });
 
   it("rejects unavailable variables before invoking the adapter", async () => {
-    const execute = vi.fn(async () => ({ sentAt: "2026-08-16T09:31:00.000Z" }));
+    const execute = vi.fn(async () => ({}));
     const adapter = new FakeWorkflowCapabilityAdapter(execute);
 
     await expect(executeWorkflowCapability({
@@ -188,13 +186,8 @@ describe("Workflow Message capability", () => {
     });
   });
 
-  it.each([
-    "2026-08-16 09:31:00",
-    "2026-02-30T09:31:00.000Z",
-  ])("rejects invalid Java result %s as a terminal output failure", async (sentAt) => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
-      sentAt,
-    }));
+  it("rejects unexpected Java result fields as a terminal output failure", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ unexpected: true }));
 
     await expect(executeWorkflowCapability({
       binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,

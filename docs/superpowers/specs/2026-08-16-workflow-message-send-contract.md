@@ -72,16 +72,14 @@ Java 负责：
 成功响应：
 
 ```json
-{
-  "sentAt": "2026-08-16T10:00:01.000Z"
-}
+{}
 ```
 
-`sentAt` 表示本次节点消息全部成功受理的时间，必须是以 `Z` 结尾的 UTC RFC 3339 时间。小数秒可以省略，存在时允许 1-9 位；Java 可以直接使用 `Instant.toString()`。Node 接收后统一规范化为三位毫秒的 `.sssZ` 形式，再作为 Message 节点的稳定输出保存。
+Java 仅用空对象表示本次 Action 成功。Message 不提供独立业务时间输出；下游需要引用节点完成时间时，统一使用该节点生命周期的 `exitedAt`。
 
 ## 4. 幂等与错误
 
-- 相同 `idempotencyKey` 和相同请求重复调用，Java 返回第一次执行的同一结果，不重复发送
+- 相同 `idempotencyKey` 和相同请求重复调用，Java 返回相同的成功空对象，不重复发送
 - 相同 `idempotencyKey` 但主体或命令不同，Java 返回 terminal conflict
 - timeout 的执行结果未知，Node 会使用同一个 `idempotencyKey` 重试
 - 临时不可用、限流和依赖超时返回 retryable

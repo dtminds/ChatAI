@@ -11,6 +11,25 @@ const EXPIRES_AT = new Date("2026-08-10T00:01:00.000Z");
 const COLLECT_UNTIL = new Date("2026-08-10T00:00:15.000Z");
 
 describe("Wait Event runtime", () => {
+  it("records the actual completion time when a Wait Event finishes", async () => {
+    let runtimeNow = ENTERED_AT;
+    const harness = await createHarness(() => runtimeNow);
+    await enterWaitEvent(harness);
+    const dueAt = new Date(ENTERED_AT.getTime() + 60_000);
+    const completedAt = new Date(dueAt.getTime() + 2_000);
+    runtimeNow = completedAt;
+
+    await dispatchAndExecute(harness, dueAt);
+
+    await expect(harness.repository.findRun(9, harness.created.run.id)).resolves.toMatchObject({
+      context: {
+        nodeLifecycle: {
+          "wait-event": { exitedAt: completedAt.toISOString() },
+        },
+      },
+    });
+  });
+
   it("establishes a subscription without routing the node", async () => {
     const harness = await createHarness();
 
@@ -138,7 +157,7 @@ describe("Wait Event runtime", () => {
   });
 });
 
-async function createHarness() {
+async function createHarness(clock: () => Date = () => ENTERED_AT) {
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => ENTERED_AT);
   const spec = executionSpec();
   const service = new WorkflowRuntimeService({
@@ -157,7 +176,7 @@ async function createHarness() {
       workflowType: "chatai_sop" as const,
     })),
   }, repository, undefined, {
-    clock: () => ENTERED_AT,
+    clock,
     entitlementPort: {
       check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
     },

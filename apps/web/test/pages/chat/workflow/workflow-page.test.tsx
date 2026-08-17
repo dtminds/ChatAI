@@ -754,7 +754,7 @@ describe("Agent workflow page", () => {
   it("renders a not-found state for unknown workflow ids", async () => {
     renderWorkflowPage("/chat/workflows/missing-workflow");
 
-    expect(await screen.findByText("Workflow 不存在")).toBeInTheDocument();
+    expect(await screen.findByText("工作流不存在")).toBeInTheDocument();
     expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute("href", "/chat/workflows");
   });

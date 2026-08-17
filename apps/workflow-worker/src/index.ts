@@ -12,6 +12,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
@@ -63,7 +64,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
-      capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
+      capabilityBindings: [
+        WORKFLOW_HANDOFF_CAPABILITY_BINDING,
+        WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+      ],
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       messageQueryPort: new MysqlWorkflowMessageQueryPort(database),

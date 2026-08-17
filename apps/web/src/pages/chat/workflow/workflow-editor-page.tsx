@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -439,19 +438,20 @@ function WorkflowEditorResourceState({
 
   return (
     <main className="fixed inset-0 flex items-center justify-center bg-background p-6">
-      <Empty>
+      <Empty className="flex-none">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={AlertCircleIcon} size={20} strokeWidth={1.8} />
           </EmptyMedia>
-          <EmptyTitle>{status === "not-found" ? "Workflow 不存在" : "Workflow 加载失败"}</EmptyTitle>
-          <EmptyDescription>{status === "not-found" ? "该 Workflow 可能已被删除" : "请重试"}</EmptyDescription>
+          <EmptyTitle>{status === "not-found" ? "工作流不存在" : "工作流加载失败"}</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
-          {onRetry ? <Button onClick={onRetry} type="button">重试</Button> : null}
-          <Button asChild variant="outline">
-            <Link to="/chat/workflows">返回列表</Link>
-          </Button>
+          <div className="flex gap-2">
+            {onRetry ? <Button onClick={onRetry} type="button">重试</Button> : null}
+            <Button asChild variant="outline">
+              <Link to="/chat/workflows">返回列表</Link>
+            </Button>
+          </div>
         </EmptyContent>
       </Empty>
     </main>

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createWorkflowChatAiRunContext,
   createWorkflowMessageCommand,
-  createWorkflowMessageRunContext,
   executeWorkflowCapability,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
 } from "../src/index.js";
@@ -42,7 +42,7 @@ describe("Workflow Message capability", () => {
       triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
     };
 
-    const runContext = createWorkflowMessageRunContext(startConfig);
+    const runContext = createWorkflowChatAiRunContext(startConfig);
     startConfig.seatIds.push(103);
 
     expect(runContext).toEqual({

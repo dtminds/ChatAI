@@ -3,7 +3,7 @@ import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
 } from "../chat/quick-reply-content.js";
-import { WorkflowPushAccountStrategySchema } from "./trigger.js";
+import { WorkflowChatAiAccountSelectionSchema } from "./chatai-action.js";
 import { WorkflowUtcInstantSchema } from "./utc-instant.js";
 
 const WorkflowMessageCommandAttachmentSchema = Type.Object({
@@ -21,13 +21,7 @@ const WorkflowMessageCommandAttachmentSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowMessageCommandSchema = Type.Object({
-  accountSelection: Type.Object({
-    seatIds: Type.Array(
-      Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
-      { maxItems: 100, minItems: 1, uniqueItems: true },
-    ),
-    strategy: WorkflowPushAccountStrategySchema,
-  }, { additionalProperties: false }),
+  accountSelection: WorkflowChatAiAccountSelectionSchema,
   attachments: Type.Array(WorkflowMessageCommandAttachmentSchema, {
     maxItems: QUICK_REPLY_ATTACHMENT_MAX_COUNT,
   }),

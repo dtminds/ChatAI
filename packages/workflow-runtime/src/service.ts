@@ -31,6 +31,7 @@ import {
   type WorkflowCapabilityExecutionBinding,
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
+import { createWorkflowChatAiRunContext } from "./chatai-action-context.js";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -52,7 +53,6 @@ import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
-import { createWorkflowMessageRunContext } from "./message.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -195,7 +195,7 @@ export class WorkflowRuntimeService {
       context = {
         outputs: {},
         trigger: structuredClone(input.trigger),
-        workflow: createWorkflowMessageRunContext(startConfig),
+        workflow: createWorkflowChatAiRunContext(startConfig),
       };
       assertWorkflowRuntimeValue(context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {

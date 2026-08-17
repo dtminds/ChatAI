@@ -175,6 +175,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Message Query node requires a valid time range";
     case "branch":
       return "Branch node requires complete ordered paths and conditions";
+    case "handoff":
+      return "Handoff node requires a valid operator message";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

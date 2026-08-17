@@ -32,6 +32,13 @@ export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
     customerMessage: normalizeVariableContent(data.customerMessage),
     operatorMessage: normalizeVariableContent(data.operatorMessage),
   }),
+  getOutputVariables: () => [{
+    description: "转人工操作成功完成的时间，可用于后续节点设置动态时间范围。",
+    key: "handoffAt",
+    label: "转人工时间",
+    usages: ["time-reference", "variable"],
+    valueType: { kind: "datetime" },
+  }],
   validate: (node) => getVariableContentPreview(node.data.operatorMessage)
     ? []
     : [{

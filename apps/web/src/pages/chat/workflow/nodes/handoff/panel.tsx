@@ -1,5 +1,6 @@
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -14,8 +15,6 @@ import {
   normalizeVariableContent,
 } from "../variable-content/content";
 import { VariableContentEditor } from "../variable-content/editor";
-
-const handoffMessageMaxLength = 100;
 
 export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"handoff">) {
   const variables = getAvailableVariablesForNode(node.id, nodes, edges);
@@ -96,7 +95,7 @@ function HandoffMessageField({
       </div>
       <VariableContentEditor
         ariaLabel={ariaLabel}
-        maxLength={handoffMessageMaxLength}
+        maxLength={WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}
         segments={normalizeVariableContent(segments)}

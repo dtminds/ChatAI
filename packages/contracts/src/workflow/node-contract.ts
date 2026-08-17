@@ -8,6 +8,7 @@ import {
 } from "../chat/quick-reply-content.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
+import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
 import {
   getWorkflowCapabilityProfile,
@@ -420,6 +421,7 @@ export function isWorkflowNodeExecutionConfig(
   value: unknown,
 ) {
   if (kind === "message") return isWorkflowMessageExecutionConfigComplete(value);
+  if (kind === "handoff") return isWorkflowHandoffExecutionConfigComplete(value);
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
@@ -427,6 +429,21 @@ export function isWorkflowNodeExecutionConfig(
   return schema !== null
     && Value.Check(schema, value)
     && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+export function isWorkflowHandoffExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowHandoffExecutionConfig {
+  if (!Value.Check(WorkflowHandoffExecutionConfigSchema, value)) return false;
+  return isWorkflowVariableContentWithinLimit(
+    value.operatorMessage,
+    WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH,
+    true,
+  ) && isWorkflowVariableContentWithinLimit(
+    value.customerMessage,
+    WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH,
+    false,
+  );
 }
 
 export function isWorkflowMessageExecutionConfigComplete(
@@ -533,6 +550,13 @@ export function getWorkflowNodeOutputContracts(
       valueType: { kind: "datetime" },
     }];
   }
+  if (kind === "handoff") {
+    return [{
+      key: "handoffAt",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    }];
+  }
   if (kind === "wait-event") {
     return [
       {
@@ -591,6 +615,18 @@ export function getWorkflowNodeOutputContracts(
     ];
   }
   return null;
+}
+
+function isWorkflowVariableContentWithinLimit(
+  segments: WorkflowVariableContentSegment[],
+  maximumLength: number,
+  required: boolean,
+) {
+  const literalLength = segments.reduce((length, segment) =>
+    length + (segment.type === "text" ? segment.value.length : 0), 0);
+  const hasContent = segments.some(segment =>
+    segment.type === "variable" || Boolean(segment.value.trim()));
+  return literalLength <= maximumLength && (!required || hasContent);
 }
 
 export function getWorkflowContextVariableValueType(

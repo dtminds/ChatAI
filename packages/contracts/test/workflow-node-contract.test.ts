@@ -11,6 +11,8 @@ import {
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
   isWorkflowOutputValueTypeEqual,
+  WorkflowHandoffCommandSchema,
+  WorkflowHandoffResultSchema,
   WorkflowNodeKindSchema,
   WorkflowMessageCommandSchema,
   WorkflowMessageQueryCommandSchema,
@@ -267,6 +269,38 @@ describe("workflow node contracts", () => {
     })).toBe(false);
   });
 
+  it("validates complete Handoff execution configs and capability contracts", () => {
+    expect(isWorkflowNodeExecutionConfig("handoff", {
+      customerMessage: [],
+      operatorMessage: [{ type: "text", value: "需要人工处理" }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("handoff", {
+      customerMessage: [],
+      operatorMessage: [],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("handoff", {
+      customerMessage: [],
+      operatorMessage: [{ type: "text", value: "x".repeat(101) }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowHandoffCommandSchema, {
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      customerMessage: "请稍等",
+      operatorMessage: "需要人工处理",
+      recipient: { thirdExternalUserId: "customer-1" },
+      source: "workflow",
+    })).toBe(true);
+    expect(Value.Check(WorkflowHandoffCommandSchema, {
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      customerMessage: "请稍等",
+      operatorMessage: "",
+      recipient: { thirdExternalUserId: "customer-1" },
+      source: "workflow",
+    })).toBe(false);
+    expect(Value.Decode(WorkflowHandoffResultSchema, {
+      handoffAt: "2026-08-17T10:00:00Z",
+    })).toEqual({ handoffAt: "2026-08-17T10:00:00.000Z" });
+  });
+
   it("assigns every node kind one stable execution class", () => {
     expectTypeOf(getWorkflowNodeContract("message").executionClass).toEqualTypeOf<"action">();
     expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
@@ -514,6 +548,11 @@ describe("workflow node contracts", () => {
     ]);
     expect(getWorkflowNodeOutputContracts("message", {})).toEqual([{
       key: "sentAt",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    }]);
+    expect(getWorkflowNodeOutputContracts("handoff", {})).toEqual([{
+      key: "handoffAt",
       usages: ["time-reference", "variable"],
       valueType: { kind: "datetime" },
     }]);

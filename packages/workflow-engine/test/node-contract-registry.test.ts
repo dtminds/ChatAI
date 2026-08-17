@@ -84,7 +84,10 @@ const projectableDraftData = {
     ],
   },
   end: {},
-  handoff: { customerMessage: [], operatorMessage: [] },
+  handoff: {
+    customerMessage: [],
+    operatorMessage: [{ type: "text", value: "需要人工处理" }],
+  },
   llm: {
     inputs: [],
     modelId: "model-1",

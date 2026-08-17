@@ -17,6 +17,7 @@ import type {
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
+  WorkflowTagDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
   WorkflowNodeOutputUsage as SharedWorkflowNodeOutputUsage,
   WorkflowOutputValueType as SharedWorkflowOutputValueType,
@@ -122,7 +123,7 @@ export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & Workf
 export type WorkflowWaitEventType = "message.received";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
-export type TagNodeData = WorkflowNodeDataBase<"tag">;
+export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & WorkflowHandoffDraftConfig;
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;

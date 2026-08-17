@@ -171,6 +171,31 @@ export const WorkflowHandoffExecutionConfigSchema = Type.Object({
   operatorMessage: WorkflowVariableContentSchema,
 }, { additionalProperties: false });
 
+export const WORKFLOW_TAG_MAX_COUNT = 5;
+
+export const WorkflowTagOperationSchema = Type.Union([
+  Type.Literal("add"),
+  Type.Literal("remove"),
+]);
+
+const WorkflowTagIdsSchema = Type.Array(
+  Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+  { maxItems: WORKFLOW_TAG_MAX_COUNT, uniqueItems: true },
+);
+
+export const WorkflowTagDraftConfigSchema = Type.Object({
+  operation: WorkflowTagOperationSchema,
+  tagIds: WorkflowTagIdsSchema,
+}, { additionalProperties: false });
+
+export const WorkflowTagExecutionConfigSchema = Type.Object({
+  operation: WorkflowTagOperationSchema,
+  tagIds: Type.Array(
+    Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+    { maxItems: WORKFLOW_TAG_MAX_COUNT, minItems: 1, uniqueItems: true },
+  ),
+}, { additionalProperties: false });
+
 export const WorkflowLlmInputValueSchema = Type.Union([
   Type.Object({
     kind: Type.Literal("literal"),
@@ -275,6 +300,9 @@ export type WorkflowTimeRange = Static<typeof WorkflowTimeRangeSchema>;
 export type WorkflowMessageQueryConfig = Static<typeof WorkflowMessageQueryConfigSchema>;
 export type WorkflowHandoffDraftConfig = Static<typeof WorkflowHandoffDraftConfigSchema>;
 export type WorkflowHandoffExecutionConfig = Static<typeof WorkflowHandoffExecutionConfigSchema>;
+export type WorkflowTagOperation = Static<typeof WorkflowTagOperationSchema>;
+export type WorkflowTagDraftConfig = Static<typeof WorkflowTagDraftConfigSchema>;
+export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfigSchema>;
 export type WorkflowLlmInputValue = Static<typeof WorkflowLlmInputValueSchema>;
 export type WorkflowLlmInputParameter = Static<typeof WorkflowLlmInputParameterSchema>;
 export type WorkflowLlmOutputFieldType = Static<typeof WorkflowLlmOutputFieldTypeSchema>;
@@ -359,7 +387,12 @@ export const workflowNodeContractRegistry = {
     WorkflowStartDraftConfigSchema,
     WorkflowStartConfigSchema,
   ),
-  tag: placeholderContract("action"),
+  tag: draftReadyContract(
+    "action",
+    1,
+    WorkflowTagDraftConfigSchema,
+    WorkflowTagExecutionConfigSchema,
+  ),
   "tag-query": placeholderContract("query"),
   wait: runtimeReadyContract(
     "core",

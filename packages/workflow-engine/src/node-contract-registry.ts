@@ -177,6 +177,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Branch node requires complete ordered paths and conditions";
     case "handoff":
       return "Handoff node requires a valid operator message";
+    case "tag":
+      return "Tag node requires an operation and at least one valid tag";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

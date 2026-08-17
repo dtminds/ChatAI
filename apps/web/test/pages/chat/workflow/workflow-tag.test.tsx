@@ -65,7 +65,7 @@ describe("workflow Tag node", () => {
     expect(selector).toHaveAttribute("data-max-selected", "5");
     expect(selector).toHaveAttribute("data-multiple", "true");
 
-    await user.click(screen.getByRole("radio", { name: "移除" }));
+    await user.click(screen.getByRole("radio", { name: "移除标签" }));
     expect(onNodeChange).toHaveBeenLastCalledWith({
       metric: "待配置标签",
       operation: "remove",

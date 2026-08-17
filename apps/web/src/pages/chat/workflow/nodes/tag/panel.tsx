@@ -43,11 +43,11 @@ export function TagConfig({ node, onNodeChange }: NodeSettingsProps<"tag">) {
         >
           <label className="flex items-center gap-2 text-[13px] text-foreground">
             <RadioGroupItem value="add" />
-            <span>添加</span>
+            <span>添加标签</span>
           </label>
           <label className="flex items-center gap-2 text-[13px] text-foreground">
             <RadioGroupItem value="remove" />
-            <span>移除</span>
+            <span>移除标签</span>
           </label>
         </RadioGroup>
       </section>

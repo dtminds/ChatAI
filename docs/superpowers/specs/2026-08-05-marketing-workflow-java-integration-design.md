@@ -900,7 +900,7 @@ chatai.message.query
 chatai.message.send
 order.query
 customer.tag.query
-customer.tag.add
+customer.tag.update
 member.tag.query
 member.tag.add
 customer.update
@@ -912,7 +912,7 @@ chatai.conversation.transfer-agent
 
 可以采用多个类型化 Endpoint，也可以采用一个共享传输入口加 discriminated union。无论采用哪种 HTTP 形式，每个 operation 都必须有独立 DTO、校验规则、幂等要求和输出上限。禁止发送完整 Workflow Revision、原始节点配置或变量表达式给 Java。
 
-每个 operation 还必须声明支持的 Subject Type。例如 `chatai.message.send` 只接受 `chatai_contact`；`customer.tag.add` 只接受 `wecom_contact`；`member.tag.add` 只接受 `miniapp_member`。如果未来一个 operation 真正支持多个主体域，必须在 DTO 和业务语义一致的前提下显式列出，不能在实现中根据 ID 格式猜测。
+每个 operation 还必须声明支持的 Subject Type。例如 `chatai.message.send` 只接受 `chatai_contact`；`customer.tag.update` 显式接受 `chatai_contact` 与 `wecom_contact`，并按 Subject Type 解析对应客户身份；`member.tag.add` 只接受 `miniapp_member`。如果未来一个 operation 真正支持多个主体域，必须在 DTO 和业务语义一致的前提下显式列出，不能在实现中根据 ID 格式猜测。
 
 ### 10.2 节点归属
 

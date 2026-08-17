@@ -18,6 +18,8 @@ import {
   WorkflowMessageQueryCommandSchema,
   WorkflowMessageQueryResultSchema,
   WorkflowMessageResultSchema,
+  WorkflowTagCommandSchema,
+  WorkflowTagResultSchema,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
@@ -84,7 +86,7 @@ const draftConfigs = {
     seatIds: [101],
     triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   },
-  tag: {},
+  tag: { operation: "add", tagIds: [] },
   "tag-query": {},
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
@@ -166,9 +168,9 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "handoff", "llm", "message"]);
+      .toEqual(["ai-intent", "handoff", "llm", "message", "tag"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag", "tag-query"]);
+      .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag-query"]);
   });
 
   it("validates the Message Query capability command and node output", () => {
@@ -292,6 +294,31 @@ describe("workflow node contracts", () => {
     expect(Value.Check(WorkflowHandoffResultSchema, { unexpected: true })).toBe(false);
   });
 
+  it("keeps the Tag Java result empty and its command bounded", () => {
+    expect(Value.Check(WorkflowTagCommandSchema, {
+      operation: "add",
+      source: "workflow",
+      tagIds: [101, 102],
+    })).toBe(true);
+    expect(Value.Check(WorkflowTagCommandSchema, {
+      operation: "replace",
+      source: "workflow",
+      tagIds: [101],
+    })).toBe(false);
+    expect(Value.Check(WorkflowTagCommandSchema, {
+      operation: "add",
+      source: "workflow",
+      tagIds: [101, 101],
+    })).toBe(false);
+    expect(Value.Check(WorkflowTagCommandSchema, {
+      operation: "add",
+      source: "workflow",
+      tagIds: Array.from({ length: 51 }, (_, index) => index + 1),
+    })).toBe(false);
+    expect(Value.Check(WorkflowTagResultSchema, {})).toBe(true);
+    expect(Value.Check(WorkflowTagResultSchema, { updated: true })).toBe(false);
+  });
+
   it("assigns every node kind one stable execution class", () => {
     expectTypeOf(getWorkflowNodeContract("message").executionClass).toEqualTypeOf<"action">();
     expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
@@ -370,20 +397,19 @@ describe("workflow node contracts", () => {
     ]);
   });
 
-  it("keeps placeholder execution absent and rejects undeclared draft fields", () => {
+  it("keeps incomplete Tag drafts editable but requires tags for execution", () => {
     expect(getWorkflowNodeContract("tag")).toMatchObject({
-      executionConfigSchema: null,
-      maturity: "placeholder",
+      currentDraftSchemaVersion: 1,
+      maturity: "draft-ready",
     });
-    expect(getUnknownWorkflowNodeDraftDataKeys("tag", {
-      kind: "tag",
-      label: "客户打标",
-      metric: "",
-      schemaVersion: 1,
-      status: "ready",
-      tagIds: [1],
-      title: "客户打标",
-    })).toEqual(["tagIds"]);
+    expect(isWorkflowNodeDraftConfig("tag", { operation: "add", tagIds: [] })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("tag", { operation: "add", tagIds: [] })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("tag", { operation: "remove", tagIds: [1, 2] }))
+      .toBe(true);
+    expect(isWorkflowNodeExecutionConfig("tag", { operation: "add", tagIds: [1, 1] }))
+      .toBe(false);
+    expect(getWorkflowNodeOutputContracts("tag", { operation: "add", tagIds: [1] }))
+      .toBeNull();
   });
 
   it("allows incomplete Start drafts without treating them as executable", () => {

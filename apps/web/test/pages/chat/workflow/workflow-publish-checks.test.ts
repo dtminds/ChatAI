@@ -364,12 +364,28 @@ describe("buildPublishChecks", () => {
       source: "catalog",
     }));
 
-    for (const kind of ["tag", "coupon", "end"] as const) {
+    for (const kind of ["coupon", "end"] as const) {
       const node = kind === "end"
         ? nodes.find((item) => item.data.kind === "end")!
         : createNodeFromKind(kind, `${kind}-contract`, nodes.length);
       expect(validateWorkflowNodeConfig(node, [...nodes, node], createInitialEdges())).toEqual([]);
     }
+
+    const tagNode = createNodeFromKind("tag", "tag-contract", nodes.length);
+    expect(validateWorkflowNodeConfig(tagNode, [...nodes, tagNode], createInitialEdges()))
+      .toContainEqual(expect.objectContaining({
+        code: "tag-selection-required",
+        source: "config",
+      }));
+    const configuredTagNode = {
+      ...tagNode,
+      data: { ...tagNode.data, tagIds: [101] },
+    };
+    expect(validateWorkflowNodeConfig(
+      configuredTagNode,
+      [...nodes, configuredTagNode],
+      createInitialEdges(),
+    )).toEqual([]);
 
     const messageNode = createNodeFromKind("message", "message-contract", nodes.length);
     const configuredMessageNode = {

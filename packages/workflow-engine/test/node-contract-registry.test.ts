@@ -118,6 +118,7 @@ const projectableDraftData = {
     seatIds: [101],
     triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   },
+  tag: { operation: "add", tagIds: [101, 102] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
     event: { type: "message.received" },
@@ -131,6 +132,5 @@ const placeholderKinds = [
   "coupon",
   "customer-update",
   "order-query",
-  "tag",
   "tag-query",
 ] as const satisfies readonly WorkflowNodeKind[];

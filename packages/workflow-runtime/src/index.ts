@@ -2,6 +2,7 @@ export * from "./db.js";
 export * from "./database-timezone.js";
 export * from "./capability-port.js";
 export * from "./chatai-action-context.js";
+export * from "./customer-update.js";
 export * from "./errors.js";
 export * from "./entitlement.js";
 export * from "./inference.js";

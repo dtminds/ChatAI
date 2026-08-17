@@ -37,7 +37,7 @@ describe("ai-hosting custom-field routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 2,
+          count: 5,
           error: 0,
           list: [
             {
@@ -55,6 +55,30 @@ describe("ai-hosting custom-field routes", () => {
               sort: 10,
               title: "性别",
               type: 1,
+            },
+            {
+              fieldId: 3,
+              key: "score",
+              optionInfoList: [],
+              sort: 30,
+              title: "客户评分",
+              type: 11,
+            },
+            {
+              fieldId: 4,
+              key: "birthday",
+              optionInfoList: [],
+              sort: 40,
+              title: "生日",
+              type: 12,
+            },
+            {
+              fieldId: 5,
+              key: "future_type",
+              optionInfoList: [],
+              sort: 50,
+              title: "未来类型",
+              type: 99,
             },
             {
               fieldId: null,
@@ -103,6 +127,30 @@ describe("ai-hosting custom-field routes", () => {
             sort: 20,
             title: "客户等级",
             type: 2,
+          },
+          {
+            id: 3,
+            key: "score",
+            options: [],
+            sort: 30,
+            title: "客户评分",
+            type: 11,
+          },
+          {
+            id: 4,
+            key: "birthday",
+            options: [],
+            sort: 40,
+            title: "生日",
+            type: 12,
+          },
+          {
+            id: 5,
+            key: "future_type",
+            options: [],
+            sort: 50,
+            title: "未来类型",
+            type: 99,
           },
         ],
       },

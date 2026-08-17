@@ -87,6 +87,12 @@ function getRequiredContextSelectors(
       return value?.kind === "variable" ? selectorFrom(value.selector) : [];
     });
   }
+  if (node.kind === "customer-update") {
+    return readArray(config.fields).flatMap(field => {
+      const value = isRecord(field) && isRecord(field.value) ? field.value : null;
+      return value?.kind === "variable" ? selectorFrom(value.selector) : [];
+    });
+  }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
   if (node.kind === "message-query") return selectorsFromTimeRange(config.timeRange);
   if (node.kind === "branch") return requiredBranchSelectors(node, spec);

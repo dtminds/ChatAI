@@ -12,6 +12,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -66,6 +67,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
       capabilityBindings: [
+        WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
         WORKFLOW_HANDOFF_CAPABILITY_BINDING,
         WORKFLOW_MESSAGE_CAPABILITY_BINDING,
         WORKFLOW_TAG_CAPABILITY_BINDING,

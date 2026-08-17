@@ -81,7 +81,6 @@ export type WorkflowCapabilityExecutionBinding<
   }): unknown;
   definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>;
   nodeKind: WorkflowCapabilityNodeKind;
-  normalizeResult?(result: Static<TResultSchema>): Static<TResultSchema> | null;
 };
 
 export async function executeWorkflowCapability<
@@ -126,20 +125,19 @@ export async function executeWorkflowCapability<
       : {}),
   } as WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>;
   const result = await input.port.execute(input.binding.definition, request);
-  if (!Value.Check(input.binding.definition.resultSchema, result)
-    || !result || typeof result !== "object" || Array.isArray(result)) {
+  let decodedResult: unknown;
+  try {
+    decodedResult = Value.Decode(
+      input.binding.definition.resultSchema,
+      structuredClone(result),
+    );
+  } catch {
     throw capabilityOutputInvalid();
   }
-  const normalizedResult = input.binding.normalizeResult
-    ? input.binding.normalizeResult(structuredClone(result) as Static<TResultSchema>)
-    : structuredClone(result);
-  if (!Value.Check(input.binding.definition.resultSchema, normalizedResult)
-    || !normalizedResult
-    || typeof normalizedResult !== "object"
-    || Array.isArray(normalizedResult)) {
+  if (!decodedResult || typeof decodedResult !== "object" || Array.isArray(decodedResult)) {
     throw capabilityOutputInvalid();
   }
-  return structuredClone(normalizedResult) as Record<string, unknown>;
+  return decodedResult as Record<string, unknown>;
 }
 
 function capabilityOutputInvalid() {

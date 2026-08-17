@@ -1,7 +1,6 @@
 import {
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
   isWorkflowMessageExecutionConfigComplete,
-  normalizeWorkflowUtcInstant,
   WorkflowMessageCommandSchema,
   WorkflowMessageResultSchema,
   type WorkflowMessageCommand,
@@ -26,10 +25,6 @@ export const WORKFLOW_MESSAGE_CAPABILITY_BINDING = {
     resultSchema: WorkflowMessageResultSchema,
   },
   nodeKind: "message",
-  normalizeResult(result) {
-    const sentAt = normalizeWorkflowUtcInstant(result.sentAt);
-    return sentAt === null ? null : { sentAt };
-  },
 } satisfies WorkflowCapabilityExecutionBinding<
   typeof WorkflowMessageCommandSchema,
   typeof WorkflowMessageResultSchema,

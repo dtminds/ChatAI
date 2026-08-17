@@ -1,9 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import {
-  normalizeWorkflowUtcInstant,
-  WorkflowUtcInstantSchema,
-} from "./utc-instant.js";
+import { WorkflowUtcInstantSchema } from "./utc-instant.js";
 
 export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
@@ -144,8 +141,13 @@ export function validateWorkflowEntryEvent(
   }
   const envelopeBytes = getWorkflowJsonEncodedByteLength(value);
   if (envelopeBytes === null) return { code: "envelope_invalid", kind: "rejected" };
-  const occurredAt = normalizeWorkflowUtcInstant(value.occurredAt);
-  if (!Value.Check(WorkflowEntryEventSchema, value) || occurredAt === null) {
+  let event: WorkflowEntryEvent;
+  try {
+    event = Value.Decode(
+      WorkflowEntryEventSchema,
+      structuredClone(value),
+    ) as WorkflowEntryEvent;
+  } catch {
     return { code: "envelope_invalid", kind: "rejected" };
   }
   if (getWorkflowJsonDepth(value) > WORKFLOW_ENTRY_JSON_MAX_DEPTH) {
@@ -159,8 +161,6 @@ export function validateWorkflowEntryEvent(
   if (Math.max(options.encodedByteLength ?? 0, envelopeBytes) > WORKFLOW_ENTRY_EVENT_MAX_BYTES) {
     return { code: "envelope_too_large", kind: "rejected" };
   }
-  const event = structuredClone(value) as WorkflowEntryEvent;
-  event.occurredAt = occurredAt;
   return { event, kind: "accepted" };
 }
 

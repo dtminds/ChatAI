@@ -88,7 +88,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
 | `eventId` | 1-128 字符，租户内稳定唯一 |
 | `eventType` | 只允许本文三个事件类型 |
 | `uid` | positive safe integer |
-| `occurredAt` | UTC RFC 3339 毫秒格式 |
+| `occurredAt` | 以 `Z` 结尾的 UTC RFC 3339 时间；小数秒可省略，存在时允许 1-9 位 |
 | `source` | `wecom` 或 `chatai` |
 | `payload` | 必须通过对应事件的 payload 校验 |
 
@@ -481,7 +481,7 @@ message.received
 
 - Interest Reader 使用 `READ COMMITTED`。
 - Java 不对 Workflow 表加锁。
-- Entry Event 的 `occurredAt` 使用 UTC RFC 3339 毫秒格式。
+- Entry Event 的 `occurredAt` 使用以 `Z` 结尾的 UTC RFC 3339 时间，小数秒可省略或使用 1-9 位；Node 接收后统一规范化为三位毫秒的 `.sssZ` 形式。
 - Workflow MySQL `DATETIME` 遵守项目统一的 UTC+8 wall-clock 契约。
 - Java JDBC 连接和 Session 固定使用 `+08:00`。
 - 业务代码不得手工再次加减 8 小时。

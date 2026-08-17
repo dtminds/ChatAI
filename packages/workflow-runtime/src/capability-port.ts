@@ -67,6 +67,7 @@ export type WorkflowCapabilityCommandContext = {
   outputs: Record<string, Record<string, unknown>>;
   subjectId: string;
   trigger: Record<string, unknown>;
+  workflow: Record<string, unknown>;
 };
 
 export type WorkflowCapabilityExecutionBinding<
@@ -124,14 +125,26 @@ export async function executeWorkflowCapability<
       : {}),
   } as WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>;
   const result = await input.port.execute(input.binding.definition, request);
-  if (!Value.Check(input.binding.definition.resultSchema, result)
-    || !result || typeof result !== "object" || Array.isArray(result)) {
-    throw new WorkflowCapabilityExecutionError(
-      "terminal",
-      "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
-      "节点返回的数据无法处理，流程已停止",
-      { diagnosticMessage: "Workflow capability result failed schema validation" },
+  let decodedResult: unknown;
+  try {
+    decodedResult = Value.Decode(
+      input.binding.definition.resultSchema,
+      structuredClone(result),
     );
+  } catch {
+    throw capabilityOutputInvalid();
   }
-  return structuredClone(result) as Record<string, unknown>;
+  if (!decodedResult || typeof decodedResult !== "object" || Array.isArray(decodedResult)) {
+    throw capabilityOutputInvalid();
+  }
+  return decodedResult as Record<string, unknown>;
+}
+
+function capabilityOutputInvalid() {
+  return new WorkflowCapabilityExecutionError(
+    "terminal",
+    "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
+    "节点返回的数据无法处理，流程已停止",
+    { diagnosticMessage: "Workflow capability result failed schema validation" },
+  );
 }

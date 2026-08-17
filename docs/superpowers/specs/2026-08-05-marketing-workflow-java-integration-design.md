@@ -579,7 +579,7 @@ type WorkflowEntryEvent = {
 | `eventId` | Java | 大小写敏感，1-128 字符，在租户内全局唯一；同一业务事实重试时必须稳定 |
 | `eventType` | 双方 | 1-128 字符，匹配 `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`，由 Event Catalog 统一管理 |
 | `uid` | Java | 租户 ID，必须是 JavaScript 安全整数范围内的正整数 |
-| `occurredAt` | Java | UTC RFC 3339 毫秒格式，例如 `2026-08-09T10:30:15.123Z` |
+| `occurredAt` | Java | 以 `Z` 结尾的 UTC RFC 3339 时间；小数秒可省略，存在时允许 1-9 位；可直接使用 `Instant.toString()` |
 | `source` | Java | 当前只能是 `wecom` 或 `chatai`；表示权威事件来源，只用于审计和指标，不参与 Workflow 匹配 |
 | `payload` | 双方 | 由具体 `eventType + payloadVersion` 定义的受控对象，并携带 Node 解析候选 Run Subject 所需的事件身份字段 |
 
@@ -592,7 +592,7 @@ type WorkflowEntryEvent = {
 - JSON 嵌套深度最大 16。
 - 超限或结构非法的事件进入 Workflow Entry DLQ，禁止截断后继续处理。
 
-Java 用 `Instant` 生成和解析 `occurredAt`，Node 用 `Date` 解析。写入 MySQL `DATETIME` 时继续依靠双方 UTC+8 Session 和 Node `timezone: "+08:00"` 的部署契约，业务代码禁止手工加减 8 小时。
+Java 用 `Instant` 生成和解析 `occurredAt`。Node 接收后统一规范化为三位毫秒的 `.sssZ` 形式，再写入 Run Context。写入 MySQL `DATETIME` 时继续依靠双方 UTC+8 Session 和 Node `timezone: "+08:00"` 的部署契约，业务代码禁止手工加减 8 小时。
 
 禁止在事件中携带：
 
@@ -1043,7 +1043,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - Node Backend 和 Workflow Worker 的 mysql2 连接保持 `timezone: "+08:00"`。
 - Java 连接 Workflow 表时也必须明确使用 UTC+8 Session。
 - MySQL `DATETIME` 表示 UTC+8 wall-clock time。
-- MQ 的 `occurredAt` 必须使用 UTC RFC 3339 毫秒格式，例如 `2026-08-09T10:30:15.123Z`。
+- MQ 的 `occurredAt` 必须使用以 `Z` 结尾的 UTC RFC 3339 时间，小数秒可省略或使用 1-9 位；Node 接收后统一规范化为三位毫秒的 `.sssZ` 形式。
 - 业务代码不得在 mysql2 或 JDBC 已完成转换后再手工加减 8 小时。
 
 ### 11.2 顺序

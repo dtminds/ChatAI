@@ -12,8 +12,10 @@ import {
   isWorkflowNodeExecutionConfig,
   isWorkflowOutputValueTypeEqual,
   WorkflowNodeKindSchema,
+  WorkflowMessageCommandSchema,
   WorkflowMessageQueryCommandSchema,
   WorkflowMessageQueryResultSchema,
+  WorkflowMessageResultSchema,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
@@ -208,6 +210,61 @@ describe("workflow node contracts", () => {
       ["trigger", "occurredAt"],
       ["current-node-lifecycle", "enteredAt"],
     )).toBe(false);
+  });
+
+  it("validates complete Message execution configs and capability contracts", () => {
+    const attachment = {
+      content: { fileUrl: "https://cdn.example.com/image.png" },
+      materialCollectionId: "201",
+      msgInfoId: "301",
+      type: "image" as const,
+    };
+    expect(isWorkflowNodeExecutionConfig("message", {
+      attachments: [],
+      content: [{ type: "text", value: "hello" }],
+      contentMode: "custom",
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("message", {
+      attachments: [attachment],
+      content: [],
+      contentMode: "custom",
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("message", {
+      attachments: [],
+      content: [],
+      contentMode: "custom",
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("message", {
+      attachments: [],
+      contentMode: "node-output",
+    })).toBe(false);
+    expect(Value.Check(WorkflowMessageCommandSchema, {
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      attachments: [attachment],
+      content: "hello",
+      recipient: { thirdExternalUserId: "customer-1" },
+      source: "workflow",
+    })).toBe(true);
+    expect(Value.Check(WorkflowMessageCommandSchema, {
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      attachments: [{
+        content: attachment.content,
+        type: attachment.type,
+      }],
+      content: "hello",
+      recipient: { thirdExternalUserId: "customer-1" },
+      source: "workflow",
+    })).toBe(false);
+    for (const sentAt of [
+      "2026-08-16T10:00:00Z",
+      "2026-08-16T10:00:00.000Z",
+      "2026-08-16T10:00:00.123456789Z",
+    ]) {
+      expect(Value.Check(WorkflowMessageResultSchema, { sentAt })).toBe(true);
+    }
+    expect(Value.Check(WorkflowMessageResultSchema, {
+      sentAt: "2026-08-16 10:00:00",
+    })).toBe(false);
   });
 
   it("assigns every node kind one stable execution class", () => {

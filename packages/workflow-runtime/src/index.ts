@@ -6,6 +6,7 @@ export * from "./entitlement.js";
 export * from "./inference.js";
 export * from "./inference-port.js";
 export * from "./live-revision-routing.js";
+export * from "./message.js";
 export * from "./message-query.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";

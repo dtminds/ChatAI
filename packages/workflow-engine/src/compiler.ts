@@ -3,6 +3,7 @@ import {
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  isWorkflowMessageExecutionConfigComplete,
   isWorkflowMessageQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
@@ -116,6 +117,44 @@ function validateWorkflowNodeReferences(
   const entryEventTypes = getWorkflowEntryEventTypes(nodes);
 
   for (const node of nodes) {
+    if (node.kind === "message" && isWorkflowMessageExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const selectors = node.config.contentMode === "node-output"
+        ? node.config.outputSelector ? [node.config.outputSelector] : []
+        : node.config.content.flatMap(segment =>
+          segment.type === "variable" ? [segment.selector] : []);
+      const referencesAvailable = selectors.every(selector =>
+        validateWorkflowVariableSelector({
+          allowedSourceKinds: node.config.contentMode === "node-output"
+            ? ["node-output"]
+            : undefined,
+          edges,
+          expectedValueType: node.config.contentMode === "node-output"
+            ? { kind: "string" }
+            : undefined,
+          guaranteedUpstreamIds,
+          nodeById,
+          requiredUsage: node.config.contentMode === "node-output"
+            ? "message-content"
+            : "variable",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!referencesAvailable) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Message node references unavailable content data",
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.kind === "llm" && isWorkflowLlmExecutionConfigComplete(node.config)) {
       const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
         node.id,

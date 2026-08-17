@@ -52,6 +52,7 @@ import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
+import { createWorkflowMessageRunContext } from "./message.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -191,7 +192,11 @@ export class WorkflowRuntimeService {
 
     let context: Record<string, unknown>;
     try {
-      context = { outputs: {}, trigger: structuredClone(input.trigger) };
+      context = {
+        outputs: {},
+        trigger: structuredClone(input.trigger),
+        workflow: createWorkflowMessageRunContext(startConfig),
+      };
       assertWorkflowRuntimeValue(context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
       throw new WorkflowRuntimeError(
@@ -894,6 +899,7 @@ async function executeWithCapabilityTimeout(input: {
             : {},
           subjectId: input.run.subjectId,
           trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+          workflow: isRecord(input.run.context.workflow) ? input.run.context.workflow : {},
         },
         config: input.node.config,
         deadlineAt,

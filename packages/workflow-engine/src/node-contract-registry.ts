@@ -165,6 +165,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Start node requires accounts, a valid entry mode, and complete entry settings";
     case "llm":
       return "LLM node requires a model, complete inputs, prompts, and outputs";
+    case "message":
+      return "Message node requires valid content, node output, or attachments";
     case "wait":
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":

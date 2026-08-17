@@ -96,7 +96,11 @@ const projectableDraftData = {
     systemPrompt: [{ type: "text", value: "Summarize" }],
     userPrompt: [],
   },
-  message: { attachments: [], content: [], contentMode: "custom" },
+  message: {
+    attachments: [],
+    content: [{ type: "text", value: "hello" }],
+    contentMode: "custom",
+  },
   "message-query": {
     limit: 10,
     take: "latest",

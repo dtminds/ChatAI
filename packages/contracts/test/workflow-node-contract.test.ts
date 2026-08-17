@@ -255,9 +255,13 @@ describe("workflow node contracts", () => {
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
     })).toBe(false);
-    expect(Value.Check(WorkflowMessageResultSchema, {
-      sentAt: "2026-08-16T10:00:00.000Z",
-    })).toBe(true);
+    for (const sentAt of [
+      "2026-08-16T10:00:00Z",
+      "2026-08-16T10:00:00.000Z",
+      "2026-08-16T10:00:00.123456789Z",
+    ]) {
+      expect(Value.Check(WorkflowMessageResultSchema, { sentAt })).toBe(true);
+    }
     expect(Value.Check(WorkflowMessageResultSchema, {
       sentAt: "2026-08-16 10:00:00",
     })).toBe(false);

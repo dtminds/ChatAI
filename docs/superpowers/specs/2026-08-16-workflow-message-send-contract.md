@@ -77,7 +77,7 @@ Java 负责：
 }
 ```
 
-`sentAt` 表示本次节点消息全部成功受理的时间，必须是带毫秒的 UTC RFC 3339 时间。Node 将它作为 Message 节点的稳定输出。
+`sentAt` 表示本次节点消息全部成功受理的时间，必须是以 `Z` 结尾的 UTC RFC 3339 时间。小数秒可以省略，存在时允许 1-9 位；Java 可以直接使用 `Instant.toString()`。Node 将它作为 Message 节点的稳定输出。
 
 ## 4. 幂等与错误
 

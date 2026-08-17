@@ -6,7 +6,7 @@ import {
 import { WorkflowPushAccountStrategySchema } from "./trigger.js";
 
 const WorkflowUtcTimestampSchema = Type.String({
-  pattern: "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}Z$",
+  pattern: "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,9})?Z$",
 });
 
 const WorkflowMessageCommandAttachmentSchema = Type.Object({

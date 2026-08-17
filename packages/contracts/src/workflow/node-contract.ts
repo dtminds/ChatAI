@@ -241,6 +241,7 @@ export const WorkflowCustomerUpdateExecutionFieldSchema = Type.Object({
 export const WorkflowCustomerUpdateDraftConfigSchema = Type.Object({
   fields: Type.Array(WorkflowCustomerUpdateDraftFieldSchema, {
     maxItems: WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT,
+    minItems: 1,
   }),
 }, { additionalProperties: false });
 

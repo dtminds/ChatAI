@@ -28,9 +28,9 @@ vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => ({
 
 const customFields: CustomFieldItem[] = [
   { id: 1, key: "remark", options: [], sort: 1, title: "客户备注", type: 1 },
+  { id: 4, key: "gender", options: [], sort: 4, title: "性别", type: 2 },
   { id: 2, key: "birthday", options: [], sort: 2, title: "生日", type: 12 },
   { id: 3, key: "score", options: [], sort: 3, title: "客户评分", type: 11 },
-  { id: 4, key: "gender", options: [], sort: 4, title: "性别", type: 2 },
 ];
 
 describe("workflow Customer Update node", () => {
@@ -48,20 +48,29 @@ describe("workflow Customer Update node", () => {
     });
     const addButton = await screen.findByRole("button", { name: "添加客户属性" });
     await waitFor(() => expect(addButton).toBeEnabled());
-    await user.click(addButton);
 
     const firstFieldSelect = screen.getByRole("combobox", { name: "客户属性" });
+    expect(screen.getByRole("button", { name: "删除客户属性" })).toBeDisabled();
     await user.click(firstFieldSelect);
+    expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual([
+      "客户备注",
+      "生日",
+      "客户评分",
+      "性别（暂不支持）",
+    ]);
     expect(screen.getByRole("option", { name: "性别（暂不支持）" }))
       .toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("option", { name: "客户备注" }));
 
     await user.click(addButton);
+    screen.getAllByRole("button", { name: "删除客户属性" })
+      .forEach(button => expect(button).toBeEnabled());
     const fieldSelects = screen.getAllByRole("combobox", { name: "客户属性" });
     await user.click(fieldSelects[1]!);
     expect(screen.getByRole("option", { name: "客户备注" }))
       .toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("option", { name: "生日" }));
+    expect(screen.getByRole("button", { name: "生日的值" })).toBeInTheDocument();
 
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       fields: [
@@ -87,6 +96,18 @@ describe("workflow Customer Update node", () => {
       .toEqual(["text", "time"]);
     expect(getCompatibleCustomerUpdateVariables(fieldSnapshot(11), variables).map(item => item.key))
       .toEqual(["count"]);
+  });
+
+  it("creates and restores one incomplete field row by default", () => {
+    const definition = getNodeDefinition("customer-update");
+    expect(definition.createDefaultData().fields).toEqual([
+      expect.objectContaining({ value: { kind: "literal", value: "" } }),
+    ]);
+    const sanitized = definition.sanitizeData?.({
+      ...definition.createDefaultData(),
+      fields: [],
+    });
+    expect(sanitized?.fields).toHaveLength(1);
   });
 
   it("reports a variable that is no longer available or changed type", () => {

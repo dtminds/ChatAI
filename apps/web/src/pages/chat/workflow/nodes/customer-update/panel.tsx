@@ -13,7 +13,9 @@ import {
   Settings03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -44,6 +46,13 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const fields = normalizeCustomerUpdateFields(node.data.fields);
+  const orderedCustomFields = useMemo(
+    () => [
+      ...customFields.filter(field => isWorkflowCustomerFieldTypeSupported(field.type)),
+      ...customFields.filter(field => !isWorkflowCustomerFieldTypeSupported(field.type)),
+    ],
+    [customFields],
+  );
   const availableVariables = useMemo(
     () => getAvailableVariablesForNode(node.id, nodes, edges),
     [edges, node.id, nodes],
@@ -104,17 +113,15 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
       ) : null}
 
       {fields.length ? (
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
-            <span>客户属性</span>
-            <span>属性值</span>
-          </div>
-          {fields.map(field => (
+        <div className="space-y-3">
+          {fields.map((field, index) => (
             <CustomerUpdateFieldRow
               availableVariables={availableVariables}
-              customFields={customFields}
+              customFields={orderedCustomFields}
               field={field}
+              fieldSelectionDisabled={loading || loadError}
               fields={fields}
+              index={index}
               key={field.id}
               onChange={(nextField) => updateFields(fields.map(item =>
                 item.id === field.id ? nextField : item))}
@@ -133,14 +140,18 @@ function CustomerUpdateFieldRow({
   availableVariables,
   customFields,
   field,
+  fieldSelectionDisabled,
   fields,
+  index,
   onChange,
   onDelete,
 }: {
   availableVariables: WorkflowVariableDefinition[];
   customFields: CustomFieldItem[];
   field: WorkflowCustomerUpdateDraftField;
+  fieldSelectionDisabled: boolean;
   fields: WorkflowCustomerUpdateDraftField[];
+  index: number;
   onChange: (field: WorkflowCustomerUpdateDraftField) => void;
   onDelete: () => void;
 }) {
@@ -157,8 +168,16 @@ function CustomerUpdateFieldRow({
     : false;
 
   return (
-    <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_2rem] items-start gap-2">
+    <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2rem] items-start gap-x-2 gap-y-1.5">
+      <Badge
+        className="h-6 min-w-6 self-center justify-center rounded-md px-1 text-[10px] text-muted-foreground"
+        variant="secondary"
+      >
+        {index + 1}
+      </Badge>
+
       <Select
+        disabled={fieldSelectionDisabled}
         onValueChange={(value) => {
           const next = customFields.find(item => String(item.id) === value);
           if (!next || !isWorkflowCustomerFieldTypeSupported(next.type)) return;
@@ -170,12 +189,12 @@ function CustomerUpdateFieldRow({
         }}
         value={selectedField ? String(selectedField.id) : ""}
       >
-        <SelectTrigger aria-label="客户属性" className="h-9 min-w-0 text-xs">
+        <SelectTrigger aria-label="客户属性" className="h-9 w-full min-w-0 text-xs">
           <SelectValue placeholder="选择属性">
             {selectedField ? selectedField.title : undefined}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-64">
           {selectedField && !fieldAvailable ? (
             <SelectItem disabled value={String(selectedField.id)}>{selectedField.title}（不可用）</SelectItem>
           ) : null}
@@ -194,23 +213,48 @@ function CustomerUpdateFieldRow({
         </SelectContent>
       </Select>
 
-      <div className="relative min-w-0">
-        <Input
-          aria-label={`${selectedField?.title ?? "客户属性"}的值`}
-          className="h-9 min-w-0 pl-3 pr-16 text-xs"
-          disabled={!selectedField}
-          inputMode={selectedField?.type === 11 ? "decimal" : undefined}
-          onChange={(event) => onChange({
-            ...field,
-            value: { kind: "literal", value: event.target.value },
-          })}
-          placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
-          readOnly={field.value.kind === "variable"}
-          type={getLiteralInputType(selectedField)}
-          value={field.value.kind === "variable"
-            ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
-            : field.value.value}
-        />
+      <Button
+        aria-label="删除客户属性"
+        className="size-8 p-0 text-muted-foreground hover:text-destructive"
+        disabled={fields.length <= 1}
+        onClick={onDelete}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
+      </Button>
+
+      <div className="relative col-start-2 min-w-0">
+        {field.value.kind === "literal" && isDateField(selectedField) ? (
+          <DatePicker
+            aria-label={`${selectedField.title}的值`}
+            className="min-w-0 pr-10 text-xs"
+            onValueChange={(value) => onChange({
+              ...field,
+              value: { kind: "literal", value },
+            })}
+            placeholder="选择或引用变量"
+            value={field.value.value}
+          />
+        ) : (
+          <Input
+            aria-label={`${selectedField?.title ?? "客户属性"}的值`}
+            className="h-9 min-w-0 pl-3 pr-16 text-xs"
+            disabled={!selectedField}
+            inputMode={selectedField?.type === 11 ? "decimal" : undefined}
+            onChange={(event) => onChange({
+              ...field,
+              value: { kind: "literal", value: event.target.value },
+            })}
+            placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
+            readOnly={field.value.kind === "variable"}
+            type={getLiteralInputType(selectedField)}
+            value={field.value.kind === "variable"
+              ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
+              : field.value.value}
+          />
+        )}
         {field.value.kind === "variable" ? (
           <Button
             aria-label="改为固定内容"
@@ -252,17 +296,6 @@ function CustomerUpdateFieldRow({
           </WorkflowVariablePicker>
         ) : null}
       </div>
-
-      <Button
-        aria-label="删除客户属性"
-        className="size-8 p-0 text-muted-foreground hover:text-destructive"
-        onClick={onDelete}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
-      </Button>
     </div>
   );
 }
@@ -280,9 +313,12 @@ function toFieldSnapshot(field: CustomFieldItem): WorkflowCustomerFieldSnapshot 
 }
 
 function getLiteralInputType(field: WorkflowCustomerFieldSnapshot | undefined) {
-  if (field?.type === 4 || field?.type === 12) return "date";
   if (field?.type === 5) return "tel";
   if (field?.type === 6) return "email";
   if (field?.type === 11) return "number";
   return "text";
+}
+
+function isDateField(field: WorkflowCustomerFieldSnapshot | undefined): field is WorkflowCustomerFieldSnapshot {
+  return field?.type === 4 || field?.type === 12;
 }

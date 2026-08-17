@@ -34,6 +34,15 @@ type LocalDateTimePickerProps = {
   value: string;
 };
 
+type DatePickerProps = {
+  "aria-label": string;
+  className?: string;
+  disabled?: boolean;
+  onValueChange(value: string): void;
+  placeholder?: string;
+  value: string;
+};
+
 type DateValuePickerProps = {
   ariaLabel: string;
   className?: string;
@@ -49,6 +58,82 @@ export function DateTimePicker(props: DateTimePickerProps) {
     <LocalDateTimePicker {...props} />
   ) : (
     <DateValuePicker {...props} />
+  );
+}
+
+export function DatePicker({
+  "aria-label": ariaLabel,
+  className,
+  disabled = false,
+  onValueChange,
+  placeholder = "请选择日期",
+  value,
+}: DatePickerProps) {
+  const parsedValue = parseDateValue(value);
+  const [open, setOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState<Date | undefined>(parsedValue);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setDraftDate(parseDateValue(value));
+    setOpen(nextOpen);
+  };
+
+  return (
+    <Popover onOpenChange={handleOpenChange} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          className={cn("h-9 w-full justify-between px-3 font-normal", className)}
+          disabled={disabled}
+          type="button"
+          variant="outline"
+        >
+          <span className={cn("truncate", !parsedValue && "text-muted-foreground")}>
+            {parsedValue ? formatDateValue(parsedValue) : placeholder}
+          </span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0 text-muted-foreground"
+            icon={Calendar03Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          defaultMonth={draftDate}
+          mode="single"
+          onSelect={setDraftDate}
+          selected={draftDate}
+        />
+        <div className="flex items-center justify-end gap-2 border-t border-border p-3">
+          <Button
+            onClick={() => {
+              onValueChange("");
+              setOpen(false);
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            清除
+          </Button>
+          <Button
+            disabled={!draftDate}
+            onClick={() => {
+              if (!draftDate) return;
+              onValueChange(formatDateValue(draftDate));
+              setOpen(false);
+            }}
+            size="sm"
+            type="button"
+          >
+            确定
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -266,6 +351,20 @@ function formatDateValue(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function parseDateValue(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+    ? date
+    : undefined;
 }
 
 function normalizeDate(value: Date) {

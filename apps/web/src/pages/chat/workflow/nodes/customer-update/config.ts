@@ -26,10 +26,10 @@ export function createCustomerUpdateDraftField(
 }
 
 export function normalizeCustomerUpdateFields(value: unknown): WorkflowCustomerUpdateDraftField[] {
-  if (!Array.isArray(value)) return [];
   const fields: WorkflowCustomerUpdateDraftField[] = [];
   const seenIds = new Set<string>();
-  for (const [index, rawField] of value.entries()) {
+  const rawFields = Array.isArray(value) ? value : [];
+  for (const [index, rawField] of rawFields.entries()) {
     if (!isRecord(rawField) || fields.length >= WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT) continue;
     const id = normalizeFieldRowId(rawField.id, index, seenIds);
     seenIds.add(id);
@@ -40,7 +40,7 @@ export function normalizeCustomerUpdateFields(value: unknown): WorkflowCustomerU
       value: normalizeCustomerUpdateValue(rawField.value),
     });
   }
-  return fields;
+  return fields.length > 0 ? fields : [createCustomerUpdateDraftField()];
 }
 
 export function getCustomerUpdateMetric(fields: readonly WorkflowCustomerUpdateDraftField[]) {

@@ -59,7 +59,9 @@ const draftConfigs = {
     ],
   },
   coupon: {},
-  "customer-update": { fields: [] },
+  "customer-update": {
+    fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
+  },
   end: {},
   handoff: { customerMessage: [], operatorMessage: [] },
   llm: {
@@ -419,7 +421,10 @@ describe("workflow node contracts", () => {
       currentDraftSchemaVersion: 1,
       maturity: "draft-ready",
     });
-    expect(isWorkflowNodeDraftConfig("customer-update", { fields: [] })).toBe(true);
+    expect(isWorkflowNodeDraftConfig("customer-update", { fields: [] })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("customer-update", {
+      fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("customer-update", { fields: [] })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("customer-update", {
       fields: [

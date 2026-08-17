@@ -25,12 +25,11 @@ export const customerUpdateNodeDefinition: WorkflowNodeDefinition<"customer-upda
   ...baseCustomerUpdateNodeDefinition,
   createDefaultData: () => ({
     ...baseCustomerUpdateNodeDefinition.createDefaultData(),
-    fields: [],
-    status: "warning",
+    ...getCustomerUpdateNodePatch([]),
   }),
   sanitizeData: (data) => ({
     ...data,
-    ...getCustomerUpdateNodePatch(normalizeCustomerUpdateFields(data.fields)),
+    ...getCustomerUpdateNodePatch(data.fields),
   }),
   validate: (node, context) => {
     if (!areCustomerUpdateFieldsComplete(node.data.fields)) {

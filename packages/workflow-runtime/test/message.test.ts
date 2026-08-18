@@ -3,6 +3,7 @@ import {
   createWorkflowChatAiRunContext,
   createWorkflowMessageCommand,
   executeWorkflowCapability,
+  getNextWorkflowMessageExecutionAt,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
 } from "../src/index.js";
 import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter.js";
@@ -51,8 +52,31 @@ describe("Workflow Message capability", () => {
           seatIds: [101, 102],
           strategy: "latest-added",
         },
+        sendingWindow: { endTime: "20:00", startTime: "09:00" },
       },
     });
+  });
+
+  it("defers Message execution to the next UTC+8 sending window", () => {
+    const workflow = createWorkflowChatAiRunContext({
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      seatIds: [101],
+      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    });
+
+    expect(getNextWorkflowMessageExecutionAt(
+      workflow,
+      new Date("2026-08-18T00:30:00.000Z"),
+    )).toEqual(new Date("2026-08-18T01:00:00.000Z"));
+    expect(getNextWorkflowMessageExecutionAt(
+      workflow,
+      new Date("2026-08-18T02:00:00.000Z"),
+    )).toBeNull();
+    expect(getNextWorkflowMessageExecutionAt(
+      workflow,
+      new Date("2026-08-18T12:00:00.000Z"),
+    )).toEqual(new Date("2026-08-19T01:00:00.000Z"));
   });
 
   it("renders custom variables and attachment references into a typed command", () => {

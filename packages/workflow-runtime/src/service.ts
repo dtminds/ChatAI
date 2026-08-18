@@ -31,7 +31,10 @@ import {
   type WorkflowCapabilityExecutionBinding,
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
-import { createWorkflowChatAiRunContext } from "./chatai-action-context.js";
+import {
+  createWorkflowChatAiRunContext,
+  getNextWorkflowMessageExecutionAt,
+} from "./chatai-action-context.js";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -139,7 +142,7 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
-      const executionClass = getWorkflowNodeContract(kind).executionClass;
+      const executionClass: string = getWorkflowNodeContract(kind).executionClass;
       if (executionClass === "core") return !this.executors.has(kind);
       if (executionClass === "inference") return false;
       return this.capabilityPort === undefined || !this.capabilityBindings.has(kind);
@@ -320,6 +323,20 @@ export class WorkflowRuntimeService {
         await this.deferTaskOrThrowStale(task, input.now);
       }
       throw error;
+    }
+    if (node.kind === "message" && isRecord(run.context.workflow)) {
+      const nextExecutionAt = getNextWorkflowMessageExecutionAt(
+        run.context.workflow,
+        input.now,
+      );
+      if (nextExecutionAt) {
+        await this.deferTaskUntilOrThrowStale(task, nextExecutionAt);
+        throw new WorkflowRuntimeError(
+          "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+          "消息发送时间未到",
+          409,
+        );
+      }
     }
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
@@ -795,8 +812,18 @@ export class WorkflowRuntimeService {
   }
 
   private async deferTaskOrThrowStale(task: { id: string; taskVersion: number; uid: number }, now: Date) {
+    await this.deferTaskUntilOrThrowStale(
+      task,
+      new Date(now.getTime() + this.deferredTaskDelayMs),
+    );
+  }
+
+  private async deferTaskUntilOrThrowStale(
+    task: { id: string; taskVersion: number; uid: number },
+    dueAt: Date,
+  ) {
     const deferred = await this.runtimeRepository.deferTask({
-      dueAt: new Date(now.getTime() + this.deferredTaskDelayMs),
+      dueAt,
       expectedTaskVersion: task.taskVersion,
       taskId: task.id,
       uid: task.uid,

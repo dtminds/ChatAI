@@ -11,8 +11,8 @@ describe("workflow production availability", () => {
     const spec = executionSpec();
     spec.nodes.splice(1, 0, {
       config: {},
-      id: "message",
-      kind: "message",
+      id: "llm",
+      kind: "llm",
       nodeSchemaVersion: 1,
     });
 
@@ -37,8 +37,8 @@ describe("workflow production availability", () => {
         {
           code: "runtime-node-unsupported",
           dimension: "runtime",
-          nodeId: "message",
-          nodeKind: "message",
+          nodeId: "llm",
+          nodeKind: "llm",
         },
         {
           code: "workflow-type-unentitled",

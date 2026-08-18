@@ -114,6 +114,25 @@ describe("workflow worker config", () => {
     });
   });
 
+  it("loads the Java internal API used by runtime-ready action nodes", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      JAVA_INTERNAL_API_BASE_URL: " https://java.example.com/ ",
+      JAVA_INTERNAL_API_TOKEN: "internal-token",
+    }));
+
+    expect(config.javaInternalApi).toEqual({
+      baseUrl: "https://java.example.com",
+      token: "internal-token",
+    });
+  });
+
+  it("requires a valid Java internal API base URL", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ JAVA_INTERNAL_API_BASE_URL: "" })))
+      .toThrow("Missing required environment variable: JAVA_INTERNAL_API_BASE_URL");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ JAVA_INTERNAL_API_BASE_URL: "mysql://java" })))
+      .toThrow("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
+  });
+
   it("loads the explicit entitlement bypass for development and test environments", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
       NODE_ENV: "development",
@@ -275,6 +294,7 @@ describe("workflow worker config", () => {
 function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     DATABASE_URL: "mysql://user:password@localhost/workflow",
+    JAVA_INTERNAL_API_BASE_URL: "https://java.example.com",
     WORKFLOW_BROKER: "pulsar",
     WORKFLOW_ENVIRONMENT: "dev",
     WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",

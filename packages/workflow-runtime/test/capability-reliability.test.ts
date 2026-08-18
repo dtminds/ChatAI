@@ -20,7 +20,11 @@ const now = new Date("2026-07-13T00:00:00.000Z");
 describe("workflow capability reliability", () => {
   it("does not let a capability port bypass node maturity at Run admission", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-    const service = createService(runtime, async () => ({}), { strictNodeMaturity: true });
+    const service = createService(runtime, async () => ({}), {
+      capabilityBindings: [WORKFLOW_HANDOFF_CAPABILITY_BINDING],
+      spec: handoffSpec(),
+      strictNodeMaturity: true,
+    });
 
     await expect(service.startRun({
       entryEventId: "unsupported-action",
@@ -41,6 +45,52 @@ describe("workflow capability reliability", () => {
       capabilityTimeoutMs: 30_001,
       taskLeaseDurationMs: 60_000,
     })).toThrow("capability timeout must not exceed half of the task lease duration");
+  });
+
+  it("defers Message before claim when the UTC+8 sending window has not started", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const execute = vi.fn(async () => ({}));
+    const spec = actionSpec();
+    spec.nodes[0]!.config = {
+      ...startConfig(),
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+    };
+    const service = createService(runtime, execute, { spec });
+    const started = await service.startRun({
+      entryEventId: "message-window",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+      workflowId: "31",
+    });
+    const advanced = await service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in advanced) || !advanced.nextTask) {
+      throw new Error("Message Task was not created");
+    }
+
+    await expect(service.executeTask({
+      now,
+      taskId: advanced.nextTask.id,
+      taskVersion: advanced.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED" });
+
+    expect(execute).not.toHaveBeenCalled();
+    await expect(runtime.findTask(9, advanced.nextTask.id)).resolves.toMatchObject({
+      attempt: 0,
+      dueAt: new Date("2026-07-13T01:00:00.000Z"),
+      status: "pending",
+      taskVersion: advanced.nextTask.taskVersion + 1,
+    });
   });
 
   it("requires a positive Inference total timeout", () => {
@@ -331,6 +381,7 @@ describe("workflow capability reliability", () => {
       workflow: {
         message: {
           accountSelection: { seatIds: [101], strategy: "earliest-added" },
+          sendingWindow: startConfig().messageSendingWindow,
         },
       },
     }), "utf8");
@@ -1228,6 +1279,7 @@ async function startCapability(
       workflow: {
         message: {
           accountSelection: { seatIds: [101], strategy: "earliest-added" },
+          sendingWindow: startConfig().messageSendingWindow,
         },
       },
     },
@@ -1424,6 +1476,7 @@ function messageQuerySpec(): WorkflowExecutionSpec {
 function startConfig() {
   return {
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
+    messageSendingWindow: { endTime: "23:59", startTime: "00:00" },
     seatIds: [101],
     triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
   };

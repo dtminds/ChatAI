@@ -232,6 +232,7 @@ NODE_ENV=production
 LOG_LEVEL=info
 WORKFLOW_ENVIRONMENT=dev
 WORKFLOW_BROKER=pulsar
+JAVA_INTERNAL_API_BASE_URL=https://<java-internal-host>
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
 WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
@@ -272,11 +273,11 @@ WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
 WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 ```
 
-Workflow 不维护环境级 Capability 白名单。节点是否可发布由共享节点契约中的 maturity 决定；Worker 启动会确认每个 `runtime-ready` 节点都有生产执行路径。Start 和 Wait Event 额外由 Workflow Event Catalog 校验 Event Type 与 Subject Type。LLM、AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
+Workflow 不维护环境级 Capability 白名单。节点是否可发布由共享节点契约中的 maturity 决定；Worker 启动会确认每个 `runtime-ready` 节点都有生产执行路径。Start 和 Wait Event 额外由 Workflow Event Catalog 校验 Event Type 与 Subject Type。Message 通过 `JAVA_INTERNAL_API_BASE_URL` 复用 Java 发送接口；LLM、AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
 
 新增事件必须按固定顺序发布：Java 先上线但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动到包含新 Catalog 定义的版本；最后才由 Backend/Web 开放该事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不会等待新 Worker 重试。
 
-`WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置该接口及 `JAVA_INTERNAL_API_TOKEN`。
+`WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。`JAVA_INTERNAL_API_BASE_URL` 供 Message 等运行节点调用 Java 业务接口。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置这些接口及 `JAVA_INTERNAL_API_TOKEN`。
 
 环境映射：
 
@@ -364,11 +365,11 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 
 - 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
-- 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
-- `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作。代码允许 `JAVA_INTERNAL_API_TOKEN` 为空，但接入 Workflow Entitlement 后，测试和生产部署应配置 Token。
+- 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 Backend 或 Workflow Worker 会拒绝启动；本地开发和测试环境可按需使用 mock 或非生产地址。
+- `JAVA_INTERNAL_API_BASE_URL` 同时用于 Backend 工作台写操作和 Workflow Worker 的 Message 节点。代码允许 `JAVA_INTERNAL_API_TOKEN` 为空，但接入 Workflow Entitlement 和运行节点后，测试和生产部署应配置 Token。
 - Backend 与 Workflow Worker 应部署同一代码版本，并使用相同的 `WORKFLOW_ENTITLEMENT_API_URL`。共享节点 maturity 和 Event Catalog 决定哪些 Revision 可以发布和执行，权益接口用于创建、启用、发布等控制面操作的 Workflow Type 权益校验。
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
-- `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
+- `JAVA_INTERNAL_API_BASE_URL` 只应配置在 Backend 和 Workflow Worker 所在环境，不要放进 Web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 时 backend 使用 `NoopCache`，不连接 Redis；`REDIS_ENABLED=true` 时必须配置 `REDIS_URL`，并且启动阶段会校验 Redis 连接、认证和 `PING`，失败则拒绝启动。
 - `REDIS_URL` 示例：无密码 `redis://<host>:6379/0`；密码认证 `redis://:<password>@<host>:6379/0`；ACL 用户名和密码 `redis://<user>:<password>@<host>:6379/0`；若 Redis 端口要求 TLS，使用 `rediss://...`。

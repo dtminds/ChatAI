@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "message", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "message", "tag", "tag-query"]);
+      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "tag", "tag-query"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });

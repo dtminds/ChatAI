@@ -15,6 +15,7 @@ import {
   type WorkbenchQuickReplyAttachmentType,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   HoverCard,
   HoverCardContent,
@@ -48,9 +49,12 @@ import type {
 type MessageAttachmentPickerProps = {
   allowVideoChannel?: boolean;
   attachments: MessageDraftAttachment[];
+  className?: string;
+  headerClassName?: string;
   imageSource: "local-upload" | "material-library";
   maxCount: number;
   onChange: (attachments: MessageDraftAttachment[]) => void;
+  titleClassName?: string;
 };
 
 export type MessageLocalImageAttachment = QuickReplyLocalImageAttachment;
@@ -59,9 +63,12 @@ export type MessageDraftAttachment = QuickReplyDraftAttachment;
 export function MessageAttachmentPicker({
   allowVideoChannel = !DISABLE_SPH_COLLECTION,
   attachments,
+  className,
+  headerClassName,
   imageSource,
   maxCount,
   onChange,
+  titleClassName,
 }: MessageAttachmentPickerProps) {
   const [activePickerBizType, setActivePickerBizType] =
     useState<MessageAttachmentMaterialBizType | null>(null);
@@ -88,10 +95,10 @@ export function MessageAttachmentPicker({
   };
 
   return (
-    <div className="w-full min-w-0 space-y-2">
-      <div className="flex items-center justify-between gap-3">
+    <div className={cn("w-full min-w-0 space-y-2", className)}>
+      <div className={cn("flex items-center justify-between gap-3", headerClassName)}>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">附件</span>
+          <span className={cn("text-sm font-medium text-foreground", titleClassName)}>附件</span>
           <span className="text-xs text-muted-foreground">
             {attachments.length}/{maxCount}
           </span>

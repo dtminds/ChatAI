@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   WorkflowWaitEventTimeoutUnit,
@@ -40,9 +41,8 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
   };
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">等待事件</h3>
+    <>
+      <WorkflowSettingsSection title="等待事件">
         <Select
           onValueChange={(type: WorkflowWaitEventType) => updateConfig({ event: { type } })}
           value={eventType}
@@ -58,10 +58,9 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
             ))}
           </SelectContent>
         </Select>
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">最长等待</h3>
+      <WorkflowSettingsSection title="最长等待">
         <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
           <BoundedTimeoutInput
             max={WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
@@ -90,8 +89,8 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
           </Select>
           <span>后，执行后续节点</span>
         </div>
-      </section>
-    </div>
+      </WorkflowSettingsSection>
+    </>
   );
 }
 

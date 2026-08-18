@@ -4,10 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
-import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from "@/components/ui/segmented-control";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -15,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   MessageQueryNodeData,
@@ -65,38 +63,30 @@ export function MessageQueryConfig({
   };
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">时间范围</h3>
-          <SegmentedControl
-            aria-label="时间范围类型"
-            className="h-9 rounded-full p-1"
-            onValueChange={(mode) => {
-              if (mode !== "fixed" && mode !== "dynamic") return;
-              updateConfig({
-                timeRange: mode === "fixed"
-                  ? { endAt: "", mode: "fixed", startAt: "" }
-                  : createDefaultMessageQueryTimeRange(),
-              });
-            }}
-            type="single"
-            value={timeRange.mode}
-          >
-            <SegmentedControlItem
-              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
-              value="fixed"
-            >
-              固定时间
-            </SegmentedControlItem>
-            <SegmentedControlItem
-              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
-              value="dynamic"
-            >
-              动态时间
-            </SegmentedControlItem>
-          </SegmentedControl>
-        </div>
+    <>
+      <WorkflowSettingsSection contentClassName="text-[13px]" title="时间范围">
+        <RadioGroup
+          aria-label="时间范围类型"
+          className="flex items-center gap-6"
+          onValueChange={(mode) => {
+            if (mode !== "fixed" && mode !== "dynamic") return;
+            updateConfig({
+              timeRange: mode === "fixed"
+                ? { endAt: "", mode: "fixed", startAt: "" }
+                : createDefaultMessageQueryTimeRange(),
+            });
+          }}
+          value={timeRange.mode}
+        >
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <RadioGroupItem value="fixed" />
+            <span>固定时间</span>
+          </label>
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <RadioGroupItem value="dynamic" />
+            <span>动态时间</span>
+          </label>
+        </RadioGroup>
         <div className="rounded-[8px] border bg-card p-4">
           {timeRange.mode === "fixed" ? (
             <FixedTimeRangeFields
@@ -111,11 +101,10 @@ export function MessageQueryConfig({
             />
           )}
         </div>
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">取数方式</h3>
-        <div className="flex flex-wrap items-center gap-2 rounded-[8px] border bg-card p-4 text-sm">
+      <WorkflowSettingsSection contentClassName="text-[13px]" title="取数方式">
+        <div className="flex flex-wrap items-center gap-2 rounded-[8px] border bg-card p-4 text-[13px]">
           <span>取时间范围内</span>
           <Select
             onValueChange={(take: MessageQueryNodeData["take"]) => updateConfig({
@@ -123,12 +112,12 @@ export function MessageQueryConfig({
             })}
             value={node.data.take}
           >
-            <SelectTrigger aria-label="消息取数顺序" className="h-9 w-24 px-2.5">
+            <SelectTrigger aria-label="消息取数顺序" className="h-9 w-24 px-2.5 text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="latest">最新</SelectItem>
-              <SelectItem value="earliest">最早</SelectItem>
+              <SelectItem className="text-[13px]" value="latest">最新</SelectItem>
+              <SelectItem className="text-[13px]" value="earliest">最早</SelectItem>
             </SelectContent>
           </Select>
           <BoundedNumberInput
@@ -140,8 +129,8 @@ export function MessageQueryConfig({
           />
           <span>条消息</span>
         </div>
-      </section>
-    </div>
+      </WorkflowSettingsSection>
+    </>
   );
 }
 
@@ -171,10 +160,11 @@ function DateTimeField({ label, onChange, value }: {
   value: string;
 }) {
   return (
-    <label className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 text-sm">
+    <label className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 text-[13px]">
       <span>{label}</span>
       <DateTimePicker
         aria-label={label}
+        className="text-[13px]"
         onValueChange={onChange}
         value={value}
       />
@@ -225,7 +215,7 @@ function DynamicTimeField({
 
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3">
-      <span className="text-sm">{label}</span>
+      <span className="text-[13px]">{label}</span>
       <WorkflowVariablePicker
         onOpenChange={setPickerOpen}
         onSelect={(variable) => {
@@ -237,7 +227,7 @@ function DynamicTimeField({
       >
         <Button
           aria-label={`${label}时间点`}
-          className="h-9 w-full justify-between px-3 font-normal"
+          className="h-9 w-full justify-between px-3 text-[13px] font-normal"
           type="button"
           variant="outline"
         >
@@ -258,7 +248,7 @@ function DynamicTimeField({
 
 function BoundedNumberInput({
   "aria-label": ariaLabel,
-  className = "h-9",
+  className = "h-9 text-[13px]",
   max,
   min,
   onValueChange,

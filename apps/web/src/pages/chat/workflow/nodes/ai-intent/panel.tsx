@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { WorkflowVariablePicker } from "../../workflow-variable-picker";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   AiIntentNodeData,
@@ -102,9 +103,8 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
   };
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">输入</h3>
+    <>
+      <WorkflowSettingsSection title="输入">
         <WorkflowVariablePicker
           onOpenChange={setInputPickerOpen}
           onSelect={(variable) => {
@@ -128,11 +128,10 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
             <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
           </Button>
         </WorkflowVariablePicker>
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">意图匹配</h3>
+      <WorkflowSettingsSection
+        actions={(
           <Button
             aria-label="添加意图"
             className="size-8 p-0"
@@ -146,7 +145,9 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
           >
             <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
           </Button>
-        </div>
+        )}
+        title="意图匹配"
+      >
 
         <div className="space-y-3 rounded-[8px] border px-2 py-4">
           <Sortable
@@ -199,17 +200,18 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
             <span />
           </div>
         </div>
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">高级调教</h3>
+      <WorkflowSettingsSection
+        actions={(
           <Switch
             aria-label="高级调教"
             checked={advancedEnabled}
             onCheckedChange={(checked) => updateConfig({ advancedEnabled: checked })}
           />
-        </div>
+        )}
+        title="高级调教"
+      >
         <div className="relative">
           <Textarea
             aria-label="提示词"
@@ -224,7 +226,7 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
             {prompt.length}/{AI_INTENT_PROMPT_MAX_LENGTH}
           </span>
         </div>
-      </section>
+      </WorkflowSettingsSection>
 
       <AlertDialog
         onOpenChange={(open) => {
@@ -252,7 +254,7 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 
 const waitUnitLabels = {
@@ -34,15 +35,14 @@ export function WaitConfig({ node, onNodeChange }: NodeSettingsProps<"wait">) {
   };
 
   return (
-    <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-foreground">等待时间配置</h3>
+    <WorkflowSettingsSection title="等待时间配置">
       <RadioGroup
-        className="gap-5 rounded-[8px] border bg-card p-4"
+        className="gap-5"
         onValueChange={(mode) => updateConfig(createWaitConfig(mode))}
         value={config.mode}
       >
         <WaitOption value="duration">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-foreground">
             <span>客户进入节点</span>
             <BoundedNumberInput
               aria-label="等待时长"
@@ -83,7 +83,7 @@ export function WaitConfig({ node, onNodeChange }: NodeSettingsProps<"wait">) {
         </WaitOption>
 
         <WaitOption value="fixed-time">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-foreground">
             <span>客户进入节点</span>
             <BoundedNumberInput
               aria-label="等待天数"
@@ -110,7 +110,7 @@ export function WaitConfig({ node, onNodeChange }: NodeSettingsProps<"wait">) {
           </div>
         </WaitOption>
       </RadioGroup>
-    </section>
+    </WorkflowSettingsSection>
   );
 }
 

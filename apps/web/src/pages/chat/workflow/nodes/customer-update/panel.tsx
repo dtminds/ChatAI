@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { listCustomFields } from "@/pages/chat/ai-hosting/api/custom-field-service";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type { WorkflowVariableDefinition } from "../../types";
 import { WorkflowVariablePicker } from "../../workflow-variable-picker";
@@ -90,9 +91,8 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex h-5 items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">客户属性</h3>
+    <WorkflowSettingsSection
+      actions={(
         <div className="flex items-center gap-2">
           {loading ? (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
@@ -113,7 +113,10 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
             <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
           </Button>
         </div>
-      </div>
+      )}
+      contentClassName="space-y-3"
+      title="客户属性"
+    >
 
       {loadError ? (
         <p className="text-xs text-destructive" role="alert">客户属性加载失败</p>
@@ -139,7 +142,7 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
       ) : loading ? null : (
         <p className="py-2 text-sm text-muted-foreground">暂无数据</p>
       )}
-    </div>
+    </WorkflowSettingsSection>
   );
 }
 

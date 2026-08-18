@@ -171,7 +171,6 @@ export function StartConfig({
                 <SelectTrigger
                   aria-label="选择事件"
                   className="h-9 w-full px-3 text-[13px]"
-                  variant="soft"
                 >
                   <SelectValue placeholder="请选择事件" />
                 </SelectTrigger>
@@ -307,7 +306,6 @@ export function StartConfig({
                     messageSendingWindow: { ...messageSendingWindow, startTime },
                   })}
                   value={messageSendingWindow.startTime}
-                  variant="secondary"
                 />
                 <span className="shrink-0 text-[13px] text-muted-foreground">至</span>
                 <TimePicker
@@ -317,7 +315,6 @@ export function StartConfig({
                     messageSendingWindow: { ...messageSendingWindow, endTime },
                   })}
                   value={messageSendingWindow.endTime}
-                  variant="secondary"
                 />
               </div>
             </div>
@@ -422,7 +419,6 @@ function CommaSeparatedTriggerInput({ ariaLabel, onCommit, placeholder, values }
       onChange={event => setText(event.target.value)}
       placeholder={placeholder}
       value={text}
-      variant="soft"
     />
   );
 }
@@ -459,7 +455,6 @@ function EntryCountSelect({ ariaLabel, disabled = false, onChange, value }: {
       <SelectTrigger
         aria-label={ariaLabel}
         className="h-9 w-[82px] shrink-0 px-3 text-[13px]"
-        variant="soft"
       >
         <SelectValue />
       </SelectTrigger>
@@ -498,7 +493,6 @@ function RollingWindowControls({ disabled, onChange, value }: {
         <SelectTrigger
           aria-label="时间单位"
           className="h-9 w-[92px] shrink-0 px-3 text-[13px]"
-          variant="soft"
         >
           <SelectValue />
         </SelectTrigger>
@@ -539,7 +533,6 @@ function NumberInput({ ariaLabel, disabled = false, max, onChange, value }: {
       step={1}
       type="number"
       value={value}
-      variant="soft"
     />
   );
 }

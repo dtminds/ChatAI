@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   MessageNodeData,
@@ -81,10 +82,9 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
   };
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">消息内容</h3>
+    <>
+      <WorkflowSettingsSection
+        actions={(
           <SegmentedControl
             aria-label="消息来源"
             className="h-9 rounded-full p-1"
@@ -109,7 +109,9 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
               节点输出
             </SegmentedControlItem>
           </SegmentedControl>
-        </div>
+        )}
+        title="消息内容"
+      >
 
         {contentMode === "custom" ? (
           <VariableContentEditor
@@ -127,16 +129,21 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
             value={outputSelector}
           />
         )}
-      </section>
-      <MessageAttachmentPicker
-        attachments={attachments}
-        imageSource="material-library"
-        maxCount={QUICK_REPLY_ATTACHMENT_MAX_COUNT}
-        onChange={(nextAttachments) => updateMessage({
-          attachments: normalizeWorkflowMessageAttachments(nextAttachments),
-        })}
-      />
-    </div>
+      </WorkflowSettingsSection>
+      <div className="pb-3">
+        <MessageAttachmentPicker
+          attachments={attachments}
+          className="space-y-0"
+          headerClassName="py-3"
+          imageSource="material-library"
+          maxCount={QUICK_REPLY_ATTACHMENT_MAX_COUNT}
+          onChange={(nextAttachments) => updateMessage({
+            attachments: normalizeWorkflowMessageAttachments(nextAttachments),
+          })}
+          titleClassName="text-[15px] font-semibold"
+        />
+      </div>
+    </>
   );
 }
 

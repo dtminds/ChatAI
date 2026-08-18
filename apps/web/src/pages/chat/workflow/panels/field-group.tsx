@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { WorkflowSettingsSection } from "./settings-section";
 
 export function FieldGroup({
   children,
@@ -8,9 +9,8 @@ export function FieldGroup({
   title: string;
 }) {
   return (
-    <section className="workflow-field-group space-y-3">
-      <h3 className="text-xs font-semibold text-muted-foreground">{title}</h3>
+    <WorkflowSettingsSection title={title}>
       {children}
-    </section>
+    </WorkflowSettingsSection>
   );
 }

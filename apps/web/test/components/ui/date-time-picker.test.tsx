@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { DatePicker, DateTimePicker } from "@/components/ui/date-time-picker";
 
 describe("DateTimePicker", () => {
   it("commits the selected time with the configured local date", async () => {
@@ -82,5 +82,26 @@ describe("DateTimePicker", () => {
     await user.click(screen.getByRole("button", { name: "清除" }));
 
     expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("DatePicker", () => {
+  it("commits a selected calendar date as a local date string", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+
+    render(
+      <DatePicker
+        aria-label="生日"
+        onValueChange={onValueChange}
+        value="2026-07-15"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "生日" }));
+    await user.click(screen.getByRole("button", { name: /2026年7月16日/ }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(onValueChange).toHaveBeenCalledWith("2026-07-16");
   });
 });

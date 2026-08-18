@@ -9,7 +9,7 @@ import {
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
-import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -196,6 +196,62 @@ export const WorkflowTagExecutionConfigSchema = Type.Object({
   ),
 }, { additionalProperties: false });
 
+export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
+
+export const WorkflowCustomerFieldTypeSchema = Type.Union([
+  Type.Literal(1),
+  Type.Literal(4),
+  Type.Literal(5),
+  Type.Literal(6),
+  Type.Literal(11),
+  Type.Literal(12),
+]);
+
+export const WorkflowCustomerUpdateValueSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal("literal"),
+    value: Type.String({ maxLength: 10_000 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    kind: Type.Literal("variable"),
+    selector: WorkflowVariableSelectorSchema,
+    valueType: WorkflowOutputValueTypeSchema,
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowCustomerFieldSnapshotSchema = Type.Object({
+  id: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+  key: Type.String({ maxLength: 128 }),
+  title: Type.String({ maxLength: 256 }),
+  type: WorkflowCustomerFieldTypeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowCustomerUpdateDraftFieldSchema = Type.Object({
+  field: Type.Optional(WorkflowCustomerFieldSnapshotSchema),
+  id: Type.String({ minLength: 1, maxLength: 128 }),
+  value: WorkflowCustomerUpdateValueSchema,
+}, { additionalProperties: false });
+
+export const WorkflowCustomerUpdateExecutionFieldSchema = Type.Object({
+  fieldId: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+  fieldType: WorkflowCustomerFieldTypeSchema,
+  value: WorkflowCustomerUpdateValueSchema,
+}, { additionalProperties: false });
+
+export const WorkflowCustomerUpdateDraftConfigSchema = Type.Object({
+  fields: Type.Array(WorkflowCustomerUpdateDraftFieldSchema, {
+    maxItems: WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT,
+    minItems: 1,
+  }),
+}, { additionalProperties: false });
+
+export const WorkflowCustomerUpdateExecutionConfigSchema = Type.Object({
+  fields: Type.Array(WorkflowCustomerUpdateExecutionFieldSchema, {
+    maxItems: WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT,
+    minItems: 1,
+  }),
+}, { additionalProperties: false });
+
 export const WorkflowLlmInputValueSchema = Type.Union([
   Type.Object({
     kind: Type.Literal("literal"),
@@ -303,6 +359,13 @@ export type WorkflowHandoffExecutionConfig = Static<typeof WorkflowHandoffExecut
 export type WorkflowTagOperation = Static<typeof WorkflowTagOperationSchema>;
 export type WorkflowTagDraftConfig = Static<typeof WorkflowTagDraftConfigSchema>;
 export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfigSchema>;
+export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
+export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
+export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
+export type WorkflowCustomerUpdateDraftField = Static<typeof WorkflowCustomerUpdateDraftFieldSchema>;
+export type WorkflowCustomerUpdateExecutionField = Static<typeof WorkflowCustomerUpdateExecutionFieldSchema>;
+export type WorkflowCustomerUpdateDraftConfig = Static<typeof WorkflowCustomerUpdateDraftConfigSchema>;
+export type WorkflowCustomerUpdateExecutionConfig = Static<typeof WorkflowCustomerUpdateExecutionConfigSchema>;
 export type WorkflowLlmInputValue = Static<typeof WorkflowLlmInputValueSchema>;
 export type WorkflowLlmInputParameter = Static<typeof WorkflowLlmInputParameterSchema>;
 export type WorkflowLlmOutputFieldType = Static<typeof WorkflowLlmOutputFieldTypeSchema>;
@@ -354,7 +417,12 @@ export const workflowNodeContractRegistry = {
     WorkflowBranchConfigSchema,
   ),
   coupon: placeholderContract("action"),
-  "customer-update": placeholderContract("action"),
+  "customer-update": draftReadyContract(
+    "action",
+    1,
+    WorkflowCustomerUpdateDraftConfigSchema,
+    WorkflowCustomerUpdateExecutionConfigSchema,
+  ),
   end: runtimeReadyContract("core", 1, WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
   handoff: draftReadyContract(
     "action",
@@ -458,10 +526,59 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
+  if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
     && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+export function isWorkflowCustomerUpdateExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowCustomerUpdateExecutionConfig {
+  if (!Value.Check(WorkflowCustomerUpdateExecutionConfigSchema, value)) return false;
+  const fieldIds = value.fields.map(field => field.fieldId);
+  return new Set(fieldIds).size === fieldIds.length
+    && value.fields.every(field => isWorkflowCustomerUpdateFieldValueComplete(
+      field.fieldType,
+      field.value,
+    ));
+}
+
+export function isWorkflowCustomerFieldTypeSupported(
+  value: number,
+): value is WorkflowCustomerFieldType {
+  return value === 1
+    || value === 4
+    || value === 5
+    || value === 6
+    || value === 11
+    || value === 12;
+}
+
+export function isWorkflowCustomerFieldValueTypeCompatible(
+  fieldType: WorkflowCustomerFieldType,
+  valueType: WorkflowOutputValueType,
+) {
+  if (fieldType === 11) return valueType.kind === "number";
+  if (fieldType === 4 || fieldType === 12) {
+    return valueType.kind === "datetime" || valueType.kind === "string";
+  }
+  return valueType.kind === "string";
+}
+
+function isWorkflowCustomerUpdateFieldValueComplete(
+  fieldType: WorkflowCustomerFieldType,
+  value: WorkflowCustomerUpdateValue,
+) {
+  if (value.kind === "variable") {
+    return isWorkflowCustomerFieldValueTypeCompatible(fieldType, value.valueType);
+  }
+  const literal = value.value.trim();
+  if (!literal) return false;
+  if (fieldType === 11) return Number.isFinite(Number(literal));
+  if (fieldType === 4 || fieldType === 12) return isValidWorkflowLocalDate(literal);
+  return true;
 }
 
 export function isWorkflowHandoffExecutionConfigComplete(

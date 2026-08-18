@@ -2,6 +2,7 @@ import {
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
+  isWorkflowCustomerUpdateExecutionConfigComplete,
   isWorkflowHandoffExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowMessageExecutionConfigComplete,
@@ -207,6 +208,34 @@ function validateWorkflowNodeReferences(
         issues.push({
           code: "invalid-node-config",
           message: "LLM node references unavailable or changed input data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "customer-update"
+      && isWorkflowCustomerUpdateExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const valid = node.config.fields.every(field =>
+        field.value.kind === "literal"
+        || validateWorkflowVariableSelector({
+          edges,
+          expectedValueType: field.value.valueType,
+          guaranteedUpstreamIds,
+          nodeById,
+          selector: field.value.selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Customer Update node references unavailable or changed field data",
           nodeId: node.id,
         });
       }

@@ -112,6 +112,21 @@ export function projectWorkflowNodeExecutionConfig({
     });
   }
 
+  if (kind === "customer-update") {
+    const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
+    return cloneJsonRecord({
+      fields: fields.map((item) => {
+        const record = isRecord(item) ? item : {};
+        const field = isRecord(record.field) ? record.field : {};
+        return compactUndefined({
+          fieldId: field.id,
+          fieldType: field.type,
+          value: record.value,
+        });
+      }),
+    });
+  }
+
   if (kind === "llm") {
     return cloneJsonRecord({
       inputs: draftConfig.inputs,
@@ -179,6 +194,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Handoff node requires a valid operator message";
     case "tag":
       return "Tag node requires an operation and at least one valid tag";
+    case "customer-update":
+      return "Customer Update node requires complete unique fields and values";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

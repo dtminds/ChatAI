@@ -1,6 +1,10 @@
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkTagGroupItem, WorkTagItem } from "@chatai/contracts";
+import type {
+  WorkTagGroupItem,
+  WorkTagItem,
+  WorkTagLookupItem,
+} from "@chatai/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,7 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { listWorkTagGroups, listWorkTags } from "../ai-hosting/api/work-tag-service";
+import {
+  getWorkTagsByIds,
+  listWorkTagGroups,
+  listWorkTags,
+} from "../ai-hosting/api/work-tag-service";
 
 const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
 const TAG_PAGE_SIZE = 50;
@@ -79,7 +87,10 @@ export function WecomTagSelector({
   const [tagsHasNext, setTagsHasNext] = useState(false);
   const groupsRequestVersionRef = useRef(0);
   const tagsRequestVersionRef = useRef(0);
+  const selectedTagsRequestVersionRef = useRef(0);
   const [selectedTagGroupById, setSelectedTagGroupById] = useState<Record<number, number>>({});
+  const [selectedTagById, setSelectedTagById] = useState<Record<number, WorkTagLookupItem>>({});
+  const persistedTagIdsKey = value.join(",");
 
   const filteredGroups = useMemo(() => {
     const query = groupQuery.trim().toLowerCase();
@@ -104,6 +115,37 @@ export function WecomTagSelector({
     setMode("normal");
     setActiveGroupId(null);
   }, [open, value]);
+
+  useEffect(() => {
+    const requestVersion = selectedTagsRequestVersionRef.current + 1;
+    selectedTagsRequestVersionRef.current = requestVersion;
+    const persistedTagIds = persistedTagIdsKey
+      ? persistedTagIdsKey.split(",").map(Number)
+      : [];
+
+    if (!open || persistedTagIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadSelectedTags() {
+      try {
+        const response = await getWorkTagsByIds(persistedTagIds);
+        if (cancelled || selectedTagsRequestVersionRef.current !== requestVersion) return;
+        setSelectedTagById(current => ({
+          ...current,
+          ...Object.fromEntries(response.tags.map(tag => [tag.id, tag])),
+        }));
+      } catch {
+        // 名称查询失败时保留 ID 兜底，不阻断标签选择。
+      }
+    }
+
+    void loadSelectedTags();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, persistedTagIdsKey]);
 
   useEffect(() => {
     if (!open) {
@@ -261,6 +303,10 @@ export function WecomTagSelector({
 
     if (!multiple || (!allowCrossGroup && !selectionBelongsToGroup(tag.groupId))) {
       setSelectedTagGroupById({ [tag.id]: tag.groupId });
+      setSelectedTagById(current => ({
+        ...current,
+        [tag.id]: { groupName: tag.groupName, id: tag.id, name: tag.name },
+      }));
       setDraftSelectedIds([tag.id]);
       return;
     }
@@ -273,6 +319,10 @@ export function WecomTagSelector({
       ...selectedTagGroupById,
       [tag.id]: tag.groupId,
     });
+    setSelectedTagById(current => ({
+      ...current,
+      [tag.id]: { groupName: tag.groupName, id: tag.id, name: tag.name },
+    }));
     setDraftSelectedIds([...draftSelectedIds, tag.id]);
   }
 
@@ -493,26 +543,51 @@ export function WecomTagSelector({
                       暂无数据
                     </li>
                   ) : (
-                    draftSelectedIds.map((tagId) => (
-                      <li
-                        className="flex items-center justify-between gap-2 rounded-[8px] bg-secondary/60 px-3 py-1.5"
-                        key={tagId}
-                      >
-                        <span className="min-w-0 truncate text-sm text-foreground">
-                          ID: {tagId}
-                        </span>
-                        <Button
-                          aria-label={`移除标签 ${tagId}`}
-                          className="size-7 shrink-0"
-                          onClick={() => removeSelectedTag(tagId)}
-                          size="icon"
-                          type="button"
-                          variant="ghost"
+                    draftSelectedIds.map((tagId) => {
+                      const selectedTag = selectedTagById[tagId];
+                      return (
+                        <li
+                          className="flex items-center justify-between gap-2 rounded-[8px] bg-secondary/60 px-3 py-1.5"
+                          key={tagId}
                         >
-                          <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.8} />
-                        </Button>
-                      </li>
-                    ))
+                          {selectedTag ? (
+                            <span className="flex min-w-0 flex-1 items-center text-[13px]">
+                              {selectedTag.groupName ? (
+                                <>
+                                  <span
+                                    className="min-w-[3em] max-w-[45%] truncate text-muted-foreground"
+                                    title={selectedTag.groupName}
+                                  >
+                                    {selectedTag.groupName}
+                                  </span>
+                                  <span className="shrink-0 text-muted-foreground">：</span>
+                                </>
+                              ) : null}
+                              <span
+                                className="min-w-0 flex-1 truncate text-foreground"
+                                title={selectedTag.name}
+                              >
+                                {selectedTag.name}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="min-w-0 truncate text-sm text-foreground">
+                              ID: {tagId}
+                            </span>
+                          )}
+                          <Button
+                            aria-label={`移除标签 ${tagId}`}
+                            className="size-7 shrink-0"
+                            onClick={() => removeSelectedTag(tagId)}
+                            size="icon"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.8} />
+                          </Button>
+                        </li>
+                      );
+                    })
                   )}
                 </ul>
               </div>

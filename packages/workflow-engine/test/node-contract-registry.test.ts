@@ -83,6 +83,13 @@ const projectableDraftData = {
       { conditions: [], id: "fallback", isDefault: true, label: "否则", logic: "all" },
     ],
   },
+  "customer-update": {
+    fields: [{
+      field: { id: 101, key: "remark", title: "客户备注", type: 1 },
+      id: "field-1",
+      value: { kind: "literal", value: "重点客户" },
+    }],
+  },
   end: {},
   handoff: {
     customerMessage: [],
@@ -130,7 +137,6 @@ const placeholderKinds = [
   "agent",
   "ai-collect",
   "coupon",
-  "customer-update",
   "order-query",
   "tag-query",
 ] as const satisfies readonly WorkflowNodeKind[];

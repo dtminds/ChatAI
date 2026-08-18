@@ -30,7 +30,7 @@ export function requireWorkflowVariableValue(
   return resolved.value;
 }
 
-function resolveWorkflowVariableSelector(
+export function resolveWorkflowVariableSelector(
   selector: WorkflowVariableSelector,
   context: WorkflowCapabilityCommandContext,
 ) {

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WecomTagSelector } from "@/pages/chat/components/wecom-tag-selector";
 
 const workTagServiceMock = vi.hoisted(() => ({
+  getWorkTagsByIds: vi.fn(),
   listWorkTagGroups: vi.fn(),
   listWorkTags: vi.fn(),
 }));
@@ -62,6 +63,15 @@ async function openSelector(user: ReturnType<typeof userEvent.setup>) {
 describe("WecomTagSelector", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    workTagServiceMock.getWorkTagsByIds.mockImplementation(async (tagIds: number[]) => ({
+      tags: tagIds.flatMap((tagId) => {
+        for (const tags of tagsByGroup.values()) {
+          const tag = tags.find(item => item.id === tagId);
+          if (tag) return [{ groupName: tag.groupName, id: tag.id, name: tag.name }];
+        }
+        return [];
+      }),
+    }));
     workTagServiceMock.listWorkTagGroups.mockResolvedValue({ groups });
     workTagServiceMock.listWorkTags.mockImplementation(async ({ groupId, page = 1 }) => ({
       pagination: { hasNext: false, page, pageSize: 50, total: 2 },
@@ -131,20 +141,33 @@ describe("WecomTagSelector", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("shows persisted tag IDs in the selected column and allows removing them", async () => {
+  it("resolves persisted tag names in the selected column and allows removing them", async () => {
     const user = userEvent.setup();
     const onChange = renderSelector({ value: [101, 201] });
 
     await user.click(screen.getByRole("button", { name: /已选择 2 个标签/ }));
     const selectedList = await screen.findByRole("list", { name: "已选标签" });
-    expect(within(selectedList).getByText("ID: 101")).toBeInTheDocument();
-    expect(within(selectedList).getByText("ID: 201")).toBeInTheDocument();
+    expect(await within(selectedList).findByText("意向标签组")).toBeInTheDocument();
+    expect(await within(selectedList).findByText("高意向")).toBeInTheDocument();
+    expect(within(selectedList).getByText("客户阶段组")).toBeInTheDocument();
+    expect(within(selectedList).getByText("已成交")).toBeInTheDocument();
+    expect(workTagServiceMock.getWorkTagsByIds).toHaveBeenCalledWith([101, 201]);
 
     await user.click(screen.getByRole("button", { name: "移除标签 101" }));
-    expect(within(selectedList).queryByText("ID: 101")).not.toBeInTheDocument();
+    expect(within(selectedList).queryByText("高意向")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(onChange).toHaveBeenCalledWith([201]);
+  });
+
+  it("keeps an ID fallback when a persisted tag no longer exists", async () => {
+    const user = userEvent.setup();
+    renderSelector({ value: [999] });
+
+    await user.click(screen.getByRole("button", { name: /已选择 1 个标签/ }));
+    const selectedList = await screen.findByRole("list", { name: "已选标签" });
+
+    expect(await within(selectedList).findByText("ID: 999")).toBeInTheDocument();
   });
 
   it("clears all selected tag IDs from the selected column", async () => {

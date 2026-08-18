@@ -11,6 +11,8 @@ import {
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
   isWorkflowOutputValueTypeEqual,
+  WorkflowCustomerUpdateCommandSchema,
+  WorkflowCustomerUpdateResultSchema,
   WorkflowHandoffCommandSchema,
   WorkflowHandoffResultSchema,
   WorkflowNodeKindSchema,
@@ -57,7 +59,9 @@ const draftConfigs = {
     ],
   },
   coupon: {},
-  "customer-update": {},
+  "customer-update": {
+    fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
+  },
   end: {},
   handoff: { customerMessage: [], operatorMessage: [] },
   llm: {
@@ -168,9 +172,9 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "handoff", "llm", "message", "tag"]);
+      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "message", "tag"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "ai-collect", "coupon", "customer-update", "order-query", "tag-query"]);
+      .toEqual(["agent", "ai-collect", "coupon", "order-query", "tag-query"]);
   });
 
   it("validates the Message Query capability command and node output", () => {
@@ -410,6 +414,70 @@ describe("workflow node contracts", () => {
       .toBe(false);
     expect(getWorkflowNodeOutputContracts("tag", { operation: "add", tagIds: [1] }))
       .toBeNull();
+  });
+
+  it("keeps incomplete Customer Update drafts editable and validates typed fields", () => {
+    expect(getWorkflowNodeContract("customer-update")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      maturity: "draft-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("customer-update", { fields: [] })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("customer-update", {
+      fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("customer-update", { fields: [] })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("customer-update", {
+      fields: [
+        { fieldId: 1, fieldType: 1, value: { kind: "literal", value: "重点客户" } },
+        {
+          fieldId: 2,
+          fieldType: 4,
+          value: {
+            kind: "variable",
+            selector: ["node", "llm", "date"],
+            valueType: { kind: "string" },
+          },
+        },
+        { fieldId: 3, fieldType: 11, value: { kind: "literal", value: "12.5" } },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("customer-update", {
+      fields: [
+        { fieldId: 1, fieldType: 4, value: { kind: "literal", value: "2026-02-30" } },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("customer-update", {
+      fields: [
+        { fieldId: 1, fieldType: 11, value: { kind: "variable", selector: ["subject", "id"], valueType: { kind: "string" } } },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("customer-update", {
+      fields: [
+        { fieldId: 1, fieldType: 1, value: { kind: "literal", value: "A" } },
+        { fieldId: 1, fieldType: 6, value: { kind: "literal", value: "a@example.com" } },
+      ],
+    })).toBe(false);
+    expect(getWorkflowNodeOutputContracts("customer-update", { fields: [] })).toBeNull();
+  });
+
+  it("keeps the Customer Update Java command batched and bounded", () => {
+    expect(Value.Check(WorkflowCustomerUpdateCommandSchema, {
+      source: "workflow",
+      updates: [
+        { fieldId: 1, fieldType: 1, value: "重点客户" },
+        { fieldId: 2, fieldType: 11, value: 12.5 },
+      ],
+    })).toBe(true);
+    expect(Value.Check(WorkflowCustomerUpdateCommandSchema, {
+      source: "workflow",
+      updates: Array.from({ length: 11 }, (_, index) => ({
+        fieldId: index + 1,
+        fieldType: 1,
+        value: String(index),
+      })),
+    })).toBe(false);
+    expect(Value.Check(WorkflowCustomerUpdateResultSchema, {})).toBe(true);
+    expect(Value.Check(WorkflowCustomerUpdateResultSchema, { updated: 2 })).toBe(false);
   });
 
   it("allows incomplete Start drafts without treating them as executable", () => {

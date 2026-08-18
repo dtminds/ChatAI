@@ -7,6 +7,7 @@ import type {
   WorkflowBranchLogic as SharedWorkflowBranchLogic,
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
+  WorkflowCustomerUpdateDraftConfig,
   WorkflowIntentOption as SharedWorkflowIntentOption,
   WorkflowHandoffDraftConfig,
   WorkflowLlmDraftConfig,
@@ -135,7 +136,8 @@ export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
-export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">;
+export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
+  & WorkflowCustomerUpdateDraftConfig;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;

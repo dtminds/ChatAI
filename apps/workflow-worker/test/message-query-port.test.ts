@@ -212,8 +212,41 @@ describe("Workflow Message Query port", () => {
       signal: new AbortController().signal,
       subjectId: "third-external-1",
       uid: 9,
-    })).rejects.toMatchObject({ code: "WORKFLOW_MESSAGE_QUERY_SEAT_UNAVAILABLE" });
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_QUERY_SEAT_UNAVAILABLE",
+      message: "执行所需数据不可用，流程已停止",
+    });
     expect(queries).toHaveLength(1);
+  });
+
+  it("reports an invalid message id as a result error", async () => {
+    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
+      ? { rows: [{ third_userid: "work-user-1" }] }
+      : {
+          rows: [{
+            content: JSON.stringify({ text: "无效消息" }),
+            from_type: 2,
+            id: "invalid-id",
+            msgtime: 1_786_741_800_000,
+            msgtype: "text",
+          }],
+        });
+
+    await expect(executeMessageQuery(database, {
+      command: {
+        limit: 1,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_QUERY_OUTPUT_INVALID",
+      message: "返回结果异常，流程已停止",
+    });
   });
 
   it("formats non-text messages without exposing raw payloads", () => {

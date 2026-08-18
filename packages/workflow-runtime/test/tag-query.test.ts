@@ -57,7 +57,7 @@ describe("Workflow Tag Query capability", () => {
         kind: "query",
       },
       request: {
-        command: { matchMode: "all", tagIds: [101, 202] },
+        command: { tagIds: [101, 202] },
         subjectId: "customer-1",
       },
     });
@@ -66,7 +66,7 @@ describe("Workflow Tag Query capability", () => {
 
   it("distinguishes any, all, and none matching, including an empty result", () => {
     expect(mapWorkflowTagQueryResult({
-      command: { matchMode: "any", tagIds: [101, 202] },
+      config: { matchMode: "any", tagIds: [101, 202] },
       result: { matchedTags: [{ id: 202, name: "已成交" }] },
     })).toEqual({
       matched: true,
@@ -74,7 +74,15 @@ describe("Workflow Tag Query capability", () => {
       matchedTagNames: "已成交",
     });
     expect(mapWorkflowTagQueryResult({
-      command: { matchMode: "all", tagIds: [101, 202] },
+      config: { matchMode: "all", tagIds: [101, 202] },
+      result: { matchedTags: [{ id: 101, name: "重点客户" }] },
+    })).toEqual({
+      matched: false,
+      matchedTagCount: 1,
+      matchedTagNames: "重点客户",
+    });
+    expect(mapWorkflowTagQueryResult({
+      config: { matchMode: "all", tagIds: [101, 202] },
       result: { matchedTags: [] },
     })).toEqual({
       matched: false,
@@ -82,7 +90,15 @@ describe("Workflow Tag Query capability", () => {
       matchedTagNames: "",
     });
     expect(mapWorkflowTagQueryResult({
-      command: { matchMode: "none", tagIds: [101, 202] },
+      config: { matchMode: "any", tagIds: [101, 202] },
+      result: { matchedTags: [] },
+    })).toEqual({
+      matched: false,
+      matchedTagCount: 0,
+      matchedTagNames: "",
+    });
+    expect(mapWorkflowTagQueryResult({
+      config: { matchMode: "none", tagIds: [101, 202] },
       result: { matchedTags: [] },
     })).toEqual({
       matched: true,
@@ -90,7 +106,7 @@ describe("Workflow Tag Query capability", () => {
       matchedTagNames: "",
     });
     expect(mapWorkflowTagQueryResult({
-      command: { matchMode: "none", tagIds: [101, 202] },
+      config: { matchMode: "none", tagIds: [101, 202] },
       result: { matchedTags: [{ id: 101, name: "重点客户" }] },
     })).toEqual({
       matched: false,
@@ -112,11 +128,11 @@ describe("Workflow Tag Query capability", () => {
       context: { ...context, subjectId: "" },
     })).toThrow(expect.objectContaining({ code: "WORKFLOW_TAG_QUERY_COMMAND_INVALID" }));
     expect(() => mapWorkflowTagQueryResult({
-      command: { matchMode: "any", tagIds: [101] },
+      config: { matchMode: "any", tagIds: [101] },
       result: { matchedTags: [{ id: 202, name: "未知标签" }] },
     })).toThrow(expect.objectContaining({ code: "WORKFLOW_CAPABILITY_OUTPUT_INVALID" }));
     expect(() => mapWorkflowTagQueryResult({
-      command: { matchMode: "any", tagIds: [101] },
+      config: { matchMode: "any", tagIds: [101] },
       result: {
         matchedTags: [
           { id: 101, name: "重点客户" },

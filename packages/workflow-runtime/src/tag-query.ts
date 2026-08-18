@@ -3,6 +3,7 @@ import {
   WorkflowTagQueryCommandSchema,
   WorkflowTagQueryResultSchema,
   type WorkflowTagQueryCommand,
+  type WorkflowTagQueryExecutionConfig,
   type WorkflowTagQueryResult,
 } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
@@ -20,8 +21,11 @@ export const WORKFLOW_TAG_QUERY_CAPABILITY_BINDING = {
     kind: "query",
     resultSchema: WorkflowTagQueryResultSchema,
   },
-  mapResult({ command, result }) {
-    return mapWorkflowTagQueryResult({ command, result });
+  mapResult({ config, result }) {
+    return mapWorkflowTagQueryResult({
+      config: requireWorkflowTagQueryExecutionConfig(config),
+      result,
+    });
   },
   nodeKind: "tag-query",
 } satisfies WorkflowCapabilityExecutionBinding<
@@ -34,36 +38,34 @@ export function createWorkflowTagQueryCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowCapabilityCommandContext;
 }): WorkflowTagQueryCommand {
-  if (!isWorkflowNodeExecutionConfig("tag-query", input.config)) {
-    throw tagQueryCommandError("Tag Query execution config failed schema validation");
-  }
+  const config = requireWorkflowTagQueryExecutionConfig(input.config);
   if (!input.context.subjectId.trim()) {
     throw tagQueryCommandError("Tag Query subject is unavailable in the Run context");
   }
-  return structuredClone(input.config) as WorkflowTagQueryCommand;
+  return { tagIds: [...config.tagIds] };
 }
 
 export function mapWorkflowTagQueryResult(input: {
-  command: WorkflowTagQueryCommand;
+  config: WorkflowTagQueryExecutionConfig;
   result: WorkflowTagQueryResult;
 }): Record<string, unknown> {
   const matchedTagById = new Map<number, string>();
-  const selectedTagIdSet = new Set(input.command.tagIds);
+  const selectedTagIdSet = new Set(input.config.tagIds);
   for (const tag of input.result.matchedTags) {
     if (!selectedTagIdSet.has(tag.id) || matchedTagById.has(tag.id)) {
       throw tagQueryOutputError("Tag Query result contains an unknown or duplicate tag");
     }
     matchedTagById.set(tag.id, tag.name);
   }
-  const matchedTagNames = input.command.tagIds.flatMap((tagId) => {
+  const matchedTagNames = input.config.tagIds.flatMap((tagId) => {
     const name = matchedTagById.get(tagId);
     return name === undefined ? [] : [name];
   });
   const matchedTagCount = matchedTagNames.length;
   return {
-    matched: input.command.matchMode === "all"
-      ? matchedTagCount === input.command.tagIds.length
-      : input.command.matchMode === "none"
+    matched: input.config.matchMode === "all"
+      ? matchedTagCount === input.config.tagIds.length
+      : input.config.matchMode === "none"
         ? matchedTagCount === 0
         : matchedTagCount > 0,
     matchedTagCount,
@@ -78,6 +80,15 @@ function tagQueryCommandError(diagnosticMessage: string) {
     "节点配置无法执行",
     { diagnosticMessage },
   );
+}
+
+function requireWorkflowTagQueryExecutionConfig(
+  config: Record<string, unknown>,
+): WorkflowTagQueryExecutionConfig {
+  if (!isWorkflowNodeExecutionConfig("tag-query", config)) {
+    throw tagQueryCommandError("Tag Query execution config failed schema validation");
+  }
+  return structuredClone(config) as WorkflowTagQueryExecutionConfig;
 }
 
 function tagQueryOutputError(diagnosticMessage: string) {

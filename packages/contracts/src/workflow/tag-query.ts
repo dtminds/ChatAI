@@ -1,10 +1,14 @@
 import { Type, type Static } from "@sinclair/typebox";
 import {
   WORKFLOW_TAG_QUERY_MAX_COUNT,
-  WorkflowTagQueryExecutionConfigSchema,
 } from "./node-contract.js";
 
-export const WorkflowTagQueryCommandSchema = WorkflowTagQueryExecutionConfigSchema;
+export const WorkflowTagQueryCommandSchema = Type.Object({
+  tagIds: Type.Array(
+    Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+    { maxItems: WORKFLOW_TAG_QUERY_MAX_COUNT, minItems: 1, uniqueItems: true },
+  ),
+}, { additionalProperties: false });
 
 export const WorkflowTagQueryMatchedTagSchema = Type.Object({
   id: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),

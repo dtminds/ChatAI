@@ -40,7 +40,6 @@ Java 负责：
     "sequence": 3
   },
   "command": {
-    "matchMode": "any",
     "tagIds": [301, 302]
   }
 }
@@ -52,10 +51,10 @@ Java 负责：
 - `chatai_contact` 的 `subjectId` 是 `thirdExternalUserId`
 - `wecom_contact` 的 `subjectId` 是 `externalUserId`
 - Java 必须按 `subjectType` 解析身份，禁止根据 ID 格式猜测主体域
-- `matchMode` 仅支持 `any`、`all` 和 `none`
 - `tagIds` 包含 1 至 5 个不重复的正整数 ID
 - Query 不产生副作用，不携带 `idempotencyKey`
 - `execution` 只用于排障，不参与业务判断
+- `matchMode` 只存在于 Node 执行配置，不传给 Java；Java 不判断 `any`、`all` 或 `none`
 
 ## 3. 响应与节点输出
 
@@ -82,6 +81,7 @@ Node 输出：
 
 输出规则：
 
+- `matchedTags` 必须严格表示「请求 `tagIds` 与客户当前标签的交集」，不能按匹配方式返回缺失标签或自行过滤结果
 - `matchedTags` 只能包含请求中的标签 ID，每个 ID 最多出现一次
 - Node 按 `tagIds` 的配置顺序生成 `matchedTagNames`，多个名称使用中文顿号 `、` 分隔
 - `matchedTagCount` 是实际匹配标签数

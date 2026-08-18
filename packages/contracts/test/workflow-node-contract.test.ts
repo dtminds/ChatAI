@@ -351,9 +351,12 @@ describe("workflow node contracts", () => {
       tagIds: Array.from({ length: 6 }, (_, index) => index + 1),
     })).toBe(false);
     expect(Value.Check(WorkflowTagQueryCommandSchema, {
-      matchMode: "all",
       tagIds: [101, 102],
     })).toBe(true);
+    expect(Value.Check(WorkflowTagQueryCommandSchema, {
+      matchMode: "all",
+      tagIds: [101, 102],
+    })).toBe(false);
     expect(Value.Check(WorkflowTagQueryResultSchema, {
       matchedTags: [{ id: 101, name: "重点客户" }],
     })).toBe(true);

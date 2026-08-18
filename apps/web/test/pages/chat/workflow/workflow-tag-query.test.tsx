@@ -72,6 +72,10 @@ describe("workflow Tag Query node", () => {
     expect(selector).toHaveAttribute("data-allow-cross-group", "true");
     expect(selector).toHaveAttribute("data-max-selected", "5");
     expect(selector).toHaveAttribute("data-multiple", "true");
+    expect(
+      selector.compareDocumentPosition(screen.getByRole("radio", { name: "满足任一" }))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     await user.click(screen.getByRole("radio", { name: "满足全部" }));
     expect(onNodeChange).toHaveBeenLastCalledWith({

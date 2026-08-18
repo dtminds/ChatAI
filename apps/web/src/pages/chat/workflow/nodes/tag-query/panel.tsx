@@ -32,6 +32,19 @@ export function TagQueryConfig({ node, onNodeChange }: NodeSettingsProps<"tag-qu
 
   return (
     <div className="space-y-6">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">客户标签</h3>
+        <WecomTagSelector
+          allowCrossGroup
+          maxSelected={WORKFLOW_TAG_QUERY_MAX_COUNT}
+          multiple
+          onChange={(value) => updateQuery({
+            tagIds: normalizeWorkflowTagQueryIds(value),
+          })}
+          value={tagIds}
+        />
+      </section>
+
       <section>
         <h3 className="mb-3 text-sm font-semibold text-foreground">匹配方式</h3>
         <RadioGroup
@@ -57,19 +70,6 @@ export function TagQueryConfig({ node, onNodeChange }: NodeSettingsProps<"tag-qu
             <span>均不包含</span>
           </label>
         </RadioGroup>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">客户标签</h3>
-        <WecomTagSelector
-          allowCrossGroup
-          maxSelected={WORKFLOW_TAG_QUERY_MAX_COUNT}
-          multiple
-          onChange={(value) => updateQuery({
-            tagIds: normalizeWorkflowTagQueryIds(value),
-          })}
-          value={tagIds}
-        />
       </section>
     </div>
   );

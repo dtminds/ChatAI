@@ -126,7 +126,7 @@ describe("workflow capability reliability", () => {
       expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
         expect.objectContaining({
           errorCode: "WORKFLOW_CAPABILITY_TIMEOUT",
-          errorMessage: "节点执行超时",
+          errorMessage: "执行超时",
           failureKind: "unknown",
           status: "retrying",
         }),
@@ -268,7 +268,7 @@ describe("workflow capability reliability", () => {
     });
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        errorMessage: "节点返回的数据无法处理，流程已停止",
+        errorMessage: "返回结果异常，流程已停止",
         nodeId: "message",
         output: {},
         status: "failed",

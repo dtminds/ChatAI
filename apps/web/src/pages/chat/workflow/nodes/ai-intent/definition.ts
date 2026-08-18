@@ -112,7 +112,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     const rawIntents = Array.isArray(node.data.intents) ? node.data.intents : [];
 
     if (!normalizeAiIntentInputSelector(node.data.inputSelector)) {
-      issues.push(createCatalogIssue("ai-intent-input-required", "意图识别需要选择输入"));
+      issues.push(createCatalogIssue("ai-intent-input-required", "未配置输入"));
     }
     if (rawIntents.length < AI_INTENT_MIN_COUNT || rawIntents.length > AI_INTENT_MAX_COUNT) {
       issues.push(createCatalogIssue(

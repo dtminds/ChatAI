@@ -140,7 +140,7 @@ function customerUpdateCommandError(diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_CUSTOMER_UPDATE_COMMAND_INVALID",
-    "节点配置无法执行",
+    "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
 }

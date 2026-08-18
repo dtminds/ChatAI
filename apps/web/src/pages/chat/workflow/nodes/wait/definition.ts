@@ -68,11 +68,11 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
         || node.data.dayOffset > WORKFLOW_WAIT_DAY_OFFSET_MAX) {
         issues.push(createCatalogIssue(
           "wait-day-offset-invalid",
-          `固定时间等待需要配置 1-${WORKFLOW_WAIT_DAY_OFFSET_MAX} 天`,
+          `等待天数需为 1-${WORKFLOW_WAIT_DAY_OFFSET_MAX} 天`,
         ));
       }
       if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(node.data.time)) {
-        issues.push(createCatalogIssue("wait-time-invalid", "固定时间等待需要选择执行时间"));
+        issues.push(createCatalogIssue("wait-time-invalid", "未选择执行时间"));
       }
       return issues;
     }
@@ -83,7 +83,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
       ? []
       : [createCatalogIssue(
           "wait-delay-required",
-          `等待时长需要为 1-${maximum} ${getWaitUnitLabel(node.data.unit)}`,
+          `等待时长需为 1-${maximum} ${getWaitUnitLabel(node.data.unit)}`,
         )];
   },
   visual: {

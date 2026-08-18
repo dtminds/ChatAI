@@ -87,7 +87,7 @@ function validateBranchNode(
   ) {
     issues.push(createCatalogIssue(
       "branch-path-count-invalid",
-      `条件分支数量需要为 ${WORKFLOW_BRANCH_PATH_MIN}-${WORKFLOW_BRANCH_PATH_MAX} 个`,
+      `分支数量需为 ${WORKFLOW_BRANCH_PATH_MIN}-${WORKFLOW_BRANCH_PATH_MAX} 个`,
     ));
   }
   if (conditionalPaths.some((path) =>
@@ -96,13 +96,13 @@ function validateBranchNode(
   )) {
     issues.push(createCatalogIssue(
       "branch-condition-count-invalid",
-      `每个分支需要配置 ${WORKFLOW_BRANCH_CONDITION_MIN}-${WORKFLOW_BRANCH_CONDITION_MAX} 条条件`,
+      `每个分支需配置 ${WORKFLOW_BRANCH_CONDITION_MIN}-${WORKFLOW_BRANCH_CONDITION_MAX} 条条件`,
     ));
   }
   if (conditionalPaths.some((path) =>
     path.conditions.some((condition) => !isWorkflowBranchConditionComplete(condition, variables)),
   )) {
-    issues.push(createCatalogIssue("branch-condition-invalid", "条件分支存在未完成或不可用的条件"));
+    issues.push(createCatalogIssue("branch-condition-invalid", "存在未完成或不可用的条件"));
   }
 
   return issues;

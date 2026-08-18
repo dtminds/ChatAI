@@ -1453,7 +1453,7 @@ export class MysqlWorkflowRuntimeRepository implements
           await trx.updateTable(INFERENCE_JOB_TABLE).set({
             completed_at: input.now,
             error_code: "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED",
-            error_message: "推理任务未能完成",
+            error_message: "执行未完成",
             failure_kind: "unknown",
             lease_expires_at: null,
             lease_owner: null,
@@ -1464,7 +1464,7 @@ export class MysqlWorkflowRuntimeRepository implements
           await trx.updateTable(INFERENCE_JOB_TABLE).set({
             completed_at: input.now,
             error_code: "WORKFLOW_INFERENCE_ATTEMPTS_EXHAUSTED",
-            error_message: "推理任务未能完成",
+            error_message: "执行未完成",
             failure_kind: "unknown",
             lease_expires_at: null,
             lease_owner: null,

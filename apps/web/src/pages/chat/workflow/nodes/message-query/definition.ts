@@ -102,7 +102,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
     ) {
       issues.push(createCatalogIssue(
         "message-query-limit-invalid",
-        `消息查询数量需要为 ${MESSAGE_QUERY_LIMIT_MIN}-${MESSAGE_QUERY_LIMIT_MAX} 条`,
+        `查询数量需为 ${MESSAGE_QUERY_LIMIT_MIN}-${MESSAGE_QUERY_LIMIT_MAX} 条`,
       ));
     }
 
@@ -115,7 +115,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
         if (isValidWorkflowLocalDateTime(value)) continue;
         issues.push(createCatalogIssue(
           `message-query-${field}-time-required`,
-          `${field === "start" ? "开始" : "结束"}时间需要选择固定时间`,
+          `${field === "start" ? "开始" : "结束"}时间未选择`,
         ));
       }
     }

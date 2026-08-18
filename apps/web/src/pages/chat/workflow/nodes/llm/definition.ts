@@ -97,7 +97,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
     const rawOutputFields = getRawOutputFields(node.data.output);
 
     if (!normalizeLlmModelId(node.data.modelId)) {
-      issues.push(createCatalogIssue("llm-model-required", "大模型需要选择模型"));
+      issues.push(createCatalogIssue("llm-model-required", "未选择模型"));
     }
     if (rawInputs.length > LLM_INPUT_MAX_COUNT) {
       issues.push(createCatalogIssue(

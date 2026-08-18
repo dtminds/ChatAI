@@ -35,7 +35,7 @@ export const customerUpdateNodeDefinition: WorkflowNodeDefinition<"customer-upda
     if (!areCustomerUpdateFieldsComplete(node.data.fields)) {
       return [{
         code: "customer-update-fields-required",
-        message: "修改客户资料节点需要配置至少一个完整属性",
+        message: "需配置至少一个完整属性",
         severity: "warning",
         source: "config",
       }];

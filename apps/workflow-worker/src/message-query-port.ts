@@ -344,7 +344,7 @@ function terminalError(code: string, diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     code,
-    "消息查询无法执行",
+    "查询条件不可用，流程已停止",
     { diagnosticMessage },
   );
 }

@@ -74,7 +74,7 @@ export function validateWorkflowGraph(
   if (!startNode) {
     graphIssues.push({
       code: "missing-start",
-      message: "Workflow 需要一个开始节点",
+      message: "缺少开始节点",
       severity: "warning",
       source: "graph",
     });
@@ -82,7 +82,7 @@ export function validateWorkflowGraph(
   else if (startNodes.length > 1) {
     graphIssues.push({
       code: "multiple-start",
-      message: "Workflow 只能包含一个开始节点",
+      message: "只能有一个开始节点",
       severity: "warning",
       source: "graph",
     });
@@ -91,7 +91,7 @@ export function validateWorkflowGraph(
   if (!endNode) {
     graphIssues.push({
       code: "missing-end",
-      message: "Workflow 需要一个结束节点",
+      message: "缺少结束节点",
       severity: "warning",
       source: "graph",
     });
@@ -99,7 +99,7 @@ export function validateWorkflowGraph(
   else if (endNodes.length > 1) {
     graphIssues.push({
       code: "multiple-end",
-      message: "Workflow 只能包含一个结束节点",
+      message: "只能有一个结束节点",
       severity: "warning",
       source: "graph",
     });
@@ -107,7 +107,7 @@ export function validateWorkflowGraph(
   else if (!reachableNodeIds.has(endNode.id)) {
     graphIssues.push({
       code: "end-unreachable",
-      message: "结束节点未接入从开始节点出发的主链路",
+      message: "未接入从开始节点出发的主链路",
       nodeId: endNode.id,
       severity: "warning",
       source: "graph",
@@ -123,7 +123,7 @@ export function validateWorkflowGraph(
 
     graphIssues.push({
       code: "node-disconnected",
-      message: "节点未接入从开始节点出发的主链路",
+      message: "未接入从开始节点出发的主链路",
       nodeId,
       severity: "warning",
       source: "graph",
@@ -133,7 +133,7 @@ export function validateWorkflowGraph(
   if (maxDepth > maxDepthLimit) {
     graphIssues.push({
       code: "tree-depth-exceeded",
-      message: `Workflow 链路深度不能超过 ${maxDepthLimit} 层`,
+      message: `链路深度不能超过 ${maxDepthLimit} 层`,
       severity: "warning",
       source: "graph",
     });
@@ -144,7 +144,7 @@ export function validateWorkflowGraph(
     graphIssues.push({
       code: "edge-cycle",
       edgeIds: cycleEdgeIds,
-      message: "Workflow 不能包含循环连线",
+      message: "不能包含循环连线",
       severity: "warning",
       source: "graph",
     });
@@ -312,20 +312,20 @@ function getConnectionPolicyIssueMessage(
     case "duplicate-connection":
       return "不能存在重复连线";
     case "invalid-handle":
-      return "连线使用了当前节点不支持的连接桩";
+      return "连线使用了不支持的连接点";
     case "invalid-node-kind":
-      return "连线不符合当前节点连接规则";
+      return "连线不符合连接规则";
     case "missing-endpoint":
     case "missing-node":
       return "连线引用了不存在的节点";
     case "self-connection":
-      return "节点不能连接到自身";
+      return "不能连接到自身";
     case "source-handle-occupied":
       return "同一个出口只能连接一条下游连线";
     case "target-handle-occupied":
       return "同一个入口只能连接一条上游连线";
     case "edge-cycle":
-      return "Workflow 不能包含循环连线";
+      return "不能包含循环连线";
   }
 }
 
@@ -345,7 +345,7 @@ function getSourceHandleOutletIssues(
 
       return [{
         code: hasBranchOutlet ? "branch-path-unconnected" as const : "source-handle-unconnected" as const,
-        message: hasBranchOutlet ? "条件分支存在未连接的出口" : "节点存在未连接的出口",
+        message: "存在未连接的出口",
         nodeId: node.id,
         severity: "warning" as const,
         source: "graph" as const,
@@ -422,7 +422,7 @@ function getCardinalityIssues(
       issues.push({
         code: "node-multiple-incoming",
         edgeIds: incomingEdges.map((edge) => edge.id),
-        message: "节点入口数量超出当前连接桩能力",
+        message: "入口连接数量超出限制",
         nodeId: node.id,
         severity: "warning",
         source: "graph",
@@ -435,7 +435,7 @@ function getCardinalityIssues(
       issues.push({
         code: "node-multiple-outgoing",
         edgeIds: outgoingEdges.map((edge) => edge.id),
-        message: "节点出口数量超出当前连接桩能力",
+        message: "出口连接数量超出限制",
         nodeId: node.id,
         severity: "warning",
         source: "graph",

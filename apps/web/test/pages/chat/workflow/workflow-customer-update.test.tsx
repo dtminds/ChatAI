@@ -7,6 +7,7 @@ import type {
   WorkflowCustomerUpdateDraftField,
 } from "@chatai/contracts";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
+import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import {
   getCompatibleCustomerUpdateVariables,
@@ -96,6 +97,32 @@ describe("workflow Customer Update node", () => {
       .toEqual(["text", "time"]);
     expect(getCompatibleCustomerUpdateVariables(fieldSnapshot(11), variables).map(item => item.key))
       .toEqual(["count"]);
+  });
+
+  it("shows a referenced number variable label in the value input", async () => {
+    const source = createNodeFromKind("message-query", "message-query", 0);
+    const node = createCustomerUpdateNode([{
+      field: fieldSnapshot(11),
+      id: "row-score",
+      value: {
+        kind: "variable",
+        selector: ["node", source.id, "messageCount"],
+        valueType: { kind: "number" },
+      },
+    }]);
+
+    render(
+      <CustomerUpdateConfig
+        edges={[createEdge(source.id, node.id)]}
+        node={node}
+        nodes={[source, node]}
+        onNodeChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "客户属性" })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "属性 11的值" }))
+      .toHaveValue("消息查询.消息数量");
   });
 
   it("creates and restores one incomplete field row by default", () => {

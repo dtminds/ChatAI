@@ -124,6 +124,7 @@ const skillTemplateServiceMock = vi.hoisted(() => ({
   listSkillTemplates: vi.fn(),
 }));
 const workTagServiceMock = vi.hoisted(() => ({
+  getWorkTagsByIds: vi.fn(),
   listWorkTagGroups: vi.fn(),
   listWorkTags: vi.fn(),
 }));

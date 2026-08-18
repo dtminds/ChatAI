@@ -232,6 +232,53 @@ describe("ai-hosting work-tag routes", () => {
     });
   });
 
+  it("resolves persisted work tag IDs via Java external tag list API", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            { groupName: "客户阶段组", id: 201, name: "已成交" },
+            { tagGroupName: "意向标签组", tagId: 101, tagName: "高意向" },
+          ],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/work-tags/by-ids?tagIds=101,201,999",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        tags: [
+          { groupName: "意向标签组", id: 101, name: "高意向" },
+          { groupName: "客户阶段组", id: 201, name: "已成交" },
+        ],
+      },
+      success: true,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("https://java.internal/third-internal/work-tag/get-external-tag-list");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tagIds: [101, 201, 999],
+      uid: 9001,
+    });
+  });
+
   it("reads tag-component-list items from nested data.list", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

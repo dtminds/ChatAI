@@ -8,15 +8,22 @@ import {
 } from "@chatai/contracts";
 import {
   Add01Icon,
+  Calendar01Icon,
   Cancel01Icon,
   Delete01Icon,
   Settings03Icon,
+  TextIcon,
+  TextNumberSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-time-picker";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -166,6 +173,7 @@ function CustomerUpdateFieldRow({
   const fieldAvailable = selectedField
     ? customFields.some(item => item.id === selectedField.id && item.type === selectedField.type)
     : false;
+  const valueTypeIcon = getCustomerFieldTypeIcon(selectedField?.type);
 
   return (
     <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2rem] items-start gap-x-2 gap-y-1.5">
@@ -196,7 +204,9 @@ function CustomerUpdateFieldRow({
         </SelectTrigger>
         <SelectContent className="max-h-64">
           {selectedField && !fieldAvailable ? (
-            <SelectItem disabled value={String(selectedField.id)}>{selectedField.title}（不可用）</SelectItem>
+            <SelectItem disabled value={String(selectedField.id)}>
+              <CustomerFieldOption title={`${selectedField.title}（不可用）`} type={selectedField.type} />
+            </SelectItem>
           ) : null}
           {customFields.map(item => {
             const supported = isWorkflowCustomerFieldTypeSupported(item.type);
@@ -206,7 +216,10 @@ function CustomerUpdateFieldRow({
                 key={item.id}
                 value={String(item.id)}
               >
-                {item.title}{supported ? "" : "（暂不支持）"}
+                <CustomerFieldOption
+                  title={`${item.title}${supported ? "" : "（暂不支持）"}`}
+                  type={item.type}
+                />
               </SelectItem>
             );
           })}
@@ -238,22 +251,36 @@ function CustomerUpdateFieldRow({
             value={field.value.value}
           />
         ) : (
-          <Input
-            aria-label={`${selectedField?.title ?? "客户属性"}的值`}
-            className="h-9 min-w-0 pl-3 pr-16 text-xs"
-            disabled={!selectedField}
-            inputMode={selectedField?.type === 11 ? "decimal" : undefined}
-            onChange={(event) => onChange({
-              ...field,
-              value: { kind: "literal", value: event.target.value },
-            })}
-            placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
-            readOnly={field.value.kind === "variable"}
-            type={getLiteralInputType(selectedField)}
-            value={field.value.kind === "variable"
-              ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
-              : field.value.value}
-          />
+          <InputGroup className="h-9">
+            {valueTypeIcon ? (
+              <InputGroupAddon align="inline-start" className="pl-3">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={valueTypeIcon}
+                  size={14}
+                  strokeWidth={1.8}
+                />
+              </InputGroupAddon>
+            ) : null}
+            <InputGroupInput
+              aria-label={`${selectedField?.title ?? "客户属性"}的值`}
+              className="min-w-0 pl-2 pr-16 text-xs"
+              disabled={!selectedField}
+              inputMode={field.value.kind === "literal" && selectedField?.type === 11
+                ? "decimal"
+                : undefined}
+              onChange={(event) => onChange({
+                ...field,
+                value: { kind: "literal", value: event.target.value },
+              })}
+              placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
+              readOnly={field.value.kind === "variable"}
+              type={field.value.kind === "variable" ? "text" : getLiteralInputType(selectedField)}
+              value={field.value.kind === "variable"
+                ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
+                : field.value.value}
+            />
+          </InputGroup>
         )}
         {field.value.kind === "variable" ? (
           <Button
@@ -321,4 +348,31 @@ function getLiteralInputType(field: WorkflowCustomerFieldSnapshot | undefined) {
 
 function isDateField(field: WorkflowCustomerFieldSnapshot | undefined): field is WorkflowCustomerFieldSnapshot {
   return field?.type === 4 || field?.type === 12;
+}
+
+function CustomerFieldOption({ title, type }: { title: string; type: number }) {
+  const icon = getCustomerFieldTypeIcon(type);
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {icon ? (
+        <HugeiconsIcon
+          aria-hidden="true"
+          className="shrink-0 text-muted-foreground"
+          icon={icon}
+          size={14}
+          strokeWidth={1.8}
+        />
+      ) : (
+        <span aria-hidden="true" className="size-3.5 shrink-0" />
+      )}
+      <span className="truncate">{title}</span>
+    </span>
+  );
+}
+
+function getCustomerFieldTypeIcon(type: number | undefined) {
+  if (type === 11) return TextNumberSignIcon;
+  if (type === 4 || type === 12) return Calendar01Icon;
+  if (type === 1 || type === 5 || type === 6) return TextIcon;
+  return undefined;
 }

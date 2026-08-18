@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/hover-card";
 import { getWorkflowNodeOutputDefinitions, getWorkflowOutputTypeLabel } from "../workflow-node-outputs";
 import type { WorkflowNode, WorkflowNodeOutputDefinition } from "../types";
+import { WorkflowSettingsSection } from "./settings-section";
 
 export function NodeOutputsSection({ node }: { node: WorkflowNode }) {
   const outputs = getWorkflowNodeOutputDefinitions(node);
@@ -18,14 +19,13 @@ export function NodeOutputsSection({ node }: { node: WorkflowNode }) {
   }
 
   return (
-    <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-foreground">节点输出</h3>
+    <WorkflowSettingsSection title="节点输出">
       <div className="space-y-1 rounded-lg border bg-background p-2">
         {outputs.map((output) => (
           <OutputRow key={output.key} output={output} />
         ))}
       </div>
-    </section>
+    </WorkflowSettingsSection>
   );
 }
 

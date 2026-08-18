@@ -348,7 +348,7 @@ export function WecomTagSelector({
         className="h-9 w-full justify-between px-3 text-[13px] font-normal"
         onClick={() => handleOpenChange(true)}
         type="button"
-        variant="secondary"
+        variant="outline"
       >
         <span className={cn(value.length === 0 && "text-muted-foreground")}>
           {value.length > 0

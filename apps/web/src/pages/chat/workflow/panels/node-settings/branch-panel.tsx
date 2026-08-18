@@ -85,7 +85,7 @@ export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsP
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-3">
       {conditionalPaths.map((path, index) => (
         <section className="space-y-3 rounded-[8px] border p-3" key={path.id}>
           <div className="flex items-center justify-between gap-3">

@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import { getAvailableVariablesForNode } from "../../workflow-variables";
 import {
@@ -20,7 +21,7 @@ export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettings
   const variables = getAvailableVariablesForNode(node.id, nodes, edges);
 
   return (
-    <div className="space-y-6">
+    <>
       <HandoffMessageField
         ariaLabel="给客服的转发提示"
         help="向接管客服说明客户需求和当前背景"
@@ -46,7 +47,7 @@ export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettings
         title="对客话术"
         variables={variables}
       />
-    </div>
+    </>
   );
 }
 
@@ -70,11 +71,14 @@ function HandoffMessageField({
   variables: Parameters<typeof VariableContentEditor>[0]["variables"];
 }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-1.5">
-        {required ? <span aria-hidden="true" className="text-destructive">*</span> : null}
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {help ? (
+    <WorkflowSettingsSection
+      title={(
+        <>
+          {title}
+          {required ? <span aria-hidden="true" className="ml-0.5 text-destructive">*</span> : null}
+        </>
+      )}
+      titleAccessory={help ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -91,8 +95,8 @@ function HandoffMessageField({
               <TooltipContent side="top" sideOffset={6}>{help}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        ) : null}
-      </div>
+      ) : undefined}
+    >
       <VariableContentEditor
         ariaLabel={ariaLabel}
         maxLength={WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH}
@@ -101,6 +105,6 @@ function HandoffMessageField({
         segments={normalizeVariableContent(segments)}
         variables={variables}
       />
-    </section>
+    </WorkflowSettingsSection>
   );
 }

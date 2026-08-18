@@ -238,9 +238,8 @@ describe("workflow node catalog", () => {
       "ai-collect",
       "coupon",
       "order-query",
-      "tag-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "start", "tag", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -473,7 +472,7 @@ describe("workflow node catalog", () => {
     );
   });
 
-  it("groups and filters palette nodes from catalog metadata", () => {
+  it("groups palette nodes from catalog metadata", () => {
     expect(getWorkflowPaletteItemGroups().map((group) => ({
       id: group.id,
       items: group.items.map((item) => item.id),
@@ -483,20 +482,16 @@ describe("workflow node catalog", () => {
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "coupon"] },
     ]);
-    expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({
-      id: group.id,
-      items: group.items.map((item) => item.id),
-    }))).toEqual([
-      { id: "message", items: ["handoff"] },
-    ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
-      query: "条件",
     }).map((group) => ({
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["branch"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
+      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "operate", items: ["tag", "customer-update", "coupon"] },
     ]);
   });
 

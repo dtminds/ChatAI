@@ -1,6 +1,7 @@
 import { WORKFLOW_TAG_MAX_COUNT, type WorkflowTagOperation } from "@chatai/contracts";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { WecomTagSelector } from "@/pages/chat/components/wecom-tag-selector";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import {
   getWorkflowTagMetric,
@@ -28,9 +29,8 @@ export function TagConfig({ node, onNodeChange }: NodeSettingsProps<"tag">) {
   };
 
   return (
-    <div className="space-y-6">
-      <section>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">标签操作</h3>
+    <>
+      <WorkflowSettingsSection title="标签操作">
         <RadioGroup
           aria-label="标签操作方式"
           className="flex items-center gap-6"
@@ -50,10 +50,9 @@ export function TagConfig({ node, onNodeChange }: NodeSettingsProps<"tag">) {
             <span>移除标签</span>
           </label>
         </RadioGroup>
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">客户标签</h3>
+      <WorkflowSettingsSection title="客户标签">
         <WecomTagSelector
           allowCrossGroup
           maxSelected={WORKFLOW_TAG_MAX_COUNT}
@@ -61,7 +60,7 @@ export function TagConfig({ node, onNodeChange }: NodeSettingsProps<"tag">) {
           onChange={(value) => updateTag({ tagIds: normalizeWorkflowTagIds(value) })}
           value={tagIds}
         />
-      </section>
-    </div>
+      </WorkflowSettingsSection>
+    </>
   );
 }

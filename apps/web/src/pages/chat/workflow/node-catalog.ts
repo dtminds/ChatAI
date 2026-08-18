@@ -74,7 +74,6 @@ export type WorkflowPaletteItem = {
   icon: NodeVisual["icon"];
   id: InsertableWorkflowNodeKind;
   label: string;
-  searchText: string;
   sort: number;
 };
 
@@ -118,40 +117,16 @@ export function getInsertableNodeKindsBetween(
 }
 
 export function getPaletteItemsByKinds(kinds: InsertableWorkflowNodeKind[]) {
-  return filterWorkflowPaletteItems({ kinds });
-}
-
-export function filterWorkflowPaletteItems({
-  kinds,
-  query = "",
-}: {
-  kinds?: InsertableWorkflowNodeKind[];
-  query?: string;
-} = {}) {
-  const kindSet = kinds ? new Set(kinds) : null;
-  const normalizedQuery = normalizePaletteSearchText(query);
-
-  return paletteItems.filter((item) => {
-    if (kindSet && !kindSet.has(item.id)) {
-      return false;
-    }
-
-    if (!normalizedQuery) {
-      return true;
-    }
-
-    return item.searchText.includes(normalizedQuery);
-  });
+  const kindSet = new Set(kinds);
+  return paletteItems.filter((item) => kindSet.has(item.id));
 }
 
 export function getWorkflowPaletteItemGroups({
   kinds,
-  query = "",
 }: {
   kinds?: InsertableWorkflowNodeKind[];
-  query?: string;
 } = {}): WorkflowPaletteItemGroup[] {
-  const items = filterWorkflowPaletteItems({ kinds, query });
+  const items = kinds ? getPaletteItemsByKinds(kinds) : paletteItems;
   const itemsByGroupId = new Map<WorkflowNodePaletteGroupId, WorkflowPaletteItem[]>();
 
   items.forEach((item) => {
@@ -232,7 +207,6 @@ function isInsertableWorkflowNodeCatalogEntry(
 
 function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): WorkflowPaletteItem {
   const description = definition.description ?? "";
-  const group = workflowNodePaletteGroups.find((item) => item.id === definition.paletteGroup);
   const label = definition.paletteLabel;
 
   return {
@@ -243,17 +217,6 @@ function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): Work
     icon: definition.visual.icon,
     id: definition.kind,
     label,
-    searchText: normalizePaletteSearchText([
-      definition.kind,
-      definition.visual.label,
-      label,
-      description,
-      group?.label ?? "",
-    ].join(" ")),
     sort: definition.sort,
   };
-}
-
-function normalizePaletteSearchText(value: string) {
-  return value.trim().toLowerCase();
 }

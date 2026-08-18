@@ -74,7 +74,6 @@ export function ManagedAccountSelection({
                 onFocus={() => setIsPickerOpen(true)}
                 placeholder="搜索并选择托管账号"
                 value={query}
-                variant="soft"
               />
             </div>
           </PopoverAnchor>

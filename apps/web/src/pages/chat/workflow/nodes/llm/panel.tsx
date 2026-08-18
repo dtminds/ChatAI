@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AiHostingModel } from "@chatai/contracts";
 import {
   Add01Icon,
@@ -37,6 +37,7 @@ import {
   SettingWorkspaceEditorContent,
   useSettingWorkspace,
 } from "../../panels/setting-workspace";
+import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   LlmNodeData,
@@ -178,17 +179,20 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   };
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <div className="flex h-5 items-center justify-between gap-3">
-          <SectionTitle required>模型</SectionTitle>
-          {modelsLoading ? (
+    <>
+      <WorkflowSettingsSection
+        actions={modelsLoading ? (
             <span className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground" role="status">
               <Spinner size={14} />
               正在加载
             </span>
-          ) : null}
-        </div>
+        ) : undefined}
+        title={(
+          <>
+            模型<span aria-hidden="true" className="ml-0.5 text-destructive">*</span>
+          </>
+        )}
+      >
         <Select
           disabled={modelsLoading || modelsError}
           onValueChange={(nextModelId) => {
@@ -232,11 +236,10 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         {modelsError ? (
           <p className="text-xs text-destructive" role="alert">模型加载失败</p>
         ) : null}
-      </section>
+      </WorkflowSettingsSection>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <SectionTitle>输入</SectionTitle>
+      <WorkflowSettingsSection
+        actions={(
           <IconButton
             ariaLabel="添加输入参数"
             disabled={inputs.length >= LLM_INPUT_MAX_COUNT}
@@ -244,7 +247,9 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
             onClick={() => updateConfig({ inputs: [...inputs, createLlmInputParameter(inputs)] })}
             tooltip="添加参数"
           />
-        </div>
+        )}
+        title="输入"
+      >
         {inputs.length ? (
           <div className="space-y-2.5">
             <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
@@ -283,7 +288,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         ) : (
           <p className="py-2 text-sm text-muted-foreground">暂无输入参数</p>
         )}
-      </section>
+      </WorkflowSettingsSection>
 
       <PromptSection
         ariaLabel="系统提示词"
@@ -323,7 +328,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         />
       ) : null}
       {testContext ? <LlmTestWorkspace node={node} testContext={testContext} /> : null}
-    </div>
+    </>
   );
 }
 
@@ -450,16 +455,23 @@ function PromptSection({
   title: string;
 }) {
   return (
-    <section className="space-y-0.5">
-      <div className="flex items-center justify-between gap-3">
-        <SectionTitle required={required}>{title}</SectionTitle>
+    <WorkflowSettingsSection
+      actions={(
         <IconButton
           ariaLabel={`全屏编辑${title}`}
           icon={ArrowExpand02Icon}
           onClick={onExpand}
           tooltip="全屏编辑"
         />
-      </div>
+      )}
+      contentClassName="space-y-0.5"
+      title={(
+        <>
+          {title}
+          {required ? <span aria-hidden="true" className="ml-0.5 text-destructive">*</span> : null}
+        </>
+      )}
+    >
       <VariableContentEditor
         ariaLabel={ariaLabel}
         maxLength={LLM_PROMPT_MAX_LENGTH}
@@ -469,7 +481,7 @@ function PromptSection({
         segments={segments}
         variables={inputVariables}
       />
-    </section>
+    </WorkflowSettingsSection>
   );
 }
 
@@ -532,9 +544,8 @@ function OutputSection({
   };
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <SectionTitle>输出</SectionTitle>
+    <WorkflowSettingsSection
+      actions={(
         <SegmentedControl
           aria-label="输出格式"
           className="h-9 rounded-full p-1"
@@ -556,7 +567,10 @@ function OutputSection({
             </SegmentedControlItem>
           ))}
         </SegmentedControl>
-      </div>
+      )}
+      contentClassName="space-y-3"
+      title="输出"
+    >
 
       <div className="grid grid-cols-[minmax(0,1fr)_5rem_4.125rem] gap-2 px-0.5 text-xs text-muted-foreground">
         <span>变量名</span>
@@ -598,7 +612,7 @@ function OutputSection({
           onChange={(field) => onChange({ field: { ...field, type: "string" }, format: output.format })}
         />
       )}
-    </section>
+    </WorkflowSettingsSection>
   );
 }
 
@@ -753,18 +767,6 @@ function IdentifierInput({
       placeholder="变量名"
       value={value}
     />
-  );
-}
-
-function SectionTitle({ children, required = false }: {
-  children: ReactNode;
-  required?: boolean;
-}) {
-  return (
-    <h3 className="text-sm font-semibold text-foreground">
-      {children}
-      {required ? <span aria-hidden="true" className="ml-0.5 text-destructive">*</span> : null}
-    </h3>
   );
 }
 

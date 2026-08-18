@@ -59,7 +59,7 @@ export function NodeConfigPanel({
           readOnly={readOnly}
         >
           <fieldset
-            className="min-w-0 space-y-4 border-0 p-0 disabled:cursor-default"
+            className="min-w-0 border-0 p-0 disabled:cursor-default"
             disabled={readOnly}
             inert={readOnly}
           >

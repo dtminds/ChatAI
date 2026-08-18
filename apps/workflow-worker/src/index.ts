@@ -16,6 +16,7 @@ import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
+  WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -71,6 +72,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
         WORKFLOW_HANDOFF_CAPABILITY_BINDING,
         WORKFLOW_MESSAGE_CAPABILITY_BINDING,
         WORKFLOW_TAG_CAPABILITY_BINDING,
+        WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
       ],
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,

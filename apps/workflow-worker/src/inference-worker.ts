@@ -68,7 +68,7 @@ export async function processWorkflowInferenceBatch(input: {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
           "WORKFLOW_INFERENCE_OUTPUT_INVALID",
-          "节点返回的数据无法处理，流程已停止",
+          "返回结果异常，流程已停止",
           { diagnosticMessage: `Java inference result did not match ${job.payload.kind}` },
         );
       }
@@ -76,7 +76,7 @@ export async function processWorkflowInferenceBatch(input: {
         throw new WorkflowCapabilityExecutionError(
           "unknown",
           "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED",
-          "推理任务执行超时",
+          "执行超时",
         );
       }
       assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
@@ -154,7 +154,7 @@ function classifyInferenceError(error: unknown, aborted: boolean, leaseLost: boo
       errorCode: error.reason === "too-large"
         ? "WORKFLOW_INFERENCE_OUTPUT_TOO_LARGE"
         : "WORKFLOW_INFERENCE_OUTPUT_INVALID",
-      errorMessage: "节点返回的数据无法处理，流程已停止",
+      errorMessage: "返回结果异常，流程已停止",
       failureKind: "terminal" as const,
     };
   }
@@ -165,10 +165,10 @@ function classifyInferenceError(error: unknown, aborted: boolean, leaseLost: boo
         ? "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED"
         : "WORKFLOW_INFERENCE_UNKNOWN",
     errorMessage: leaseLost
-      ? "推理任务租约已失效"
+      ? "执行已失效"
       : aborted
-        ? "推理任务执行超时"
-        : "推理任务执行失败",
+        ? "执行超时"
+        : "执行失败",
     failureKind: "unknown" as const,
   };
 }

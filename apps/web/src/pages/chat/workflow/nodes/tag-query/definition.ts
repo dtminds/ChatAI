@@ -65,7 +65,7 @@ export const tagQueryNodeDefinition: WorkflowNodeDefinition<"tag-query"> = {
     ? []
     : [{
         code: "tag-query-selection-required",
-        message: "标签查询节点需要选择至少一个标签",
+        message: "需选择至少一个标签",
         severity: "warning",
         source: "config",
       }],

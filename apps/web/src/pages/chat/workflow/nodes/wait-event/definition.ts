@@ -81,14 +81,14 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
     const unit = node.data.timeout?.unit;
     const duration = node.data.timeout?.duration;
     if (unit !== "minute" && unit !== "hour" && unit !== "day") {
-      return [createCatalogIssue("wait-event-timeout-unit-invalid", "等待事件需要选择最长等待时间单位")];
+      return [createCatalogIssue("wait-event-timeout-unit-invalid", "未选择最长等待时间单位")];
     }
     const maximum = WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[unit];
     return Number.isInteger(duration) && duration >= 1 && duration <= maximum
       ? []
       : [createCatalogIssue(
           "wait-event-timeout-invalid",
-          `最长等待时间需要为 1-${maximum} ${getWaitEventUnitLabel(unit)}`,
+          `最长等待时间需为 1-${maximum} ${getWaitEventUnitLabel(unit)}`,
         )];
   },
   visual: {

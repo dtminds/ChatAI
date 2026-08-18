@@ -946,7 +946,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           errorCode: job.deadlineAt <= input.now
             ? "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED"
             : "WORKFLOW_INFERENCE_ATTEMPTS_EXHAUSTED",
-          errorMessage: "推理任务未能完成",
+          errorMessage: "执行未完成",
           failureKind: "unknown",
           status: "failed",
         }, true);

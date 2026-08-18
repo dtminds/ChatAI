@@ -77,7 +77,7 @@ function tagQueryCommandError(diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_TAG_QUERY_COMMAND_INVALID",
-    "节点配置无法执行",
+    "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
 }
@@ -95,7 +95,7 @@ function tagQueryOutputError(diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
-    "节点返回的数据无法处理，流程已停止",
+    "返回结果异常，流程已停止",
     { diagnosticMessage },
   );
 }

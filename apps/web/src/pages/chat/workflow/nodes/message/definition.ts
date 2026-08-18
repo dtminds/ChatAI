@@ -55,7 +55,7 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     if (contentMode === "custom" && !contentText && attachments.length === 0) {
       issues.push(createMessageIssue(
         "message-content-required",
-        "消息节点需要配置消息内容或附件",
+        "未配置消息内容或附件",
       ));
     }
 
@@ -65,7 +65,7 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     ) {
       issues.push(createMessageIssue(
         "message-output-required",
-        "消息节点需要选择一个节点输出",
+        "未选择节点输出",
       ));
     }
 

@@ -153,7 +153,7 @@ export class WorkflowRuntimeService {
 
   protected assertNodeExecutable(node: WorkflowExecutionNode) {
     if (isWorkflowRuntimeSupportedNodeKind(node.kind)) return;
-    throw runtimeNodeUnsupportedError(node);
+    throw runtimeNodeUnsupportedError();
   }
 
   private assertSpecExecutable(spec: WorkflowExecutionSpec) {
@@ -550,7 +550,7 @@ export class WorkflowRuntimeService {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
           "WORKFLOW_INFERENCE_OUTPUT_INVALID",
-          "节点返回的数据无法处理，流程已停止",
+          "返回结果异常，流程已停止",
           { diagnosticMessage: "Succeeded inference job has no result" },
         );
       }
@@ -563,7 +563,7 @@ export class WorkflowRuntimeService {
       throw new WorkflowCapabilityExecutionError(
         "terminal",
         existing.errorCode ?? "WORKFLOW_INFERENCE_FAILED",
-        existing.errorMessage ?? "推理任务未能完成",
+        existing.errorMessage ?? "执行未完成",
         { diagnosticMessage: existing.errorCode ?? "Workflow inference job failed" },
       );
     }
@@ -857,7 +857,7 @@ async function executeWithCapabilityTimeout(input: {
     throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_CAPABILITY_BINDING_UNAVAILABLE",
-      "节点能力暂不可用",
+      "执行服务暂不可用，流程已停止",
       { diagnosticMessage: `Workflow capability binding is not configured for ${input.node.kind}` },
     );
   }
@@ -865,7 +865,7 @@ async function executeWithCapabilityTimeout(input: {
     throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_CAPABILITY_PORT_UNAVAILABLE",
-      "节点能力暂不可用",
+      "执行服务暂不可用，流程已停止",
       { diagnosticMessage: "Workflow capability port is not configured" },
     );
   }
@@ -877,7 +877,7 @@ async function executeWithCapabilityTimeout(input: {
       const error = new WorkflowCapabilityExecutionError(
         "unknown",
         "WORKFLOW_CAPABILITY_TIMEOUT",
-        "节点执行超时",
+        "执行超时",
         { diagnosticMessage: `Workflow capability exceeded its ${input.capabilityTimeoutMs}ms deadline` },
       );
       reject(error);
@@ -938,7 +938,7 @@ async function executeMessageQueryWithTimeout(input: {
     throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_MESSAGE_QUERY_PORT_UNAVAILABLE",
-      "节点能力暂不可用",
+      "执行服务暂不可用，流程已停止",
       { diagnosticMessage: "Workflow Message Query port is not configured" },
     );
   }
@@ -950,7 +950,7 @@ async function executeMessageQueryWithTimeout(input: {
       const error = new WorkflowCapabilityExecutionError(
         "unknown",
         "WORKFLOW_CAPABILITY_TIMEOUT",
-        "节点执行超时",
+        "执行超时",
         { diagnosticMessage: `Workflow Message Query exceeded its ${input.capabilityTimeoutMs}ms deadline` },
       );
       reject(error);
@@ -991,7 +991,7 @@ async function executeMessageQueryWithTimeout(input: {
 function toCapabilityExecutionError(error: unknown) {
   if (error instanceof WorkflowCapabilityExecutionError) return error;
   if (!(error instanceof WorkflowRuntimeValueError)) return null;
-  const safeMessage = "节点返回的数据无法处理，流程已停止";
+  const safeMessage = "返回结果异常，流程已停止";
   if (error.scope === "node-output" && error.reason === "invalid") {
     return new WorkflowCapabilityExecutionError(
       "terminal",
@@ -1045,7 +1045,7 @@ function toCoreNodeRuntimeFailure(error: WorkflowRuntimeValueError) {
   return {
     diagnosticMessage: formatRuntimeValueDiagnostic(error),
     errorCode,
-    errorMessage: "节点运行数据无法处理，流程已停止",
+    errorMessage: "流程数据异常，流程已停止",
   };
 }
 
@@ -1195,10 +1195,10 @@ function workflowUnavailable() {
   return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
 }
 
-function runtimeNodeUnsupportedError(node: WorkflowExecutionNode) {
+function runtimeNodeUnsupportedError() {
   return new WorkflowRuntimeError(
     "WORKFLOW_RUNTIME_NODE_UNSUPPORTED",
-    `Workflow 节点暂不可执行: ${node.kind}`,
+    "节点暂不可执行",
     503,
   );
 }

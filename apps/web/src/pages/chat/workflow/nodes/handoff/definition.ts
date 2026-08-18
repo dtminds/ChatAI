@@ -36,7 +36,7 @@ export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
     ? []
     : [{
         code: "handoff-operator-message-required",
-        message: "转人工节点需要配置给客服的转发提示",
+        message: "未配置给客服的转发提示",
         severity: "warning",
         source: "config",
       }],

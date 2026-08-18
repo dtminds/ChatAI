@@ -89,7 +89,7 @@ export async function executeWorkflowMessageQuery(input: {
     throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_MESSAGE_QUERY_OUTPUT_INVALID",
-      "节点返回的数据无法处理，流程已停止",
+      "返回结果异常，流程已停止",
       { diagnosticMessage: "Message Query result failed schema validation" },
     );
   }
@@ -179,7 +179,7 @@ function invalidMessageQueryCommand(diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID",
-    "消息查询条件无法执行",
+    "查询条件不可用，流程已停止",
     { diagnosticMessage },
   );
 }

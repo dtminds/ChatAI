@@ -65,23 +65,23 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
     if (sourceIds.length === 0) {
       issues.push(createCatalogIssue(
         "start-source-required",
-        `尚未指定${isChatAiStartNodeData(node.data) ? "托管账号" : "企微成员"}`,
+        `未指定${isChatAiStartNodeData(node.data) ? "托管账号" : "企微成员"}`,
       ));
     }
     if (entryMode === "event" && node.data.triggers.length === 0) {
-      issues.push(createCatalogIssue("start-trigger-required", "请选择触发条件"));
+      issues.push(createCatalogIssue("start-trigger-required", "未配置触发条件"));
     }
     if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
-      issues.push(createCatalogIssue("start-tag-required", "标签触发需选择至少一个标签"));
+      issues.push(createCatalogIssue("start-tag-required", "标签触发未选择标签"));
     }
     if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "message.received" && trigger.keywords.length === 0,
     )) {
       issues.push(createCatalogIssue(
         "start-message-keywords-required",
-        "消息触发条件需要填写至少一个关键词",
+        "消息触发未填写关键词",
       ));
     }
     if (isChatAiStartNodeData(node.data)
@@ -90,7 +90,7 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       )) {
       issues.push(createCatalogIssue(
         "start-message-sending-window-invalid",
-        "消息发送时段的结束时间需要晚于开始时间",
+        "消息发送时段的结束时间需晚于开始时间",
       ));
     }
     return issues;

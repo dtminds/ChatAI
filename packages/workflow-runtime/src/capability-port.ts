@@ -114,7 +114,7 @@ export async function executeWorkflowCapability<
     throw new WorkflowCapabilityExecutionError(
       "terminal",
       "WORKFLOW_CAPABILITY_COMMAND_INVALID",
-      "节点配置无法执行",
+      "执行所需数据不可用，流程已停止",
       { diagnosticMessage: "Workflow capability command failed schema validation" },
     );
   }
@@ -157,7 +157,7 @@ function capabilityOutputInvalid() {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_CAPABILITY_OUTPUT_INVALID",
-    "节点返回的数据无法处理，流程已停止",
+    "返回结果异常，流程已停止",
     { diagnosticMessage: "Workflow capability result failed schema validation" },
   );
 }

@@ -75,7 +75,7 @@ export function buildWorkflowValidationSummaryFromResult(
     .map((node) => ({
       issues: [{
         code: "workflow-type-node-unsupported",
-        message: "当前 Workflow 类型不支持该节点",
+        message: "当前流程类型不支持此节点",
         severity: "warning",
         source: "catalog",
       }],
@@ -86,7 +86,7 @@ export function buildWorkflowValidationSummaryFromResult(
     .map((node) => ({
       issues: [{
         code: "runtime-node-unsupported",
-        message: "当前节点暂不支持发布",
+        message: "暂不支持发布",
         severity: "warning",
         source: "catalog",
       }],
@@ -103,7 +103,7 @@ export function buildWorkflowValidationSummaryFromResult(
         .filter((trigger) => !allowedEntryEventTypes.has(trigger.type))
         .map(() => ({
           code: "workflow-type-entry-event-unsupported",
-          message: "当前 Workflow 类型不支持该触发事件",
+          message: "当前流程类型不支持此触发事件",
           severity: "warning" as const,
           source: "catalog" as const,
         }))
@@ -247,7 +247,7 @@ function createNodeIssueCheck(
   return {
     ...blocking,
     category,
-    description: issues[0]?.message ?? "节点仍需补全配置",
+    description: issues[0]?.message ?? "仍需补全配置",
     id,
     messages: issues.map((issue) => issue.message),
     nodeId: node.id,
@@ -291,7 +291,7 @@ function buildWorkflowDisplayChecks(
       category: current?.category === "config" || check.category === "config"
         ? "config"
         : check.category,
-      description: messages[0] ?? "节点仍需补全配置",
+      description: messages[0] ?? "仍需补全配置",
       id: `node-${node.id}`,
       messages,
       nodeId: node.id,

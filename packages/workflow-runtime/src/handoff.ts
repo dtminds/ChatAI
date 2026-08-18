@@ -77,7 +77,7 @@ function handoffCommandError(diagnosticMessage: string) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     "WORKFLOW_HANDOFF_COMMAND_INVALID",
-    "节点配置无法执行",
+    "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
 }

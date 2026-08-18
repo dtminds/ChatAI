@@ -42,7 +42,7 @@ export const tagNodeDefinition: WorkflowNodeDefinition<"tag"> = {
     ? []
     : [{
         code: "tag-selection-required",
-        message: "客户打标节点需要选择至少一个标签",
+        message: "需选择至少一个标签",
         severity: "warning",
         source: "config",
       }],

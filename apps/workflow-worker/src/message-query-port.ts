@@ -340,11 +340,19 @@ function throwIfAborted(signal: AbortSignal) {
   if (signal.aborted) throw signal.reason ?? new Error("Message Query was aborted");
 }
 
-function terminalError(code: string, diagnosticMessage: string) {
+function terminalError(
+  code:
+    | "WORKFLOW_MESSAGE_QUERY_OUTPUT_INVALID"
+    | "WORKFLOW_MESSAGE_QUERY_SEAT_UNAVAILABLE"
+    | "WORKFLOW_MESSAGE_QUERY_SUBJECT_INVALID",
+  diagnosticMessage: string,
+) {
   return new WorkflowCapabilityExecutionError(
     "terminal",
     code,
-    "消息查询无法执行",
+    code === "WORKFLOW_MESSAGE_QUERY_OUTPUT_INVALID"
+      ? "返回结果异常，流程已停止"
+      : "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
 }

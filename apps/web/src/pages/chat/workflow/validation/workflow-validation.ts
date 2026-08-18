@@ -188,7 +188,7 @@ function validateNodeVariableContent(
     if (dynamicReferencesIdentical) {
       issues.push(createVariableContentIssue(
         "message-query-time-range-identical",
-        "消息查询的开始和结束时间不能相同",
+        "开始与结束时间不能相同",
       ));
     }
 
@@ -202,7 +202,7 @@ function validateNodeVariableContent(
       })) {
       issues.push(createVariableContentIssue(
         "message-query-time-range-invalid",
-        "消息查询的开始时间不能晚于结束时间",
+        "开始时间不能晚于结束时间",
       ));
     }
 
@@ -214,7 +214,7 @@ function validateNodeVariableContent(
     ) {
       issues.push(createVariableContentIssue(
         "message-query-time-range-invalid",
-        "消息查询的结束时间需要晚于开始时间",
+        "开始时间不能晚于结束时间",
       ));
     }
     return issues;
@@ -257,22 +257,22 @@ function validateNodeVariableContent(
   }
 
   const fields = [
-    ["operator", node.data.operatorMessage],
-    ["customer", node.data.customerMessage],
+    ["operator", "给客服的转发提示", node.data.operatorMessage],
+    ["customer", "对客话术", node.data.customerMessage],
   ] as const;
 
-  return fields.flatMap(([field, content]) => {
+  return fields.flatMap(([field, label, content]) => {
     const issues: WorkflowNodeValidationIssue[] = [];
     if (getInvalidVariableContentSelectors(content, availableVariables).length) {
       issues.push(createVariableContentIssue(
         `handoff-${field}-message-variable-invalid`,
-        "转发话术引用了不可用变量",
+        `${label}引用了不可用变量`,
       ));
     }
     if (getVariableContentText(content, availableVariables).length > 100) {
       issues.push(createVariableContentIssue(
         `handoff-${field}-message-too-long`,
-        "转发话术不能超过 100 字",
+        `${label}不能超过 100 字`,
       ));
     }
     return issues;
@@ -291,7 +291,7 @@ function validateMessageQueryTimeReference(
 
   return [createVariableContentIssue(
     `message-query-${field}-time-invalid`,
-    `${field === "start" ? "开始" : "结束"}时间引用了不可用的前序节点时间`,
+    `${field === "start" ? "开始" : "结束"}时间引用的变量不可用`,
   )];
 }
 
@@ -316,7 +316,7 @@ export function validateWorkflowNodeGraphState(
   return [
     {
       code: "node-disconnected",
-      message: "节点未接入从开始节点出发的主链路",
+      message: "未接入从开始节点出发的主链路",
       severity: "warning",
       source: "graph",
     },

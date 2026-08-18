@@ -131,7 +131,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       },
       nodeExecution: {
         errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
-        errorMessage: "节点运行数据无法处理，流程已停止",
+        errorMessage: "流程数据异常，流程已停止",
         executionKey: "9:5:start:1",
         input: { subjectId: "customer-1" },
         output: {},

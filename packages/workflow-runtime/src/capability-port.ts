@@ -80,6 +80,12 @@ export type WorkflowCapabilityExecutionBinding<
     context: WorkflowCapabilityCommandContext;
   }): unknown;
   definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>;
+  mapResult?(input: {
+    command: Static<TCommandSchema>;
+    config: Record<string, unknown>;
+    context: WorkflowCapabilityCommandContext;
+    result: Static<TResultSchema>;
+  }): Record<string, unknown>;
   nodeKind: WorkflowCapabilityNodeKind;
 };
 
@@ -137,7 +143,14 @@ export async function executeWorkflowCapability<
   if (!decodedResult || typeof decodedResult !== "object" || Array.isArray(decodedResult)) {
     throw capabilityOutputInvalid();
   }
-  return decodedResult as Record<string, unknown>;
+  return input.binding.mapResult
+    ? input.binding.mapResult({
+        command: structuredClone(command) as Static<TCommandSchema>,
+        config: structuredClone(input.config),
+        context: structuredClone(input.commandContext),
+        result: decodedResult as Static<TResultSchema>,
+      })
+    : decodedResult as Record<string, unknown>;
 }
 
 function capabilityOutputInvalid() {

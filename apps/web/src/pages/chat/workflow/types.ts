@@ -19,6 +19,7 @@ import type {
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
   WorkflowTagDraftConfig,
+  WorkflowTagQueryDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
   WorkflowNodeOutputUsage as SharedWorkflowNodeOutputUsage,
   WorkflowOutputValueType as SharedWorkflowOutputValueType,
@@ -135,7 +136,7 @@ export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
-export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
+export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;

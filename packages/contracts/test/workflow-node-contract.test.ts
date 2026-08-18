@@ -21,6 +21,8 @@ import {
   WorkflowMessageQueryResultSchema,
   WorkflowMessageResultSchema,
   WorkflowTagCommandSchema,
+  WorkflowTagQueryCommandSchema,
+  WorkflowTagQueryResultSchema,
   WorkflowTagResultSchema,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
@@ -91,7 +93,7 @@ const draftConfigs = {
     triggers: [{ sourceIds: [], type: "contact.friend_added" }],
   },
   tag: { operation: "add", tagIds: [] },
-  "tag-query": {},
+  "tag-query": { matchMode: "any", tagIds: [] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
     event: { type: "message.received" },
@@ -172,9 +174,9 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "message", "tag"]);
+      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "message", "tag", "tag-query"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "ai-collect", "coupon", "order-query", "tag-query"]);
+      .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
 
   it("validates the Message Query capability command and node output", () => {
@@ -321,6 +323,55 @@ describe("workflow node contracts", () => {
     })).toBe(false);
     expect(Value.Check(WorkflowTagResultSchema, {})).toBe(true);
     expect(Value.Check(WorkflowTagResultSchema, { updated: true })).toBe(false);
+  });
+
+  it("keeps Tag Query drafts editable and bounds its query contract", () => {
+    expect(getWorkflowNodeContract("tag-query")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      maturity: "draft-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("tag-query", { matchMode: "any", tagIds: [] }))
+      .toBe(true);
+    expect(isWorkflowNodeExecutionConfig("tag-query", { matchMode: "any", tagIds: [] }))
+      .toBe(false);
+    expect(isWorkflowNodeExecutionConfig("tag-query", {
+      matchMode: "all",
+      tagIds: [101, 102],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("tag-query", {
+      matchMode: "none",
+      tagIds: [101, 102],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("tag-query", {
+      matchMode: "any",
+      tagIds: [101, 101],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("tag-query", {
+      matchMode: "any",
+      tagIds: Array.from({ length: 6 }, (_, index) => index + 1),
+    })).toBe(false);
+    expect(Value.Check(WorkflowTagQueryCommandSchema, {
+      matchMode: "all",
+      tagIds: [101, 102],
+    })).toBe(true);
+    expect(Value.Check(WorkflowTagQueryResultSchema, {
+      matchedTags: [{ id: 101, name: "重点客户" }],
+    })).toBe(true);
+    expect(Value.Check(WorkflowTagQueryResultSchema, {
+      matchedTags: [{ id: 101, name: "重点客户", selected: true }],
+    })).toBe(false);
+    expect(getWorkflowNodeOutputContracts("tag-query", {
+      matchMode: "any",
+      tagIds: [101],
+    })).toEqual([
+      { key: "matched", usages: ["variable"], valueType: { kind: "boolean" } },
+      {
+        key: "matchedTagNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      { key: "matchedTagCount", usages: ["variable"], valueType: { kind: "number" } },
+    ]);
   });
 
   it("assigns every node kind one stable execution class", () => {

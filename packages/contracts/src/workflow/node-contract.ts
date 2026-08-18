@@ -196,6 +196,32 @@ export const WorkflowTagExecutionConfigSchema = Type.Object({
   ),
 }, { additionalProperties: false });
 
+export const WORKFLOW_TAG_QUERY_MAX_COUNT = 5;
+
+export const WorkflowTagQueryMatchModeSchema = Type.Union([
+  Type.Literal("any"),
+  Type.Literal("all"),
+  Type.Literal("none"),
+]);
+
+const WorkflowTagQueryIdsSchema = Type.Array(
+  Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+  { maxItems: WORKFLOW_TAG_QUERY_MAX_COUNT, uniqueItems: true },
+);
+
+export const WorkflowTagQueryDraftConfigSchema = Type.Object({
+  matchMode: WorkflowTagQueryMatchModeSchema,
+  tagIds: WorkflowTagQueryIdsSchema,
+}, { additionalProperties: false });
+
+export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
+  matchMode: WorkflowTagQueryMatchModeSchema,
+  tagIds: Type.Array(
+    Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+    { maxItems: WORKFLOW_TAG_QUERY_MAX_COUNT, minItems: 1, uniqueItems: true },
+  ),
+}, { additionalProperties: false });
+
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -359,6 +385,9 @@ export type WorkflowHandoffExecutionConfig = Static<typeof WorkflowHandoffExecut
 export type WorkflowTagOperation = Static<typeof WorkflowTagOperationSchema>;
 export type WorkflowTagDraftConfig = Static<typeof WorkflowTagDraftConfigSchema>;
 export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfigSchema>;
+export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
+export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
+export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -461,7 +490,12 @@ export const workflowNodeContractRegistry = {
     WorkflowTagDraftConfigSchema,
     WorkflowTagExecutionConfigSchema,
   ),
-  "tag-query": placeholderContract("query"),
+  "tag-query": draftReadyContract(
+    "query",
+    1,
+    WorkflowTagQueryDraftConfigSchema,
+    WorkflowTagQueryExecutionConfigSchema,
+  ),
   wait: runtimeReadyContract(
     "core",
     1,
@@ -747,6 +781,25 @@ export function getWorkflowNodeOutputContracts(
         key: "rangeEnd",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  if (kind === "tag-query") {
+    return [
+      {
+        key: "matched",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
+      },
+      {
+        key: "matchedTagNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "matchedTagCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
       },
     ];
   }

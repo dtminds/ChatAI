@@ -10,7 +10,7 @@ import {
 const baseTagQueryNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-teal-600 text-white",
   accentRgb: "13 148 136",
-  description: "查询客户当前标签供后续节点使用",
+  description: "检查客户身上是否有你指定的企微标签，通常接条件分支分流到不同的后续运营路径",
   icon: Tag01Icon,
   kind: "tag-query",
   label: "标签查询",

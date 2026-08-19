@@ -6,6 +6,7 @@ type SupportInvestigatorSubject = Pick<JwtUser, "subUserId" | "uid">;
 // with the backend so this privileged capability has one reviewable boundary.
 const SUPPORT_INVESTIGATOR_SUBJECTS: ReadonlySet<string> = new Set([
   "101:2",
+  "101:3",
   "272:1",
 ]);
 

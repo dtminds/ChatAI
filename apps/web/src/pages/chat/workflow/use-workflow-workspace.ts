@@ -73,8 +73,8 @@ export function useWorkflowWorkspace(
     listReviews,
     markDirty,
     metadataUpdateState,
+    pauseDocument,
     approveReview,
-    continueEditing,
     publishReview,
     publishError,
     publishState,
@@ -82,7 +82,9 @@ export function useWorkflowWorkspace(
     reviewActionState,
     retrySave,
     restoreState,
+    restoreReview,
     restoreVersion,
+    resumeDocument,
     saveError,
     saveState,
     submitReview,
@@ -525,6 +527,36 @@ export function useWorkflowWorkspace(
     return false;
   });
 
+  const pausePublishedDocument = useWorkflowStableCallback(async () => {
+    try {
+      const result = await pauseDocument();
+      if (result) {
+        toast.success("已暂停");
+        return true;
+      }
+    } catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage("pause", error));
+      return false;
+    }
+    toast.error("操作失败，请稍后重试");
+    return false;
+  });
+
+  const resumePublishedDocument = useWorkflowStableCallback(async () => {
+    try {
+      const result = await resumeDocument();
+      if (result) {
+        toast.success("已启用");
+        return true;
+      }
+    } catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage("resume", error));
+      return false;
+    }
+    toast.error("操作失败，请稍后重试");
+    return false;
+  });
+
   const handleApproveReview = useWorkflowStableCallback(async (comment?: string) => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
@@ -557,19 +589,6 @@ export function useWorkflowWorkspace(
     try {
       const result = await withdrawReview(reviewId);
       if (result) toast.success("已撤回审核");
-      return Boolean(result);
-    } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
-      return false;
-    }
-  });
-
-  const handleContinueEditing = useWorkflowStableCallback(async () => {
-    const reviewId = document.currentReview?.id;
-    if (!reviewId) return false;
-    try {
-      const result = await continueEditing(reviewId);
-      if (result) toast.success("已恢复编辑");
       return Boolean(result);
     } catch (error) {
       toast.error(getWorkflowReviewActionErrorMessage(error));
@@ -706,6 +725,22 @@ export function useWorkflowWorkspace(
     closeCanvasOverlays();
   });
 
+  const restoreHistoricalReview = useWorkflowStableCallback(async (reviewId: string) => {
+    try {
+      const result = await restoreReview(reviewId);
+      if (!result) return false;
+      dispatchViewState({ type: "close-review" });
+      clearEdgeSelection();
+      clearNodeSelection();
+      closeCanvasOverlays();
+      toast.success("已恢复为当前草稿");
+      return true;
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
+  });
+
   const checksClose = useCallback(() => dispatchViewState({ type: "close-checks" }), []);
   return {
     canvas: {
@@ -785,8 +820,9 @@ export function useWorkflowWorkspace(
       onApproveReview: handleApproveReview,
       onRejectReview: handleRejectReview,
       onWithdrawReview: handleWithdrawReview,
-      onContinueEditing: handleContinueEditing,
       onEnable: enablePublishedDocument,
+      onPause: pausePublishedDocument,
+      onResume: resumePublishedDocument,
       currentReview: document.currentReview,
       reviewActionState,
       lifecycleActionState,
@@ -820,8 +856,8 @@ export function useWorkflowWorkspace(
       onApprove: handleApproveReview,
       onClose: closeReview,
       onOpen: openReview,
-      onContinueEditing: handleContinueEditing,
       onReject: handleRejectReview,
+      onRestore: restoreHistoricalReview,
       onWithdraw: handleWithdrawReview,
       pending: reviewActionState !== "idle",
     },

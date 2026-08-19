@@ -47,7 +47,7 @@
 | `subjectId` | Node 从已校验事件字段解析 | 在 `uid + subjectType` 范围内稳定的营销对象 ID。WeCom SOP 使用 `externalUserId`，ChatAI SOP 使用 `thirdExternalUserId`；同一 Entry Event 可以为不同 Binding 提供不同候选 Subject。 |
 | `workUserId` | Java 生成，Node 匹配 | 企微成员 ID。添加好友和打标签事件统一按该字段匹配 ChatAI SOP 与 WeCom SOP。 |
 | `seatId` | Java 生成，Node 匹配或使用 | ChatAI 席位 ID。新消息事件按该字段匹配；每个有效席位唯一绑定一个 `workUserId`，同一租户下一个 `workUserId` 最多有一个有效席位。 |
-| `externalUserId` | Java 生成，Node 解析 | 企微好友 ID，是 WeCom SOP 的 Subject ID。 |
+| `externalUserId` | Java 生成，Node 解析 | 企微好友数字业务 ID，必须是 JavaScript 安全整数范围内的正整数；Node 投影为 Runtime `subjectId` 时转成十进制字符串。 |
 | `thirdExternalUserId` | Java 生成，Node 解析 | ChatAI 席位好友 ID，是 ChatAI SOP 的 Subject ID。旧名 `external_third_userid` 不再使用。 |
 | Product Entitlement | Java/产品权威，Node 展示和校验 | 租户购买或开通的产品能力，例如 ChatAI 席位、发券能力。它与 Workflow Type 分离，不能通过新增 Workflow Type 表达套餐差异。 |
 | at-least-once | 双方 | 事件或任务可能被重复投递，但不能静默丢失。系统通过 `eventId`、Inbox、Task Version 和 `idempotencyKey` 吸收重复。 |
@@ -193,7 +193,7 @@ Pulsar Entry Event
 - `WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS` 当前仍只有 `start / wait / end`。
 - 其余节点不能因为 UI 已完成就直接加入运行白名单。
 - 当前真实业务事件尚未由 Java 接入 `workflow-entry` Topic。
-- Workflow Worker 环境配置当前只接受 `dev / test01`，生产环境枚举、Topic 和部署参数尚未接入。
+- Workflow Worker 环境配置当前只接受 `dev / test`，生产环境枚举、Topic 和部署参数尚未接入。
 - 当前入口契约只覆盖 `contact.friend_added`、`contact.tag_added` 和 `message.received`，并强制所有事件携带 `accountId`、`thirdUserId`，无法自然表达订单和人群事件。
 - 当前 Definition、Revision、Trigger Binding 没有 Workflow Type，前端节点目录也没有统一的类型能力策略。
 - 当前 Run、Entry Guard 和 Wait Event 设计只有 `subject_id`，无法区分不同主体域中的同值 ID。
@@ -1281,7 +1281,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖旧 Node Schema、Event Payload Version 或 Inference Request Version 仍被活动数据引用时对应 handler 不得移除。
 - 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。
-- CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test01 TDMQ 和真实 Java 入口做手动 Smoke。
+- CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test TDMQ 和真实 Java 入口做手动 Smoke。
 
 ### 14.5 Java 未就绪期间的验证边界
 
@@ -1294,7 +1294,7 @@ Java 未就绪时可以完成的是 **Node Workflow 子系统验收**，不是 J
 | 共享契约 Fixture | 版本化原始 JSON 和期望结果清单 | Java DTO 与 Node TypeBox 对公共信封、Subject 和错误分类理解一致 | 真实业务 payload 来源和 Java 内部业务规则正确 |
 | Package 行为测试 | 确定性 Clock/ID、内存 Repository、测试专属 Executor/Adapter | Compiler、Executor、输出、失败、Retry、幂等和状态机契约正确 | MySQL 事务、Pulsar 传输和进程组合正确 |
 | Worker 组合测试 | 测试组合根直接注入 Fake Broker、Fake Event Producer 和测试 Adapter | Consumer 到 Repository、Run/Task/Subscription、路由和恢复的 Node 子系统闭环 | 真实 TDMQ、Java Producer/API、鉴权和环境配置正确 |
-| test01 联调 Smoke | 真实 Java 入口、TDMQ Pulsar、Node Worker、MySQL、隔离测试租户 | 真实事件或节点依赖已端到端接通 | 不能由任何 Fake 或直投 MQ 工具替代 |
+| test 联调 Smoke | 真实 Java 入口、TDMQ Pulsar、Node Worker、MySQL、隔离测试租户 | 真实事件或节点依赖已端到端接通 | 不能由任何 Fake 或直投 MQ 工具替代 |
 
 #### 共享 JSON Fixture
 
@@ -1342,14 +1342,14 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
 - 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
 - LLM Mock Attempt 只允许在开发或测试环境显式启用，响应必须标记 `executionMode=mock`；生产 Backend 和 Workflow Worker 均强制 `disabled`。Java Adapter 接通前，该结果只验证变量替换、请求构造和输出映射，不代表真实模型效果。
-- 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test01 联调和后续生产启用验收中。
+- 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test 联调和后续生产启用验收中。
 
 #### Smoke 工具边界
 
 当前 `smoke-entry.ts` 会读取 Binding 并由 Node 拼接联系人、标签和消息 payload，这会重复未来 Java Event Catalog 的业务语义。迭代实施时应删除该生成逻辑：
 
 - Java 接通后的真实端到端 Smoke 必须从 Java 的受支持测试入口触发，让 Java 生成 Event、写 Outbox 并投递 TDMQ。
-- 如保留 Node 直投工具，它只能在 test01 的隔离 Topic 上发布一份已校验的共享 Fixture，且强制使用真实 Pulsar；该工具只验证 Broker 传输和 Node Consumer，不计入 Java 联调或事件开放条件。
+- 如保留 Node 直投工具，它只能在 test 的隔离 Topic 上发布一份已校验的共享 Fixture，且强制使用真实 Pulsar；该工具只验证 Broker 传输和 Node Consumer，不计入 Java 联调或事件开放条件。
 - Smoke 不是客户功能，不出现在 Web，也不接受 Workflow ID 后替用户生成业务事件。
 
 #### 三次迭代的最低验证集
@@ -1360,7 +1360,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 | Iteration 2 | JSON Fixture -> Fake Event Catalog -> Fake Broker -> Entry Consumer -> Run/Wait Subscription -> Event/Timeout -> End；非法事件 DLQ、重复投递、扇出、CAS、暂停/停止、Outbox 重投和崩溃接管 |
 | Iteration 3 | 真实 Draft -> Branch Execution Spec -> Runtime 路由；全部操作符、`all / any`、首个匹配、默认分支和恢复；Capability Port 的命令校验、deadline、AbortSignal、Action 幂等、Query 无调用键、错误分类和输出上限 |
 
-三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/API、test01 TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开放对应事件或把节点改为 `runtime-ready`。
+三次迭代合并时，测试报告必须明确写“Node subsystem acceptance with test doubles”。只有真实 Java Entry/API、test TDMQ、正式鉴权和隔离租户 Smoke 通过后，才能改为“deployment integration accepted”并开放对应事件或把节点改为 `runtime-ready`。
 
 ## 15. Java 未就绪期间的 Node 三迭代顺序
 
@@ -1417,7 +1417,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 - 迭代合并门槛是 Fake 依赖下的完整 CI、数据库 Repository 测试和行为回归。
 - Runtime Support 门槛是对应 Node Kind 已满足本节的完整实现与测试要求。
-- Production Deployment 门槛是 Java 真实事件源或 API 接通后，另行完成 test01 Pulsar/API Smoke，再开放对应事件配置或节点 maturity。
+- Production Deployment 门槛是 Java 真实事件源或 API 接通后，另行完成 test Pulsar/API Smoke，再开放对应事件配置或节点 maturity。
 - Java 未就绪不能阻止三次 Node 迭代合并，但 Fake 测试绝不能替代生产启用验收。
 
 ## 16. 明天会议必须确认的事项
@@ -1434,7 +1434,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 8. Java 是否已有可复用的 Transactional Outbox。
 9. Java 业务事务能否为兴趣查询使用 `READ COMMITTED`。
 10. Java 读取 Workflow 表的 Schema 名、数据库账号和授权方式。
-11. test01 的 Pulsar Topic、Producer 权限和联调负责人。
+11. test 的 Pulsar Topic、Producer 权限和联调负责人。
 12. 正式确认 `Node Workflow Kernel + Java Workflow Business Capability Layer` 为目标边界。
 13. 第一个 Java Capability 选择 `chatai.message.*` 还是 customer/member Tag，并冻结 operation DTO 和 Subject Type。
 14. Java Capability 的统一信封、幂等、错误码、权益和资源校验格式。
@@ -1452,7 +1452,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - Backend 发布侧和 Worker 投影侧共享同一个 Event Catalog；未知 Event Type、Payload Version 或 Subject Type 均 fail-closed。
 - Java 依赖节点只有在 Runtime、真实 Adapter 和可靠性链路完整后才能改为 `runtime-ready`；Worker 启动会校验所有 runtime-ready 节点的生产执行路径。
 - Fake Broker、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 不会被生产组合根加载。
-- Wait Event 完整实现后仍需真实事件源和 Event Catalog 的 test01 Smoke；Branch 完整实现后无需 Java API 即可进入 Runtime Support。
+- Wait Event 完整实现后仍需真实事件源和 Event Catalog 的 test Smoke；Branch 完整实现后无需 Java API 即可进入 Runtime Support。
 - Java Capability Port 不能接收原始 Node、nodeConfig 或变量表达式；仅完成 Port 不会开放任何 Message、Query、Tag、Coupon 或 Handoff 节点。
 - 创建、发布、启用、恢复、Entry 和 Task 推进均执行 Workflow Type Entitlement 检查；Java 查询失败不会被当作无权益，也不会继续执行业务动作。
 - Binding 明确目标 `subjectType`，Run、Entry Guard 和 Wait Event Subscription 使用 `subjectType + subjectId`；Entry Event 与 Partition Key 使用事件来源域身份，并由 Node 解析候选 Run Subject。
@@ -1466,8 +1466,8 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - 事件 ID 稳定，重复投递不会重复创建同一 Workflow Run。
 - Node 最终匹配仍校验 Active Definition 和当前 Revision Binding。
 - Java 和 Node 的 MySQL Session 均满足 UTC+8 契约。
-- test01 完成真实 Pulsar、重复投递、暂停/停止和数据库短暂异常 Smoke。
-- test01 完成 Java/API 短暂故障与恢复 Smoke，确认节点按既定 Retry、Deadline 和恢复语义处理。
+- test 完成真实 Pulsar、重复投递、暂停/停止和数据库短暂异常 Smoke。
+- test 完成 Java/API 短暂故障与恢复 Smoke，确认节点按既定 Retry、Deadline 和恢复语义处理。
 - 至少有 Interest、Java Outbox、Pulsar Backlog、Entry Consumer 和 Run 创建指标。
 - 旧 Runtime handler 和 capability contract version 在仍被可继续运行的当前发布 Revision、活动 Task、Wait Event Subscription、Inference Job 或 Retry/Lease Recovery 引用时不会被移除；仅有保留期历史引用时允许移除可执行 Handler。
 

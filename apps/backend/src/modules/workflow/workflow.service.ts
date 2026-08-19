@@ -460,11 +460,49 @@ export class WorkflowService {
   }
 
   async withdrawReview(scope: WorkflowOperatorScope, workflowId: string, reviewId: string) {
-    return this.withdrawReviewWithStatuses(scope, workflowId, reviewId, ["pending"]);
+    assertWorkflowAccess(scope);
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    this.assertNotStopped(definition);
+    return toReview(this.unwrapMutation(await this.repository.withdrawReview({
+      opSubUserId: scope.subUserId,
+      reviewId,
+      uid: scope.uid,
+      workflowId,
+    })));
   }
 
-  async continueEditing(scope: WorkflowOperatorScope, workflowId: string, reviewId: string) {
-    return this.withdrawReviewWithStatuses(scope, workflowId, reviewId, ["approved"]);
+  async restoreReview(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    reviewId: string,
+    input: WorkflowRestoreRequest,
+  ) {
+    assertWorkflowAccess(scope);
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    this.assertNotStopped(definition);
+    const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
+    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
+    if (review.status === "pending") {
+      throw new AppError("WORKFLOW_REVIEW_RESTORE_PENDING", "待审核内容无需恢复", 409);
+    }
+    if (review.resultingRevision !== null) {
+      throw new AppError(
+        "WORKFLOW_REVIEW_ALREADY_PUBLISHED",
+        "该审核已发布，请从发布版本恢复",
+        409,
+      );
+    }
+    const draft = normalizeWorkflowDraft(review.draft);
+    assertWorkflowDraftNodeContracts(draft);
+    assertWorkflowTypePolicy(definition.workflowType, draft);
+    return this.toDefinition(this.unwrapMutation(await this.repository.restoreDraft({
+      draft,
+      draftSemanticHash: hashDraftSemantics(draft),
+      expectedDraftVersion: input.expectedDraftVersion,
+      opSubUserId: scope.subUserId,
+      uid: scope.uid,
+      workflowId,
+    })));
   }
 
   async publish(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowPublishRequest): Promise<WorkflowPublishResult> {
@@ -474,16 +512,14 @@ export class WorkflowService {
     const review = await this.repository.findReview(scope.uid, workflowId, input.reviewId);
     if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
     if (review.status !== "approved") throw reviewInvalidStatusError(review.status);
+    if (definition.publishedRevision !== review.basePublishedRevision
+      || definition.draftSemanticHash !== review.draftSemanticHash) {
+      throw conflictError();
+    }
     const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType, scope.subUserId);
     this.assertProductionAvailability(review.executionSpec, entitlement, review.subjectType);
     const currentBindings = await this.createTriggerBindings(scope.uid, review.executionSpec, review.subjectType);
-    const candidateHash = hashExecutionSpec({
-      executionSpec: review.executionSpec,
-      subjectType: review.subjectType,
-      triggerBindings: currentBindings,
-      workflowType: review.workflowType,
-    });
-    if (candidateHash !== review.candidateHash) {
+    if (hashCanonicalValue(currentBindings) !== hashCanonicalValue(review.triggerBindings)) {
       throw new AppError(
         "WORKFLOW_REVIEW_RESOURCES_CHANGED",
         "审核内容依赖的业务资源已变化，请处理后重试发布",
@@ -491,7 +527,7 @@ export class WorkflowService {
       );
     }
     const published = this.unwrapMutation(await this.repository.publishRevision({
-      candidateHash,
+      candidateHash: review.candidateHash,
       opSubUserId: scope.subUserId,
       reviewId: input.reviewId,
       uid: scope.uid,
@@ -760,24 +796,6 @@ export class WorkflowService {
     return toDefinition(record, review);
   }
 
-  private async withdrawReviewWithStatuses(
-    scope: WorkflowOperatorScope,
-    workflowId: string,
-    reviewId: string,
-    allowedStatuses: Array<"approved" | "pending">,
-  ) {
-    assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
-    this.assertNotStopped(definition);
-    return toReview(this.unwrapMutation(await this.repository.withdrawReview({
-      allowedStatuses,
-      opSubUserId: scope.subUserId,
-      reviewId,
-      uid: scope.uid,
-      workflowId,
-    })));
-  }
-
   private async createChangeSummary(
     definition: WorkflowDefinitionRecord,
     draft: WorkflowDraft,
@@ -811,7 +829,7 @@ function toDefinition(
   record: WorkflowDefinitionRecord,
   currentReview: WorkflowPublishReviewRecord | null,
 ): WorkflowDefinition {
-  const reviewLocked = currentReview?.status === "pending" || currentReview?.status === "approved";
+  const reviewLocked = currentReview?.status === "pending";
   return {
     capabilitySummary: {
       runtimeSupportedNodeKinds: [...WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS],
@@ -908,12 +926,12 @@ function hashExecutionSpec(input: {
   workflowType: WorkflowType;
 }) {
   const { revision: _revision, ...publishSemantics } = input.executionSpec;
-  return createHash("sha256").update(JSON.stringify({
+  return hashCanonicalValue({
     executionSpec: publishSemantics,
     subjectType: input.subjectType,
     triggerBindings: input.triggerBindings,
     workflowType: input.workflowType,
-  })).digest("hex");
+  });
 }
 
 function hashDraftSemantics(draft: WorkflowDraft) {
@@ -927,7 +945,11 @@ function hashDraftSemantics(draft: WorkflowDraft) {
       )),
     })).sort((first, second) => first.id.localeCompare(second.id)),
   };
-  return createHash("sha256").update(JSON.stringify(canonicalize(semantics))).digest("hex");
+  return hashCanonicalValue(semantics);
+}
+
+function hashCanonicalValue(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
 }
 
 function canonicalize(value: unknown): unknown {

@@ -33,7 +33,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       } else {
         if (definition.runtimeStatus === "stopped") continue;
         definition.runtimeStatus = "stopped";
-        this.obsoleteOpenReviews(input.uid, definition.id, input.opSubUserId);
+        this.withdrawPendingReviews(input.uid, definition.id, input.opSubUserId);
       }
       definition.statusReason = "entitlement_revoked";
       touch(definition, input.opSubUserId);
@@ -106,16 +106,20 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     const definition = this.findActive(uid, workflowId);
     if (!definition) return null;
     const review = this.reviews
-      .filter(item => item.uid === uid && item.workflowId === workflowId)
+      .filter(item => item.uid === uid
+        && item.workflowId === workflowId
+        && item.draftSemanticHash === definition.draftSemanticHash
+        && item.basePublishedRevision === definition.publishedRevision
+        && (item.status === "pending"
+          || item.status === "approved"
+          || item.status === "rejected"
+          || item.status === "withdrawn"))
       .sort((first, second) => {
         const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
         return createdAtDifference || Number(second.id) - Number(first.id);
       })
       .at(0);
-    if (review?.status === "pending" || review?.status === "approved") return clone(review);
-    if (review?.status === "rejected"
-      && definition.publishedSemanticHash !== definition.draftSemanticHash) return clone(review);
-    return null;
+    return review?.status === "withdrawn" ? null : review ? clone(review) : null;
   }
 
   async listDefinitions(uid: number) {
@@ -161,7 +165,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {
     return this.mutate<WorkflowDefinitionRecord>(input.uid, input.workflowId, (definition) => {
-      if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+      if (this.hasPendingReview(input.uid, input.workflowId)) return reviewLocked();
       if (definition.draftVersion !== input.expectedDraftVersion) return conflict();
       if (definition.runtimeStatus === "stopped" && !input.layoutOnly) {
         return invalidStatus(definition.runtimeStatus);
@@ -180,7 +184,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async updateDefinitionMetadata(input: Parameters<WorkflowRepository["updateDefinitionMetadata"]>[0]): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {
     return this.mutate<WorkflowDefinitionRecord>(input.uid, input.workflowId, (definition) => {
-      if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+      if (this.hasPendingReview(input.uid, input.workflowId)) return reviewLocked();
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
       if (input.name !== undefined) definition.name = input.name;
       if (input.description !== undefined) definition.description = input.description;
@@ -192,7 +196,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async markDeleted(input: Parameters<WorkflowRepository["markDeleted"]>[0]) {
     return this.mutate(input.uid, input.workflowId, (definition) => {
       definition.bizStatus = 0;
-      this.obsoleteOpenReviews(input.uid, input.workflowId, input.opSubUserId);
+      this.withdrawPendingReviews(input.uid, input.workflowId, input.opSubUserId);
       definition.clientRequestId = undefined;
       touch(definition, input.opSubUserId);
       return success(definition);
@@ -205,7 +209,12 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
     if (definition.draftVersion !== input.expectedDraftVersion
       || definition.publishedRevision !== input.basePublishedRevision) return conflict();
-    if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+    if (this.hasReviewForCandidate(
+      input.uid,
+      input.workflowId,
+      input.draftSemanticHash,
+      input.basePublishedRevision,
+    )) return reviewLocked();
     const now = new Date();
     const review: WorkflowPublishReviewRecord = {
       basePublishedRevision: input.basePublishedRevision,
@@ -254,7 +263,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async withdrawReview(input: Parameters<WorkflowRepository["withdrawReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
     const review = this.findMutableReview(input.uid, input.workflowId, input.reviewId);
     if (!review) return notFound<WorkflowPublishReviewRecord>();
-    if (!input.allowedStatuses.includes(review.status as "approved" | "pending")) {
+    if (review.status !== "pending") {
       return reviewInvalidStatus(review.status);
     }
     review.status = "withdrawn";
@@ -273,12 +282,12 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     if (review.status !== "approved") return reviewInvalidStatus(review.status);
     if (review.candidateHash !== input.candidateHash
       || definition.publishedRevision !== review.basePublishedRevision
-      || definition.draftVersion !== review.sourceDraftVersion) return conflict<never>();
+      || definition.draftSemanticHash !== review.draftSemanticHash) return conflict<never>();
     if (definition.runtimeStatus === "stopped") {
       return invalidStatus<never>(definition.runtimeStatus);
     }
     const revision = this.createRevision(definition, {
-      draft: review.draft,
+      draft: definition.draft,
       executionSpec: review.executionSpec,
       opSubUserId: input.opSubUserId,
       reviewId: review.id,
@@ -288,7 +297,6 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     this.addTriggerBindings(definition, revision.revision, review.triggerBindings);
     definition.publishedRevision = revision.revision;
     definition.publishedSemanticHash = review.draftSemanticHash;
-    review.status = "published";
     review.publishedAt = revision.publishedAt;
     review.publishedBySubUserId = input.opSubUserId;
     review.resultingRevision = revision.revision;
@@ -323,7 +331,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       }
       definition.runtimeStatus = input.status;
       if (input.status === "stopped") {
-        this.obsoleteOpenReviews(input.uid, input.workflowId, input.opSubUserId);
+        this.withdrawPendingReviews(input.uid, input.workflowId, input.opSubUserId);
       }
       definition.statusReason = input.statusReason;
       touch(definition, input.opSubUserId);
@@ -348,19 +356,33 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     );
   }
 
-  private hasLockedReview(uid: number, workflowId: string) {
+  private hasPendingReview(uid: number, workflowId: string) {
     return this.reviews.some(review =>
-      review.uid === uid && review.workflowId === workflowId
+      review.uid === uid && review.workflowId === workflowId && review.status === "pending",
+    );
+  }
+
+  private hasReviewForCandidate(
+    uid: number,
+    workflowId: string,
+    draftSemanticHash: string,
+    basePublishedRevision: number | null,
+  ) {
+    return this.reviews.some(review =>
+      review.uid === uid
+      && review.workflowId === workflowId
+      && review.draftSemanticHash === draftSemanticHash
+      && review.basePublishedRevision === basePublishedRevision
       && (review.status === "pending" || review.status === "approved"),
     );
   }
 
-  private obsoleteOpenReviews(uid: number, workflowId: string, opSubUserId: string) {
+  private withdrawPendingReviews(uid: number, workflowId: string, opSubUserId: string) {
     const now = new Date();
     for (const review of this.reviews) {
       if (review.uid !== uid || review.workflowId !== workflowId
-        || (review.status !== "pending" && review.status !== "approved")) continue;
-      review.status = "obsolete";
+        || review.status !== "pending") continue;
+      review.status = "withdrawn";
       review.reviewedAt = now;
       review.reviewedBySubUserId = opSubUserId;
       review.updatedAt = now;

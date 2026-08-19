@@ -640,7 +640,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
   candidate_hash VARCHAR(64) NOT NULL COMMENT '候选执行语义SHA-256',
   draft_semantic_hash VARCHAR(64) NOT NULL COMMENT '候选草稿语义SHA-256',
   change_summary_json JSON NOT NULL COMMENT '相对当前发布版的变更摘要',
-  status VARCHAR(32) NOT NULL COMMENT 'pending、approved、rejected、withdrawn、obsolete、published',
+  status VARCHAR(32) NOT NULL COMMENT 'pending、approved、rejected、withdrawn',
   submit_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '提交人子账号ID',
   submit_time DATETIME NOT NULL COMMENT '提交时间',
   checked_at DATETIME NOT NULL COMMENT '自动检查完成时间',
@@ -653,7 +653,14 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_workflow_publish_review_candidate (uid, workflow_id, source_draft_version),
+  KEY idx_workflow_publish_review_match (
+    uid,
+    workflow_id,
+    draft_semantic_hash,
+    base_published_revision,
+    status,
+    id
+  ),
   KEY idx_workflow_publish_review_current (uid, workflow_id, id)
 ) COMMENT='营销Workflow发布审核表';
 

@@ -297,11 +297,14 @@ export async function registerWorkflowRoutes(
     )),
   );
 
-  app.post<{ Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/continue-editing",
-    { ...authenticated, schema: { params: WorkflowReviewParamsSchema } },
-    async request => apiSuccess(await service.continueEditing(
-      getWorkflowScope(request), request.params.workflowId, request.params.reviewId,
+  app.post<{ Body: WorkflowRestoreRequest; Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/restore",
+    { ...authenticated, schema: { body: WorkflowRestoreRequestSchema, params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.restoreReview(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.reviewId,
+      request.body,
     )),
   );
 

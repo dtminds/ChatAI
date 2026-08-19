@@ -82,6 +82,40 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.canPublish).toBe(false);
   });
 
+  it("updates runtime status through detail-page pause and resume actions", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initial = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "active" as const,
+    };
+    const repository = {
+      ...baseRepository,
+      pauseDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "paused" as const,
+      })),
+      resumeDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "active" as const,
+      })),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onPause?.();
+    });
+    expect(repository.pauseDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("paused");
+    expect(toast.success).toHaveBeenLastCalledWith("已暂停");
+
+    await act(async () => {
+      await result.current.topBar.onResume?.();
+    });
+    expect(repository.resumeDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("active");
+    expect(toast.success).toHaveBeenLastCalledWith("已启用");
+  });
+
   it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
@@ -655,7 +689,6 @@ describe("useWorkflowWorkspace", () => {
     const repository = {
       ...baseRepository,
       approveReview: vi.fn(async () => { throw reviewError; }),
-      continueEditing: vi.fn(async () => { throw reviewError; }),
       enableDocument: vi.fn(async () => {
         throw new WorkflowRepositoryError(
           "conflict",
@@ -697,13 +730,11 @@ describe("useWorkflowWorkspace", () => {
       await pendingResult.current.review.onApprove();
       await pendingResult.current.review.onReject("需要调整");
       await pendingResult.current.review.onWithdraw();
-      await pendingResult.current.review.onContinueEditing();
     });
     expect(repository.approveReview).toHaveBeenCalledWith(initial.id, reviewId, undefined);
     expect(repository.rejectReview).toHaveBeenCalledWith(initial.id, reviewId, "需要调整");
     expect(repository.withdrawReview).toHaveBeenCalledWith(initial.id, reviewId);
-    expect(repository.continueEditing).toHaveBeenCalledWith(initial.id, reviewId);
-    expect(toast.error).toHaveBeenCalledTimes(5);
+    expect(toast.error).toHaveBeenCalledTimes(4);
 
     const approved = baseRepository.approveReview(initial.id, reviewId);
     const { result: approvedResult } = renderHook(() => useWorkflowWorkspace(
@@ -715,7 +746,7 @@ describe("useWorkflowWorkspace", () => {
       await approvedResult.current.topBar.onPublish();
     });
     expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
-    expect(toast.error).toHaveBeenCalledTimes(6);
+    expect(toast.error).toHaveBeenCalledTimes(5);
 
     const inactive = {
       ...baseRepository.getDocument("vip-reactivation"),
@@ -730,7 +761,7 @@ describe("useWorkflowWorkspace", () => {
       await inactiveResult.current.topBar.onEnable?.();
     });
     expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
-    expect(toast.error).toHaveBeenCalledTimes(7);
+    expect(toast.error).toHaveBeenCalledTimes(6);
   });
 
   it("keeps publish state consistent when undo returns to the published draft", async () => {

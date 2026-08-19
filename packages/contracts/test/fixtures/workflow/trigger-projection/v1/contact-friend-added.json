@@ -6,11 +6,11 @@
   },
   "subjects": {
     "wecom_contact": {
-      "subjectId": "wecom-contact-1"
+      "subjectId": "3267"
     }
   },
   "variables": {
-    "externalUserId": "wecom-contact-1",
+    "externalUserId": 3267,
     "sourceId": "qr-code-1",
     "workUserId": 201
   }

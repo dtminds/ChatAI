@@ -8,6 +8,6 @@
   "source": "wecom",
   "payload": {
     "workUserId": 201,
-    "externalUserId": "wecom-contact-idempotent-1"
+    "externalUserId": 3268
   }
 }

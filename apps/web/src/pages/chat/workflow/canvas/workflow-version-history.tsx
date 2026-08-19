@@ -1,4 +1,4 @@
-import { Cancel01Icon, CheckmarkCircle02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { WorkflowPublishReview } from "@chatai/contracts";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ export function WorkflowVersionHistoryPanel({
   onClose,
   onExitPreview,
   onRestoreVersion,
+  onSelectReview,
   onSelectVersion,
   loadReviews,
   restoreState,
@@ -26,6 +27,7 @@ export function WorkflowVersionHistoryPanel({
   onClose: () => void;
   onExitPreview: () => void;
   onRestoreVersion: (versionId: string) => void;
+  onSelectReview: (review: WorkflowPublishReview) => void;
   onSelectVersion: (versionId: string) => void;
   loadReviews: () => Promise<WorkflowPublishReview[]>;
   restoreState: WorkflowDraftRestoreStatus;
@@ -47,8 +49,8 @@ export function WorkflowVersionHistoryPanel({
   }, [loadReviews]);
 
   return (
-    <div className="workflow-version-panel flex max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-popover text-popover-foreground">
-      <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
+    <div className="workflow-version-panel flex min-h-[17rem] max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-popover text-popover-foreground">
+      <div className="workflow-version-panel-header flex items-center gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">历史记录</h2>
         </div>
@@ -65,9 +67,9 @@ export function WorkflowVersionHistoryPanel({
       </div>
 
       <Tabs className="px-3 pb-2" onValueChange={value => setActiveTab(value as "versions" | "reviews")} value={activeTab}>
-        <TabsList className="grid h-8 w-full grid-cols-2">
-          <TabsTrigger className="h-7 text-xs" value="versions">发布版本</TabsTrigger>
-          <TabsTrigger className="h-7 text-xs" value="reviews">审核记录</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="versions">发布版本</TabsTrigger>
+          <TabsTrigger value="reviews">审核记录</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -112,14 +114,16 @@ export function WorkflowVersionHistoryPanel({
             </button>
           );
         }) : activeTab === "versions" ? (
-          <div className="workflow-version-empty flex min-h-40 flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
-            <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-muted">
-              <HugeiconsIcon icon={WorkflowSquare01Icon} size={18} strokeWidth={1.8} />
-            </span>
+          <div className="workflow-version-empty flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">
             <span>暂无发布版本</span>
           </div>
         ) : reviews.length ? reviews.map(review => (
-          <div className="rounded-lg px-2 py-2.5 hover:bg-muted" key={review.id}>
+          <button
+            className="block w-full rounded-lg px-2 py-2.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            key={review.id}
+            onClick={() => onSelectReview(review)}
+            type="button"
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[13px] font-medium">{getReviewHistoryLabel(review)}</span>
               <span className="text-[11px] text-muted-foreground">{formatReviewTime(review.submittedAt)}</span>
@@ -127,7 +131,10 @@ export function WorkflowVersionHistoryPanel({
             {review.reviewComment ? (
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{review.reviewComment}</p>
             ) : null}
-          </div>
+            {review.resultingRevision !== null ? (
+              <p className="mt-1 text-xs text-muted-foreground">已发布为 Revision {review.resultingRevision}</p>
+            ) : null}
+          </button>
         )) : (
           <div className="flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">暂无审核记录</div>
         )}
@@ -171,9 +178,7 @@ export function WorkflowVersionHistoryPanel({
 function getReviewHistoryLabel(review: WorkflowPublishReview) {
   return {
     approved: "审核通过",
-    obsolete: "审核已失效",
     pending: "待审核",
-    published: `已发布${review.resultingRevision ? ` Revision ${review.resultingRevision}` : ""}`,
     rejected: "审核驳回",
     withdrawn: "审核已撤回",
   }[review.status];

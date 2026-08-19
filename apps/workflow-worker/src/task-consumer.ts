@@ -9,6 +9,11 @@ import type {
   WorkflowBrokerSubscription,
 } from "./broker/types.js";
 import { classifyTaskError } from "./error-policy.js";
+import {
+  createWorkflowTaskConsumeObserver,
+  type WorkflowTaskConsumeObservation,
+  type WorkflowWorkerLogger,
+} from "./observability.js";
 
 type WorkflowTaskRuntimeService = {
   executeTask(input: {
@@ -22,8 +27,8 @@ type WorkflowTaskRuntimeService = {
 };
 
 export function createTaskConsumerHandler(input: {
-  logger?: { warn(value: unknown, message?: string): void };
   now?: () => Date;
+  observe?: (message: WorkflowBrokerMessage, result: WorkflowTaskConsumeObservation) => void;
   runtimeService: WorkflowTaskRuntimeService;
   workerId: string;
 }) {
@@ -31,6 +36,10 @@ export function createTaskConsumerHandler(input: {
     const command = parseTaskMessage(message.data);
     if (!command) {
       message.negativeAck();
+      input.observe?.(message, {
+        code: "invalid_task_message",
+        disposition: "nack",
+      });
       return;
     }
 
@@ -43,64 +52,99 @@ export function createTaskConsumerHandler(input: {
         uid: parseSafeDatabaseId(command.uid),
         workerId: input.workerId,
       });
-      logPersistedTaskOutcome(input.logger, command, result);
       await message.ack();
+      input.observe?.(message, createTaskObservation(command, result));
     } catch (error) {
-      if (classifyTaskError(error) === "ack") await message.ack();
+      const disposition = classifyTaskError(error);
+      const errorCode = getErrorCode(error);
+      if (disposition === "ack") await message.ack();
       else message.negativeAck();
+      input.observe?.(message, {
+        code: disposition === "ack" ? "acked_boundary" : "temporary_failure",
+        command: pickTaskIdentity(command),
+        disposition,
+        ...(disposition === "nack" ? { error } : {}),
+        ...(errorCode ? { errorCode } : {}),
+      });
     }
   };
 }
 
-function logPersistedTaskOutcome(
-  logger: { warn(value: unknown, message?: string): void } | undefined,
+function createTaskObservation(
   command: WorkflowTaskMessage,
   result: unknown,
-) {
-  if (!logger || !result || typeof result !== "object" || !("kind" in result)) return;
+): WorkflowTaskConsumeObservation {
+  if (!result || typeof result !== "object" || !("kind" in result)) {
+    return { code: "completed", command: pickTaskIdentity(command), disposition: "ack" };
+  }
   const outcome = result as Record<string, unknown>;
   if (outcome.kind !== "retry-scheduled"
     && outcome.kind !== "failed"
-    && outcome.kind !== "node-failed") return;
-  const event = outcome.kind === "retry-scheduled"
-    ? "workflow.capability.retry.scheduled"
-    : outcome.kind === "node-failed"
-      ? "workflow.node.failed"
-      : "workflow.capability.failed";
-  logger.warn({
+    && outcome.kind !== "node-failed") {
+    return { code: "completed", command: pickTaskIdentity(command), disposition: "ack" };
+  }
+  return {
+    code: outcome.kind === "retry-scheduled"
+      ? "retry_scheduled"
+      : outcome.kind === "node-failed"
+        ? "node_failed"
+        : "capability_failed",
+    command: pickTaskIdentity(command),
     ...(typeof outcome.diagnosticMessage === "string"
       ? { diagnosticMessage: outcome.diagnosticMessage.slice(0, 1_024) }
       : {}),
-    errorCode: outcome.errorCode,
-    event,
+    disposition: "ack",
+    ...(typeof outcome.errorCode === "string" ? { errorCode: outcome.errorCode } : {}),
     ...(typeof outcome.failureKind === "string" ? { failureKind: outcome.failureKind } : {}),
     ...(typeof outcome.nodeId === "string" ? { nodeId: outcome.nodeId } : {}),
     ...(typeof outcome.nodeKind === "string" ? { nodeKind: outcome.nodeKind } : {}),
     ...(outcome.kind === "retry-scheduled" ? { retryAt: outcome.retryAt } : {}),
-    runId: command.runId,
-    taskId: command.taskId,
-    uid: command.uid,
-  }, event.replaceAll(".", " "));
+  };
 }
 
-export function startTaskConsumer(input: {
+export async function startTaskConsumer(input: {
   broker: WorkflowBroker;
   deadLetterTopic?: string;
-  logger?: { warn(value: unknown, message?: string): void };
+  logger?: WorkflowWorkerLogger;
   maxRedeliverCount?: number;
   runtimeService: WorkflowTaskRuntimeService;
   subscription: string;
   topic: string;
   workerId: string;
 }): Promise<WorkflowBrokerSubscription> {
-  return input.broker.subscribe({
-    deadLetterTopic: input.deadLetterTopic,
-    handler: createTaskConsumerHandler(input),
-    maxRedeliverCount: input.maxRedeliverCount,
-    subscription: input.subscription,
-    topic: input.topic,
-    type: "Shared",
-  });
+  const observer = input.logger
+    ? createWorkflowTaskConsumeObserver({
+        deadLetterTopic: input.deadLetterTopic,
+        logger: input.logger,
+      })
+    : undefined;
+  let subscription: WorkflowBrokerSubscription;
+  try {
+    subscription = await input.broker.subscribe({
+      deadLetterTopic: input.deadLetterTopic,
+      handler: createTaskConsumerHandler({
+        ...input,
+        observe: (message, result) => observer?.record(message, result),
+      }),
+      maxRedeliverCount: input.maxRedeliverCount,
+      subscription: input.subscription,
+      topic: input.topic,
+      type: "Shared",
+    });
+  } catch (error) {
+    observer?.close();
+    throw error;
+  }
+  return {
+    async close() {
+      try {
+        await subscription.close();
+      } finally {
+        observer?.close();
+      }
+    },
+    isConnected: () => subscription.isConnected(),
+  };
 }
 
 function parseTaskMessage(data: Buffer): WorkflowTaskMessage | null {
@@ -118,4 +162,19 @@ function parseSafeDatabaseId(value: string) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error("Workflow uid exceeds runtime range");
   return parsed;
+}
+
+function pickTaskIdentity(command: WorkflowTaskMessage) {
+  return {
+    runId: command.runId,
+    taskId: command.taskId,
+    taskVersion: command.taskVersion,
+    uid: command.uid,
+  };
+}
+
+function getErrorCode(error: unknown) {
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : null;
 }

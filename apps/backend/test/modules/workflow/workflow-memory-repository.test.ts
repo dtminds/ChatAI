@@ -53,7 +53,45 @@ describe("InMemoryWorkflowRepository active Workflow limit", () => {
   });
 });
 
-describe("InMemoryWorkflowRepository review ordering", () => {
+describe("InMemoryWorkflowRepository review state", () => {
+  it("rejects resubmitting an approved review for the same candidate", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const created = await repository.createDefinition({
+      description: "",
+      draft: DRAFT,
+      draftSemanticHash: "draft-hash",
+      name: "approved-candidate",
+      opSubUserId: OP_SUB_USER_ID,
+      uid: UID,
+      workflowType: "chatai_sop",
+    });
+    if (created.kind !== "success") throw new Error("Failed to create definition");
+    const submitted = await repository.submitReview(reviewInput({
+      basePublishedRevision: null,
+      candidateHash: "a".repeat(64),
+      expectedDraftVersion: created.value.draftVersion,
+      revision: 1,
+      workflowId: created.value.id,
+    }));
+    if (submitted.kind !== "success") throw new Error("Failed to submit review");
+    await repository.decideReview({
+      comment: null,
+      decision: "approved",
+      opSubUserId: OP_SUB_USER_ID,
+      reviewId: submitted.value.id,
+      uid: UID,
+      workflowId: created.value.id,
+    });
+
+    await expect(repository.submitReview(reviewInput({
+      basePublishedRevision: null,
+      candidateHash: "b".repeat(64),
+      expectedDraftVersion: created.value.draftVersion,
+      revision: 1,
+      workflowId: created.value.id,
+    }))).resolves.toEqual({ kind: "review-locked" });
+  });
+
   it("returns the newest current review when attempts are created in the same millisecond", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-16T00:00:00.000Z"));
@@ -72,6 +110,7 @@ describe("InMemoryWorkflowRepository review ordering", () => {
       const first = await repository.submitReview(reviewInput({
         basePublishedRevision: published.publishedRevision,
         candidateHash: "b".repeat(64),
+        draftSemanticHash: "changed-draft-hash",
         expectedDraftVersion: saved.value.draftVersion,
         revision: 2,
         workflowId: published.id,
@@ -88,6 +127,7 @@ describe("InMemoryWorkflowRepository review ordering", () => {
       const second = await repository.submitReview(reviewInput({
         basePublishedRevision: published.publishedRevision,
         candidateHash: "c".repeat(64),
+        draftSemanticHash: "changed-draft-hash",
         expectedDraftVersion: saved.value.draftVersion,
         revision: 2,
         workflowId: published.id,
@@ -99,7 +139,6 @@ describe("InMemoryWorkflowRepository review ordering", () => {
         status: "pending",
       });
       await repository.withdrawReview({
-        allowedStatuses: ["pending"],
         opSubUserId: OP_SUB_USER_ID,
         reviewId: second.value.id,
         uid: UID,
@@ -161,6 +200,7 @@ async function createPublishedDefinition(repository: InMemoryWorkflowRepository,
 function reviewInput(input: {
   basePublishedRevision: number | null;
   candidateHash: string;
+  draftSemanticHash?: string;
   expectedDraftVersion: number;
   revision: number;
   workflowId: string;
@@ -178,7 +218,7 @@ function reviewInput(input: {
     },
     checkedAt: new Date("2026-08-16T00:00:00.000Z"),
     draft: DRAFT,
-    draftSemanticHash: "draft-hash",
+    draftSemanticHash: input.draftSemanticHash ?? "draft-hash",
     executionSpec: executionSpec(input.workflowId, input.revision),
     expectedDraftVersion: input.expectedDraftVersion,
     opSubUserId: OP_SUB_USER_ID,

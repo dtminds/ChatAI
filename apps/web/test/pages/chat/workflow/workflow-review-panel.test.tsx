@@ -60,6 +60,29 @@ describe("WorkflowReviewPanel", () => {
     expect(screen.getByText(/其他管理员于 .* 审核驳回/)).toBeInTheDocument();
     expect(screen.getByText("进入条件需要调整")).toBeInTheDocument();
   });
+
+  it("shows publication as a fact without changing the approved decision", () => {
+    renderPanel(createReview({
+      publishedAt: "2026-08-16T12:00:00.000+08:00",
+      resultingRevision: 3,
+      reviewedAt: "2026-08-16T11:30:00.000+08:00",
+      reviewedBySubUserId: "303",
+      status: "approved",
+    }));
+
+    expect(screen.getByText("审核通过")).toBeInTheDocument();
+    expect(screen.getByText(/已发布为 Revision 3/)).toBeInTheDocument();
+  });
+
+  it("restores an unpublished historical review snapshot", async () => {
+    const user = userEvent.setup();
+    const onRestore = vi.fn(async () => true);
+    renderPanel(createReview({ status: "withdrawn" }), { onRestore });
+
+    await user.click(screen.getByRole("button", { name: "恢复为当前草稿" }));
+
+    expect(onRestore).toHaveBeenCalledOnce();
+  });
 });
 
 function renderPanel(

@@ -1,36 +1,117 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  logWorkflowEntryConsumeResult,
+  createWorkflowEntryConsumeObserver,
+  createWorkflowTaskConsumeObserver,
   logWorkflowReadinessTransition,
   logWorkflowRoleHeartbeat,
 } from "../src/observability.js";
 
 describe("workflow worker observability", () => {
-  it("logs Entry consume results with low-cardinality fields", () => {
+  it("summarizes Entry outcomes and limits rejected message samples", () => {
     const logger = createLogger();
+    const observer = createWorkflowEntryConsumeObserver({
+      deadLetterTopic: "entry-dlq",
+      logger,
+      options: { intervalMs: 3_600_000, sampleLimit: 1 },
+    });
+    const message = { id: "message-1", redeliveryCount: 2, topic: "entry-topic" };
 
-    logWorkflowEntryConsumeResult(logger, { code: "admitted", disposition: "ack" });
-    logWorkflowEntryConsumeResult(logger, { code: "invalid_json", disposition: "ack" });
-    logWorkflowEntryConsumeResult(logger, { code: "temporary_failure", disposition: "nack" });
-
-    expect(logger.debug).toHaveBeenCalledWith({
-      code: "admitted",
-      disposition: "ack",
-      event: "workflow.entry.consume.completed",
-      role: "entry-consumer",
-    }, "workflow entry message consumed");
-    expect(logger.warn).toHaveBeenNthCalledWith(1, {
-      code: "invalid_json",
-      disposition: "ack",
-      event: "workflow.entry.consume.rejected",
-      role: "entry-consumer",
-    }, "workflow entry message rejected");
-    expect(logger.warn).toHaveBeenNthCalledWith(2, {
+    observer.record(message, { code: "admitted", disposition: "ack" });
+    observer.record(message, { code: "invalid_json", disposition: "ack" });
+    observer.record(message, { code: "payload_invalid", disposition: "ack" });
+    observer.record(message, {
       code: "temporary_failure",
       disposition: "nack",
+      errorCode: "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+      errorName: "WorkflowRuntimeError",
+      failureStage: "runtime_admission",
+    });
+    observer.flush();
+    observer.close();
+
+    expect(logger.warn).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      code: "invalid_json",
+      deadLetterTopic: "entry-dlq",
+      event: "workflow.entry.consume.rejected",
+      messageId: "message-1",
+      redeliveryCount: 2,
+      topic: "entry-topic",
+    }), "workflow entry message rejected");
+    expect(logger.warn).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      code: "temporary_failure",
+      errorCode: "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+      errorName: "WorkflowRuntimeError",
       event: "workflow.entry.consume.failed",
+      failureStage: "runtime_admission",
+    }), "workflow entry message processing failed");
+    expect(logger.warn.mock.calls[1]?.[0]).not.toHaveProperty("err");
+    expect(logger.warn.mock.calls[1]?.[0]).not.toHaveProperty("diagnosticMessage");
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(logger.info).toHaveBeenCalledWith({
+      admitted: 1,
+      deduplicated: 0,
+      entryPolicyRejected: 0,
+      event: "workflow.entry.consume.summary",
+      nacked: 1,
+      noMatch: 0,
+      received: 4,
+      rejected: 2,
       role: "entry-consumer",
-    }, "workflow entry message processing failed");
+      runtimeRejected: 0,
+    }, "workflow entry consume summary");
+  });
+
+  it("summarizes Task outcomes and limits failure samples without storing message IDs", () => {
+    const logger = createLogger();
+    const observer = createWorkflowTaskConsumeObserver({
+      deadLetterTopic: "task-dlq",
+      logger,
+      options: { intervalMs: 3_600_000, sampleLimit: 1 },
+    });
+    const message = { id: "message-1", redeliveryCount: 1, topic: "task-topic" };
+    const command = { runId: "5", taskId: "7", taskVersion: 3, uid: "9" };
+
+    observer.record(message, { code: "completed", command, disposition: "ack" });
+    observer.record(message, {
+      code: "temporary_failure",
+      command,
+      disposition: "nack",
+      error: new Error("database unavailable"),
+    });
+    observer.record({ ...message, id: "message-2" }, {
+      code: "temporary_failure",
+      command,
+      disposition: "nack",
+      error: new Error("still unavailable"),
+    });
+    observer.record(message, { code: "invalid_task_message", disposition: "nack" });
+    observer.flush();
+    observer.close();
+
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      deadLetterTopic: "task-dlq",
+      event: "workflow.task.consume.failed",
+      messageId: "message-1",
+      runId: "5",
+      taskId: "7",
+    }), "workflow task message processing failed");
+    expect(logger.warn).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      code: "invalid_task_message",
+      event: "workflow.task.consume.rejected",
+    }), "workflow task message rejected");
+    expect(logger.info).toHaveBeenCalledWith({
+      ackedBoundary: 0,
+      capabilityFailed: 0,
+      completed: 1,
+      event: "workflow.task.consume.summary",
+      invalid: 1,
+      nacked: 2,
+      nodeFailed: 0,
+      received: 4,
+      retryScheduled: 0,
+      role: "task-consumer",
+    }, "workflow task consume summary");
   });
 
   it("keeps idle polling at debug level", () => {

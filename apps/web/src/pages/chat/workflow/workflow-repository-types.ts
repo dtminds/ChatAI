@@ -135,10 +135,6 @@ export type WorkflowDraftWriter = {
     reviewId: string,
     comment?: string,
   ) => Promise<WorkflowDocument> | WorkflowDocument;
-  continueEditing: (
-    workflowId: string,
-    reviewId: string,
-  ) => Promise<WorkflowDocument> | WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;
@@ -164,6 +160,10 @@ export type WorkflowDraftWriter = {
     workflowId: string,
     versionId: string,
   ) => Promise<WorkflowDraftRestoreResult | WorkflowDocument> | WorkflowDraftRestoreResult | WorkflowDocument;
+  restoreReview: (
+    workflowId: string,
+    reviewId: string,
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
   saveDraft: (
     workflowId: string,
     draft: WorkflowDraft,
@@ -189,7 +189,6 @@ export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = {
   approveReview: (workflowId: string, reviewId: string, comment?: string) => WorkflowDocument;
-  continueEditing: (workflowId: string, reviewId: string) => WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;
@@ -212,6 +211,7 @@ export type SyncWorkflowDraftRepository = {
   reset: () => void;
   resumeDocument: (workflowId: string) => WorkflowDocument;
   restoreVersion: (workflowId: string, versionId: string) => WorkflowDraftRestoreResult;
+  restoreReview: (workflowId: string, reviewId: string) => WorkflowDocument;
   saveDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftSaveResult;
   stopDocument: (workflowId: string) => WorkflowDocument;
   submitReview: (workflowId: string) => WorkflowDocument;

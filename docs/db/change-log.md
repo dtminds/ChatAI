@@ -4,7 +4,7 @@
 
 - Workflow 仍在开发阶段，直接清空全部 Workflow 数据，不保留 `validated_draft_version` 兼容路径。
 - Definition 增加草稿与已发布语义哈希；Revision 关联授权发布的审核记录。
-- 新增不可变候选与审核决定表 `xy_wap_embed_workflow_publish_review`。
+- 新增不可变候选与审核决定表 `xy_wap_embed_workflow_publish_review`；审核状态仅记录 `pending`、`approved`、`rejected`、`withdrawn`，发布事实由独立字段记录。
 
 ```sql
 -- 停止 Backend 与 Workflow Worker 后，先执行 2026-08-15 的全量 Workflow DELETE。
@@ -43,7 +43,14 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_workflow_publish_review_candidate (uid, workflow_id, source_draft_version),
+  KEY idx_workflow_publish_review_match (
+    uid,
+    workflow_id,
+    draft_semantic_hash,
+    base_published_revision,
+    status,
+    id
+  ),
   KEY idx_workflow_publish_review_current (uid, workflow_id, id)
 ) COMMENT='营销Workflow发布审核表';
 ```

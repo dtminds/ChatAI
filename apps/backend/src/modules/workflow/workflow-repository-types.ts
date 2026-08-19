@@ -142,7 +142,6 @@ export type WorkflowRepository = {
     workflowId: string;
   }): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>>;
   withdrawReview(input: {
-    allowedStatuses: Array<"approved" | "pending">;
     opSubUserId: string;
     reviewId: string;
     uid: number;

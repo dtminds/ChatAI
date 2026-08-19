@@ -62,7 +62,7 @@ describe("workflow draft service", () => {
       .toThrow(expect.objectContaining({ apiCode: "WORKFLOW_REVIEW_LOCKED" }));
   });
 
-  it("allows self approval and keeps approval read-only until publish or continue editing", () => {
+  it("allows editing after approval without rewriting the historical decision", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const submitted = repository.submitReview("newcomer-conversion");
     const reviewId = submitted.currentReview!.id;
@@ -72,11 +72,33 @@ describe("workflow draft service", () => {
       reviewComment: "同意发布",
       status: "approved",
     });
-    expect(approved.permissions).toMatchObject({ canEdit: false, canPublish: true });
+    expect(approved.permissions).toMatchObject({ canEdit: true, canPublish: true });
 
-    const editable = repository.continueEditing("newcomer-conversion", reviewId);
+    const editable = repository.saveDraft(
+      "newcomer-conversion",
+      renameStartNode(approved.draft, "审核后修改"),
+    ).document;
     expect(editable.currentReview).toBeNull();
     expect(editable.permissions.canEdit).toBe(true);
+    expect(repository.listReviews("newcomer-conversion")).toEqual([
+      expect.objectContaining({ id: reviewId, status: "approved" }),
+    ]);
+  });
+
+  it("restores an approved review snapshot as the current publish candidate", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const submitted = repository.submitReview("newcomer-conversion");
+    const reviewId = submitted.currentReview!.id;
+    const approved = repository.approveReview("newcomer-conversion", reviewId);
+    repository.saveDraft(
+      approved.id,
+      renameStartNode(approved.draft, "审核后修改"),
+    );
+
+    const restored = repository.restoreReview(approved.id, reviewId);
+
+    expect(restored.currentReview).toMatchObject({ id: reviewId, status: "approved" });
+    expect(restored.draft.nodes[0]?.data.title).toBe(approved.draft.nodes[0]?.data.title);
   });
 
   it("keeps an explicit rejected review while restoring edit access", () => {
@@ -216,7 +238,7 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("error");
   });
 
-  it("drives approve, continue-editing, and publish through the hook", async () => {
+  it("removes approval from the current draft on edit without changing its history", async () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const initial = repository.getDocument("newcomer-conversion");
     const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, initial));
@@ -230,15 +252,19 @@ describe("workflow draft service", () => {
     });
     expect(result.current.document.currentReview?.status).toBe("approved");
 
-    await act(async () => {
-      await result.current.continueEditing(firstReviewId);
+    act(() => {
+      result.current.markDirty(renameStartNode(result.current.document.draft, "审核后修改"));
     });
     expect(result.current.document.currentReview).toBeNull();
-
     await act(async () => {
       await result.current.submitReview();
     });
     const secondReviewId = result.current.document.currentReview!.id;
+    expect(secondReviewId).not.toBe(firstReviewId);
+    expect(repository.listReviews(initial.id)).toEqual([
+      expect.objectContaining({ id: secondReviewId, status: "pending" }),
+      expect.objectContaining({ id: firstReviewId, status: "approved" }),
+    ]);
     await act(async () => {
       await result.current.approveReview(secondReviewId);
       await result.current.publishReview(secondReviewId);
@@ -246,6 +272,90 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.publishedRevision).toBe(1);
     expect(result.current.publishState).toBe("published");
+  });
+
+  it("accepts the saved document when the server invalidates the current review", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initial = baseRepository.getDocument("newcomer-conversion");
+    const submitted = baseRepository.submitReview(initial.id);
+    const approved = baseRepository.approveReview(initial.id, submitted.currentReview!.id);
+    const repository = {
+      ...baseRepository,
+      saveDraft: vi.fn((workflowId: string, draft: WorkflowDraft) => {
+        const saved = baseRepository.saveDraft(workflowId, draft);
+        return {
+          ...saved,
+          document: {
+            ...saved.document,
+            currentReview: null,
+          },
+        };
+      }),
+    };
+    const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, approved));
+    const draftWithChangedEdgeMetadata = {
+      ...approved.draft,
+      edges: approved.draft.edges.map((edge, index) => index === 0
+        ? { ...edge, data: { ...edge.data, label: "changed" } }
+        : edge),
+    };
+
+    act(() => {
+      result.current.markDirty(draftWithChangedEdgeMetadata);
+    });
+    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+
+    expect(result.current.document.currentReview).toBeNull();
+  });
+
+  it("keeps approval current for layout-only edits", async () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const initial = repository.getDocument("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, initial));
+    await act(async () => {
+      await result.current.submitReview();
+    });
+    const reviewId = result.current.document.currentReview!.id;
+    await act(async () => {
+      await result.current.approveReview(reviewId);
+    });
+
+    act(() => {
+      result.current.markDirty({
+        ...result.current.document.draft,
+        viewport: { x: 120, y: 80, zoom: 0.9 },
+      });
+    });
+
+    expect(result.current.document.currentReview).toMatchObject({ id: reviewId, status: "approved" });
+  });
+
+  it("reactivates approval after a saved semantic edit is reverted", async () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const initial = repository.getDocument("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, initial));
+    await act(async () => {
+      await result.current.submitReview();
+    });
+    const reviewId = result.current.document.currentReview!.id;
+    await act(async () => {
+      await result.current.approveReview(reviewId);
+    });
+    const approvedDraft = result.current.document.draft;
+
+    act(() => {
+      result.current.markDirty(renameStartNode(approvedDraft, "审核后修改"));
+    });
+    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+    expect(result.current.document.currentReview).toBeNull();
+
+    act(() => {
+      result.current.markDirty(approvedDraft);
+    });
+    await waitFor(() => expect(result.current.document.currentReview).toMatchObject({
+      id: reviewId,
+      status: "approved",
+    }));
   });
 });
 

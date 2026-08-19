@@ -529,7 +529,63 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
-  it("locks the reviewed candidate and restores editing only after the review ends", async () => {
+  it("publishes an approved review after JSON storage reorders object keys", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const submitReview = repository.submitReview.bind(repository);
+    repository.submitReview = input => submitReview({
+      ...input,
+      candidateHash: "candidate-hash-created-before-canonicalization",
+    });
+    const findReview = repository.findReview.bind(repository);
+    repository.findReview = async (uid, workflowId, reviewId) => {
+      const review = await findReview(uid, workflowId, reviewId);
+      return review
+        ? {
+            ...review,
+            executionSpec: reorderObjectKeys(review.executionSpec),
+            triggerBindings: reorderObjectKeys(review.triggerBindings),
+          }
+        : null;
+    };
+    const service = createService(repository);
+    const created = await createConfigured(service);
+    const submitted = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.approveReview(operator, created.id, submitted.id, {});
+
+    const published = await service.publish(operator, created.id, { reviewId: submitted.id });
+
+    expect(published.revision.revision).toBe(1);
+  });
+
+  it("rejects publication before resource checks when the reviewed draft semantics changed", async () => {
+    const resolveActiveSeatWorkUserIds = vi.fn(async (_uid: number, seatIds: number[]) =>
+      new Map(seatIds.map(seatId => [seatId, seatId + 100])));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      sourceIdentityResolver: { resolveActiveSeatWorkUserIds },
+    });
+    const created = await createConfigured(service);
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withWaitNode(created.draft, { duration: 1, mode: "duration", unit: "hour" }),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: configured.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+    await service.saveDraft(operator, created.id, {
+      draft: withWaitConfig(configured.draft, { duration: 2, mode: "duration", unit: "hour" }),
+      expectedDraftVersion: configured.draftVersion,
+    });
+    resolveActiveSeatWorkUserIds.mockClear();
+
+    await expect(service.publish(operator, created.id, { reviewId: review.id }))
+      .rejects.toMatchObject({ code: "WORKFLOW_DRAFT_CONFLICT", statusCode: 409 });
+    expect(resolveActiveSeatWorkUserIds).not.toHaveBeenCalled();
+  });
+
+  it("locks a pending review and keeps the approved decision immutable when the draft changes", async () => {
     const service = createService();
     const created = await createConfigured(service);
     const review = await service.submitReview(operator, created.id, {
@@ -546,13 +602,65 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_REVIEW_LOCKED", statusCode: 409 });
 
     await service.approveReview(operator, created.id, review.id, {});
-    const locked = await service.get(operator, created.id);
-    expect(locked.permissions.canEdit).toBe(false);
+    const approved = await service.get(operator, created.id);
+    expect(approved.permissions.canEdit).toBe(true);
 
-    await service.continueEditing(operator, created.id, review.id);
-    const editable = await service.get(operator, created.id);
+    const editable = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
     expect(editable.permissions.canEdit).toBe(true);
     expect(editable.currentReview).toBeNull();
+    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
+      expect.objectContaining({ id: review.id, status: "approved" }),
+    ]);
+  });
+
+  it("keeps approval valid when workflow metadata changes", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+
+    const renamed = await service.updateMetadata(operator, created.id, {
+      description: "调整后的说明",
+      name: "调整后的名称",
+    });
+
+    expect(renamed.currentReview).toMatchObject({ id: review.id, status: "approved" });
+    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
+      expect.objectContaining({ id: review.id, status: "approved" }),
+    ]);
+  });
+
+  it("restores an unpublished approved review and reuses its approval", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+    const changed = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const restored = await service.restoreReview(operator, created.id, review.id, {
+      expectedDraftVersion: changed.draftVersion,
+    });
+
+    expect(restored.currentReview).toMatchObject({ id: review.id, status: "approved" });
+    const published = await service.publish(operator, created.id, { reviewId: review.id });
+    expect(published.revision.revision).toBe(1);
+    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
+      expect.objectContaining({ id: review.id, resultingRevision: 1, status: "approved" }),
+    ]);
   });
 
   it("allows self approval but forbids self rejection and blank rejection reasons", async () => {
@@ -615,7 +723,7 @@ describe("WorkflowService", () => {
     expect(restored.currentReview).toBeNull();
     expect(await service.listReviews(operator, created.id)).toEqual([
       expect.objectContaining({ id: review.id, status: "rejected" }),
-      expect.objectContaining({ status: "published" }),
+      expect.objectContaining({ resultingRevision: 1, status: "approved" }),
     ]);
   });
 
@@ -642,7 +750,7 @@ describe("WorkflowService", () => {
       .resolves.toMatchObject({ id: review.id, status: "approved" });
   });
 
-  it("makes an open review obsolete when a running Workflow is stopped", async () => {
+  it("withdraws a pending review without rewriting earlier approvals when a running Workflow is stopped", async () => {
     const service = createService();
     const created = await createConfigured(service);
     await publishApprovedDraft(service, created.id, created.draftVersion);
@@ -659,8 +767,8 @@ describe("WorkflowService", () => {
 
     expect(await service.getCurrentReview(operator, created.id)).toBeNull();
     expect(await service.listReviews(operator, created.id)).toEqual([
-      expect.objectContaining({ id: review.id, status: "obsolete" }),
-      expect.objectContaining({ status: "published" }),
+      expect.objectContaining({ id: review.id, status: "withdrawn" }),
+      expect.objectContaining({ resultingRevision: 1, status: "approved" }),
     ]);
   });
 
@@ -728,9 +836,8 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("publishes legacy rolling entry windows using the current maximum", async () => {
-    const repository = new InMemoryWorkflowRepository();
-    const service = createService(repository);
+  it("normalizes rolling entry windows before publication", async () => {
+    const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const legacyDraft = withStartConfig(created.draft, {
       entryPolicy: {
@@ -743,16 +850,11 @@ describe("WorkflowService", () => {
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     });
 
-    const seeded = await repository.saveDraft({
+    const seeded = await service.saveDraft(operator, created.id, {
       draft: legacyDraft,
-      draftSemanticHash: "legacy-draft",
       expectedDraftVersion: created.draftVersion,
-      opSubUserId: operator.subUserId,
-      uid: operator.uid,
-      workflowId: created.id,
     });
-    if (seeded.kind !== "success") throw new Error("legacy draft seed failed");
-    const published = await publishApprovedDraft(service, created.id, seeded.value.draftVersion);
+    const published = await publishApprovedDraft(service, created.id, seeded.draftVersion);
     const enabled = await service.enable(operator, created.id);
     const [revision] = await service.listRevisions(operator, created.id);
 
@@ -1372,4 +1474,13 @@ function withWaitConfig(
 
 function getStartEntryPolicy(draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"]) {
   return (draft.nodes.find(node => node.id === "start")!.data as { entryPolicy?: unknown }).entryPolicy;
+}
+
+function reorderObjectKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(reorderObjectKeys) as T;
+  if (!value || typeof value !== "object" || value instanceof Date) return value;
+  return Object.fromEntries(Object.entries(value).reverse().map(([key, nested]) => [
+    key,
+    reorderObjectKeys(nested),
+  ])) as T;
 }

@@ -31,7 +31,7 @@ const manifest = JSON.parse(readFileSync(new URL("manifest.json", fixtureRoot), 
 
 describe("workflow entry event envelope", () => {
   it("derives the transport partition key from the source event identity", () => {
-    expect(createWorkflowEntryPartitionKey(event())).toBe("9:wecom_contact:wecom-contact-1");
+    expect(createWorkflowEntryPartitionKey(event())).toBe("9:wecom_contact:3267");
     expect(createWorkflowEntryPartitionKey(event({
       eventType: "message.received",
       payload: {
@@ -133,7 +133,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     eventId: "event-1",
     eventType: "contact.friend_added",
     occurredAt: "2026-08-09T10:30:15.123Z",
-    payload: { externalUserId: "wecom-contact-1", workUserId: 201 },
+    payload: { externalUserId: 3267, workUserId: 201 },
     payloadVersion: 1,
     schemaVersion: 1,
     source: "wecom",

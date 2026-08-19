@@ -158,15 +158,6 @@ export function createHttpWorkflowDraftRepository(
       reviewId,
       "withdraw",
     ),
-    continueEditing: (workflowId, reviewId) => mutateReview(
-      client,
-      definitions,
-      revisions,
-      workflowId,
-      reviewId,
-      "continue-editing",
-    ),
-
     async publishReview(workflowId, reviewId) {
       return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
         try {
@@ -217,6 +208,22 @@ export function createHttpWorkflowDraftRepository(
       } catch (error) {
         throw normalizeHttpError(error);
       }
+    },
+
+    async restoreReview(workflowId, reviewId) {
+      return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
+        try {
+          const current = await requireCachedDefinition(client, definitions, workflowId);
+          const definition = unwrap<ApiWorkflowDefinition>(await client.post(
+            `/server/workflows/${workflowId}/reviews/${reviewId}/restore`,
+            { expectedDraftVersion: current.draftVersion },
+          ));
+          definitions.set(workflowId, definition);
+          return toDocument(definition, revisions.get(workflowId) ?? []);
+        } catch (error) {
+          throw normalizeHttpError(error);
+        }
+      });
     },
 
     async updateDocumentMetadata(workflowId, metadata) {
@@ -314,7 +321,7 @@ async function mutateReview(
   revisions: Map<string, ApiWorkflowRevision[]>,
   workflowId: string,
   reviewId: string,
-  action: "approve" | "reject" | "withdraw" | "continue-editing",
+  action: "approve" | "reject" | "withdraw",
   body: Record<string, unknown> = {},
 ) {
   try {

@@ -26,6 +26,22 @@ describe("deriveWorkflowMode", () => {
     expect(state.permissions.canPublish).toBe(false);
   });
 
+  it("locks pending review but keeps approved content editable", () => {
+    const pending = deriveWorkflowMode({
+      isPreviewingVersion: false,
+      reviewStatus: "pending",
+    });
+    const approved = deriveWorkflowMode({
+      isPreviewingVersion: false,
+      reviewStatus: "approved",
+    });
+
+    expect(pending.readOnlyReason).toBe("review-locked");
+    expect(pending.permissions.canEditGraph).toBe(false);
+    expect(approved.readOnlyReason).toBe("none");
+    expect(approved.permissions.canEditGraph).toBe(true);
+  });
+
   it("locks all draft mutations while publishing", () => {
     const state = deriveWorkflowMode({
       isPreviewingVersion: false,

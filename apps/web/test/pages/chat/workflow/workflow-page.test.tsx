@@ -624,7 +624,8 @@ describe("Agent workflow page", () => {
     const activeCard = screen.getByRole("article", { name: "会员复购唤醒" });
     const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
     expect(within(activeCard).getByRole("button", { name: "暂停" })).toBeInTheDocument();
-    expect(within(pausedCard).getByText("待启用 · 已是最新版本")).toBeInTheDocument();
+    expect(within(pausedCard).getByText("待启用")).toBeInTheDocument();
+    expect(within(pausedCard).queryByText(/已是最新版本/)).not.toBeInTheDocument();
     expect(within(pausedCard).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
@@ -709,7 +710,7 @@ describe("Agent workflow page", () => {
 
     await user.click(screen.getByRole("tab", { name: "待启用" }));
     const card = await screen.findByRole("article", { name: "待发布流程" });
-    expect(within(card).getByText("未启用 · 已发布")).toBeInTheDocument();
+    expect(within(card).getByText("未启用")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 

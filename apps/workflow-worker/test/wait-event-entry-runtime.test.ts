@@ -216,7 +216,7 @@ function messageEvent(input: {
     eventType: "message.received",
     occurredAt: input.occurredAt,
     payload: {
-      externalUserId: "wm_external_123",
+      externalUserId: 3267,
       messageId: input.messageId,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",

@@ -9,7 +9,7 @@ import {
   type WorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
 
-export type WorkflowEnvironment = "dev" | "test01";
+export type WorkflowEnvironment = "dev" | "test";
 export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
 export type WorkflowWorkerConfig = {
@@ -313,8 +313,8 @@ function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] 
 }
 
 function parseEnvironment(value: string | undefined): WorkflowEnvironment {
-  if (value === "dev" || value === "test01") return value;
-  throw new Error("WORKFLOW_ENVIRONMENT must be dev or test01");
+  if (value === "dev" || value === "test") return value;
+  throw new Error("WORKFLOW_ENVIRONMENT must be dev or test");
 }
 
 function parseEntitlementMode(value: string | undefined): WorkflowWorkerConfig["entitlement"]["mode"] {

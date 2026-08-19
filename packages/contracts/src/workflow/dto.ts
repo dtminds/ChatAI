@@ -100,8 +100,6 @@ export const WorkflowPublishReviewStatusSchema = Type.Union([
   Type.Literal("approved"),
   Type.Literal("rejected"),
   Type.Literal("withdrawn"),
-  Type.Literal("obsolete"),
-  Type.Literal("published"),
 ]);
 
 export const WorkflowPublishReviewNodeSummarySchema = Type.Object({

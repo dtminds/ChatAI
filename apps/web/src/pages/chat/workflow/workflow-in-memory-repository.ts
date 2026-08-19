@@ -15,6 +15,7 @@ import {
   cloneWorkflowDraft,
   cloneWorkflowVersionHistoryItem,
   createWorkflowDraftHash,
+  createWorkflowPublishHash,
   createWorkflowPublishedVersion,
   createWorkflowVersionHistoryItem,
   getWorkflowConversion,
@@ -94,7 +95,9 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     },
     deleteDocument: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
-      for (const review of reviewHistory.get(workflowId) ?? []) reviewDrafts.delete(review.id);
+      for (const review of reviewHistory.get(workflowId) ?? []) {
+        reviewDrafts.delete(review.id);
+      }
       workflowDocuments.splice(documentIndex, 1);
       reviewHistory.delete(workflowId);
     },
@@ -124,7 +127,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt: importedAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
       return {
         document: cloneWorkflowDocument(workflowDocuments[documentIndex]),
         draft: cloneWorkflowDraft(nextDraft),
@@ -140,6 +143,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     submitReview: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
+      if (currentDocument.currentReview?.status === "pending"
+        || currentDocument.currentReview?.status === "approved") {
+        throw new WorkflowRepositoryError("conflict", "Workflow review already exists", {
+          apiCode: "WORKFLOW_REVIEW_LOCKED",
+        });
+      }
       if (currentDocument.publishedDraft
         && isWorkflowGraphEqual(currentDocument.publishedDraft, currentDocument.draft)) {
         throw new WorkflowRepositoryError("conflict", "Workflow has no unpublished changes", {
@@ -163,9 +172,6 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     withdrawReview: (workflowId, reviewId) => decideReview(
       workflowId, reviewId, "withdrawn", ["pending"],
     ),
-    continueEditing: (workflowId, reviewId) => decideReview(
-      workflowId, reviewId, "withdrawn", ["approved"],
-    ),
     publishReview: (workflowId, reviewId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
@@ -173,15 +179,15 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       if (review.status !== "approved") {
         throw new WorkflowRepositoryError("conflict", "Workflow review is not approved");
       }
+      const candidateDraft = reviewDrafts.get(review.id);
+      if (!candidateDraft) throw new WorkflowRepositoryError("conflict", "Workflow review candidate is unavailable");
       if (review.basePublishedRevision !== currentDocument.publishedRevision
-        || review.sourceDraftVersion !== (currentDocument.draftVersion ?? currentDocument.revision)) {
+        || createWorkflowPublishHash(candidateDraft) !== createWorkflowPublishHash(currentDocument.draft)) {
         throw new WorkflowRepositoryError("conflict", "Workflow review no longer matches the current draft");
       }
       const publishedAt = "刚刚";
       const nextRevision = (currentDocument.publishedRevision ?? 0) + 1;
-      const candidateDraft = reviewDrafts.get(review.id);
-      if (!candidateDraft) throw new WorkflowRepositoryError("conflict", "Workflow review candidate is unavailable");
-      const publishedDraft = cloneWorkflowDraft(candidateDraft);
+      const publishedDraft = cloneWorkflowDraft(currentDocument.draft);
       const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, publishedDraft);
       const nextDocument: WorkflowDocument = {
         ...currentDocument,
@@ -206,7 +212,6 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         publishedAt,
         publishedBySubUserId: "reviewer-user",
         resultingRevision: nextRevision,
-        status: "published",
       });
       return {
         document: cloneWorkflowDocument(nextDocument),
@@ -247,8 +252,8 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         name: normalizedName,
         updatedAt: "刚刚",
       };
-      workflowDocuments[documentIndex] = nextDocument;
-      return cloneWorkflowDocument(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
+      return cloneWorkflowDocument(workflowDocuments[documentIndex]);
     },
     resumeDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
     restoreVersion: (workflowId, versionId) => {
@@ -285,7 +290,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt: restoredAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
       return {
         document: cloneWorkflowDocument(workflowDocuments[documentIndex]),
         draft: cloneWorkflowDraft(nextDraft),
@@ -323,8 +328,36 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument, !shouldCreateDraftRevision);
       return normalizeWorkflowDraftSaveResult(workflowDocuments[documentIndex]);
+    },
+    restoreReview: (workflowId, reviewId) => {
+      const documentIndex = getWorkflowDocumentIndex(workflowId);
+      const currentDocument = workflowDocuments[documentIndex];
+      assertEditable(currentDocument);
+      const review = requireReview(workflowId, reviewId);
+      if (review.status === "pending" || review.resultingRevision !== null) {
+        throw new WorkflowRepositoryError("conflict", "Workflow review cannot be restored");
+      }
+      const reviewDraft = reviewDrafts.get(reviewId);
+      if (!reviewDraft) throw new WorkflowRepositoryError("not-found", "Workflow review candidate is unavailable");
+      const nextDraft = cloneWorkflowDraft(reviewDraft);
+      const nextDocument = withCurrentReview({
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        draft: nextDraft,
+        draftHash: createWorkflowDraftHash(nextDraft),
+        hasUnpublishedChanges: currentDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
+        nodes: nextDraft.nodes.length,
+        revision: currentDocument.revision + 1,
+        savedAt: "刚刚",
+        status: "Draft",
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        updatedAt: "刚刚",
+      });
+      workflowDocuments[documentIndex] = nextDocument;
+      return cloneWorkflowDocument(nextDocument);
     },
     stopDocument: (workflowId) => updateRuntimeStatus(workflowId, "stopped"),
   };
@@ -335,7 +368,15 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   ) {
     const documentIndex = getWorkflowDocumentIndex(workflowId);
     const currentDocument = workflowDocuments[documentIndex];
-    const nextDocument: WorkflowDocument = {
+    if (runtimeStatus === "stopped" && currentDocument.currentReview?.status === "pending") {
+      replaceReview(workflowId, {
+        ...currentDocument.currentReview,
+        reviewedAt: "刚刚",
+        reviewedBySubUserId: "reviewer-user",
+        status: "withdrawn",
+      });
+    }
+    const nextDocument = withCurrentReview({
       ...currentDocument,
       runtimeStatus,
       status: runtimeStatus === "active"
@@ -348,7 +389,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
               ? "Draft"
               : "Published",
       updatedAt: "刚刚",
-    };
+    });
     workflowDocuments[documentIndex] = nextDocument;
     return cloneWorkflowDocument(nextDocument);
   }
@@ -401,15 +442,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     const nextReview: WorkflowPublishReview = {
       ...review,
       reviewComment: comment?.trim() || null,
-      reviewedAt: status === "withdrawn" ? null : "刚刚",
-      reviewedBySubUserId: status === "withdrawn" ? null : "reviewer-user",
+      reviewedAt: "刚刚",
+      reviewedBySubUserId: "reviewer-user",
       status,
     };
     replaceReview(workflowId, nextReview);
-    const nextDocument = withReview(
-      currentDocument,
-      status === "withdrawn" ? null : nextReview,
-    );
+    const nextDocument = withCurrentReview(currentDocument);
     workflowDocuments[documentIndex] = nextDocument;
     return cloneWorkflowDocument(nextDocument);
   }
@@ -426,19 +464,34 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   }
 
   function assertEditable(document: WorkflowDocument) {
-    if (document.currentReview?.status === "pending" || document.currentReview?.status === "approved") {
+    if (document.currentReview?.status === "pending") {
       throw new WorkflowRepositoryError("conflict", "Workflow is locked for review", {
         apiCode: "WORKFLOW_REVIEW_LOCKED",
       });
     }
+  }
+
+  function withCurrentReview(document: WorkflowDocument, preserveUpdatedAt = false) {
+    const publishHash = createWorkflowPublishHash(document.draft);
+    const review = (reviewHistory.get(document.id) ?? []).find(candidate => {
+      const candidateDraft = reviewDrafts.get(candidate.id);
+      return candidateDraft !== undefined
+        && candidate.basePublishedRevision === document.publishedRevision
+        && createWorkflowPublishHash(candidateDraft) === publishHash
+        && (candidate.status === "pending"
+          || candidate.status === "approved"
+          || candidate.status === "rejected");
+    }) ?? null;
+    return withReview(document, review, preserveUpdatedAt);
   }
 }
 
 function withReview(
   document: WorkflowDocument,
   review: WorkflowPublishReview | null,
+  preserveUpdatedAt = false,
 ): WorkflowDocument {
-  const locked = review?.status === "pending" || review?.status === "approved";
+  const locked = review?.status === "pending";
   return {
     ...document,
     currentReview: review,
@@ -447,15 +500,8 @@ function withReview(
       canEdit: !locked && document.runtimeStatus !== "stopped",
       canPublish: document.runtimeStatus !== "stopped",
     },
-    updatedAt: "刚刚",
+    updatedAt: preserveUpdatedAt ? document.updatedAt : "刚刚",
   };
-}
-
-function collapseRejectedReview(document: WorkflowDocument): WorkflowDocument {
-  if (document.publishedRevision === null
-    || document.currentReview?.status !== "rejected"
-    || document.hasUnpublishedChanges) return document;
-  return withReview(document, null);
 }
 
 function createWorkflowDocuments(): WorkflowDocument[] {

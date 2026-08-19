@@ -839,7 +839,7 @@ export function getWorkflowContextVariableValueType(
     return { kind: "number" };
   }
   if (key === "trigger.projection.externalUserId") {
-    return { kind: "string" };
+    return { kind: "number" };
   }
   return null;
 }

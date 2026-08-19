@@ -304,8 +304,59 @@ describe("workflow routes", () => {
       url: `/api/server/workflows/${definition.id}/reviews`,
     });
     expect(reviews.json().data).toEqual([
-      expect.objectContaining({ resultingRevision: 1, status: "published" }),
+      expect.objectContaining({ resultingRevision: 1, status: "approved" }),
     ]);
+  });
+
+  it("restores an unpublished review snapshot through the review route", async () => {
+    const app = await createApp("admin");
+    const created = await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    const definition = created.json().data;
+    const configured = configuredDraft(definition.draft);
+    const saved = await app.inject({
+      method: "PUT",
+      payload: { draft: configured, expectedDraftVersion: definition.draftVersion },
+      url: `/api/server/workflows/${definition.id}/draft`,
+    });
+    const submitted = await app.inject({
+      method: "POST",
+      payload: { expectedDraftVersion: saved.json().data.draftVersion },
+      url: `/api/server/workflows/${definition.id}/reviews`,
+    });
+    await app.inject({
+      method: "POST",
+      payload: {},
+      url: `/api/server/workflows/${definition.id}/reviews/${submitted.json().data.id}/approve`,
+    });
+    const changed = await app.inject({
+      method: "PUT",
+      payload: {
+        draft: {
+          ...configured,
+          nodes: configured.nodes.map((node: { data: { title: string }; id: string }) => node.id === "start"
+            ? { ...node, data: { ...node.data, title: "审核后修改" } }
+            : node),
+        },
+        expectedDraftVersion: saved.json().data.draftVersion,
+      },
+      url: `/api/server/workflows/${definition.id}/draft`,
+    });
+
+    const restored = await app.inject({
+      method: "POST",
+      payload: { expectedDraftVersion: changed.json().data.draftVersion },
+      url: `/api/server/workflows/${definition.id}/reviews/${submitted.json().data.id}/restore`,
+    });
+
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().data.currentReview).toMatchObject({
+      id: submitted.json().data.id,
+      status: "approved",
+    });
   });
 
   it("rejects non-admin roles and hides logically deleted definitions", async () => {

@@ -66,10 +66,10 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         await transaction.updateTable(REVIEW_TABLE).set({
           review_sub_uid: input.opSubUserId,
           review_time: input.transitionedAt,
-          status: "obsolete",
+          status: "withdrawn",
         }).where("uid", "=", input.uid)
           .where("workflow_id", "in", ids)
-          .where("status", "in", ["pending", "approved"])
+          .where("status", "=", "pending")
           .executeTakeFirst();
       }
       await transitionMysqlWorkflowInferenceJobs(transaction, {
@@ -159,15 +159,15 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   async findCurrentReview(uid: number, workflowId: string) {
     const definition = await this.findDefinition(uid, workflowId);
     if (!definition) return null;
-    const row = await this.db.selectFrom(REVIEW_TABLE).selectAll()
+    let query = this.db.selectFrom(REVIEW_TABLE).selectAll()
       .where("uid", "=", uid).where("workflow_id", "=", workflowId)
-      .orderBy("id", "desc").limit(1).executeTakeFirst();
-    if (!row) return null;
-    const review = mapReview(row);
-    if (review.status === "pending" || review.status === "approved") return review;
-    if (review.status === "rejected"
-      && definition.publishedSemanticHash !== definition.draftSemanticHash) return review;
-    return null;
+      .where("draft_semantic_hash", "=", definition.draftSemanticHash)
+      .where("status", "in", ["pending", "approved", "rejected", "withdrawn"]);
+    query = definition.publishedRevision === null
+      ? query.where("base_published_revision", "is", null)
+      : query.where("base_published_revision", "=", definition.publishedRevision);
+    const row = await query.orderBy("id", "desc").limit(1).executeTakeFirst();
+    return row?.status === "withdrawn" ? null : row ? mapReview(row) : null;
   }
 
   async listDefinitions(uid: number) {
@@ -203,7 +203,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       const row = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!row) return notFound();
       const definition = mapDefinition(row);
-      if (await hasLockedReview(transaction, input.uid, input.workflowId)) return reviewLocked();
+      if (await hasPendingReview(transaction, input.uid, input.workflowId)) return reviewLocked();
       if (definition.draftVersion !== input.expectedDraftVersion) return conflict();
       if (definition.runtimeStatus === "stopped" && !input.layoutOnly) {
         return invalidStatus(definition.runtimeStatus);
@@ -235,7 +235,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       const row = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!row) return notFound();
       const definition = mapDefinition(row);
-      if (await hasLockedReview(transaction, input.uid, input.workflowId)) return reviewLocked();
+      if (await hasPendingReview(transaction, input.uid, input.workflowId)) return reviewLocked();
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
       const metadata: { description?: string; name?: string; op_sub_uid: string } = {
         op_sub_uid: input.opSubUserId,
@@ -272,9 +272,9 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       await transaction.updateTable(REVIEW_TABLE).set({
         review_sub_uid: input.opSubUserId,
         review_time: new Date(),
-        status: "obsolete",
+        status: "withdrawn",
       }).where("uid", "=", input.uid).where("workflow_id", "=", input.workflowId)
-        .where("status", "in", ["pending", "approved"]).executeTakeFirst();
+        .where("status", "=", "pending").executeTakeFirst();
       return success({ ...mapDefinition(row), bizStatus: 0, opSubUserId: input.opSubUserId });
     });
   }
@@ -287,9 +287,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
       if (definition.draftVersion !== input.expectedDraftVersion
         || definition.publishedRevision !== input.basePublishedRevision) return conflict();
-      const locked = await transaction.selectFrom(REVIEW_TABLE).select("id")
+      let lockedQuery = transaction.selectFrom(REVIEW_TABLE).select("id")
         .where("uid", "=", input.uid).where("workflow_id", "=", input.workflowId)
-        .where("status", "in", ["pending", "approved"]).executeTakeFirst();
+        .where("draft_semantic_hash", "=", input.draftSemanticHash)
+        .where("status", "in", ["pending", "approved"]);
+      lockedQuery = input.basePublishedRevision === null
+        ? lockedQuery.where("base_published_revision", "is", null)
+        : lockedQuery.where("base_published_revision", "=", input.basePublishedRevision);
+      const locked = await lockedQuery.executeTakeFirst();
       if (locked) return reviewLocked<WorkflowPublishReviewRecord>();
       const now = new Date();
       const insert = await transaction.insertInto(REVIEW_TABLE).values({
@@ -364,7 +369,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .executeTakeFirst();
       if (!reviewRow) return notFound<WorkflowPublishReviewRecord>();
       const review = mapReview(reviewRow);
-      if (!input.allowedStatuses.includes(review.status as "approved" | "pending")) {
+      if (review.status !== "pending") {
         return reviewInvalidStatus(review.status);
       }
       await transaction.updateTable(REVIEW_TABLE).set({
@@ -375,7 +380,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       }).where("uid", "=", input.uid)
         .where("workflow_id", "=", input.workflowId)
         .where("id", "=", input.reviewId)
-        .where("status", "in", input.allowedStatuses)
+        .where("status", "=", "pending")
         .executeTakeFirstOrThrow();
       return success(mapReview(await transaction.selectFrom(REVIEW_TABLE).selectAll()
         .where("id", "=", input.reviewId)
@@ -396,7 +401,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       if (review.status !== "approved") return reviewInvalidStatus(review.status);
       if (review.candidateHash !== input.candidateHash
         || definition.publishedRevision !== review.basePublishedRevision
-        || definition.draftVersion !== review.sourceDraftVersion) return conflict();
+        || definition.draftSemanticHash !== review.draftSemanticHash) return conflict();
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
 
       const publishedAt = new Date();
@@ -411,7 +416,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
             workflowId: input.workflowId,
           });
       const insert = await transaction.insertInto(REVISION_TABLE).values({
-        draft_json: stringifyJson(review.draft),
+        draft_json: stringifyJson(definition.draft),
         dsl_schema_version: executionSpec.schemaVersion,
         execution_spec_json: stringifyJson(executionSpec),
         publish_sub_uid: input.opSubUserId,
@@ -464,7 +469,6 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         publish_sub_uid: input.opSubUserId,
         publish_time: publishedAt,
         resulting_revision: nextRevision,
-        status: "published",
       }).where("uid", "=", input.uid)
         .where("workflow_id", "=", input.workflowId)
         .where("id", "=", input.reviewId)
@@ -476,7 +480,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         definition: mapDefinition(updated),
         revision: {
           createdAt: publishedAt,
-          draft: structuredClone(review.draft),
+          draft: structuredClone(definition.draft),
           executionSpec,
           id: normalizeId(insert.insertId),
           publishedAt,
@@ -549,10 +553,10 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         await transaction.updateTable(REVIEW_TABLE).set({
           review_sub_uid: input.opSubUserId,
           review_time: input.transitionedAt,
-          status: "obsolete",
+          status: "withdrawn",
         }).where("uid", "=", input.uid)
           .where("workflow_id", "=", input.workflowId)
-          .where("status", "in", ["pending", "approved"])
+          .where("status", "=", "pending")
           .executeTakeFirst();
       }
       const updated = await transaction.selectFrom(DEFINITION_TABLE).selectAll()
@@ -639,11 +643,11 @@ async function hasReachedActiveDefinitionLimit(db: WorkflowDbExecutor, uid: numb
   return Number(row.active_count) >= WORKFLOW_ACTIVE_DEFINITION_LIMIT;
 }
 
-async function hasLockedReview(db: WorkflowDbExecutor, uid: number, workflowId: string) {
+async function hasPendingReview(db: WorkflowDbExecutor, uid: number, workflowId: string) {
   const row = await db.selectFrom(REVIEW_TABLE).select("id")
     .where("uid", "=", uid)
     .where("workflow_id", "=", workflowId)
-    .where("status", "in", ["pending", "approved"])
+    .where("status", "=", "pending")
     .executeTakeFirst();
   return Boolean(row);
 }
@@ -693,7 +697,7 @@ function mapRevision(row: Record<string, unknown>): WorkflowRevisionRecord {
 function mapReview(row: Record<string, unknown>): WorkflowPublishReviewRecord {
   const status = row.status;
   if (status !== "pending" && status !== "approved" && status !== "rejected"
-    && status !== "withdrawn" && status !== "obsolete" && status !== "published") {
+    && status !== "withdrawn") {
     throw new Error("Database returned an invalid Workflow review status");
   }
   return {

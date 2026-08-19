@@ -18,7 +18,7 @@ describe("Fake Workflow Entry producer", () => {
     });
 
     expect(broker.getPublished("entry")).toEqual([
-      expect.objectContaining({ key: "9:wecom_contact:wecom-contact-1" }),
+      expect.objectContaining({ key: "9:wecom_contact:3267" }),
       expect.objectContaining({ key: "9:chatai_contact:chatai-contact-1" }),
     ]);
     await broker.close();

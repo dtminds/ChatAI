@@ -15,7 +15,9 @@ The Worker writes JSON to stdout through Pino. Production uses `LOG_LEVEL=info`.
 | `warn` | Readiness degradation, retries, dead records, lease recovery, and stalled-task republish |
 | `error` | A role iteration or readiness check failed |
 
-Scheduler and Outbox run every second by default. An idle iteration must stay at `debug`; it must not emit an `info` heartbeat. Readiness is logged only when its overall `ready` status changes.
+Scheduler and Outbox run every second by default. An idle iteration must stay at `debug`; it must not emit an `info` heartbeat. Readiness is logged only when its overall `ready` status changes. Entry and Task consumers keep fixed-size in-process counters and emit at most one summary per minute when messages were processed. Counters reset after each summary and are not business state; process restarts may discard the current partial minute.
+
+Entry and Task error details are sampled independently by failure category, with at most three samples per category and summary interval. Samples include broker metadata and stable Workflow identifiers when available, but never payloads or message text. Pulsar backlog and DLQ depth remain TDMQ metrics rather than Worker-side counters.
 
 ## Stable Events
 
@@ -29,9 +31,15 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
 | `workflow.worker.readiness.failed` | `error` | `role`, `err` |
-| `workflow.capability.retry.scheduled` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage`, `retryAt` |
-| `workflow.capability.failed` | `warn` | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
-| `workflow.node.failed` | `warn` | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
+| `workflow.entry.consume.summary` | `info` | `received`, `admitted`, `noMatch`, `deduplicated`, `rejected`, `runtimeRejected`, `nacked` |
+| `workflow.entry.consume.rejected` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
+| `workflow.entry.consume.failed` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
+| `workflow.task.consume.summary` | `info` | `received`, `completed`, `ackedBoundary`, `retryScheduled`, `capabilityFailed`, `nodeFailed`, `invalid`, `nacked` |
+| `workflow.task.consume.rejected` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
+| `workflow.task.consume.failed` | `warn`, sampled | `messageId`, `topic`, `redeliveryCount`, `uid`, `runId`, `taskId`, `taskVersion`, `errorCode`, `err` |
+| `workflow.capability.retry.scheduled` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage`, `retryAt` |
+| `workflow.capability.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
+| `workflow.node.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
 Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
 

@@ -56,7 +56,9 @@ describe("workflow task consumer", () => {
   it("NACKs malformed messages and transient runtime failures", async () => {
     const malformed = createBrokerMessage({ taskId: "invalid" });
     const transient = createBrokerMessage(taskMessage());
+    const observe = vi.fn();
     const handler = createTaskConsumerHandler({
+      observe,
       runtimeService: { executeTask: vi.fn(async () => { throw new Error("database unavailable"); }) },
       workerId: "worker-1",
     });
@@ -66,6 +68,16 @@ describe("workflow task consumer", () => {
 
     expect(malformed.negativeAck).toHaveBeenCalledTimes(1);
     expect(transient.negativeAck).toHaveBeenCalledTimes(1);
+    expect(observe).toHaveBeenNthCalledWith(1, malformed, {
+      code: "invalid_task_message",
+      disposition: "nack",
+    });
+    expect(observe).toHaveBeenNthCalledWith(2, transient, expect.objectContaining({
+      code: "temporary_failure",
+      command: { runId: "5", taskId: "7", taskVersion: 3, uid: "9" },
+      disposition: "nack",
+      error: expect.any(Error),
+    }));
   });
 
   it.each([
@@ -100,10 +112,10 @@ describe("workflow task consumer", () => {
       },
     },
   ])("logs and ACKs the persisted $event outcome", async ({ event, result }) => {
-    const logger = { warn: vi.fn() };
+    const observe = vi.fn();
     const message = createBrokerMessage(taskMessage());
     const handler = createTaskConsumerHandler({
-      logger,
+      observe,
       runtimeService: { executeTask: vi.fn(async () => result) },
       workerId: "worker-1",
     });
@@ -112,17 +124,20 @@ describe("workflow task consumer", () => {
 
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(observe).toHaveBeenCalledWith(message, expect.objectContaining({
+      code: event === "workflow.capability.retry.scheduled"
+        ? "retry_scheduled"
+        : event === "workflow.node.failed"
+          ? "node_failed"
+          : "capability_failed",
+      command: { runId: "5", taskId: "7", taskVersion: 3, uid: "9" },
       ...(result.diagnosticMessage ? { diagnosticMessage: result.diagnosticMessage } : {}),
+      disposition: "ack",
       errorCode: result.errorCode,
-      event,
       ...("failureKind" in result ? { failureKind: result.failureKind } : {}),
       ...("nodeId" in result ? { nodeId: result.nodeId } : {}),
       ...("nodeKind" in result ? { nodeKind: result.nodeKind } : {}),
-      runId: "5",
-      taskId: "7",
-      uid: "9",
-    }), expect.any(String));
+    }));
   });
 });
 

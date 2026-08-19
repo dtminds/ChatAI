@@ -65,7 +65,9 @@ export function WorkflowTopBar({
   onSubmitReview = () => undefined,
   onWithdrawReview,
   onEnable,
+  onPause,
   onPublishCheck,
+  onResume,
   onReloadDocument,
   onModeChange,
   onUpdateMetadata,
@@ -108,7 +110,9 @@ export function WorkflowTopBar({
   onSubmitReview?: () => void;
   onWithdrawReview?: () => Promise<boolean>;
   onEnable?: () => Promise<boolean>;
+  onPause?: () => Promise<boolean>;
   onPublishCheck: () => void;
+  onResume?: () => Promise<boolean>;
   onReloadDocument?: () => void;
   onModeChange?: (mode: "data" | "design") => void;
   onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
@@ -122,7 +126,7 @@ export function WorkflowTopBar({
   publishReady: boolean;
   currentReview?: WorkflowPublishReview | null;
   reviewActionState?: "idle" | "submitting" | "approving" | "rejecting" | "withdrawing";
-  lifecycleActionState?: "idle" | "enabling";
+  lifecycleActionState?: "enabling" | "idle" | "pausing" | "resuming";
   publishedRevision?: number | null;
   restoreState?: WorkflowDraftRestoreStatus;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
@@ -145,6 +149,54 @@ export function WorkflowTopBar({
     publishedRevision ?? null,
     hasUnpublishedChanges,
   );
+  const contentActionVisible = currentReview?.status === "pending"
+    || currentReview?.status === "approved"
+    || hasUnpublishedChanges;
+  const runtimeAction = publishedRevision === null
+    ? null
+    : runtimeStatus === "active" && onPause
+      ? (
+          <Button
+            disabled={!canOperate || lifecycleActionState !== "idle"}
+            onClick={() => void onPause()}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {lifecycleActionState === "pausing" ? "暂停中" : "暂停"}
+          </Button>
+        )
+      : runtimeStatus === "paused" && onResume
+        ? (
+            <Button
+              className={contentActionVisible ? undefined : "h-9 rounded-lg px-5 text-sm font-semibold"}
+              disabled={!canOperate || lifecycleActionState !== "idle"}
+              onClick={() => void onResume()}
+              size="sm"
+              type="button"
+              variant={contentActionVisible ? "secondary" : "default"}
+            >
+              {lifecycleActionState === "resuming"
+                ? "启用中"
+                : hasUnpublishedChanges ? "启用已发布版本" : "启用"}
+            </Button>
+          )
+        : runtimeStatus === "inactive" && onEnable
+          ? (
+              <Button
+                className={contentActionVisible ? undefined : "h-9 rounded-lg px-5 text-sm font-semibold"}
+                disabled={!canOperate || lifecycleActionState !== "idle"}
+                onClick={() => void onEnable()}
+                size="sm"
+                type="button"
+                variant={contentActionVisible ? "secondary" : "default"}
+              >
+                {lifecycleActionState === "enabling"
+                  ? "启用中"
+                  : hasUnpublishedChanges ? "启用已发布版本" : "启用"}
+              </Button>
+            )
+          : null;
 
   return (
     <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
@@ -327,19 +379,9 @@ export function WorkflowTopBar({
             </Popover>
             {!stoppedReadOnly ? (
               <>
+                {runtimeAction}
                 {currentReview?.status === "pending" ? (
                   <>
-                    {runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
-                      <Button
-                        disabled={!canOperate || lifecycleActionState !== "idle"}
-                        onClick={() => void onEnable()}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        {lifecycleActionState === "enabling" ? "启用中" : "启用已发布版本"}
-                      </Button>
-                    ) : null}
                     <Button
                       disabled={reviewActionState !== "idle"}
                       onClick={() => setWithdrawConfirmOpen(true)}
@@ -353,17 +395,6 @@ export function WorkflowTopBar({
                   </>
                 ) : currentReview?.status === "approved" ? (
                   <>
-                    {runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
-                      <Button
-                        disabled={!canOperate || lifecycleActionState !== "idle"}
-                        onClick={() => void onEnable()}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        {lifecycleActionState === "enabling" ? "启用中" : "启用已发布版本"}
-                      </Button>
-                    ) : null}
                     <Button
                       className="h-9 rounded-lg px-5 text-sm font-semibold"
                       disabled={!canPublish || publishing || saveState !== "saved"}
@@ -375,20 +406,9 @@ export function WorkflowTopBar({
                   </>
                 ) : hasUnpublishedChanges ? (
                   <>
-                    {runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
-                      <Button
-                        disabled={!canOperate || lifecycleActionState !== "idle"}
-                        onClick={() => void onEnable()}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        {lifecycleActionState === "enabling" ? "启用中" : "启用已发布版本"}
-                      </Button>
-                    ) : null}
                     <Button
                       className="h-9 rounded-lg px-5 text-sm font-semibold"
-                      disabled={!canEdit || reviewActionState !== "idle" || saveState === "error" || publishErrorCode === "conflict"}
+                      disabled={!canEdit || !canPublish || reviewActionState !== "idle" || saveState === "error" || publishErrorCode === "conflict"}
                       onClick={onSubmitReview}
                       type="button"
                     >
@@ -397,15 +417,6 @@ export function WorkflowTopBar({
                         : currentReview?.status === "rejected" ? "重新提交审核" : "提交审核"}
                     </Button>
                   </>
-                ) : runtimeStatus === "inactive" && publishedRevision !== null && onEnable ? (
-                  <Button
-                    className="h-9 rounded-lg px-5 text-sm font-semibold"
-                    disabled={!canOperate || lifecycleActionState !== "idle"}
-                    onClick={() => void onEnable()}
-                    type="button"
-                  >
-                    {lifecycleActionState === "enabling" ? "启用中" : "启用"}
-                  </Button>
                 ) : null}
                 {hasUnpublishedChanges && currentReview?.status !== "pending" && currentReview?.status !== "approved" && !publishReady ? (
                   <Button

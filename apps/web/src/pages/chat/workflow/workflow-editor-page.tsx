@@ -233,7 +233,9 @@ function WorkflowWorkspaceContent({
         onSubmitReview={topBar.onSubmitReview}
         onWithdrawReview={topBar.onWithdrawReview}
         onEnable={topBar.onEnable}
+        onPause={topBar.onPause}
         onPublishCheck={topBar.onPublishCheck}
+        onResume={topBar.onResume}
         onReloadDocument={onReloadDocument}
         onModeChange={(nextMode) => navigate(nextMode === "data"
           ? `/chat/workflows/${document.id}/data`

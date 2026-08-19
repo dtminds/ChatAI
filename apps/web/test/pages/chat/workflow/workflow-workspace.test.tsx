@@ -82,6 +82,40 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.canPublish).toBe(false);
   });
 
+  it("updates runtime status through detail-page pause and resume actions", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initial = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "active" as const,
+    };
+    const repository = {
+      ...baseRepository,
+      pauseDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "paused" as const,
+      })),
+      resumeDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "active" as const,
+      })),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onPause?.();
+    });
+    expect(repository.pauseDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("paused");
+    expect(toast.success).toHaveBeenLastCalledWith("已暂停");
+
+    await act(async () => {
+      await result.current.topBar.onResume?.();
+    });
+    expect(repository.resumeDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("active");
+    expect(toast.success).toHaveBeenLastCalledWith("已启用");
+  });
+
   it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");

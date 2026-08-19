@@ -155,14 +155,44 @@ describe("WorkflowTopBar review lifecycle", () => {
   });
 
   it("shows only the runtime status when the active workflow has no pending version", () => {
+    const onPause = vi.fn(async () => true);
     renderTopBar({
       hasUnpublishedChanges: false,
+      onPause,
       publishedRevision: 1,
       runtimeStatus: "active",
     });
 
     expect(screen.getByText("运行中")).toBeInTheDocument();
     expect(screen.queryByText(/已是最新版本/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
+  });
+
+  it("keeps runtime controls available while review actions are shown", () => {
+    renderTopBar({
+      currentReview: createReview({ status: "approved" }),
+      hasUnpublishedChanges: true,
+      onPause: vi.fn(async () => true),
+      publishedRevision: 1,
+      runtimeStatus: "active",
+    });
+
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发布" })).toBeInTheDocument();
+  });
+
+  it("offers resume for a paused published workflow", async () => {
+    const user = userEvent.setup();
+    const onResume = vi.fn(async () => true);
+    renderTopBar({
+      hasUnpublishedChanges: false,
+      onResume,
+      publishedRevision: 1,
+      runtimeStatus: "paused",
+    });
+
+    await user.click(screen.getByRole("button", { name: "启用" }));
+    expect(onResume).toHaveBeenCalledOnce();
   });
 
   it("switches between design and data modes", async () => {

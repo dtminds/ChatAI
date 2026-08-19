@@ -125,7 +125,7 @@ export function useWorkflowDocument(
     () => getWorkflowPublishStateForDraft(document.draft, document),
   );
   const [publishError, setPublishError] = useState<WorkflowRepositoryError | null>(null);
-  const [lifecycleActionState, setLifecycleActionState] = useState<"enabling" | "idle">("idle");
+  const [lifecycleActionState, setLifecycleActionState] = useState<"enabling" | "idle" | "pausing" | "resuming">("idle");
   const [metadataUpdateState, setMetadataUpdateState] = useState<"idle" | "updating">("idle");
   const [restoreState, setRestoreState] = useState<WorkflowDraftRestoreStatus>("idle");
   const [saveState, setSaveState] = useState<WorkflowDraftSaveStatus>("saved");
@@ -690,11 +690,21 @@ export function useWorkflowDocument(
     [repository],
   );
 
-  const enableDocument = useCallback(async () => {
-    if (!repository.enableDocument || lifecycleActionState !== "idle") return undefined;
-    setLifecycleActionState("enabling");
+  const operateDocument = useCallback(async (action: "enable" | "pause" | "resume") => {
+    const operation = {
+      enable: repository.enableDocument,
+      pause: repository.pauseDocument,
+      resume: repository.resumeDocument,
+    }[action];
+    if (!operation || lifecycleActionState !== "idle") return undefined;
+    const pendingState: "enabling" | "pausing" | "resuming" = ({
+      enable: "enabling",
+      pause: "pausing",
+      resume: "resuming",
+    } as const)[action];
+    setLifecycleActionState(pendingState);
     try {
-      const nextDocument = await Promise.resolve(repository.enableDocument(workflowIdRef.current));
+      const nextDocument = await Promise.resolve(operation(workflowIdRef.current));
       setDocument(nextDocument);
       return nextDocument;
     } catch (error) {
@@ -703,6 +713,19 @@ export function useWorkflowDocument(
       setLifecycleActionState("idle");
     }
   }, [lifecycleActionState, repository]);
+
+  const enableDocument = useCallback(
+    () => operateDocument("enable"),
+    [operateDocument],
+  );
+  const pauseDocument = useCallback(
+    () => operateDocument("pause"),
+    [operateDocument],
+  );
+  const resumeDocument = useCallback(
+    () => operateDocument("resume"),
+    [operateDocument],
+  );
 
   useEffect(() => () => {
     void flushPendingSave({ updateState: false })?.catch(() => undefined);
@@ -734,12 +757,14 @@ export function useWorkflowDocument(
     listReviews,
     markDirty,
     metadataUpdateState,
+    pauseDocument,
     publishError,
     publishState,
     updateMetadata,
     restoreState,
     restoreReview,
     restoreVersion,
+    resumeDocument,
     retrySave,
     saveError,
     saveState,

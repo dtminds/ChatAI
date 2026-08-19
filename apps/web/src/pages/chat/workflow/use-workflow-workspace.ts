@@ -73,6 +73,7 @@ export function useWorkflowWorkspace(
     listReviews,
     markDirty,
     metadataUpdateState,
+    pauseDocument,
     approveReview,
     publishReview,
     publishError,
@@ -83,6 +84,7 @@ export function useWorkflowWorkspace(
     restoreState,
     restoreReview,
     restoreVersion,
+    resumeDocument,
     saveError,
     saveState,
     submitReview,
@@ -525,6 +527,36 @@ export function useWorkflowWorkspace(
     return false;
   });
 
+  const pausePublishedDocument = useWorkflowStableCallback(async () => {
+    try {
+      const result = await pauseDocument();
+      if (result) {
+        toast.success("已暂停");
+        return true;
+      }
+    } catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage("pause", error));
+      return false;
+    }
+    toast.error("操作失败，请稍后重试");
+    return false;
+  });
+
+  const resumePublishedDocument = useWorkflowStableCallback(async () => {
+    try {
+      const result = await resumeDocument();
+      if (result) {
+        toast.success("已启用");
+        return true;
+      }
+    } catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage("resume", error));
+      return false;
+    }
+    toast.error("操作失败，请稍后重试");
+    return false;
+  });
+
   const handleApproveReview = useWorkflowStableCallback(async (comment?: string) => {
     const reviewId = document.currentReview?.id;
     if (!reviewId) return false;
@@ -789,6 +821,8 @@ export function useWorkflowWorkspace(
       onRejectReview: handleRejectReview,
       onWithdrawReview: handleWithdrawReview,
       onEnable: enablePublishedDocument,
+      onPause: pausePublishedDocument,
+      onResume: resumePublishedDocument,
       currentReview: document.currentReview,
       reviewActionState,
       lifecycleActionState,

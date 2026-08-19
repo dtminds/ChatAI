@@ -512,16 +512,14 @@ export class WorkflowService {
     const review = await this.repository.findReview(scope.uid, workflowId, input.reviewId);
     if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
     if (review.status !== "approved") throw reviewInvalidStatusError(review.status);
+    if (definition.publishedRevision !== review.basePublishedRevision
+      || definition.draftSemanticHash !== review.draftSemanticHash) {
+      throw conflictError();
+    }
     const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType, scope.subUserId);
     this.assertProductionAvailability(review.executionSpec, entitlement, review.subjectType);
     const currentBindings = await this.createTriggerBindings(scope.uid, review.executionSpec, review.subjectType);
-    const candidateHash = hashExecutionSpec({
-      executionSpec: review.executionSpec,
-      subjectType: review.subjectType,
-      triggerBindings: currentBindings,
-      workflowType: review.workflowType,
-    });
-    if (candidateHash !== review.candidateHash) {
+    if (hashCanonicalValue(currentBindings) !== hashCanonicalValue(review.triggerBindings)) {
       throw new AppError(
         "WORKFLOW_REVIEW_RESOURCES_CHANGED",
         "审核内容依赖的业务资源已变化，请处理后重试发布",
@@ -529,7 +527,7 @@ export class WorkflowService {
       );
     }
     const published = this.unwrapMutation(await this.repository.publishRevision({
-      candidateHash,
+      candidateHash: review.candidateHash,
       opSubUserId: scope.subUserId,
       reviewId: input.reviewId,
       uid: scope.uid,
@@ -928,12 +926,12 @@ function hashExecutionSpec(input: {
   workflowType: WorkflowType;
 }) {
   const { revision: _revision, ...publishSemantics } = input.executionSpec;
-  return createHash("sha256").update(JSON.stringify({
+  return hashCanonicalValue({
     executionSpec: publishSemantics,
     subjectType: input.subjectType,
     triggerBindings: input.triggerBindings,
     workflowType: input.workflowType,
-  })).digest("hex");
+  });
 }
 
 function hashDraftSemantics(draft: WorkflowDraft) {
@@ -947,7 +945,11 @@ function hashDraftSemantics(draft: WorkflowDraft) {
       )),
     })).sort((first, second) => first.id.localeCompare(second.id)),
   };
-  return createHash("sha256").update(JSON.stringify(canonicalize(semantics))).digest("hex");
+  return hashCanonicalValue(semantics);
+}
+
+function hashCanonicalValue(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
 }
 
 function canonicalize(value: unknown): unknown {

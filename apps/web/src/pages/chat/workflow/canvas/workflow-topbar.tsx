@@ -176,10 +176,8 @@ export function WorkflowTopBar({
         ) : (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <Badge className={getRuntimeStatusClassName(runtimeStatus, currentReview?.status)}>
+              <Badge className={getRuntimeStatusClassName(runtimeStatus, publishedRevision ?? null)}>
                 {getWorkflowStatusLabel({
-                  currentReview,
-                  hasUnpublishedChanges,
                   publishedRevision: publishedRevision ?? null,
                   runtimeStatus,
                 })}
@@ -508,32 +506,17 @@ export function WorkflowTopBar({
 }
 
 function getWorkflowStatusLabel({
-  currentReview,
-  hasUnpublishedChanges,
   publishedRevision,
   runtimeStatus,
 }: {
-  currentReview?: WorkflowPublishReview | null;
-  hasUnpublishedChanges: boolean;
   publishedRevision: number | null;
   runtimeStatus: "active" | "inactive" | "paused" | "stopped";
 }) {
   if (runtimeStatus === "stopped") return "已停止";
-  const base = publishedRevision === null
-    ? "草稿"
-    : runtimeStatus === "active"
-      ? "运行中"
-      : runtimeStatus === "paused"
-        ? "待启用"
-        : "未启用";
-  if (currentReview?.status === "pending") return `${base} · ${publishedRevision === null ? "待审核" : "新版本待审核"}`;
-  if (currentReview?.status === "approved") return `${base} · ${publishedRevision === null ? "审核通过" : "新版本审核通过"}`;
-  if (currentReview?.status === "rejected" && (publishedRevision === null || hasUnpublishedChanges)) {
-    return `${base} · ${publishedRevision === null ? "审核驳回" : "新版本审核驳回"}`;
-  }
-  if (publishedRevision === null) return base;
-  if (hasUnpublishedChanges) return `${base} · 有未提交的新版本`;
-  return `${base} · ${runtimeStatus === "inactive" ? "已发布" : "已是最新版本"}`;
+  if (publishedRevision === null) return "草稿";
+  if (runtimeStatus === "active") return "运行中";
+  if (runtimeStatus === "paused") return "待启用";
+  return "未启用";
 }
 
 function getContentContextLabel(
@@ -553,15 +536,13 @@ function getContentContextLabel(
 
 function getRuntimeStatusClassName(
   status: "active" | "inactive" | "paused" | "stopped",
-  reviewStatus?: WorkflowPublishReview["status"],
+  publishedRevision: number | null,
 ) {
-  const reviewPending = reviewStatus === "pending" || reviewStatus === "approved";
   return cn(
     "shrink-0 rounded-md px-1.5 py-0.5",
-    status === "active" && !reviewPending && "bg-success-muted text-success",
-    status === "inactive" && !reviewPending && "bg-muted text-muted-foreground",
-    (status === "paused" || reviewPending) && "bg-warning-muted text-warning",
-    reviewStatus === "rejected" && "bg-destructive/10 text-destructive",
+    status === "active" && publishedRevision !== null && "bg-success-muted text-success",
+    status === "paused" && publishedRevision !== null && "bg-warning-muted text-warning",
+    (status === "inactive" || publishedRevision === null) && "bg-muted text-muted-foreground",
     status === "stopped" && "bg-muted text-muted-foreground",
   );
 }

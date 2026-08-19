@@ -1,4 +1,4 @@
-import { Cancel01Icon, CheckmarkCircle02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { WorkflowPublishReview } from "@chatai/contracts";
 import { useEffect, useState } from "react";
@@ -114,10 +114,7 @@ export function WorkflowVersionHistoryPanel({
             </button>
           );
         }) : activeTab === "versions" ? (
-          <div className="workflow-version-empty flex min-h-40 flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
-            <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-muted">
-              <HugeiconsIcon icon={WorkflowSquare01Icon} size={18} strokeWidth={1.8} />
-            </span>
+          <div className="workflow-version-empty flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">
             <span>暂无发布版本</span>
           </div>
         ) : reviews.length ? reviews.map(review => (

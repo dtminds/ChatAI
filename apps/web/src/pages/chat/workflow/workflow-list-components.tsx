@@ -406,34 +406,16 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
   if (workflow.runtimeStatus === "stopped") {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
-  const base = workflow.publishedRevision === null
-    ? "草稿"
-    : workflow.runtimeStatus === "active"
-      ? "运行中"
-      : workflow.runtimeStatus === "paused"
-        ? "待启用"
-        : "未启用";
-  const review = workflow.currentReview;
-  if (review?.status === "pending") {
-    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: `${base} · ${workflow.publishedRevision === null ? "待审核" : "新版本待审核"}` };
-  }
-  if (review?.status === "approved") {
-    return { className: "bg-warning-muted text-warning", icon: Tick02Icon, label: `${base} · ${workflow.publishedRevision === null ? "审核通过" : "新版本审核通过"}` };
-  }
-  if (review?.status === "rejected" && (workflow.publishedRevision === null || workflow.hasUnpublishedChanges)) {
-    return { className: "bg-destructive/10 text-destructive", icon: AlertCircleIcon, label: `${base} · ${workflow.publishedRevision === null ? "审核驳回" : "新版本审核驳回"}` };
-  }
   if (workflow.publishedRevision === null) {
-    return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: base };
+    return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
   }
-  if (workflow.hasUnpublishedChanges) {
-    return { className: "bg-warning-muted text-warning", icon: Edit02Icon, label: `${base} · 有未提交的新版本` };
+  if (workflow.runtimeStatus === "active") {
+    return { className: "bg-success-muted text-success", icon: Tick02Icon, label: "运行中" };
   }
-  return {
-    className: workflow.runtimeStatus === "active" ? "bg-success-muted text-success" : "bg-muted text-muted-foreground",
-    icon: workflow.runtimeStatus === "active" ? Tick02Icon : PauseIcon,
-    label: `${base} · ${workflow.runtimeStatus === "inactive" ? "已发布" : "已是最新版本"}`,
-  };
+  if (workflow.runtimeStatus === "paused") {
+    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
+  }
+  return { className: "bg-muted text-muted-foreground", icon: PauseIcon, label: "未启用" };
 }
 
 function getWorkflowTypeLabel(workflowType: WorkflowListItem["workflowType"]) {

@@ -30,7 +30,7 @@ describe("WorkflowTopBar review lifecycle", () => {
     expect(screen.getByText("有尚未发布的修改")).toBeInTheDocument();
   });
 
-  it("shows explicit rejected wording for first and subsequent versions", () => {
+  it("keeps rejected review actions separate from the runtime status", () => {
     const review = createReview({ status: "rejected" });
     const { rerender } = renderTopBar({
       currentReview: review,
@@ -38,7 +38,7 @@ describe("WorkflowTopBar review lifecycle", () => {
       publishedRevision: null,
     });
 
-    expect(screen.getByText("草稿 · 审核驳回")).toBeInTheDocument();
+    expect(screen.getByText("草稿")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重新提交审核" })).toBeInTheDocument();
 
     rerender(createTopBar({
@@ -47,7 +47,7 @@ describe("WorkflowTopBar review lifecycle", () => {
       publishedRevision: 2,
       runtimeStatus: "active",
     }));
-    expect(screen.getByText("运行中 · 新版本审核驳回")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
   });
 
   it("shows review and withdraw actions while pending", async () => {
@@ -63,7 +63,7 @@ describe("WorkflowTopBar review lifecycle", () => {
       runtimeStatus: "active",
     });
 
-    expect(screen.getByText("运行中 · 新版本待审核")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "审核" }));
     await user.click(screen.getByRole("button", { name: "撤回审核" }));
     expect(onOpenReview).toHaveBeenCalledOnce();
@@ -82,7 +82,7 @@ describe("WorkflowTopBar review lifecycle", () => {
       publishedRevision: 1,
     });
 
-    expect(screen.getByText("未启用 · 新版本审核通过")).toBeInTheDocument();
+    expect(screen.getByText("未启用")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "继续修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看审核详情" })).not.toBeInTheDocument();
 
@@ -148,10 +148,21 @@ describe("WorkflowTopBar review lifecycle", () => {
       runtimeStatus: "inactive",
     });
 
-    expect(screen.getByText("未启用 · 已发布")).toBeInTheDocument();
+    expect(screen.getByText("未启用")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "启用" }));
     expect(onEnable).toHaveBeenCalledOnce();
+  });
+
+  it("shows only the runtime status when the active workflow has no pending version", () => {
+    renderTopBar({
+      hasUnpublishedChanges: false,
+      publishedRevision: 1,
+      runtimeStatus: "active",
+    });
+
+    expect(screen.getByText("运行中")).toBeInTheDocument();
+    expect(screen.queryByText(/已是最新版本/)).not.toBeInTheDocument();
   });
 
   it("switches between design and data modes", async () => {

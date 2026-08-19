@@ -30,6 +30,13 @@ describe("workflow variables", () => {
       ["trigger", "projection", "workUserId"],
       ["trigger", "projection", "seatId"],
     ]);
+    expect(workflowContextVariables).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        selector: ["trigger", "projection", "externalUserId"],
+        type: "number",
+        valueType: { kind: "number" },
+      }),
+    ]));
   });
 
   it("limits trigger projection variables to the current Workflow Type", () => {

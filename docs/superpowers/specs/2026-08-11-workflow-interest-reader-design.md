@@ -37,7 +37,7 @@ message.received
 | --- | --- | --- | --- |
 | 企微成员 | `workUserId` | positive safe integer | 添加好友、打标签的来源维度 |
 | ChatAI 席位 | `seatId` | positive safe integer | 新消息来源维度 |
-| 企微好友 | `externalUserId` | non-empty string，最长 128 | WeCom SOP Subject ID |
+| 企微好友 | `externalUserId` | JavaScript 安全整数范围内的正整数 | WeCom SOP Subject ID；Node 投影为 Runtime `subjectId` 时转成十进制字符串 |
 | ChatAI 席位好友 | `thirdExternalUserId` | non-empty string，最长 128 | ChatAI SOP Subject ID |
 | 企微标签 | `tagId` | positive safe integer | 打标签精确匹配维度 |
 | 好友来源 | `sourceId` | non-empty string，最长 128 | 添加好友来源筛选 |
@@ -58,7 +58,7 @@ Java 生成企微事件时，`workUserId`、`externalUserId` 必须存在。如�
 Node 根据命中的 Binding 选择 Run Subject：
 
 ```text
-subjectType = wecom_contact  -> subjectId = externalUserId
+subjectType = wecom_contact  -> subjectId = String(externalUserId)
 subjectType = chatai_contact -> subjectId = thirdExternalUserId
 ```
 
@@ -107,7 +107,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
   "source": "wecom",
   "payload": {
     "workUserId": 201,
-    "externalUserId": "wm_external_123",
+    "externalUserId": 3267,
     "sourceId": "qr-code-1",
     "seatId": 101,
     "thirdExternalUserId": "chatai_external_456"
@@ -130,7 +130,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
   "source": "wecom",
   "payload": {
     "workUserId": 201,
-    "externalUserId": "wm_external_123",
+    "externalUserId": 3267,
     "tagId": 301,
     "seatId": 101,
     "thirdExternalUserId": "chatai_external_456"
@@ -155,7 +155,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
     "seatId": 101,
     "workUserId": 201,
     "thirdExternalUserId": "chatai_external_456",
-    "externalUserId": "wm_external_123",
+    "externalUserId": 3267,
     "messageId": 938271,
     "text": "我想了解一下活动详情"
   }

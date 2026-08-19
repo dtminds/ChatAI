@@ -472,7 +472,7 @@ export function WorkflowTopBar({
           <AlertDialogHeader>
             <AlertDialogTitle>确认发布当前版本</AlertDialogTitle>
             <AlertDialogDescription>
-              发布后将生成正式版本且不改变当前启用状态；若存在进行中的客户，其后续节点可能使用新版本，已删除等待节点上的客户可能被清退
+              发布后将立即生效。正在流程中的客户将按新规则流转，已删除步骤中的客户会自动退出。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

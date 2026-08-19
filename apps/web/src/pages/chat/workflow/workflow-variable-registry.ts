@@ -12,7 +12,7 @@ import { isChatAiStartNodeData } from "./types";
 export const workflowContextVariables: WorkflowVariableDefinition[] = [
   createContextVariable("subject", "id", "客户 ID", "string"),
   createContextVariable("trigger", "occurredAt", "触发时间", "datetime"),
-  createProjectionVariable("externalUserId", "企微客户 ID", "string"),
+  createProjectionVariable("externalUserId", "企微客户 ID", "number"),
   createProjectionVariable("workUserId", "企微成员 ID", "number"),
   createProjectionVariable("seatId", "托管账号 ID", "number"),
 ];

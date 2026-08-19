@@ -377,6 +377,7 @@ describe("workflow worker runtime", () => {
         close: runtimeClose,
         getReadiness: () => ({ broker: true, database: true, roles: {} }),
       })),
+      workerId: "worker-1",
     })).rejects.toThrow("health port busy");
 
     expect(runtimeClose).toHaveBeenCalledTimes(1);
@@ -392,11 +393,19 @@ describe("workflow worker runtime", () => {
         close: vi.fn(async () => {}),
         getReadiness: () => ({ broker: true, database: true, roles: {} }),
       })),
+      workerId: "worker-1",
     });
 
-    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logger.info).toHaveBeenCalledWith({
+      deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
+      environment: "dev",
       event: "workflow.worker.started",
-    }), "workflow worker started");
+      llmTestMode: "disabled",
+      roles: ["entry-consumer", "task-consumer"],
+      subscriptions: { entry: "entry-sub", task: "task-sub" },
+      topics: { entry: "entry-topic", task: "task-topic" },
+      workerId: "worker-1",
+    }, "workflow worker started");
     await worker.close();
   });
 
@@ -563,6 +572,7 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     environment: "dev" as const,
     healthPort: 3002,
     logLevel: "info",
+    llmTestMode: "disabled" as const,
     maxRedeliverCount: 5,
     pulsar: { serviceUrl: null, token: null },
     roles,

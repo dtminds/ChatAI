@@ -8,7 +8,7 @@
   "source": "wecom",
   "payload": {
     "workUserId": 201,
-    "externalUserId": "wecom-contact-1",
+    "externalUserId": 3267,
     "tagId": 301,
     "seatId": 101,
     "thirdExternalUserId": "chatai-contact-1"

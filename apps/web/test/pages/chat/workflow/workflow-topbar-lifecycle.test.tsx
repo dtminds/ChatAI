@@ -89,7 +89,6 @@ describe("WorkflowTopBar review lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "发布" }));
     expect(onPublish).not.toHaveBeenCalled();
     const publishDialog = within(screen.getByRole("alertdialog"));
-    expect(publishDialog.getByText(/已删除等待节点上的客户可能被清退/)).toBeInTheDocument();
     await user.click(publishDialog.getByRole("button", { name: "发布" }));
     expect(onPublish).toHaveBeenCalledOnce();
   });

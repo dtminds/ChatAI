@@ -64,6 +64,43 @@ describe("workflow event catalog", () => {
     });
   });
 
+  it("accepts a numeric WeCom external user ID and normalizes the Runtime subject ID", () => {
+    const result = WORKFLOW_EVENT_CATALOG.project(event({
+      eventType: "contact.tag_added",
+      payload: {
+        externalUserId: 3267,
+        seatId: 1,
+        tagId: 21311,
+        thirdExternalUserId: "947CB913BD0B758650E33EDB070630CF5194F219CF554649F1C4F9C615435A82",
+        workUserId: 35954,
+      },
+      source: "wecom",
+    }));
+
+    expect(result).toMatchObject({
+      kind: "accepted",
+      projection: {
+        subjects: {
+          wecom_contact: { subjectId: "3267" },
+        },
+        variables: {
+          externalUserId: 3267,
+        },
+      },
+    });
+  });
+
+  it("rejects the obsolete string form of the WeCom external user ID", () => {
+    expect(WORKFLOW_EVENT_CATALOG.project(event({
+      eventType: "contact.friend_added",
+      payload: {
+        externalUserId: "3267",
+        workUserId: 35954,
+      },
+      source: "wecom",
+    }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
+  });
+
   it("retains optional message text in the controlled Trigger Projection", () => {
     const result = WORKFLOW_EVENT_CATALOG.project(readEvent(
       "entry/v1/valid/message-received.json",
@@ -107,7 +144,7 @@ describe("workflow event catalog", () => {
     expect(WORKFLOW_EVENT_CATALOG.project(event({
       eventType: "contact.friend_added",
       payload: {
-        externalUserId: "wecom-contact-1",
+        externalUserId: 3267,
         seatId: 101,
         workUserId: 201,
       },

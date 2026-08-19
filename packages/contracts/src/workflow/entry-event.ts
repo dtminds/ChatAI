@@ -23,17 +23,17 @@ const WorkflowPositiveSafeIntegerSchema = Type.Integer({
   maximum: Number.MAX_SAFE_INTEGER,
   minimum: 1,
 });
-const WorkflowExternalUserIdSchema = Type.String({ maxLength: 128, minLength: 1 });
+const WorkflowThirdExternalUserIdSchema = Type.String({ maxLength: 128, minLength: 1 });
 const WorkflowEventSourceIdSchema = Type.String({ maxLength: 128, minLength: 1 });
 
 const WorkflowWeComContactIdentitySchema = {
-  externalUserId: WorkflowExternalUserIdSchema,
+  externalUserId: WorkflowPositiveSafeIntegerSchema,
   workUserId: WorkflowPositiveSafeIntegerSchema,
 } as const;
 
 const WorkflowChatAiContactIdentitySchema = {
   seatId: WorkflowPositiveSafeIntegerSchema,
-  thirdExternalUserId: WorkflowExternalUserIdSchema,
+  thirdExternalUserId: WorkflowThirdExternalUserIdSchema,
 } as const;
 
 export const WorkflowContactFriendAddedPayloadSchema = Type.Union([
@@ -61,7 +61,7 @@ export const WorkflowContactTagAddedPayloadSchema = Type.Union([
 ]);
 
 export const WorkflowMessageReceivedPayloadSchema = Type.Object({
-  externalUserId: Type.Optional(WorkflowExternalUserIdSchema),
+  externalUserId: Type.Optional(WorkflowPositiveSafeIntegerSchema),
   messageId: WorkflowPositiveSafeIntegerSchema,
   ...WorkflowChatAiContactIdentitySchema,
   text: Type.Optional(Type.String({ maxLength: WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH })),

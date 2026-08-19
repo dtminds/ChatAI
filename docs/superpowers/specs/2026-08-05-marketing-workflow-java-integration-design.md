@@ -47,7 +47,7 @@
 | `subjectId` | Node 从已校验事件字段解析 | 在 `uid + subjectType` 范围内稳定的营销对象 ID。WeCom SOP 使用 `externalUserId`，ChatAI SOP 使用 `thirdExternalUserId`；同一 Entry Event 可以为不同 Binding 提供不同候选 Subject。 |
 | `workUserId` | Java 生成，Node 匹配 | 企微成员 ID。添加好友和打标签事件统一按该字段匹配 ChatAI SOP 与 WeCom SOP。 |
 | `seatId` | Java 生成，Node 匹配或使用 | ChatAI 席位 ID。新消息事件按该字段匹配；每个有效席位唯一绑定一个 `workUserId`，同一租户下一个 `workUserId` 最多有一个有效席位。 |
-| `externalUserId` | Java 生成，Node 解析 | 企微好友 ID，是 WeCom SOP 的 Subject ID。 |
+| `externalUserId` | Java 生成，Node 解析 | 企微好友数字业务 ID，必须是 JavaScript 安全整数范围内的正整数；Node 投影为 Runtime `subjectId` 时转成十进制字符串。 |
 | `thirdExternalUserId` | Java 生成，Node 解析 | ChatAI 席位好友 ID，是 ChatAI SOP 的 Subject ID。旧名 `external_third_userid` 不再使用。 |
 | Product Entitlement | Java/产品权威，Node 展示和校验 | 租户购买或开通的产品能力，例如 ChatAI 席位、发券能力。它与 Workflow Type 分离，不能通过新增 Workflow Type 表达套餐差异。 |
 | at-least-once | 双方 | 事件或任务可能被重复投递，但不能静默丢失。系统通过 `eventId`、Inbox、Task Version 和 `idempotencyKey` 吸收重复。 |

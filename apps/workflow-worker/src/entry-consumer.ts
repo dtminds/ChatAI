@@ -21,6 +21,7 @@ import type {
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
+import { WorkflowRuntimeError } from "@chatai/workflow-runtime";
 import type {
   WorkflowBroker,
   WorkflowBrokerMessage,
@@ -28,7 +29,7 @@ import type {
 } from "./broker/types.js";
 import { classifyEntryError } from "./error-policy.js";
 import {
-  logWorkflowEntryConsumeResult,
+  createWorkflowEntryConsumeObserver,
   type WorkflowWorkerLogger,
 } from "./observability.js";
 
@@ -82,7 +83,18 @@ export type WorkflowEntryConsumeResultCode =
 export type WorkflowEntryConsumeResult = {
   code: WorkflowEntryConsumeResultCode;
   disposition: "ack" | "nack";
+  errorCode?: string;
+  errorName?: "Error" | "UnknownError" | "WorkflowRuntimeError";
+  failureStage?: WorkflowEntryFailureStage;
 };
+
+export type WorkflowEntryFailureStage =
+  | "ack"
+  | "dlq_publish"
+  | "inbox_check"
+  | "inbox_record"
+  | "routing_read"
+  | "runtime_admission";
 
 export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
@@ -106,6 +118,7 @@ export function createEntryConsumerHandler(input: {
       return rejectPermanentEntry(message, catalogResult.code, input.publishToDeadLetter);
     }
 
+    let failureStage: WorkflowEntryFailureStage = "inbox_check";
     try {
       const observedAt = input.now?.() ?? new Date();
       const inboxMessageId = createEntryInboxMessageId(parsed.event);
@@ -113,6 +126,7 @@ export function createEntryConsumerHandler(input: {
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         messageId: inboxMessageId,
       })) {
+        failureStage = "ack";
         await message.ack();
         return { code: "deduplicated", disposition: "ack" };
       }
@@ -121,6 +135,7 @@ export function createEntryConsumerHandler(input: {
         return rejectPermanentEntry(message, "unknown_event_type", input.publishToDeadLetter);
       }
       const projectedSubjects = listProjectedSubjects(catalogResult.projection);
+      failureStage = "routing_read";
       const [bindings, subscriptions] = await Promise.all([
         input.bindingReader.listActiveTriggerBindings(
           parsed.event.uid,
@@ -141,6 +156,7 @@ export function createEntryConsumerHandler(input: {
       let deduplicated = 0;
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
+      failureStage = "runtime_admission";
       for (const binding of bindings) {
         if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
         const subject = getProjectedSubject(catalogResult.projection, binding.subjectType);
@@ -186,6 +202,7 @@ export function createEntryConsumerHandler(input: {
         }
       }
       const processedAt = observedAt;
+      failureStage = "inbox_record";
       await input.inboxRepository.recordProcessedInboxMessage({
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         expiresAt: new Date(
@@ -195,6 +212,7 @@ export function createEntryConsumerHandler(input: {
         processedAt,
         uid: parsed.event.uid,
       });
+      failureStage = "ack";
       await message.ack();
       if (admitted > 0) return { code: "admitted", disposition: "ack" };
       if (deduplicated > 0) return { code: "deduplicated", disposition: "ack" };
@@ -203,14 +221,14 @@ export function createEntryConsumerHandler(input: {
       }
       if (runtimeRejected > 0) return { code: "runtime_rejected", disposition: "ack" };
       return { code: "no_match", disposition: "ack" };
-    } catch {
+    } catch (error) {
       message.negativeAck();
-      return { code: "temporary_failure", disposition: "nack" };
+      return createTemporaryFailure(error, failureStage);
     }
   };
 }
 
-export function startEntryConsumer(input: {
+export async function startEntryConsumer(input: {
   bindingReader: WorkflowTriggerBindingReader;
   broker: WorkflowBroker;
   deadLetterTopic?: string;
@@ -225,6 +243,9 @@ export function startEntryConsumer(input: {
   topic: string;
 }): Promise<WorkflowBrokerSubscription> {
   const deadLetterTopic = input.deadLetterTopic;
+  const observer = input.logger
+    ? createWorkflowEntryConsumeObserver({ deadLetterTopic, logger: input.logger })
+    : undefined;
   const handler = createEntryConsumerHandler({
     bindingReader: input.bindingReader,
     eventCatalog: input.eventCatalog,
@@ -247,17 +268,33 @@ export function startEntryConsumer(input: {
     runtimeService: input.runtimeService,
     subscriptionReader: input.subscriptionReader,
   });
-  return input.broker.subscribe({
-    deadLetterTopic,
-    handler: async message => {
-      const result = await handler(message);
-      if (input.logger) logWorkflowEntryConsumeResult(input.logger, result);
+  let subscription: WorkflowBrokerSubscription;
+  try {
+    subscription = await input.broker.subscribe({
+      deadLetterTopic,
+      handler: async message => {
+        const result = await handler(message);
+        observer?.record(message, result);
+      },
+      maxRedeliverCount: input.maxRedeliverCount,
+      subscription: input.subscription,
+      topic: input.topic,
+      type: "Shared",
+    });
+  } catch (error) {
+    observer?.close();
+    throw error;
+  }
+  return {
+    async close() {
+      try {
+        await subscription.close();
+      } finally {
+        observer?.close();
+      }
     },
-    maxRedeliverCount: input.maxRedeliverCount,
-    subscription: input.subscription,
-    topic: input.topic,
-    type: "Shared",
-  });
+    isConnected: () => subscription.isConnected(),
+  };
 }
 
 const WORKFLOW_ENTRY_INBOX_CONSUMER = "workflow-entry";
@@ -335,15 +372,44 @@ async function rejectPermanentEntry(
     code: WorkflowEntryConsumeResultCode,
   ) => Promise<void>) | undefined,
 ): Promise<WorkflowEntryConsumeResult> {
+  let failureStage: WorkflowEntryFailureStage = "dlq_publish";
   try {
     if (!publishToDeadLetter) throw new Error("Workflow Entry DLQ is not configured");
     await publishToDeadLetter(message, code);
+    failureStage = "ack";
     await message.ack();
     return { code, disposition: "ack" };
-  } catch {
+  } catch (error) {
     message.negativeAck();
-    return { code: "temporary_failure", disposition: "nack" };
+    return createTemporaryFailure(error, failureStage);
   }
+}
+
+function createTemporaryFailure(
+  error: unknown,
+  failureStage: WorkflowEntryFailureStage,
+): WorkflowEntryConsumeResult {
+  return {
+    code: "temporary_failure",
+    disposition: "nack",
+    errorCode: getStableErrorCode(error),
+    errorName: error instanceof WorkflowRuntimeError
+      ? "WorkflowRuntimeError"
+      : error instanceof Error
+        ? "Error"
+        : "UnknownError",
+    failureStage,
+  };
+}
+
+function getStableErrorCode(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return "UNEXPECTED_ERROR";
+  }
+  const code = Reflect.get(error, "code");
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/.test(code)
+    ? code
+    : "UNEXPECTED_ERROR";
 }
 
 function parseEntryEvent(data: Buffer):

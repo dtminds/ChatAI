@@ -132,6 +132,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       triggerBindingReader: repository,
       workerId,
     }),
+    workerId,
   });
 }
 

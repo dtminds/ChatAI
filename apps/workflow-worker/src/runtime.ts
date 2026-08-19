@@ -41,6 +41,7 @@ export async function startWorkflowWorker(input: {
     close(): Promise<void>;
     getReadiness(): WorkflowReadiness;
   }>;
+  workerId: string;
 }) {
   const runtime = await input.startRuntime();
   let health: { close(): Promise<void> };
@@ -54,9 +55,14 @@ export async function startWorkflowWorker(input: {
     throw error;
   }
   input.logger.info({
+    deadLetterTopics: input.config.deadLetterTopics,
     environment: input.config.environment,
     event: "workflow.worker.started",
+    llmTestMode: input.config.llmTestMode,
     roles: [...input.config.roles],
+    subscriptions: input.config.subscriptions,
+    topics: input.config.topics,
+    workerId: input.workerId,
   }, "workflow worker started");
   let closed = false;
   return {

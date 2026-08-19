@@ -43,7 +43,7 @@ describe("workflow entry consumer", () => {
       workflowId: "31",
     }));
     expect(startRun).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      subjectId: "wm_external_123",
+      subjectId: "3267",
       subjectType: "wecom_contact",
       workflowId: "32",
     }));
@@ -54,7 +54,7 @@ describe("workflow entry consumer", () => {
         occurredAt: "2026-08-09T10:30:15.123Z",
         payloadVersion: 1,
         projection: {
-          externalUserId: "wm_external_123",
+          externalUserId: 3267,
           seatId: 101,
           thirdExternalUserId: "chatai_external_456",
           workUserId: 201,
@@ -88,7 +88,7 @@ describe("workflow entry consumer", () => {
 
     expect(startRun).toHaveBeenCalledTimes(1);
     expect(startRun).toHaveBeenCalledWith(expect.objectContaining({
-      subjectId: "wecom-contact-1",
+      subjectId: "3267",
       subjectType: "wecom_contact",
       workflowId: "32",
     }));
@@ -118,7 +118,7 @@ describe("workflow entry consumer", () => {
       eventOccurredAt: new Date("2026-08-10T00:00:04.000Z"),
       eventType: "message.received",
       projection: {
-        externalUserId: "wm_external_123",
+        externalUserId: 3267,
         messageId: 1001,
         seatId: 101,
         text: "想了解价格",
@@ -182,6 +182,9 @@ describe("workflow entry consumer", () => {
     await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
       code: "temporary_failure",
       disposition: "nack",
+      errorCode: "UNEXPECTED_ERROR",
+      errorName: "Error",
+      failureStage: "runtime_admission",
     });
     await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
       code: "admitted",
@@ -215,7 +218,7 @@ describe("workflow entry consumer", () => {
     const startRun = vi.fn(async () => ({ kind: "entry-policy-rejected" as const }));
     const message = createBrokerMessage(event({
       payload: {
-        externalUserId: "wm_external_123",
+        externalUserId: 3267,
         seatId: 101,
         thirdExternalUserId: "chatai_external_456",
         workUserId: 202,
@@ -282,6 +285,9 @@ describe("workflow entry consumer", () => {
     await expect(handler(transient)).resolves.toEqual({
       code: "temporary_failure",
       disposition: "nack",
+      errorCode: "UNEXPECTED_ERROR",
+      errorName: "Error",
+      failureStage: "runtime_admission",
     });
 
     expect(publishToDeadLetter).toHaveBeenCalledWith(malformed, "invalid_json");
@@ -320,12 +326,16 @@ describe("workflow entry consumer", () => {
         },
       }),
     ]);
-    expect(logger.warn).toHaveBeenCalledWith({
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
       code: "invalid_json",
+      deadLetterTopic: "entry-dlq",
       disposition: "ack",
       event: "workflow.entry.consume.rejected",
+      messageId: "1",
+      redeliveryCount: 0,
       role: "entry-consumer",
-    }, "workflow entry message rejected");
+      topic: "entry",
+    }), "workflow entry message rejected");
     await broker.close();
   });
 
@@ -343,6 +353,9 @@ describe("workflow entry consumer", () => {
     await expect(handler(message)).resolves.toEqual({
       code: "temporary_failure",
       disposition: "nack",
+      errorCode: "UNEXPECTED_ERROR",
+      errorName: "Error",
+      failureStage: "dlq_publish",
     });
     expect(message.ack).not.toHaveBeenCalled();
     expect(message.negativeAck).toHaveBeenCalledTimes(1);
@@ -444,9 +457,39 @@ describe("workflow entry consumer", () => {
     await expect(handler(message)).resolves.toEqual({
       code: "temporary_failure",
       disposition: "nack",
+      errorCode: "UNEXPECTED_ERROR",
+      errorName: "Error",
+      failureStage: "inbox_record",
     });
     expect(message.ack).not.toHaveBeenCalled();
     expect(message.negativeAck).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the stable Runtime error code and admission stage for retryable failures", async () => {
+    const message = createBrokerMessage(event());
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: {
+        startRun: vi.fn(async () => {
+          throw new WorkflowRuntimeError(
+            "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+            "temporarily unavailable",
+            503,
+          );
+        }),
+      },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      code: "temporary_failure",
+      disposition: "nack",
+      errorCode: "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
+      errorName: "WorkflowRuntimeError",
+      failureStage: "runtime_admission",
+    });
   });
 });
 
@@ -476,7 +519,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     eventType: "contact.friend_added",
     occurredAt: "2026-08-09T10:30:15.123Z",
     payload: {
-      externalUserId: "wm_external_123",
+      externalUserId: 3267,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
@@ -541,7 +584,7 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
     eventType: "message.received",
     occurredAt: "2026-08-10T00:00:04.000Z",
     payload: {
-      externalUserId: "wm_external_123",
+      externalUserId: 3267,
       messageId: 1001,
       seatId: 101,
       text: "想了解价格",

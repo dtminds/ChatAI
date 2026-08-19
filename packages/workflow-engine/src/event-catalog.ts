@@ -178,7 +178,7 @@ export function createWorkflowEventCatalog(
 }
 
 function createContactSubjectCandidates(payload: {
-  externalUserId: string;
+  externalUserId: number;
   seatId?: number;
   thirdExternalUserId?: string;
 }) {
@@ -191,7 +191,7 @@ function createContactSubjectCandidates(payload: {
           },
         }
       : {}),
-    wecom_contact: { subjectId: payload.externalUserId },
+    wecom_contact: { subjectId: String(payload.externalUserId) },
   } satisfies WorkflowEventSubjectCandidates;
 }
 

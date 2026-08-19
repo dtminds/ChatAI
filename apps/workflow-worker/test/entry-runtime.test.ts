@@ -72,7 +72,7 @@ describe("Workflow Entry runtime composition", () => {
       outbox: [expect.any(Object), expect.any(Object)],
       runs: [
         { subjectId: "chatai_external_456", subjectType: "chatai_contact", workflowId: "31" },
-        { subjectId: "wm_external_123", subjectType: "wecom_contact", workflowId: "32" },
+        { subjectId: "3267", subjectType: "wecom_contact", workflowId: "32" },
       ],
       tasks: [expect.any(Object), expect.any(Object)],
     });
@@ -119,7 +119,7 @@ function event(): WorkflowEntryEvent {
     eventType: "contact.friend_added",
     occurredAt: "2026-08-10T00:00:00.000Z",
     payload: {
-      externalUserId: "wm_external_123",
+      externalUserId: 3267,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,

@@ -217,13 +217,13 @@ export function useWorkflowDocument(
       setLastSavedAt(normalizedSaveResult.savedAt);
       setLastSavedDraftHash(normalizedSaveResult.draftHash);
       setCurrentPublishHash(createWorkflowPublishHash(normalizedSaveResult.draft));
-      if (savedDocument.currentReview) {
-        setCurrentReviewPublishHash(createWorkflowPublishHash(normalizedSaveResult.draft));
-      }
+      setCurrentReviewPublishHash(savedDocument.currentReview
+        ? createWorkflowPublishHash(normalizedSaveResult.draft)
+        : null);
       setDocument((currentDocument) => ({
         ...currentDocument,
         conversion: savedDocument.conversion,
-        currentReview: savedDocument.currentReview ?? currentDocument.currentReview,
+        currentReview: savedDocument.currentReview,
         draft: cloneWorkflowDraft(normalizedSaveResult.draft),
         draftHash: normalizedSaveResult.draftHash,
         draftVersion: savedDocument.draftVersion,

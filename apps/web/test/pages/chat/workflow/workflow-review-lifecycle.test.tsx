@@ -274,6 +274,40 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("published");
   });
 
+  it("accepts the saved document when the server invalidates the current review", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initial = baseRepository.getDocument("newcomer-conversion");
+    const submitted = baseRepository.submitReview(initial.id);
+    const approved = baseRepository.approveReview(initial.id, submitted.currentReview!.id);
+    const repository = {
+      ...baseRepository,
+      saveDraft: vi.fn((workflowId: string, draft: WorkflowDraft) => {
+        const saved = baseRepository.saveDraft(workflowId, draft);
+        return {
+          ...saved,
+          document: {
+            ...saved.document,
+            currentReview: null,
+          },
+        };
+      }),
+    };
+    const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, approved));
+    const draftWithChangedEdgeMetadata = {
+      ...approved.draft,
+      edges: approved.draft.edges.map((edge, index) => index === 0
+        ? { ...edge, data: { ...edge.data, label: "changed" } }
+        : edge),
+    };
+
+    act(() => {
+      result.current.markDirty(draftWithChangedEdgeMetadata);
+    });
+    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+
+    expect(result.current.document.currentReview).toBeNull();
+  });
+
   it("keeps approval current for layout-only edits", async () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const initial = repository.getDocument("newcomer-conversion");

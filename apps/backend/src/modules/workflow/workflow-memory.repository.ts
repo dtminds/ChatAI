@@ -209,7 +209,12 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
     if (definition.draftVersion !== input.expectedDraftVersion
       || definition.publishedRevision !== input.basePublishedRevision) return conflict();
-    if (this.hasPendingReview(input.uid, input.workflowId)) return reviewLocked();
+    if (this.hasReviewForCandidate(
+      input.uid,
+      input.workflowId,
+      input.draftSemanticHash,
+      input.basePublishedRevision,
+    )) return reviewLocked();
     const now = new Date();
     const review: WorkflowPublishReviewRecord = {
       basePublishedRevision: input.basePublishedRevision,
@@ -354,6 +359,21 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   private hasPendingReview(uid: number, workflowId: string) {
     return this.reviews.some(review =>
       review.uid === uid && review.workflowId === workflowId && review.status === "pending",
+    );
+  }
+
+  private hasReviewForCandidate(
+    uid: number,
+    workflowId: string,
+    draftSemanticHash: string,
+    basePublishedRevision: number | null,
+  ) {
+    return this.reviews.some(review =>
+      review.uid === uid
+      && review.workflowId === workflowId
+      && review.draftSemanticHash === draftSemanticHash
+      && review.basePublishedRevision === basePublishedRevision
+      && (review.status === "pending" || review.status === "approved"),
     );
   }
 

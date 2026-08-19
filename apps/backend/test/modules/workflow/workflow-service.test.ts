@@ -529,7 +529,7 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
-  it("locks the reviewed candidate and restores editing only after the review ends", async () => {
+  it("locks pending review and invalidates approval when the draft changes", async () => {
     const service = createService();
     const created = await createConfigured(service);
     const review = await service.submitReview(operator, created.id, {
@@ -546,13 +546,39 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_REVIEW_LOCKED", statusCode: 409 });
 
     await service.approveReview(operator, created.id, review.id, {});
-    const locked = await service.get(operator, created.id);
-    expect(locked.permissions.canEdit).toBe(false);
+    const approved = await service.get(operator, created.id);
+    expect(approved.permissions.canEdit).toBe(true);
 
-    await service.continueEditing(operator, created.id, review.id);
-    const editable = await service.get(operator, created.id);
+    const editable = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
     expect(editable.permissions.canEdit).toBe(true);
     expect(editable.currentReview).toBeNull();
+    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
+      expect.objectContaining({ id: review.id, status: "obsolete" }),
+    ]);
+  });
+
+  it("invalidates approval when workflow metadata changes", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+
+    const renamed = await service.updateMetadata(operator, created.id, {
+      description: "调整后的说明",
+      name: "调整后的名称",
+    });
+
+    expect(renamed.currentReview).toBeNull();
+    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
+      expect.objectContaining({ id: review.id, status: "obsolete" }),
+    ]);
   });
 
   it("allows self approval but forbids self rejection and blank rejection reasons", async () => {

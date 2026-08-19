@@ -244,7 +244,6 @@ describe("HTTP workflow repository", () => {
     await repository.approveReview("42", review.id, "通过");
     await repository.rejectReview("42", review.id, "请调整");
     await repository.withdrawReview("42", review.id);
-    await repository.continueEditing("42", review.id);
 
     expect(client.post).toHaveBeenNthCalledWith(
       1,
@@ -259,11 +258,6 @@ describe("HTTP workflow repository", () => {
     expect(client.post).toHaveBeenNthCalledWith(
       3,
       `/server/workflows/42/reviews/${review.id}/withdraw`,
-      {},
-    );
-    expect(client.post).toHaveBeenNthCalledWith(
-      4,
-      `/server/workflows/42/reviews/${review.id}/continue-editing`,
       {},
     );
   });

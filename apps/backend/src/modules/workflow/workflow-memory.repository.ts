@@ -161,11 +161,12 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {
     return this.mutate<WorkflowDefinitionRecord>(input.uid, input.workflowId, (definition) => {
-      if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+      if (this.hasPendingReview(input.uid, input.workflowId)) return reviewLocked();
       if (definition.draftVersion !== input.expectedDraftVersion) return conflict();
       if (definition.runtimeStatus === "stopped" && !input.layoutOnly) {
         return invalidStatus(definition.runtimeStatus);
       }
+      this.obsoleteApprovedReview(input.uid, input.workflowId);
       definition.draft = clone(input.draft);
       definition.draftSemanticHash = input.draftSemanticHash;
       definition.draftVersion += 1;
@@ -180,8 +181,9 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
 
   async updateDefinitionMetadata(input: Parameters<WorkflowRepository["updateDefinitionMetadata"]>[0]): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {
     return this.mutate<WorkflowDefinitionRecord>(input.uid, input.workflowId, (definition) => {
-      if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+      if (this.hasPendingReview(input.uid, input.workflowId)) return reviewLocked();
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
+      this.obsoleteApprovedReview(input.uid, input.workflowId);
       if (input.name !== undefined) definition.name = input.name;
       if (input.description !== undefined) definition.description = input.description;
       touch(definition, input.opSubUserId);
@@ -205,7 +207,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
     if (definition.draftVersion !== input.expectedDraftVersion
       || definition.publishedRevision !== input.basePublishedRevision) return conflict();
-    if (this.hasLockedReview(input.uid, input.workflowId)) return reviewLocked();
+    if (this.hasOpenReview(input.uid, input.workflowId)) return reviewLocked();
     const now = new Date();
     const review: WorkflowPublishReviewRecord = {
       basePublishedRevision: input.basePublishedRevision,
@@ -254,7 +256,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   async withdrawReview(input: Parameters<WorkflowRepository["withdrawReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
     const review = this.findMutableReview(input.uid, input.workflowId, input.reviewId);
     if (!review) return notFound<WorkflowPublishReviewRecord>();
-    if (!input.allowedStatuses.includes(review.status as "approved" | "pending")) {
+    if (review.status !== "pending") {
       return reviewInvalidStatus(review.status);
     }
     review.status = "withdrawn";
@@ -348,11 +350,26 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     );
   }
 
-  private hasLockedReview(uid: number, workflowId: string) {
+  private hasOpenReview(uid: number, workflowId: string) {
     return this.reviews.some(review =>
       review.uid === uid && review.workflowId === workflowId
       && (review.status === "pending" || review.status === "approved"),
     );
+  }
+
+  private hasPendingReview(uid: number, workflowId: string) {
+    return this.reviews.some(review =>
+      review.uid === uid && review.workflowId === workflowId && review.status === "pending",
+    );
+  }
+
+  private obsoleteApprovedReview(uid: number, workflowId: string) {
+    const now = new Date();
+    for (const review of this.reviews) {
+      if (review.uid !== uid || review.workflowId !== workflowId || review.status !== "approved") continue;
+      review.status = "obsolete";
+      review.updatedAt = now;
+    }
   }
 
   private obsoleteOpenReviews(uid: number, workflowId: string, opSubUserId: string) {

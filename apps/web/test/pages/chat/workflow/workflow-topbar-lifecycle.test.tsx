@@ -74,20 +74,17 @@ describe("WorkflowTopBar review lifecycle", () => {
   it("requires confirmation before publishing an approved review", async () => {
     const user = userEvent.setup();
     const onPublish = vi.fn();
-    const onContinueEditing = vi.fn(async () => true);
     renderTopBar({
       canPublish: true,
       currentReview: createReview({ status: "approved" }),
       hasUnpublishedChanges: true,
-      onContinueEditing,
       onPublish,
       publishedRevision: 1,
     });
 
     expect(screen.getByText("未启用 · 新版本审核通过")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "继续修改" }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认" }));
-    expect(onContinueEditing).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "继续修改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看审核详情" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "发布" }));
     expect(onPublish).not.toHaveBeenCalled();

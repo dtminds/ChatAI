@@ -3,6 +3,7 @@ import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
+import type { WorkflowPublishReview } from "@chatai/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -184,9 +185,14 @@ function WorkflowWorkspaceContent({
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const canRestoreVersion = currentDocument.permissions.canEdit
-    && currentDocument.currentReview?.status !== "pending"
-    && currentDocument.currentReview?.status !== "approved";
+    && currentDocument.currentReview?.status !== "pending";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
+  const [historyReview, setHistoryReview] = useState<WorkflowPublishReview | null>(null);
+  const displayedReview = historyReview ?? (review.isOpen ? review.current : null);
+  const closeDisplayedReview = () => {
+    if (historyReview) setHistoryReview(null);
+    else review.onClose();
+  };
   useEffect(() => {
     previousInspectorOpenRef.current = inspector.isOpen;
   }, [inspector.isOpen]);
@@ -219,11 +225,13 @@ function WorkflowWorkspaceContent({
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
-        onOpenReview={topBar.onOpenReview}
+        onOpenReview={() => {
+          setHistoryReview(null);
+          topBar.onOpenReview();
+        }}
         onPublish={topBar.onPublish}
         onSubmitReview={topBar.onSubmitReview}
         onWithdrawReview={topBar.onWithdrawReview}
-        onContinueEditing={topBar.onContinueEditing}
         onEnable={topBar.onEnable}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
@@ -258,6 +266,10 @@ function WorkflowWorkspaceContent({
             onClose={versionHistory.onClose}
             onExitPreview={versionHistory.onExitPreview}
             onRestoreVersion={versionHistory.onRestoreVersion}
+            onSelectReview={(selectedReview) => {
+              setHistoryReview(selectedReview);
+              versionHistory.onClose();
+            }}
             onSelectVersion={versionHistory.onSelectVersion}
             restoreState={versionHistory.restoreState}
             versions={versionHistory.versions}
@@ -278,7 +290,15 @@ function WorkflowWorkspaceContent({
               <span className="font-medium text-destructive">审核驳回：</span>
               <span>{currentDocument.currentReview.reviewComment}</span>
             </p>
-            <Button onClick={review.onOpen} size="sm" type="button" variant="ghost">
+            <Button
+              onClick={() => {
+                setHistoryReview(null);
+                review.onOpen();
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
               查看详情
             </Button>
           </div>
@@ -290,6 +310,16 @@ function WorkflowWorkspaceContent({
             document={currentDocument}
             refreshVersion={dataRefreshVersion}
           />
+          {displayedReview ? (
+            <WorkflowReviewPanel
+              onApprove={review.onApprove}
+              onClose={closeDisplayedReview}
+              onReject={review.onReject}
+              onWithdraw={review.onWithdraw}
+              pending={review.pending}
+              review={displayedReview}
+            />
+          ) : null}
         </div>
       ) : (
         <div
@@ -361,14 +391,14 @@ function WorkflowWorkspaceContent({
                 testContext={inspector.testContext}
             />
           ) : null}
-          {review.isOpen && review.current ? (
+          {displayedReview ? (
             <WorkflowReviewPanel
               onApprove={review.onApprove}
-              onClose={review.onClose}
+              onClose={closeDisplayedReview}
               onReject={review.onReject}
               onWithdraw={review.onWithdraw}
               pending={review.pending}
-              review={review.current}
+              review={displayedReview}
             />
           ) : null}
         </div>

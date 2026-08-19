@@ -60,6 +60,18 @@ describe("WorkflowReviewPanel", () => {
     expect(screen.getByText(/其他管理员于 .* 审核驳回/)).toBeInTheDocument();
     expect(screen.getByText("进入条件需要调整")).toBeInTheDocument();
   });
+
+  it("explains why an obsolete review needs to be submitted again", () => {
+    renderPanel(createReview({
+      reviewedAt: "2026-08-16T11:30:00.000+08:00",
+      reviewedBySubUserId: "303",
+      status: "obsolete",
+    }));
+
+    expect(screen.getByText("审核后已修改")).toBeInTheDocument();
+    expect(screen.getByText("审核后流程已发生变化，本次审核不再适用于当前版本")).toBeInTheDocument();
+    expect(screen.queryByText(/其他管理员于 .* 审核后已修改/)).not.toBeInTheDocument();
+  });
 });
 
 function renderPanel(

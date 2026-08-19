@@ -158,15 +158,6 @@ export function createHttpWorkflowDraftRepository(
       reviewId,
       "withdraw",
     ),
-    continueEditing: (workflowId, reviewId) => mutateReview(
-      client,
-      definitions,
-      revisions,
-      workflowId,
-      reviewId,
-      "continue-editing",
-    ),
-
     async publishReview(workflowId, reviewId) {
       return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
         try {
@@ -314,7 +305,7 @@ async function mutateReview(
   revisions: Map<string, ApiWorkflowRevision[]>,
   workflowId: string,
   reviewId: string,
-  action: "approve" | "reject" | "withdraw" | "continue-editing",
+  action: "approve" | "reject" | "withdraw",
   body: Record<string, unknown> = {},
 ) {
   try {

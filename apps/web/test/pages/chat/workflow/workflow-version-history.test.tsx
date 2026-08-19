@@ -25,14 +25,27 @@ describe("WorkflowVersionHistoryPanel", () => {
     expect(await screen.findByText("08/16 18:00")).toBeInTheDocument();
     expect(screen.queryByText("2026-08-16T10:00:00.000Z")).not.toBeInTheDocument();
   });
+
+  it("opens the selected review record", async () => {
+    const user = userEvent.setup();
+    const onSelectReview = vi.fn();
+    renderPanel({ onSelectReview });
+
+    await user.click(screen.getByRole("tab", { name: "审核记录" }));
+    await user.click(await screen.findByRole("button", { name: /待审核/ }));
+
+    expect(onSelectReview).toHaveBeenCalledWith(expect.objectContaining({ id: "review-1" }));
+  });
 });
 
 function renderPanel({
   canRestore = true,
   onRestoreVersion = vi.fn(),
+  onSelectReview = vi.fn(),
 }: {
   canRestore?: boolean;
   onRestoreVersion?: (versionId: string) => void;
+  onSelectReview?: (review: WorkflowPublishReview) => void;
 } = {}) {
   return render(
     <WorkflowVersionHistoryPanel
@@ -42,6 +55,7 @@ function renderPanel({
       onClose={vi.fn()}
       onExitPreview={vi.fn()}
       onRestoreVersion={onRestoreVersion}
+      onSelectReview={onSelectReview}
       onSelectVersion={vi.fn()}
       restoreState="idle"
       versions={[{

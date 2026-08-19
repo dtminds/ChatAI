@@ -74,7 +74,6 @@ export function useWorkflowWorkspace(
     markDirty,
     metadataUpdateState,
     approveReview,
-    continueEditing,
     publishReview,
     publishError,
     publishState,
@@ -564,19 +563,6 @@ export function useWorkflowWorkspace(
     }
   });
 
-  const handleContinueEditing = useWorkflowStableCallback(async () => {
-    const reviewId = document.currentReview?.id;
-    if (!reviewId) return false;
-    try {
-      const result = await continueEditing(reviewId);
-      if (result) toast.success("已恢复编辑");
-      return Boolean(result);
-    } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
-      return false;
-    }
-  });
-
   const updateWorkflowMetadata = useWorkflowStableCallback(async (metadata: { description: string; name: string }) => {
     try {
       return await updateMetadata(metadata);
@@ -785,7 +771,6 @@ export function useWorkflowWorkspace(
       onApproveReview: handleApproveReview,
       onRejectReview: handleRejectReview,
       onWithdrawReview: handleWithdrawReview,
-      onContinueEditing: handleContinueEditing,
       onEnable: enablePublishedDocument,
       currentReview: document.currentReview,
       reviewActionState,
@@ -820,7 +805,6 @@ export function useWorkflowWorkspace(
       onApprove: handleApproveReview,
       onClose: closeReview,
       onOpen: openReview,
-      onContinueEditing: handleContinueEditing,
       onReject: handleRejectReview,
       onWithdraw: handleWithdrawReview,
       pending: reviewActionState !== "idle",

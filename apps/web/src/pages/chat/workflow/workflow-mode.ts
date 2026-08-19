@@ -132,7 +132,7 @@ function getWorkflowReadOnlyReason({
     return "publishing";
   }
 
-  if (reviewStatus === "pending" || reviewStatus === "approved") {
+  if (reviewStatus === "pending") {
     return "review-locked";
   }
 

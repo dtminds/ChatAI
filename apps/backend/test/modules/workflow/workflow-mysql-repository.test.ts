@@ -117,6 +117,28 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.selectBuilders.at(-1)).toMatchObject({ forUpdate: false });
   });
 
+  it("invalidates an approved review in the same transaction as a draft save", async () => {
+    const db = createWorkflowDbMock({ reviewStatus: "approved" });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.saveDraft({
+      draft: createDraft(),
+      draftSemanticHash: "next-draft-hash",
+      expectedDraftVersion: 4,
+      opSubUserId: "19",
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.updateBuilders).toHaveLength(2);
+    expect(db.updateBuilders[0]).toMatchObject({
+      sets: { status: "obsolete" },
+      table: "xy_wap_embed_workflow_publish_review",
+    });
+    expect(db.updateBuilders[1].table).toBe("xy_wap_embed_workflow_definition");
+  });
+
   it("allows layout-only draft writes without requiring a non-stopped runtime status", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -375,6 +397,7 @@ describe("MysqlWorkflowRepository", () => {
 function createWorkflowDbMock(options: {
   activeDefinitionCount?: number;
   numUpdatedRows?: bigint;
+  reviewStatus?: "approved" | "pending";
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 } = {}) {
   const row = {
@@ -431,7 +454,9 @@ function createWorkflowDbMock(options: {
             : [row];
         },
         async executeTakeFirst() {
-          if (table === "xy_wap_embed_workflow_publish_review") return undefined;
+          if (table === "xy_wap_embed_workflow_publish_review") {
+            return options.reviewStatus ? { status: options.reviewStatus } : undefined;
+          }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
             : row;

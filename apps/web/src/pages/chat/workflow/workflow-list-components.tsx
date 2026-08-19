@@ -265,7 +265,7 @@ function WorkflowCardMenu({
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
-          disabled={workflow.currentReview?.status === "pending" || workflow.currentReview?.status === "approved"}
+          disabled={workflow.currentReview?.status === "pending"}
           onSelect={onRename}
         >
           <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />

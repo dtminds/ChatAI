@@ -297,14 +297,6 @@ export async function registerWorkflowRoutes(
     )),
   );
 
-  app.post<{ Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/continue-editing",
-    { ...authenticated, schema: { params: WorkflowReviewParamsSchema } },
-    async request => apiSuccess(await service.continueEditing(
-      getWorkflowScope(request), request.params.workflowId, request.params.reviewId,
-    )),
-  );
-
   app.post<{ Params: WorkflowParams }>(
     "/api/server/workflows/:workflowId/enable",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },

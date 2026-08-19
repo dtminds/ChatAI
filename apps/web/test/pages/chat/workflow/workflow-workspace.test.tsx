@@ -655,7 +655,6 @@ describe("useWorkflowWorkspace", () => {
     const repository = {
       ...baseRepository,
       approveReview: vi.fn(async () => { throw reviewError; }),
-      continueEditing: vi.fn(async () => { throw reviewError; }),
       enableDocument: vi.fn(async () => {
         throw new WorkflowRepositoryError(
           "conflict",
@@ -697,13 +696,11 @@ describe("useWorkflowWorkspace", () => {
       await pendingResult.current.review.onApprove();
       await pendingResult.current.review.onReject("需要调整");
       await pendingResult.current.review.onWithdraw();
-      await pendingResult.current.review.onContinueEditing();
     });
     expect(repository.approveReview).toHaveBeenCalledWith(initial.id, reviewId, undefined);
     expect(repository.rejectReview).toHaveBeenCalledWith(initial.id, reviewId, "需要调整");
     expect(repository.withdrawReview).toHaveBeenCalledWith(initial.id, reviewId);
-    expect(repository.continueEditing).toHaveBeenCalledWith(initial.id, reviewId);
-    expect(toast.error).toHaveBeenCalledTimes(5);
+    expect(toast.error).toHaveBeenCalledTimes(4);
 
     const approved = baseRepository.approveReview(initial.id, reviewId);
     const { result: approvedResult } = renderHook(() => useWorkflowWorkspace(
@@ -715,7 +712,7 @@ describe("useWorkflowWorkspace", () => {
       await approvedResult.current.topBar.onPublish();
     });
     expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
-    expect(toast.error).toHaveBeenCalledTimes(6);
+    expect(toast.error).toHaveBeenCalledTimes(5);
 
     const inactive = {
       ...baseRepository.getDocument("vip-reactivation"),
@@ -730,7 +727,7 @@ describe("useWorkflowWorkspace", () => {
       await inactiveResult.current.topBar.onEnable?.();
     });
     expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
-    expect(toast.error).toHaveBeenCalledTimes(7);
+    expect(toast.error).toHaveBeenCalledTimes(6);
   });
 
   it("keeps publish state consistent when undo returns to the published draft", async () => {

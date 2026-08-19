@@ -87,7 +87,7 @@ export function WorkflowListPage({
   }), [items, normalizedQuery, statusFilter]);
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
-    if (workflow.currentReview?.status === "pending" || workflow.currentReview?.status === "approved") {
+    if (workflow.currentReview?.status === "pending") {
       return;
     }
     setOperationError(null);

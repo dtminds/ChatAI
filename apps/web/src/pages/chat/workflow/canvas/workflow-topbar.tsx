@@ -64,7 +64,6 @@ export function WorkflowTopBar({
   onPublish,
   onSubmitReview = () => undefined,
   onWithdrawReview,
-  onContinueEditing,
   onEnable,
   onPublishCheck,
   onReloadDocument,
@@ -108,7 +107,6 @@ export function WorkflowTopBar({
   onPublish: () => void;
   onSubmitReview?: () => void;
   onWithdrawReview?: () => Promise<boolean>;
-  onContinueEditing?: () => Promise<boolean>;
   onEnable?: () => Promise<boolean>;
   onPublishCheck: () => void;
   onReloadDocument?: () => void;
@@ -123,7 +121,7 @@ export function WorkflowTopBar({
   publishState: WorkflowDraftPublishStatus;
   publishReady: boolean;
   currentReview?: WorkflowPublishReview | null;
-  reviewActionState?: "idle" | "submitting" | "approving" | "rejecting" | "withdrawing" | "continuing";
+  reviewActionState?: "idle" | "submitting" | "approving" | "rejecting" | "withdrawing";
   lifecycleActionState?: "idle" | "enabling";
   publishedRevision?: number | null;
   restoreState?: WorkflowDraftRestoreStatus;
@@ -136,7 +134,7 @@ export function WorkflowTopBar({
 }) {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
-  const [reviewDiscardAction, setReviewDiscardAction] = useState<"continue" | "withdraw" | null>(null);
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
   const versionPreviewMode = Boolean(isPreviewingVersion);
@@ -346,7 +344,7 @@ export function WorkflowTopBar({
                     ) : null}
                     <Button
                       disabled={reviewActionState !== "idle"}
-                      onClick={() => setReviewDiscardAction("withdraw")}
+                      onClick={() => setWithdrawConfirmOpen(true)}
                       size="sm"
                       type="button"
                       variant="secondary"
@@ -369,28 +367,8 @@ export function WorkflowTopBar({
                       </Button>
                     ) : null}
                     <Button
-                      aria-label="查看审核详情"
-                      className="size-9"
-                      onClick={onOpenReview}
-                      size="icon"
-                      title="查看审核详情"
-                      type="button"
-                      variant="secondary"
-                    >
-                      <HugeiconsIcon icon={InformationCircleIcon} size={17} strokeWidth={1.8} />
-                    </Button>
-                    <Button
-                      disabled={reviewActionState !== "idle"}
-                      onClick={() => setReviewDiscardAction("continue")}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      继续修改
-                    </Button>
-                    <Button
                       className="h-9 rounded-lg px-5 text-sm font-semibold"
-                      disabled={!canPublish || publishing}
+                      disabled={!canPublish || publishing || saveState !== "saved"}
                       onClick={() => setPublishConfirmOpen(true)}
                       type="button"
                     >
@@ -502,29 +480,22 @@ export function WorkflowTopBar({
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog
-        open={reviewDiscardAction !== null}
-        onOpenChange={(open) => {
-          if (!open) setReviewDiscardAction(null);
-        }}
+        open={withdrawConfirmOpen}
+        onOpenChange={setWithdrawConfirmOpen}
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {reviewDiscardAction === "withdraw" ? "确认撤回审核" : "确认继续修改"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>确认撤回审核</AlertDialogTitle>
             <AlertDialogDescription>
-              {reviewDiscardAction === "withdraw"
-                ? "撤回后将结束本次审核并恢复画布编辑"
-                : "继续修改将放弃本次审核通过结果并恢复画布编辑"}
+              撤回后将结束本次审核并恢复画布编辑
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (reviewDiscardAction === "withdraw") void onWithdrawReview?.();
-                if (reviewDiscardAction === "continue") void onContinueEditing?.();
-                setReviewDiscardAction(null);
+                void onWithdrawReview?.();
+                setWithdrawConfirmOpen(false);
               }}
             >
               确认

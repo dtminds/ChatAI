@@ -62,7 +62,7 @@ describe("workflow draft service", () => {
       .toThrow(expect.objectContaining({ apiCode: "WORKFLOW_REVIEW_LOCKED" }));
   });
 
-  it("allows self approval and keeps approval read-only until publish or continue editing", () => {
+  it("allows editing after approval and invalidates the approved candidate on save", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const submitted = repository.submitReview("newcomer-conversion");
     const reviewId = submitted.currentReview!.id;
@@ -72,11 +72,17 @@ describe("workflow draft service", () => {
       reviewComment: "同意发布",
       status: "approved",
     });
-    expect(approved.permissions).toMatchObject({ canEdit: false, canPublish: true });
+    expect(approved.permissions).toMatchObject({ canEdit: true, canPublish: true });
 
-    const editable = repository.continueEditing("newcomer-conversion", reviewId);
+    const editable = repository.saveDraft(
+      "newcomer-conversion",
+      renameStartNode(approved.draft, "审核后修改"),
+    ).document;
     expect(editable.currentReview).toBeNull();
     expect(editable.permissions.canEdit).toBe(true);
+    expect(repository.listReviews("newcomer-conversion")).toEqual([
+      expect.objectContaining({ id: reviewId, status: "obsolete" }),
+    ]);
   });
 
   it("keeps an explicit rejected review while restoring edit access", () => {
@@ -216,7 +222,7 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("error");
   });
 
-  it("drives approve, continue-editing, and publish through the hook", async () => {
+  it("invalidates approval on edit and publishes after a new review", async () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const initial = repository.getDocument("newcomer-conversion");
     const { result } = renderHook(() => useWorkflowDocument(initial.id, repository, initial));
@@ -230,15 +236,18 @@ describe("workflow draft service", () => {
     });
     expect(result.current.document.currentReview?.status).toBe("approved");
 
-    await act(async () => {
-      await result.current.continueEditing(firstReviewId);
+    act(() => {
+      result.current.markDirty(renameStartNode(result.current.document.draft, "审核后修改"));
     });
-    expect(result.current.document.currentReview).toBeNull();
-
     await act(async () => {
       await result.current.submitReview();
     });
     const secondReviewId = result.current.document.currentReview!.id;
+    expect(secondReviewId).not.toBe(firstReviewId);
+    expect(repository.listReviews(initial.id)).toEqual([
+      expect.objectContaining({ id: secondReviewId, status: "pending" }),
+      expect.objectContaining({ id: firstReviewId, status: "obsolete" }),
+    ]);
     await act(async () => {
       await result.current.approveReview(secondReviewId);
       await result.current.publishReview(secondReviewId);

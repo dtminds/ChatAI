@@ -430,7 +430,7 @@ export function useWorkflowDocument(
   }, [repository]);
 
   const [reviewActionState, setReviewActionState] = useState<
-    "idle" | "submitting" | "approving" | "rejecting" | "withdrawing" | "continuing"
+    "idle" | "submitting" | "approving" | "rejecting" | "withdrawing"
   >("idle");
 
   const applyReviewDocument = useCallback((nextDocument: WorkflowDocument) => {
@@ -468,22 +468,20 @@ export function useWorkflowDocument(
 
   const runReviewDecision = useCallback(async (
     reviewId: string,
-    action: "approve" | "reject" | "withdraw" | "continue",
+    action: "approve" | "reject" | "withdraw",
     comment?: string,
   ) => {
     const requestId = publishRequestRef.current + 1;
     publishRequestRef.current = requestId;
     const workflowIdToUpdate = workflowIdRef.current;
-    setReviewActionState(action === "approve" ? "approving" : action === "reject" ? "rejecting" : action === "withdraw" ? "withdrawing" : "continuing");
+    setReviewActionState(action === "approve" ? "approving" : action === "reject" ? "rejecting" : "withdrawing");
     setPublishError(null);
     try {
       const nextDocument = action === "approve"
         ? await Promise.resolve(repository.approveReview(workflowIdToUpdate, reviewId, comment))
         : action === "reject"
           ? await Promise.resolve(repository.rejectReview(workflowIdToUpdate, reviewId, comment ?? ""))
-          : action === "withdraw"
-            ? await Promise.resolve(repository.withdrawReview(workflowIdToUpdate, reviewId))
-            : await Promise.resolve(repository.continueEditing(workflowIdToUpdate, reviewId));
+          : await Promise.resolve(repository.withdrawReview(workflowIdToUpdate, reviewId));
       if (publishRequestRef.current !== requestId || workflowIdRef.current !== workflowIdToUpdate) {
         return nextDocument;
       }
@@ -664,7 +662,6 @@ export function useWorkflowDocument(
     approveReview: (reviewId: string, comment?: string) => runReviewDecision(reviewId, "approve", comment),
     rejectReview: (reviewId: string, reason: string) => runReviewDecision(reviewId, "reject", reason),
     withdrawReview: (reviewId: string) => runReviewDecision(reviewId, "withdraw"),
-    continueEditing: (reviewId: string) => runReviewDecision(reviewId, "continue"),
     publishReview,
     importDraft,
     importState,

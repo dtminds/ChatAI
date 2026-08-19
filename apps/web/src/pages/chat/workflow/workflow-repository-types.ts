@@ -135,10 +135,6 @@ export type WorkflowDraftWriter = {
     reviewId: string,
     comment?: string,
   ) => Promise<WorkflowDocument> | WorkflowDocument;
-  continueEditing: (
-    workflowId: string,
-    reviewId: string,
-  ) => Promise<WorkflowDocument> | WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;
@@ -189,7 +185,6 @@ export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = {
   approveReview: (workflowId: string, reviewId: string, comment?: string) => WorkflowDocument;
-  continueEditing: (workflowId: string, reviewId: string) => WorkflowDocument;
   createDocument: (input: {
     clientRequestId?: string;
     description?: string;

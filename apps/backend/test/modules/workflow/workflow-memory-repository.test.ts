@@ -99,7 +99,6 @@ describe("InMemoryWorkflowRepository review ordering", () => {
         status: "pending",
       });
       await repository.withdrawReview({
-        allowedStatuses: ["pending"],
         opSubUserId: OP_SUB_USER_ID,
         reviewId: second.value.id,
         uid: UID,

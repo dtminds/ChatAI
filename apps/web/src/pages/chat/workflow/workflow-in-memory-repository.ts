@@ -106,21 +106,22 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
+      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDraft = cloneWorkflowDraft(draft);
       const importedAt = "刚刚";
       const nextDraftHash = createWorkflowDraftHash(nextDraft);
       const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        ...editableDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
         draft: nextDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: currentDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
+        hasUnpublishedChanges: editableDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(editableDocument.publishedDraft, nextDraft),
         nodes: nextDraft.nodes.length,
-        revision: currentDocument.revision + 1,
+        revision: editableDocument.revision + 1,
         savedAt: importedAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
         updatedAt: importedAt,
       };
 
@@ -162,9 +163,6 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     },
     withdrawReview: (workflowId, reviewId) => decideReview(
       workflowId, reviewId, "withdrawn", ["pending"],
-    ),
-    continueEditing: (workflowId, reviewId) => decideReview(
-      workflowId, reviewId, "withdrawn", ["approved"],
     ),
     publishReview: (workflowId, reviewId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
@@ -241,8 +239,9 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
+      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDocument = {
-        ...currentDocument,
+        ...editableDocument,
         description: normalizedDescription,
         name: normalizedName,
         updatedAt: "刚刚",
@@ -261,12 +260,13 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         throw new WorkflowRepositoryError("not-found", `Unknown workflow version: ${versionId}`);
       }
 
+      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDraft = cloneWorkflowDraft(restoredVersion.draft);
       const restoredAt = "刚刚";
       const nextDraftHash = createWorkflowDraftHash(nextDraft);
       const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        ...editableDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
         currentVersion: {
           id: restoredVersion.id,
           name: restoredVersion.name,
@@ -275,13 +275,13 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         },
         draft: nextDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: currentDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
+        hasUnpublishedChanges: editableDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(editableDocument.publishedDraft, nextDraft),
         nodes: nextDraft.nodes.length,
-        revision: currentDocument.revision + 1,
+        revision: editableDocument.revision + 1,
         savedAt: restoredAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
         updatedAt: restoredAt,
       };
 
@@ -303,23 +303,26 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       assertEditable(currentDocument);
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
-      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
-      const savedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.savedAt;
-      const updatedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.updatedAt;
+      const editableDocument = shouldCreateDraftRevision
+        ? invalidateApprovedReview(workflowId, currentDocument)
+        : currentDocument;
+      const persistedDraft = shouldCreateDraftRevision ? nextDraft : editableDocument.draft;
+      const savedAt = shouldCreateDraftRevision ? "刚刚" : editableDocument.savedAt;
+      const updatedAt = shouldCreateDraftRevision ? "刚刚" : editableDocument.updatedAt;
       const nextDraftHash = shouldCreateDraftRevision
         ? createWorkflowDraftHash(nextDraft)
-        : currentDocument.draftHash;
+        : editableDocument.draftHash;
       const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        ...editableDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
         draft: persistedDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: currentDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(currentDocument.publishedDraft, persistedDraft),
+        hasUnpublishedChanges: editableDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(editableDocument.publishedDraft, persistedDraft),
         nodes: persistedDraft.nodes.length,
-        revision: shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision,
+        revision: shouldCreateDraftRevision ? editableDocument.revision + 1 : editableDocument.revision,
         savedAt,
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
         updatedAt,
       };
 
@@ -426,11 +429,21 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   }
 
   function assertEditable(document: WorkflowDocument) {
-    if (document.currentReview?.status === "pending" || document.currentReview?.status === "approved") {
+    if (document.currentReview?.status === "pending") {
       throw new WorkflowRepositoryError("conflict", "Workflow is locked for review", {
         apiCode: "WORKFLOW_REVIEW_LOCKED",
       });
     }
+  }
+
+  function invalidateApprovedReview(workflowId: string, document: WorkflowDocument) {
+    const review = document.currentReview;
+    if (review?.status !== "approved") return document;
+    replaceReview(workflowId, {
+      ...review,
+      status: "obsolete",
+    });
+    return withReview(document, null);
   }
 }
 
@@ -438,7 +451,7 @@ function withReview(
   document: WorkflowDocument,
   review: WorkflowPublishReview | null,
 ): WorkflowDocument {
-  const locked = review?.status === "pending" || review?.status === "approved";
+  const locked = review?.status === "pending";
   return {
     ...document,
     currentReview: review,

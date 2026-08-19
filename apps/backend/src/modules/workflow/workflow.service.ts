@@ -460,11 +460,15 @@ export class WorkflowService {
   }
 
   async withdrawReview(scope: WorkflowOperatorScope, workflowId: string, reviewId: string) {
-    return this.withdrawReviewWithStatuses(scope, workflowId, reviewId, ["pending"]);
-  }
-
-  async continueEditing(scope: WorkflowOperatorScope, workflowId: string, reviewId: string) {
-    return this.withdrawReviewWithStatuses(scope, workflowId, reviewId, ["approved"]);
+    assertWorkflowAccess(scope);
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    this.assertNotStopped(definition);
+    return toReview(this.unwrapMutation(await this.repository.withdrawReview({
+      opSubUserId: scope.subUserId,
+      reviewId,
+      uid: scope.uid,
+      workflowId,
+    })));
   }
 
   async publish(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowPublishRequest): Promise<WorkflowPublishResult> {
@@ -760,24 +764,6 @@ export class WorkflowService {
     return toDefinition(record, review);
   }
 
-  private async withdrawReviewWithStatuses(
-    scope: WorkflowOperatorScope,
-    workflowId: string,
-    reviewId: string,
-    allowedStatuses: Array<"approved" | "pending">,
-  ) {
-    assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
-    this.assertNotStopped(definition);
-    return toReview(this.unwrapMutation(await this.repository.withdrawReview({
-      allowedStatuses,
-      opSubUserId: scope.subUserId,
-      reviewId,
-      uid: scope.uid,
-      workflowId,
-    })));
-  }
-
   private async createChangeSummary(
     definition: WorkflowDefinitionRecord,
     draft: WorkflowDraft,
@@ -811,7 +797,7 @@ function toDefinition(
   record: WorkflowDefinitionRecord,
   currentReview: WorkflowPublishReviewRecord | null,
 ): WorkflowDefinition {
-  const reviewLocked = currentReview?.status === "pending" || currentReview?.status === "approved";
+  const reviewLocked = currentReview?.status === "pending";
   return {
     capabilitySummary: {
       runtimeSupportedNodeKinds: [...WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS],

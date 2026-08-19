@@ -297,6 +297,17 @@ export async function registerWorkflowRoutes(
     )),
   );
 
+  app.post<{ Body: WorkflowRestoreRequest; Params: WorkflowReviewParams }>(
+    "/api/server/workflows/:workflowId/reviews/:reviewId/restore",
+    { ...authenticated, schema: { body: WorkflowRestoreRequestSchema, params: WorkflowReviewParamsSchema } },
+    async request => apiSuccess(await service.restoreReview(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.reviewId,
+      request.body,
+    )),
+  );
+
   app.post<{ Params: WorkflowParams }>(
     "/api/server/workflows/:workflowId/enable",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },

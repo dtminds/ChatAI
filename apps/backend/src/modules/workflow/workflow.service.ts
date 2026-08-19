@@ -471,6 +471,40 @@ export class WorkflowService {
     })));
   }
 
+  async restoreReview(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    reviewId: string,
+    input: WorkflowRestoreRequest,
+  ) {
+    assertWorkflowAccess(scope);
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    this.assertNotStopped(definition);
+    const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
+    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
+    if (review.status === "pending") {
+      throw new AppError("WORKFLOW_REVIEW_RESTORE_PENDING", "待审核内容无需恢复", 409);
+    }
+    if (review.resultingRevision !== null) {
+      throw new AppError(
+        "WORKFLOW_REVIEW_ALREADY_PUBLISHED",
+        "该审核已发布，请从发布版本恢复",
+        409,
+      );
+    }
+    const draft = normalizeWorkflowDraft(review.draft);
+    assertWorkflowDraftNodeContracts(draft);
+    assertWorkflowTypePolicy(definition.workflowType, draft);
+    return this.toDefinition(this.unwrapMutation(await this.repository.restoreDraft({
+      draft,
+      draftSemanticHash: hashDraftSemantics(draft),
+      expectedDraftVersion: input.expectedDraftVersion,
+      opSubUserId: scope.subUserId,
+      uid: scope.uid,
+      workflowId,
+    })));
+  }
+
   async publish(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowPublishRequest): Promise<WorkflowPublishResult> {
     assertWorkflowAccess(scope);
     const definition = await this.requireDefinition(scope.uid, workflowId);

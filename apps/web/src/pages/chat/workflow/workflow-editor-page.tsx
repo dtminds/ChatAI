@@ -315,6 +315,17 @@ function WorkflowWorkspaceContent({
               onApprove={review.onApprove}
               onClose={closeDisplayedReview}
               onReject={review.onReject}
+              onRestore={historyReview
+                && historyReview.id !== currentDocument.currentReview?.id
+                && historyReview.status !== "pending"
+                && historyReview.resultingRevision === null
+                && canRestoreVersion
+                ? async () => {
+                    const restored = await review.onRestore(historyReview.id);
+                    if (restored) setHistoryReview(null);
+                    return restored;
+                  }
+                : undefined}
               onWithdraw={review.onWithdraw}
               pending={review.pending}
               review={displayedReview}
@@ -396,6 +407,17 @@ function WorkflowWorkspaceContent({
               onApprove={review.onApprove}
               onClose={closeDisplayedReview}
               onReject={review.onReject}
+              onRestore={historyReview
+                && historyReview.id !== currentDocument.currentReview?.id
+                && historyReview.status !== "pending"
+                && historyReview.resultingRevision === null
+                && canRestoreVersion
+                ? async () => {
+                    const restored = await review.onRestore(historyReview.id);
+                    if (restored) setHistoryReview(null);
+                    return restored;
+                  }
+                : undefined}
               onWithdraw={review.onWithdraw}
               pending={review.pending}
               review={displayedReview}

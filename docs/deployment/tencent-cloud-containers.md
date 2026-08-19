@@ -119,7 +119,7 @@ VITE_WECHAT_EMOJI_BASE_URL=
 VITE_WORKFLOW_FIXTURES_ENABLED=false
 ```
 
-`VITE_*` 是构建时变量。test01 尚未接入真实托管账号和标签数据源，构建时必须传入 `--build-arg VITE_WORKFLOW_FIXTURES_ENABLED=true`；production 必须保持默认 `false`。因此 Phase 3 的 test01 与 production Web 镜像不能复用同一构建产物。
+`VITE_*` 是构建时变量。test 尚未接入真实托管账号和标签数据源，构建时必须传入 `--build-arg VITE_WORKFLOW_FIXTURES_ENABLED=true`；production 必须保持默认 `false`。因此 Phase 3 的 test 与 production Web 镜像不能复用同一构建产物。
 
 静态服务需要支持 React Router fallback：
 
@@ -284,7 +284,7 @@ Workflow 不维护环境级 Capability 白名单。节点是否可发布由共�
 | 环境 | Entry Topic | Task Topic | Subscription |
 | --- | --- | --- | --- |
 | dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` | `consumer-chatai-worker-env-dev` |
-| test01 | `topic-workflow-entry-test01` | `topic-workflow-task-test01` | `consumer-chatai-worker-env-test01` |
+| test | `topic-workflow-entry-test` | `topic-workflow-task-test` | `consumer-chatai-worker-env-test` |
 
 Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称。TDMQ 会为每个环境消费组维护系统 `-RETRY` 和 `-DLQ` Topic，不需要在应用中创建额外业务 Topic。测试与开发不得交叉使用 Topic 或 Subscription。
 
@@ -312,7 +312,7 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 
 真实端到端 Smoke 必须从 Java 提供的受支持测试入口触发，由 Java 生成标准 Entry Event、写入 Event Outbox 并投递 TDMQ。Node Worker 不再根据 Trigger Binding 生成联系人、标签或消息 payload，也不提供按 `workflowId` 直投业务事件的命令。
 
-共享 JSON Fixture 和 Fake Event Catalog 只用于 Node 子系统自动化测试。它们不能替代 Java Producer、真实 TDMQ 和隔离测试租户上的 test01 联调，也不能作为开放生产事件或节点 maturity 的依据。
+共享 JSON Fixture 和 Fake Event Catalog 只用于 Node 子系统自动化测试。它们不能替代 Java Producer、真实 TDMQ 和隔离测试租户上的 test 联调，也不能作为开放生产事件或节点 maturity 的依据。
 
 正常 Worker 入口只接受 Pulsar 配置，不提供 Fake Broker 运行模式。单元测试和组合测试直接注入 `test/support` 中的 Fake Broker，不启动正常 Worker 进程，也不访问 TDMQ。
 
@@ -486,7 +486,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。
 - `/healthz` 和 `/readyz` 正常。
 - Workflow Worker 的数据库、Broker 和已启用角色均通过 `/readyz`。
-- dev/test01 使用各自的 Topic 和 Subscription，Pulsar Token 仅存在于 Secret。
+- dev/test 使用各自的 Topic 和 Subscription，Pulsar Token 仅存在于 Secret。
 - Entry Smoke 仅在受控环境人工执行，CI 未连接真实 TDMQ。
 - `/chat` 刷新不 404。
 - 登录、刷新 token、退出登录可用。

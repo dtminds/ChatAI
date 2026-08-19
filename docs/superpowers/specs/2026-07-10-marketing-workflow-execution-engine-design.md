@@ -160,14 +160,14 @@ type WorkflowEntryPolicy =
 
 Wait 在 Phase 3 支持相对等待 `N 分钟 / N 小时 / N 天`，N 为正整数。`dueAt` 以进入 Wait 节点时的执行时间计算，Scheduler 使用分钟时间桶，不承诺秒级调度。固定日期、工作日、自然周期和营销发送时段不在 Phase 3 范围内。
 
-Phase 3 不接真实好友、标签和消息数据源。开发和 test01 通过标准入口事件 Smoke Producer 验证完整链路，真实数据源后续通过 `EntrySourceAdapter` 归一化，不修改 Entry Consumer 和执行引擎。Smoke Producer 可以根据传入 `workflowId` 只读数据库中的已启用 Trigger Binding，构造匹配事件并投递，但标准 MQ 消息不得携带 `workflowId` 或绕过 Trigger Binding。
+Phase 3 不接真实好友、标签和消息数据源。开发和 test 通过标准入口事件 Smoke Producer 验证完整链路，真实数据源后续通过 `EntrySourceAdapter` 归一化，不修改 Entry Consumer 和执行引擎。Smoke Producer 可以根据传入 `workflowId` 只读数据库中的已启用 Trigger Binding，构造匹配事件并投递，但标准 MQ 消息不得携带 `workflowId` 或绕过 Trigger Binding。
 
-dev 与 test01 使用独立 Topic 和 Subscription：
+dev 与 test 使用独立 Topic 和 Subscription：
 
 | 环境 | Entry Topic | Task Topic | Subscription |
 | --- | --- | --- | --- |
 | dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` | `consumer-chatai-worker-env-dev` |
-| test01 | `topic-workflow-entry-test01` | `topic-workflow-task-test01` | `consumer-chatai-worker-env-test01` |
+| test | `topic-workflow-entry-test` | `topic-workflow-task-test` | `consumer-chatai-worker-env-test` |
 
 Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称而保持独立消费游标；Subscription 类型为 Shared。腾讯云按该消费组自动创建对应的 `-RETRY` 和 `-DLQ` Topic。普通 CI 只使用 Fake Broker，不连接腾讯云；真实 TDMQ 只运行手动 Smoke。Pulsar 地址、Token、Namespace、Topic 和 Subscription 全部通过环境变量注入，禁止写入仓库。
 
@@ -725,7 +725,7 @@ workflow-task
 2. 通过共享 Compiler 清理 UI 字段并生成执行定义。
 3. 后端重新执行图校验和节点配置校验。
 4. 用户显式提交审核，Backend 冻结 Draft、Execution Spec、Trigger Binding 和变更摘要。
-5. 审核通过后，发布再次检查生产可用性并在事务中写入下一 Revision、更新 `published_revision`、替换 Trigger Binding，并把审核记录标为已发布。
+5. 审核通过后，发布再次检查生产可用性并在事务中写入下一 Revision、更新 `published_revision`、替换 Trigger Binding，并在审核记录上补充发布人、发布时间和 resulting Revision；审核决定仍保持为 `approved`。
 6. 首次发布创建 Revision 1 并保持 `inactive`；后续发布保持当前 Active 或 Paused 状态。
 7. 启用独立执行，只激活当前 `published_revision`，不读取未发布 Draft，也不创建 Revision。
 8. 审核与发布并发冲突返回明确错误，不覆盖其他操作。

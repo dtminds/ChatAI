@@ -22,7 +22,13 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(db.selectBuilders[1]).toMatchObject({
       orderBys: [["id", "desc"]],
-      wheres: [["uid", "=", 8], ["workflow_id", "=", "42"]],
+      wheres: [
+        ["uid", "=", 8],
+        ["workflow_id", "=", "42"],
+        ["draft_semantic_hash", "=", "draft-hash"],
+        ["status", "in", ["pending", "approved", "rejected"]],
+        ["base_published_revision", "is", null],
+      ],
     });
   });
 
@@ -117,7 +123,7 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.selectBuilders.at(-1)).toMatchObject({ forUpdate: false });
   });
 
-  it("invalidates an approved review in the same transaction as a draft save", async () => {
+  it("does not rewrite an approved review when the draft changes", async () => {
     const db = createWorkflowDbMock({ reviewStatus: "approved" });
     const repository = new MysqlWorkflowRepository(db as never);
 
@@ -131,12 +137,8 @@ describe("MysqlWorkflowRepository", () => {
     });
 
     expect(result.kind).toBe("success");
-    expect(db.updateBuilders).toHaveLength(2);
-    expect(db.updateBuilders[0]).toMatchObject({
-      sets: { status: "obsolete" },
-      table: "xy_wap_embed_workflow_publish_review",
-    });
-    expect(db.updateBuilders[1].table).toBe("xy_wap_embed_workflow_definition");
+    expect(db.updateBuilders).toHaveLength(1);
+    expect(db.updateBuilders[0].table).toBe("xy_wap_embed_workflow_definition");
   });
 
   it("allows layout-only draft writes without requiring a non-stopped runtime status", async () => {
@@ -320,8 +322,8 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.definitionUpdate).toMatchObject({ published_revision: 1 });
   });
 
-  it("rejects publication when the approved review no longer matches the current draft", async () => {
-    const db = createPublicationDbMock({ draftVersion: 5 });
+  it("rejects publication when the approved review no longer matches the current draft semantics", async () => {
+    const db = createPublicationDbMock({ draftSemanticHash: "changed-draft-hash" });
     const repository = new MysqlWorkflowRepository(db as never);
     const input = enableInput();
     db.reviewRows = [createReviewRow(input)];
@@ -455,7 +457,8 @@ function createWorkflowDbMock(options: {
         },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_publish_review") {
-            return options.reviewStatus ? { status: options.reviewStatus } : undefined;
+            const requestedStatus = state.wheres.find(where => where[0] === "status")?.[2];
+            return options.reviewStatus === requestedStatus ? { id: 7, status: options.reviewStatus } : undefined;
           }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }
@@ -565,6 +568,7 @@ function createEntitlementLossDbMock() {
 
 function createPublicationDbMock(options: {
   activeDefinitionCount?: number;
+  draftSemanticHash?: string;
   draftVersion?: number;
   previousExecutionSpec?: ReturnType<typeof executionSpecWithWait>;
   publishedRevision?: number | null;
@@ -577,7 +581,7 @@ function createPublicationDbMock(options: {
     description: "",
     draft_json: JSON.stringify(createDraft()),
     draft_schema_version: 1,
-    draft_semantic_hash: "draft-hash",
+    draft_semantic_hash: options.draftSemanticHash ?? "draft-hash",
     draft_version: options.draftVersion ?? 4,
     id: 42,
     name: "新客培育",

@@ -24,7 +24,7 @@ export type WorkflowModeState = {
   canPublish?: boolean;
   isPreviewingVersion: boolean;
   publishState?: WorkflowDraftPublishStatus;
-  reviewStatus?: "pending" | "approved" | "rejected" | "withdrawn" | "obsolete" | "published";
+  reviewStatus?: "pending" | "approved" | "rejected" | "withdrawn";
   restoreState?: WorkflowDraftRestoreStatus;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 };

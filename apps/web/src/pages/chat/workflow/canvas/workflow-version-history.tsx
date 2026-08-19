@@ -134,6 +134,9 @@ export function WorkflowVersionHistoryPanel({
             {review.reviewComment ? (
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{review.reviewComment}</p>
             ) : null}
+            {review.resultingRevision !== null ? (
+              <p className="mt-1 text-xs text-muted-foreground">已发布为 Revision {review.resultingRevision}</p>
+            ) : null}
           </button>
         )) : (
           <div className="flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">暂无审核记录</div>
@@ -178,9 +181,7 @@ export function WorkflowVersionHistoryPanel({
 function getReviewHistoryLabel(review: WorkflowPublishReview) {
   return {
     approved: "审核通过",
-    obsolete: "审核后已修改",
     pending: "待审核",
-    published: `已发布${review.resultingRevision ? ` Revision ${review.resultingRevision}` : ""}`,
     rejected: "审核驳回",
     withdrawn: "审核已撤回",
   }[review.status];

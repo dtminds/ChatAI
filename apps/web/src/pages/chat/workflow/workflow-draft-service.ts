@@ -134,6 +134,9 @@ export function useWorkflowDocument(
   const [lastSavedDraftHash, setLastSavedDraftHash] = useState(() => document.draftHash);
   const [lastPublishedPublishHash, setLastPublishedPublishHash] = useState(() => createWorkflowPublishedHash(document));
   const [currentPublishHash, setCurrentPublishHash] = useState(() => createWorkflowPublishHash(document.draft));
+  const [currentReviewPublishHash, setCurrentReviewPublishHash] = useState<string | null>(
+    () => document.currentReview ? createWorkflowPublishHash(document.draft) : null,
+  );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightSaveRef = useRef<Promise<WorkflowDraftSaveResult | undefined> | null>(null);
   const publishRequestRef = useRef(0);
@@ -214,13 +217,18 @@ export function useWorkflowDocument(
       setLastSavedAt(normalizedSaveResult.savedAt);
       setLastSavedDraftHash(normalizedSaveResult.draftHash);
       setCurrentPublishHash(createWorkflowPublishHash(normalizedSaveResult.draft));
+      if (savedDocument.currentReview) {
+        setCurrentReviewPublishHash(createWorkflowPublishHash(normalizedSaveResult.draft));
+      }
       setDocument((currentDocument) => ({
         ...currentDocument,
         conversion: savedDocument.conversion,
+        currentReview: savedDocument.currentReview ?? currentDocument.currentReview,
         draft: cloneWorkflowDraft(normalizedSaveResult.draft),
         draftHash: normalizedSaveResult.draftHash,
         draftVersion: savedDocument.draftVersion,
         nodes: savedDocument.nodes,
+        permissions: savedDocument.permissions,
         revision: savedDocument.revision,
         runtimeStatus: savedDocument.runtimeStatus,
         savedAt: normalizedSaveResult.savedAt,
@@ -287,6 +295,9 @@ export function useWorkflowDocument(
     setLastSavedDraftHash(nextDocument.draftHash);
     setLastPublishedPublishHash(createWorkflowPublishedHash(nextDocument));
     setCurrentPublishHash(createWorkflowPublishHash(nextDocument.draft));
+    setCurrentReviewPublishHash(nextDocument.currentReview
+      ? createWorkflowPublishHash(nextDocument.draft)
+      : null);
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -411,6 +422,9 @@ export function useWorkflowDocument(
       setLastSavedDraftHash(normalizedImportResult.draftHash);
       setLastPublishedPublishHash(createWorkflowPublishedHash(importedDocument));
       setCurrentPublishHash(createWorkflowPublishHash(normalizedImportResult.draft));
+      setCurrentReviewPublishHash(importedDocument.currentReview
+        ? createWorkflowPublishHash(normalizedImportResult.draft)
+        : null);
       setPublishState(getWorkflowPublishStateForDraft(normalizedImportResult.draft, importedDocument));
       setDocument(importedDocument);
 
@@ -435,7 +449,9 @@ export function useWorkflowDocument(
 
   const applyReviewDocument = useCallback((nextDocument: WorkflowDocument) => {
     setDocument(nextDocument);
-    setCurrentPublishHash(createWorkflowPublishHash(nextDocument.draft));
+    const nextPublishHash = createWorkflowPublishHash(nextDocument.draft);
+    setCurrentPublishHash(nextPublishHash);
+    setCurrentReviewPublishHash(nextDocument.currentReview ? nextPublishHash : null);
     setPublishState(getWorkflowPublishStateForDraft(nextDocument.draft, nextDocument));
   }, []);
 
@@ -521,6 +537,7 @@ export function useWorkflowDocument(
       setLastSavedAt(publishedDocument.savedAt);
       setLastSavedDraftHash(normalizedPublishResult.draftHash);
       setCurrentPublishHash(createWorkflowPublishHash(normalizedPublishResult.draft));
+      setCurrentReviewPublishHash(null);
       setLastPublishedPublishHash(createWorkflowPublishHash(normalizedPublishResult.draft));
       setDocument(publishedDocument);
       return normalizedPublishResult;
@@ -578,6 +595,9 @@ export function useWorkflowDocument(
       setLastSavedDraftHash(normalizedRestoreResult.draftHash);
       setLastPublishedPublishHash(createWorkflowPublishedHash(restoredDocument));
       setCurrentPublishHash(createWorkflowPublishHash(normalizedRestoreResult.draft));
+      setCurrentReviewPublishHash(restoredDocument.currentReview
+        ? createWorkflowPublishHash(normalizedRestoreResult.draft)
+        : null);
       setPublishState(getWorkflowPublishStateForDraft(normalizedRestoreResult.draft, restoredDocument));
       setDocument(restoredDocument);
 
@@ -593,6 +613,43 @@ export function useWorkflowDocument(
       }
 
       return undefined;
+    }
+  }, [flushPendingSave, repository]);
+
+  const restoreReview = useCallback(async (reviewId: string) => {
+    const restoreRequestId = restoreRequestRef.current + 1;
+    restoreRequestRef.current = restoreRequestId;
+    publishRequestRef.current += 1;
+    publishingRef.current = false;
+    const workflowIdToRestore = workflowIdRef.current;
+    setRestoreState("restoring");
+
+    try {
+      await flushPendingSave();
+      if (restoreRequestRef.current !== restoreRequestId
+        || workflowIdRef.current !== workflowIdToRestore) return undefined;
+      const restoredDocument = await Promise.resolve(
+        repository.restoreReview(workflowIdToRestore, reviewId),
+      );
+      const nextPublishHash = createWorkflowPublishHash(restoredDocument.draft);
+      setRestoreState("restored");
+      setSaveState("saved");
+      setSaveError(null);
+      failedSaveRef.current = null;
+      setLastSavedAt(restoredDocument.savedAt);
+      setLastSavedDraftHash(restoredDocument.draftHash);
+      setLastPublishedPublishHash(createWorkflowPublishedHash(restoredDocument));
+      setCurrentPublishHash(nextPublishHash);
+      setCurrentReviewPublishHash(restoredDocument.currentReview ? nextPublishHash : null);
+      setPublishState(getWorkflowPublishStateForDraft(restoredDocument.draft, restoredDocument));
+      setDocument(restoredDocument);
+      return restoredDocument;
+    } catch (error) {
+      if (restoreRequestRef.current === restoreRequestId
+        && workflowIdRef.current === workflowIdToRestore) {
+        setRestoreState("error");
+      }
+      throw normalizeWorkflowRepositoryError(error);
     }
   }, [flushPendingSave, repository]);
 
@@ -651,8 +708,15 @@ export function useWorkflowDocument(
     void flushPendingSave({ updateState: false })?.catch(() => undefined);
   }, [flushPendingSave]);
 
+  const visibleDocument = useMemo(() => ({
+    ...document,
+    currentReview: currentReviewPublishHash === currentPublishHash
+      ? document.currentReview
+      : null,
+  }), [currentPublishHash, currentReviewPublishHash, document]);
+
   return useMemo(() => ({
-    document,
+    document: visibleDocument,
     enableDocument,
     hasUnpublishedChanges: document.publishedRevision === null
       || currentPublishHash !== lastPublishedPublishHash,
@@ -674,11 +738,12 @@ export function useWorkflowDocument(
     publishState,
     updateMetadata,
     restoreState,
+    restoreReview,
     restoreVersion,
     retrySave,
     saveError,
     saveState,
-  }), [currentPublishHash, document, importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, markDirty, metadataUpdateState, publishReview, publishError, publishState, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata]);
+  }), [importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, markDirty, metadataUpdateState, publishReview, publishError, publishState, restoreReview, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata, visibleDocument]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

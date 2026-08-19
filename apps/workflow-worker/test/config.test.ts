@@ -9,9 +9,9 @@ describe("workflow worker config", () => {
       "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
     ],
     [
-      "test01",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-test01",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-test01",
+      "test",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-test",
+      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-test",
     ],
   ] as const)("maps %s to isolated workflow topics", (environment, entryTopic, taskTopic) => {
     const config = loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: environment }));
@@ -99,6 +99,11 @@ describe("workflow worker config", () => {
   it("rejects unknown broker modes instead of falling through to Pulsar", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
       .toThrow("WORKFLOW_BROKER must be pulsar");
+  });
+
+  it("rejects the removed test01 environment name", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: "test01" })))
+      .toThrow("WORKFLOW_ENVIRONMENT must be dev or test");
   });
 
   it("loads the Java entitlement endpoint", () => {

@@ -262,6 +262,28 @@ describe("HTTP workflow repository", () => {
     );
   });
 
+  it("restores a review snapshot using the cached draft version", async () => {
+    const review = createReview({ status: "approved" });
+    const definition = createDefinition({ currentReview: null, draftVersion: 4 });
+    const restoredDefinition = createDefinition({ currentReview: review, draftVersion: 5 });
+    const client = createClient({ definition, revisions: [] });
+    client.post.mockImplementation(async (url: string) => {
+      if (url.endsWith(`/reviews/${review.id}/restore`)) return envelope(restoredDefinition);
+      throw new Error(`Unexpected POST ${url}`);
+    });
+    const repository = createHttpWorkflowDraftRepository(client);
+    await repository.getDocument("42");
+
+    const restored = await repository.restoreReview("42", review.id);
+
+    expect(client.post).toHaveBeenCalledWith(
+      `/server/workflows/42/reviews/${review.id}/restore`,
+      { expectedDraftVersion: 4 },
+    );
+    expect(restored.currentReview).toMatchObject({ id: review.id, status: "approved" });
+    expect(restored.draftVersion).toBe(5);
+  });
+
   it("publishes by review id and refreshes the new revision", async () => {
     const review = createReview({ status: "approved" });
     const definition = createDefinition({ currentReview: review });

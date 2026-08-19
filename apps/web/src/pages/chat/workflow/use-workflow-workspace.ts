@@ -81,6 +81,7 @@ export function useWorkflowWorkspace(
     reviewActionState,
     retrySave,
     restoreState,
+    restoreReview,
     restoreVersion,
     saveError,
     saveState,
@@ -692,6 +693,22 @@ export function useWorkflowWorkspace(
     closeCanvasOverlays();
   });
 
+  const restoreHistoricalReview = useWorkflowStableCallback(async (reviewId: string) => {
+    try {
+      const result = await restoreReview(reviewId);
+      if (!result) return false;
+      dispatchViewState({ type: "close-review" });
+      clearEdgeSelection();
+      clearNodeSelection();
+      closeCanvasOverlays();
+      toast.success("已恢复为当前草稿");
+      return true;
+    } catch (error) {
+      toast.error(getWorkflowReviewActionErrorMessage(error));
+      return false;
+    }
+  });
+
   const checksClose = useCallback(() => dispatchViewState({ type: "close-checks" }), []);
   return {
     canvas: {
@@ -806,6 +823,7 @@ export function useWorkflowWorkspace(
       onClose: closeReview,
       onOpen: openReview,
       onReject: handleRejectReview,
+      onRestore: restoreHistoricalReview,
       onWithdraw: handleWithdrawReview,
       pending: reviewActionState !== "idle",
     },

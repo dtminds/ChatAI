@@ -15,6 +15,7 @@ import {
   cloneWorkflowDraft,
   cloneWorkflowVersionHistoryItem,
   createWorkflowDraftHash,
+  createWorkflowPublishHash,
   createWorkflowPublishedVersion,
   createWorkflowVersionHistoryItem,
   getWorkflowConversion,
@@ -94,7 +95,9 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     },
     deleteDocument: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
-      for (const review of reviewHistory.get(workflowId) ?? []) reviewDrafts.delete(review.id);
+      for (const review of reviewHistory.get(workflowId) ?? []) {
+        reviewDrafts.delete(review.id);
+      }
       workflowDocuments.splice(documentIndex, 1);
       reviewHistory.delete(workflowId);
     },
@@ -106,26 +109,25 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
-      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDraft = cloneWorkflowDraft(draft);
       const importedAt = "刚刚";
       const nextDraftHash = createWorkflowDraftHash(nextDraft);
       const nextDocument: WorkflowDocument = {
-        ...editableDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
         draft: nextDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: editableDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(editableDocument.publishedDraft, nextDraft),
+        hasUnpublishedChanges: currentDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
         nodes: nextDraft.nodes.length,
-        revision: editableDocument.revision + 1,
+        revision: currentDocument.revision + 1,
         savedAt: importedAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
         updatedAt: importedAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
       return {
         document: cloneWorkflowDocument(workflowDocuments[documentIndex]),
         draft: cloneWorkflowDraft(nextDraft),
@@ -141,6 +143,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     submitReview: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
+      if (currentDocument.currentReview?.status === "pending"
+        || currentDocument.currentReview?.status === "approved") {
+        throw new WorkflowRepositoryError("conflict", "Workflow review already exists", {
+          apiCode: "WORKFLOW_REVIEW_LOCKED",
+        });
+      }
       if (currentDocument.publishedDraft
         && isWorkflowGraphEqual(currentDocument.publishedDraft, currentDocument.draft)) {
         throw new WorkflowRepositoryError("conflict", "Workflow has no unpublished changes", {
@@ -171,15 +179,15 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       if (review.status !== "approved") {
         throw new WorkflowRepositoryError("conflict", "Workflow review is not approved");
       }
+      const candidateDraft = reviewDrafts.get(review.id);
+      if (!candidateDraft) throw new WorkflowRepositoryError("conflict", "Workflow review candidate is unavailable");
       if (review.basePublishedRevision !== currentDocument.publishedRevision
-        || review.sourceDraftVersion !== (currentDocument.draftVersion ?? currentDocument.revision)) {
+        || createWorkflowPublishHash(candidateDraft) !== createWorkflowPublishHash(currentDocument.draft)) {
         throw new WorkflowRepositoryError("conflict", "Workflow review no longer matches the current draft");
       }
       const publishedAt = "刚刚";
       const nextRevision = (currentDocument.publishedRevision ?? 0) + 1;
-      const candidateDraft = reviewDrafts.get(review.id);
-      if (!candidateDraft) throw new WorkflowRepositoryError("conflict", "Workflow review candidate is unavailable");
-      const publishedDraft = cloneWorkflowDraft(candidateDraft);
+      const publishedDraft = cloneWorkflowDraft(currentDocument.draft);
       const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, publishedDraft);
       const nextDocument: WorkflowDocument = {
         ...currentDocument,
@@ -204,7 +212,6 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         publishedAt,
         publishedBySubUserId: "reviewer-user",
         resultingRevision: nextRevision,
-        status: "published",
       });
       return {
         document: cloneWorkflowDocument(nextDocument),
@@ -239,15 +246,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
-      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDocument = {
-        ...editableDocument,
+        ...currentDocument,
         description: normalizedDescription,
         name: normalizedName,
         updatedAt: "刚刚",
       };
-      workflowDocuments[documentIndex] = nextDocument;
-      return cloneWorkflowDocument(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
+      return cloneWorkflowDocument(workflowDocuments[documentIndex]);
     },
     resumeDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
     restoreVersion: (workflowId, versionId) => {
@@ -260,13 +266,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         throw new WorkflowRepositoryError("not-found", `Unknown workflow version: ${versionId}`);
       }
 
-      const editableDocument = invalidateApprovedReview(workflowId, currentDocument);
       const nextDraft = cloneWorkflowDraft(restoredVersion.draft);
       const restoredAt = "刚刚";
       const nextDraftHash = createWorkflowDraftHash(nextDraft);
       const nextDocument: WorkflowDocument = {
-        ...editableDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
         currentVersion: {
           id: restoredVersion.id,
           name: restoredVersion.name,
@@ -275,17 +280,17 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         },
         draft: nextDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: editableDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(editableDocument.publishedDraft, nextDraft),
+        hasUnpublishedChanges: currentDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
         nodes: nextDraft.nodes.length,
-        revision: editableDocument.revision + 1,
+        revision: currentDocument.revision + 1,
         savedAt: restoredAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
         updatedAt: restoredAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
       return {
         document: cloneWorkflowDocument(workflowDocuments[documentIndex]),
         draft: cloneWorkflowDraft(nextDraft),
@@ -303,31 +308,56 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       assertEditable(currentDocument);
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
-      const editableDocument = shouldCreateDraftRevision
-        ? invalidateApprovedReview(workflowId, currentDocument)
-        : currentDocument;
-      const persistedDraft = shouldCreateDraftRevision ? nextDraft : editableDocument.draft;
-      const savedAt = shouldCreateDraftRevision ? "刚刚" : editableDocument.savedAt;
-      const updatedAt = shouldCreateDraftRevision ? "刚刚" : editableDocument.updatedAt;
+      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
+      const savedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.savedAt;
+      const updatedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.updatedAt;
       const nextDraftHash = shouldCreateDraftRevision
         ? createWorkflowDraftHash(nextDraft)
-        : editableDocument.draftHash;
+        : currentDocument.draftHash;
       const nextDocument: WorkflowDocument = {
-        ...editableDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? editableDocument.conversion,
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
         draft: persistedDraft,
         draftHash: nextDraftHash,
-        hasUnpublishedChanges: editableDocument.publishedDraft === null
-          || !isWorkflowGraphEqual(editableDocument.publishedDraft, persistedDraft),
+        hasUnpublishedChanges: currentDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(currentDocument.publishedDraft, persistedDraft),
         nodes: persistedDraft.nodes.length,
-        revision: shouldCreateDraftRevision ? editableDocument.revision + 1 : editableDocument.revision,
+        revision: shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision,
         savedAt,
-        trigger: getWorkflowTrigger(nextDraft) ?? editableDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
         updatedAt,
       };
 
-      workflowDocuments[documentIndex] = collapseRejectedReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
       return normalizeWorkflowDraftSaveResult(workflowDocuments[documentIndex]);
+    },
+    restoreReview: (workflowId, reviewId) => {
+      const documentIndex = getWorkflowDocumentIndex(workflowId);
+      const currentDocument = workflowDocuments[documentIndex];
+      assertEditable(currentDocument);
+      const review = requireReview(workflowId, reviewId);
+      if (review.status === "pending" || review.resultingRevision !== null) {
+        throw new WorkflowRepositoryError("conflict", "Workflow review cannot be restored");
+      }
+      const reviewDraft = reviewDrafts.get(reviewId);
+      if (!reviewDraft) throw new WorkflowRepositoryError("not-found", "Workflow review candidate is unavailable");
+      const nextDraft = cloneWorkflowDraft(reviewDraft);
+      const nextDocument = withCurrentReview({
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        draft: nextDraft,
+        draftHash: createWorkflowDraftHash(nextDraft),
+        hasUnpublishedChanges: currentDocument.publishedDraft === null
+          || !isWorkflowGraphEqual(currentDocument.publishedDraft, nextDraft),
+        nodes: nextDraft.nodes.length,
+        revision: currentDocument.revision + 1,
+        savedAt: "刚刚",
+        status: "Draft",
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        updatedAt: "刚刚",
+      });
+      workflowDocuments[documentIndex] = nextDocument;
+      return cloneWorkflowDocument(nextDocument);
     },
     stopDocument: (workflowId) => updateRuntimeStatus(workflowId, "stopped"),
   };
@@ -338,7 +368,15 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   ) {
     const documentIndex = getWorkflowDocumentIndex(workflowId);
     const currentDocument = workflowDocuments[documentIndex];
-    const nextDocument: WorkflowDocument = {
+    if (runtimeStatus === "stopped" && currentDocument.currentReview?.status === "pending") {
+      replaceReview(workflowId, {
+        ...currentDocument.currentReview,
+        reviewedAt: "刚刚",
+        reviewedBySubUserId: "reviewer-user",
+        status: "withdrawn",
+      });
+    }
+    const nextDocument = withCurrentReview({
       ...currentDocument,
       runtimeStatus,
       status: runtimeStatus === "active"
@@ -351,7 +389,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
               ? "Draft"
               : "Published",
       updatedAt: "刚刚",
-    };
+    });
     workflowDocuments[documentIndex] = nextDocument;
     return cloneWorkflowDocument(nextDocument);
   }
@@ -404,15 +442,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     const nextReview: WorkflowPublishReview = {
       ...review,
       reviewComment: comment?.trim() || null,
-      reviewedAt: status === "withdrawn" ? null : "刚刚",
-      reviewedBySubUserId: status === "withdrawn" ? null : "reviewer-user",
+      reviewedAt: "刚刚",
+      reviewedBySubUserId: "reviewer-user",
       status,
     };
     replaceReview(workflowId, nextReview);
-    const nextDocument = withReview(
-      currentDocument,
-      status === "withdrawn" ? null : nextReview,
-    );
+    const nextDocument = withCurrentReview(currentDocument);
     workflowDocuments[documentIndex] = nextDocument;
     return cloneWorkflowDocument(nextDocument);
   }
@@ -436,14 +471,18 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     }
   }
 
-  function invalidateApprovedReview(workflowId: string, document: WorkflowDocument) {
-    const review = document.currentReview;
-    if (review?.status !== "approved") return document;
-    replaceReview(workflowId, {
-      ...review,
-      status: "obsolete",
-    });
-    return withReview(document, null);
+  function withCurrentReview(document: WorkflowDocument) {
+    const publishHash = createWorkflowPublishHash(document.draft);
+    const review = (reviewHistory.get(document.id) ?? []).find(candidate => {
+      const candidateDraft = reviewDrafts.get(candidate.id);
+      return candidateDraft !== undefined
+        && candidate.basePublishedRevision === document.publishedRevision
+        && createWorkflowPublishHash(candidateDraft) === publishHash
+        && (candidate.status === "pending"
+          || candidate.status === "approved"
+          || candidate.status === "rejected");
+    }) ?? null;
+    return withReview(document, review);
   }
 }
 
@@ -462,13 +501,6 @@ function withReview(
     },
     updatedAt: "刚刚",
   };
-}
-
-function collapseRejectedReview(document: WorkflowDocument): WorkflowDocument {
-  if (document.publishedRevision === null
-    || document.currentReview?.status !== "rejected"
-    || document.hasUnpublishedChanges) return document;
-  return withReview(document, null);
 }
 
 function createWorkflowDocuments(): WorkflowDocument[] {

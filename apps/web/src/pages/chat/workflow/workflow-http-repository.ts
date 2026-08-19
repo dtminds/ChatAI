@@ -210,6 +210,22 @@ export function createHttpWorkflowDraftRepository(
       }
     },
 
+    async restoreReview(workflowId, reviewId) {
+      return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
+        try {
+          const current = await requireCachedDefinition(client, definitions, workflowId);
+          const definition = unwrap<ApiWorkflowDefinition>(await client.post(
+            `/server/workflows/${workflowId}/reviews/${reviewId}/restore`,
+            { expectedDraftVersion: current.draftVersion },
+          ));
+          definitions.set(workflowId, definition);
+          return toDocument(definition, revisions.get(workflowId) ?? []);
+        } catch (error) {
+          throw normalizeHttpError(error);
+        }
+      });
+    },
+
     async updateDocumentMetadata(workflowId, metadata) {
       try {
         const definition = unwrap<ApiWorkflowDefinition>(await client.patch(

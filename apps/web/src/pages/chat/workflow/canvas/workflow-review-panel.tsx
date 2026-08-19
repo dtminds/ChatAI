@@ -26,6 +26,7 @@ export function WorkflowReviewPanel({
   onApprove,
   onClose,
   onReject,
+  onRestore,
   onWithdraw,
   pending,
   review,
@@ -33,6 +34,7 @@ export function WorkflowReviewPanel({
   onApprove: (comment?: string) => Promise<boolean>;
   onClose: () => void;
   onReject: (reason: string) => Promise<boolean>;
+  onRestore?: () => Promise<boolean>;
   onWithdraw: () => Promise<boolean>;
   pending: boolean;
   review: WorkflowPublishReview;
@@ -111,14 +113,7 @@ export function WorkflowReviewPanel({
             <p className="mt-1.5 text-xs text-muted-foreground">检查于 {formatReviewTime(review.checkedAt)}</p>
           </section>
 
-          {review.status === "obsolete" ? (
-            <section className="mt-6 border-t border-border/70 pt-5">
-              <h3 className="text-sm font-semibold text-foreground">状态说明</h3>
-              <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                审核后流程已发生变化，本次审核不再适用于当前版本
-              </p>
-            </section>
-          ) : review.reviewedAt ? (
+          {review.reviewedAt ? (
             <section className="mt-6 border-t border-border/70 pt-5">
               <h3 className="text-sm font-semibold text-foreground">
                 {review.status === "rejected" ? "驳回结果" : "审核结果"}
@@ -131,6 +126,16 @@ export function WorkflowReviewPanel({
                   {review.reviewComment}
                 </p>
               ) : null}
+            </section>
+          ) : null}
+
+          {review.resultingRevision !== null ? (
+            <section className="mt-6 border-t border-border/70 pt-5">
+              <h3 className="text-sm font-semibold text-foreground">发布记录</h3>
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                已发布为 Revision {review.resultingRevision}
+                {review.publishedAt ? ` · ${formatReviewTime(review.publishedAt)}` : ""}
+              </p>
             </section>
           ) : null}
 
@@ -194,6 +199,12 @@ export function WorkflowReviewPanel({
                 通过
               </Button>
             )}
+          </div>
+        ) : onRestore ? (
+          <div className="flex justify-end border-t border-border/70 bg-background/70 px-5 py-3.5">
+            <Button disabled={pending} onClick={() => void onRestore()} type="button">
+              恢复为当前草稿
+            </Button>
           </div>
         ) : null}
       </aside>
@@ -279,9 +290,7 @@ function ReviewNodeList({
 function getReviewStatusLabel(status: WorkflowPublishReview["status"]) {
   return {
     approved: "审核通过",
-    obsolete: "审核后已修改",
     pending: "待审核",
-    published: "已发布",
     rejected: "审核驳回",
     withdrawn: "已撤回",
   }[status];

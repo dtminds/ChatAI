@@ -72,6 +72,7 @@ describe("InMemoryWorkflowRepository review ordering", () => {
       const first = await repository.submitReview(reviewInput({
         basePublishedRevision: published.publishedRevision,
         candidateHash: "b".repeat(64),
+        draftSemanticHash: "changed-draft-hash",
         expectedDraftVersion: saved.value.draftVersion,
         revision: 2,
         workflowId: published.id,
@@ -88,6 +89,7 @@ describe("InMemoryWorkflowRepository review ordering", () => {
       const second = await repository.submitReview(reviewInput({
         basePublishedRevision: published.publishedRevision,
         candidateHash: "c".repeat(64),
+        draftSemanticHash: "changed-draft-hash",
         expectedDraftVersion: saved.value.draftVersion,
         revision: 2,
         workflowId: published.id,
@@ -160,6 +162,7 @@ async function createPublishedDefinition(repository: InMemoryWorkflowRepository,
 function reviewInput(input: {
   basePublishedRevision: number | null;
   candidateHash: string;
+  draftSemanticHash?: string;
   expectedDraftVersion: number;
   revision: number;
   workflowId: string;
@@ -177,7 +180,7 @@ function reviewInput(input: {
     },
     checkedAt: new Date("2026-08-16T00:00:00.000Z"),
     draft: DRAFT,
-    draftSemanticHash: "draft-hash",
+    draftSemanticHash: input.draftSemanticHash ?? "draft-hash",
     executionSpec: executionSpec(input.workflowId, input.revision),
     expectedDraftVersion: input.expectedDraftVersion,
     opSubUserId: OP_SUB_USER_ID,

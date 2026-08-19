@@ -110,13 +110,16 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
         && item.workflowId === workflowId
         && item.draftSemanticHash === definition.draftSemanticHash
         && item.basePublishedRevision === definition.publishedRevision
-        && (item.status === "pending" || item.status === "approved" || item.status === "rejected"))
+        && (item.status === "pending"
+          || item.status === "approved"
+          || item.status === "rejected"
+          || item.status === "withdrawn"))
       .sort((first, second) => {
         const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
         return createdAtDifference || Number(second.id) - Number(first.id);
       })
       .at(0);
-    return review ? clone(review) : null;
+    return review?.status === "withdrawn" ? null : review ? clone(review) : null;
   }
 
   async listDefinitions(uid: number) {

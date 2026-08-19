@@ -26,7 +26,7 @@ describe("MysqlWorkflowRepository", () => {
         ["uid", "=", 8],
         ["workflow_id", "=", "42"],
         ["draft_semantic_hash", "=", "draft-hash"],
-        ["status", "in", ["pending", "approved", "rejected"]],
+        ["status", "in", ["pending", "approved", "rejected", "withdrawn"]],
         ["base_published_revision", "is", null],
       ],
     });

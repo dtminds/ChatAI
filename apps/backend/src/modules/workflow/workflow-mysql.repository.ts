@@ -162,12 +162,12 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     let query = this.db.selectFrom(REVIEW_TABLE).selectAll()
       .where("uid", "=", uid).where("workflow_id", "=", workflowId)
       .where("draft_semantic_hash", "=", definition.draftSemanticHash)
-      .where("status", "in", ["pending", "approved", "rejected"]);
+      .where("status", "in", ["pending", "approved", "rejected", "withdrawn"]);
     query = definition.publishedRevision === null
       ? query.where("base_published_revision", "is", null)
       : query.where("base_published_revision", "=", definition.publishedRevision);
     const row = await query.orderBy("id", "desc").limit(1).executeTakeFirst();
-    return row ? mapReview(row) : null;
+    return row?.status === "withdrawn" ? null : row ? mapReview(row) : null;
   }
 
   async listDefinitions(uid: number) {

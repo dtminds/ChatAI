@@ -80,6 +80,7 @@ export type WorkflowCapabilityExecutionBinding<
     context: WorkflowCapabilityCommandContext;
   }): unknown;
   definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>;
+  executionTimeoutMs?: number;
   mapResult?(input: {
     command: Static<TCommandSchema>;
     config: Record<string, unknown>;

@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "message-query", "start", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "message", "message-query", "start", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "message", "tag", "tag-query"]);
+      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "tag", "tag-query"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -249,20 +249,20 @@ describe("workflow node contracts", () => {
       contentMode: "node-output",
     })).toBe(false);
     expect(Value.Check(WorkflowMessageCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       attachments: [attachment],
       content: "hello",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     })).toBe(true);
     expect(Value.Check(WorkflowMessageCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       attachments: [{
         content: attachment.content,
         type: attachment.type,
       }],
       content: "hello",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     })).toBe(false);
     expect(Value.Check(WorkflowMessageResultSchema, {})).toBe(true);

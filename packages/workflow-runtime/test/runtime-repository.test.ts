@@ -119,11 +119,24 @@ describe("workflow runtime repository", () => {
     ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
-    ["new Message target lacks its account snapshot", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Handoff target lacks its account snapshot", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
-    const created = await repository.createRunWithInitialTask(createRunInput());
+    const runInput = createRunInput();
+    const created = await repository.createRunWithInitialTask(spec.nodes.some(node => node.kind === "message")
+      ? {
+          ...runInput,
+          context: {
+            ...runInput.context,
+            workflow: {
+              message: {
+                sendingWindow: { endTime: "20:00", startTime: "09:00" },
+              },
+            },
+          },
+        }
+      : runInput);
     const claimed = await repository.claimTask({
       expectedTaskVersion: created.task.taskVersion,
       leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),

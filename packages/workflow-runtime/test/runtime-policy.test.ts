@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
+  WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
@@ -98,13 +99,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "message",
-      kind: "message",
+      id: "tag",
+      kind: "tag",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-message", source: "start", sourceOutletId: "default", target: "message" },
-      { id: "message-end", source: "message", sourceOutletId: "default", target: "end" },
+      { id: "start-tag", source: "start", sourceOutletId: "default", target: "tag" },
+      { id: "tag-end", source: "tag", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -113,10 +114,10 @@ describe("Workflow runtime policy", () => {
     const claimTask = vi.spyOn(harness.runtime, "claimTask");
     const created = await harness.runtime.createRunWithInitialTask({
       context: { outputs: {}, trigger: {} },
-      entryEventId: "existing-message-task",
+      entryEventId: "existing-tag-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "message",
-      initialNodeKind: "message",
+      initialNodeId: "tag",
+      initialNodeKind: "tag",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -192,6 +193,7 @@ describe("Workflow runtime policy", () => {
       .toThrow("message-query");
 
     const complete = createHarness({
+      capabilityPort: true,
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
       messageQueryPort: true,
     });
@@ -200,6 +202,7 @@ describe("Workflow runtime policy", () => {
 });
 
 function createHarness(options: {
+  capabilityPort?: boolean;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
   messageQueryPort?: boolean;
@@ -228,13 +231,21 @@ function createHarness(options: {
       };
     }),
   };
-  const service = new WorkflowRuntimeService(control, runtime, undefined, {
-    clock: () => now,
-    entitlementPort: { check: options.entitlement },
-    ...(options.messageQueryPort
-      ? { messageQueryPort: { execute: async () => ({}) } }
-      : {}),
-  });
+  const service = new WorkflowRuntimeService(
+    control,
+    runtime,
+    options.capabilityPort ? { execute: async () => ({}) } : undefined,
+    {
+      ...(options.capabilityPort
+        ? { capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING] }
+        : {}),
+      clock: () => now,
+      entitlementPort: { check: options.entitlement },
+      ...(options.messageQueryPort
+        ? { messageQueryPort: { execute: async () => ({}) } }
+        : {}),
+    },
+  );
   return { applyEntitlementLoss, runtime, service };
 }
 

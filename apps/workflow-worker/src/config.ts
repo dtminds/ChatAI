@@ -22,6 +22,10 @@ export type WorkflowWorkerConfig = {
   };
   environment: WorkflowEnvironment;
   healthPort: number;
+  javaInternalApi: {
+    baseUrl: string;
+    token: string | null;
+  };
   logLevel: string;
   llmTestMode: WorkflowLlmTestMode;
   maxRedeliverCount: number;
@@ -88,6 +92,7 @@ const ALL_ROLES: WorkflowWorkerRole[] = [...DEFAULT_ROLES];
 
 export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkflowWorkerConfig {
   const databaseUrl = requireValue(env, "DATABASE_URL");
+  const javaInternalApiBaseUrl = requireHttpBaseUrl(env, "JAVA_INTERNAL_API_BASE_URL");
   const environment = parseEnvironment(env.WORKFLOW_ENVIRONMENT);
   const broker = parseBroker(env.WORKFLOW_BROKER);
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
@@ -154,6 +159,10 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     },
     environment,
     healthPort: parsePort(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
+    javaInternalApi: {
+      baseUrl: javaInternalApiBaseUrl,
+      token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
+    },
     logLevel: optionalValue(env.LOG_LEVEL) ?? "info",
     llmTestMode,
     maxRedeliverCount: parseCount(
@@ -357,6 +366,20 @@ function requireValue(env: NodeJS.ProcessEnv, name: string) {
   const value = optionalValue(env[name]);
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
+}
+
+function requireHttpBaseUrl(env: NodeJS.ProcessEnv, name: string) {
+  const value = requireValue(env, name);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an HTTP(S) URL`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${name} must be an HTTP(S) URL`);
+  }
+  return value.replace(/\/+$/, "");
 }
 
 function optionalValue(value: string | undefined) {

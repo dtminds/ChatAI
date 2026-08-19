@@ -33,6 +33,7 @@ import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
 import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
+import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -59,10 +60,14 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     mode: config.entitlement.mode,
     token: config.entitlement.token,
   });
+  const capabilityPort = new MysqlWorkflowMessageCapabilityPort(database, {
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const runtimeService = new WorkflowRuntimeService(
     repository,
     repository,
-    undefined,
+    capabilityPort,
     {
       capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
@@ -156,6 +161,7 @@ export * from "./error-policy.js";
 export * from "./health.js";
 export * from "./inference-worker.js";
 export * from "./logger.js";
+export * from "./message-capability-port.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";
 export * from "./reconciler.js";

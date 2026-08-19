@@ -450,10 +450,10 @@ describe("compileWorkflowDraft", () => {
 
   it("rejects node kinds that Phase 3 cannot execute", () => {
     const draft = createDraft();
-    draft.nodes.splice(2, 0, node("message", "message"));
+    draft.nodes.splice(2, 0, node("tag", "tag", { operation: "add", tagIds: [101] }));
     draft.edges.splice(1, 1,
-      { id: "wait-message", source: "wait", target: "message" },
-      { id: "message-end", source: "message", target: "end" },
+      { id: "wait-tag", source: "wait", target: "tag" },
+      { id: "tag-end", source: "tag", target: "end" },
     );
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);

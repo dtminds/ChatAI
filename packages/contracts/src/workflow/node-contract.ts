@@ -465,7 +465,7 @@ export const workflowNodeContractRegistry = {
     WorkflowLlmDraftConfigSchema,
     WorkflowLlmExecutionConfigSchema,
   ),
-  message: draftReadyContract(
+  message: runtimeReadyContract(
     "action",
     2,
     WorkflowMessageDraftConfigSchema,

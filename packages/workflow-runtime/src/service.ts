@@ -31,7 +31,10 @@ import {
   type WorkflowCapabilityExecutionBinding,
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
-import { createWorkflowChatAiRunContext } from "./chatai-action-context.js";
+import {
+  createWorkflowChatAiRunContext,
+  getNextWorkflowMessageExecutionAt,
+} from "./chatai-action-context.js";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -139,7 +142,7 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
-      const executionClass = getWorkflowNodeContract(kind).executionClass;
+      const executionClass: string = getWorkflowNodeContract(kind).executionClass;
       if (executionClass === "core") return !this.executors.has(kind);
       if (executionClass === "inference") return false;
       return this.capabilityPort === undefined || !this.capabilityBindings.has(kind);
@@ -321,9 +324,34 @@ export class WorkflowRuntimeService {
       }
       throw error;
     }
+    if (node.kind === "message" && isRecord(run.context.workflow)) {
+      const nextExecutionAt = getNextWorkflowMessageExecutionAt(
+        run.context.workflow,
+        input.now,
+      );
+      if (nextExecutionAt) {
+        await this.deferTaskUntilOrThrowStale(task, nextExecutionAt);
+        throw new WorkflowRuntimeError(
+          "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+          "消息发送时间未到",
+          409,
+        );
+      }
+    }
+    const executionClass = getWorkflowNodeContract(node.kind).executionClass;
+    const capabilityNode = executionClass === "action"
+      || executionClass === "inference"
+      || executionClass === "query";
+    const inferenceNode = executionClass === "inference";
+    const capabilityBinding = this.capabilityBindings.get(node.kind);
+    const capabilityTimeoutMs = capabilityBinding?.executionTimeoutMs
+      ?? this.capabilityTimeoutMs;
+    const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
+      ? this.taskLeaseDurationMs
+      : Math.max(this.taskLeaseDurationMs, capabilityTimeoutMs * 2);
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
-      leaseExpiresAt: new Date(input.now.getTime() + this.taskLeaseDurationMs),
+      leaseExpiresAt: new Date(input.now.getTime() + taskLeaseDurationMs),
       leaseOwner: input.workerId,
       taskId: task.id,
       uid: input.uid,
@@ -351,12 +379,6 @@ export class WorkflowRuntimeService {
         run,
       });
     }
-    const executionClass = getWorkflowNodeContract(node.kind).executionClass;
-    const capabilityNode = executionClass === "action"
-      || executionClass === "inference"
-      || executionClass === "query";
-    const inferenceNode = executionClass === "inference";
-    const capabilityBinding = this.capabilityBindings.get(node.kind);
     if (capabilityNode) {
       const prepared = await this.runtimeRepository.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
@@ -402,7 +424,7 @@ export class WorkflowRuntimeService {
         : capabilityNode
           ? await executeWithCapabilityTimeout({
             nodeExecutionKey,
-            capabilityTimeoutMs: this.capabilityTimeoutMs,
+            capabilityTimeoutMs,
             binding: capabilityBinding,
             enteredAt: claimed.task.createdAt,
             node,
@@ -795,8 +817,18 @@ export class WorkflowRuntimeService {
   }
 
   private async deferTaskOrThrowStale(task: { id: string; taskVersion: number; uid: number }, now: Date) {
+    await this.deferTaskUntilOrThrowStale(
+      task,
+      new Date(now.getTime() + this.deferredTaskDelayMs),
+    );
+  }
+
+  private async deferTaskUntilOrThrowStale(
+    task: { id: string; taskVersion: number; uid: number },
+    dueAt: Date,
+  ) {
     const deferred = await this.runtimeRepository.deferTask({
-      dueAt: new Date(now.getTime() + this.deferredTaskDelayMs),
+      dueAt,
       expectedTaskVersion: task.taskVersion,
       taskId: task.id,
       uid: task.uid,
@@ -1028,6 +1060,14 @@ function createCapabilityBindingMap(
     }
     if (result.has(binding.nodeKind)) {
       throw new Error(`Duplicate Workflow capability binding: ${binding.nodeKind}`);
+    }
+    if (binding.executionTimeoutMs !== undefined
+      && (!Number.isSafeInteger(binding.executionTimeoutMs)
+        || binding.executionTimeoutMs <= 0
+        || binding.executionTimeoutMs > Number.MAX_SAFE_INTEGER / 2)) {
+      throw new Error(
+        `Workflow capability binding timeout must be a positive safe integer: ${binding.nodeKind}`,
+      );
     }
     result.set(binding.nodeKind, binding);
   }

@@ -524,7 +524,7 @@ describe("workflow DSL", () => {
     });
     expect(graph.nodes.find((node) => node.id === "message-welcome")).toMatchObject({
       kind: "message",
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
   });
 

@@ -11,7 +11,6 @@ import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
-import { readWorkflowChatAiAccountSelection } from "./chatai-action-context.js";
 import {
   renderWorkflowVariableContent,
   requireWorkflowVariableValue,
@@ -26,6 +25,7 @@ export const WORKFLOW_MESSAGE_CAPABILITY_BINDING = {
     kind: "action",
     resultSchema: WorkflowMessageResultSchema,
   },
+  executionTimeoutMs: 60_000,
   nodeKind: "message",
 } satisfies WorkflowCapabilityExecutionBinding<
   typeof WorkflowMessageCommandSchema,
@@ -48,15 +48,12 @@ export function createWorkflowMessageCommand(input: {
   if (!content.trim() && config.attachments.length === 0) {
     throw messageCommandError("Rendered Message command has no content or attachments");
   }
-  const accountSelection = readWorkflowChatAiAccountSelection(input.context.workflow);
-  if (accountSelection === null) {
-    throw messageCommandError("Message account selection is unavailable in the Run context");
-  }
+  const seatId = readTriggerSeatId(input.context.trigger);
+  if (seatId === null) throw messageCommandError("Message seat is unavailable in the Run context");
   if (!input.context.subjectId.trim()) {
     throw messageCommandError("Message recipient is unavailable in the Run context");
   }
   return {
-    accountSelection,
     attachments: config.attachments.map(attachment => ({
       content: structuredClone(attachment.content),
       materialCollectionId: attachment.materialCollectionId!,
@@ -68,8 +65,17 @@ export function createWorkflowMessageCommand(input: {
     recipient: {
       thirdExternalUserId: input.context.subjectId,
     },
+    seatId,
     source: "workflow",
   };
+}
+
+function readTriggerSeatId(trigger: Record<string, unknown>) {
+  const projection = isRecord(trigger.projection) ? trigger.projection : null;
+  const seatId = projection?.seatId;
+  return typeof seatId === "number" && Number.isSafeInteger(seatId) && seatId > 0
+    ? seatId
+    : null;
 }
 
 function renderMessageContent(
@@ -100,4 +106,8 @@ function messageCommandError(diagnosticMessage: string) {
     "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

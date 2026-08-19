@@ -61,7 +61,7 @@ describe("workflow capability reliability", () => {
       expectedRevision: 1,
       subjectId: "customer-1",
       subjectType: "chatai_contact",
-      trigger: {},
+      trigger: { projection: { seatId: 101 } },
       uid: 9,
       workflowId: "31",
     });
@@ -705,10 +705,10 @@ describe("workflow capability reliability", () => {
     expect(requests.map(request => request.idempotencyKey))
       .toEqual(["9:1:message:2", "9:1:message:2"]);
     expect(requests[0]!.command).toEqual({
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       attachments: [],
       content: "客户 customer-1",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     });
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
@@ -1275,7 +1275,10 @@ async function startCapability(
   const started = await runtime.createRunWithInitialTask({
     context: {
       outputs: {},
-      trigger,
+      trigger: {
+        projection: { seatId: 101 },
+        ...trigger,
+      },
       workflow: {
         message: {
           accountSelection: { seatIds: [101], strategy: "earliest-added" },

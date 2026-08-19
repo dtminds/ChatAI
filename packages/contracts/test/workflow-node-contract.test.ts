@@ -249,20 +249,20 @@ describe("workflow node contracts", () => {
       contentMode: "node-output",
     })).toBe(false);
     expect(Value.Check(WorkflowMessageCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       attachments: [attachment],
       content: "hello",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     })).toBe(true);
     expect(Value.Check(WorkflowMessageCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       attachments: [{
         content: attachment.content,
         type: attachment.type,
       }],
       content: "hello",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     })).toBe(false);
     expect(Value.Check(WorkflowMessageResultSchema, {})).toBe(true);

@@ -9,14 +9,15 @@
 Node 负责：
 
 - 将变量和节点输出渲染为最终文本
-- 冻结 Run 进入时的托管账号候选集和选择策略
+- 使用 Entry 准入时已冻结到 Run Context 的 `seatId`
 - 冻结消息发送时间段，并在时段外把 Task 精确延后到下一个开始时间
 - 生成并重用稳定 `idempotencyKey`
 - 管理 timeout、retry、terminal failure 和节点结果
 
 Worker 负责：
 
-- 在冻结的候选托管账号中选择实际发送账号
+- 按冻结的 `seatId` 查询 Java 请求所需的 `platform` 和 `thirdUserId`
+- 不按当前绑定、账号状态或选择策略重新选择或替换发送账号
 - 将文本与附件按配置顺序映射为现有 Java 发送接口的单条消息请求
 - 为每条消息从节点稳定 `idempotencyKey` 派生稳定子键
 
@@ -47,10 +48,7 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
     "sequence": 3
   },
   "command": {
-    "accountSelection": {
-      "seatIds": [101, 102],
-      "strategy": "earliest-added"
-    },
+    "seatId": 101,
     "recipient": {
       "thirdExternalUserId": "third-external-user-id"
     },
@@ -65,8 +63,9 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
 
 - `subjectType` 固定为 `chatai_contact`
 - `subjectId` 与 `recipient.thirdExternalUserId` 必须一致
-- `accountSelection.seatIds` 是 Run 创建时冻结的候选托管账号
-- Worker 优先使用客户在候选账号中的有效绑定账号；不存在时按 `earliest-added` 或 `latest-added` 选择有效候选账号
+- `seatId` 由 Entry 事件确定，并随 `trigger.projection` 持久化到 Run Context
+- 同一个 Run 的所有 Message 节点和所有重试始终使用同一个 `seatId`
+- Worker 只把该 `seatId` 解析为 Java 请求所需的账号标识；账号不可用时终止节点，不得替换为其他账号
 - `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时映射为自动执行来源
 - `content` 已完成变量解析，最长 1000 字符；Java 不解析 selector
 - `attachments` 最多 5 个，支持 `image`、`file`、`h5`、`weapp`、`sphfeed`
@@ -81,7 +80,7 @@ Worker 复用现有接口：
 POST /third-internal/wap-embed/conversation/send-message?idempotentKey=<key>
 ```
 
-请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为 Worker 选出的托管账号，`source = 3` 表示自动执行来源。
+请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为冻结 `seatId` 对应的托管账号，`source = 3` 表示自动执行来源。
 
 Message 节点的非空文本先发送，随后按配置顺序发送附件。每次调用使用 `${idempotencyKey}:<index>` 作为 query 参数；重试完整节点时各条消息复用原子键，已经成功的消息由 Java 幂等返回，不重复发送。
 

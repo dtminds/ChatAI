@@ -34,31 +34,17 @@ type WorkflowMessageJavaData =
   | { msgtype: "weapp" | "sphfeed"; transMsgInfoId: number };
 
 interface WorkflowMessageSeatTable {
-  biz_status: number;
-  create_time: Date;
   id: number;
   platform: number;
-  third_userid: string;
-  uid: number;
-}
-
-interface WorkflowMessageCustomerBindRelationTable {
-  add_time: number;
-  biz_status: number;
-  id: number;
-  platform: number;
-  third_external_userid: string;
   third_userid: string;
   uid: number;
 }
 
 type WorkflowMessageDatabase = WorkflowDatabase & {
-  xy_wap_embed_customer_bind_relation: WorkflowMessageCustomerBindRelationTable;
   xy_wap_embed_user_seat: WorkflowMessageSeatTable;
 };
 
 type WorkflowMessageSeat = {
-  createdAt: number;
   id: number;
   platform: number;
   thirdUserId: string;
@@ -151,9 +137,7 @@ export async function executeWorkflowMessage(
 
   throwIfAborted(input.signal);
   const seat = await resolveWorkflowMessageSeat(database, {
-    seatIds: input.command.accountSelection.seatIds,
-    strategy: input.command.accountSelection.strategy,
-    subjectId: input.subjectId,
+    seatId: input.command.seatId,
     uid: input.uid,
   });
   throwIfAborted(input.signal);
@@ -178,97 +162,36 @@ export async function executeWorkflowMessage(
   return {};
 }
 
-export function buildWorkflowMessageSeatsQuery(
+export function buildWorkflowMessageSeatQuery(
   database: Kysely<WorkflowDatabase>,
-  input: { seatIds: number[]; uid: number },
+  input: { seatId: number; uid: number },
 ) {
   return asWorkflowMessageDatabase(database)
     .selectFrom("xy_wap_embed_user_seat")
-    .select(["biz_status", "create_time", "id", "platform", "third_userid"])
+    .select(["id", "platform", "third_userid"])
     .where("uid", "=", input.uid)
-    .where("id", "in", input.seatIds)
-    .where("biz_status", "=", 1);
-}
-
-export function buildWorkflowMessageRelationsQuery(
-  database: Kysely<WorkflowDatabase>,
-  input: { platforms: number[]; subjectId: string; thirdUserIds: string[]; uid: number },
-) {
-  return asWorkflowMessageDatabase(database)
-    .selectFrom("xy_wap_embed_customer_bind_relation")
-    .select(["add_time", "id", "platform", "third_userid"])
-    .where("uid", "=", input.uid)
-    .where("platform", "in", input.platforms)
-    .where("third_external_userid", "=", input.subjectId)
-    .where("third_userid", "in", input.thirdUserIds)
-    .where("biz_status", "=", 1);
+    .where("id", "=", input.seatId);
 }
 
 export async function resolveWorkflowMessageSeat(
   database: Kysely<WorkflowDatabase>,
   input: {
-    seatIds: number[];
-    strategy: WorkflowMessageCommand["accountSelection"]["strategy"];
-    subjectId: string;
+    seatId: number;
     uid: number;
   },
 ): Promise<WorkflowMessageSeat> {
-  const seatRows = await buildWorkflowMessageSeatsQuery(database, input).execute();
-  const seats = seatRows.flatMap((row) => {
-    const id = readPositiveInteger(row.id);
-    const platform = readPositiveInteger(row.platform);
-    const thirdUserId = readString(row.third_userid);
-    const createdAt = readTimestamp(row.create_time);
-    return id && platform && thirdUserId && createdAt !== null
-      ? [{ createdAt, id, platform, thirdUserId }]
-      : [];
-  });
-  if (seats.length === 0) {
+  const row = await buildWorkflowMessageSeatQuery(database, input).executeTakeFirst();
+  const id = readPositiveInteger(row?.id);
+  const platform = readPositiveInteger(row?.platform);
+  const thirdUserId = readString(row?.third_userid);
+  if (!id || !platform || !thirdUserId) {
     throw terminalError(
       "WORKFLOW_MESSAGE_ACCOUNT_UNAVAILABLE",
       "执行所需数据不可用，流程已停止",
-      "Workflow Message has no active managed account candidate",
+      `Workflow Message seat ${input.seatId} is unavailable`,
     );
   }
-
-  const relationRows = await buildWorkflowMessageRelationsQuery(database, {
-    platforms: [...new Set(seats.map(seat => seat.platform))],
-    subjectId: input.subjectId,
-    thirdUserIds: seats.map(seat => seat.thirdUserId),
-    uid: input.uid,
-  }).execute();
-  const relationTimes = new Map<string, number>();
-  for (const row of relationRows) {
-    const platform = readPositiveInteger(row.platform);
-    const thirdUserId = readString(row.third_userid);
-    const addTime = readNonNegativeInteger(row.add_time);
-    if (!platform || !thirdUserId || addTime === null) continue;
-    const key = workflowMessageSeatKey(platform, thirdUserId);
-    const current = relationTimes.get(key);
-    if (
-      current === undefined
-      || (input.strategy === "earliest-added" ? addTime < current : addTime > current)
-    ) {
-      relationTimes.set(key, addTime);
-    }
-  }
-
-  const relatedSeats = seats.flatMap(seat => {
-    const relationTime = relationTimes.get(workflowMessageSeatKey(
-      seat.platform,
-      seat.thirdUserId,
-    ));
-    return relationTime === undefined ? [] : [{ seat, timestamp: relationTime }];
-  });
-  const candidates = relatedSeats.length > 0
-    ? relatedSeats
-    : seats.map(seat => ({ seat, timestamp: seat.createdAt }));
-  candidates.sort((first, second) => compareMessageSeatCandidates(
-    first,
-    second,
-    input.strategy,
-  ));
-  return candidates[0]!.seat;
+  return { id, platform, thirdUserId };
 }
 
 export function buildWorkflowJavaMessages(command: WorkflowMessageCommand) {
@@ -423,19 +346,6 @@ async function sendWorkflowJavaMessage(input: {
   }
 }
 
-function compareMessageSeatCandidates(
-  first: { seat: WorkflowMessageSeat; timestamp: number },
-  second: { seat: WorkflowMessageSeat; timestamp: number },
-  strategy: WorkflowMessageCommand["accountSelection"]["strategy"],
-) {
-  const direction = strategy === "earliest-added" ? 1 : -1;
-  return direction * (first.timestamp - second.timestamp || first.seat.id - second.seat.id);
-}
-
-function workflowMessageSeatKey(platform: number, thirdUserId: string) {
-  return `${platform}:${thirdUserId}`;
-}
-
 function requireContentString(content: Record<string, unknown>, key: string) {
   const value = readString(content[key]);
   if (value) return value;
@@ -471,23 +381,6 @@ function readString(value: unknown) {
 function readPositiveInteger(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function readNonNegativeInteger(value: unknown) {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function readTimestamp(value: unknown) {
-  if (value instanceof Date) {
-    const timestamp = value.getTime();
-    return Number.isNaN(timestamp) ? null : timestamp;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    const timestamp = new Date(value).getTime();
-    return Number.isNaN(timestamp) ? null : timestamp;
-  }
-  return null;
 }
 
 function throwIfAborted(signal: AbortSignal): never | void {

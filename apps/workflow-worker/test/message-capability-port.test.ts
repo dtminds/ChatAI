@@ -57,25 +57,10 @@ describe("Workflow Message capability port", () => {
     ]);
   });
 
-  it("prefers an active customer binding and sends ordered messages with stable child keys", async () => {
-    const { database, queries } = createRecordingDatabase((query) => {
-      if (query.sql.includes("xy_wap_embed_user_seat")) {
-        return {
-          rows: [
-            seatRow(101, "work-user-1", "2026-08-01T00:00:00.000Z"),
-            seatRow(102, "work-user-2", "2026-08-02T00:00:00.000Z"),
-          ],
-        };
-      }
-      return {
-        rows: [{
-          add_time: 1_786_000_000,
-          id: 501,
-          platform: 5,
-          third_userid: "work-user-2",
-        }],
-      };
-    });
+  it("uses the Run-frozen seat and sends ordered messages with stable child keys", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({
+      rows: [seatRow(101, "work-user-1")],
+    }));
     const fetchMock = vi.fn(async () => javaResponse({ data: { optNo: "opt-1" } }));
 
     await expect(executeWorkflowMessage(database, {
@@ -95,18 +80,11 @@ describe("Workflow Message capability port", () => {
       uid: 9,
     })).resolves.toEqual({});
 
-    expect(queries).toHaveLength(2);
-    expect(queries[0]?.sql).toContain("`id` in (?, ?)");
-    expect(queries[0]?.parameters).toEqual(expect.arrayContaining([9, 101, 102, 1]));
-    expect(queries[1]?.sql).toContain("`third_external_userid` = ?");
-    expect(queries[1]?.parameters).toEqual(expect.arrayContaining([
-      9,
-      5,
-      "customer-1",
-      "work-user-1",
-      "work-user-2",
-      1,
-    ]));
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.sql).not.toContain("biz_status");
+    expect(queries[0]?.sql).not.toContain("customer_bind_relation");
+    expect(queries[0]?.sql).toContain("`id` = ?");
+    expect(queries[0]?.parameters).toEqual([9, 101]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://java.example.com/third-internal/wap-embed/conversation/send-message?idempotentKey=9%3Arun-1%3Amessage-1%3A2%3A0",
@@ -119,7 +97,7 @@ describe("Workflow Message capability port", () => {
         sendType: 1,
         source: 3,
         thirdExternalUserid: "customer-1",
-        thirdUserId: "work-user-2",
+        thirdUserId: "work-user-1",
         uid: 9,
       },
       {
@@ -128,7 +106,7 @@ describe("Workflow Message capability port", () => {
         sendType: 1,
         source: 3,
         thirdExternalUserid: "customer-1",
-        thirdUserId: "work-user-2",
+        thirdUserId: "work-user-1",
         uid: 9,
       },
     ]);
@@ -137,28 +115,24 @@ describe("Workflow Message capability port", () => {
     });
   });
 
-  it("uses the configured account order when no selected account has a customer binding", async () => {
-    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
-      ? {
-          rows: [
-            seatRow(101, "work-user-1", "2026-08-01T00:00:00.000Z"),
-            seatRow(102, "work-user-2", "2026-08-02T00:00:00.000Z"),
-          ],
-        }
-      : { rows: [] });
+  it("does not substitute another seat when the Run-frozen seat is unavailable", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
 
     await expect(resolveWorkflowMessageSeat(database, {
-      seatIds: [101, 102],
-      strategy: "latest-added",
-      subjectId: "customer-1",
+      seatId: 101,
       uid: 9,
-    })).resolves.toMatchObject({ id: 102, thirdUserId: "work-user-2" });
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_ACCOUNT_UNAVAILABLE",
+      failureKind: "terminal",
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.parameters).toEqual([9, 101]);
   });
 
   it("classifies Java business rejection as terminal and service failure as retryable", async () => {
-    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
-      ? { rows: [seatRow(101, "work-user-1", "2026-08-01T00:00:00.000Z")] }
-      : { rows: [] });
+    const { database } = createRecordingDatabase(() => ({
+      rows: [seatRow(101, "work-user-1")],
+    }));
     const baseInput = {
       baseUrl: "https://java.example.com",
       command: messageCommand({ content: "欢迎咨询" }),
@@ -205,10 +179,10 @@ describe("Workflow Message capability port", () => {
 
 function messageCommand(overrides: Partial<WorkflowMessageCommand> = {}): WorkflowMessageCommand {
   return {
-    accountSelection: { seatIds: [101, 102], strategy: "earliest-added" },
     attachments: [],
     content: "",
     recipient: { thirdExternalUserId: "customer-1" },
+    seatId: 101,
     source: "workflow",
     ...overrides,
   };
@@ -227,10 +201,8 @@ function attachment(
   };
 }
 
-function seatRow(id: number, thirdUserId: string, createdAt: string) {
+function seatRow(id: number, thirdUserId: string) {
   return {
-    biz_status: 1,
-    create_time: new Date(createdAt),
     id,
     platform: 5,
     third_userid: thirdUserId,

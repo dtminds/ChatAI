@@ -10,7 +10,10 @@ import {
   getWorkflowGuaranteedUpstreamNodeIds,
   isWorkflowOutputAvailableOnSourceOutlets,
 } from "@chatai/workflow-engine";
-import { hasWorkflowChatAiRunContext } from "./chatai-action-context.js";
+import {
+  hasWorkflowChatAiRunContext,
+  readWorkflowMessageSendingWindow,
+} from "./chatai-action-context.js";
 
 export type WorkflowForwardRouteResult =
   | { kind: "flow-changed"; reason: WorkflowFlowChangedReason }
@@ -37,7 +40,13 @@ export function resolveWorkflowForwardRoute(input: {
   if (!edge) return { kind: "flow-changed", reason: "flow_changed_outlet_deleted" };
   const target = input.latestSpec.nodes.find(node => node.id === edge.target);
   if (!target) return { kind: "flow-changed", reason: "flow_changed_outlet_deleted" };
-  if ((target.kind === "message" || target.kind === "handoff")
+  if (target.kind === "message"
+    && (!isRecord(input.context.workflow)
+      || readWorkflowMessageSendingWindow(input.context.workflow) === null
+      || !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context))) {
+    return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
+  }
+  if (target.kind === "handoff"
     && (!isRecord(input.context.workflow)
       || !hasWorkflowChatAiRunContext(input.context.workflow))) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };

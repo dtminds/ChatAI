@@ -26,16 +26,13 @@ const context = {
   },
   workflow: {
     message: {
-      accountSelection: {
-        seatIds: [101, 102],
-        strategy: "earliest-added",
-      },
+      sendingWindow: { endTime: "20:00", startTime: "09:00" },
     },
   },
 };
 
 describe("Workflow Message capability", () => {
-  it("freezes the Start account selection for the lifetime of a Run", () => {
+  it("freezes the Start action context for the lifetime of a Run", () => {
     const startConfig = {
       entryPolicy: { mode: "never" as const },
       pushAccountStrategy: "latest-added" as const,
@@ -99,7 +96,6 @@ describe("Workflow Message capability", () => {
       },
       context,
     })).toEqual({
-      accountSelection: { seatIds: [101, 102], strategy: "earliest-added" },
       attachments: [{
         content: { fileUrl: "https://cdn.example.com/image.png" },
         materialCollectionId: "201",
@@ -108,6 +104,7 @@ describe("Workflow Message capability", () => {
       }],
       content: "客户 customer-1 有 2 条消息",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     });
   });
@@ -143,10 +140,10 @@ describe("Workflow Message capability", () => {
     expect(adapter.calls[0]).toMatchObject({
       request: {
         command: {
-          accountSelection: { seatIds: [101, 102], strategy: "earliest-added" },
           attachments: [],
           content: "first\nsecond",
           recipient: { thirdExternalUserId: "customer-1" },
+          seatId: 101,
           source: "workflow",
         },
         idempotencyKey: "9:run-1:message:3",
@@ -188,7 +185,7 @@ describe("Workflow Message capability", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("diagnoses a missing account snapshot separately from a missing recipient", () => {
+  it("diagnoses a missing frozen seat separately from a missing recipient", () => {
     let error: unknown;
     try {
       createWorkflowMessageCommand({
@@ -197,7 +194,10 @@ describe("Workflow Message capability", () => {
           content: [{ type: "text", value: "hello" }],
           contentMode: "custom",
         },
-        context: { ...context, workflow: {} },
+        context: {
+          ...context,
+          trigger: { ...context.trigger, projection: {} },
+        },
       });
     } catch (caught) {
       error = caught;
@@ -205,7 +205,7 @@ describe("Workflow Message capability", () => {
 
     expect(error).toMatchObject({
       code: "WORKFLOW_MESSAGE_COMMAND_INVALID",
-      diagnosticMessage: "Message account selection is unavailable in the Run context",
+      diagnosticMessage: "Message seat is unavailable in the Run context",
       failureKind: "terminal",
     });
   });

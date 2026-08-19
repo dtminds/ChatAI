@@ -338,9 +338,20 @@ export class WorkflowRuntimeService {
         );
       }
     }
+    const executionClass = getWorkflowNodeContract(node.kind).executionClass;
+    const capabilityNode = executionClass === "action"
+      || executionClass === "inference"
+      || executionClass === "query";
+    const inferenceNode = executionClass === "inference";
+    const capabilityBinding = this.capabilityBindings.get(node.kind);
+    const capabilityTimeoutMs = capabilityBinding?.executionTimeoutMs
+      ?? this.capabilityTimeoutMs;
+    const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
+      ? this.taskLeaseDurationMs
+      : Math.max(this.taskLeaseDurationMs, capabilityTimeoutMs * 2);
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
-      leaseExpiresAt: new Date(input.now.getTime() + this.taskLeaseDurationMs),
+      leaseExpiresAt: new Date(input.now.getTime() + taskLeaseDurationMs),
       leaseOwner: input.workerId,
       taskId: task.id,
       uid: input.uid,
@@ -368,12 +379,6 @@ export class WorkflowRuntimeService {
         run,
       });
     }
-    const executionClass = getWorkflowNodeContract(node.kind).executionClass;
-    const capabilityNode = executionClass === "action"
-      || executionClass === "inference"
-      || executionClass === "query";
-    const inferenceNode = executionClass === "inference";
-    const capabilityBinding = this.capabilityBindings.get(node.kind);
     if (capabilityNode) {
       const prepared = await this.runtimeRepository.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
@@ -419,7 +424,7 @@ export class WorkflowRuntimeService {
         : capabilityNode
           ? await executeWithCapabilityTimeout({
             nodeExecutionKey,
-            capabilityTimeoutMs: this.capabilityTimeoutMs,
+            capabilityTimeoutMs,
             binding: capabilityBinding,
             enteredAt: claimed.task.createdAt,
             node,
@@ -1055,6 +1060,14 @@ function createCapabilityBindingMap(
     }
     if (result.has(binding.nodeKind)) {
       throw new Error(`Duplicate Workflow capability binding: ${binding.nodeKind}`);
+    }
+    if (binding.executionTimeoutMs !== undefined
+      && (!Number.isSafeInteger(binding.executionTimeoutMs)
+        || binding.executionTimeoutMs <= 0
+        || binding.executionTimeoutMs > Number.MAX_SAFE_INTEGER / 2)) {
+      throw new Error(
+        `Workflow capability binding timeout must be a positive safe integer: ${binding.nodeKind}`,
+      );
     }
     result.set(binding.nodeKind, binding);
   }

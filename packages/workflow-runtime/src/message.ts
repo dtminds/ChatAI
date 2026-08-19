@@ -25,6 +25,7 @@ export const WORKFLOW_MESSAGE_CAPABILITY_BINDING = {
     kind: "action",
     resultSchema: WorkflowMessageResultSchema,
   },
+  executionTimeoutMs: 60_000,
   nodeKind: "message",
 } satisfies WorkflowCapabilityExecutionBinding<
   typeof WorkflowMessageCommandSchema,

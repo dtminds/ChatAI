@@ -71,6 +71,7 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
 - `attachments` 最多 5 个，支持 `image`、`file`、`h5`、`weapp`、`sphfeed`
 - 文本为空时必须至少有一个附件
 - `execution` 只用于排障，不参与业务判断
+- Message 节点共享 60 秒执行 deadline；Task claim 使用至少 120 秒 lease，给最多 6 次串行发送和结果提交留出完整预算
 
 ## 3. Java 接口
 

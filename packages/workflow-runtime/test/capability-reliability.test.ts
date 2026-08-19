@@ -647,8 +647,11 @@ describe("workflow capability reliability", () => {
     let runtimeNow = now;
     const requests: Array<{
       command: Record<string, unknown>;
+      deadlineAt: Date;
       idempotencyKey: string;
     }> = [];
+    const observedLeaseExpirations: Date[] = [];
+    let actionTaskId = "";
     let attempt = 0;
     const spec = actionSpec();
     spec.nodes.find(node => node.kind === "message")!.config = {
@@ -662,9 +665,13 @@ describe("workflow capability reliability", () => {
     const service = createService(runtime, async (input: unknown) => {
       const request = input as {
         command: Record<string, unknown>;
+        deadlineAt: Date;
         idempotencyKey: string;
       };
       requests.push(request);
+      const executingTask = await runtime.findTask(9, actionTaskId);
+      if (!executingTask?.leaseExpiresAt) throw new Error("Message Task lease was not created");
+      observedLeaseExpirations.push(executingTask.leaseExpiresAt);
       attempt += 1;
       if (attempt === 1) {
         throw createActionError("retryable", "MESSAGE_SEND_TEMPORARY");
@@ -679,6 +686,7 @@ describe("workflow capability reliability", () => {
     const actionTask = await startCapability(runtime, service, {
       projection: { seatId: 101 },
     });
+    actionTaskId = actionTask.id;
 
     await expect(service.executeTask({
       now,
@@ -690,6 +698,7 @@ describe("workflow capability reliability", () => {
     const retryTask = await runtime.findTask(9, actionTask.id);
     if (!retryTask) throw new Error("Message retry task was not created");
 
+    runtimeNow = retryTask.dueAt;
     await expect(service.executeTask({
       now: retryTask.dueAt,
       taskId: retryTask.id,
@@ -704,6 +713,14 @@ describe("workflow capability reliability", () => {
     expect(requests).toHaveLength(2);
     expect(requests.map(request => request.idempotencyKey))
       .toEqual(["9:1:message:2", "9:1:message:2"]);
+    expect(requests.map(request => request.deadlineAt)).toEqual([
+      new Date(now.getTime() + 60_000),
+      new Date(retryTask.dueAt.getTime() + 60_000),
+    ]);
+    expect(observedLeaseExpirations).toEqual([
+      new Date(now.getTime() + 120_000),
+      new Date(retryTask.dueAt.getTime() + 120_000),
+    ]);
     expect(requests[0]!.command).toEqual({
       attachments: [],
       content: "客户 customer-1",

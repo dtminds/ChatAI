@@ -328,7 +328,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt,
       };
 
-      workflowDocuments[documentIndex] = withCurrentReview(nextDocument);
+      workflowDocuments[documentIndex] = withCurrentReview(nextDocument, !shouldCreateDraftRevision);
       return normalizeWorkflowDraftSaveResult(workflowDocuments[documentIndex]);
     },
     restoreReview: (workflowId, reviewId) => {
@@ -471,7 +471,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     }
   }
 
-  function withCurrentReview(document: WorkflowDocument) {
+  function withCurrentReview(document: WorkflowDocument, preserveUpdatedAt = false) {
     const publishHash = createWorkflowPublishHash(document.draft);
     const review = (reviewHistory.get(document.id) ?? []).find(candidate => {
       const candidateDraft = reviewDrafts.get(candidate.id);
@@ -482,13 +482,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
           || candidate.status === "approved"
           || candidate.status === "rejected");
     }) ?? null;
-    return withReview(document, review);
+    return withReview(document, review, preserveUpdatedAt);
   }
 }
 
 function withReview(
   document: WorkflowDocument,
   review: WorkflowPublishReview | null,
+  preserveUpdatedAt = false,
 ): WorkflowDocument {
   const locked = review?.status === "pending";
   return {
@@ -499,7 +500,7 @@ function withReview(
       canEdit: !locked && document.runtimeStatus !== "stopped",
       canPublish: document.runtimeStatus !== "stopped",
     },
-    updatedAt: "刚刚",
+    updatedAt: preserveUpdatedAt ? document.updatedAt : "刚刚",
   };
 }
 

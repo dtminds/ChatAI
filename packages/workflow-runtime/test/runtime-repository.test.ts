@@ -125,14 +125,13 @@ describe("workflow runtime repository", () => {
     const repository = repositoryWithLatestSpec(spec);
     const runInput = createRunInput();
     const created = await repository.createRunWithInitialTask(spec.nodes.some(node =>
-      node.kind === "message" || node.kind === "handoff")
+      node.kind === "message")
       ? {
           ...runInput,
           context: {
             ...runInput.context,
             workflow: {
               message: {
-                accountSelection: { seatIds: [101], strategy: "earliest-added" },
                 sendingWindow: { endTime: "20:00", startTime: "09:00" },
               },
             },

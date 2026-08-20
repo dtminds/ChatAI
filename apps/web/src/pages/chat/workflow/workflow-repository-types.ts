@@ -175,7 +175,7 @@ export type WorkflowDraftWriter = {
   ) => Promise<WorkflowDocument> | WorkflowDocument;
   restoreVersion: (
     workflowId: string,
-    versionId: string,
+    version: WorkflowVersionHistoryItem,
   ) => Promise<WorkflowDraftRestoreResult | WorkflowDocument> | WorkflowDraftRestoreResult | WorkflowDocument;
   restoreReview: (
     workflowId: string,
@@ -229,7 +229,7 @@ export type SyncWorkflowDraftRepository = {
   ) => WorkflowDocument;
   reset: () => void;
   resumeDocument: (workflowId: string) => WorkflowDocument;
-  restoreVersion: (workflowId: string, versionId: string) => WorkflowDraftRestoreResult;
+  restoreVersion: (workflowId: string, version: WorkflowVersionHistoryItem) => WorkflowDraftRestoreResult;
   restoreReview: (workflowId: string, reviewId: string) => WorkflowDocument;
   saveDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftSaveResult;
   stopDocument: (workflowId: string) => WorkflowDocument;

@@ -43,7 +43,7 @@ export function WorkflowVersionHistoryPanel({
   }>;
   onClose: () => void;
   onExitPreview: () => void;
-  onRestoreVersion: (versionId: string) => void;
+  onRestoreVersion: (version: WorkflowVersionHistoryItem) => void;
   onSelectReview: (review: WorkflowPublishReview) => void;
   onSelectVersion: (version: WorkflowVersionHistoryItem) => void;
   loadReviews: (cursor?: string) => Promise<{
@@ -57,7 +57,7 @@ export function WorkflowVersionHistoryPanel({
   const isRestoring = restoreState === "restoring";
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
   const [activeTab, setActiveTab] = useState<"versions" | "reviews">("versions");
-  const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
+  const [restoreVersion, setRestoreVersion] = useState<WorkflowVersionHistoryItem | null>(null);
   const [reviews, setReviews] = useState<WorkflowPublishReview[]>([]);
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
   const [reviewsNextCursor, setReviewsNextCursor] = useState<string | null>(null);
@@ -242,7 +242,7 @@ export function WorkflowVersionHistoryPanel({
             <Button
               className="h-8 rounded-lg px-3 text-xs"
               disabled={!canRestore || isRestoring}
-              onClick={() => setRestoreVersionId(selectedVersion.id)}
+              onClick={() => setRestoreVersion(selectedVersion)}
               type="button"
             >
               <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.8} />
@@ -253,9 +253,9 @@ export function WorkflowVersionHistoryPanel({
       ) : null}
       <AlertDialog
         onOpenChange={(open) => {
-          if (!open) setRestoreVersionId(null);
+          if (!open) setRestoreVersion(null);
         }}
-        open={restoreVersionId !== null}
+        open={restoreVersion !== null}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -269,8 +269,8 @@ export function WorkflowVersionHistoryPanel({
             <AlertDialogAction
               disabled={isRestoring}
               onClick={() => {
-                if (restoreVersionId) onRestoreVersion(restoreVersionId);
-                setRestoreVersionId(null);
+                if (restoreVersion) onRestoreVersion(restoreVersion);
+                setRestoreVersion(null);
               }}
             >
               确认还原

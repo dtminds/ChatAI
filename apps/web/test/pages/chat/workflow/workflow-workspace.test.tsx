@@ -1070,7 +1070,7 @@ describe("useWorkflowWorkspace", () => {
     });
 
     await act(async () => {
-      await result.current.versionHistory.onRestoreVersion(versionId);
+      await result.current.versionHistory.onRestoreVersion(version);
     });
 
     expect(result.current.versionHistory.isOpen).toBe(false);

@@ -229,10 +229,10 @@ export function createHttpWorkflowDraftRepository(
       });
     },
 
-    async restoreVersion(workflowId, versionId) {
+    async restoreVersion(workflowId, restoredVersion) {
       try {
         const current = await requireCachedDefinition(client, definitions, workflowId);
-        const revision = parseRevisionId(versionId);
+        const revision = restoredVersion.revision;
         const definition = unwrap<ApiWorkflowDefinition>(await client.post(
           `/server/workflows/${workflowId}/revisions/${revision}/restore`,
           { expectedDraftVersion: current.draftVersion },
@@ -243,10 +243,6 @@ export function createHttpWorkflowDraftRepository(
           revisions.get(workflowId) ?? [],
           revisionCursors.get(workflowId) ?? null,
         );
-        const restoredVersion = document.versionHistory.find((item) => item.revision === revision);
-        if (!restoredVersion) {
-          throw new WorkflowRepositoryError("not-found", "Workflow 版本不存在");
-        }
         return {
           ...toSaveResult(document),
           restoredAt: document.updatedAt,
@@ -535,12 +531,6 @@ function toSaveResult(document: WorkflowDocument): WorkflowDraftSaveResult {
 
 function toDraft(draft: ApiWorkflowDefinition["draft"]): WorkflowDraft {
   return hydrateWorkflowDraft(draft as unknown as WorkflowDraft);
-}
-
-function parseRevisionId(versionId: string) {
-  const match = /-r(\d+)$/.exec(versionId);
-  if (!match) throw new WorkflowRepositoryError("validation", "Workflow 版本标识无效");
-  return Number(match[1]);
 }
 
 function unwrap<T>(response: unknown): T {

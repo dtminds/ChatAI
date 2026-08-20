@@ -285,15 +285,11 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       return cloneWorkflowDocument(workflowDocuments[documentIndex]);
     },
     resumeDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
-    restoreVersion: (workflowId, versionId) => {
+    restoreVersion: (workflowId, version) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
-      const restoredVersion = currentDocument.versionHistory.find((version) => version.id === versionId);
-
-      if (!restoredVersion) {
-        throw new WorkflowRepositoryError("not-found", `Unknown workflow version: ${versionId}`);
-      }
+      const restoredVersion = cloneWorkflowVersionHistoryItem(version);
 
       const nextDraft = cloneWorkflowDraft(restoredVersion.draft);
       const restoredAt = "刚刚";

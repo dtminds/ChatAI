@@ -23,6 +23,7 @@ import type {
   WorkflowDraftSaveResult,
   WorkflowDraftSaveStatus,
   WorkflowListItem,
+  WorkflowVersionHistoryItem,
 } from "./workflow-repository-types";
 import type { WorkflowDraft } from "./types";
 
@@ -84,9 +85,9 @@ export function importWorkflowDraft(
 
 export function restoreWorkflowVersion(
   workflowId: string,
-  versionId: string,
+  version: WorkflowVersionHistoryItem,
 ): WorkflowDocument {
-  return workflowDraftTestRepository.restoreVersion(workflowId, versionId).document;
+  return workflowDraftTestRepository.restoreVersion(workflowId, version).document;
 }
 
 export function cloneWorkflowDraftSnapshot(draft: WorkflowDraft): WorkflowDraft {
@@ -552,7 +553,7 @@ export function useWorkflowDocument(
     }
   }, [repository]);
 
-  const restoreVersion = useCallback(async (versionId: string) => {
+  const restoreVersion = useCallback(async (version: WorkflowVersionHistoryItem) => {
     const restoreRequestId = restoreRequestRef.current + 1;
     restoreRequestRef.current = restoreRequestId;
     publishRequestRef.current += 1;
@@ -574,7 +575,7 @@ export function useWorkflowDocument(
       const saveRequestId = saveRequestRef.current + 1;
       saveRequestRef.current = saveRequestId;
       const restoreResult = await Promise.resolve(
-        repository.restoreVersion(workflowIdToRestore, versionId),
+        repository.restoreVersion(workflowIdToRestore, version),
       );
       const normalizedRestoreResult = normalizeWorkflowDraftRestoreResult(restoreResult);
       const { document: restoredDocument } = normalizedRestoreResult;

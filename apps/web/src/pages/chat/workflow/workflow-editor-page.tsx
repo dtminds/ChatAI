@@ -247,8 +247,8 @@ function WorkflowWorkspaceContent({
           : `/chat/workflows/${document.id}`)}
         onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
-        onRestoreVersion={canRestoreVersion && versionHistory.currentPreviewVersionId
-          ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
+        onRestoreVersion={canRestoreVersion && versionHistory.previewVersion
+          ? () => versionHistory.onRestoreVersion(versionHistory.previewVersion!)
           : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
         previewVersionMeta={versionHistory.previewVersion

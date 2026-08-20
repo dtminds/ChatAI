@@ -26,7 +26,7 @@ describe("WorkflowVersionHistoryPanel", () => {
     expect(onRestoreVersion).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "确认还原" }));
-    expect(onRestoreVersion).toHaveBeenCalledWith("workflow-1-r1");
+    expect(onRestoreVersion).toHaveBeenCalledWith(expect.objectContaining({ id: "workflow-1-r1" }));
   });
 
   it("formats review timestamps instead of rendering raw ISO values", async () => {
@@ -112,7 +112,7 @@ function renderPanel({
     nextCursor: string | null;
   }>;
   nextVersionCursor?: string | null;
-  onRestoreVersion?: (versionId: string) => void;
+  onRestoreVersion?: (version: WorkflowVersionHistoryItem) => void;
   onSelectReview?: (review: WorkflowPublishReview) => void;
 } = {}) {
   return render(

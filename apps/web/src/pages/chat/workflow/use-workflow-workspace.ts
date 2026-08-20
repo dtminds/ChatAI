@@ -714,8 +714,8 @@ export function useWorkflowWorkspace(
     closeCanvasOverlays();
   });
 
-  const restorePreviewVersion = useWorkflowStableCallback(async (versionId: string) => {
-    const result = await restoreVersion(versionId);
+  const restorePreviewVersion = useWorkflowStableCallback(async (version: WorkflowVersionHistoryItem) => {
+    const result = await restoreVersion(version);
 
     if (!result) {
       return;

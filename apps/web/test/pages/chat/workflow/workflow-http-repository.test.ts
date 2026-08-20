@@ -233,6 +233,36 @@ describe("HTTP workflow repository", () => {
     expect(client.get).toHaveBeenCalledWith("/server/workflows/42/reviews?limit=20&cursor=40");
   });
 
+  it("restores an exact version without requiring it in the loaded history page", async () => {
+    const definition = createDefinition({ publishedRevision: 100 });
+    const loadedRevision = createRevision(definition, { id: "revision-100", revision: 100 });
+    const exactRevision = createRevision(definition, { id: "revision-50", revision: 50 });
+    const restoredDefinition = createDefinition({
+      draft: exactRevision.draft,
+      draftVersion: definition.draftVersion + 1,
+      publishedRevision: 100,
+    });
+    const client = createClient({ definition, revisions: [loadedRevision] });
+    client.get.mockImplementation(async (url: string) => {
+      if (url === "/server/workflows/42/revisions/50") return envelope(exactRevision);
+      if (url.includes("/revisions?")) {
+        return envelope({ items: [loadedRevision], nextCursor: "100" });
+      }
+      return envelope(definition);
+    });
+    client.post.mockResolvedValueOnce(envelope(restoredDefinition));
+    const repository = createHttpWorkflowDraftRepository(client);
+    await repository.getDocument("42");
+    const exactVersion = await repository.getVersion("42", 50);
+
+    const restored = await repository.restoreVersion("42", exactVersion);
+
+    expect(client.post).toHaveBeenCalledWith("/server/workflows/42/revisions/50/restore", {
+      expectedDraftVersion: definition.draftVersion,
+    });
+    expect("restoredVersion" in restored ? restored.restoredVersion.revision : null).toBe(50);
+  });
+
   it("submits review with the cached draft version and refreshes the document", async () => {
     const definition = createDefinition();
     const pendingDefinition = createDefinition({ currentReview: createReview() });

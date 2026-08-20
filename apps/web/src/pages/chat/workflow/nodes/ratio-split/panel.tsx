@@ -115,10 +115,6 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
         </Button>
       </div>
 
-      <p className="text-xs leading-5 text-muted-foreground">
-        同一流程对象在分组和比例不变时会进入同一分组；所有分组都需要连接后才能发布
-      </p>
-
       <AlertDialog
         onOpenChange={(open) => {
           if (!open) setPendingDeleteGroup(null);

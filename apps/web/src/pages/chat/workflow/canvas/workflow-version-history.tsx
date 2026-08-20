@@ -2,6 +2,16 @@ import { Cancel01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { WorkflowPublishReview } from "@chatai/contracts";
 import { useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -36,6 +46,7 @@ export function WorkflowVersionHistoryPanel({
   const isRestoring = restoreState === "restoring";
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
   const [activeTab, setActiveTab] = useState<"versions" | "reviews">("versions");
+  const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<WorkflowPublishReview[]>([]);
 
   useEffect(() => {
@@ -68,7 +79,7 @@ export function WorkflowVersionHistoryPanel({
 
       <Tabs className="px-3 pb-2" onValueChange={value => setActiveTab(value as "versions" | "reviews")} value={activeTab}>
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="versions">发布版本</TabsTrigger>
+          <TabsTrigger value="versions">历史版本</TabsTrigger>
           <TabsTrigger value="reviews">审核记录</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -103,19 +114,19 @@ export function WorkflowVersionHistoryPanel({
                   <span className="workflow-version-name min-w-0 truncate text-[13px] font-bold leading-[18px] text-foreground">{version.name}</span>
                   {isLatest ? (
                     <span className="workflow-version-badge shrink-0 rounded-md border-[0.5px] border-primary/30 bg-primary/10 px-[5px] py-px text-[10px] font-bold leading-[14px] text-primary">
-                      Latest
+                      最新
                     </span>
                   ) : null}
                 </span>
                 <span className="workflow-version-meta truncate text-xs leading-[18px] text-muted-foreground">
-                  {version.publishedAt} · Revision {version.revision}
+                  {version.publishedAt}
                 </span>
               </span>
             </button>
           );
         }) : activeTab === "versions" ? (
           <div className="workflow-version-empty flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">
-            <span>暂无发布版本</span>
+            <span>暂无历史版本</span>
           </div>
         ) : reviews.length ? reviews.map(review => (
           <button
@@ -132,7 +143,7 @@ export function WorkflowVersionHistoryPanel({
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{review.reviewComment}</p>
             ) : null}
             {review.resultingRevision !== null ? (
-              <p className="mt-1 text-xs text-muted-foreground">已发布为 Revision {review.resultingRevision}</p>
+              <p className="mt-1 text-xs text-muted-foreground">已发布：版本 {review.resultingRevision}</p>
             ) : null}
           </button>
         )) : (
@@ -157,20 +168,47 @@ export function WorkflowVersionHistoryPanel({
               type="button"
               variant="secondary"
             >
-              退出预览
+              返回最新
             </Button>
             <Button
               className="h-8 rounded-lg px-3 text-xs"
               disabled={!canRestore || isRestoring}
-              onClick={() => onRestoreVersion(selectedVersion.id)}
+              onClick={() => setRestoreVersionId(selectedVersion.id)}
               type="button"
             >
               <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.8} />
-              {isRestoring ? "恢复中" : "恢复"}
+              {isRestoring ? "还原中" : "还原到该版本"}
             </Button>
           </div>
         </div>
       ) : null}
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setRestoreVersionId(null);
+        }}
+        open={restoreVersionId !== null}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认还原到该版本</AlertDialogTitle>
+            <AlertDialogDescription>
+              将把画布内容恢复到此历史版本，当前未保存/未发布的修改将被放弃，如需生效请还原后重新发布
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRestoring}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRestoring}
+              onClick={() => {
+                if (restoreVersionId) onRestoreVersion(restoreVersionId);
+                setRestoreVersionId(null);
+              }}
+            >
+              确认还原
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

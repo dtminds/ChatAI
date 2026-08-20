@@ -39,6 +39,7 @@ describe("WorkflowReviewPanel", () => {
     const onReject = vi.fn(async () => true);
     renderPanel(createReview(), { onReject });
 
+    expect(screen.queryByRole("button", { name: "撤回审核" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "驳回" }));
     await user.click(screen.getByRole("button", { name: "确认驳回" }));
     expect(onReject).not.toHaveBeenCalled();
@@ -47,6 +48,20 @@ describe("WorkflowReviewPanel", () => {
     await user.type(within(panel).getByRole("textbox"), "进入条件需要调整");
     await user.click(screen.getByRole("button", { name: "确认驳回" }));
     expect(onReject).toHaveBeenCalledWith("进入条件需要调整");
+  });
+
+  it("limits review comments to 200 characters and shows the current count", async () => {
+    const user = userEvent.setup();
+    renderPanel(createReview());
+
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveAttribute("maxlength", "200");
+    expect(screen.getByText("0/200")).toBeInTheDocument();
+
+    await user.type(input, "审".repeat(201));
+
+    expect(input).toHaveValue("审".repeat(200));
+    expect(screen.getByText("200/200")).toBeInTheDocument();
   });
 
   it("shows who decided a rejected review and when", () => {
@@ -71,7 +86,21 @@ describe("WorkflowReviewPanel", () => {
     }));
 
     expect(screen.getByText("审核通过")).toBeInTheDocument();
-    expect(screen.getByText(/已发布为 Revision 3/)).toBeInTheDocument();
+    expect(screen.getByText(/版本 3/)).toBeInTheDocument();
+  });
+
+  it("opens the published version from the publication record", async () => {
+    const user = userEvent.setup();
+    const onViewPublishedVersion = vi.fn();
+    renderPanel(createReview({
+      publishedAt: "2026-08-16T12:00:00.000+08:00",
+      resultingRevision: 3,
+      status: "approved",
+    }), { onViewPublishedVersion });
+
+    await user.click(screen.getByRole("button", { name: "查看版本" }));
+
+    expect(onViewPublishedVersion).toHaveBeenCalledOnce();
   });
 
   it("restores an unpublished historical review snapshot", async () => {
@@ -79,7 +108,10 @@ describe("WorkflowReviewPanel", () => {
     const onRestore = vi.fn(async () => true);
     renderPanel(createReview({ status: "withdrawn" }), { onRestore });
 
-    await user.click(screen.getByRole("button", { name: "恢复为当前草稿" }));
+    await user.click(screen.getByRole("button", { name: "还原到该版本" }));
+    expect(onRestore).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "确认还原" }));
 
     expect(onRestore).toHaveBeenCalledOnce();
   });

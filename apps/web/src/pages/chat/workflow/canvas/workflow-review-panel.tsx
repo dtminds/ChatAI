@@ -4,7 +4,10 @@ import {
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkflowPublishReview } from "@chatai/contracts";
+import {
+  WORKFLOW_REVIEW_COMMENT_MAX_LENGTH,
+  type WorkflowPublishReview,
+} from "@chatai/contracts";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +30,7 @@ export function WorkflowReviewPanel({
   onClose,
   onReject,
   onRestore,
+  onViewPublishedVersion,
   onWithdraw,
   pending,
   review,
@@ -35,6 +39,7 @@ export function WorkflowReviewPanel({
   onClose: () => void;
   onReject: (reason: string) => Promise<boolean>;
   onRestore?: () => Promise<boolean>;
+  onViewPublishedVersion?: () => void;
   onWithdraw: () => Promise<boolean>;
   pending: boolean;
   review: WorkflowPublishReview;
@@ -42,6 +47,7 @@ export function WorkflowReviewPanel({
   const currentSubUserId = useAuthStore(state => state.subUser?.subUserId);
   const [comment, setComment] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [validationError, setValidationError] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const isSubmitter = currentSubUserId === review.submittedBySubUserId;
@@ -132,10 +138,17 @@ export function WorkflowReviewPanel({
           {review.resultingRevision !== null ? (
             <section className="mt-6 border-t border-border/70 pt-5">
               <h3 className="text-sm font-semibold text-foreground">发布记录</h3>
-              <p className="mt-2 text-[13px] text-muted-foreground">
-                已发布为 Revision {review.resultingRevision}
-                {review.publishedAt ? ` · ${formatReviewTime(review.publishedAt)}` : ""}
-              </p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="min-w-0 text-[13px] text-muted-foreground">
+                  版本 {review.resultingRevision}
+                  {review.publishedAt ? ` · ${formatReviewTime(review.publishedAt)}` : ""}
+                </p>
+                {onViewPublishedVersion ? (
+                  <Button className="shrink-0" onClick={onViewPublishedVersion} size="sm" type="button" variant="secondary">
+                    查看版本
+                  </Button>
+                ) : null}
+              </div>
             </section>
           ) : null}
 
@@ -148,6 +161,7 @@ export function WorkflowReviewPanel({
                 aria-invalid={validationError || undefined}
                 className="mt-3 min-h-32 resize-none"
                 id="workflow-review-comment"
+                maxLength={WORKFLOW_REVIEW_COMMENT_MAX_LENGTH}
                 onChange={(event) => {
                   setComment(event.target.value);
                   setValidationError(false);
@@ -156,7 +170,12 @@ export function WorkflowReviewPanel({
                 value={comment}
                 variant="soft"
               />
-              {validationError ? <p className="mt-1.5 text-xs text-destructive">请填写驳回原因</p> : null}
+              <div className="mt-1.5 flex min-h-4 items-center justify-end gap-2 text-xs">
+                {validationError ? <p className="mr-auto text-destructive">请填写驳回原因</p> : null}
+                <span className="text-muted-foreground">
+                  {comment.length}/{WORKFLOW_REVIEW_COMMENT_MAX_LENGTH}
+                </span>
+              </div>
             </section>
           ) : null}
         </div>
@@ -202,17 +221,39 @@ export function WorkflowReviewPanel({
           </div>
         ) : onRestore ? (
           <div className="flex justify-end border-t border-border/70 bg-background/70 px-5 py-3.5">
-            <Button disabled={pending} onClick={() => void onRestore()} type="button">
-              恢复为当前草稿
+            <Button disabled={pending} onClick={() => setRestoreConfirmOpen(true)} type="button">
+              还原到该版本
             </Button>
           </div>
         ) : null}
       </aside>
+      <AlertDialog onOpenChange={setRestoreConfirmOpen} open={restoreConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认还原到该版本</AlertDialogTitle>
+            <AlertDialogDescription>
+              将把画布内容恢复到此历史版本，当前未保存/未发布的修改将被放弃，如需生效请还原后重新发布
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={() => {
+                setRestoreConfirmOpen(false);
+                void onRestore?.();
+              }}
+            >
+              确认还原
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog onOpenChange={setWithdrawConfirmOpen} open={withdrawConfirmOpen}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>确认撤回审核</AlertDialogTitle>
-            <AlertDialogDescription>撤回后将结束本次审核并恢复画布编辑</AlertDialogDescription>
+            <AlertDialogDescription>撤回后可重新编辑并再次提交审核</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>

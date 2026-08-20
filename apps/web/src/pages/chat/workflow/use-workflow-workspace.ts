@@ -733,7 +733,7 @@ export function useWorkflowWorkspace(
       clearEdgeSelection();
       clearNodeSelection();
       closeCanvasOverlays();
-      toast.success("已恢复为当前草稿");
+      toast.success("已还原到指定版本");
       return true;
     } catch (error) {
       toast.error(getWorkflowReviewActionErrorMessage(error));

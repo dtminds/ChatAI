@@ -10,10 +10,22 @@ describe("WorkflowVersionHistoryPanel", () => {
     const onRestoreVersion = vi.fn();
     renderPanel({ canRestore: false, onRestoreVersion });
 
-    await user.click(screen.getByRole("button", { name: "恢复" }));
+    await user.click(screen.getByRole("button", { name: "还原到该版本" }));
 
-    expect(screen.getByRole("button", { name: "恢复" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "还原到该版本" })).toBeDisabled();
     expect(onRestoreVersion).not.toHaveBeenCalled();
+  });
+
+  it("confirms before replacing the current draft with a published version", async () => {
+    const user = userEvent.setup();
+    const onRestoreVersion = vi.fn();
+    renderPanel({ onRestoreVersion });
+
+    await user.click(screen.getByRole("button", { name: "还原到该版本" }));
+    expect(onRestoreVersion).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "确认还原" }));
+    expect(onRestoreVersion).toHaveBeenCalledWith("workflow-1-r1");
   });
 
   it("formats review timestamps instead of rendering raw ISO values", async () => {

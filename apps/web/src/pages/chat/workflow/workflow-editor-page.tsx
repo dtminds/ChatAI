@@ -28,6 +28,7 @@ import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { WorkflowChecks } from "./canvas/workflow-checks";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
 import { WorkflowReviewPanel } from "./canvas/workflow-review-panel";
+import { WorkflowReviewPendingBanner } from "./canvas/workflow-review-pending-banner";
 import { WorkflowVersionHistoryPanel } from "./canvas/workflow-version-history";
 import { NodeConfigPanel } from "./panels";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
@@ -84,7 +85,6 @@ function WorkflowDocumentPage({
         document={resource.document}
         fullscreen
         key={resource.document.id}
-        onReloadDocument={() => void resource.reload()}
         repository={repository}
       />
     </ReactFlowProvider>
@@ -140,12 +140,10 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
 function WorkflowWorkspace({
   document,
   fullscreen = false,
-  onReloadDocument,
   repository,
 }: {
   document: WorkflowDocument;
   fullscreen?: boolean;
-  onReloadDocument?: () => void;
   repository: WorkflowDraftRepository;
 }) {
   return (
@@ -157,7 +155,6 @@ function WorkflowWorkspace({
     >
       <WorkflowWorkspaceContent
         document={document}
-        onReloadDocument={onReloadDocument}
         repository={repository}
       />
     </div>
@@ -166,11 +163,9 @@ function WorkflowWorkspace({
 
 function WorkflowWorkspaceContent({
   document,
-  onReloadDocument,
   repository,
 }: {
   document: WorkflowDocument;
-  onReloadDocument?: () => void;
   repository: WorkflowDraftRepository;
 }) {
   const navigate = useNavigate();
@@ -189,10 +184,20 @@ function WorkflowWorkspaceContent({
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   const [historyReview, setHistoryReview] = useState<WorkflowPublishReview | null>(null);
   const displayedReview = historyReview ?? (review.isOpen ? review.current : null);
+  const displayedReviewVersion = displayedReview?.resultingRevision == null
+    ? null
+    : versionHistory.versions.find(version => version.revision === displayedReview.resultingRevision) ?? null;
   const closeDisplayedReview = () => {
     if (historyReview) setHistoryReview(null);
     else review.onClose();
   };
+  const viewDisplayedReviewVersion = displayedReviewVersion
+    ? () => {
+        closeDisplayedReview();
+        versionHistory.onSelectVersion(displayedReviewVersion.id);
+        if (mode === "data") navigate(`/chat/workflows/${document.id}`);
+      }
+    : undefined;
   useEffect(() => {
     previousInspectorOpenRef.current = inspector.isOpen;
   }, [inspector.isOpen]);
@@ -225,18 +230,11 @@ function WorkflowWorkspaceContent({
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
-        onOpenReview={() => {
-          setHistoryReview(null);
-          topBar.onOpenReview();
-        }}
         onPublish={topBar.onPublish}
         onSubmitReview={topBar.onSubmitReview}
-        onWithdrawReview={topBar.onWithdrawReview}
         onEnable={topBar.onEnable}
         onPause={topBar.onPause}
-        onPublishCheck={topBar.onPublishCheck}
         onResume={topBar.onResume}
-        onReloadDocument={onReloadDocument}
         onModeChange={(nextMode) => navigate(nextMode === "data"
           ? `/chat/workflows/${document.id}/data`
           : `/chat/workflows/${document.id}`)}
@@ -247,12 +245,11 @@ function WorkflowWorkspaceContent({
           : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
         previewVersionMeta={versionHistory.previewVersion
-          ? `${versionHistory.previewVersion.publishedAt} · Revision ${versionHistory.previewVersion.revision}`
+          ? versionHistory.previewVersion.publishedAt
           : undefined}
         publishedAt={topBar.publishedAt}
-        publishErrorCode={topBar.publishError?.code}
-        publishState={topBar.publishState}
         publishReady={topBar.publishReady}
+        publishState={topBar.publishState}
         currentReview={topBar.currentReview}
         reviewActionState={topBar.reviewActionState}
         lifecycleActionState={topBar.lifecycleActionState}
@@ -328,6 +325,7 @@ function WorkflowWorkspaceContent({
                     return restored;
                   }
                 : undefined}
+              onViewPublishedVersion={viewDisplayedReviewVersion}
               onWithdraw={review.onWithdraw}
               pending={review.pending}
               review={displayedReview}
@@ -340,6 +338,16 @@ function WorkflowWorkspaceContent({
           data-inspector-open={inspector.isOpen ? "true" : undefined}
         >
           <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
+            {currentDocument.currentReview?.status === "pending" ? (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-[14] flex justify-center px-3">
+                <WorkflowReviewPendingBanner
+                  onOpenReview={() => {
+                    setHistoryReview(null);
+                    topBar.onOpenReview();
+                  }}
+                />
+              </div>
+            ) : null}
             <WorkflowCanvas
                 allowedInsertableNodeKinds={canvas.allowedInsertableNodeKinds}
                 canRedo={canvas.canRedo}
@@ -420,6 +428,7 @@ function WorkflowWorkspaceContent({
                     return restored;
                   }
                 : undefined}
+              onViewPublishedVersion={viewDisplayedReviewVersion}
               onWithdraw={review.onWithdraw}
               pending={review.pending}
               review={displayedReview}

@@ -191,12 +191,14 @@ export const WorkflowReviewSubmitRequestSchema = Type.Object({
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
 });
 
+export const WORKFLOW_REVIEW_COMMENT_MAX_LENGTH = 200;
+
 export const WorkflowReviewApproveRequestSchema = Type.Object({
-  comment: Type.Optional(Type.String({ maxLength: 1000 })),
+  comment: Type.Optional(Type.String({ maxLength: WORKFLOW_REVIEW_COMMENT_MAX_LENGTH })),
 });
 
 export const WorkflowReviewRejectRequestSchema = Type.Object({
-  reason: Type.String({ minLength: 1, maxLength: 1000 }),
+  reason: Type.String({ minLength: 1, maxLength: WORKFLOW_REVIEW_COMMENT_MAX_LENGTH }),
 });
 
 export const WorkflowPublishRequestSchema = Type.Object({

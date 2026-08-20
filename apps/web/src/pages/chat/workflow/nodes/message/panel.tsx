@@ -143,6 +143,11 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
           titleClassName="text-[15px] font-semibold"
         />
       </div>
+      <WorkflowSettingsSection title="配置须知">
+        <p className="text-[13px] leading-5 text-muted-foreground">
+          消息发送节点将按照一定的频率限制进行发送，若同一时间有海量消息排队，可能会产生延迟。如有海量消息需要发送，应优先使用企微官方的客户群发功能。
+        </p>
+      </WorkflowSettingsSection>
     </>
   );
 }

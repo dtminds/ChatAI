@@ -19,7 +19,7 @@ import {
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow capability reliability", () => {
-  it("does not let a capability port bypass node maturity at Run admission", async () => {
+  it("admits runtime-ready Handoff when its production binding is registered", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}), {
       capabilityBindings: [WORKFLOW_HANDOFF_CAPABILITY_BINDING],
@@ -32,11 +32,11 @@ describe("workflow capability reliability", () => {
       expectedRevision: 1,
       subjectId: "customer-1",
       subjectType: "chatai_contact",
-      trigger: {},
+      trigger: { projection: { seatId: 101 } },
       uid: 9,
       workflowId: "31",
-    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_NODE_UNSUPPORTED" });
-    expect(runtime.runs).toHaveLength(0);
+    })).resolves.toMatchObject({ run: { status: "queued" } });
+    expect(runtime.runs).toHaveLength(1);
   });
 
   it("requires the capability timeout to fit within half of the task lease", () => {
@@ -852,10 +852,10 @@ describe("workflow capability reliability", () => {
     expect(requests.map(request => request.idempotencyKey))
       .toEqual(["9:1:handoff:2", "9:1:handoff:2"]);
     expect(requests[0]!.command).toEqual({
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       customerMessage: "请稍等",
       operatorMessage: "客户 customer-1 需要人工处理",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     });
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([

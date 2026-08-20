@@ -120,17 +120,19 @@ describe("workflow runtime repository", () => {
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
-    ["new Handoff target lacks its account snapshot", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Handoff target lacks its frozen seat", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
     const runInput = createRunInput();
-    const created = await repository.createRunWithInitialTask(spec.nodes.some(node => node.kind === "message")
+    const created = await repository.createRunWithInitialTask(spec.nodes.some(node =>
+      node.kind === "message" || node.kind === "handoff")
       ? {
           ...runInput,
           context: {
             ...runInput.context,
             workflow: {
               message: {
+                accountSelection: { seatIds: [101], strategy: "earliest-added" },
                 sendingWindow: { endTime: "20:00", startTime: "09:00" },
               },
             },

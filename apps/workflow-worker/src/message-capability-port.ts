@@ -15,6 +15,7 @@ import {
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { Kysely } from "kysely";
+import { findWorkflowSeat } from "./workflow-seat.js";
 
 const JAVA_SEND_MESSAGE_PATH = "/third-internal/wap-embed/conversation/send-message";
 const JAVA_SEND_TYPE_SINGLE = 1;
@@ -32,23 +33,6 @@ type WorkflowMessageJavaData =
   | { fileName: string; fileUrl: string; msgtype: "file" }
   | { coverUrl?: string; desc?: string; href: string; msgtype: "link"; title: string }
   | { msgtype: "weapp" | "sphfeed"; transMsgInfoId: number };
-
-interface WorkflowMessageSeatTable {
-  id: number;
-  platform: number;
-  third_userid: string;
-  uid: number;
-}
-
-type WorkflowMessageDatabase = WorkflowDatabase & {
-  xy_wap_embed_user_seat: WorkflowMessageSeatTable;
-};
-
-type WorkflowMessageSeat = {
-  id: number;
-  platform: number;
-  thirdUserId: string;
-};
 
 export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -149,36 +133,22 @@ export async function executeWorkflowMessage(
   return {};
 }
 
-export function buildWorkflowMessageSeatQuery(
-  database: Kysely<WorkflowDatabase>,
-  input: { seatId: number; uid: number },
-) {
-  return asWorkflowMessageDatabase(database)
-    .selectFrom("xy_wap_embed_user_seat")
-    .select(["id", "platform", "third_userid"])
-    .where("uid", "=", input.uid)
-    .where("id", "=", input.seatId);
-}
-
 export async function resolveWorkflowMessageSeat(
   database: Kysely<WorkflowDatabase>,
   input: {
     seatId: number;
     uid: number;
   },
-): Promise<WorkflowMessageSeat> {
-  const row = await buildWorkflowMessageSeatQuery(database, input).executeTakeFirst();
-  const id = readPositiveInteger(row?.id);
-  const platform = readPositiveInteger(row?.platform);
-  const thirdUserId = readString(row?.third_userid);
-  if (!id || !platform || !thirdUserId) {
+) {
+  const seat = await findWorkflowSeat(database, input);
+  if (!seat) {
     throw terminalError(
       "WORKFLOW_MESSAGE_ACCOUNT_UNAVAILABLE",
       "执行所需数据不可用，流程已停止",
       `Workflow Message seat ${input.seatId} is unavailable`,
     );
   }
-  return { id, platform, thirdUserId };
+  return seat;
 }
 
 export function buildWorkflowJavaMessages(command: WorkflowMessageCommand) {
@@ -394,10 +364,6 @@ function retryableError(code: string, message: string, diagnosticMessage: string
     message,
     { diagnosticMessage },
   );
-}
-
-function asWorkflowMessageDatabase(database: Kysely<WorkflowDatabase>) {
-  return database as unknown as Kysely<WorkflowMessageDatabase>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

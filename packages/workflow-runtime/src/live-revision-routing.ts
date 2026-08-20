@@ -11,7 +11,6 @@ import {
   isWorkflowOutputAvailableOnSourceOutlets,
 } from "@chatai/workflow-engine";
 import {
-  hasWorkflowChatAiRunContext,
   readWorkflowMessageSendingWindow,
 } from "./chatai-action-context.js";
 
@@ -47,8 +46,7 @@ export function resolveWorkflowForwardRoute(input: {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
   }
   if (target.kind === "handoff"
-    && (!isRecord(input.context.workflow)
-      || !hasWorkflowChatAiRunContext(input.context.workflow))) {
+    && !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context)) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
   }
   if (!getRequiredContextSelectors(target, input.latestSpec).every(selector =>

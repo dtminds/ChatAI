@@ -149,7 +149,7 @@ export function decodeWorkflowTagQueryJavaResponse(
     throw terminalError(
       "WORKFLOW_TAG_QUERY_REJECTED",
       "标签查询失败，流程已停止",
-      "Workflow Tag Query Java endpoint reported failure",
+      `Workflow Tag Query Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
     );
   }
   if (body.success !== true) {
@@ -230,4 +230,8 @@ function retryableError(code: string, message: string, diagnosticMessage: string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }

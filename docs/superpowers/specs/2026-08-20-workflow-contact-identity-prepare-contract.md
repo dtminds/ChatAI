@@ -124,7 +124,7 @@ miniapp_member -> mallUserId
 
 - 只有 HTTP 200 且 `success === true` 表示查询成功；不能使用 `error === 0` 替代该判断。
 - HTTP 200 且 `success === false` 表示 Java 已完成请求并明确拒绝该业务查询。
-- `error`、`errorMsg` 和兼容字段 `error_msg` 不参与成功判定，也不会写入 Workflow 诊断信息。
+- `error`、`errorMsg` 和兼容字段 `error_msg` 不参与成功判定；`success === false` 时仅将 `error` 和标准字段 `errorMsg` 写入受控长度的 Workflow 内部诊断信息，不读取兼容字段 `error_msg`，也不将其作为用户可见错误文案。
 - `data` 可以为 `null`、缺失或只包含部分身份，仍属于成功查询。
 - `externalUserId`、`mallUserId`、`xyId` 为非负 JavaScript 安全整数；`0` 表示身份尚未生成。
 - `thirdExternalUserId` 为字符串；空字符串表示身份尚未生成。
@@ -143,7 +143,7 @@ Worker 对 Java 请求设置 3 秒超时，并传播上层取消信号。当前�
 | Java 返回身份与 Run Subject 或 Projection 中的已知身份冲突 | terminal | `WORKFLOW_CONTACT_IDENTITY_CONFLICT` |
 | Run Subject 无法映射为对应具体身份 ID | terminal | `WORKFLOW_CONTACT_IDENTITY_INVALID` |
 
-查询失败沿用 Workflow Runtime 的 Task 最大次数和指数退避，不在 Adapter 内另建重试。诊断信息只记录有界错误码、HTTP 状态和响应类别，不记录原始响应、业务 ID 或 Java `errorMsg`。
+查询失败沿用 Workflow Runtime 的 Task 最大次数和指数退避，不在 Adapter 内另建重试。诊断信息不记录原始响应或业务 ID；`success === false` 时可以记录 Java `error` 和标准字段 `errorMsg`，并由 Runtime 统一限制长度。
 
 `success === true` 但节点所需身份仍缺失时，Prepare 本身不统一决定 defer、skip 或 terminal：
 

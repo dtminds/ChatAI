@@ -103,7 +103,7 @@ Node 输出：
 - HTTP 200 下的 `success === false`、非法 JSON、非法 envelope 或非法成功数据返回 terminal
 - 响应包含请求外标签、重复标签或缺少名称时，Node 按 terminal 输出错误停止流程
 - Java 不叠加无上限的长期重试；Workflow Runtime 是重试调度权威
-- Worker 不记录请求身份、原始响应或 Java `errorMsg`
+- Worker 不记录请求身份或原始响应；`success === false` 时仅将 Java `error` 和标准字段 `errorMsg` 写入受控长度的内部诊断日志，不读取兼容字段 `error_msg`，也不将其作为用户可见错误文案
 
 ## 5. 发布边界
 

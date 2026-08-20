@@ -92,7 +92,7 @@ export function decodeJavaContactIdentityResponse(body: unknown): WorkflowContac
   }
   if (body.success === false) {
     throw terminalIdentityError(
-      "Workflow contact identity endpoint rejected the request",
+      `Workflow contact identity endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
     );
   }
   if (body.success !== true) {
@@ -151,4 +151,8 @@ function terminalIdentityError(message: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }

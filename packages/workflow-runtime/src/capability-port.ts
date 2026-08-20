@@ -1,6 +1,7 @@
 import type {
   WorkflowCapabilityKind,
   WorkflowCapabilityNodeKind,
+  WorkflowContactIdentity,
   WorkflowSubjectType,
 } from "@chatai/contracts";
 import type { Static, TSchema } from "@sinclair/typebox";
@@ -33,6 +34,7 @@ type WorkflowCapabilityRequestBase<TCommand> = {
   command: TCommand;
   deadlineAt: Date;
   execution: WorkflowCapabilityExecutionMetadata;
+  identities: WorkflowContactIdentity;
   signal: AbortSignal;
   subjectId: string;
   subjectType: WorkflowSubjectType;
@@ -63,6 +65,7 @@ export interface WorkflowCapabilityPort {
 
 export type WorkflowCapabilityCommandContext = {
   currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
+  identities: WorkflowContactIdentity;
   nodeLifecycle: Record<string, { enteredAt?: string; exitedAt?: string }>;
   outputs: Record<string, Record<string, unknown>>;
   subjectId: string;
@@ -123,6 +126,7 @@ export async function executeWorkflowCapability<
     command: structuredClone(command) as Static<TCommandSchema>,
     deadlineAt: input.deadlineAt,
     execution: input.execution,
+    identities: structuredClone(input.commandContext.identities),
     signal: input.signal,
     subjectId: input.subjectId,
     subjectType: input.subjectType,

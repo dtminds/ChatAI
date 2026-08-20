@@ -5,6 +5,7 @@ import {
   WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
   WorkflowWaitEventConfigSchema,
   type WorkflowBranchSelector,
+  type WorkflowContactIdentity,
   type WorkflowExecutionNode,
   type WorkflowNodeKind,
   type WorkflowSubjectType,
@@ -13,6 +14,7 @@ import { Value } from "@sinclair/typebox/value";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
+  identities: WorkflowContactIdentity;
   now: Date;
   outputs: Record<string, Record<string, unknown>>;
   currentNodeLifecycle?: { enteredAt?: string; exitedAt?: string };

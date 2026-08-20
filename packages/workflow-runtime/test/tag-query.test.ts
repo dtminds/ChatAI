@@ -9,6 +9,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-18T09:30:00.000Z" },
+  identities: { externalUserId: 101 },
   nodeLifecycle: {},
   outputs: {},
   subjectId: "customer-1",
@@ -125,7 +126,7 @@ describe("Workflow Tag Query capability", () => {
     }));
     expect(() => createWorkflowTagQueryCommand({
       config: { matchMode: "any", tagIds: [101] },
-      context: { ...context, subjectId: "" },
+      context: { ...context, identities: {}, subjectId: "" },
     })).toThrow(expect.objectContaining({ code: "WORKFLOW_TAG_QUERY_COMMAND_INVALID" }));
     expect(() => mapWorkflowTagQueryResult({
       config: { matchMode: "any", tagIds: [101] },

@@ -3,6 +3,7 @@ import {
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
+  type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
   type WorkflowSubjectType,
@@ -13,6 +14,7 @@ import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 
 export type WorkflowMessageQueryCommandContext = {
   currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
+  identities: WorkflowContactIdentity;
   nodeLifecycle: Record<string, { enteredAt?: string; exitedAt?: string }>;
   outputs: Record<string, Record<string, unknown>>;
   subjectId: string;
@@ -21,6 +23,7 @@ export type WorkflowMessageQueryCommandContext = {
 
 export type WorkflowMessageQueryRequest = {
   command: WorkflowMessageQueryCommand;
+  identities: WorkflowContactIdentity;
   signal: AbortSignal;
   subjectId: string;
   subjectType: WorkflowSubjectType;
@@ -79,6 +82,7 @@ export async function executeWorkflowMessageQuery(input: {
       config: input.config,
       context: input.context,
     }),
+    identities: structuredClone(input.context.identities),
     signal: input.signal,
     subjectId: input.subjectId,
     subjectType: input.subjectType,

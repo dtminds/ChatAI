@@ -10,6 +10,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-16T09:30:00.000Z" },
+  identities: { thirdExternalUserId: "customer-1" },
   nodeLifecycle: {
     query: {
       enteredAt: "2026-08-16T09:00:00.000Z",

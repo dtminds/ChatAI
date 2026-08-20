@@ -88,6 +88,8 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
       || !("idempotencyKey" in request)
       || typeof request.idempotencyKey !== "string"
       || !request.idempotencyKey
+      || request.identities.thirdExternalUserId
+        !== request.command.recipient.thirdExternalUserId
     ) {
       throw terminalError(
         "WORKFLOW_MESSAGE_REQUEST_INVALID",

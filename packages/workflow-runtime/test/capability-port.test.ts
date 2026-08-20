@@ -35,6 +35,7 @@ describe("Workflow Capability Port", () => {
           sequence: 3,
           workflowId: "workflow-1",
         },
+        identities: { thirdExternalUserId: "contact-1" },
         idempotencyKey: "9:run-1:message:3",
         signal: controller.signal,
         subjectId: "contact-1",
@@ -112,6 +113,7 @@ function invocation(input: {
     binding: input.binding,
     commandContext: {
       currentNodeLifecycle: {},
+      identities: { thirdExternalUserId: "contact-1" },
       nodeLifecycle: {},
       outputs: {},
       subjectId: "contact-1",

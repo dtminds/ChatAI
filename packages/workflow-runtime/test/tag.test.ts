@@ -8,6 +8,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-17T09:30:00.000Z" },
+  identities: { externalUserId: 101 },
   nodeLifecycle: {},
   outputs: {},
   subjectId: "customer-1",
@@ -71,7 +72,7 @@ describe("Workflow Tag capability", () => {
     const execute = vi.fn(async () => ({}));
     await expect(executeWorkflowCapability({
       binding: WORKFLOW_TAG_CAPABILITY_BINDING,
-      commandContext: { ...context, subjectId: "" },
+      commandContext: { ...context, identities: {}, subjectId: "" },
       config: { operation: "remove", tagIds: [101] },
       deadlineAt: new Date("2026-08-17T09:30:15.000Z"),
       execution: {

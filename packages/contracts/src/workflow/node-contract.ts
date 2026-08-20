@@ -51,6 +51,22 @@ export const WorkflowNodeExecutionClassSchema = Type.Union([
 
 export type WorkflowNodeExecutionClass = Static<typeof WorkflowNodeExecutionClassSchema>;
 
+export const WorkflowIdentityFieldSchema = Type.Union([
+  Type.Literal("externalUserId"),
+  Type.Literal("mallUserId"),
+  Type.Literal("thirdExternalUserId"),
+  Type.Literal("xyId"),
+]);
+
+export type WorkflowIdentityField = Static<typeof WorkflowIdentityFieldSchema>;
+
+export type WorkflowContactIdentity = Partial<{
+  externalUserId: number;
+  mallUserId: number;
+  thirdExternalUserId: string;
+  xyId: number;
+}>;
+
 export const WorkflowVariableSelectorSchema = Type.Array(
   Type.String({ minLength: 1, maxLength: 128 }),
   { minItems: 2, maxItems: 4 },
@@ -427,6 +443,7 @@ type WorkflowNodeContractDefinition<
   draftConfigSchema: TSchema;
   executionClass: TExecutionClass;
   executionConfigSchema: TSchema | null;
+  identityInputs: readonly WorkflowIdentityField[];
   maturity: TMaturity;
 };
 
@@ -445,7 +462,7 @@ export const workflowNodeContractRegistry = {
     WorkflowBranchConfigSchema,
     WorkflowBranchConfigSchema,
   ),
-  coupon: placeholderContract("action"),
+  coupon: placeholderContract("action", ["externalUserId"]),
   "customer-update": draftReadyContract(
     "action",
     1,
@@ -458,6 +475,7 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowHandoffDraftConfigSchema,
     WorkflowHandoffExecutionConfigSchema,
+    ["thirdExternalUserId"],
   ),
   llm: draftReadyContract(
     "inference",
@@ -470,14 +488,16 @@ export const workflowNodeContractRegistry = {
     2,
     WorkflowMessageDraftConfigSchema,
     WorkflowMessageExecutionConfigSchema,
+    ["thirdExternalUserId"],
   ),
   "message-query": runtimeReadyContract(
     "query",
     1,
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
+    ["thirdExternalUserId"],
   ),
-  "order-query": placeholderContract("query"),
+  "order-query": placeholderContract("query", ["externalUserId"]),
   start: runtimeReadyContract(
     "core",
     1,
@@ -489,12 +509,14 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowTagDraftConfigSchema,
     WorkflowTagExecutionConfigSchema,
+    ["externalUserId"],
   ),
   "tag-query": draftReadyContract(
     "query",
     1,
     WorkflowTagQueryDraftConfigSchema,
     WorkflowTagQueryExecutionConfigSchema,
+    ["externalUserId"],
   ),
   wait: runtimeReadyContract(
     "core",
@@ -965,6 +987,7 @@ function isWorkflowPromptComplete(
 
 function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>(
   executionClass: TExecutionClass,
+  identityInputs: readonly WorkflowIdentityField[] = [],
 ): WorkflowNodeContractDefinition<"placeholder", TExecutionClass> {
   return {
     currentDraftSchemaVersion: 1,
@@ -972,6 +995,7 @@ function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>
     draftConfigKeys: getTopLevelSchemaPropertyKeys(WorkflowEmptyNodeConfigSchema),
     executionClass,
     executionConfigSchema: null,
+    identityInputs,
     maturity: "placeholder",
   };
 }
@@ -981,6 +1005,7 @@ function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
   currentDraftSchemaVersion: number,
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
+  identityInputs: readonly WorkflowIdentityField[] = [],
 ): WorkflowNodeContractDefinition<"draft-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
@@ -988,6 +1013,7 @@ function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
     draftConfigKeys: getTopLevelSchemaPropertyKeys(draftConfigSchema),
     executionClass,
     executionConfigSchema,
+    identityInputs,
     maturity: "draft-ready",
   };
 }
@@ -997,6 +1023,7 @@ function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass
   currentDraftSchemaVersion: number,
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
+  identityInputs: readonly WorkflowIdentityField[] = [],
 ): WorkflowNodeContractDefinition<"runtime-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
@@ -1004,6 +1031,7 @@ function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass
     draftConfigKeys: getTopLevelSchemaPropertyKeys(draftConfigSchema),
     executionClass,
     executionConfigSchema,
+    identityInputs,
     maturity: "runtime-ready",
   };
 }

@@ -61,14 +61,15 @@ export function createWorkflowHandoffCommand(input: {
   if (accountSelection === null) {
     throw handoffCommandError("Handoff account selection is unavailable in the Run context");
   }
-  if (!input.context.subjectId.trim()) {
+  const thirdExternalUserId = input.context.identities.thirdExternalUserId;
+  if (!thirdExternalUserId) {
     throw handoffCommandError("Handoff recipient is unavailable in the Run context");
   }
   return {
     accountSelection,
     customerMessage: customerMessage.trim() ? customerMessage : "",
     operatorMessage,
-    recipient: { thirdExternalUserId: input.context.subjectId },
+    recipient: { thirdExternalUserId },
     source: "workflow",
   };
 }

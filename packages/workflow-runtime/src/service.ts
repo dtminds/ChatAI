@@ -23,6 +23,7 @@ import {
   isWorkflowRuntimeSupportedNodeKind,
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowCapabilityExecutionError,
+  WorkflowNodeExecutionError,
   type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
@@ -498,7 +499,7 @@ export class WorkflowRuntimeService {
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
-      if (!requiresPreparedExecution && error instanceof WorkflowRuntimeValueError) {
+      if (!requiresPreparedExecution && isCoreNodeExecutionFailure(error)) {
         return this.commitCoreNodeFailure({
           nodeExecutionKey,
           error,
@@ -776,7 +777,7 @@ export class WorkflowRuntimeService {
 
   private async commitCoreNodeFailure(input: {
     nodeExecutionKey: string;
-    error: WorkflowRuntimeValueError;
+    error: WorkflowNodeExecutionError | WorkflowRuntimeValueError;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
     run: WorkflowRunRecord;
@@ -899,6 +900,7 @@ function createExecutionContext(
       subjectId: run.subjectId,
       subjectType: run.subjectType,
       uid: String(run.uid),
+      workflowId: run.workflowId,
     },
     trigger,
   };
@@ -1107,7 +1109,21 @@ function createCapabilityBindingMap(
   return result;
 }
 
-function toCoreNodeRuntimeFailure(error: WorkflowRuntimeValueError) {
+function isCoreNodeExecutionFailure(
+  error: unknown,
+): error is WorkflowNodeExecutionError | WorkflowRuntimeValueError {
+  return error instanceof WorkflowNodeExecutionError
+    || error instanceof WorkflowRuntimeValueError;
+}
+
+function toCoreNodeRuntimeFailure(error: WorkflowNodeExecutionError | WorkflowRuntimeValueError) {
+  if (error instanceof WorkflowNodeExecutionError) {
+    return {
+      diagnosticMessage: error.message,
+      errorCode: "WORKFLOW_CORE_NODE_EXECUTION_INVALID",
+      errorMessage: "节点配置异常，流程已停止",
+    };
+  }
   const errorCode = error.scope === "node-output"
     ? error.reason === "invalid"
       ? "WORKFLOW_NODE_OUTPUT_INVALID"

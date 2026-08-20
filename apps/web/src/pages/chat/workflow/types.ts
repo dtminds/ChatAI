@@ -18,6 +18,7 @@ import type {
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
+  WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
@@ -77,6 +78,8 @@ export function getStartNodeSourceIds(data: StartNodeData): number[] {
 export type WaitNodeData = WorkflowNodeDataBase<"wait"> & WorkflowWaitConfig;
 
 export type BranchNodeData = WorkflowNodeDataBase<"branch"> & WorkflowBranchConfig;
+export type RatioSplitNodeData = WorkflowNodeDataBase<"ratio-split">
+  & WorkflowRatioSplitDraftConfig;
 
 export type WorkflowVariableScope =
   | "current-node-lifecycle"
@@ -157,6 +160,7 @@ export type WorkflowNodeDataMap = {
   message: MessageNodeData;
   "message-query": MessageQueryNodeData;
   "order-query": OrderQueryNodeData;
+  "ratio-split": RatioSplitNodeData;
   start: StartNodeData;
   tag: TagNodeData;
   "tag-query": TagQueryNodeData;

@@ -11,6 +11,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("wait"),
   Type.Literal("wait-event"),
   Type.Literal("branch"),
+  Type.Literal("ratio-split"),
   Type.Literal("message"),
   Type.Literal("message-query"),
   Type.Literal("tag"),

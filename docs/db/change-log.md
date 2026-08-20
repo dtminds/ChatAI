@@ -1,5 +1,14 @@
 # Database Change Log
 
+## 2026-08-20 Workflow 节点出口执行账本
+
+Node Execution 记录成功推进时实际选择的 Source Outlet，供路径审计和后续分支统计使用。该字段不进入 Run Context，也不是客户固定分组。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN source_outlet_id VARCHAR(128) NULL COMMENT '本次执行选择的源出口ID' AFTER sequence;
+```
+
 ## 2026-08-16 Workflow 发布审核与独立发布
 
 - Workflow 仍在开发阶段，直接清空全部 Workflow 数据，不保留 `validated_draft_version` 兼容路径。

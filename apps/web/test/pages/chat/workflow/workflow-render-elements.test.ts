@@ -71,6 +71,7 @@ describe("createWorkflowRenderElements", () => {
       "wait",
       "wait-event",
       "branch",
+      "ratio-split",
       "ai-intent",
       "llm",
       "ai-collect",

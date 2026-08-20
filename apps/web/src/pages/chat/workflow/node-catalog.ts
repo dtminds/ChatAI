@@ -164,7 +164,7 @@ export function canRenameNodeKind(kind: WorkflowNodeKind) {
 }
 
 export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWorkflowNodeKind {
-  return getWorkflowNodeCatalogEntry(kind).insertable;
+  return workflowNodeCatalog[kind]?.insertable === true;
 }
 
 export function createDefaultNodeData<TKind extends WorkflowNodeKind>(

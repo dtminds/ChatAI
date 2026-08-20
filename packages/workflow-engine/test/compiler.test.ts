@@ -267,6 +267,71 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges.map((edge) => edge.sourceOutletId)).toEqual(["default", "vip", "default"]);
   });
 
+  it("freezes Ratio Split configuration and every stable group outlet", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("ratio-split", "ratio-split", {
+      groups: [
+        { basisPoints: 3_333, id: "ratio-a", label: "实验组" },
+        { basisPoints: 3_333, id: "ratio-b", label: "对照组" },
+        { basisPoints: 3_334, id: "ratio-c", label: "观察组" },
+      ],
+    }));
+    draft.edges = [
+      { id: "start-split", source: "start", target: "ratio-split" },
+      { id: "split-a", source: "ratio-split", sourceHandle: "ratio-a", target: "end" },
+      { id: "split-b", source: "ratio-split", sourceHandle: "ratio-b", target: "end" },
+      { id: "split-c", source: "ratio-split", sourceHandle: "ratio-c", target: "end" },
+    ];
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 4,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(item => item.id === "ratio-split")).toEqual({
+      config: {
+        groups: [
+          { basisPoints: 3_333, id: "ratio-a", label: "实验组" },
+          { basisPoints: 3_333, id: "ratio-b", label: "对照组" },
+          { basisPoints: 3_334, id: "ratio-c", label: "观察组" },
+        ],
+      },
+      id: "ratio-split",
+      kind: "ratio-split",
+      nodeSchemaVersion: 1,
+    });
+    expect(spec.edges.map(edge => edge.sourceOutletId)).toEqual([
+      "default",
+      "ratio-a",
+      "ratio-b",
+      "ratio-c",
+    ]);
+  });
+
+  it("rejects Ratio Split when any configured group outlet is not connected", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("ratio-split", "ratio-split", {
+      groups: [
+        { basisPoints: 4_000, id: "ratio-a", label: "A 组" },
+        { basisPoints: 3_000, id: "ratio-b", label: "B 组" },
+        { basisPoints: 3_000, id: "ratio-c", label: "C 组" },
+      ],
+    }));
+    draft.edges = [
+      { id: "start-split", source: "start", target: "ratio-split" },
+      { id: "split-a", source: "ratio-split", sourceHandle: "ratio-a", target: "end" },
+      { id: "split-b", source: "ratio-split", sourceHandle: "ratio-b", target: "end" },
+    ];
+
+    expectCompilationIssue(draft, {
+      code: "source-outlet-unconnected",
+      message: "Source outlet is not connected: ratio-c",
+      nodeId: "ratio-split",
+    });
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

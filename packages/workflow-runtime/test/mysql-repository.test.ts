@@ -117,7 +117,11 @@ describe("MysqlWorkflowRuntimeRepository", () => {
   });
 
   it("atomically fails a core node without persisting its rejected context", async () => {
-    const db = createCapabilityExecutionDbMock({ nodeId: "start", nodeKind: "start", sequence: 1 });
+    const db = createCapabilityExecutionDbMock({
+      nodeId: "ratio-split-1",
+      nodeKind: "ratio-split",
+      sequence: 1,
+    });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.commitNodeResult({
@@ -132,7 +136,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       nodeExecution: {
         errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
         errorMessage: "流程数据异常，流程已停止",
-        executionKey: "9:5:start:1",
+        executionKey: "9:5:ratio-split-1:1",
         input: { subjectId: "customer-1" },
         output: {},
       },
@@ -148,7 +152,8 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
     expect(db.inserts.xy_wap_embed_workflow_node_execution).toMatchObject({
       error_code: "WORKFLOW_CONTEXT_TOO_LARGE",
-      node_kind: "start",
+      node_kind: "ratio-split",
+      source_outlet_id: null,
       status: "failed",
     });
     expect(db.updates.xy_wap_embed_workflow_task).toMatchObject({
@@ -159,6 +164,61 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       context_json: JSON.stringify({ trigger: {} }),
       status: "failed",
       terminal_reason: "WORKFLOW_CONTEXT_TOO_LARGE",
+    });
+  });
+
+  it("persists the selected Source Outlet for a completed Core node", async () => {
+    const db = createCapabilityExecutionDbMock({
+      nodeId: "ratio-split-1",
+      nodeKind: "ratio-split",
+      publishedExecutionSpec: {
+        edges: [],
+        entryNodeId: "start",
+        nodes: [
+          { config: {}, id: "start", kind: "start", nodeSchemaVersion: 1 },
+          { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+        ],
+        revision: 1,
+        schemaVersion: 3,
+        terminalNodeId: "end",
+        workflowId: "31",
+      },
+      sequence: 1,
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.commitNodeResult({
+      context: { outputs: { "ratio-split-1": {} }, trigger: {} },
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-1",
+      },
+      nodeExecution: {
+        executionKey: "9:5:ratio-split-1:1",
+        input: { subjectId: "customer-1" },
+        output: {},
+      },
+      runId: "5",
+      sourceOutletId: "ratio-a",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({
+      kind: "success",
+      nextTask: null,
+      run: {
+        status: "cancelled",
+        terminalReason: "flow_changed_current_node_deleted",
+      },
+    });
+    expect(db.inserts.xy_wap_embed_workflow_node_execution).toMatchObject({
+      node_kind: "ratio-split",
+      source_outlet_id: "ratio-a",
+      status: "completed",
     });
   });
 
@@ -771,6 +831,7 @@ function createCapabilityExecutionDbMock(options: {
   executionStatus?: string;
   nodeId?: string;
   nodeKind?: string;
+  publishedExecutionSpec?: Record<string, unknown>;
   sequence?: number;
 } = {}) {
   const nodeId = options.nodeId ?? "message";
@@ -830,8 +891,10 @@ function createCapabilityExecutionDbMock(options: {
     node_id: nodeId,
     node_kind: nodeKind,
     output_json: JSON.stringify({}),
+    revision: 1,
     run_id: "5",
     sequence,
+    source_outlet_id: null,
     started_at: new Date("2026-07-13T00:00:00.000Z"),
     status: options.executionStatus,
     uid: 9,
@@ -854,6 +917,9 @@ function createCapabilityExecutionDbMock(options: {
     },
     selectFrom(table: string) {
       const builder = {
+        forShare() {
+          return builder;
+        },
         forUpdate() {
           db.lockOrder.push(table === "xy_wap_embed_workflow_run"
             ? "run"
@@ -867,6 +933,15 @@ function createCapabilityExecutionDbMock(options: {
           if (table === "xy_wap_embed_workflow_run") return run;
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_node_execution") return execution;
+          if (table === "xy_wap_embed_workflow_definition" && options.publishedExecutionSpec) {
+            return { biz_status: 1, published_revision: 1, runtime_status: "active" };
+          }
+          if (table === "xy_wap_embed_workflow_revision" && options.publishedExecutionSpec) {
+            return {
+              execution_spec_json: JSON.stringify(options.publishedExecutionSpec),
+              revision: 1,
+            };
+          }
           return undefined;
         },
       };

@@ -16,6 +16,11 @@ import {
   type WorkflowType,
 } from "./policy.js";
 import {
+  isWorkflowRatioSplitExecutionConfigComplete,
+  WorkflowRatioSplitDraftConfigSchema,
+  WorkflowRatioSplitExecutionConfigSchema,
+} from "./ratio-split.js";
+import {
   WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
@@ -462,6 +467,12 @@ export const workflowNodeContractRegistry = {
     WorkflowBranchConfigSchema,
     WorkflowBranchConfigSchema,
   ),
+  "ratio-split": runtimeReadyContract(
+    "core",
+    1,
+    WorkflowRatioSplitDraftConfigSchema,
+    WorkflowRatioSplitExecutionConfigSchema,
+  ),
   coupon: placeholderContract("action", ["externalUserId"]),
   "customer-update": draftReadyContract(
     "action",
@@ -582,6 +593,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
+  if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null

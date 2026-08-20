@@ -22,6 +22,7 @@ import type {
   WorkflowDraftReader,
   WorkflowDraftWriter,
   SyncWorkflowDraftRepository,
+  WorkflowVersionHistoryItem,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
@@ -65,6 +66,54 @@ describe("workflow draft service", () => {
 
     expect(result.current.publishState).toBe("published");
     expect(result.current.hasUnpublishedChanges).toBe(false);
+  });
+
+  it("keeps exact version lookups out of the paginated history", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const template = baseRepository.getDocument("vip-reactivation").versionHistory[0]!;
+    const createVersion = (revision: number): WorkflowVersionHistoryItem => ({
+      ...template,
+      id: `vip-reactivation-r${revision}`,
+      name: `版本 ${revision}`,
+      revision,
+    });
+    const firstPage = Array.from({ length: 20 }, (_, index) => createVersion(100 - index));
+    const secondPage = Array.from({ length: 20 }, (_, index) => createVersion(80 - index));
+    const exactVersion = createVersion(50);
+    const initialDocument = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      currentVersion: firstPage[0]!,
+      publishedRevision: 100,
+      versionHistory: firstPage,
+      versionHistoryNextCursor: "81",
+    };
+    const getVersion = vi.fn(() => exactVersion);
+    const listVersions = vi.fn(() => ({ items: secondPage, nextCursor: "61" }));
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      getDocument: () => initialDocument,
+      getVersion,
+      listVersions,
+    };
+    const { result } = renderHook(() => useWorkflowDocument(
+      initialDocument.id,
+      repository,
+      initialDocument,
+    ));
+
+    await act(async () => {
+      await result.current.getVersion(50);
+    });
+    expect(result.current.document.versionHistory.map(version => version.revision))
+      .toEqual(Array.from({ length: 20 }, (_, index) => 100 - index));
+
+    await act(async () => {
+      await result.current.listVersions("81");
+    });
+    expect(result.current.document.versionHistory.map(version => version.revision))
+      .toEqual(Array.from({ length: 40 }, (_, index) => 100 - index));
+    expect(getVersion).toHaveBeenCalledWith(initialDocument.id, 50);
+    expect(listVersions).toHaveBeenCalledWith(initialDocument.id, "81");
   });
 
   it("creates independent workflow documents with idempotent request keys", () => {

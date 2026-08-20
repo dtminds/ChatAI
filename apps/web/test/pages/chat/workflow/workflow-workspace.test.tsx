@@ -916,6 +916,7 @@ describe("useWorkflowWorkspace", () => {
     importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("当前草稿人群"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = publishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
 
     act(() => {
       result.current.topBar.onOpenVersionHistory();
@@ -924,7 +925,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.versionHistory.versions.map((version) => version.id)).toContain(versionId);
 
     act(() => {
-      result.current.versionHistory.onSelectVersion(versionId);
+      result.current.versionHistory.onSelectVersion(version);
     });
 
     expect(result.current.versionHistory.isPreviewing).toBe(true);
@@ -957,9 +958,10 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialDraftViewport = result.current.document.draft.viewport;
     const versionId = publishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
 
     act(() => {
-      result.current.versionHistory.onSelectVersion(versionId);
+      result.current.versionHistory.onSelectVersion(version);
     });
 
     expect(result.current.canvas.isReadOnly).toBe(true);
@@ -1022,6 +1024,7 @@ describe("useWorkflowWorkspace", () => {
       );
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const versionId = publishedDocument.currentVersion?.id ?? "";
+      const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
 
       act(() => {
         result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
@@ -1038,7 +1041,7 @@ describe("useWorkflowWorkspace", () => {
         .toBe(true);
 
       act(() => {
-        result.current.versionHistory.onSelectVersion(versionId);
+        result.current.versionHistory.onSelectVersion(version);
       });
       expect(result.current.versionHistory.isPreviewing).toBe(true);
       expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(false);
@@ -1060,9 +1063,10 @@ describe("useWorkflowWorkspace", () => {
     publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("第二版仍是发布快照"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = firstPublishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
 
     act(() => {
-      result.current.versionHistory.onSelectVersion(versionId);
+      result.current.versionHistory.onSelectVersion(version);
     });
 
     await act(async () => {

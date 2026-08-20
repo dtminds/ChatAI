@@ -45,7 +45,7 @@ export function WorkflowVersionHistoryPanel({
   onExitPreview: () => void;
   onRestoreVersion: (versionId: string) => void;
   onSelectReview: (review: WorkflowPublishReview) => void;
-  onSelectVersion: (versionId: string) => void;
+  onSelectVersion: (version: WorkflowVersionHistoryItem) => void;
   loadReviews: (cursor?: string) => Promise<{
     items: WorkflowPublishReview[];
     nextCursor: string | null;
@@ -143,7 +143,7 @@ export function WorkflowVersionHistoryPanel({
                 isSelected && "workflow-version-item-selected bg-primary/10",
               )}
               key={version.id}
-              onClick={() => onSelectVersion(version.id)}
+              onClick={() => onSelectVersion(version)}
               type="button"
             >
               {index < versions.length - 1 ? (

@@ -76,10 +76,6 @@ export function createHttpWorkflowDraftRepository(
         const record = unwrap<ApiWorkflowRevision>(await client.get(
           `/server/workflows/${workflowId}/revisions/${revision}`,
         ));
-        const current = revisions.get(workflowId) ?? [];
-        if (!current.some(item => item.revision === revision)) {
-          revisions.set(workflowId, [...current, record].sort((a, b) => b.revision - a.revision));
-        }
         return toVersionHistoryItem(record);
       } catch (error) {
         throw normalizeHttpError(error);

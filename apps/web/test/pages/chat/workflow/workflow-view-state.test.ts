@@ -21,7 +21,7 @@ describe("reduceWorkflowViewState", () => {
       activePanel: "version-history",
       checksOpen: true,
       inspectorOpen: true,
-      previewVersionId: null,
+      previewVersion: null,
     });
   });
 
@@ -37,21 +37,22 @@ describe("reduceWorkflowViewState", () => {
       activePanel: null,
       checksOpen: true,
       inspectorOpen: true,
-      previewVersionId: null,
+      previewVersion: null,
     });
   });
 
   it("enters and exits version preview state", () => {
+    const version = createVersion();
     const previewState = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
       type: "select-version-preview",
-      versionId: "version-1",
+      version,
     });
 
     expect(previewState).toEqual({
       activePanel: null,
       checksOpen: false,
       inspectorOpen: false,
-      previewVersionId: "version-1",
+      previewVersion: version,
     });
 
     expect(reduceWorkflowViewState(previewState, {
@@ -60,7 +61,7 @@ describe("reduceWorkflowViewState", () => {
       activePanel: null,
       checksOpen: false,
       inspectorOpen: false,
-      previewVersionId: null,
+      previewVersion: null,
     });
   });
 
@@ -76,7 +77,7 @@ describe("reduceWorkflowViewState", () => {
       activePanel: null,
       checksOpen: true,
       inspectorOpen: true,
-      previewVersionId: null,
+      previewVersion: null,
     });
   });
 
@@ -97,3 +98,17 @@ describe("reduceWorkflowViewState", () => {
     }).checksOpen).toBe(false);
   });
 });
+
+function createVersion() {
+  return {
+    draft: {
+      edges: [],
+      nodes: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+    id: "version-1",
+    name: "版本 1",
+    publishedAt: "08-16 17:00:00",
+    revision: 1,
+  };
+}

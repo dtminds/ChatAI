@@ -199,7 +199,7 @@ function WorkflowWorkspaceContent({
           const version = displayedReviewVersion
             ?? await versionHistory.loadVersion(displayedReview.resultingRevision!);
           closeDisplayedReview();
-          versionHistory.onSelectVersion(version.id);
+          versionHistory.onSelectVersion(version);
           if (mode === "data") navigate(`/chat/workflows/${document.id}`);
         } catch {
           toast.error("操作失败，请稍后重试");

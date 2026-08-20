@@ -707,15 +707,7 @@ export function useWorkflowDocument(
   }, [repository]);
 
   const getVersion = useCallback(async (revision: number) => {
-    const version = await Promise.resolve(repository.getVersion(workflowIdRef.current, revision));
-    setDocument((currentDocument) => currentDocument.versionHistory.some(
-      item => item.revision === revision,
-    ) ? currentDocument : {
-      ...currentDocument,
-      versionHistory: [...currentDocument.versionHistory, version]
-        .sort((first, second) => second.revision - first.revision),
-    });
-    return version;
+    return Promise.resolve(repository.getVersion(workflowIdRef.current, revision));
   }, [repository]);
 
   const operateDocument = useCallback(async (action: "enable" | "pause" | "resume") => {

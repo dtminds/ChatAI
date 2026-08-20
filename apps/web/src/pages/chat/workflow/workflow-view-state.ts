@@ -1,17 +1,19 @@
+import type { WorkflowVersionHistoryItem } from "./workflow-repository-types";
+
 export type WorkflowSidePanel = "review" | "version-history";
 
 export type WorkflowViewState = {
   activePanel: WorkflowSidePanel | null;
   checksOpen: boolean;
   inspectorOpen: boolean;
-  previewVersionId: string | null;
+  previewVersion: WorkflowVersionHistoryItem | null;
 };
 
 export const createDefaultWorkflowViewState = (): WorkflowViewState => ({
   activePanel: null,
   checksOpen: false,
   inspectorOpen: false,
-  previewVersionId: null,
+  previewVersion: null,
 });
 
 export type WorkflowViewStateAction =
@@ -26,7 +28,7 @@ export type WorkflowViewStateAction =
   | { type: "open-version-history" }
   | { type: "navigate-from-check"; inspectorOpen: boolean }
   | { type: "select-node"; inspectorOpen: boolean }
-  | { type: "select-version-preview"; versionId: string }
+  | { type: "select-version-preview"; version: WorkflowVersionHistoryItem }
   | { type: "workflow-edited"; openInspector?: boolean }
   | { type: "version-restored" };
 
@@ -49,7 +51,7 @@ export function reduceWorkflowViewState(
       return {
         ...state,
         activePanel: state.activePanel === "version-history" ? null : state.activePanel,
-        previewVersionId: null,
+        previewVersion: null,
       };
     case "close-inspector":
       return {
@@ -60,7 +62,7 @@ export function reduceWorkflowViewState(
       return {
         ...state,
         inspectorOpen: true,
-        previewVersionId: null,
+        previewVersion: null,
       };
     case "open-checks":
       return {
@@ -101,7 +103,7 @@ export function reduceWorkflowViewState(
         ...state,
         activePanel: null,
         inspectorOpen: false,
-        previewVersionId: action.versionId,
+        previewVersion: action.version,
       };
     case "workflow-edited":
       return {
@@ -114,7 +116,7 @@ export function reduceWorkflowViewState(
         ...state,
         activePanel: null,
         inspectorOpen: true,
-        previewVersionId: null,
+        previewVersion: null,
       };
   }
 }

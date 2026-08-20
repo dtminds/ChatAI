@@ -30,7 +30,7 @@ import {
   useWorkflowDocument,
 } from "./workflow-draft-service";
 import type { WorkflowDraftRepository } from "./workflow-draft-service";
-import type { WorkflowDocument } from "./workflow-draft-service";
+import type { WorkflowDocument, WorkflowVersionHistoryItem } from "./workflow-draft-service";
 import { useWorkflowStableCallback } from "./workflow-hooks";
 import { deriveWorkflowMode } from "./workflow-mode";
 import {
@@ -100,7 +100,7 @@ export function useWorkflowWorkspace(
   );
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [canvasFocusRequest, setCanvasFocusRequest] = useState<WorkflowCanvasFocusRequest>();
-  const previewVersion = document.versionHistory.find((version) => version.id === viewState.previewVersionId);
+  const previewVersion = viewState.previewVersion;
   const previewDraft = useMemo(
     () => previewVersion
       ? cloneWorkflowDraftSnapshot(previewVersion.draft)
@@ -697,10 +697,10 @@ export function useWorkflowWorkspace(
     dispatchViewState({ type: "close-review" });
   });
 
-  const selectVersionPreview = useWorkflowStableCallback((versionId: string) => {
+  const selectVersionPreview = useWorkflowStableCallback((version: WorkflowVersionHistoryItem) => {
     dispatchViewState({
       type: "select-version-preview",
-      versionId,
+      version,
     });
     clearEdgeSelection();
     clearNodeSelection();

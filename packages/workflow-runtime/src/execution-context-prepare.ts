@@ -72,6 +72,7 @@ export async function prepareWorkflowExecutionContext(input: {
   uid: number;
 }): Promise<WorkflowPreparedExecutionContext> {
   const requirements = deriveWorkflowExecutionContextRequirements(input.node);
+  if (requirements.identities.length === 0) return { identities: {} };
   const identities = createKnownWorkflowContactIdentity({
     subjectId: input.subjectId,
     subjectType: input.subjectType,

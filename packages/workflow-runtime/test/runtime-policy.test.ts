@@ -26,6 +26,63 @@ describe("Workflow runtime policy", () => {
     expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
   });
 
+  it("does not prepare irrelevant identity data before a core node", async () => {
+    const harness = createHarness({
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+    });
+    const started = await harness.service.startRun(entryInput({
+      trigger: { projection: { thirdExternalUserId: "conflicting-chatai-id" } },
+    }));
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+    });
+    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
+  it("commits a terminal Prepare failure for a core node that needs global context", async () => {
+    const harness = createHarness({
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      executionSpec: createGlobalBranchExecutionSpec(),
+    });
+    const started = await harness.service.startRun(entryInput({
+      trigger: { projection: { thirdExternalUserId: "conflicting-chatai-id" } },
+    }));
+    const startResult = await harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("Branch Task was not created");
+    }
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: startResult.nextTask.id,
+      taskVersion: startResult.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "WORKFLOW_CONTACT_IDENTITY_CONFLICT",
+      failureKind: "terminal",
+      kind: "failed",
+      run: { status: "failed" },
+      task: { status: "dead" },
+    });
+  });
+
   it.each([
     {
       expectedCode: "WORKFLOW_RUNTIME_PAUSED",
@@ -304,4 +361,41 @@ function createExecutionSpec(workflowId: string): WorkflowExecutionSpec {
     terminalNodeId: "end",
     workflowId,
   };
+}
+
+function createGlobalBranchExecutionSpec(): WorkflowExecutionSpec {
+  const spec = createExecutionSpec("chatai-workflow");
+  spec.nodes.splice(1, 0, {
+    config: {
+      branchPaths: [
+        {
+          conditions: [{
+            id: "global-customer-name",
+            operator: "is-not-empty",
+            selector: ["global", "customer", "name"],
+            valueType: "string",
+          }],
+          id: "matched",
+          label: "已匹配",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "default",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
+      ],
+    },
+    id: "branch",
+    kind: "branch",
+    nodeSchemaVersion: 1,
+  });
+  spec.edges = [
+    { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch" },
+    { id: "branch-matched", source: "branch", sourceOutletId: "matched", target: "end" },
+    { id: "branch-default", source: "branch", sourceOutletId: "default", target: "end" },
+  ];
+  return spec;
 }

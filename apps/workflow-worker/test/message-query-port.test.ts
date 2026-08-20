@@ -17,9 +17,34 @@ import {
   buildMessageQuerySeatQuery,
   executeMessageQuery,
   formatMessageQueryRow,
+  MysqlWorkflowMessageQueryPort,
 } from "../src/message-query-port.js";
 
 describe("Workflow Message Query port", () => {
+  it("rejects a missing prepared thirdExternalUserId before querying MySQL", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
+    const port = new MysqlWorkflowMessageQueryPort(database);
+
+    await expect(port.execute({
+      command: {
+        limit: 10,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      identities: {},
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      subjectType: "chatai_contact",
+      uid: 9,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_QUERY_SUBJECT_INVALID",
+      failureKind: "terminal",
+    });
+    expect(queries).toHaveLength(0);
+  });
+
   it("builds an isolated msgtime query without joins", () => {
     const database = createCompileOnlyDatabase();
     const seatQuery = buildMessageQuerySeatQuery(database, { seatId: 101, uid: 9 }).compile();

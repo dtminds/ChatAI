@@ -44,6 +44,19 @@ describe("Workflow execution context prepare", () => {
     expect(getContactIdentity).not.toHaveBeenCalled();
   });
 
+  it("does not inspect identity data for a node without identity requirements", async () => {
+    const getContactIdentity = vi.fn();
+    await expect(prepareWorkflowExecutionContext({
+      contactIdentityPort: { getContactIdentity },
+      node: node("start"),
+      subjectId: "chatai-1",
+      subjectType: "chatai_contact",
+      trigger: { projection: { thirdExternalUserId: "conflicting-chatai-id" } },
+      uid: 9,
+    })).resolves.toEqual({ identities: {} });
+    expect(getContactIdentity).not.toHaveBeenCalled();
+  });
+
   it("calls Java once by the available concrete ID and enriches all returned identities", async () => {
     const getContactIdentity = vi.fn(async () => ({
       externalUserId: 101,

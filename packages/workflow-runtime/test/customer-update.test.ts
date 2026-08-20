@@ -9,6 +9,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-17T16:30:00.000Z" },
+  identities: {},
   nodeLifecycle: {},
   outputs: {
     llm: {

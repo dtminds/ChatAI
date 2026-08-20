@@ -411,14 +411,17 @@ export class WorkflowRuntimeService {
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      const preparedContext = await prepareWorkflowExecutionContext({
-        contactIdentityPort: this.contactIdentityPort,
-        node,
-        subjectId: run.subjectId,
-        subjectType: run.subjectType,
-        trigger: isRecord(run.context.trigger) ? run.context.trigger : {},
-        uid: run.uid,
-      });
+      let preparedContext: WorkflowPreparedExecutionContext = { identities: {} };
+      if (contextRequirements.identities.length > 0) {
+        preparedContext = await prepareWorkflowExecutionContext({
+          contactIdentityPort: this.contactIdentityPort,
+          node,
+          subjectId: run.subjectId,
+          subjectType: run.subjectType,
+          trigger: isRecord(run.context.trigger) ? run.context.trigger : {},
+          uid: run.uid,
+        });
+      }
       executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
             output: { dueAt: claimed.task.dueAt.toISOString() },

@@ -162,7 +162,13 @@ describe("Workflow Handoff Java port", () => {
     const cases = [
       {
         code: "WORKFLOW_HANDOFF_REJECTED",
-        fetch: vi.fn(async () => javaResponse({ error: 40001, success: false })),
+        diagnosticMessage:
+          "Workflow Handoff Java endpoint rejected the request: 40001 会话不可转",
+        fetch: vi.fn(async () => javaResponse({
+          error: 40001,
+          errorMsg: " 会话不可转 ",
+          success: false,
+        })),
       },
       {
         code: "WORKFLOW_HANDOFF_RESPONSE_INVALID",
@@ -183,7 +189,11 @@ describe("Workflow Handoff Java port", () => {
         signal: new AbortController().signal,
         token: null,
         uid: 9,
-      })).rejects.toMatchObject({ code: item.code, failureKind: "terminal" });
+      })).rejects.toMatchObject({
+        code: item.code,
+        ...(item.diagnosticMessage ? { diagnosticMessage: item.diagnosticMessage } : {}),
+        failureKind: "terminal",
+      });
     }
   });
 

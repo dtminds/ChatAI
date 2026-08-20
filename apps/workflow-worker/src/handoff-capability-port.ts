@@ -165,7 +165,7 @@ export async function executeWorkflowHandoff(
     throw terminalError(
       "WORKFLOW_HANDOFF_REJECTED",
       "转人工失败，流程已停止",
-      "Workflow Handoff Java endpoint reported failure",
+      `Workflow Handoff Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
     );
   }
   if (body.success !== true) {
@@ -208,4 +208,8 @@ function retryableError(code: string, message: string, diagnosticMessage: string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }

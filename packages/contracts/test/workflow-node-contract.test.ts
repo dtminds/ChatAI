@@ -174,8 +174,12 @@ describe("workflow node contracts", () => {
       expect(["action", "composite", "core", "inference", "query"])
         .toContain(contract.executionClass);
       expect(["placeholder", "draft-ready", "runtime-ready"]).toContain(contract.maturity);
+      expect(typeof contract.recordSourceOutlet).toBe("boolean");
       expect(contract.currentDraftSchemaVersion).toBeGreaterThan(0);
     }
+
+    expect(entries.filter(([, contract]) => contract.recordSourceOutlet).map(([kind]) => kind))
+      .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["branch", "ratio-split", "end", "handoff", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);

@@ -104,7 +104,7 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().nodeExecutions).toHaveLength(1);
     expect(repository.snapshot().nodeExecutions[0]).toMatchObject({
       revision: 1,
-      sourceOutletId: "default",
+      sourceOutletId: null,
     });
     expect(repository.snapshot().inbox).toHaveLength(1);
     expect(repository.snapshot().tasks).toHaveLength(2);

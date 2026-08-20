@@ -200,6 +200,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
         executionKey: "9:5:ratio-split-1:1",
         input: { subjectId: "customer-1" },
         output: {},
+        sourceOutletId: "ratio-a",
       },
       runId: "5",
       sourceOutletId: "ratio-a",

@@ -2,11 +2,11 @@
 
 ## 2026-08-20 Workflow 节点出口执行账本
 
-Node Execution 记录成功推进时实际选择的 Source Outlet，供路径审计和后续分支统计使用。该字段不进入 Run Context，也不是客户固定分组。
+Node Execution 仅对节点 Contract 明确声明需要记录出口的节点保存实际 Source Outlet；当前只有 A/B 分流节点声明。其他节点保持 `NULL`。该字段不进入 Run Context，也不是客户固定分组。
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_node_execution
-  ADD COLUMN source_outlet_id VARCHAR(128) NULL COMMENT '本次执行选择的源出口ID' AFTER sequence;
+  ADD COLUMN source_outlet_id VARCHAR(128) NULL COMMENT '需记录出口的节点本次选择的源出口ID' AFTER sequence;
 ```
 
 ## 2026-08-16 Workflow 发布审核与独立发布

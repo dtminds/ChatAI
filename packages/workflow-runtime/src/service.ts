@@ -567,6 +567,10 @@ export class WorkflowRuntimeService {
         executionKey: nodeExecutionKey,
         input: createNodeInputSnapshot(run),
         output: executionResult.output,
+        ...(executionResult.type === "advance"
+          && getWorkflowNodeContract(node.kind).recordSourceOutlet
+          ? { sourceOutletId: executionResult.sourceOutletId }
+          : {}),
       },
       runId: run.id,
       ...(executionResult.type === "advance"
@@ -764,6 +768,9 @@ export class WorkflowRuntimeService {
         executionKey: input.nodeExecutionKey,
         input: createNodeInputSnapshot(input.run),
         output,
+        ...(getWorkflowNodeContract(input.node.kind).recordSourceOutlet
+          ? { sourceOutletId }
+          : {}),
       },
       runId: input.run.id,
       sourceOutletId,

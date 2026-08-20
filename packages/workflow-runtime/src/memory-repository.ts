@@ -1120,7 +1120,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
       existingExecution.failureKind = null;
       existingExecution.output = clone(input.nodeExecution.output);
-      existingExecution.sourceOutletId = input.sourceOutletId ?? null;
+      existingExecution.sourceOutletId = input.nodeExecution.sourceOutletId ?? null;
       existingExecution.status = failed ? "failed" : "completed";
     } else {
       this.nodeExecutions.push({
@@ -1135,7 +1135,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         runId: run.id,
         revision: task.revision,
         sequence: task.sequence,
-        sourceOutletId: input.sourceOutletId ?? null,
+        sourceOutletId: input.nodeExecution.sourceOutletId ?? null,
         status: failed ? "failed" : "completed",
         uid: input.uid,
       });

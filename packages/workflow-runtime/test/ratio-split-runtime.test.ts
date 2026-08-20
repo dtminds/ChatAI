@@ -20,6 +20,8 @@ describe("Ratio Split runtime", () => {
     const startResult = await service.executeTask(taskInput(started.task));
     if (!("nextTask" in startResult) || !startResult.nextTask) throw new Error("Split task missing");
     expect(startResult.nextTask).toMatchObject({ nodeId: "split", revision: 1 });
+    expect(runtime.snapshot().nodeExecutions.find(execution => execution.nodeId === "start"))
+      .toMatchObject({ sourceOutletId: null });
 
     publishedRevision = 2;
     const splitResult = await service.executeTask(taskInput(startResult.nextTask));

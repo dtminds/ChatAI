@@ -515,6 +515,7 @@ export type WorkflowCommitNodeResultInput = {
     executionKey: string;
     input: Record<string, unknown>;
     output: Record<string, unknown>;
+    sourceOutletId?: string;
   };
   runId: string;
   sourceOutletId?: string;

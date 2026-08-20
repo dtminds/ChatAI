@@ -1998,7 +1998,7 @@ export class MysqlWorkflowRuntimeRepository implements
           error_message: input.nodeExecution.errorMessage ?? null,
           failure_kind: null,
           output_json: stringifyJson(input.nodeExecution.output),
-          source_outlet_id: input.sourceOutletId ?? null,
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
           status: failed ? "failed" : "completed",
         }).where("uid", "=", input.uid)
           .where("run_id", "=", run.id)
@@ -2019,7 +2019,7 @@ export class MysqlWorkflowRuntimeRepository implements
           revision: task.revision,
           run_id: run.id,
           sequence: task.sequence,
-          source_outlet_id: input.sourceOutletId ?? null,
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
           started_at: now,
           status: failed ? "failed" : "completed",
           uid: input.uid,

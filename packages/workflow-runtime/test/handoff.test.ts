@@ -19,15 +19,11 @@ const context = {
     query: { messageCount: 2, textContent: "退款问题" },
   },
   subjectId: "customer-1",
-  trigger: { occurredAt: "2026-08-17T08:00:00.000Z" },
-  workflow: {
-    message: {
-      accountSelection: {
-        seatIds: [101, 102],
-        strategy: "earliest-added" as const,
-      },
-    },
+  trigger: {
+    occurredAt: "2026-08-17T08:00:00.000Z",
+    projection: { seatId: 101 },
   },
+  workflow: {},
 };
 
 describe("Workflow Handoff capability", () => {
@@ -72,10 +68,10 @@ describe("Workflow Handoff capability", () => {
       },
       request: {
         command: {
-          accountSelection: { seatIds: [101, 102], strategy: "earliest-added" },
           customerMessage: "请稍等，customer-1",
           operatorMessage: "退款问题，请及时接待",
           recipient: { thirdExternalUserId: "customer-1" },
+          seatId: 101,
           source: "workflow",
         },
         idempotencyKey: "9:run-1:handoff:3",
@@ -147,7 +143,7 @@ describe("Workflow Handoff capability", () => {
     }));
   });
 
-  it("diagnoses a missing account snapshot separately from a missing recipient", () => {
+  it("rejects a missing Run-frozen seat before invoking the adapter", () => {
     let error: unknown;
     try {
       createWorkflowHandoffCommand({
@@ -155,7 +151,10 @@ describe("Workflow Handoff capability", () => {
           customerMessage: [],
           operatorMessage: [{ type: "text", value: "需要人工处理" }],
         },
-        context: { ...context, workflow: {} },
+        context: {
+          ...context,
+          trigger: { occurredAt: "2026-08-17T08:00:00.000Z" },
+        },
       });
     } catch (caught) {
       error = caught;
@@ -163,7 +162,7 @@ describe("Workflow Handoff capability", () => {
 
     expect(error).toMatchObject({
       code: "WORKFLOW_HANDOFF_COMMAND_INVALID",
-      diagnosticMessage: "Handoff account selection is unavailable in the Run context",
+      diagnosticMessage: "Handoff seat is unavailable in the Run context",
       failureKind: "terminal",
     });
   });

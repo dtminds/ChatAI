@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "handoff", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "tag"]);
+      .toEqual(["ai-intent", "customer-update", "llm", "tag"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -283,16 +283,23 @@ describe("workflow node contracts", () => {
       operatorMessage: [{ type: "text", value: "x".repeat(101) }],
     })).toBe(false);
     expect(Value.Check(WorkflowHandoffCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       customerMessage: "请稍等",
       operatorMessage: "需要人工处理",
       recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
       source: "workflow",
     })).toBe(true);
     expect(Value.Check(WorkflowHandoffCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       customerMessage: "请稍等",
       operatorMessage: "",
+      recipient: { thirdExternalUserId: "customer-1" },
+      seatId: 101,
+      source: "workflow",
+    })).toBe(false);
+    expect(Value.Check(WorkflowHandoffCommandSchema, {
+      accountSelection: { seatIds: [101], strategy: "earliest-added" },
+      customerMessage: "请稍等",
+      operatorMessage: "需要人工处理",
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
     })).toBe(false);

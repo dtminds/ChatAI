@@ -12,6 +12,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
@@ -34,6 +35,7 @@ import { processWorkflowInferenceBatch } from "./inference-worker.js";
 import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
+import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -68,7 +70,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const handoffCapabilityPort = new MysqlWorkflowHandoffCapabilityPort(database, {
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const capabilityPort = new WorkflowCapabilityRouter([
+    { binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING, port: handoffCapabilityPort },
     { binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING, port: messageCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
   ]);
@@ -168,6 +175,7 @@ export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./error-policy.js";
 export * from "./health.js";
+export * from "./handoff-capability-port.js";
 export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./message-capability-port.js";

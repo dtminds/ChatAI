@@ -470,7 +470,7 @@ export const workflowNodeContractRegistry = {
     WorkflowCustomerUpdateExecutionConfigSchema,
   ),
   end: runtimeReadyContract("core", 1, WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
-  handoff: draftReadyContract(
+  handoff: runtimeReadyContract(
     "action",
     1,
     WorkflowHandoffDraftConfigSchema,

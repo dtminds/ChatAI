@@ -11,7 +11,6 @@ import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
-import { readWorkflowChatAiAccountSelection } from "./chatai-action-context.js";
 import { renderWorkflowVariableContent } from "./variable-content.js";
 
 export const WORKFLOW_HANDOFF_CAPABILITY_BINDING = {
@@ -57,21 +56,27 @@ export function createWorkflowHandoffCommand(input: {
   if (customerMessage.length > WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH) {
     throw handoffCommandError("Rendered Handoff customer message exceeds the supported length");
   }
-  const accountSelection = readWorkflowChatAiAccountSelection(input.context.workflow);
-  if (accountSelection === null) {
-    throw handoffCommandError("Handoff account selection is unavailable in the Run context");
-  }
+  const seatId = readTriggerSeatId(input.context.trigger);
+  if (seatId === null) throw handoffCommandError("Handoff seat is unavailable in the Run context");
   const thirdExternalUserId = input.context.identities.thirdExternalUserId;
   if (!thirdExternalUserId) {
     throw handoffCommandError("Handoff recipient is unavailable in the Run context");
   }
   return {
-    accountSelection,
     customerMessage: customerMessage.trim() ? customerMessage : "",
     operatorMessage,
     recipient: { thirdExternalUserId },
+    seatId,
     source: "workflow",
   };
+}
+
+function readTriggerSeatId(trigger: Record<string, unknown>) {
+  const projection = isRecord(trigger.projection) ? trigger.projection : null;
+  const seatId = projection?.seatId;
+  return typeof seatId === "number" && Number.isSafeInteger(seatId) && seatId > 0
+    ? seatId
+    : null;
 }
 
 function handoffCommandError(diagnosticMessage: string) {
@@ -81,4 +86,8 @@ function handoffCommandError(diagnosticMessage: string) {
     "执行所需数据不可用，流程已停止",
     { diagnosticMessage },
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

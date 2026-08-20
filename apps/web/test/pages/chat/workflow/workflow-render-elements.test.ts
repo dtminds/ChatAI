@@ -7,6 +7,7 @@ import {
 } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
 import {
+  createWorkflowReadOnlyRenderElements,
   createWorkflowRenderElements,
   useWorkflowRenderElements,
 } from "@/pages/chat/workflow/use-workflow-render-elements";
@@ -220,5 +221,23 @@ describe("createWorkflowRenderElements", () => {
       ...options,
       edges: [connectedEdges[0]],
     }).nodes.find((node) => node.id === intent.id)?.data.status).toBe("warning");
+  });
+
+  it("projects upstream variables into read-only canvas render data", () => {
+    const tagQuery = createNodeFromKind("tag-query", "tag-query", 0);
+    const branch = createNodeFromKind("branch", "branch", 1);
+    const rendered = createWorkflowReadOnlyRenderElements(
+      [createInitialNodes()[0]!, tagQuery, branch],
+      [createEdge("start", tagQuery.id), createEdge(tagQuery.id, branch.id)],
+    );
+    const renderedBranch = rendered.nodes.find((node) => node.id === branch.id);
+
+    expect(renderedBranch?.data.readOnly).toBe(true);
+    expect(renderedBranch?.data.availableVariables).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        selector: ["node", tagQuery.id, "matched"],
+        sourceNodeTitle: tagQuery.data.title,
+      }),
+    ]));
   });
 });

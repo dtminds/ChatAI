@@ -3,8 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkflowEntryRecordPage } from "@chatai/contracts";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
+import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
+import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
+import { getAiIntentHandleId } from "@/pages/chat/workflow/nodes/ai-intent/config";
 import { WorkflowDataPage } from "@/pages/chat/workflow/workflow-data-page";
-import { getWorkflowDocument, resetWorkflowDocumentsForTest } from "@/pages/chat/workflow/workflow-draft-service";
+import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
+import {
+  getWorkflowDocument,
+  resetWorkflowDocumentsForTest,
+  type WorkflowDocument,
+} from "@/pages/chat/workflow/workflow-draft-service";
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -307,4 +316,152 @@ describe("WorkflowDataPage", () => {
     const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
     expect(within(records).getByRole("heading", { name: waitNode.data.title })).toBeInTheDocument();
   });
+
+  it("echoes configured node summaries that depend on upstream variables", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = createPublishedVariableEchoDocument();
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 2, current: 0, entered: 0, incomplete: 4 },
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(),
+    };
+
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage document={document} repository={repository} />
+      </ReactFlowProvider>,
+    );
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const branch = within(canvas).getByRole("button", { name: "条件分支" });
+    const messageQuery = within(canvas).getByRole("button", { name: "消息查询" });
+    const intent = within(canvas).getByRole("button", { name: "意图识别" });
+    const message = within(canvas).getByRole("button", { name: "消息发送" });
+    const llm = within(canvas).getByRole("button", { name: "大模型" });
+    const handoff = within(canvas).getByRole("button", { name: "转人工" });
+
+    expect(within(branch).queryByText("未配置条件")).not.toBeInTheDocument();
+    expect(within(branch).getByText("是否匹配")).toBeInTheDocument();
+    expect(within(messageQuery).queryByText("时间变量不可用")).not.toBeInTheDocument();
+    expect(within(messageQuery).getByText("触发时间")).toBeInTheDocument();
+    expect(within(intent).queryByText("未配置")).not.toBeInTheDocument();
+    expect(within(intent).getByText("消息查询.消息列表")).toBeInTheDocument();
+    expect(within(message).queryByText("输出不可用")).not.toBeInTheDocument();
+    expect(within(message).getByText("消息查询.文本内容")).toBeInTheDocument();
+    expect(within(llm).getByText("is_matched")).toBeInTheDocument();
+    expect(within(handoff).queryByText("{node.tag-query.matchedTagNames}")).not.toBeInTheDocument();
+    expect(within(handoff).getByText("{标签查询.匹配标签名}")).toBeInTheDocument();
+  });
 });
+
+function createPublishedVariableEchoDocument(): WorkflowDocument {
+  const document = getWorkflowDocument("vip-reactivation");
+  const start = {
+    data: createDefaultNodeData("start"),
+    id: "start",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+  const tagQuery = {
+    ...createNodeFromKind("tag-query", "tag-query", 0),
+    data: {
+      ...createDefaultNodeData("tag-query"),
+      tagIds: [1],
+      title: "标签查询",
+    },
+  };
+  const branch = {
+    ...createNodeFromKind("branch", "branch", 1),
+    data: {
+      ...createDefaultNodeData("branch"),
+      branchPaths: [
+        {
+          conditions: [{
+            id: "condition-matched",
+            operator: "is-true" as const,
+            selector: ["node", tagQuery.id, "matched"],
+            valueType: "boolean" as const,
+          }],
+          id: "branch-high",
+          logic: "all" as const,
+        },
+        {
+          conditions: [],
+          id: "branch-default",
+          isDefault: true as const,
+          logic: "all" as const,
+        },
+      ],
+    },
+  };
+  const messageQuery = createNodeFromKind("message-query", "message-query", 2);
+  const intent = {
+    ...createNodeFromKind("ai-intent", "ai-intent", 3),
+    data: {
+      ...createDefaultNodeData("ai-intent"),
+      inputSelector: ["node", messageQuery.id, "messageIds"],
+      intents: [{ description: "愿意参加活动", id: "intent-accept" }],
+    },
+  };
+  const message = {
+    ...createNodeFromKind("message", "message", 4),
+    data: {
+      ...createDefaultNodeData("message"),
+      contentMode: "node-output" as const,
+      outputSelector: ["node", messageQuery.id, "textContent"],
+    },
+  };
+  const llm = {
+    ...createNodeFromKind("llm", "llm", 5),
+    data: {
+      ...createDefaultNodeData("llm"),
+      inputs: [{
+        id: "input-1",
+        name: "is_matched",
+        value: {
+          kind: "variable" as const,
+          selector: ["node", tagQuery.id, "matched"],
+          valueType: { kind: "boolean" as const },
+        },
+      }],
+      modelId: "model-1",
+      modelLabel: "Doubao Seed",
+      modelName: "doubao-seed",
+    },
+  };
+  const handoff = {
+    ...createNodeFromKind("handoff", "handoff", 6),
+    data: {
+      ...createDefaultNodeData("handoff"),
+      operatorMessage: [{
+        selector: ["node", tagQuery.id, "matchedTagNames"],
+        type: "variable" as const,
+      }],
+    },
+  };
+  const draft = hydrateWorkflowDraft({
+    edges: [
+      createEdge(start.id, tagQuery.id),
+      createEdge(tagQuery.id, branch.id),
+      createEdge(branch.id, messageQuery.id, undefined, { sourceHandle: "branch-high" }),
+      createEdge(messageQuery.id, intent.id),
+      createEdge(intent.id, message.id, undefined, {
+        sourceHandle: getAiIntentHandleId("intent-accept"),
+      }),
+      createEdge(branch.id, llm.id, undefined, { sourceHandle: "branch-default" }),
+      createEdge(llm.id, handoff.id),
+    ],
+    nodes: [start, tagQuery, branch, messageQuery, intent, message, llm, handoff],
+  });
+
+  return {
+    ...document,
+    draft,
+    publishedDraft: draft,
+  };
+}

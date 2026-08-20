@@ -110,6 +110,34 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
   }), [edges, nodes]);
 }
 
+const emptySelectedNodeIdSet = new Set<string>();
+const ignoreWorkflowRenderAction = () => {};
+
+export function createWorkflowReadOnlyRenderElements(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return createWorkflowRenderElements({
+    activeEdgeInsertMenuId: null,
+    allowedInsertableNodeKinds: [],
+    edges,
+    nodes,
+    onDeleteNode: ignoreWorkflowRenderAction,
+    onDuplicateNode: ignoreWorkflowRenderAction,
+    onInsertNodeAfter: ignoreWorkflowRenderAction,
+    onInsertNodeBetween: ignoreWorkflowRenderAction,
+    onRenameNode: ignoreWorkflowRenderAction,
+    onSelectNode: ignoreWorkflowRenderAction,
+    onToggleEdgeInsertMenu: ignoreWorkflowRenderAction,
+    onToggleNodeInsertMenu: ignoreWorkflowRenderAction,
+    onToggleNodeSelection: ignoreWorkflowRenderAction,
+    quickInsertTarget: null,
+    readOnly: true,
+    selectedEdgeId: null,
+    selectedNodeIdSet: emptySelectedNodeIdSet,
+  });
+}
+
 export function createWorkflowRenderElements({
   activeEdgeInsertMenuId,
   allowedInsertableNodeKinds,

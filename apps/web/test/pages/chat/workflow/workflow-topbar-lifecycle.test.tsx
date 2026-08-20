@@ -185,6 +185,21 @@ describe("WorkflowTopBar review lifecycle", () => {
     expect(onResume).toHaveBeenCalledOnce();
   });
 
+  it("keeps release and runtime actions hidden for a stopped workflow", () => {
+    renderTopBar({
+      canEdit: false,
+      canPublish: false,
+      hasUnpublishedChanges: true,
+      publishedRevision: 1,
+      runtimeStatus: "stopped",
+    });
+
+    expect(screen.getByRole("button", { name: "版本历史" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交审核" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
+  });
+
   it("switches between design and data modes", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();

@@ -12,10 +12,13 @@ export type WorkflowPrimaryReleaseAction = "publish" | "submit";
 export function getWorkflowPrimaryReleaseAction({
   currentReview,
   hasUnpublishedChanges,
+  runtimeStatus,
 }: {
   currentReview?: WorkflowPublishReview | null;
   hasUnpublishedChanges: boolean;
-}): WorkflowPrimaryReleaseAction {
+  runtimeStatus: "active" | "inactive" | "paused" | "stopped";
+}): WorkflowPrimaryReleaseAction | null {
+  if (runtimeStatus === "stopped") return null;
   if (currentReview?.status === "approved") return "publish";
   if (currentReview?.status === "pending") return "publish";
   if (hasUnpublishedChanges) return "submit";

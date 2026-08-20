@@ -38,22 +38,31 @@ describe("workflow design actions", () => {
   it("shows submit or publish, never both", () => {
     expect(getWorkflowPrimaryReleaseAction({
       hasUnpublishedChanges: true,
+      runtimeStatus: "inactive",
     })).toBe("submit");
     expect(getWorkflowPrimaryReleaseAction({
       currentReview: createReview("rejected"),
       hasUnpublishedChanges: true,
+      runtimeStatus: "inactive",
     })).toBe("submit");
     expect(getWorkflowPrimaryReleaseAction({
       currentReview: createReview("approved"),
       hasUnpublishedChanges: true,
+      runtimeStatus: "inactive",
     })).toBe("publish");
     expect(getWorkflowPrimaryReleaseAction({
       hasUnpublishedChanges: false,
+      runtimeStatus: "active",
     })).toBe("publish");
     expect(getWorkflowPrimaryReleaseAction({
       currentReview: createReview("pending"),
       hasUnpublishedChanges: true,
+      runtimeStatus: "paused",
     })).toBe("publish");
+    expect(getWorkflowPrimaryReleaseAction({
+      hasUnpublishedChanges: true,
+      runtimeStatus: "stopped",
+    })).toBeNull();
   });
 
   it("enables publish only after review approval", () => {

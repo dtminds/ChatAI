@@ -156,6 +156,7 @@ export function WorkflowTopBar({
   const primaryReleaseAction = getWorkflowPrimaryReleaseAction({
     currentReview,
     hasUnpublishedChanges,
+    runtimeStatus,
   });
   const runtimeMenuItem = getWorkflowRuntimeMenuItem({
     hasUnpublishedChanges,

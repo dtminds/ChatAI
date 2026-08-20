@@ -20,6 +20,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
@@ -55,7 +60,14 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
   };
 
   return (
-    <WorkflowSettingsSection title="分流设置">
+    <WorkflowSettingsSection
+      actions={(
+        <span className="text-xs text-muted-foreground">
+          比例合计 {formatBasisPoints(totalBasisPoints)}
+        </span>
+      )}
+      title="分流设置"
+    >
       <div className="space-y-3">
         {groups.map((group, index) => (
           <section
@@ -103,10 +115,6 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        比例合计 {formatBasisPoints(totalBasisPoints)}
-        {totalBasisPoints === WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS ? "" : "，发布前需调整为 100%"}
-      </p>
       <p className="text-xs leading-5 text-muted-foreground">
         同一流程对象在分组和比例不变时会进入同一分组；所有分组都需要连接后才能发布
       </p>
@@ -155,8 +163,8 @@ function PercentageInput({
   }, [basisPoints]);
 
   return (
-    <>
-      <Input
+    <InputGroup>
+      <InputGroupInput
         id={id}
         inputMode="decimal"
         onBlur={() => {
@@ -175,8 +183,8 @@ function PercentageInput({
         }}
         value={draft}
       />
-      <span className="text-center text-sm text-muted-foreground">%</span>
-    </>
+      <InputGroupAddon align="inline-end" className="pr-3">%</InputGroupAddon>
+    </InputGroup>
   );
 }
 

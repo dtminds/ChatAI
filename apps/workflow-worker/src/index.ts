@@ -12,13 +12,11 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
-  WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
-  WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
-  WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
+import { WorkflowCapabilityRouter } from "./capability-router.js";
 import { loadWorkflowWorkerConfig } from "./config.js";
 import { createWorkflowBroker } from "./broker/index.js";
 import { createWorkflowDatabase } from "./database.js";
@@ -35,6 +33,7 @@ import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
 import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
+import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -61,10 +60,18 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     mode: config.entitlement.mode,
     token: config.entitlement.token,
   });
-  const capabilityPort = new MysqlWorkflowMessageCapabilityPort(database, {
+  const messageCapabilityPort = new MysqlWorkflowMessageCapabilityPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const tagQueryCapabilityPort = new HttpWorkflowTagQueryCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
+  const capabilityPort = new WorkflowCapabilityRouter([
+    { binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING, port: messageCapabilityPort },
+    { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
+  ]);
   const runtimeService = new WorkflowRuntimeService(
     repository,
     repository,
@@ -73,13 +80,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityMaxRetryDelayMs: config.runtime.capabilityMaxRetryDelayMs,
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
-      capabilityBindings: [
-        WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
-        WORKFLOW_HANDOFF_CAPABILITY_BINDING,
-        WORKFLOW_MESSAGE_CAPABILITY_BINDING,
-        WORKFLOW_TAG_CAPABILITY_BINDING,
-        WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
-      ],
+      capabilityBindings: capabilityPort.bindings,
       contactIdentityPort: new HttpWorkflowContactIdentityPort({
         baseUrl: config.javaInternalApi.baseUrl,
         token: config.javaInternalApi.token,
@@ -160,6 +161,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export * from "./broker/index.js";
+export * from "./capability-router.js";
 export * from "./config.js";
 export * from "./contact-identity-port.js";
 export * from "./database.js";
@@ -175,4 +177,5 @@ export * from "./reconciler.js";
 export * from "./role-loop.js";
 export * from "./runtime.js";
 export * from "./scheduler.js";
+export * from "./tag-query-capability-port.js";
 export * from "./task-consumer.js";

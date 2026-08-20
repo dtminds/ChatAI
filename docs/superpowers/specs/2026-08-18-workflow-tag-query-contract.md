@@ -1,6 +1,6 @@
 # Workflow 标签查询跨服务契约
 
-- 状态：Node 侧契约已冻结，Java Endpoint 与真实 Adapter 待实现
+- 状态：Node 与 Java 真实执行链路已接通
 - 适用节点：ChatAI SOP、WeCom SOP 的标签查询
 - Capability：`customer.tag.query`，Contract Version `1`
 
@@ -9,62 +9,64 @@
 Node 负责：
 
 - 校验匹配方式以及 1 至 5 个标签 ID
-- 使用 Run 已确定的 `subjectType + subjectId` 表达目标客户
+- 使用本次 Task Prepare 得到的 `externalUserId` 表达目标客户
 - 校验 Java 返回的标签属于本次查询且没有重复
 - 按配置中的标签顺序生成是否匹配、匹配标签名和匹配标签数量
 - 管理 timeout、retry、terminal failure 和节点结果
 
 Java 负责：
 
-- 按 `subjectType + subjectId` 解析客户身份
-- 校验标签存在、可用且属于当前租户
-- 返回该客户在查询标签中的实际匹配项及当前权威标签名
+- 按 `uid + externalUserId` 查询企微客户标签
+- 使用非空 `tagIds` 将结果限制为请求标签与客户当前标签的交集
+- 返回实际匹配项及当前权威标签名
 
 ## 2. 请求
 
-真实 Adapter 必须把 Runtime 的 Query 请求完整传给 Java。逻辑结构如下：
+Worker 调用：
+
+```http
+POST /third-internal/work-tag/get-wecom-contact-tags
+Authorization: Bearer <JAVA_INTERNAL_API_TOKEN>
+Content-Type: application/json
+```
+
+请求体：
 
 ```json
 {
-  "capabilityKey": "customer.tag.query",
-  "contractVersion": 1,
   "uid": 9,
-  "subjectType": "chatai_contact",
-  "subjectId": "third-external-user-id",
-  "deadlineAt": "2026-08-18T10:00:15.000Z",
-  "execution": {
-    "workflowId": "workflow-id",
-    "revision": 2,
-    "runId": "run-id",
-    "nodeId": "tag-query-node-id",
-    "sequence": 3
-  },
-  "command": {
-    "tagIds": [301, 302]
-  }
+  "externalUserId": 101,
+  "tagIds": [301, 302]
 }
 ```
 
 约束：
 
-- `subjectType` 支持 `chatai_contact` 和 `wecom_contact`
-- `chatai_contact` 的 `subjectId` 是 `thirdExternalUserId`
-- `wecom_contact` 的 `subjectId` 是 `externalUserId`
-- Java 必须按 `subjectType` 解析身份，禁止根据 ID 格式猜测主体域
+- ChatAI SOP 和 WeCom SOP 都先通过 Execution Context Prepare 获得 `externalUserId`
+- Worker 不把 `subjectType + subjectId` 传给 Java，也不根据 Subject ID 格式猜测身份
 - `tagIds` 包含 1 至 5 个不重复的正整数 ID
+- Workflow 不调用省略 `tagIds` 的全量查询模式
 - Query 不产生副作用，不携带 `idempotencyKey`
-- `execution` 只用于排障，不参与业务判断
 - `matchMode` 只存在于 Node 执行配置，不传给 Java；Java 不判断 `any`、`all` 或 `none`
 
 ## 3. 响应与节点输出
 
-Java 成功响应：
+Java 成功响应 envelope：
 
 ```json
 {
-  "matchedTags": [
-    { "id": 301, "name": "重点客户" },
-    { "id": 302, "name": "已成交" }
+  "success": true,
+  "error": 0,
+  "data": [
+    {
+      "groupAttr": 1,
+      "groupId": 30,
+      "groupName": "客户阶段",
+      "groupSort": 10,
+      "id": 301,
+      "name": "重点客户",
+      "type": 0
+    }
   ]
 }
 ```
@@ -81,8 +83,11 @@ Node 输出：
 
 输出规则：
 
-- `matchedTags` 必须严格表示「请求 `tagIds` 与客户当前标签的交集」，不能按匹配方式返回缺失标签或自行过滤结果
-- `matchedTags` 只能包含请求中的标签 ID，每个 ID 最多出现一次
+- 只有 `success === true` 表示查询成功；`success !== true` 是调用失败
+- `data` 严格表示「请求 `tagIds` 与客户当前标签的交集」，不是客户的全部标签
+- `data: null` 或缺失按空交集处理
+- Worker 只投影正整数 `id` 和 1 至 256 字符的非空 `name`；其他 TagTO 字段不进入 Node Result
+- `data` 只能包含请求中的标签 ID，每个 ID 最多出现一次
 - Node 按 `tagIds` 的配置顺序生成 `matchedTagNames`，多个名称使用中文顿号 `、` 分隔
 - `matchedTagCount` 是实际匹配标签数
 - `any` 在至少匹配一个标签时为 `true`
@@ -90,13 +95,15 @@ Node 输出：
 - `none` 仅在一个查询标签都未匹配时为 `true`
 - 空结果在 `any`、`all` 模式下输出 `matched: false`，在 `none` 模式下输出 `matched: true`；匹配标签名均为空字符串，数量为 `0`
 
-## 4. 错误
+## 4. 超时与错误
 
-- 临时不可用、限流和依赖超时返回 retryable
-- 参数非法、客户不存在、标签不存在或无权限返回 terminal
+- Runtime 使用统一的 Capability deadline（默认 15 秒，由 `WORKFLOW_CAPABILITY_TIMEOUT_MS` 配置），并通过 AbortSignal 取消 Java 请求
+- 网络失败、HTTP 408/429/5xx、非法 JSON、非法 envelope 和 `success !== true` 返回 retryable
+- HTTP 4xx 返回 terminal；401/403 使用执行服务不可用的用户提示
 - 响应包含请求外标签、重复标签或缺少名称时，Node 按 terminal 输出错误停止流程
 - Java 不叠加无上限的长期重试；Workflow Runtime 是重试调度权威
+- Worker 不记录请求身份、原始响应或 Java `errorMsg`
 
-## 5. 当前发布边界
+## 5. 发布边界
 
-在 Java Endpoint 和真实 Adapter 完成前，标签查询保持 `draft-ready`。生产 Worker 加载类型化 Binding，但 Runtime 发布和执行门禁不会放行该节点。测试使用 Fake Capability Port 验证 Query 命令和结果映射，不引入生产 Mock。
+标签查询为 `runtime-ready`。生产 Worker 注册 `customer.tag.query@1:query` 路由到真实 Java Adapter；Runtime 发布和执行门禁允许该节点。ChatAI SOP 和 WeCom SOP 的节点白名单保持不变。

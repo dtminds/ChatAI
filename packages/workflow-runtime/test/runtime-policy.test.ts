@@ -8,7 +8,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
+  type WorkflowCapabilityExecutionBinding,
 } from "../src/index.js";
 
 const now = new Date("2026-08-10T00:00:00.000Z");
@@ -242,6 +244,60 @@ describe("Workflow runtime policy", () => {
     expect(chatai.run.shardId).not.toBe(wecom.run.shardId);
   });
 
+  it("executes a runtime-ready Tag Query with the prepared externalUserId", async () => {
+    const harness = createHarness({
+      capabilityResult: {
+        matchedTags: [{ id: 302, name: "已成交" }],
+      },
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      executionSpec: createTagQueryExecutionSpec(),
+    });
+    const started = await harness.service.startRun(entryInput({
+      trigger: { projection: { externalUserId: 101 } },
+    }));
+    const startResult = await harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("Tag Query Task was not created");
+    }
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: startResult.nextTask.id,
+      taskVersion: startResult.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+      run: {
+        context: {
+          outputs: {
+            "tag-query": {
+              matched: true,
+              matchedTagCount: 1,
+              matchedTagNames: "已成交",
+            },
+          },
+        },
+      },
+    });
+    expect(harness.capabilityCalls).toHaveLength(1);
+    expect(harness.capabilityCalls[0]).toMatchObject({
+      definition: { capabilityKey: "customer.tag.query", kind: "query" },
+      request: {
+        command: { tagIds: [301, 302] },
+        identities: { externalUserId: 101 },
+      },
+    });
+    expect(harness.capabilityCalls[0]?.request).not.toHaveProperty("idempotencyKey");
+  });
+
   it("validates that every runtime-ready node has a composed execution path", () => {
     const incomplete = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -259,7 +315,9 @@ describe("Workflow runtime policy", () => {
 });
 
 function createHarness(options: {
+  capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
   capabilityPort?: boolean;
+  capabilityResult?: unknown;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
   messageQueryPort?: boolean;
@@ -288,13 +346,27 @@ function createHarness(options: {
       };
     }),
   };
+  const capabilityCalls: Array<{ definition: unknown; request: unknown }> = [];
+  const hasCapabilityPort = options.capabilityPort || options.capabilityResult !== undefined;
   const service = new WorkflowRuntimeService(
     control,
     runtime,
-    options.capabilityPort ? { execute: async () => ({}) } : undefined,
+    hasCapabilityPort
+      ? {
+          execute: async (definition, request) => {
+            capabilityCalls.push({ definition, request });
+            return options.capabilityResult ?? {};
+          },
+        }
+      : undefined,
     {
-      ...(options.capabilityPort
-        ? { capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING] }
+      ...(hasCapabilityPort
+        ? {
+            capabilityBindings: options.capabilityBindings ?? [
+              WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+              WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+            ],
+          }
         : {}),
       clock: () => now,
       entitlementPort: { check: options.entitlement },
@@ -303,7 +375,7 @@ function createHarness(options: {
         : {}),
     },
   );
-  return { applyEntitlementLoss, runtime, service };
+  return { applyEntitlementLoss, capabilityCalls, runtime, service };
 }
 
 function getWorkflowIdentity(workflowId: string): {
@@ -396,6 +468,21 @@ function createGlobalBranchExecutionSpec(): WorkflowExecutionSpec {
     { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch" },
     { id: "branch-matched", source: "branch", sourceOutletId: "matched", target: "end" },
     { id: "branch-default", source: "branch", sourceOutletId: "default", target: "end" },
+  ];
+  return spec;
+}
+
+function createTagQueryExecutionSpec(): WorkflowExecutionSpec {
+  const spec = createExecutionSpec("chatai-workflow");
+  spec.nodes.splice(1, 0, {
+    config: { matchMode: "any", tagIds: [301, 302] },
+    id: "tag-query",
+    kind: "tag-query",
+    nodeSchemaVersion: 1,
+  });
+  spec.edges = [
+    { id: "start-query", source: "start", sourceOutletId: "default", target: "tag-query" },
+    { id: "query-end", source: "tag-query", sourceOutletId: "default", target: "end" },
   ];
   return spec;
 }

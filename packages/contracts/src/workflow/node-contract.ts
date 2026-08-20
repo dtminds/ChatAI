@@ -511,7 +511,7 @@ export const workflowNodeContractRegistry = {
     WorkflowTagExecutionConfigSchema,
     ["externalUserId"],
   ),
-  "tag-query": draftReadyContract(
+  "tag-query": runtimeReadyContract(
     "query",
     1,
     WorkflowTagQueryDraftConfigSchema,

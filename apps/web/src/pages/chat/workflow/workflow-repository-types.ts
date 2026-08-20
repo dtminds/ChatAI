@@ -39,6 +39,11 @@ export type WorkflowVersionHistoryItem = WorkflowPublishedVersion & {
   restoredFromVersionId?: string;
 };
 
+export type WorkflowHistoryPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
 export type WorkflowDocumentPermissions = {
   canEdit: boolean;
   canOperate: boolean;
@@ -56,6 +61,7 @@ export type WorkflowDocument = WorkflowListItem & {
   revision: number;
   savedAt: string;
   versionHistory: WorkflowVersionHistoryItem[];
+  versionHistoryNextCursor: string | null;
   draftVersion?: number;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
   currentReview: WorkflowPublishReview | null;
@@ -126,6 +132,10 @@ export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
 
 export type WorkflowDraftReader = {
   getDocument: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  getVersion: (
+    workflowId: string,
+    revision: number,
+  ) => Promise<WorkflowVersionHistoryItem> | WorkflowVersionHistoryItem;
   listDocuments: () => Promise<WorkflowListItem[]> | WorkflowListItem[];
 };
 
@@ -146,7 +156,14 @@ export type WorkflowDraftWriter = {
     workflowId: string,
     draft: WorkflowDraft,
   ) => Promise<WorkflowDraftImportResult | WorkflowDocument> | WorkflowDraftImportResult | WorkflowDocument;
-  listReviews: (workflowId: string) => Promise<WorkflowPublishReview[]> | WorkflowPublishReview[];
+  listReviews: (
+    workflowId: string,
+    cursor?: string,
+  ) => Promise<WorkflowHistoryPage<WorkflowPublishReview>> | WorkflowHistoryPage<WorkflowPublishReview>;
+  listVersions: (
+    workflowId: string,
+    cursor?: string,
+  ) => Promise<WorkflowHistoryPage<WorkflowVersionHistoryItem>> | WorkflowHistoryPage<WorkflowVersionHistoryItem>;
   publishReview: (
     workflowId: string,
     reviewId: string,
@@ -197,9 +214,11 @@ export type SyncWorkflowDraftRepository = {
   }) => WorkflowDocument;
   deleteDocument: (workflowId: string) => void;
   getDocument: (workflowId: string) => WorkflowDocument;
+  getVersion: (workflowId: string, revision: number) => WorkflowVersionHistoryItem;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;
   listDocuments: () => WorkflowListItem[];
-  listReviews: (workflowId: string) => WorkflowPublishReview[];
+  listReviews: (workflowId: string, cursor?: string) => WorkflowHistoryPage<WorkflowPublishReview>;
+  listVersions: (workflowId: string, cursor?: string) => WorkflowHistoryPage<WorkflowVersionHistoryItem>;
   enableDocument: (workflowId: string) => WorkflowDocument;
   pauseDocument: (workflowId: string) => WorkflowDocument;
   publishReview: (workflowId: string, reviewId: string) => WorkflowDraftPublishResult;

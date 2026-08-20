@@ -1,7 +1,7 @@
 import { Cancel01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { WorkflowPublishReview } from "@chatai/contracts";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type {
@@ -23,23 +24,33 @@ import type {
 export function WorkflowVersionHistoryPanel({
   canRestore,
   currentPreviewVersionId,
+  loadMoreVersions,
   onClose,
   onExitPreview,
   onRestoreVersion,
   onSelectReview,
   onSelectVersion,
   loadReviews,
+  nextVersionCursor,
   restoreState,
   versions,
 }: {
   canRestore: boolean;
   currentPreviewVersionId?: string;
+  loadMoreVersions: (cursor: string) => Promise<{
+    items: WorkflowVersionHistoryItem[];
+    nextCursor: string | null;
+  }>;
   onClose: () => void;
   onExitPreview: () => void;
   onRestoreVersion: (versionId: string) => void;
   onSelectReview: (review: WorkflowPublishReview) => void;
   onSelectVersion: (versionId: string) => void;
-  loadReviews: () => Promise<WorkflowPublishReview[]>;
+  loadReviews: (cursor?: string) => Promise<{
+    items: WorkflowPublishReview[];
+    nextCursor: string | null;
+  }>;
+  nextVersionCursor: string | null;
   restoreState: WorkflowDraftRestoreStatus;
   versions: WorkflowVersionHistoryItem[];
 }) {
@@ -48,16 +59,41 @@ export function WorkflowVersionHistoryPanel({
   const [activeTab, setActiveTab] = useState<"versions" | "reviews">("versions");
   const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<WorkflowPublishReview[]>([]);
+  const [reviewsLoaded, setReviewsLoaded] = useState(false);
+  const [reviewsNextCursor, setReviewsNextCursor] = useState<string | null>(null);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [reviewsError, setReviewsError] = useState(false);
+  const [versionsError, setVersionsError] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadReviews().then((items) => {
-      if (!cancelled) setReviews(items);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadReviews]);
+  async function loadReviewPage(cursor?: string) {
+    if (loadingReviews) return;
+    setLoadingReviews(true);
+    setReviewsError(false);
+    try {
+      const page = await loadReviews(cursor);
+      setReviews(current => cursor ? appendUnique(current, page.items) : page.items);
+      setReviewsNextCursor(page.nextCursor);
+      setReviewsLoaded(true);
+    } catch {
+      setReviewsError(true);
+    } finally {
+      setLoadingReviews(false);
+    }
+  }
+
+  async function loadVersionPage() {
+    if (!nextVersionCursor || loadingVersions) return;
+    setLoadingVersions(true);
+    setVersionsError(false);
+    try {
+      await loadMoreVersions(nextVersionCursor);
+    } catch {
+      setVersionsError(true);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }
 
   return (
     <div className="workflow-version-panel flex min-h-[17rem] max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-popover text-popover-foreground">
@@ -77,7 +113,17 @@ export function WorkflowVersionHistoryPanel({
         </Button>
       </div>
 
-      <Tabs className="px-3 pb-2" onValueChange={value => setActiveTab(value as "versions" | "reviews")} value={activeTab}>
+      <Tabs
+        className="px-3 pb-2"
+        onValueChange={(value) => {
+          const nextTab = value as "versions" | "reviews";
+          setActiveTab(nextTab);
+          if (nextTab === "reviews" && !reviewsLoaded && !loadingReviews) {
+            void loadReviewPage();
+          }
+        }}
+        value={activeTab}
+      >
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="versions">历史版本</TabsTrigger>
           <TabsTrigger value="reviews">审核记录</TabsTrigger>
@@ -85,7 +131,7 @@ export function WorkflowVersionHistoryPanel({
       </Tabs>
 
       <div className="workflow-version-list min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
-        {activeTab === "versions" && versions.length ? versions.map((version, index) => {
+        {activeTab === "versions" && versions.length ? <>{versions.map((version, index) => {
           const isSelected = version.id === currentPreviewVersionId;
           const isLatest = index === 0;
 
@@ -124,11 +170,19 @@ export function WorkflowVersionHistoryPanel({
               </span>
             </button>
           );
-        }) : activeTab === "versions" ? (
+        })}
+          {nextVersionCursor || versionsError ? (
+            <HistoryLoadMore
+              error={versionsError}
+              loading={loadingVersions}
+              onClick={() => void loadVersionPage()}
+            />
+          ) : null}
+        </> : activeTab === "versions" ? (
           <div className="workflow-version-empty flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">
             <span>暂无历史版本</span>
           </div>
-        ) : reviews.length ? reviews.map(review => (
+        ) : reviews.length ? <>{reviews.map(review => (
           <button
             className="block w-full rounded-lg px-2 py-2.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             key={review.id}
@@ -146,7 +200,22 @@ export function WorkflowVersionHistoryPanel({
               <p className="mt-1 text-xs text-muted-foreground">已发布：版本 {review.resultingRevision}</p>
             ) : null}
           </button>
-        )) : (
+        ))}
+          {reviewsNextCursor || reviewsError ? (
+            <HistoryLoadMore
+              error={reviewsError}
+              loading={loadingReviews}
+              onClick={() => void loadReviewPage(reviewsNextCursor ?? undefined)}
+            />
+          ) : null}
+        </> : loadingReviews || (!reviewsLoaded && !reviewsError) ? (
+          <div className="flex min-h-40 items-center justify-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            正在加载
+          </div>
+        ) : reviewsError ? (
+          <HistoryLoadMore error loading={false} onClick={() => void loadReviewPage()} />
+        ) : (
           <div className="flex min-h-40 items-center justify-center text-[13px] text-muted-foreground">暂无审核记录</div>
         )}
       </div>
@@ -211,6 +280,34 @@ export function WorkflowVersionHistoryPanel({
       </AlertDialog>
     </div>
   );
+}
+
+function HistoryLoadMore({
+  error,
+  loading,
+  onClick,
+}: {
+  error: boolean;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex justify-center px-2 py-2">
+      <Button disabled={loading} onClick={onClick} size="sm" type="button" variant="secondary">
+        {loading ? (
+          <>
+            <Spinner size={14} variant="classic" />
+            正在加载
+          </>
+        ) : error ? "重试" : "加载更多"}
+      </Button>
+    </div>
+  );
+}
+
+function appendUnique<T extends { id: string }>(current: T[], incoming: T[]) {
+  const knownIds = new Set(current.map(item => item.id));
+  return [...current, ...incoming.filter(item => !knownIds.has(item.id))];
 }
 
 function getReviewHistoryLabel(review: WorkflowPublishReview) {

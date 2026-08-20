@@ -181,21 +181,42 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     return rows.map(mapDefinition);
   }
 
-  async listRevisions(uid: number, workflowId: string) {
-    const rows = await this.db.selectFrom(REVISION_TABLE)
+  async listRevisions(
+    uid: number,
+    workflowId: string,
+    input: Parameters<WorkflowRepository["listRevisions"]>[2],
+  ) {
+    let query = this.db.selectFrom(REVISION_TABLE)
       .selectAll()
       .where("uid", "=", uid)
       .where("workflow_id", "=", workflowId)
-      .orderBy("revision", "desc")
-      .execute();
-    return rows.map(mapRevision);
+      .orderBy("revision", "desc");
+    if (input.cursor) query = query.where("revision", "<", Number(input.cursor));
+    const rows = await query.limit(input.limit + 1).execute();
+    const pageRows = rows.slice(0, input.limit);
+    const items = pageRows.map(mapRevision);
+    return {
+      items,
+      nextCursor: rows.length > pageRows.length ? String(items.at(-1)!.revision) : null,
+    };
   }
 
-  async listReviews(uid: number, workflowId: string) {
-    const rows = await this.db.selectFrom(REVIEW_TABLE).selectAll()
+  async listReviews(
+    uid: number,
+    workflowId: string,
+    input: Parameters<WorkflowRepository["listReviews"]>[2],
+  ) {
+    let query = this.db.selectFrom(REVIEW_TABLE).selectAll()
       .where("uid", "=", uid).where("workflow_id", "=", workflowId)
-      .orderBy("id", "desc").execute();
-    return rows.map(mapReview);
+      .orderBy("id", "desc");
+    if (input.cursor) query = query.where("id", "<", input.cursor);
+    const rows = await query.limit(input.limit + 1).execute();
+    const pageRows = rows.slice(0, input.limit);
+    const items = pageRows.map(mapReview);
+    return {
+      items,
+      nextCursor: rows.length > pageRows.length ? items.at(-1)!.id : null,
+    };
   }
 
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {

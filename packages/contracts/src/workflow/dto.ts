@@ -166,6 +166,16 @@ export const WorkflowRevisionSchema = Type.Object({
   workflowId: WorkflowIdSchema,
 });
 
+export const WorkflowRevisionPageSchema = Type.Object({
+  items: Type.Array(WorkflowRevisionSchema, { maxItems: 50 }),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const WorkflowPublishReviewPageSchema = Type.Object({
+  items: Type.Array(WorkflowPublishReviewSchema, { maxItems: 50 }),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
 export const WorkflowCreateRequestSchema = Type.Object({
   clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   description: Type.Optional(Type.String({ maxLength: 1000 })),
@@ -316,6 +326,8 @@ export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
 export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
 export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
 export type WorkflowRevision = Static<typeof WorkflowRevisionSchema>;
+export type WorkflowRevisionPage = Static<typeof WorkflowRevisionPageSchema>;
+export type WorkflowPublishReviewPage = Static<typeof WorkflowPublishReviewPageSchema>;
 export type WorkflowCreateRequest = Static<typeof WorkflowCreateRequestSchema>;
 export type WorkflowSaveDraftRequest = Static<typeof WorkflowSaveDraftRequestSchema>;
 export type WorkflowRenameRequest = Static<typeof WorkflowRenameRequestSchema>;

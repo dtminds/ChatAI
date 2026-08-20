@@ -80,7 +80,7 @@ describe("workflow draft service", () => {
     ).document;
     expect(editable.currentReview).toBeNull();
     expect(editable.permissions.canEdit).toBe(true);
-    expect(repository.listReviews("newcomer-conversion")).toEqual([
+    expect(repository.listReviews("newcomer-conversion").items).toEqual([
       expect.objectContaining({ id: reviewId, status: "approved" }),
     ]);
   });
@@ -118,7 +118,7 @@ describe("workflow draft service", () => {
 
     const resubmitted = repository.submitReview("newcomer-conversion");
     expect(resubmitted.currentReview?.status).toBe("pending");
-    expect(repository.listReviews("newcomer-conversion")).toHaveLength(2);
+    expect(repository.listReviews("newcomer-conversion").items).toHaveLength(2);
   });
 
   it("drops the rejected current state after the draft returns to published semantics", () => {
@@ -132,7 +132,7 @@ describe("workflow draft service", () => {
 
     expect(restored.currentReview).toBeNull();
     expect(restored.hasUnpublishedChanges).toBe(false);
-    expect(repository.listReviews(published.id)).toEqual([
+    expect(repository.listReviews(published.id).items).toEqual([
       expect.objectContaining({ status: "rejected" }),
     ]);
   });
@@ -261,7 +261,7 @@ describe("workflow draft service", () => {
     });
     const secondReviewId = result.current.document.currentReview!.id;
     expect(secondReviewId).not.toBe(firstReviewId);
-    expect(repository.listReviews(initial.id)).toEqual([
+    expect(repository.listReviews(initial.id).items).toEqual([
       expect.objectContaining({ id: secondReviewId, status: "pending" }),
       expect.objectContaining({ id: firstReviewId, status: "approved" }),
     ]);

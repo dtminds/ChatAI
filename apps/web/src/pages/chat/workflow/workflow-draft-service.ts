@@ -686,9 +686,37 @@ export function useWorkflowDocument(
   }, [document.description, document.name, repository]);
 
   const listReviews = useCallback(
-    () => Promise.resolve(repository.listReviews(workflowIdRef.current)),
+    (cursor?: string) => Promise.resolve(repository.listReviews(workflowIdRef.current, cursor)),
     [repository],
   );
+
+  const listVersions = useCallback(async (cursor?: string) => {
+    const page = await Promise.resolve(repository.listVersions(workflowIdRef.current, cursor));
+    setDocument((currentDocument) => {
+      const knownVersions = new Set(currentDocument.versionHistory.map(version => version.revision));
+      return {
+        ...currentDocument,
+        versionHistory: [
+          ...currentDocument.versionHistory,
+          ...page.items.filter(version => !knownVersions.has(version.revision)),
+        ],
+        versionHistoryNextCursor: page.nextCursor,
+      };
+    });
+    return page;
+  }, [repository]);
+
+  const getVersion = useCallback(async (revision: number) => {
+    const version = await Promise.resolve(repository.getVersion(workflowIdRef.current, revision));
+    setDocument((currentDocument) => currentDocument.versionHistory.some(
+      item => item.revision === revision,
+    ) ? currentDocument : {
+      ...currentDocument,
+      versionHistory: [...currentDocument.versionHistory, version]
+        .sort((first, second) => second.revision - first.revision),
+    });
+    return version;
+  }, [repository]);
 
   const operateDocument = useCallback(async (action: "enable" | "pause" | "resume") => {
     const operation = {
@@ -755,6 +783,8 @@ export function useWorkflowDocument(
     lastSavedAt,
     lastSavedDraftHash,
     listReviews,
+    listVersions,
+    getVersion,
     markDirty,
     metadataUpdateState,
     pauseDocument,
@@ -768,7 +798,7 @@ export function useWorkflowDocument(
     retrySave,
     saveError,
     saveState,
-  }), [importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, markDirty, metadataUpdateState, publishReview, publishError, publishState, restoreReview, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata, visibleDocument]);
+  }), [getVersion, importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, listVersions, markDirty, metadataUpdateState, publishReview, publishError, publishState, restoreReview, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata, visibleDocument]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

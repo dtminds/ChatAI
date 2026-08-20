@@ -3,6 +3,7 @@ import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import type { WorkflowPublishReview } from "@chatai/contracts";
 import {
   AlertDialog,
@@ -191,13 +192,19 @@ function WorkflowWorkspaceContent({
     if (historyReview) setHistoryReview(null);
     else review.onClose();
   };
-  const viewDisplayedReviewVersion = displayedReviewVersion
-    ? () => {
-        closeDisplayedReview();
-        versionHistory.onSelectVersion(displayedReviewVersion.id);
-        if (mode === "data") navigate(`/chat/workflows/${document.id}`);
+  const viewDisplayedReviewVersion = displayedReview?.resultingRevision == null
+    ? undefined
+    : async () => {
+        try {
+          const version = displayedReviewVersion
+            ?? await versionHistory.loadVersion(displayedReview.resultingRevision!);
+          closeDisplayedReview();
+          versionHistory.onSelectVersion(version.id);
+          if (mode === "data") navigate(`/chat/workflows/${document.id}`);
+        } catch {
+          toast.error("操作失败，请稍后重试");
+        }
       }
-    : undefined;
   useEffect(() => {
     previousInspectorOpenRef.current = inspector.isOpen;
   }, [inspector.isOpen]);
@@ -262,6 +269,8 @@ function WorkflowWorkspaceContent({
             canRestore={canRestoreVersion}
             currentPreviewVersionId={versionHistory.currentPreviewVersionId}
             loadReviews={versionHistory.loadReviews}
+            loadMoreVersions={versionHistory.loadMoreVersions}
+            nextVersionCursor={versionHistory.nextCursor}
             onClose={versionHistory.onClose}
             onExitPreview={versionHistory.onExitPreview}
             onRestoreVersion={versionHistory.onRestoreVersion}

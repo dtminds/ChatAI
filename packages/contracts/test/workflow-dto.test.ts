@@ -6,7 +6,9 @@ import {
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowReviewApproveRequestSchema,
+  WorkflowPublishReviewPageSchema,
   WorkflowReviewRejectRequestSchema,
+  WorkflowRevisionPageSchema,
   WorkflowRuntimeStatusSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
@@ -148,6 +150,17 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowReviewRejectRequestSchema, {
       reason: "驳".repeat(201),
     })).toBe(false);
+  });
+
+  it("bounds workflow history response pages", () => {
+    expect(Value.Check(WorkflowRevisionPageSchema, {
+      items: [],
+      nextCursor: "20",
+    })).toBe(true);
+    expect(Value.Check(WorkflowPublishReviewPageSchema, {
+      items: [],
+      nextCursor: null,
+    })).toBe(true);
   });
 
   it("accepts workflow metadata when creating a workflow", () => {

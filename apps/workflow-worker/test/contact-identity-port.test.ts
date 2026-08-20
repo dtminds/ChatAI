@@ -83,6 +83,19 @@ describe("Workflow contact identity Java port", () => {
     });
   });
 
+  it("includes the standard Java error details in a business failure diagnostic", () => {
+    expect(() => decodeJavaContactIdentityResponse({
+      data: {},
+      error: 40001,
+      errorMsg: " 客户身份查询参数无效 ",
+      error_msg: "不应读取的兼容字段",
+      success: false,
+    })).toThrow(expect.objectContaining({
+      message:
+        "Workflow contact identity endpoint rejected the request: 40001 客户身份查询参数无效",
+    }));
+  });
+
   it("accepts success with no generated IDs and preserves zero or empty values as missing", () => {
     expect(decodeJavaContactIdentityResponse({
       data: {

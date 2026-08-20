@@ -64,9 +64,13 @@ describe("Workflow Tag Query Java port", () => {
     expect(() => decodeWorkflowTagQueryJavaResponse({
       data: [],
       error: 40001,
+      errorMsg: " 标签查询参数无效 ",
+      error_msg: "不应读取的兼容字段",
       success: false,
     }, [301])).toThrow(expect.objectContaining({
       code: "WORKFLOW_TAG_QUERY_REJECTED",
+      diagnosticMessage:
+        "Workflow Tag Query Java endpoint rejected the request: 40001 标签查询参数无效",
       failureKind: "terminal",
     }));
   });

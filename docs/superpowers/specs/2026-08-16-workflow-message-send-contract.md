@@ -95,12 +95,14 @@ Java 接口成功响应沿用现有 envelope，并必须包含非空 `data.optNo
 
 Java 仅用空对象表示本次 Action 成功。Message 不提供独立业务时间输出；下游需要引用节点完成时间时，统一使用该节点生命周期的 `exitedAt`。
 
+只有 HTTP 200 且 `success === true`、`data.optNo` 非空时表示 Java 已受理消息。HTTP 200 且 `success === false` 是业务明确拒绝，不使用 `error === 0` 覆盖 `success` 判定；HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或缺失 `data.optNo` 属于 terminal 契约错误。
+
 ## 5. 幂等与错误
 
 - 相同消息子键和相同请求重复调用，Java 返回相同的成功结果，不重复发送
 - 相同消息子键但主体或消息请求不同，Java 返回 terminal conflict
 - timeout 的执行结果未知，Node 会使用同一组消息子键重试
-- 临时不可用、限流和依赖超时返回 retryable
+- 网络异常、超时和任意非 HTTP 200 响应返回 retryable
 - 参数非法、账号或客户关系不存在、资源失效和业务拒绝返回 terminal
 - Java 不叠加无上限的长期重试；Workflow Runtime 是重试调度权威
 

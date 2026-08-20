@@ -115,6 +115,26 @@ describe("Workflow execution context prepare", () => {
     });
   });
 
+  it("maps a terminal Java identity rejection to a terminal node failure", async () => {
+    await expect(prepareWorkflowExecutionContext({
+      contactIdentityPort: port(async () => {
+        throw new WorkflowContactIdentityLookupError(
+          "identity endpoint rejected the request",
+          { failureKind: "terminal" },
+        );
+      }),
+      node: node("tag"),
+      subjectId: "chatai-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_CONTACT_IDENTITY_REJECTED",
+      failureKind: "terminal",
+      message: "客户身份信息查询失败，流程已停止",
+    });
+  });
+
   it("rejects conflicting returned identities instead of overwriting known values", async () => {
     await expect(prepareWorkflowExecutionContext({
       contactIdentityPort: port(async () => ({

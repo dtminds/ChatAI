@@ -63,10 +63,13 @@ describe("Workflow contact identity Java port", () => {
   });
 
   it.each([
-    { data: {}, success: false },
-    { data: {}, error: 0 },
-    { data: {}, success: 1 },
-  ])("treats every success !== true envelope as failure", async (body) => {
+    { body: { data: {}, success: false }, expectedKind: "terminal" },
+    { body: { data: {}, error: 0 }, expectedKind: "terminal" },
+    { body: { data: {}, success: 1 }, expectedKind: "terminal" },
+  ] as const)("treats a 200 business or envelope failure as $expectedKind", async ({
+    body,
+    expectedKind,
+  }) => {
     const port = new HttpWorkflowContactIdentityPort({
       baseUrl: "https://java.example.com",
       fetch: vi.fn(async () => response(body)) as typeof fetch,
@@ -74,7 +77,10 @@ describe("Workflow contact identity Java port", () => {
     await expect(port.getContactIdentity({
       key: { externalUserId: 101, type: "externalUserId" },
       uid: 9,
-    })).rejects.toMatchObject({ name: "WorkflowContactIdentityLookupError" });
+    })).rejects.toMatchObject({
+      failureKind: expectedKind,
+      name: "WorkflowContactIdentityLookupError",
+    });
   });
 
   it("accepts success with no generated IDs and preserves zero or empty values as missing", () => {
@@ -95,28 +101,51 @@ describe("Workflow contact identity Java port", () => {
     expect(decodeJavaContactIdentityResponse({ data: null, success: true })).toEqual({});
   });
 
-  it("rejects HTTP, network, invalid JSON, and invalid field types", async () => {
-    const inputs: Array<typeof fetch> = [
-      vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch,
-      vi.fn(async () => { throw new Error("network"); }) as typeof fetch,
-      vi.fn(async () => new Response("not-json", {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      })) as typeof fetch,
-      vi.fn(async () => response({
-        data: { externalUserId: "101" },
-        success: true,
-      })) as typeof fetch,
+  it("classifies HTTP and network failures as retryable and invalid 200 responses as terminal", async () => {
+    const inputs: Array<{ expectedKind: "retryable" | "terminal"; fetch: typeof fetch }> = [
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 400 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 201 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => { throw new Error("network"); }) as typeof fetch,
+      },
+      {
+        expectedKind: "terminal",
+        fetch: vi.fn(async () => new Response("not-json", {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        })) as typeof fetch,
+      },
+      {
+        expectedKind: "terminal",
+        fetch: vi.fn(async () => response({
+          data: { externalUserId: "101" },
+          success: true,
+        })) as typeof fetch,
+      },
     ];
-    for (const fetchImplementation of inputs) {
+    for (const input of inputs) {
       const port = new HttpWorkflowContactIdentityPort({
         baseUrl: "https://java.example.com",
-        fetch: fetchImplementation,
+        fetch: input.fetch,
       });
       await expect(port.getContactIdentity({
         key: { externalUserId: 101, type: "externalUserId" },
         uid: 9,
-      })).rejects.toMatchObject({ name: "WorkflowContactIdentityLookupError" });
+      })).rejects.toMatchObject({
+        failureKind: input.expectedKind,
+        name: "WorkflowContactIdentityLookupError",
+      });
     }
   });
 
@@ -139,6 +168,7 @@ describe("Workflow contact identity Java port", () => {
         uid: 9,
       });
       const rejection = expect(pending).rejects.toMatchObject({
+        failureKind: "retryable",
         name: "WorkflowContactIdentityLookupError",
       });
 

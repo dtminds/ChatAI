@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "message", "message-query", "start", "wait", "wait-event"]);
+      .toEqual(["branch", "end", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "tag", "tag-query"]);
+      .toEqual(["ai-intent", "customer-update", "handoff", "llm", "tag"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -325,10 +325,10 @@ describe("workflow node contracts", () => {
     expect(Value.Check(WorkflowTagResultSchema, { updated: true })).toBe(false);
   });
 
-  it("keeps Tag Query drafts editable and bounds its query contract", () => {
+  it("marks Tag Query runtime-ready and bounds its query contract", () => {
     expect(getWorkflowNodeContract("tag-query")).toMatchObject({
       currentDraftSchemaVersion: 1,
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
     expect(isWorkflowNodeDraftConfig("tag-query", { matchMode: "any", tagIds: [] }))
       .toBe(true);

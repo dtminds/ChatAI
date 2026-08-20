@@ -49,6 +49,10 @@ import {
 } from "./execution-context-prepare.js";
 import { WorkflowRuntimeError } from "./errors.js";
 import {
+  isWorkflowTaskDeferReasonCode,
+  type WorkflowTaskDeferReasonCode,
+} from "./task-deferral.js";
+import {
   assertWorkflowRuntimeValue,
   WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   WORKFLOW_RUN_CONTEXT_MAX_BYTES,
@@ -326,10 +330,8 @@ export class WorkflowRuntimeService {
       this.assertNodeExecutable(node);
     } catch (error) {
       if (error instanceof WorkflowRuntimeError
-        && (error.code === "WORKFLOW_ENTITLEMENT_UNAVAILABLE"
-          || error.code === "WORKFLOW_RUNTIME_PAUSED"
-          || error.code === "WORKFLOW_RUNTIME_NODE_UNSUPPORTED")) {
-        await this.deferTaskOrThrowStale(task, input.now);
+        && isWorkflowTaskDeferReasonCode(error.code)) {
+        await this.deferTaskOrThrowStale(task, input.now, error.code);
       }
       throw error;
     }
@@ -339,7 +341,11 @@ export class WorkflowRuntimeService {
         input.now,
       );
       if (nextExecutionAt) {
-        await this.deferTaskUntilOrThrowStale(task, nextExecutionAt);
+        await this.deferTaskUntilOrThrowStale(
+          task,
+          nextExecutionAt,
+          "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+        );
         throw new WorkflowRuntimeError(
           "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
           "消息发送时间未到",
@@ -843,20 +849,27 @@ export class WorkflowRuntimeService {
     }
   }
 
-  private async deferTaskOrThrowStale(task: { id: string; taskVersion: number; uid: number }, now: Date) {
+  private async deferTaskOrThrowStale(
+    task: { id: string; taskVersion: number; uid: number },
+    now: Date,
+    reasonCode: WorkflowTaskDeferReasonCode,
+  ) {
     await this.deferTaskUntilOrThrowStale(
       task,
       new Date(now.getTime() + this.deferredTaskDelayMs),
+      reasonCode,
     );
   }
 
   private async deferTaskUntilOrThrowStale(
     task: { id: string; taskVersion: number; uid: number },
     dueAt: Date,
+    reasonCode: WorkflowTaskDeferReasonCode,
   ) {
     const deferred = await this.runtimeRepository.deferTask({
       dueAt,
       expectedTaskVersion: task.taskVersion,
+      reasonCode,
       taskId: task.id,
       uid: task.uid,
     });

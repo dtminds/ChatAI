@@ -28,6 +28,52 @@ export function runWorkflowRuntimeRepositoryContract(
     harness = await createHarness();
   });
 
+  it("persists a deferred Task as a waiting Run and clears the reason when execution resumes", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput()));
+    const dueAt = new Date("2099-01-02T01:00:00.000Z");
+
+    await expect(harness.repository.deferTask({
+      dueAt,
+      expectedTaskVersion: created.task.taskVersion,
+      reasonCode: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+      taskId: created.task.id,
+      uid: 9,
+    })).resolves.toMatchObject({
+      kind: "success",
+      run: { nextExecuteAt: dueAt, status: "waiting" },
+      task: {
+        dueAt,
+        lastErrorCode: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+        status: "pending",
+      },
+    });
+    await expect(harness.repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2099-01-02T00:01:00.000Z"),
+      limit: 10,
+      now: new Date("2099-01-02T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
+    });
+
+    const deferredTask = await harness.repository.findTask(9, created.task.id);
+    if (!deferredTask) throw new Error("Expected deferred Task");
+    await expect(harness.repository.claimTask({
+      expectedTaskVersion: deferredTask.taskVersion,
+      leaseExpiresAt: new Date("2099-01-02T01:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: deferredTask.id,
+      uid: 9,
+    })).resolves.toMatchObject({
+      kind: "success",
+      task: { lastErrorCode: null, status: "running" },
+    });
+    await expect(harness.repository.findRun(9, created.run.id)).resolves.toMatchObject({
+      nextExecuteAt: null,
+      status: "running",
+    });
+  });
+
   it("records one stable Entry Inbox message across concurrent deliveries", async () => {
     const input = {
       consumer: "workflow-entry",

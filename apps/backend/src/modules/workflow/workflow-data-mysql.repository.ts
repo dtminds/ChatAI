@@ -150,6 +150,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         "create_time",
         "current_node_id",
         "id",
+        "next_execute_at",
         "revision",
         "status",
         "subject_id",
@@ -208,11 +209,14 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       const previousStep = steps.at(-1)?.nodeId === run.current_node_id ? steps.at(-1) : undefined;
       const currentKind = metadata?.kind ?? previousStep?.nodeKind ?? "unknown";
       const currentStep = {
+        ...(run.status === "waiting" && run.next_execute_at
+          ? { nextExecuteAt: toDate(run.next_execute_at).toISOString() }
+          : {}),
         occurredAt: toDate(run.update_time).toISOString(),
         nodeId: run.current_node_id,
         nodeKind: currentKind,
         revision: run.revision,
-        status: "current" as const,
+        status: run.status === "waiting" ? "waiting" as const : "current" as const,
         title: metadata?.title ?? previousStep?.title ?? fallbackNodeTitle(currentKind),
       };
       if (steps.at(-1)?.nodeId === run.current_node_id) {

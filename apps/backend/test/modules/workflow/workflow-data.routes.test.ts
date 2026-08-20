@@ -48,15 +48,34 @@ describe("workflow data routes", () => {
     }));
   });
 
-  it("shows a waiting node once as the current trajectory step", async () => {
+  it("shows a waiting node once as the waiting trajectory step", async () => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock() as never);
 
     const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
 
     expect(detail.steps).toEqual([expect.objectContaining({
       nodeId: "wait-1",
-      status: "current",
+      status: "waiting",
       title: "等待一天",
+    })]);
+  });
+
+  it("returns the next execution time for a deferred Message trajectory step", async () => {
+    const nextExecuteAt = new Date("2026-07-13T01:00:00.000Z");
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      executionKind: "message",
+      nextExecuteAt,
+      runCurrentNodeId: "message-1",
+      runStatus: "waiting",
+    }) as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([expect.objectContaining({
+      nextExecuteAt: nextExecuteAt.toISOString(),
+      nodeId: "message-1",
+      nodeKind: "message",
+      status: "waiting",
     })]);
   });
 
@@ -144,7 +163,7 @@ describe("workflow data routes", () => {
 
     expect(detail.steps).toEqual([expect.objectContaining({
       nodeId: "wait-1",
-      status: "current",
+      status: "waiting",
       title: "等待",
     })]);
   });
@@ -185,7 +204,7 @@ describe("workflow data routes", () => {
     expect(detail.steps).toEqual([expect.objectContaining({
       nodeId: "wait-1",
       nodeKind: "unknown",
-      status: "current",
+      status: "waiting",
       title: "未来动作",
     })]);
   });
@@ -295,6 +314,7 @@ function createRecordDbMock(options: {
   draftJson?: unknown;
   executionKind?: string;
   executionStatus?: string;
+  nextExecuteAt?: Date | null;
   runCurrentNodeId?: string;
   runStatus?: string;
   terminalReason?: string | null;
@@ -347,6 +367,7 @@ function createRecordDbMock(options: {
               create_time: now,
               current_node_id: options.runCurrentNodeId ?? "wait-1",
               id: "31",
+              next_execute_at: options.nextExecuteAt ?? null,
               revision: 3,
               status: options.runStatus ?? "waiting",
               subject_id: "customer-1",

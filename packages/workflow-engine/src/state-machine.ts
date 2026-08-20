@@ -9,7 +9,7 @@ const runTransitions: Record<WorkflowRunStatus, readonly WorkflowRunStatus[]> = 
   cancelled: [],
   completed: [],
   failed: [],
-  queued: ["running", "cancelled", "failed"],
+  queued: ["running", "waiting", "cancelled", "failed"],
   running: ["running", "waiting", "completed", "failed", "cancelled"],
   waiting: ["running", "completed", "failed", "cancelled"],
 };

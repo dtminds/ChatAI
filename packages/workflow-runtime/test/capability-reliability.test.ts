@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type WorkflowCapabilityPort,
   type WorkflowCapabilityExecutionBinding,
+  type WorkflowContactIdentityPort,
   InMemoryWorkflowRuntimeRepository,
   type WorkflowMessageQueryRequest,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
@@ -744,6 +745,61 @@ describe("workflow capability reliability", () => {
     });
   });
 
+  it("re-runs identity Prepare on retry and never persists an empty enrichment", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const spec = actionSpec();
+    spec.nodes.find(node => node.kind === "message")!.config = {
+      dependency: { selector: ["global", "customer", "name"] },
+    };
+    const getContactIdentity = vi.fn(async () => ({}));
+    const requests: unknown[] = [];
+    let attempt = 0;
+    const service = createService(runtime, async (request) => {
+      requests.push(request);
+      attempt += 1;
+      if (attempt === 1) throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
+      return {};
+    }, {
+      contactIdentityPort: { getContactIdentity },
+      spec,
+    });
+    const actionTask = await startCapability(runtime, service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "retry-scheduled" });
+    const retryTask = await runtime.findTask(9, actionTask.id);
+    if (!retryTask) throw new Error("Message retry task was not created");
+    await expect(service.executeTask({
+      now: retryTask.dueAt,
+      taskId: retryTask.id,
+      taskVersion: retryTask.taskVersion,
+      uid: 9,
+      workerId: "worker-2",
+    })).resolves.toMatchObject({ kind: "success" });
+
+    expect(getContactIdentity).toHaveBeenCalledTimes(2);
+    expect(getContactIdentity).toHaveBeenNthCalledWith(1, {
+      key: { thirdExternalUserId: "customer-1", type: "thirdExternalUserId" },
+      signal: undefined,
+      uid: 9,
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({
+        identities: { thirdExternalUserId: "customer-1" },
+      }),
+      expect.objectContaining({
+        identities: { thirdExternalUserId: "customer-1" },
+      }),
+    ]);
+    const run = await runtime.findRun(9, actionTask.runId);
+    expect(run?.context).not.toHaveProperty("identities");
+  });
+
   it("executes Handoff as one action and reuses its idempotency key across a retry", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const completedAt = new Date(now.getTime() + 9_000);
@@ -1231,6 +1287,7 @@ function createService(
     capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
     capabilityTimeoutMs?: number;
     clock?: () => Date;
+    contactIdentityPort?: WorkflowContactIdentityPort;
     executors?: WorkflowNodeExecutorRegistry;
     inferenceTotalTimeoutMs?: number;
     maxTaskAttempts?: number;
@@ -1252,6 +1309,7 @@ function createService(
     capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
     capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
+    contactIdentityPort: options.contactIdentityPort,
     entitlementPort: {
       check: async () => ({ entitled: true, unentitledSince: null }),
     },

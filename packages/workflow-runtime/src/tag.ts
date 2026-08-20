@@ -34,7 +34,7 @@ export function createWorkflowTagCommand(input: {
   if (!isWorkflowNodeExecutionConfig("tag", input.config)) {
     throw tagCommandError("Tag execution config failed schema validation");
   }
-  if (!input.context.subjectId.trim()) {
+  if (!input.context.identities.externalUserId) {
     throw tagCommandError("Tag recipient is unavailable in the Run context");
   }
   const config = input.config as WorkflowTagExecutionConfig;

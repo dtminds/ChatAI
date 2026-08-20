@@ -22,6 +22,7 @@ import {
 import { loadWorkflowWorkerConfig } from "./config.js";
 import { createWorkflowBroker } from "./broker/index.js";
 import { createWorkflowDatabase } from "./database.js";
+import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
 import { createWorkflowWorkerLogger } from "./logger.js";
@@ -79,6 +80,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
         WORKFLOW_TAG_CAPABILITY_BINDING,
         WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
       ],
+      contactIdentityPort: new HttpWorkflowContactIdentityPort({
+        baseUrl: config.javaInternalApi.baseUrl,
+        token: config.javaInternalApi.token,
+      }),
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       messageQueryPort: new MysqlWorkflowMessageQueryPort(database),
@@ -156,6 +161,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 export * from "./broker/index.js";
 export * from "./config.js";
+export * from "./contact-identity-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./error-policy.js";

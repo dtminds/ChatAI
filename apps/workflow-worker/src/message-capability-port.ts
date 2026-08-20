@@ -88,6 +88,8 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
       || !("idempotencyKey" in request)
       || typeof request.idempotencyKey !== "string"
       || !request.idempotencyKey
+      || request.identities.thirdExternalUserId
+        !== request.command.recipient.thirdExternalUserId
     ) {
       throw terminalError(
         "WORKFLOW_MESSAGE_REQUEST_INVALID",
@@ -102,8 +104,6 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
       fetch: this.fetch,
       idempotencyKey: request.idempotencyKey,
       signal: request.signal,
-      subjectId: request.subjectId,
-      subjectType: request.subjectType,
       token: this.options.token ?? null,
       uid: request.uid,
     });
@@ -118,23 +118,10 @@ export async function executeWorkflowMessage(
     fetch: typeof fetch;
     idempotencyKey: string;
     signal: AbortSignal;
-    subjectId: string;
-    subjectType: string;
     token: string | null;
     uid: number;
   },
 ) {
-  if (
-    input.subjectType !== "chatai_contact"
-    || input.subjectId !== input.command.recipient.thirdExternalUserId
-  ) {
-    throw terminalError(
-      "WORKFLOW_MESSAGE_RECIPIENT_INVALID",
-      "执行所需数据不可用，流程已停止",
-      "Workflow Message subject does not match the command recipient",
-    );
-  }
-
   throwIfAborted(input.signal);
   const seat = await resolveWorkflowMessageSeat(database, {
     seatId: input.command.seatId,
@@ -152,7 +139,7 @@ export async function executeWorkflowMessage(
       msgData,
       platform: seat.platform,
       signal: input.signal,
-      thirdExternalUserId: input.subjectId,
+      thirdExternalUserId: input.command.recipient.thirdExternalUserId,
       thirdUserId: seat.thirdUserId,
       token: input.token,
       uid: input.uid,

@@ -5,6 +5,7 @@ export * from "./chatai-action-context.js";
 export * from "./customer-update.js";
 export * from "./errors.js";
 export * from "./entitlement.js";
+export * from "./execution-context-prepare.js";
 export * from "./inference.js";
 export * from "./inference-port.js";
 export * from "./handoff.js";

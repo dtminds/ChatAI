@@ -41,6 +41,12 @@ import {
   WorkflowEntitlementUnavailableError,
   type WorkflowEntitlementPort,
 } from "./entitlement.js";
+import {
+  deriveWorkflowExecutionContextRequirements,
+  prepareWorkflowExecutionContext,
+  type WorkflowContactIdentityPort,
+  type WorkflowPreparedExecutionContext,
+} from "./execution-context-prepare.js";
 import { WorkflowRuntimeError } from "./errors.js";
 import {
   assertWorkflowRuntimeValue,
@@ -85,6 +91,7 @@ export class WorkflowRuntimeService {
   private readonly deferredTaskDelayMs: number;
   private readonly inferenceTotalTimeoutMs: number;
   private readonly entitlementPort: WorkflowEntitlementPort;
+  private readonly contactIdentityPort?: WorkflowContactIdentityPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
   private readonly messageQueryPort?: WorkflowMessageQueryPort;
 
@@ -98,6 +105,7 @@ export class WorkflowRuntimeService {
       capabilityTimeoutMs?: number;
       capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
       clock?: () => Date;
+      contactIdentityPort?: WorkflowContactIdentityPort;
       deferredTaskDelayMs?: number;
       inferenceTotalTimeoutMs?: number;
       entitlementPort?: WorkflowEntitlementPort;
@@ -118,6 +126,7 @@ export class WorkflowRuntimeService {
     this.inferenceTotalTimeoutMs = options.inferenceTotalTimeoutMs ?? 600_000;
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
+    this.contactIdentityPort = options.contactIdentityPort;
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
     this.messageQueryPort = options.messageQueryPort;
     this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
@@ -344,6 +353,10 @@ export class WorkflowRuntimeService {
       || executionClass === "query";
     const inferenceNode = executionClass === "inference";
     const capabilityBinding = this.capabilityBindings.get(node.kind);
+    const contextRequirements = deriveWorkflowExecutionContextRequirements(node);
+    const requiresPreparedExecution = capabilityNode
+      || contextRequirements.globalContext
+      || contextRequirements.identities.length > 0;
     const capabilityTimeoutMs = capabilityBinding?.executionTimeoutMs
       ?? this.capabilityTimeoutMs;
     const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
@@ -379,7 +392,7 @@ export class WorkflowRuntimeService {
         run,
       });
     }
-    if (capabilityNode) {
+    if (requiresPreparedExecution) {
       const prepared = await this.runtimeRepository.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
@@ -398,6 +411,17 @@ export class WorkflowRuntimeService {
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      let preparedContext: WorkflowPreparedExecutionContext = { identities: {} };
+      if (contextRequirements.identities.length > 0) {
+        preparedContext = await prepareWorkflowExecutionContext({
+          contactIdentityPort: this.contactIdentityPort,
+          node,
+          subjectId: run.subjectId,
+          subjectType: run.subjectType,
+          trigger: isRecord(run.context.trigger) ? run.context.trigger : {},
+          uid: run.uid,
+        });
+      }
       executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
             output: { dueAt: claimed.task.dueAt.toISOString() },
@@ -418,6 +442,7 @@ export class WorkflowRuntimeService {
               enteredAt: claimed.task.createdAt,
               node,
               port: this.messageQueryPort,
+              preparedContext,
               run,
               startedAt: this.clock(),
             })
@@ -429,6 +454,7 @@ export class WorkflowRuntimeService {
             enteredAt: claimed.task.createdAt,
             node,
             port: this.capabilityPort,
+            preparedContext,
             run,
             startedAt: this.clock(),
           })
@@ -436,6 +462,7 @@ export class WorkflowRuntimeService {
             run,
             input.now,
             claimed.task.createdAt,
+            preparedContext,
           ));
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
@@ -471,7 +498,7 @@ export class WorkflowRuntimeService {
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
-      if (!capabilityNode && error instanceof WorkflowRuntimeValueError) {
+      if (!requiresPreparedExecution && error instanceof WorkflowRuntimeValueError) {
         return this.commitCoreNodeFailure({
           nodeExecutionKey,
           error,
@@ -481,7 +508,7 @@ export class WorkflowRuntimeService {
           task: claimed.task,
         });
       }
-      const capabilityError = capabilityNode ? toCapabilityExecutionError(error) : null;
+      const capabilityError = requiresPreparedExecution ? toCapabilityExecutionError(error) : null;
       if (!capabilityError) throw error;
       const failureInput = {
         errorCode: capabilityError.code.slice(0, 128),
@@ -850,6 +877,7 @@ function createExecutionContext(
   run: WorkflowRunRecord,
   now: Date,
   enteredAt: Date = now,
+  preparedContext: WorkflowPreparedExecutionContext = { identities: {} },
 ): WorkflowNodeExecutionContext {
   const trigger = isRecord(run.context.trigger) ? run.context.trigger : {};
   const outputs = isRecord(run.context.outputs)
@@ -860,6 +888,7 @@ function createExecutionContext(
     : {};
   return {
     currentNodeLifecycle: { enteredAt: enteredAt.toISOString() },
+    identities: structuredClone(preparedContext.identities),
     now,
     nodeLifecycle,
     outputs,
@@ -882,6 +911,7 @@ async function executeWithCapabilityTimeout(input: {
   enteredAt: Date;
   node: WorkflowExecutionNode;
   port: WorkflowCapabilityPort | undefined;
+  preparedContext: WorkflowPreparedExecutionContext;
   run: WorkflowRunRecord;
   startedAt: Date;
 }) {
@@ -922,6 +952,7 @@ async function executeWithCapabilityTimeout(input: {
         binding: input.binding,
         commandContext: {
           currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+          identities: structuredClone(input.preparedContext.identities),
           nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
             ? input.run.context.nodeLifecycle as Record<
               string,
@@ -963,6 +994,7 @@ async function executeMessageQueryWithTimeout(input: {
   enteredAt: Date;
   node: WorkflowExecutionNode;
   port: WorkflowMessageQueryPort | undefined;
+  preparedContext: WorkflowPreparedExecutionContext;
   run: WorkflowRunRecord;
   startedAt: Date;
 }) {
@@ -995,6 +1027,7 @@ async function executeMessageQueryWithTimeout(input: {
         config: input.node.config,
         context: {
           currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+          identities: structuredClone(input.preparedContext.identities),
           nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
             ? input.run.context.nodeLifecycle as Record<
               string,

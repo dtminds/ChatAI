@@ -407,6 +407,31 @@ describe("workflow node contracts", () => {
     });
   });
 
+  it("declares only the direct identity inputs owned by each node contract", () => {
+    expect(Object.fromEntries(Object.entries(workflowNodeContractRegistry).map(([kind, contract]) => [
+      kind,
+      contract.identityInputs,
+    ]))).toEqual({
+      agent: [],
+      "ai-collect": [],
+      "ai-intent": [],
+      branch: [],
+      coupon: ["externalUserId"],
+      "customer-update": [],
+      end: [],
+      handoff: ["thirdExternalUserId"],
+      llm: [],
+      message: ["thirdExternalUserId"],
+      "message-query": ["thirdExternalUserId"],
+      "order-query": ["externalUserId"],
+      start: [],
+      tag: ["externalUserId"],
+      "tag-query": ["externalUserId"],
+      wait: [],
+      "wait-event": [],
+    });
+  });
+
   it("extracts only registered draft fields and validates every kind", () => {
     for (const kind of Object.keys(workflowNodeContractRegistry) as WorkflowNodeKind[]) {
       const contract = getWorkflowNodeContract(kind);

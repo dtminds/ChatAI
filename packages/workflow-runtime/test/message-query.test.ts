@@ -91,6 +91,7 @@ describe("Workflow Message Query binding", () => {
 function context() {
   return {
     currentNodeLifecycle: { enteredAt: "2026-08-15T02:00:00.000Z" },
+    identities: { thirdExternalUserId: "third-external-1" },
     nodeLifecycle: {} as Record<string, { enteredAt?: string; exitedAt?: string }>,
     outputs: {} as Record<string, Record<string, unknown>>,
     subjectId: "third-external-1",

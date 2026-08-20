@@ -50,7 +50,8 @@ export function createWorkflowMessageCommand(input: {
   }
   const seatId = readTriggerSeatId(input.context.trigger);
   if (seatId === null) throw messageCommandError("Message seat is unavailable in the Run context");
-  if (!input.context.subjectId.trim()) {
+  const thirdExternalUserId = input.context.identities.thirdExternalUserId;
+  if (!thirdExternalUserId) {
     throw messageCommandError("Message recipient is unavailable in the Run context");
   }
   return {
@@ -63,7 +64,7 @@ export function createWorkflowMessageCommand(input: {
     })),
     content: content.trim() ? content : "",
     recipient: {
-      thirdExternalUserId: input.context.subjectId,
+      thirdExternalUserId,
     },
     seatId,
     source: "workflow",

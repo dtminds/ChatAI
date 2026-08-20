@@ -39,7 +39,7 @@ export function createWorkflowTagQueryCommand(input: {
   context: WorkflowCapabilityCommandContext;
 }): WorkflowTagQueryCommand {
   const config = requireWorkflowTagQueryExecutionConfig(input.config);
-  if (!input.context.subjectId.trim()) {
+  if (!input.context.identities.externalUserId) {
     throw tagQueryCommandError("Tag Query subject is unavailable in the Run context");
   }
   return { tagIds: [...config.tagIds] };

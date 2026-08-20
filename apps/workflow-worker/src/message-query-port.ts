@@ -76,12 +76,19 @@ export class MysqlWorkflowMessageQueryPort implements WorkflowMessageQueryPort {
         `Message Query does not support subject type ${request.subjectType}`,
       );
     }
+    const thirdExternalUserId = request.identities.thirdExternalUserId;
+    if (!thirdExternalUserId) {
+      throw terminalError(
+        "WORKFLOW_MESSAGE_QUERY_SUBJECT_INVALID",
+        "Message Query requires thirdExternalUserId",
+      );
+    }
 
     try {
       return await executeMessageQuery(this.database, {
         command: request.command,
         signal: request.signal,
-        subjectId: request.subjectId,
+        subjectId: thirdExternalUserId,
         uid: request.uid,
       });
     } catch (error) {

@@ -47,10 +47,10 @@ describe("workflow Ratio Split node", () => {
     render(<StatefulRatioSplitConfig onNodeChange={onNodeChange} />);
 
     await user.click(screen.getByRole("button", { name: "添加分组" }));
-    expect(screen.getAllByRole("textbox", { name: "分组名称" })).toHaveLength(3);
+    expect(screen.getAllByRole("textbox", { name: /分组 [A-E]/ })).toHaveLength(3);
     expect(screen.getByText("比例合计 100%")).toBeInTheDocument();
 
-    const labels = screen.getAllByRole("textbox", { name: "分组名称" });
+    const labels = screen.getAllByRole("textbox", { name: /分组 [A-E]/ });
     await user.clear(labels[2]!);
     await user.type(labels[2]!, "观察组");
 
@@ -73,7 +73,7 @@ describe("workflow Ratio Split node", () => {
 
     await user.click(screen.getByRole("button", { name: "添加分组" }));
     await user.click(screen.getByRole("button", { name: "添加分组" }));
-    expect(screen.getAllByRole("textbox", { name: "分组名称" })).toHaveLength(5);
+    expect(screen.getAllByRole("textbox", { name: /分组 [A-E]/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: "添加分组" })).toBeDisabled();
   });
 
@@ -87,7 +87,7 @@ describe("workflow Ratio Split node", () => {
 
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
-    expect(screen.getAllByRole("textbox", { name: "分组名称" })).toHaveLength(2);
+    expect(screen.getAllByRole("textbox", { name: /分组 [A-E]/ })).toHaveLength(2);
   });
 
   it("never reuses a deleted group outlet ID", () => {

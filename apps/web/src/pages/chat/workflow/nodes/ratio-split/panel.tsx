@@ -58,38 +58,36 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
     <WorkflowSettingsSection title="分流设置">
       <div className="space-y-3">
         {groups.map((group, index) => (
-          <section className="space-y-3 rounded-[8px] border p-3" key={group.id}>
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-foreground">分组 {String.fromCharCode(65 + index)}</h3>
-              <Button
-                aria-label={`删除${group.label || `分组 ${String.fromCharCode(65 + index)}`}`}
-                className="size-7 p-0 text-destructive hover:text-destructive"
-                disabled={groups.length <= WORKFLOW_RATIO_SPLIT_GROUP_MIN}
-                onClick={() => requestDeleteGroup(group)}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`ratio-split-label-${node.id}-${group.id}`}>分组名称</Label>
-              <Input
-                id={`ratio-split-label-${node.id}-${group.id}`}
-                maxLength={32}
-                onChange={event => updateGroup(group.id, { label: event.target.value })}
-                value={group.label}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`ratio-split-percentage-${node.id}-${group.id}`}>分流比例</Label>
-              <PercentageInput
-                basisPoints={group.basisPoints}
-                id={`ratio-split-percentage-${node.id}-${group.id}`}
-                onChange={basisPoints => updateGroup(group.id, { basisPoints })}
-              />
-            </div>
+          <section
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 rounded-[8px] border p-3"
+            key={group.id}
+          >
+            <Label htmlFor={`ratio-split-label-${node.id}-${group.id}`}>
+              分组 {String.fromCharCode(65 + index)}
+            </Label>
+            <Input
+              id={`ratio-split-label-${node.id}-${group.id}`}
+              maxLength={32}
+              onChange={event => updateGroup(group.id, { label: event.target.value })}
+              value={group.label}
+            />
+            <Button
+              aria-label={`删除${group.label || `分组 ${String.fromCharCode(65 + index)}`}`}
+              className="size-7 p-0 text-destructive hover:text-destructive"
+              disabled={groups.length <= WORKFLOW_RATIO_SPLIT_GROUP_MIN}
+              onClick={() => requestDeleteGroup(group)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
+            </Button>
+            <Label htmlFor={`ratio-split-percentage-${node.id}-${group.id}`}>分流比例</Label>
+            <PercentageInput
+              basisPoints={group.basisPoints}
+              id={`ratio-split-percentage-${node.id}-${group.id}`}
+              onChange={basisPoints => updateGroup(group.id, { basisPoints })}
+            />
           </section>
         ))}
 
@@ -157,7 +155,7 @@ function PercentageInput({
   }, [basisPoints]);
 
   return (
-    <div className="flex items-center gap-2">
+    <>
       <Input
         id={id}
         inputMode="decimal"
@@ -177,8 +175,8 @@ function PercentageInput({
         }}
         value={draft}
       />
-      <span className="shrink-0 text-sm text-muted-foreground">%</span>
-    </div>
+      <span className="text-center text-sm text-muted-foreground">%</span>
+    </>
   );
 }
 

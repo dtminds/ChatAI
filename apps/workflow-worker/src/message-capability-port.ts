@@ -280,20 +280,11 @@ async function sendWorkflowJavaMessage(input: {
     );
   }
 
-  if (!response.ok) {
+  if (response.status !== 200) {
     const diagnosticMessage = `Workflow Message Java endpoint returned HTTP ${response.status}`;
-    if (response.status === 408 || response.status === 429 || response.status >= 500) {
-      throw retryableError(
-        "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
-        "消息发送暂时失败",
-        diagnosticMessage,
-      );
-    }
-    throw terminalError(
-      "WORKFLOW_MESSAGE_SEND_REJECTED",
-      response.status === 401 || response.status === 403
-        ? "执行服务暂不可用，流程已停止"
-        : "执行所需数据不可用，流程已停止",
+    throw retryableError(
+      "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
+      "消息发送暂时失败",
       diagnosticMessage,
     );
   }
@@ -302,30 +293,37 @@ async function sendWorkflowJavaMessage(input: {
   try {
     body = await response.json();
   } catch {
-    throw retryableError(
+    throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
       "Workflow Message Java endpoint returned invalid JSON",
     );
   }
   if (!isRecord(body)) {
-    throw retryableError(
+    throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
       "Workflow Message Java endpoint returned an invalid envelope",
     );
   }
   const envelope = body as WorkflowMessageJavaApiResponse;
-  if (envelope.success !== true && envelope.error !== 0) {
+  if (envelope.success === false) {
     throw terminalError(
       "WORKFLOW_MESSAGE_SEND_REJECTED",
       "执行所需数据不可用，流程已停止",
       `Workflow Message Java endpoint rejected the request: ${String(envelope.error ?? "unknown")} ${envelope.errorMsg?.trim() ?? ""}`.trim(),
     );
   }
+  if (envelope.success !== true) {
+    throw terminalError(
+      "WORKFLOW_MESSAGE_RESPONSE_INVALID",
+      "返回结果异常，流程已停止",
+      "Workflow Message Java endpoint returned an invalid success flag",
+    );
+  }
   const optNo = envelope.data?.optNo;
   if ((typeof optNo !== "string" && typeof optNo !== "number") || !String(optNo).trim()) {
-    throw retryableError(
+    throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
       "Workflow Message Java response is missing optNo",

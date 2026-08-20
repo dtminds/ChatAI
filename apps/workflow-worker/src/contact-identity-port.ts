@@ -47,12 +47,19 @@ export class HttpWorkflowContactIdentityPort implements WorkflowContactIdentityP
           signal: timeoutController.signal,
         },
       );
-      if (!response.ok) {
+      if (response.status !== 200) {
         throw new WorkflowContactIdentityLookupError(
           `Workflow contact identity endpoint returned HTTP ${response.status}`,
         );
       }
-      const body: unknown = await response.json();
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        throw terminalIdentityError(
+          "Workflow contact identity endpoint returned invalid JSON",
+        );
+      }
       return decodeJavaContactIdentityResponse(body);
     } catch (error) {
       if (error instanceof WorkflowContactIdentityLookupError) throw error;
@@ -78,14 +85,24 @@ export function createJavaContactIdentityRequest(
 }
 
 export function decodeJavaContactIdentityResponse(body: unknown): WorkflowContactIdentity {
-  if (!isRecord(body) || body.success !== true) {
-    throw new WorkflowContactIdentityLookupError(
+  if (!isRecord(body)) {
+    throw terminalIdentityError(
+      "Workflow contact identity endpoint returned an invalid envelope",
+    );
+  }
+  if (body.success === false) {
+    throw terminalIdentityError(
       "Workflow contact identity endpoint rejected the request",
+    );
+  }
+  if (body.success !== true) {
+    throw terminalIdentityError(
+      "Workflow contact identity endpoint returned an invalid success flag",
     );
   }
   if (body.data === undefined || body.data === null) return {};
   if (!isRecord(body.data)) {
-    throw new WorkflowContactIdentityLookupError(
+    throw terminalIdentityError(
       "Workflow contact identity endpoint returned invalid data",
     );
   }
@@ -113,7 +130,7 @@ export function decodeJavaContactIdentityResponse(body: unknown): WorkflowContac
 function assertOptionalNonNegativeSafeInteger(value: unknown, field: string) {
   if (value === undefined || value === null) return;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new WorkflowContactIdentityLookupError(
+    throw terminalIdentityError(
       `Workflow contact identity endpoint returned invalid ${field}`,
     );
   }
@@ -122,10 +139,14 @@ function assertOptionalNonNegativeSafeInteger(value: unknown, field: string) {
 function assertOptionalString(value: unknown, field: string) {
   if (value === undefined || value === null) return;
   if (typeof value !== "string") {
-    throw new WorkflowContactIdentityLookupError(
+    throw terminalIdentityError(
       `Workflow contact identity endpoint returned invalid ${field}`,
     );
   }
+}
+
+function terminalIdentityError(message: string) {
+  return new WorkflowContactIdentityLookupError(message, { failureKind: "terminal" });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

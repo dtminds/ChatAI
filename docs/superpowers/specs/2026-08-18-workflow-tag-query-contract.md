@@ -83,7 +83,8 @@ Node 输出：
 
 输出规则：
 
-- 只有 `success === true` 表示查询成功；`success !== true` 是调用失败
+- 只有 HTTP 200 且 `success === true` 表示查询成功
+- HTTP 200 且 `success === false` 表示 Java 已完成请求并明确拒绝该业务查询，Node 按 terminal 停止流程
 - `data` 严格表示「请求 `tagIds` 与客户当前标签的交集」，不是客户的全部标签
 - `data: null` 或缺失按空交集处理
 - Worker 只投影正整数 `id` 和 1 至 256 字符的非空 `name`；其他 TagTO 字段不进入 Node Result
@@ -98,8 +99,8 @@ Node 输出：
 ## 4. 超时与错误
 
 - Runtime 使用统一的 Capability deadline（默认 15 秒，由 `WORKFLOW_CAPABILITY_TIMEOUT_MS` 配置），并通过 AbortSignal 取消 Java 请求
-- 网络失败、HTTP 408/429/5xx、非法 JSON、非法 envelope 和 `success !== true` 返回 retryable
-- HTTP 4xx 返回 terminal；401/403 使用执行服务不可用的用户提示
+- 网络失败、超时和任意非 HTTP 200 响应返回 retryable
+- HTTP 200 下的 `success === false`、非法 JSON、非法 envelope 或非法成功数据返回 terminal
 - 响应包含请求外标签、重复标签或缺少名称时，Node 按 terminal 输出错误停止流程
 - Java 不叠加无上限的长期重试；Workflow Runtime 是重试调度权威
 - Worker 不记录请求身份、原始响应或 Java `errorMsg`

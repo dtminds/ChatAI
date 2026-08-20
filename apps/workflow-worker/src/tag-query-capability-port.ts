@@ -107,25 +107,16 @@ export async function executeWorkflowTagQuery(input: {
     if (input.signal.aborted) throwIfAborted(input.signal);
     throw retryableError(
       "WORKFLOW_TAG_QUERY_FAILED",
-      "标签查询暂时失败",
+      "标签查询失败",
       `Workflow Tag Query Java request failed: ${error instanceof Error ? error.name : "unknown"}`,
     );
   }
 
-  if (!response.ok) {
+  if (response.status !== 200) {
     const diagnosticMessage = `Workflow Tag Query Java endpoint returned HTTP ${response.status}`;
-    if (response.status === 408 || response.status === 429 || response.status >= 500) {
-      throw retryableError(
-        "WORKFLOW_TAG_QUERY_UNAVAILABLE",
-        "标签查询暂时失败",
-        diagnosticMessage,
-      );
-    }
-    throw terminalError(
-      "WORKFLOW_TAG_QUERY_REJECTED",
-      response.status === 401 || response.status === 403
-        ? "执行服务暂不可用，流程已停止"
-        : "执行所需数据不可用，流程已停止",
+    throw retryableError(
+      "WORKFLOW_TAG_QUERY_UNAVAILABLE",
+      "标签查询失败",
       diagnosticMessage,
     );
   }
@@ -134,9 +125,9 @@ export async function executeWorkflowTagQuery(input: {
   try {
     body = await response.json();
   } catch {
-    throw retryableError(
+    throw terminalError(
       "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
-      "标签查询暂时失败",
+      "返回结果异常，流程已停止",
       "Workflow Tag Query Java endpoint returned invalid JSON",
     );
   }
@@ -147,18 +138,32 @@ export function decodeWorkflowTagQueryJavaResponse(
   body: unknown,
   requestedTagIds: readonly number[],
 ): WorkflowTagQueryResult {
-  if (!isRecord(body) || body.success !== true) {
-    throw retryableError(
-      "WORKFLOW_TAG_QUERY_FAILED",
-      "标签查询暂时失败",
+  if (!isRecord(body)) {
+    throw terminalError(
+      "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
+      "返回结果异常，流程已停止",
+      "Workflow Tag Query Java endpoint returned an invalid envelope",
+    );
+  }
+  if (body.success === false) {
+    throw terminalError(
+      "WORKFLOW_TAG_QUERY_REJECTED",
+      "标签查询失败，流程已停止",
       "Workflow Tag Query Java endpoint reported failure",
+    );
+  }
+  if (body.success !== true) {
+    throw terminalError(
+      "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
+      "返回结果异常，流程已停止",
+      "Workflow Tag Query Java endpoint returned an invalid success flag",
     );
   }
   if (body.data === undefined || body.data === null) return { matchedTags: [] };
   if (!Array.isArray(body.data)) {
-    throw retryableError(
+    throw terminalError(
       "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
-      "标签查询暂时失败",
+      "返回结果异常，流程已停止",
       "Workflow Tag Query Java endpoint returned an invalid data envelope",
     );
   }
@@ -192,7 +197,7 @@ function throwIfAborted(signal: AbortSignal): never | void {
   if (signal.reason instanceof Error) throw signal.reason;
   throw retryableError(
     "WORKFLOW_TAG_QUERY_ABORTED",
-    "标签查询暂时失败",
+    "标签查询失败",
     "Workflow Tag Query execution was aborted",
   );
 }

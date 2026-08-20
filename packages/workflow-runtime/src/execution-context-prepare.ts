@@ -31,9 +31,15 @@ export interface WorkflowContactIdentityPort {
 }
 
 export class WorkflowContactIdentityLookupError extends Error {
-  constructor(message = "Workflow contact identity service is unavailable", options?: ErrorOptions) {
+  readonly failureKind: "retryable" | "terminal";
+
+  constructor(
+    message = "Workflow contact identity service is unavailable",
+    options?: ErrorOptions & { failureKind?: "retryable" | "terminal" },
+  ) {
     super(message, options);
     this.name = "WorkflowContactIdentityLookupError";
+    this.failureKind = options?.failureKind ?? "retryable";
   }
 }
 
@@ -98,6 +104,9 @@ export async function prepareWorkflowExecutionContext(input: {
       error instanceof WorkflowContactIdentityLookupError
         ? error.message
         : "Workflow contact identity lookup failed",
+      error instanceof WorkflowContactIdentityLookupError
+        ? error.failureKind
+        : "retryable",
     );
   }
   mergeWorkflowContactIdentity(identities, normalizeWorkflowContactIdentity(resolved));
@@ -196,11 +205,18 @@ function mergeWorkflowContactIdentity(
   }
 }
 
-function contactIdentityLookupFailure(diagnosticMessage: string) {
+function contactIdentityLookupFailure(
+  diagnosticMessage: string,
+  failureKind: "retryable" | "terminal" = "retryable",
+) {
   return new WorkflowCapabilityExecutionError(
-    "retryable",
-    "WORKFLOW_CONTACT_IDENTITY_LOOKUP_FAILED",
-    "客户身份信息查询暂时失败",
+    failureKind,
+    failureKind === "terminal"
+      ? "WORKFLOW_CONTACT_IDENTITY_REJECTED"
+      : "WORKFLOW_CONTACT_IDENTITY_LOOKUP_FAILED",
+    failureKind === "terminal"
+      ? "客户身份信息查询失败，流程已停止"
+      : "客户身份信息查询暂时失败",
     { diagnosticMessage },
   );
 }

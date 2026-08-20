@@ -122,7 +122,8 @@ miniapp_member -> mallUserId
 
 响应约束：
 
-- 只有 `success === true` 表示查询成功；不能使用 `error === 0` 替代该判断。
+- 只有 HTTP 200 且 `success === true` 表示查询成功；不能使用 `error === 0` 替代该判断。
+- HTTP 200 且 `success === false` 表示 Java 已完成请求并明确拒绝该业务查询。
 - `error`、`errorMsg` 和兼容字段 `error_msg` 不参与成功判定，也不会写入 Workflow 诊断信息。
 - `data` 可以为 `null`、缺失或只包含部分身份，仍属于成功查询。
 - `externalUserId`、`mallUserId`、`xyId` 为非负 JavaScript 安全整数；`0` 表示身份尚未生成。
@@ -136,8 +137,9 @@ Worker 对 Java 请求设置 3 秒超时，并传播上层取消信号。当前�
 
 | 条件 | Runtime 分类 | 错误码 |
 | --- | --- | --- |
-| 网络异常、超时、HTTP 非 2xx | retryable | `WORKFLOW_CONTACT_IDENTITY_LOOKUP_FAILED` |
-| 非法 JSON、非法 envelope、`success !== true`、非法字段类型 | retryable | `WORKFLOW_CONTACT_IDENTITY_LOOKUP_FAILED` |
+| 网络异常、超时、HTTP 状态非 200 | retryable | `WORKFLOW_CONTACT_IDENTITY_LOOKUP_FAILED` |
+| HTTP 200 且 `success === false` | terminal | `WORKFLOW_CONTACT_IDENTITY_REJECTED` |
+| HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法字段类型 | terminal | `WORKFLOW_CONTACT_IDENTITY_REJECTED` |
 | Java 返回身份与 Run Subject 或 Projection 中的已知身份冲突 | terminal | `WORKFLOW_CONTACT_IDENTITY_CONFLICT` |
 | Run Subject 无法映射为对应具体身份 ID | terminal | `WORKFLOW_CONTACT_IDENTITY_INVALID` |
 
@@ -177,7 +179,7 @@ Prepared Identity 一致；Workflow Type Policy 是否允许 Message 节点由�
 2. 缺失多个身份时 Java 调用次数为 `1`，并注入所有有效返回身份。
 3. `success === true` 且返回 `0`、空字符串或部分字段时，Prepare 成功且不持久化缺失值。
 4. Task 重试时，前一次成功空结果不会阻止再次查询。
-5. `success !== true`、HTTP 失败、网络异常、超时和非法 JSON 均进入 retryable 失败提交。
+5. HTTP 状态非 200、网络异常和超时进入 retryable 失败提交；HTTP 200 下的业务拒绝或非法响应进入 terminal 失败提交。
 6. 返回身份与已知身份冲突时进入 terminal 失败提交，不静默覆盖。
 7. 无身份需求的 Core 节点不会因无关 Subject 或 Projection 身份异常而占用 lease 或触发 Java。
 8. Message Query 缺少 Prepared `thirdExternalUserId` 时在查询 MySQL 前 terminal failed。

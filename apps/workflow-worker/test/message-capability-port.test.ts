@@ -193,6 +193,18 @@ describe("Workflow Message capability port", () => {
 
     await expect(executeWorkflowMessage(database, {
       ...baseInput,
+      fetch: vi.fn(async () => javaResponse({
+        data: { optNo: 123 },
+        error: 0,
+        success: false,
+      })) as typeof fetch,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_SEND_REJECTED",
+      failureKind: "terminal",
+    });
+
+    await expect(executeWorkflowMessage(database, {
+      ...baseInput,
       fetch: vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch,
     })).rejects.toMatchObject({
       code: "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
@@ -207,6 +219,53 @@ describe("Workflow Message capability port", () => {
       code: "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
       failureKind: "retryable",
     });
+
+    await expect(executeWorkflowMessage(database, {
+      ...baseInput,
+      fetch: vi.fn(async () => new Response(null, { status: 400 })) as typeof fetch,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
+      failureKind: "retryable",
+    });
+
+    await expect(executeWorkflowMessage(database, {
+      ...baseInput,
+      fetch: vi.fn(async () => new Response(null, { status: 201 })) as typeof fetch,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MESSAGE_SEND_UNAVAILABLE",
+      failureKind: "retryable",
+    });
+  });
+
+  it("treats invalid HTTP 200 responses as terminal contract failures", async () => {
+    const { database } = createRecordingDatabase(() => ({
+      rows: [seatRow(101, "work-user-1")],
+    }));
+    const baseInput = {
+      baseUrl: "https://java.example.com",
+      command: messageCommand({ content: "欢迎咨询" }),
+      idempotencyKey: "9:run-1:message-1:2",
+      signal: new AbortController().signal,
+      token: null,
+      uid: 9,
+    };
+    const fetches: Array<typeof fetch> = [
+      vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,
+      vi.fn(async () => new Response(JSON.stringify({ data: { optNo: 123 } }), {
+        status: 200,
+      })) as typeof fetch,
+      vi.fn(async () => javaResponse({ data: null })) as typeof fetch,
+    ];
+
+    for (const fetchImplementation of fetches) {
+      await expect(executeWorkflowMessage(database, {
+        ...baseInput,
+        fetch: fetchImplementation,
+      })).rejects.toMatchObject({
+        code: "WORKFLOW_MESSAGE_RESPONSE_INVALID",
+        failureKind: "terminal",
+      });
+    }
   });
 });
 

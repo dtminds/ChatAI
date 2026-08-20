@@ -60,15 +60,25 @@ describe("Workflow Tag Query Java port", () => {
       .toEqual({ matchedTags: [] });
   });
 
+  it("treats an explicit Java business failure as terminal", () => {
+    expect(() => decodeWorkflowTagQueryJavaResponse({
+      data: [],
+      error: 40001,
+      success: false,
+    }, [301])).toThrow(expect.objectContaining({
+      code: "WORKFLOW_TAG_QUERY_REJECTED",
+      failureKind: "terminal",
+    }));
+  });
+
   it.each([
-    { data: [], success: false },
     { data: [], error: 0 },
     { data: [], success: 1 },
-  ])("treats every success !== true envelope as retryable failure", (body) => {
+  ])("treats an invalid success envelope as terminal", (body) => {
     expect(() => decodeWorkflowTagQueryJavaResponse(body, [301])).toThrow(
       expect.objectContaining({
-        code: "WORKFLOW_TAG_QUERY_FAILED",
-        failureKind: "retryable",
+        code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
+        failureKind: "terminal",
       }),
     );
   });
@@ -124,19 +134,23 @@ describe("Workflow Tag Query Java port", () => {
         fetch: vi.fn(async () => new Response(null, { status: 503 })),
       },
       {
-        expected: { code: "WORKFLOW_TAG_QUERY_REJECTED", failureKind: "terminal" },
+        expected: { code: "WORKFLOW_TAG_QUERY_UNAVAILABLE", failureKind: "retryable" },
         fetch: vi.fn(async () => new Response(null, { status: 400 })),
       },
       {
-        expected: { code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID", failureKind: "retryable" },
+        expected: { code: "WORKFLOW_TAG_QUERY_UNAVAILABLE", failureKind: "retryable" },
+        fetch: vi.fn(async () => new Response(null, { status: 201 })),
+      },
+      {
+        expected: { code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID", failureKind: "terminal" },
         fetch: vi.fn(async () => new Response("not-json", { status: 200 })),
       },
       {
-        expected: { code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID", failureKind: "retryable" },
+        expected: { code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID", failureKind: "terminal" },
         fetch: vi.fn(async () => javaResponse({ data: {}, success: true })),
       },
       {
-        expected: { code: "WORKFLOW_TAG_QUERY_FAILED", failureKind: "retryable" },
+        expected: { code: "WORKFLOW_TAG_QUERY_REJECTED", failureKind: "terminal" },
         fetch: vi.fn(async () => javaResponse({ data: [], success: false })),
       },
     ];

@@ -157,6 +157,11 @@ Prepared Identity 只进入本次调用中的：
 - Capability Command Context 和 Worker Capability Request 的 `identities`
 - Message Query Command Context 和 Worker Request 的 `identities`
 
+Message 发给 Java 的实际收件人必须使用 Prepared Identity 投影出的
+`command.recipient.thirdExternalUserId`。`run.subjectId` 只是带类型的 Workflow Subject，
+不得作为 Java `thirdExternalUserid` 的替代来源。Worker 必须校验 Command Recipient 与
+Prepared Identity 一致；Workflow Type Policy 是否允许 Message 节点由编译和发布门禁独立控制。
+
 以下位置不得写入补全结果：
 
 - Workflow Run Context

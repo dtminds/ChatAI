@@ -11,8 +11,12 @@ import {
   type QueryResult,
 } from "kysely";
 import type { WorkflowMessageCommand } from "@chatai/contracts";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
+  WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  type WorkflowDatabase,
+} from "@chatai/workflow-runtime";
+import {
+  MysqlWorkflowMessageCapabilityPort,
   buildWorkflowJavaMessages,
   executeWorkflowMessage,
   resolveWorkflowMessageSeat,
@@ -74,8 +78,6 @@ describe("Workflow Message capability port", () => {
       fetch: fetchMock as typeof fetch,
       idempotencyKey: "9:run-1:message-1:2",
       signal: new AbortController().signal,
-      subjectId: "customer-1",
-      subjectType: "chatai_contact",
       token: "internal-token",
       uid: 9,
     })).resolves.toEqual({});
@@ -115,6 +117,39 @@ describe("Workflow Message capability port", () => {
     });
   });
 
+  it("uses the prepared command recipient instead of the Run subject", async () => {
+    const { database } = createRecordingDatabase(() => ({
+      rows: [seatRow(101, "work-user-1")],
+    }));
+    const fetchMock = vi.fn(async () => javaResponse({ data: { optNo: "opt-1" } }));
+    const port = new MysqlWorkflowMessageCapabilityPort(database, {
+      baseUrl: "https://java.example.com",
+      fetch: fetchMock as typeof fetch,
+    });
+
+    await expect(port.execute(WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition, {
+      command: messageCommand({ content: "欢迎咨询" }),
+      deadlineAt: new Date("2026-08-20T08:00:00.000Z"),
+      execution: {
+        nodeId: "message-1",
+        revision: 1,
+        runId: "run-1",
+        sequence: 2,
+        workflowId: "workflow-1",
+      },
+      identities: { thirdExternalUserId: "customer-1" },
+      idempotencyKey: "9:run-1:message-1:2",
+      signal: new AbortController().signal,
+      subjectId: "wecom-contact-101",
+      subjectType: "wecom_contact",
+      uid: 9,
+    })).resolves.toEqual({});
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      thirdExternalUserid: "customer-1",
+    });
+  });
+
   it("does not substitute another seat when the Run-frozen seat is unavailable", async () => {
     const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
 
@@ -138,8 +173,6 @@ describe("Workflow Message capability port", () => {
       command: messageCommand({ content: "欢迎咨询" }),
       idempotencyKey: "9:run-1:message-1:2",
       signal: new AbortController().signal,
-      subjectId: "customer-1",
-      subjectType: "chatai_contact",
       token: null,
       uid: 9,
     };

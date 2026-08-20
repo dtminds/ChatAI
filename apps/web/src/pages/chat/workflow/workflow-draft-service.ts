@@ -23,6 +23,7 @@ import type {
   WorkflowDraftSaveResult,
   WorkflowDraftSaveStatus,
   WorkflowListItem,
+  WorkflowVersionHistoryItem,
 } from "./workflow-repository-types";
 import type { WorkflowDraft } from "./types";
 
@@ -84,9 +85,9 @@ export function importWorkflowDraft(
 
 export function restoreWorkflowVersion(
   workflowId: string,
-  versionId: string,
+  version: WorkflowVersionHistoryItem,
 ): WorkflowDocument {
-  return workflowDraftTestRepository.restoreVersion(workflowId, versionId).document;
+  return workflowDraftTestRepository.restoreVersion(workflowId, version).document;
 }
 
 export function cloneWorkflowDraftSnapshot(draft: WorkflowDraft): WorkflowDraft {
@@ -552,7 +553,7 @@ export function useWorkflowDocument(
     }
   }, [repository]);
 
-  const restoreVersion = useCallback(async (versionId: string) => {
+  const restoreVersion = useCallback(async (version: WorkflowVersionHistoryItem) => {
     const restoreRequestId = restoreRequestRef.current + 1;
     restoreRequestRef.current = restoreRequestId;
     publishRequestRef.current += 1;
@@ -574,7 +575,7 @@ export function useWorkflowDocument(
       const saveRequestId = saveRequestRef.current + 1;
       saveRequestRef.current = saveRequestId;
       const restoreResult = await Promise.resolve(
-        repository.restoreVersion(workflowIdToRestore, versionId),
+        repository.restoreVersion(workflowIdToRestore, version),
       );
       const normalizedRestoreResult = normalizeWorkflowDraftRestoreResult(restoreResult);
       const { document: restoredDocument } = normalizedRestoreResult;
@@ -686,9 +687,29 @@ export function useWorkflowDocument(
   }, [document.description, document.name, repository]);
 
   const listReviews = useCallback(
-    () => Promise.resolve(repository.listReviews(workflowIdRef.current)),
+    (cursor?: string) => Promise.resolve(repository.listReviews(workflowIdRef.current, cursor)),
     [repository],
   );
+
+  const listVersions = useCallback(async (cursor?: string) => {
+    const page = await Promise.resolve(repository.listVersions(workflowIdRef.current, cursor));
+    setDocument((currentDocument) => {
+      const knownVersions = new Set(currentDocument.versionHistory.map(version => version.revision));
+      return {
+        ...currentDocument,
+        versionHistory: [
+          ...currentDocument.versionHistory,
+          ...page.items.filter(version => !knownVersions.has(version.revision)),
+        ],
+        versionHistoryNextCursor: page.nextCursor,
+      };
+    });
+    return page;
+  }, [repository]);
+
+  const getVersion = useCallback(async (revision: number) => {
+    return Promise.resolve(repository.getVersion(workflowIdRef.current, revision));
+  }, [repository]);
 
   const operateDocument = useCallback(async (action: "enable" | "pause" | "resume") => {
     const operation = {
@@ -755,6 +776,8 @@ export function useWorkflowDocument(
     lastSavedAt,
     lastSavedDraftHash,
     listReviews,
+    listVersions,
+    getVersion,
     markDirty,
     metadataUpdateState,
     pauseDocument,
@@ -768,7 +791,7 @@ export function useWorkflowDocument(
     retrySave,
     saveError,
     saveState,
-  }), [importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, markDirty, metadataUpdateState, publishReview, publishError, publishState, restoreReview, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata, visibleDocument]);
+  }), [getVersion, importDraft, importState, lastPublishedPublishHash, lastSavedAt, lastSavedDraftHash, listReviews, listVersions, markDirty, metadataUpdateState, publishReview, publishError, publishState, restoreReview, reviewActionState, restoreState, restoreVersion, retrySave, runReviewDecision, saveError, saveState, submitReview, updateMetadata, visibleDocument]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

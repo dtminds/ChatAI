@@ -209,6 +209,58 @@ describe("HTTP workflow repository", () => {
       publishedRevision: 1,
       versionHistory: [{ revision: 1 }],
     });
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/42/revisions?limit=20");
+  });
+
+  it("uses explicit cursors when loading more versions and reviews", async () => {
+    const definition = createDefinition();
+    const client = createClient({ definition, revisions: [] });
+    client.get.mockImplementation(async (url: string) => {
+      if (url === "/server/workflows/42/revisions?limit=20&cursor=20") {
+        return envelope({ items: [], nextCursor: null });
+      }
+      if (url === "/server/workflows/42/reviews?limit=20&cursor=40") {
+        return envelope({ items: [], nextCursor: null });
+      }
+      return envelope(definition);
+    });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await repository.listVersions("42", "20");
+    await repository.listReviews("42", "40");
+
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/42/revisions?limit=20&cursor=20");
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/42/reviews?limit=20&cursor=40");
+  });
+
+  it("restores an exact version without requiring it in the loaded history page", async () => {
+    const definition = createDefinition({ publishedRevision: 100 });
+    const loadedRevision = createRevision(definition, { id: "revision-100", revision: 100 });
+    const exactRevision = createRevision(definition, { id: "revision-50", revision: 50 });
+    const restoredDefinition = createDefinition({
+      draft: exactRevision.draft,
+      draftVersion: definition.draftVersion + 1,
+      publishedRevision: 100,
+    });
+    const client = createClient({ definition, revisions: [loadedRevision] });
+    client.get.mockImplementation(async (url: string) => {
+      if (url === "/server/workflows/42/revisions/50") return envelope(exactRevision);
+      if (url.includes("/revisions?")) {
+        return envelope({ items: [loadedRevision], nextCursor: "100" });
+      }
+      return envelope(definition);
+    });
+    client.post.mockResolvedValueOnce(envelope(restoredDefinition));
+    const repository = createHttpWorkflowDraftRepository(client);
+    await repository.getDocument("42");
+    const exactVersion = await repository.getVersion("42", 50);
+
+    const restored = await repository.restoreVersion("42", exactVersion);
+
+    expect(client.post).toHaveBeenCalledWith("/server/workflows/42/revisions/50/restore", {
+      expectedDraftVersion: definition.draftVersion,
+    });
+    expect("restoredVersion" in restored ? restored.restoredVersion.revision : null).toBe(50);
   });
 
   it("submits review with the cached draft version and refreshes the document", async () => {
@@ -220,7 +272,7 @@ describe("HTTP workflow repository", () => {
       throw new Error(`Unexpected POST ${url}`);
     });
     client.get.mockImplementation(async (url: string) => {
-      if (url.endsWith("/revisions")) return envelope<WorkflowRevision[]>([]);
+      if (url.includes("/revisions?")) return envelope({ items: [], nextCursor: null });
       return envelope(pendingDefinition);
     });
     const repository = createHttpWorkflowDraftRepository(client);
@@ -298,7 +350,7 @@ describe("HTTP workflow repository", () => {
       throw new Error(`Unexpected POST ${url}`);
     });
     client.get.mockImplementation(async (url) => {
-      if (url.endsWith("/revisions")) return envelope([revision]);
+      if (url.includes("/revisions?")) return envelope({ items: [revision], nextCursor: null });
       return envelope(result.definition);
     });
     const repository = createHttpWorkflowDraftRepository(client);
@@ -323,7 +375,7 @@ function createClient({
   return {
     delete: vi.fn(async (_url: string): Promise<unknown> => envelope<unknown>({})),
     get: vi.fn(async (url: string): Promise<unknown> => {
-      if (url.endsWith("/revisions")) return envelope<WorkflowRevision[]>(revisions);
+      if (url.includes("/revisions?")) return envelope({ items: revisions, nextCursor: null });
       if (url === "/server/workflows") return envelope<WorkflowDefinition[]>([definition]);
       return envelope<WorkflowDefinition>(definition);
     }),

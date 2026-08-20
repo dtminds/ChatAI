@@ -22,6 +22,7 @@ import type {
   WorkflowDraftReader,
   WorkflowDraftWriter,
   SyncWorkflowDraftRepository,
+  WorkflowVersionHistoryItem,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
 
@@ -65,6 +66,54 @@ describe("workflow draft service", () => {
 
     expect(result.current.publishState).toBe("published");
     expect(result.current.hasUnpublishedChanges).toBe(false);
+  });
+
+  it("keeps exact version lookups out of the paginated history", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const template = baseRepository.getDocument("vip-reactivation").versionHistory[0]!;
+    const createVersion = (revision: number): WorkflowVersionHistoryItem => ({
+      ...template,
+      id: `vip-reactivation-r${revision}`,
+      name: `版本 ${revision}`,
+      revision,
+    });
+    const firstPage = Array.from({ length: 20 }, (_, index) => createVersion(100 - index));
+    const secondPage = Array.from({ length: 20 }, (_, index) => createVersion(80 - index));
+    const exactVersion = createVersion(50);
+    const initialDocument = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      currentVersion: firstPage[0]!,
+      publishedRevision: 100,
+      versionHistory: firstPage,
+      versionHistoryNextCursor: "81",
+    };
+    const getVersion = vi.fn(() => exactVersion);
+    const listVersions = vi.fn(() => ({ items: secondPage, nextCursor: "61" }));
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      getDocument: () => initialDocument,
+      getVersion,
+      listVersions,
+    };
+    const { result } = renderHook(() => useWorkflowDocument(
+      initialDocument.id,
+      repository,
+      initialDocument,
+    ));
+
+    await act(async () => {
+      await result.current.getVersion(50);
+    });
+    expect(result.current.document.versionHistory.map(version => version.revision))
+      .toEqual(Array.from({ length: 20 }, (_, index) => 100 - index));
+
+    await act(async () => {
+      await result.current.listVersions("81");
+    });
+    expect(result.current.document.versionHistory.map(version => version.revision))
+      .toEqual(Array.from({ length: 40 }, (_, index) => 100 - index));
+    expect(getVersion).toHaveBeenCalledWith(initialDocument.id, 50);
+    expect(listVersions).toHaveBeenCalledWith(initialDocument.id, "81");
   });
 
   it("creates independent workflow documents with idempotent request keys", () => {
@@ -400,7 +449,10 @@ describe("workflow draft service", () => {
   it("restores a published version into the editable draft without deleting version history", () => {
     const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("第一版人群"));
     const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartSourceMarker("第二版人群"));
-    const restoredDocument = restoreWorkflowVersion("newcomer-conversion", firstPublishedDocument.currentVersion?.id ?? "");
+    const restoredDocument = restoreWorkflowVersion(
+      "newcomer-conversion",
+      requireCurrentVersionSnapshot(firstPublishedDocument),
+    );
 
     expect(secondPublishedDocument.currentVersion?.id).toBe("newcomer-conversion-r2");
     expect(restoredDocument.status).toBe("Draft");
@@ -682,7 +734,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
 
     await act(async () => {
-      const restorePromise = result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+      const restorePromise = result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
       await waitFor(() => {
         expect(repository.pendingRestores).toHaveLength(1);
       });
@@ -714,7 +766,7 @@ describe("workflow draft service", () => {
 
       let restorePromise: ReturnType<typeof result.current.restoreVersion>;
       act(() => {
-        restorePromise = result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+        restorePromise = result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
       });
       expect(repository.pendingRestores).toHaveLength(0);
 
@@ -753,7 +805,7 @@ describe("workflow draft service", () => {
 
       let restorePromise: ReturnType<typeof result.current.restoreVersion>;
       act(() => {
-        restorePromise = result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+        restorePromise = result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
       });
 
       await act(async () => {
@@ -777,7 +829,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
 
     await act(async () => {
-      void result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+      void result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
     });
 
     await act(async () => {
@@ -798,7 +850,7 @@ describe("workflow draft service", () => {
     );
 
     await act(async () => {
-      void result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+      void result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
     });
 
     expect(repository.pendingRestores).toHaveLength(1);
@@ -815,6 +867,14 @@ describe("workflow draft service", () => {
     expect(getStartTagIds(repository.getDocument("vip-reactivation").draft)).toEqual([203]);
   });
 });
+
+function requireCurrentVersionSnapshot(document: WorkflowDocument) {
+  const version = document.versionHistory.find(
+    item => item.revision === document.currentVersion?.revision,
+  );
+  if (!version) throw new Error("Current Workflow version snapshot is unavailable");
+  return version;
+}
 
 function createDraftWithStartSourceMarker(marker: string): WorkflowDraft {
   return {
@@ -921,7 +981,7 @@ function createDeferredWorkflowDraftRepository() {
   const pendingRestores: Array<{
     reject: (error: Error) => void;
     resolve: (document: RestoreResult) => void;
-    versionId: string;
+    version: WorkflowVersionHistoryItem;
     workflowId: string;
   }> = [];
 
@@ -980,7 +1040,7 @@ function createDeferredWorkflowDraftRepository() {
         return;
       }
 
-      pendingRestore.resolve(baseRepository.restoreVersion(pendingRestore.workflowId, pendingRestore.versionId));
+      pendingRestore.resolve(baseRepository.restoreVersion(pendingRestore.workflowId, pendingRestore.version));
     },
     resolveSave: (index) => {
       const pendingSave = pendingSaves[index];
@@ -999,11 +1059,11 @@ function createDeferredWorkflowDraftRepository() {
         workflowId,
       });
     }),
-    restoreVersion: (workflowId, versionId) => new Promise((resolve, reject) => {
+    restoreVersion: (workflowId, version) => new Promise((resolve, reject) => {
       pendingRestores.push({
         reject,
         resolve,
-        versionId,
+        version,
         workflowId,
       });
     }),

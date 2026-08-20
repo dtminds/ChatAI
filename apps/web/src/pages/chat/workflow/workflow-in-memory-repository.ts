@@ -105,6 +105,12 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     getDocument: (workflowId) => cloneWorkflowDocument(
       workflowDocuments[getWorkflowDocumentIndex(workflowId)],
     ),
+    getVersion: (workflowId, revision) => {
+      const version = workflowDocuments[getWorkflowDocumentIndex(workflowId)].versionHistory
+        .find(item => item.revision === revision);
+      if (!version) throw new WorkflowRepositoryError("not-found", "Workflow 版本不存在");
+      return cloneWorkflowVersionHistoryItem(version);
+    },
     importDraft: (workflowId, draft) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
@@ -161,7 +167,29 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowDocuments[documentIndex] = withReview(currentDocument, review);
       return cloneWorkflowDocument(workflowDocuments[documentIndex]);
     },
-    listReviews: (workflowId) => (reviewHistory.get(workflowId) ?? []).map(review => ({ ...review, changeSummary: { ...review.changeSummary } })),
+    listReviews: (workflowId, cursor) => {
+      const candidates = (reviewHistory.get(workflowId) ?? [])
+        .filter(review => cursor === undefined || Number(review.id) < Number(cursor))
+        .slice(0, 21);
+      const items = candidates.slice(0, 20).map(review => ({
+        ...review,
+        changeSummary: { ...review.changeSummary },
+      }));
+      return {
+        items,
+        nextCursor: candidates.length > items.length ? items.at(-1)!.id : null,
+      };
+    },
+    listVersions: (workflowId, cursor) => {
+      const candidates = workflowDocuments[getWorkflowDocumentIndex(workflowId)].versionHistory
+        .filter(version => cursor === undefined || version.revision < Number(cursor))
+        .slice(0, 21);
+      const items = candidates.slice(0, 20).map(cloneWorkflowVersionHistoryItem);
+      return {
+        items,
+        nextCursor: candidates.length > items.length ? String(items.at(-1)!.revision) : null,
+      };
+    },
     approveReview: (workflowId, reviewId, comment) => decideReview(
       workflowId, reviewId, "approved", ["pending"], comment,
     ),
@@ -205,6 +233,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         status: currentDocument.runtimeStatus === "active" ? "Published" : currentDocument.runtimeStatus === "paused" ? "Paused" : "Published",
         updatedAt: publishedAt,
         versionHistory: [version, ...currentDocument.versionHistory],
+        versionHistoryNextCursor: currentDocument.versionHistoryNextCursor,
       };
       workflowDocuments[documentIndex] = nextDocument;
       replaceReview(workflowId, {
@@ -256,15 +285,11 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       return cloneWorkflowDocument(workflowDocuments[documentIndex]);
     },
     resumeDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
-    restoreVersion: (workflowId, versionId) => {
+    restoreVersion: (workflowId, version) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       assertEditable(currentDocument);
-      const restoredVersion = currentDocument.versionHistory.find((version) => version.id === versionId);
-
-      if (!restoredVersion) {
-        throw new WorkflowRepositoryError("not-found", `Unknown workflow version: ${versionId}`);
-      }
+      const restoredVersion = cloneWorkflowVersionHistoryItem(version);
 
       const nextDraft = cloneWorkflowDraft(restoredVersion.draft);
       const restoredAt = "刚刚";
@@ -569,6 +594,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       trigger: "近 30 天新入会且未首购客户",
       updatedAt: "今天 18:20",
       versionHistory: [],
+      versionHistoryNextCursor: null,
       workflowType: "chatai_sop",
     },
     {
@@ -599,6 +625,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       versionHistory: [
         createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
       ],
+      versionHistoryNextCursor: null,
       workflowType: "chatai_sop",
     },
     {
@@ -629,6 +656,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       versionHistory: [
         createWorkflowVersionHistoryItem("live-follow-up", 1, "7月4日 16:12", liveFollowUpDraft),
       ],
+      versionHistoryNextCursor: null,
       workflowType: "chatai_sop",
     },
   ];
@@ -671,6 +699,7 @@ function createNewWorkflowDocument(
     trigger: "待配置进入条件",
     updatedAt: "刚刚",
     versionHistory: [],
+    versionHistoryNextCursor: null,
     workflowType,
   };
 }

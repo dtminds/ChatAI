@@ -840,7 +840,8 @@ describe("Agent workflow page", () => {
     const submitButton = await screen.findByRole("button", { name: "提交审核" });
     await waitFor(() => expect(submitButton).toBeEnabled());
     await user.click(submitButton);
-    await user.click(await screen.findByRole("button", { name: "审核" }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "提交审核" }));
+    await user.click(await screen.findByRole("button", { name: "去审核" }));
     await user.click(within(screen.getByRole("complementary")).getByRole("button", { name: "通过" }));
     await user.click(await screen.findByRole("button", { name: "发布" }));
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "发布" }));
@@ -1145,7 +1146,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("tab", { name: "检查" })).not.toBeInTheDocument();
     expect(screen.queryByText("客户路径模拟")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "发布检查" }));
+    await user.click(screen.getByRole("button", { name: "提交审核" }));
 
     expect(screen.getByRole("region", { name: "发布检查" })).toBeInTheDocument();
     expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
@@ -1169,7 +1170,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "发布检查" }));
+    await user.click(screen.getByRole("button", { name: "提交审核" }));
 
     const checksPanel = screen.getByRole("region", { name: "发布检查" });
     expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
@@ -1511,6 +1512,7 @@ describe("Agent workflow page", () => {
     const panel = screen.getByRole("complementary", { name: "节点配置" });
 
     expect(within(panel).getByText(/\/1000$/)).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "配置须知" })).toBeInTheDocument();
     expect(within(panel).queryByLabelText("上传图片")).not.toBeInTheDocument();
     await user.click(within(panel).getByRole("button", { name: "添加附件" }));
     await user.click(screen.getByRole("menuitem", { name: "图片" }));

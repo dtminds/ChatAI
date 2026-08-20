@@ -132,21 +132,38 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       .map(clone);
   }
 
-  async listRevisions(uid: number, workflowId: string) {
-    return this.revisions
+  async listRevisions(
+    uid: number,
+    workflowId: string,
+    input: Parameters<WorkflowRepository["listRevisions"]>[2],
+  ) {
+    const candidates = this.revisions
       .filter((item) => item.uid === uid && item.workflowId === workflowId)
       .sort((first, second) => second.revision - first.revision)
-      .map(clone);
+      .filter(item => input.cursor === undefined || item.revision < Number(input.cursor))
+      .slice(0, input.limit + 1);
+    const items = candidates.slice(0, input.limit).map(clone);
+    return {
+      items,
+      nextCursor: candidates.length > items.length ? String(items.at(-1)!.revision) : null,
+    };
   }
 
-  async listReviews(uid: number, workflowId: string) {
-    return this.reviews
+  async listReviews(
+    uid: number,
+    workflowId: string,
+    input: Parameters<WorkflowRepository["listReviews"]>[2],
+  ) {
+    const candidates = this.reviews
       .filter(item => item.uid === uid && item.workflowId === workflowId)
-      .sort((first, second) => {
-        const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
-        return createdAtDifference || Number(second.id) - Number(first.id);
-      })
-      .map(clone);
+      .sort((first, second) => Number(second.id) - Number(first.id))
+      .filter(item => input.cursor === undefined || Number(item.id) < Number(input.cursor))
+      .slice(0, input.limit + 1);
+    const items = candidates.slice(0, input.limit).map(clone);
+    return {
+      items,
+      nextCursor: candidates.length > items.length ? items.at(-1)!.id : null,
+    };
   }
 
   async listActiveTriggerBindings(

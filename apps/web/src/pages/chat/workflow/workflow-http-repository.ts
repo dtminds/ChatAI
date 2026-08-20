@@ -1,9 +1,10 @@
 import type {
   ApiSuccessEnvelope,
   WorkflowDefinition as ApiWorkflowDefinition,
+  WorkflowPublishReviewPage,
   WorkflowPublishResult as ApiWorkflowPublishResult,
-  WorkflowPublishReview,
   WorkflowRevision as ApiWorkflowRevision,
+  WorkflowRevisionPage,
 } from "@chatai/contracts";
 import { http, RequestNormalizedError } from "@/lib/request";
 import { hydrateWorkflowDraft } from "./workflow-draft-normalizer";
@@ -34,11 +35,14 @@ type WorkflowHttpClient = {
   put(url: string, data?: unknown): Promise<unknown>;
 };
 
+const workflowHistoryPageSize = 20;
+
 export function createHttpWorkflowDraftRepository(
   client: WorkflowHttpClient = http,
 ): WorkflowDraftRepository {
   const definitions = new Map<string, ApiWorkflowDefinition>();
   const revisions = new Map<string, ApiWorkflowRevision[]>();
+  const revisionCursors = new Map<string, string | null>();
   const writeQueues = new Map<string, Promise<void>>();
 
   const repository: WorkflowDraftRepository = {
@@ -54,13 +58,25 @@ export function createHttpWorkflowDraftRepository(
 
     async getDocument(workflowId) {
       try {
-        const [definition, versionHistory] = await Promise.all([
+        const [definition, versionPage] = await Promise.all([
           getDefinition(client, workflowId),
           getRevisions(client, workflowId),
         ]);
         definitions.set(workflowId, definition);
-        revisions.set(workflowId, versionHistory);
-        return toDocument(definition, versionHistory);
+        revisions.set(workflowId, versionPage.items);
+        revisionCursors.set(workflowId, versionPage.nextCursor);
+        return toDocument(definition, versionPage.items, versionPage.nextCursor);
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async getVersion(workflowId, revision) {
+      try {
+        const record = unwrap<ApiWorkflowRevision>(await client.get(
+          `/server/workflows/${workflowId}/revisions/${revision}`,
+        ));
+        return toVersionHistoryItem(record);
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -71,7 +87,8 @@ export function createHttpWorkflowDraftRepository(
         const definition = unwrap<ApiWorkflowDefinition>(await client.post("/server/workflows", input));
         definitions.set(definition.id, definition);
         revisions.set(definition.id, []);
-        return toDocument(definition, []);
+        revisionCursors.set(definition.id, null);
+        return toDocument(definition, [], null);
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -82,6 +99,7 @@ export function createHttpWorkflowDraftRepository(
         await client.delete(`/server/workflows/${workflowId}`);
         definitions.delete(workflowId);
         revisions.delete(workflowId);
+        revisionCursors.delete(workflowId);
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -96,7 +114,11 @@ export function createHttpWorkflowDraftRepository(
             { draft, expectedDraftVersion: current.draftVersion },
           ));
           definitions.set(workflowId, definition);
-          return toSaveResult(toDocument(definition, revisions.get(workflowId) ?? []));
+          return toSaveResult(toDocument(
+            definition,
+            revisions.get(workflowId) ?? [],
+            revisionCursors.get(workflowId) ?? null,
+          ));
         } catch (error) {
           throw normalizeHttpError(error);
         }
@@ -117,16 +139,33 @@ export function createHttpWorkflowDraftRepository(
             `/server/workflows/${workflowId}/reviews`,
             { expectedDraftVersion: current.draftVersion },
           );
-          return await refreshDocument(client, definitions, revisions, workflowId);
+          return await refreshDocument(client, definitions, revisions, revisionCursors, workflowId);
         } catch (error) {
           throw normalizeHttpError(error);
         }
       });
     },
 
-    async listReviews(workflowId) {
+    async listReviews(workflowId, cursor) {
       try {
-        return unwrap<WorkflowPublishReview[]>(await client.get(`/server/workflows/${workflowId}/reviews`));
+        return await getReviews(client, workflowId, cursor);
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async listVersions(workflowId, cursor) {
+      try {
+        const page = await getRevisions(client, workflowId, cursor);
+        const current = revisions.get(workflowId) ?? [];
+        const knownRevisions = new Set(current.map(item => item.revision));
+        const merged = [...current, ...page.items.filter(item => !knownRevisions.has(item.revision))];
+        revisions.set(workflowId, merged);
+        revisionCursors.set(workflowId, page.nextCursor);
+        return {
+          items: page.items.map(toVersionHistoryItem),
+          nextCursor: page.nextCursor,
+        };
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -136,6 +175,7 @@ export function createHttpWorkflowDraftRepository(
       client,
       definitions,
       revisions,
+      revisionCursors,
       workflowId,
       reviewId,
       "approve",
@@ -145,6 +185,7 @@ export function createHttpWorkflowDraftRepository(
       client,
       definitions,
       revisions,
+      revisionCursors,
       workflowId,
       reviewId,
       "reject",
@@ -154,6 +195,7 @@ export function createHttpWorkflowDraftRepository(
       client,
       definitions,
       revisions,
+      revisionCursors,
       workflowId,
       reviewId,
       "withdraw",
@@ -166,9 +208,10 @@ export function createHttpWorkflowDraftRepository(
             { reviewId },
           ));
           definitions.set(workflowId, result.definition);
-          const nextRevisions = await getRevisions(client, workflowId);
-          revisions.set(workflowId, nextRevisions);
-          const document = toDocument(result.definition, nextRevisions);
+          const nextPage = await getRevisions(client, workflowId);
+          revisions.set(workflowId, nextPage.items);
+          revisionCursors.set(workflowId, nextPage.nextCursor);
+          const document = toDocument(result.definition, nextPage.items, nextPage.nextCursor);
           const version = toVersionHistoryItem(result.revision);
           return {
             document,
@@ -186,20 +229,20 @@ export function createHttpWorkflowDraftRepository(
       });
     },
 
-    async restoreVersion(workflowId, versionId) {
+    async restoreVersion(workflowId, restoredVersion) {
       try {
         const current = await requireCachedDefinition(client, definitions, workflowId);
-        const revision = parseRevisionId(versionId);
+        const revision = restoredVersion.revision;
         const definition = unwrap<ApiWorkflowDefinition>(await client.post(
           `/server/workflows/${workflowId}/revisions/${revision}/restore`,
           { expectedDraftVersion: current.draftVersion },
         ));
         definitions.set(workflowId, definition);
-        const document = toDocument(definition, revisions.get(workflowId) ?? []);
-        const restoredVersion = document.versionHistory.find((item) => item.revision === revision);
-        if (!restoredVersion) {
-          throw new WorkflowRepositoryError("not-found", "Workflow 版本不存在");
-        }
+        const document = toDocument(
+          definition,
+          revisions.get(workflowId) ?? [],
+          revisionCursors.get(workflowId) ?? null,
+        );
         return {
           ...toSaveResult(document),
           restoredAt: document.updatedAt,
@@ -219,7 +262,11 @@ export function createHttpWorkflowDraftRepository(
             { expectedDraftVersion: current.draftVersion },
           ));
           definitions.set(workflowId, definition);
-          return toDocument(definition, revisions.get(workflowId) ?? []);
+          return toDocument(
+            definition,
+            revisions.get(workflowId) ?? [],
+            revisionCursors.get(workflowId) ?? null,
+          );
         } catch (error) {
           throw normalizeHttpError(error);
         }
@@ -244,16 +291,20 @@ export function createHttpWorkflowDraftRepository(
             }
           : definition;
         definitions.set(workflowId, updatedDefinition);
-        return toDocument(updatedDefinition, revisions.get(workflowId) ?? []);
+        return toDocument(
+          updatedDefinition,
+          revisions.get(workflowId) ?? [],
+          revisionCursors.get(workflowId) ?? null,
+        );
       } catch (error) {
         throw normalizeHttpError(error);
       }
     },
 
-    enableDocument: (workflowId) => operateDocument(client, definitions, revisions, workflowId, "enable"),
-    pauseDocument: (workflowId) => operateDocument(client, definitions, revisions, workflowId, "pause"),
-    resumeDocument: (workflowId) => operateDocument(client, definitions, revisions, workflowId, "resume"),
-    stopDocument: (workflowId) => operateDocument(client, definitions, revisions, workflowId, "stop"),
+    enableDocument: (workflowId) => operateDocument(client, definitions, revisions, revisionCursors, workflowId, "enable"),
+    pauseDocument: (workflowId) => operateDocument(client, definitions, revisions, revisionCursors, workflowId, "pause"),
+    resumeDocument: (workflowId) => operateDocument(client, definitions, revisions, revisionCursors, workflowId, "resume"),
+    stopDocument: (workflowId) => operateDocument(client, definitions, revisions, revisionCursors, workflowId, "stop"),
   };
 
   return repository;
@@ -278,6 +329,7 @@ async function operateDocument(
   client: WorkflowHttpClient,
   definitions: Map<string, ApiWorkflowDefinition>,
   revisions: Map<string, ApiWorkflowRevision[]>,
+  revisionCursors: Map<string, string | null>,
   workflowId: string,
   operation: "enable" | "pause" | "resume" | "stop",
 ) {
@@ -286,11 +338,15 @@ async function operateDocument(
       `/server/workflows/${workflowId}/${operation}`,
     ));
     definitions.set(workflowId, definition);
-    const nextRevisions = operation === "enable"
+    const nextPage = operation === "enable"
       ? await getRevisions(client, workflowId)
-      : revisions.get(workflowId) ?? [];
-    revisions.set(workflowId, nextRevisions);
-    return toDocument(definition, nextRevisions);
+      : {
+          items: revisions.get(workflowId) ?? [],
+          nextCursor: revisionCursors.get(workflowId) ?? null,
+        };
+    revisions.set(workflowId, nextPage.items);
+    revisionCursors.set(workflowId, nextPage.nextCursor);
+    return toDocument(definition, nextPage.items, nextPage.nextCursor);
   } catch (error) {
     throw normalizeHttpError(error);
   }
@@ -304,21 +360,24 @@ async function refreshDocument(
   client: WorkflowHttpClient,
   definitions: Map<string, ApiWorkflowDefinition>,
   revisions: Map<string, ApiWorkflowRevision[]>,
+  revisionCursors: Map<string, string | null>,
   workflowId: string,
 ) {
-  const [definition, versionHistory] = await Promise.all([
+  const [definition, versionPage] = await Promise.all([
     getDefinition(client, workflowId),
     getRevisions(client, workflowId),
   ]);
   definitions.set(workflowId, definition);
-  revisions.set(workflowId, versionHistory);
-  return toDocument(definition, versionHistory);
+  revisions.set(workflowId, versionPage.items);
+  revisionCursors.set(workflowId, versionPage.nextCursor);
+  return toDocument(definition, versionPage.items, versionPage.nextCursor);
 }
 
 async function mutateReview(
   client: WorkflowHttpClient,
   definitions: Map<string, ApiWorkflowDefinition>,
   revisions: Map<string, ApiWorkflowRevision[]>,
+  revisionCursors: Map<string, string | null>,
   workflowId: string,
   reviewId: string,
   action: "approve" | "reject" | "withdraw",
@@ -326,14 +385,28 @@ async function mutateReview(
 ) {
   try {
     await client.post(`/server/workflows/${workflowId}/reviews/${reviewId}/${action}`, body);
-    return await refreshDocument(client, definitions, revisions, workflowId);
+    return await refreshDocument(client, definitions, revisions, revisionCursors, workflowId);
   } catch (error) {
     throw normalizeHttpError(error);
   }
 }
 
-async function getRevisions(client: WorkflowHttpClient, workflowId: string) {
-  return unwrap<ApiWorkflowRevision[]>(await client.get(`/server/workflows/${workflowId}/revisions`));
+async function getRevisions(client: WorkflowHttpClient, workflowId: string, cursor?: string) {
+  return unwrap<WorkflowRevisionPage>(await client.get(
+    createHistoryPageUrl(`/server/workflows/${workflowId}/revisions`, cursor),
+  ));
+}
+
+async function getReviews(client: WorkflowHttpClient, workflowId: string, cursor?: string) {
+  return unwrap<WorkflowPublishReviewPage>(await client.get(
+    createHistoryPageUrl(`/server/workflows/${workflowId}/reviews`, cursor),
+  ));
+}
+
+function createHistoryPageUrl(path: string, cursor?: string) {
+  const query = new URLSearchParams({ limit: String(workflowHistoryPageSize) });
+  if (cursor) query.set("cursor", cursor);
+  return `${path}?${query.toString()}`;
 }
 
 async function requireCachedDefinition(
@@ -351,6 +424,7 @@ async function requireCachedDefinition(
 function toDocument(
   definition: ApiWorkflowDefinition,
   revisionRecords: ApiWorkflowRevision[],
+  versionHistoryNextCursor: string | null,
 ): WorkflowDocument {
   const listItem = toListItem(definition);
   const draft = toDraft(definition.draft);
@@ -379,6 +453,7 @@ function toDocument(
     currentReview: definition.currentReview,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
     versionHistory,
+    versionHistoryNextCursor,
   };
 }
 
@@ -456,12 +531,6 @@ function toSaveResult(document: WorkflowDocument): WorkflowDraftSaveResult {
 
 function toDraft(draft: ApiWorkflowDefinition["draft"]): WorkflowDraft {
   return hydrateWorkflowDraft(draft as unknown as WorkflowDraft);
-}
-
-function parseRevisionId(versionId: string) {
-  const match = /-r(\d+)$/.exec(versionId);
-  if (!match) throw new WorkflowRepositoryError("validation", "Workflow 版本标识无效");
-  return Number(match[1]);
 }
 
 function unwrap<T>(response: unknown): T {

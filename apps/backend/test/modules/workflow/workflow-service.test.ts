@@ -526,7 +526,7 @@ describe("WorkflowService", () => {
 
     expect(enabled.runtimeStatus).toBe("active");
     expect(enabled.publishedRevision).toBe(1);
-    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+    expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
   });
 
   it("publishes an approved review after JSON storage reorders object keys", async () => {
@@ -613,9 +613,10 @@ describe("WorkflowService", () => {
     });
     expect(editable.permissions.canEdit).toBe(true);
     expect(editable.currentReview).toBeNull();
-    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
-      expect.objectContaining({ id: review.id, status: "approved" }),
-    ]);
+    await expect(service.listReviews(operator, created.id)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: review.id, status: "approved" })],
+      nextCursor: null,
+    });
   });
 
   it("keeps approval valid when workflow metadata changes", async () => {
@@ -632,9 +633,10 @@ describe("WorkflowService", () => {
     });
 
     expect(renamed.currentReview).toMatchObject({ id: review.id, status: "approved" });
-    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
-      expect.objectContaining({ id: review.id, status: "approved" }),
-    ]);
+    await expect(service.listReviews(operator, created.id)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: review.id, status: "approved" })],
+      nextCursor: null,
+    });
   });
 
   it("restores an unpublished approved review and reuses its approval", async () => {
@@ -658,9 +660,10 @@ describe("WorkflowService", () => {
     expect(restored.currentReview).toMatchObject({ id: review.id, status: "approved" });
     const published = await service.publish(operator, created.id, { reviewId: review.id });
     expect(published.revision.revision).toBe(1);
-    await expect(service.listReviews(operator, created.id)).resolves.toEqual([
-      expect.objectContaining({ id: review.id, resultingRevision: 1, status: "approved" }),
-    ]);
+    await expect(service.listReviews(operator, created.id)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: review.id, resultingRevision: 1, status: "approved" })],
+      nextCursor: null,
+    });
   });
 
   it("allows self approval but forbids self rejection and blank rejection reasons", async () => {
@@ -721,10 +724,23 @@ describe("WorkflowService", () => {
 
     expect(restored.hasUnpublishedChanges).toBe(false);
     expect(restored.currentReview).toBeNull();
-    expect(await service.listReviews(operator, created.id)).toEqual([
+    expect((await service.listReviews(operator, created.id)).items).toEqual([
       expect.objectContaining({ id: review.id, status: "rejected" }),
       expect.objectContaining({ resultingRevision: 1, status: "approved" }),
     ]);
+    const firstPage = await service.listReviews(operator, created.id, { limit: 1 });
+    const secondPage = await service.listReviews(operator, created.id, {
+      cursor: firstPage.nextCursor!,
+      limit: 1,
+    });
+    expect(firstPage).toMatchObject({
+      items: [expect.objectContaining({ id: review.id })],
+      nextCursor: review.id,
+    });
+    expect(secondPage).toMatchObject({
+      items: [expect.objectContaining({ resultingRevision: 1 })],
+      nextCursor: null,
+    });
   });
 
   it("keeps an approved review reusable when publication resource checks fail", async () => {
@@ -766,7 +782,7 @@ describe("WorkflowService", () => {
     await service.stop(operator, created.id);
 
     expect(await service.getCurrentReview(operator, created.id)).toBeNull();
-    expect(await service.listReviews(operator, created.id)).toEqual([
+    expect((await service.listReviews(operator, created.id)).items).toEqual([
       expect.objectContaining({ id: review.id, status: "withdrawn" }),
       expect.objectContaining({ resultingRevision: 1, status: "approved" }),
     ]);
@@ -856,7 +872,7 @@ describe("WorkflowService", () => {
     });
     const published = await publishApprovedDraft(service, created.id, seeded.draftVersion);
     const enabled = await service.enable(operator, created.id);
-    const [revision] = await service.listRevisions(operator, created.id);
+    const [revision] = (await service.listRevisions(operator, created.id)).items;
 
     expect(getStartEntryPolicy(published.definition.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
     expect(getStartEntryPolicy(enabled.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
@@ -905,7 +921,7 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_NO_UNPUBLISHED_CHANGES", statusCode: 409 });
 
     expect(saved.hasUnpublishedChanges).toBe(false);
-    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+    expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
   });
 
   it("does not submit a viewport-only draft as a new version", async () => {
@@ -923,7 +939,7 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_NO_UNPUBLISHED_CHANGES", statusCode: 409 });
 
     expect(saved.hasUnpublishedChanges).toBe(false);
-    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+    expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
   });
 
   it("summarizes node title changes without treating edge order or the title as trigger changes", async () => {
@@ -980,7 +996,14 @@ describe("WorkflowService", () => {
 
     expect(published.revision.revision).toBe(2);
     expect(published.definition.publishedRevision).toBe(2);
-    expect(await service.listRevisions(operator, created.id)).toHaveLength(2);
+    expect((await service.listRevisions(operator, created.id)).items).toHaveLength(2);
+    const firstPage = await service.listRevisions(operator, created.id, { limit: 1 });
+    const secondPage = await service.listRevisions(operator, created.id, {
+      cursor: firstPage.nextCursor!,
+      limit: 1,
+    });
+    expect(firstPage).toMatchObject({ items: [{ revision: 2 }], nextCursor: "2" });
+    expect(secondPage).toMatchObject({ items: [{ revision: 1 }], nextCursor: null });
   });
 
   it("publishes only the current revision trigger bindings after enable", async () => {
@@ -1284,7 +1307,7 @@ describe("WorkflowService", () => {
 
     expect(restored.draftVersion).toBe(created.draftVersion + 1);
     expect(restored.hasUnpublishedChanges).toBe(false);
-    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+    expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
   });
 });
 

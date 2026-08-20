@@ -40,9 +40,14 @@ import type {
   WorkflowDraftPublishStatus,
   WorkflowDraftRestoreStatus,
   WorkflowDraftSaveStatus,
-  WorkflowRepositoryErrorCode,
 } from "../workflow-draft-service";
 import { WorkflowMetadataDialog } from "../workflow-metadata-dialog";
+import {
+  getWorkflowPrimaryReleaseAction,
+  getWorkflowPublishAction,
+  getWorkflowRuntimeMenuItem,
+  getWorkflowSubmitReviewAction,
+} from "./workflow-design-actions";
 
 export function WorkflowTopBar({
   canEdit = true,
@@ -60,24 +65,19 @@ export function WorkflowTopBar({
   onCloseVersionHistory,
   onExitPreview,
   onOpenVersionHistory,
-  onOpenReview = () => undefined,
   onPublish,
   onSubmitReview = () => undefined,
-  onWithdrawReview,
   onEnable,
   onPause,
-  onPublishCheck,
   onResume,
-  onReloadDocument,
   onModeChange,
   onUpdateMetadata,
   onRetrySave,
   onRestoreVersion,
   previewVersionLabel,
   previewVersionMeta,
-  publishErrorCode,
+  publishReady = true,
   publishState,
-  publishReady,
   currentReview,
   reviewActionState = "idle",
   lifecycleActionState = "idle",
@@ -105,15 +105,11 @@ export function WorkflowTopBar({
   onCloseVersionHistory?: () => void;
   onExitPreview?: () => void;
   onOpenVersionHistory: () => void;
-  onOpenReview?: () => void;
   onPublish: () => void;
   onSubmitReview?: () => void;
-  onWithdrawReview?: () => Promise<boolean>;
   onEnable?: () => Promise<boolean>;
   onPause?: () => Promise<boolean>;
-  onPublishCheck: () => void;
   onResume?: () => Promise<boolean>;
-  onReloadDocument?: () => void;
   onModeChange?: (mode: "data" | "design") => void;
   onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
   onRetrySave?: () => void;
@@ -121,9 +117,8 @@ export function WorkflowTopBar({
   previewVersionLabel?: string;
   previewVersionMeta?: string;
   publishedAt: string | null;
-  publishErrorCode?: WorkflowRepositoryErrorCode;
+  publishReady?: boolean;
   publishState: WorkflowDraftPublishStatus;
-  publishReady: boolean;
   currentReview?: WorkflowPublishReview | null;
   reviewActionState?: "idle" | "submitting" | "approving" | "rejecting" | "withdrawing";
   lifecycleActionState?: "enabling" | "idle" | "pausing" | "resuming";
@@ -138,65 +133,42 @@ export function WorkflowTopBar({
 }) {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
-  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
-  const publishing = publishState === "publishing";
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const restoring = restoreState === "restoring";
   const versionPreviewMode = Boolean(isPreviewingVersion);
   const stoppedReadOnly = runtimeStatus === "stopped";
-  const contentContextLabel = getContentContextLabel(
-    mode,
+  const submitReviewAction = getWorkflowSubmitReviewAction({
+    canEdit,
+    canPublish,
     currentReview,
-    publishedRevision ?? null,
     hasUnpublishedChanges,
-  );
-  const contentActionVisible = currentReview?.status === "pending"
-    || currentReview?.status === "approved"
-    || hasUnpublishedChanges;
-  const runtimeAction = publishedRevision === null
-    ? null
-    : runtimeStatus === "active" && onPause
-      ? (
-          <Button
-            disabled={!canOperate || lifecycleActionState !== "idle"}
-            onClick={() => void onPause()}
-            size="sm"
-            type="button"
-            variant="secondary"
-          >
-            {lifecycleActionState === "pausing" ? "暂停中" : "暂停"}
-          </Button>
-        )
-      : runtimeStatus === "paused" && onResume
-        ? (
-            <Button
-              className={contentActionVisible ? undefined : "h-9 rounded-lg px-5 text-sm font-semibold"}
-              disabled={!canOperate || lifecycleActionState !== "idle"}
-              onClick={() => void onResume()}
-              size="sm"
-              type="button"
-              variant={contentActionVisible ? "secondary" : "default"}
-            >
-              {lifecycleActionState === "resuming"
-                ? "启用中"
-                : hasUnpublishedChanges ? "启用已发布版本" : "启用"}
-            </Button>
-          )
-        : runtimeStatus === "inactive" && onEnable
-          ? (
-              <Button
-                className={contentActionVisible ? undefined : "h-9 rounded-lg px-5 text-sm font-semibold"}
-                disabled={!canOperate || lifecycleActionState !== "idle"}
-                onClick={() => void onEnable()}
-                size="sm"
-                type="button"
-                variant={contentActionVisible ? "secondary" : "default"}
-              >
-                {lifecycleActionState === "enabling"
-                  ? "启用中"
-                  : hasUnpublishedChanges ? "启用已发布版本" : "启用"}
-              </Button>
-            )
-          : null;
+    reviewActionState,
+    saveState,
+  });
+  const publishAction = getWorkflowPublishAction({
+    canPublish,
+    currentReview,
+    hasUnpublishedChanges,
+    publishState,
+    saveState,
+  });
+  const primaryReleaseAction = getWorkflowPrimaryReleaseAction({
+    currentReview,
+    hasUnpublishedChanges,
+    runtimeStatus,
+  });
+  const runtimeMenuItem = getWorkflowRuntimeMenuItem({
+    hasUnpublishedChanges,
+    lifecycleActionState,
+    publishedRevision,
+    runtimeStatus,
+  });
+  const runtimeMenuHandler = runtimeMenuItem?.action === "pause"
+    ? onPause
+    : runtimeMenuItem?.action === "resume"
+      ? onResume
+      : onEnable;
 
   return (
     <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
@@ -296,11 +268,6 @@ export function WorkflowTopBar({
                   有尚未发布的修改
                 </span>
               ) : null}
-              {contentContextLabel ? (
-                <span className="shrink-0 text-muted-foreground">
-                  {contentContextLabel}
-                </span>
-              ) : null}
             </div>
           </div>
         )}
@@ -334,15 +301,20 @@ export function WorkflowTopBar({
         {versionPreviewMode ? (
           <>
             <Button
+              className="h-9 rounded-lg px-5 text-sm font-semibold"
               disabled={!onRestoreVersion || restoring}
-              onClick={onRestoreVersion}
-              size="sm"
+              onClick={() => setRestoreConfirmOpen(true)}
               type="button"
             >
-              {restoring ? "恢复中" : "恢复"}
+              {restoring ? "还原中" : "还原到该版本"}
             </Button>
-            <Button onClick={onExitPreview} size="sm" type="button" variant="secondary">
-              退出版本
+            <Button
+              className="h-9 rounded-lg px-5 text-sm font-semibold"
+              onClick={onExitPreview}
+              type="button"
+              variant="secondary"
+            >
+              返回最新
             </Button>
           </>
         ) : mode === "data" ? (
@@ -370,91 +342,62 @@ export function WorkflowTopBar({
               <PopoverContent
                 align="end"
                 aria-label="版本历史面板"
-                className="z-[80] max-h-[min(36rem,calc(100vh-5rem))] w-[268px] overflow-hidden rounded-xl p-0"
+                className="z-[80] max-h-[min(36rem,calc(100vh-5rem))] w-[320px] overflow-hidden rounded-xl p-0"
                 role="dialog"
                 sideOffset={8}
               >
                 {versionHistoryContent}
               </PopoverContent>
             </Popover>
-            {!stoppedReadOnly ? (
-              <>
-                {runtimeAction}
-                {currentReview?.status === "pending" ? (
-                  <>
-                    <Button
-                      disabled={reviewActionState !== "idle"}
-                      onClick={() => setWithdrawConfirmOpen(true)}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      撤回审核
-                    </Button>
-                    <Button onClick={onOpenReview} size="sm" type="button">审核</Button>
-                  </>
-                ) : currentReview?.status === "approved" ? (
-                  <>
-                    <Button
-                      className="h-9 rounded-lg px-5 text-sm font-semibold"
-                      disabled={!canPublish || publishing || saveState !== "saved"}
-                      onClick={() => setPublishConfirmOpen(true)}
-                      type="button"
-                    >
-                      {publishing ? "发布中" : "发布"}
-                    </Button>
-                  </>
-                ) : hasUnpublishedChanges ? (
-                  <>
-                    <Button
-                      className="h-9 rounded-lg px-5 text-sm font-semibold"
-                      disabled={!canEdit || !canPublish || reviewActionState !== "idle" || saveState === "error" || publishErrorCode === "conflict"}
-                      onClick={onSubmitReview}
-                      type="button"
-                    >
-                      {reviewActionState === "submitting"
-                        ? "提交中"
-                        : currentReview?.status === "rejected" ? "重新提交审核" : "提交审核"}
-                    </Button>
-                  </>
-                ) : null}
-                {hasUnpublishedChanges && currentReview?.status !== "pending" && currentReview?.status !== "approved" && !publishReady ? (
+            {primaryReleaseAction === "submit" ? (
+              <TopBarActionButton
+                className="h-9 rounded-lg px-5 text-sm font-semibold"
+                disabled={submitReviewAction.disabled}
+                disabledReason={submitReviewAction.reason}
+                onClick={() => {
+                  if (!publishReady) {
+                    onSubmitReview();
+                    return;
+                  }
+                  setSubmitConfirmOpen(true);
+                }}
+              >
+                {submitReviewAction.label}
+              </TopBarActionButton>
+            ) : null}
+            {primaryReleaseAction === "publish" ? (
+              <TopBarActionButton
+                className="h-9 rounded-lg px-5 text-sm font-semibold"
+                disabled={publishAction.disabled}
+                disabledReason={publishAction.reason}
+                onClick={() => setPublishConfirmOpen(true)}
+              >
+                {publishAction.label}
+              </TopBarActionButton>
+            ) : null}
+            {runtimeMenuItem && runtimeMenuHandler ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
-                    aria-label="发布检查"
-                    className="size-9 rounded-lg text-destructive"
-                    disabled={!canEdit}
-                    onClick={onPublishCheck}
+                    aria-label="更多操作"
+                    className="size-9 rounded-lg bg-muted text-muted-foreground"
                     size="icon"
-                    title="发布检查"
+                    title="更多操作"
                     type="button"
-                    variant="secondary"
+                    variant="ghost"
                   >
-                    <HugeiconsIcon icon={AlertCircleIcon} size={18} strokeWidth={1.8} />
+                    <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
                   </Button>
-                ) : null}
-                {publishErrorCode === "conflict" && onReloadDocument ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        aria-label="更多操作"
-                        className="size-9 rounded-lg bg-muted text-muted-foreground"
-                        size="icon"
-                        title="更多操作"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-44">
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onReloadDocument}>
-                        <HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />
-                        重新加载
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-44">
+                  <DropdownMenuItem
+                    disabled={!canOperate || lifecycleActionState !== "idle"}
+                    onSelect={() => void runtimeMenuHandler()}
+                  >
+                    {runtimeMenuItem.label}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </>
         )}
@@ -467,6 +410,27 @@ export function WorkflowTopBar({
         open={metadataDialogOpen}
         pending={metadataUpdating}
       />
+      <AlertDialog open={submitConfirmOpen} onOpenChange={setSubmitConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认提交审核</AlertDialogTitle>
+            <AlertDialogDescription>
+              提交后画布将锁定，等待审核
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setSubmitConfirmOpen(false);
+                onSubmitReview();
+              }}
+            >
+              {submitReviewAction.label}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
@@ -488,26 +452,23 @@ export function WorkflowTopBar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog
-        open={withdrawConfirmOpen}
-        onOpenChange={setWithdrawConfirmOpen}
-      >
-        <AlertDialogContent size="sm">
+      <AlertDialog open={restoreConfirmOpen} onOpenChange={setRestoreConfirmOpen}>
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认撤回审核</AlertDialogTitle>
+            <AlertDialogTitle>确认还原到该版本</AlertDialogTitle>
             <AlertDialogDescription>
-              撤回后将结束本次审核并恢复画布编辑
+              将把画布内容恢复到此历史版本，当前未保存/未发布的修改将被放弃，如需生效请还原后重新发布
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                void onWithdrawReview?.();
-                setWithdrawConfirmOpen(false);
+                setRestoreConfirmOpen(false);
+                onRestoreVersion?.();
               }}
             >
-              确认
+              确认还原
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -530,21 +491,6 @@ function getWorkflowStatusLabel({
   return "未启用";
 }
 
-function getContentContextLabel(
-  mode: "data" | "design",
-  review: WorkflowPublishReview | null | undefined,
-  publishedRevision: number | null,
-  hasUnpublishedChanges: boolean,
-) {
-  if (mode === "design") {
-    if (review?.status === "pending") return "待审核内容";
-    if (review?.status === "approved") return "已审核内容";
-    return null;
-  }
-  if (!hasUnpublishedChanges && review?.status !== "pending" && review?.status !== "approved") return null;
-  return publishedRevision === null ? "暂无已发布版本" : "当前已发布版本数据";
-}
-
 function getRuntimeStatusClassName(
   status: "active" | "inactive" | "paused" | "stopped",
   publishedRevision: number | null,
@@ -562,4 +508,43 @@ function getSaveStateLabel(saveState: WorkflowDraftSaveStatus, lastSavedAt: stri
   if (saveState === "error") return "保存失败";
   if (saveState === "dirty" || saveState === "saving") return "正在保存";
   return `已自动保存 ${lastSavedAt}`;
+}
+
+function TopBarActionButton({
+  children,
+  className,
+  disabled,
+  disabledReason,
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  disabled: boolean;
+  disabledReason?: string;
+  onClick: () => void;
+}) {
+  const button = (
+    <Button
+      className={className}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </Button>
+  );
+  if (!disabled || !disabledReason) return button;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {disabledReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }

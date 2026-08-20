@@ -60,6 +60,10 @@ const WorkflowRecordsQuerySchema = Type.Object({
   nodeId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   status: Type.Optional(WorkflowEntryRecordStatusSchema),
 });
+const WorkflowHistoryQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String({ pattern: "^[1-9][0-9]*$" })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+});
 const WorkflowRecordParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ recordId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
@@ -257,11 +261,14 @@ export async function registerWorkflowRoutes(
     )),
   );
 
-  app.get<{ Params: WorkflowParams }>(
+  app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowHistoryQuerySchema> }>(
     "/api/server/workflows/:workflowId/reviews",
-    { ...authenticated, schema: { params: WorkflowParamsSchema } },
+    { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowHistoryQuerySchema } },
     async request => apiSuccess(await service.listReviews(
-      getWorkflowScope(request), request.params.workflowId,
+      getWorkflowScope(request), request.params.workflowId, {
+        cursor: request.query.cursor,
+        limit: request.query.limit ?? 20,
+      },
     )),
   );
 
@@ -332,12 +339,26 @@ export async function registerWorkflowRoutes(
     async (request) => apiSuccess(await service.stop(getWorkflowScope(request), request.params.workflowId)),
   );
 
-  app.get<{ Params: WorkflowParams }>(
+  app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowHistoryQuerySchema> }>(
     "/api/server/workflows/:workflowId/revisions",
-    { ...authenticated, schema: { params: WorkflowParamsSchema } },
+    { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowHistoryQuerySchema } },
     async (request) => apiSuccess(await service.listRevisions(
       getWorkflowScope(request),
       request.params.workflowId,
+      {
+        cursor: request.query.cursor,
+        limit: request.query.limit ?? 20,
+      },
+    )),
+  );
+
+  app.get<{ Params: WorkflowRevisionParams }>(
+    "/api/server/workflows/:workflowId/revisions/:revision",
+    { ...authenticated, schema: { params: WorkflowRevisionParamsSchema } },
+    async request => apiSuccess(await service.getRevision(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.revision,
     )),
   );
 

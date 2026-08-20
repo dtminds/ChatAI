@@ -406,10 +406,15 @@ export class WorkflowService {
     return review ? toReview(review) : null;
   }
 
-  async listReviews(scope: WorkflowOperatorScope, workflowId: string) {
+  async listReviews(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    input: { cursor?: string; limit: number } = { limit: 20 },
+  ) {
     assertWorkflowAccess(scope);
     await this.requireDefinition(scope.uid, workflowId);
-    return (await this.repository.listReviews(scope.uid, workflowId)).map(toReview);
+    const page = await this.repository.listReviews(scope.uid, workflowId, input);
+    return { items: page.items.map(toReview), nextCursor: page.nextCursor };
   }
 
   async approveReview(
@@ -589,10 +594,23 @@ export class WorkflowService {
     return this.changeStatus(scope, workflowId, ["active", "paused"], "stopped");
   }
 
-  async listRevisions(scope: WorkflowOperatorScope, workflowId: string) {
+  async listRevisions(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    input: { cursor?: string; limit: number } = { limit: 20 },
+  ) {
     assertWorkflowAccess(scope);
     await this.requireDefinition(scope.uid, workflowId);
-    return (await this.repository.listRevisions(scope.uid, workflowId)).map(toRevision);
+    const page = await this.repository.listRevisions(scope.uid, workflowId, input);
+    return { items: page.items.map(toRevision), nextCursor: page.nextCursor };
+  }
+
+  async getRevision(scope: WorkflowOperatorScope, workflowId: string, revision: number) {
+    assertWorkflowAccess(scope);
+    await this.requireDefinition(scope.uid, workflowId);
+    const record = await this.repository.findRevision(scope.uid, workflowId, revision);
+    if (!record) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    return toRevision(record);
   }
 
   async restoreRevision(

@@ -5,6 +5,10 @@ import {
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
+  WorkflowReviewApproveRequestSchema,
+  WorkflowPublishReviewPageSchema,
+  WorkflowReviewRejectRequestSchema,
+  WorkflowRevisionPageSchema,
   WorkflowRuntimeStatusSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
@@ -131,6 +135,32 @@ describe("workflow contracts", () => {
       description: "描".repeat(1001),
       name: "新客培育",
     })).toBe(false);
+  });
+
+  it("limits workflow review comments and rejection reasons to 200 characters", () => {
+    expect(Value.Check(WorkflowReviewApproveRequestSchema, {
+      comment: "审".repeat(200),
+    })).toBe(true);
+    expect(Value.Check(WorkflowReviewApproveRequestSchema, {
+      comment: "审".repeat(201),
+    })).toBe(false);
+    expect(Value.Check(WorkflowReviewRejectRequestSchema, {
+      reason: "驳".repeat(200),
+    })).toBe(true);
+    expect(Value.Check(WorkflowReviewRejectRequestSchema, {
+      reason: "驳".repeat(201),
+    })).toBe(false);
+  });
+
+  it("bounds workflow history response pages", () => {
+    expect(Value.Check(WorkflowRevisionPageSchema, {
+      items: [],
+      nextCursor: "20",
+    })).toBe(true);
+    expect(Value.Check(WorkflowPublishReviewPageSchema, {
+      items: [],
+      nextCursor: null,
+    })).toBe(true);
   });
 
   it("accepts workflow metadata when creating a workflow", () => {

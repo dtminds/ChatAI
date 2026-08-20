@@ -87,6 +87,16 @@ export type WorkflowCreateResult =
   | { kind: "success"; value: WorkflowDefinitionRecord }
   | { kind: "idempotency-conflict" };
 
+export type WorkflowHistoryPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type WorkflowHistoryPageInput = {
+  cursor?: string;
+  limit: number;
+};
+
 export type WorkflowRepository = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
@@ -110,8 +120,16 @@ export type WorkflowRepository = {
   findCurrentReview(uid: number, workflowId: string): Promise<WorkflowPublishReviewRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRevisionRecord | null>;
   listDefinitions(uid: number): Promise<WorkflowDefinitionRecord[]>;
-  listReviews(uid: number, workflowId: string): Promise<WorkflowPublishReviewRecord[]>;
-  listRevisions(uid: number, workflowId: string): Promise<WorkflowRevisionRecord[]>;
+  listReviews(
+    uid: number,
+    workflowId: string,
+    input: WorkflowHistoryPageInput,
+  ): Promise<WorkflowHistoryPage<WorkflowPublishReviewRecord>>;
+  listRevisions(
+    uid: number,
+    workflowId: string,
+    input: WorkflowHistoryPageInput,
+  ): Promise<WorkflowHistoryPage<WorkflowRevisionRecord>>;
   markDeleted(input: {
     opSubUserId: string;
     uid: number;

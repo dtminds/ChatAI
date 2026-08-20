@@ -298,14 +298,23 @@ describe("workflow routes", () => {
       method: "GET",
       url: `/api/server/workflows/${definition.id}/revisions`,
     });
-    expect(revisions.json().data).toHaveLength(1);
+    expect(revisions.json().data).toMatchObject({
+      items: [expect.objectContaining({ revision: 1 })],
+      nextCursor: null,
+    });
+    const revisionDetail = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${definition.id}/revisions/1`,
+    });
+    expect(revisionDetail.json().data).toMatchObject({ revision: 1 });
     const reviews = await app.inject({
       method: "GET",
       url: `/api/server/workflows/${definition.id}/reviews`,
     });
-    expect(reviews.json().data).toEqual([
-      expect.objectContaining({ resultingRevision: 1, status: "approved" }),
-    ]);
+    expect(reviews.json().data).toMatchObject({
+      items: [expect.objectContaining({ resultingRevision: 1, status: "approved" })],
+      nextCursor: null,
+    });
   });
 
   it("restores an unpublished review snapshot through the review route", async () => {

@@ -44,7 +44,7 @@
   --success-foreground: oklch(0.985 0 0);
   --success-muted: oklch(0.946 0.035 151);
   --warning: oklch(0.735 0.151 73);
-  --warning-foreground: var(--foreground);
+  --warning-foreground: oklch(0.985 0 0);
   --warning-muted: oklch(0.958 0.052 82);
   --info: var(--primary);
   --info-foreground: oklch(0.985 0 0);

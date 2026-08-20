@@ -27,7 +27,7 @@ export function getWorkflowReviewActionErrorMessage(error: unknown) {
   }
   if (repositoryError.code === "validation") return repositoryError.message;
   if (repositoryError.code === "conflict") {
-    return "Workflow 状态已变化，请重新加载后重试";
+    return "状态已变化，请刷新页面后重试";
   }
   if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
   if (repositoryError.code === "forbidden") return "没有操作权限";

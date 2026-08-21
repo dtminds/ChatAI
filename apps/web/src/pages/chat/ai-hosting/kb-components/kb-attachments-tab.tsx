@@ -6,6 +6,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "@/pages/chat/ai-hosting/agent-permissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +105,8 @@ export function KbAttachmentsTab({
   targetChunkId,
   targetDocId,
 }: KbAttachmentsTabProps) {
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<KbAttachmentItem[]>([]);
@@ -474,7 +478,7 @@ export function KbAttachmentsTab({
   }, [finishAttachmentSync, pollAttachmentSyncStatus]);
 
   const handleInitialize = async () => {
-    if (!kbId || phase === "initializing") {
+    if (!canManage || !kbId || phase === "initializing") {
       return;
     }
 
@@ -502,7 +506,7 @@ export function KbAttachmentsTab({
   };
 
   const handleRetrySync = async () => {
-    if (!attachmentDocId || retrying || !kbId) {
+    if (!canManage || !attachmentDocId || retrying || !kbId) {
       return;
     }
 
@@ -539,7 +543,7 @@ export function KbAttachmentsTab({
   };
 
   const handleAttachmentDialogSubmit = async (item: KbAttachmentItem) => {
-    if (!kbId) {
+    if (!canManage || !kbId) {
       return;
     }
 
@@ -590,7 +594,7 @@ export function KbAttachmentsTab({
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteTarget || deleting) {
+    if (!canManage || !deleteTarget || deleting) {
       setDeleteTarget(null);
       return;
     }
@@ -687,13 +691,17 @@ export function KbAttachmentsTab({
 
   if (phase === "uninitialized") {
     return (
-      <KbAttachmentsInitState onInitialize={() => void handleInitialize()} />
+      <KbAttachmentsInitState
+        canManage={canManage}
+        onInitialize={() => void handleInitialize()}
+      />
     );
   }
 
   if (phase === "failed") {
     return (
       <KbAttachmentsFailedState
+        canManage={canManage}
         onRetry={() => void handleRetrySync()}
         retrying={retrying}
       />
@@ -740,7 +748,7 @@ export function KbAttachmentsTab({
         <div className="flex flex-wrap items-center gap-3">
           <Button
             className="h-10 px-4"
-            disabled={selectedCount === 0}
+            disabled={!canManage || selectedCount === 0}
             onClick={() => setDeleteTarget("batch")}
             type="button"
             variant="outline"
@@ -749,6 +757,7 @@ export function KbAttachmentsTab({
           </Button>
           <Button
             className="h-10 gap-2 px-4"
+            disabled={!canManage}
             onClick={() => setAddDialogOpen(true)}
             type="button"
           >
@@ -762,6 +771,7 @@ export function KbAttachmentsTab({
         <div>
           <KbAttachmentsTable
             activeType={activeType}
+            canManage={canManage}
             items={attachments}
             loading={isListLoading}
             onDelete={setDeleteTarget}
@@ -874,8 +884,10 @@ function KbAttachmentsTabLoadingState() {
 }
 
 function KbAttachmentsInitState({
+  canManage,
   onInitialize,
 }: {
+  canManage: boolean;
   onInitialize: () => void;
 }) {
   return (
@@ -891,6 +903,7 @@ function KbAttachmentsInitState({
       </p>
       <Button
         className="mt-6 h-10 px-6"
+        disabled={!canManage}
         onClick={onInitialize}
         type="button"
         variant="outline"
@@ -920,9 +933,11 @@ function KbAttachmentsInitLoadingState() {
 }
 
 function KbAttachmentsFailedState({
+  canManage,
   onRetry,
   retrying,
 }: {
+  canManage: boolean;
   onRetry: () => void;
   retrying: boolean;
 }) {
@@ -939,7 +954,7 @@ function KbAttachmentsFailedState({
       <p className="text-sm text-muted-foreground">附件库同步失败</p>
       <Button
         className="h-10 px-6"
-        disabled={retrying}
+        disabled={!canManage || retrying}
         onClick={onRetry}
         type="button"
         variant="outline"

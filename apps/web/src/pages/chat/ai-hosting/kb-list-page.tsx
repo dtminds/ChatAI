@@ -54,6 +54,9 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
+import { isRequestError } from "@/lib/request";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
@@ -91,6 +94,20 @@ const KB_DELETE_DIALOG_MESSAGE_CLASSNAME =
 function buildKbDeleteLinkedAgentsBlockedMessage(linkedAgentCount: number) {
   return `当前知识库已关联${linkedAgentCount}个Agent，不支持删除`;
 }
+
+function resolveKbWriteErrorMessage(error: unknown) {
+  if (
+    isRequestError(error)
+    && error.status != null
+    && error.status >= 400
+    && error.status < 500
+  ) {
+    return error.message;
+  }
+
+  return "操作失败，请稍后重试";
+}
+
 const kbIntroSteps = [
   {
     description: "按特定场景/领域管理知识库，支持结构化和非结构化类型知识",
@@ -116,6 +133,8 @@ const kbIntroSteps = [
 ] as const;
 
 export function KbListPage() {
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [items, setItems] = useState<KbListViewItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -208,6 +227,10 @@ export function KbListPage() {
   }
 
   function handleOpenEditDialog(item: KbListViewItem) {
+    if (!canManage) {
+      return;
+    }
+
     setDialogMode("edit");
     setEditingItem(item);
     setCreateForm({
@@ -218,7 +241,7 @@ export function KbListPage() {
   }
 
   async function handleOpenCreateDialog() {
-    if (checkingQuota) {
+    if (!canManage || checkingQuota) {
       return;
     }
 
@@ -257,7 +280,7 @@ export function KbListPage() {
   async function handleDialogSubmit() {
     const name = createForm.name.trim();
 
-    if (!name) {
+    if (!canManage || !name) {
       return;
     }
 
@@ -287,6 +310,10 @@ export function KbListPage() {
       setCurrentPage(1);
       setListReloadKey((value) => value + 1);
       notifyAiHostingQuotaChanged();
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(resolveKbWriteErrorMessage(error));
+      }
     } finally {
       if (isMountedRef.current) {
         setCreateSubmitting(false);
@@ -304,7 +331,7 @@ export function KbListPage() {
   }
 
   async function handleDeleteClick(item: KbListViewItem) {
-    if (checkingDelete || deleting) {
+    if (!canManage || checkingDelete || deleting) {
       return;
     }
 
@@ -342,7 +369,7 @@ export function KbListPage() {
   }
 
   async function handleConfirmDelete() {
-    if (!deleteTarget || deleting) {
+    if (!canManage || !deleteTarget || deleting) {
       return;
     }
 
@@ -403,7 +430,7 @@ export function KbListPage() {
             <div className="flex flex-wrap items-center justify-end gap-3">
               <Button
                 className="h-10 px-4"
-                disabled={checkingQuota}
+                disabled={!canManage || checkingQuota}
                 onClick={() => void handleOpenCreateDialog()}
                 type="button"
               >
@@ -496,11 +523,15 @@ export function KbListPage() {
                                 详情
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(item)}>
+                            <DropdownMenuItem
+                              disabled={!canManage}
+                              onSelect={() => handleOpenEditDialog(item)}
+                            >
                               编辑
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
+                              disabled={!canManage}
                               onSelect={() => void handleDeleteClick(item)}
                             >
                               删除

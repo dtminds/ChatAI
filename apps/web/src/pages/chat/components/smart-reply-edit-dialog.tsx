@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { canManageAiHostingAgents } from "@/pages/chat/ai-hosting/agent-permissions";
 import {
   SmartReplyAddToFaqDialog,
 } from "@/pages/chat/components/smart-reply-add-to-faq-dialog";
@@ -32,6 +33,7 @@ import type {
   SmartReplyRecommendedAttachment,
   SmartReplyViolationResult,
 } from "@/pages/chat/lib/smart-reply-types";
+import { useAuthStore } from "@/store/auth-store";
 
 export type {
   SmartReplyRecommendedAttachment,
@@ -70,6 +72,8 @@ export function SmartReplyEditDialog({
   onSend,
   onCheckViolations,
 }: SmartReplyEditDialogProps) {
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManageKnowledgeBase = canManageAiHostingAgents(subUser);
   const isMountedRef = useRef(false);
   const recommendedAttachments = recommendedAttachmentsProp ?? EMPTY_RECOMMENDED_ATTACHMENTS;
   const [draftContent, setDraftContent] = useState(initialContent);
@@ -273,7 +277,7 @@ export function SmartReplyEditDialog({
               </Button>
               <Button
                 className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-                disabled={!draftContent.trim()}
+                disabled={!canManageKnowledgeBase || !draftContent.trim()}
                 onClick={() => setIsFaqDialogOpen(true)}
                 type="button"
                 variant="outline"
@@ -332,6 +336,7 @@ export function SmartReplyEditDialog({
         </DialogContent>
       </Dialog>
       <SmartReplyAddToFaqDialog
+        canManage={canManageKnowledgeBase}
         initialAnswer={draftContent.trim()}
         initialQuestion={faqInitialQuestion}
         onOpenChange={setIsFaqDialogOpen}

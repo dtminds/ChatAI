@@ -2087,7 +2087,7 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(screen.queryByRole("button", { name: "添加技能" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加技能" })).toBeDisabled();
     await screen.findByRole("link", { name: "订单与物流场景查询" });
 
     await user.click(
@@ -2095,8 +2095,14 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "停用" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "停用" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
 
     await user.click(screen.getByRole("menuitem", { name: "查看" }));
 
@@ -2337,6 +2343,38 @@ describe("AI hosting pages", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("disables previewing a skill template for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/new",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills?tab=marketplace"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByRole("button", { name: /订单信息查询/ }));
+
+    const detailDialog = screen.getByRole("dialog");
+    const previewButton = await within(detailDialog).findByRole("button", {
+      name: "预览技能",
+    });
+    expect(previewButton).toBeDisabled();
+
+    await user.click(previewButton);
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills");
   });
 
   it("previews a skill template directly into create page with recommend resources tips", async () => {
@@ -4213,11 +4251,14 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });
     await user.click(moreActions[0]);
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("removes agents from the management page after confirmation", async () => {
@@ -5746,6 +5787,63 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
+  it("disables knowledge base write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建知识库" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    expect(screen.getByRole("menuitem", { name: "详情" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "编辑" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
+    expect(kbService.createKb).not.toHaveBeenCalled();
+  });
+
+  it("shows a toast when creating a knowledge base fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.createKb).mockRejectedValueOnce({
+      code: "FORBIDDEN",
+      message: "当前账号无操作权限",
+      status: 403,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "创建知识库" }));
+    await screen.findByRole("dialog", { name: "创建知识库" });
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("当前账号无操作权限");
+    });
+    expect(screen.getByRole("dialog", { name: "创建知识库" })).toBeInTheDocument();
+  });
+
+  it("uses the generic operation error when creating a knowledge base times out", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.createKb).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "创建知识库" }));
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("操作失败，请稍后重试");
+    });
+    expect(toast.error).not.toHaveBeenCalledWith("timeout of 15000ms exceeded");
+  });
+
   it("shows knowledge base list load failures in a toast", async () => {
     vi.mocked(kbService.listKbs).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),
@@ -5977,6 +6075,27 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
     expect(screen.queryByText("已用 6/100 条知识")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
+  });
+
+  it("disables knowledge write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "切片详情" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("shows knowledge list load failures in a toast", async () => {
@@ -6954,6 +7073,27 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("保修期多久")).toBeInTheDocument();
   });
 
+  it("disables knowledge chunk write actions for non-manage roles", async () => {
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答.faq" })).toBeInTheDocument();
+    expect(await screen.findByText("如何恢复出厂设置")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加问答" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
+    for (const button of screen.getAllByRole("button", { name: "编辑" })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole("button", { name: "删除" })) {
+      expect(button).toBeDisabled();
+    }
+  });
+
   it("shows document page load failures in a toast instead of not found", async () => {
     vi.mocked(kbService.getKbDoc).mockRejectedValueOnce({
       code: "ECONNABORTED",
@@ -7358,6 +7498,26 @@ describe("AI hosting pages", () => {
       title: "",
     });
     expect(await screen.findByText("原装充电器与数据线需单独购买")).toBeInTheDocument();
+  });
+
+  it("disables document chunk write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "产品说明大全.doc" });
+    const chunkList = await screen.findByRole("list", { name: "切片列表" });
+    expect(screen.getByRole("button", { name: "添加切片" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑 chunk-doc-1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除 chunk-doc-1" })).toBeDisabled();
+
+    await user.click(within(chunkList).getByText("第一章 产品介绍"));
+    expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
   });
 
   it("filters document chunks by content only", async () => {

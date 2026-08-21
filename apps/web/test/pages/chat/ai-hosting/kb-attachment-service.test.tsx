@@ -1,11 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useAuthStore } from "@/store/auth-store";
 import {
+  batchDeleteKbAttachments,
+  buildKbAttachmentCreateRequest,
+  createKbAttachment,
+  deleteKbAttachment,
   getKbAttachmentStatus,
   listKbAttachments,
   initKbAttachments,
+  updateKbAttachment,
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAttachmentsTab } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-tab";
 import { KbAttachmentsTable } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-table";
@@ -245,11 +251,44 @@ describe("KbAttachmentsTable", () => {
       "noopener,noreferrer",
     );
   });
+
+  it("disables write controls when canManage is false", () => {
+    renderKbAttachmentsTable({
+      activeType: KB_ATTACHMENT_TYPE.IMAGE,
+      canManage: false,
+      items: [
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+          payload: {
+            content: {
+              alt: "产品图",
+              fileUrl: "https://example.com/product.png",
+            },
+            type: "image",
+          },
+          title: "产品图",
+        }),
+      ],
+    });
+
+    expect(screen.getByRole("checkbox", { name: "全选附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
+  });
 });
 
 describe("KbAttachmentsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服主管",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "admin",
+      subUserId: "101",
+      uid: 1,
+    });
   });
 
   it("shows init state when attachment status is uninitialized", async () => {
@@ -266,6 +305,161 @@ describe("KbAttachmentsTab", () => {
     expect(await screen.findByRole("button", { name: "立即启用" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "图片" })).not.toBeInTheDocument();
     expect(listKbAttachments).not.toHaveBeenCalled();
+  });
+
+  it("disables attachment init action for non-manage roles", async () => {
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "立即启用" })).toBeDisabled();
+    expect(initKbAttachments).not.toHaveBeenCalled();
+  });
+
+  it("disables attachment write actions for non-manage roles", async () => {
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [
+        createKbAttachmentListItem({
+          chunkId: "chunk-1",
+          description: "产品图描述",
+          title: "产品图",
+        }),
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("table", { name: "附件列表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "批量删除" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "全选附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
+  });
+
+  it("does not submit an already-open attachment dialog after role becomes read-only", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [],
+      pagination: { page: 1, pageSize: 10, total: 0 },
+    });
+    vi.mocked(buildKbAttachmentCreateRequest).mockResolvedValue({
+      attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+      description: "产品图描述",
+      materialCollectionId: "mc-1",
+      title: "产品图",
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "添加附件" }));
+    const dialog = screen.getByRole("dialog");
+    const file = new File(["image"], "product.png", { type: "image/png" });
+    fireEvent.change(within(dialog).getByLabelText("上传图片"), {
+      target: { files: [file] },
+    });
+    await user.type(within(dialog).getByRole("textbox", { name: "图片描述" }), "产品图描述");
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    await user.click(within(dialog).getByRole("button", { name: "确认并提交" }));
+
+    expect(createKbAttachment).not.toHaveBeenCalled();
+    expect(updateKbAttachment).not.toHaveBeenCalled();
+  });
+
+  it("does not delete an attachment after role becomes read-only", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [
+        createKbAttachmentListItem({
+          chunkId: "chunk-1",
+          description: "产品图描述",
+          title: "产品图",
+        }),
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = screen.getByRole("alertdialog");
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    await user.click(within(dialog).getByRole("button", { name: "确定" }));
+
+    expect(deleteKbAttachment).not.toHaveBeenCalled();
+    expect(batchDeleteKbAttachments).not.toHaveBeenCalled();
   });
 
   it("shows init loading when doc status is parsing", async () => {
@@ -497,14 +691,17 @@ describe("KbAttachmentsTab", () => {
 
 function renderKbAttachmentsTable({
   activeType,
+  canManage,
   items,
 }: {
   activeType: KbAttachmentItem["attachmentType"];
+  canManage?: boolean;
   items: KbAttachmentItem[];
 }) {
   return render(
     <KbAttachmentsTable
       activeType={activeType}
+      canManage={canManage}
       items={items}
       onDelete={vi.fn()}
       onEdit={vi.fn()}

@@ -170,6 +170,8 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 export function AiSkillsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSkill, setSelectedSkill] = useState<SkillItem | null>(null);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const activeTab =
     searchParams.get("tab") === "marketplace" ? "marketplace" : "mine";
 
@@ -212,6 +214,7 @@ export function AiSkillsPage() {
       </div>
 
       <SkillDetailDialog
+        canManage={canManage}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedSkill(null);
@@ -517,16 +520,15 @@ function MySkillsPanel() {
           />
         </div>
 
-        {canManage ? (
-          <Button
-            className="h-10 px-4"
-            onClick={() => navigate("/chat/ai-hosting/skills/new")}
-            type="button"
-          >
-            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-            <span>添加技能</span>
-          </Button>
-        ) : null}
+        <Button
+          className="h-10 px-4"
+          disabled={!canManage}
+          onClick={() => navigate("/chat/ai-hosting/skills/new")}
+          type="button"
+        >
+          <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+          <span>添加技能</span>
+        </Button>
       </div>
 
       <div>
@@ -631,29 +633,28 @@ function MySkillsPanel() {
                             {canManage ? "编辑" : "查看"}
                           </Link>
                         </DropdownMenuItem>
-                        {canManage ? (
-                          <>
-                            {skill.status === "enabled" ? (
-                              <DropdownMenuItem
-                                onSelect={() => void handleDisable(skill.id)}
-                              >
-                                停用
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onSelect={() => setEnableTargetId(skill.id)}
-                              >
-                                启用
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => setDeleteTargetId(skill.id)}
-                            >
-                              删除
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
+                        {skill.status === "enabled" ? (
+                          <DropdownMenuItem
+                            disabled={!canManage}
+                            onSelect={() => void handleDisable(skill.id)}
+                          >
+                            停用
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            disabled={!canManage}
+                            onSelect={() => setEnableTargetId(skill.id)}
+                          >
+                            启用
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={!canManage}
+                          onSelect={() => setDeleteTargetId(skill.id)}
+                        >
+                          删除
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TablePinnedCell>
@@ -772,10 +773,12 @@ function SkillCard({
 }
 
 function SkillDetailDialog({
+  canManage,
   onOpenChange,
   open,
   skill,
 }: {
+  canManage: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   skill: SkillItem | null;
@@ -825,7 +828,7 @@ function SkillDetailDialog({
   }, [open, skill]);
 
   function handlePreviewSkill() {
-    if (!detail) {
+    if (!canManage || !detail) {
       return;
     }
 
@@ -879,7 +882,7 @@ function SkillDetailDialog({
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   className="bg-neutral-950 text-white hover:bg-neutral-800"
-                  disabled={!detail}
+                  disabled={!canManage || !detail}
                   onClick={handlePreviewSkill}
                   size="sm"
                   type="button"

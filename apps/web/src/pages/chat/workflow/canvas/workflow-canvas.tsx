@@ -623,7 +623,7 @@ function WorkflowBottomToolbar({
         <div className="workflow-toolbar-palette-wrap relative flex shrink-0">
           {paletteOpen && !disabled ? (
             <WorkflowNodePicker
-              className="workflow-floating-palette absolute bottom-10 right-0 w-[360px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(460px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
+              className="workflow-floating-palette absolute bottom-10 right-0 w-[360px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(520px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
               kinds={[...insertableNodeKinds]}
               onAddNode={(kind, context) => {
                 if (!context) return;

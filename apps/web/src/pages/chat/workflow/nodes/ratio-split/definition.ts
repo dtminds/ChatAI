@@ -40,7 +40,7 @@ export const ratioSplitNodeDefinition: WorkflowNodeDefinition<"ratio-split"> = {
     metric: "2 个分组 · 合计 100%",
     title: "A/B 分流",
   }),
-  description: "按照配置比例将当前流程对象分配到不同后续路径",
+  description: "按比例将客户分流到不同分支，用于策略效果对比或逐步灰度放量",
   getEstimatedHeight: getWorkflowRatioSplitEstimatedHeight,
   getSourceHandles: (data) => getWorkflowRatioSplitGroups(data).map((group, index) => ({
     id: group.id,
@@ -76,7 +76,7 @@ export const ratioSplitNodeDefinition: WorkflowNodeDefinition<"ratio-split"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-violet-500 text-white",
+    accentClassName: "bg-violet-400 text-white",
     accentRgb: "139 92 246",
     icon: HierarchySquare08Icon,
     label: "A/B 分流",

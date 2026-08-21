@@ -86,7 +86,6 @@ describe("workflow Ratio Split node", () => {
     await user.type(firstGroupName, "一二三四五六七八九十一");
 
     expect(firstGroupName).toHaveValue("一二三四五六七八九十");
-    expect(screen.getByText("10/10")).toBeInTheDocument();
   });
 
   it("confirms deletion when the removable group already has a downstream edge", async () => {

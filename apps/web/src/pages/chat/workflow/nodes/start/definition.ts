@@ -96,7 +96,7 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-blue-600 text-white",
+    accentClassName: "bg-blue-500 text-white",
     accentRgb: "37 99 235",
     icon: LogoutCircle01Icon,
     label: "开始",

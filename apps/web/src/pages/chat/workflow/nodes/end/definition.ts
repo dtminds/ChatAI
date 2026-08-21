@@ -30,7 +30,7 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   getTargetHandles: createDefaultTargetHandles,
   sort: 1000,
   visual: {
-    accentClassName: "bg-blue-600 text-white",
+    accentClassName: "bg-blue-500 text-white",
     accentRgb: "37 99 235",
     icon: LoginCircle01Icon,
     label: "结束",

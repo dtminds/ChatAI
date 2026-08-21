@@ -25,6 +25,7 @@ import {
   EmptyDescription,
   EmptyHeader,
 } from "@/components/ui/empty";
+import { IconStack } from "@/components/ui/icon-stack";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
@@ -286,13 +287,15 @@ function ConversationTicketsPanelContent({
           className="min-h-0 flex-1 gap-3 border-0 px-6 py-8"
           role="status"
         >
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="text-muted-foreground/60"
-            icon={Archive04Icon}
-            size={40}
-            strokeWidth={1}
-          />
+          <IconStack aria-hidden="true" className="h-20 w-18">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="text-muted-foreground"
+              icon={Archive04Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </IconStack>
           <EmptyHeader>
             <EmptyDescription>暂无数据</EmptyDescription>
           </EmptyHeader>

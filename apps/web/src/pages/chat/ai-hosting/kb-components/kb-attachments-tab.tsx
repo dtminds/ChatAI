@@ -3,6 +3,7 @@ import {
   Add01Icon,
   AlertCircleIcon,
   Archive04Icon,
+  Attachment02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -773,7 +774,7 @@ export function KbAttachmentsTab({
           />
         </div>
       ) : (
-        <KbAttachmentsEmptyState />
+        <KbAttachmentsEmptyState onAdd={() => setAddDialogOpen(true)} />
       )}
 
       <KbAddAttachmentDialog
@@ -946,13 +947,19 @@ function KbAttachmentsFailedState({
   );
 }
 
-function KbAttachmentsEmptyState() {
+function KbAttachmentsEmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <KbEmptyStatePanel
       description={KB_ATTACHMENT_EMPTY_DESCRIPTION}
-      keepSuggestionOnSameLine
+      icon={Attachment02Icon}
+      primaryAction={
+        <Button onClick={onAdd} type="button">
+          添加附件
+        </Button>
+      }
       suggestionContent={KB_ATTACHMENT_EMPTY_SUGGESTION}
       suggestionLabel="查看建议"
+      title="附件库已就绪"
     />
   );
 }

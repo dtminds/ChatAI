@@ -182,9 +182,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "ratio-split", "end", "handoff", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
+      .toEqual(["branch", "ratio-split", "end", "handoff", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "llm", "tag"]);
+      .toEqual(["ai-intent", "customer-update", "llm"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -564,10 +564,10 @@ describe("workflow node contracts", () => {
     ]);
   });
 
-  it("keeps incomplete Tag drafts editable but requires tags for execution", () => {
+  it("marks Tag runtime-ready while keeping incomplete drafts editable", () => {
     expect(getWorkflowNodeContract("tag")).toMatchObject({
       currentDraftSchemaVersion: 1,
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
     expect(isWorkflowNodeDraftConfig("tag", { operation: "add", tagIds: [] })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("tag", { operation: "add", tagIds: [] })).toBe(false);

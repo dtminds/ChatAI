@@ -9,6 +9,7 @@ import {
   InMemoryWorkflowRuntimeRepository,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
@@ -159,13 +160,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "tag",
-      kind: "tag",
+      id: "customer-update",
+      kind: "customer-update",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-tag", source: "start", sourceOutletId: "default", target: "tag" },
-      { id: "tag-end", source: "tag", sourceOutletId: "default", target: "end" },
+      { id: "start-update", source: "start", sourceOutletId: "default", target: "customer-update" },
+      { id: "update-end", source: "customer-update", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -174,10 +175,10 @@ describe("Workflow runtime policy", () => {
     const claimTask = vi.spyOn(harness.runtime, "claimTask");
     const created = await harness.runtime.createRunWithInitialTask({
       context: { outputs: {}, trigger: {} },
-      entryEventId: "existing-tag-task",
+      entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "tag",
-      initialNodeKind: "tag",
+      initialNodeId: "customer-update",
+      initialNodeKind: "customer-update",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -299,6 +300,47 @@ describe("Workflow runtime policy", () => {
     expect(harness.capabilityCalls[0]?.request).not.toHaveProperty("idempotencyKey");
   });
 
+  it("executes a runtime-ready Tag action with prepared identity and a stable key", async () => {
+    const harness = createHarness({
+      capabilityResult: {},
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      executionSpec: createTagExecutionSpec(),
+    });
+    const started = await harness.service.startRun(entryInput({
+      trigger: { projection: { externalUserId: 101 } },
+    }));
+    const startResult = await harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("Tag Task was not created");
+    }
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: startResult.nextTask.id,
+      taskVersion: startResult.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+    });
+    expect(harness.capabilityCalls).toHaveLength(1);
+    expect(harness.capabilityCalls[0]).toMatchObject({
+      definition: { capabilityKey: "customer.tag.update", kind: "action" },
+      request: {
+        command: { operation: "remove", source: "workflow", tagIds: [301, 302] },
+        idempotencyKey: `9:${started.run.id}:tag:2`,
+        identities: { externalUserId: 101 },
+      },
+    });
+  });
+
   it("validates that every runtime-ready node has a composed execution path", () => {
     const incomplete = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -366,6 +408,7 @@ function createHarness(options: {
             capabilityBindings: options.capabilityBindings ?? [
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+              WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
             ],
           }
@@ -485,6 +528,21 @@ function createTagQueryExecutionSpec(): WorkflowExecutionSpec {
   spec.edges = [
     { id: "start-query", source: "start", sourceOutletId: "default", target: "tag-query" },
     { id: "query-end", source: "tag-query", sourceOutletId: "default", target: "end" },
+  ];
+  return spec;
+}
+
+function createTagExecutionSpec(): WorkflowExecutionSpec {
+  const spec = createExecutionSpec("chatai-workflow");
+  spec.nodes.splice(1, 0, {
+    config: { operation: "remove", tagIds: [301, 302] },
+    id: "tag",
+    kind: "tag",
+    nodeSchemaVersion: 1,
+  });
+  spec.edges = [
+    { id: "start-tag", source: "start", sourceOutletId: "default", target: "tag" },
+    { id: "tag-end", source: "tag", sourceOutletId: "default", target: "end" },
   ];
   return spec;
 }

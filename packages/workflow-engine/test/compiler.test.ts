@@ -515,10 +515,16 @@ describe("compileWorkflowDraft", () => {
 
   it("rejects node kinds that Phase 3 cannot execute", () => {
     const draft = createDraft();
-    draft.nodes.splice(2, 0, node("tag", "tag", { operation: "add", tagIds: [101] }));
+    draft.nodes.splice(2, 0, node("customer-update", "customer-update", {
+      fields: [{
+        field: { id: 101, key: "remark", title: "客户备注", type: 1 },
+        id: "field-1",
+        value: { kind: "literal", value: "重点客户" },
+      }],
+    }));
     draft.edges.splice(1, 1,
-      { id: "wait-tag", source: "wait", target: "tag" },
-      { id: "tag-end", source: "tag", target: "end" },
+      { id: "wait-update", source: "wait", target: "customer-update" },
+      { id: "update-end", source: "customer-update", target: "end" },
     );
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);

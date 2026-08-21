@@ -1,4 +1,5 @@
 import {
+  WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX,
   WorkflowHandoffCommandSchema,
   type WorkflowHandoffCommand,
 } from "@chatai/contracts";
@@ -74,6 +75,7 @@ export class MysqlWorkflowHandoffCapabilityPort implements WorkflowCapabilityPor
       signal: request.signal,
       token: this.options.token ?? null,
       uid: request.uid,
+      workflowId: request.execution.workflowId,
     });
   }
 }
@@ -88,6 +90,7 @@ export async function executeWorkflowHandoff(
     signal: AbortSignal;
     token: string | null;
     uid: number;
+    workflowId: string;
   },
 ) {
   throwIfAborted(input.signal);
@@ -114,7 +117,8 @@ export async function executeWorkflowHandoff(
           ? { externalMessage: input.command.customerMessage }
           : {}),
         platform: seat.platform,
-        systemMessage: input.command.operatorMessage,
+        systemMessage:
+          `#${input.workflowId} ${WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX}${input.command.operatorMessage}`,
         thirdExternalUserid: input.command.recipient.thirdExternalUserId,
         thirdUserid: seat.thirdUserId,
         uid: input.uid,

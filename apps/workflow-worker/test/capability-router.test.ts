@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   type WorkflowCapabilityPort,
 } from "@chatai/workflow-runtime";
@@ -27,9 +28,10 @@ describe("Workflow capability router", () => {
     expect(router.bindings).toEqual([WORKFLOW_TAG_QUERY_CAPABILITY_BINDING]);
   });
 
-  it("keeps Handoff, Message, and Tag Query routes isolated", async () => {
+  it("keeps Handoff, Message, Tag, and Tag Query routes isolated", async () => {
     const handoffExecute = vi.fn(async () => ({}));
     const messageExecute = vi.fn(async () => ({}));
+    const tagExecute = vi.fn(async () => ({}));
     const tagQueryExecute = vi.fn(async () => ({ matchedTags: [] }));
     const router = new WorkflowCapabilityRouter([
       {
@@ -39,6 +41,10 @@ describe("Workflow capability router", () => {
       {
         binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
         port: { execute: messageExecute } as unknown as WorkflowCapabilityPort,
+      },
+      {
+        binding: WORKFLOW_TAG_CAPABILITY_BINDING,
+        port: { execute: tagExecute } as unknown as WorkflowCapabilityPort,
       },
       {
         binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
@@ -56,12 +62,44 @@ describe("Workflow capability router", () => {
       request,
     );
     expect(handoffExecute).not.toHaveBeenCalled();
+    expect(tagExecute).not.toHaveBeenCalled();
     expect(tagQueryExecute).not.toHaveBeenCalled();
     expect(router.bindings).toEqual([
       WORKFLOW_HANDOFF_CAPABILITY_BINDING,
       WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+      WORKFLOW_TAG_CAPABILITY_BINDING,
       WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
     ]);
+  });
+
+  it("dispatches Tag only to its exact action route", async () => {
+    const messageExecute = vi.fn(async () => ({}));
+    const tagExecute = vi.fn(async () => ({}));
+    const router = new WorkflowCapabilityRouter([
+      {
+        binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+        port: { execute: messageExecute } as unknown as WorkflowCapabilityPort,
+      },
+      {
+        binding: WORKFLOW_TAG_CAPABILITY_BINDING,
+        port: { execute: tagExecute } as unknown as WorkflowCapabilityPort,
+      },
+    ]);
+    const request = {
+      ...tagQueryRequest(),
+      command: { operation: "add" as const, source: "workflow" as const, tagIds: [301] },
+      idempotencyKey: "9:run-1:tag:1",
+    };
+
+    await expect(router.execute(
+      WORKFLOW_TAG_CAPABILITY_BINDING.definition,
+      request,
+    )).resolves.toEqual({});
+    expect(tagExecute).toHaveBeenCalledWith(
+      WORKFLOW_TAG_CAPABILITY_BINDING.definition,
+      request,
+    );
+    expect(messageExecute).not.toHaveBeenCalled();
   });
 
   it("dispatches Handoff only to its exact action route", async () => {

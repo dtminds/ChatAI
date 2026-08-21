@@ -49,7 +49,8 @@ Runtime 在调用 Worker Port 前生成以下类型化命令：
 - Prepared `thirdExternalUserId` 必须与 `recipient.thirdExternalUserId` 一致
 - Worker 仅查询指定的 `uid + seatId`；账号缺失或字段非法时 terminal，不替换其他账号
 - Handoff 表示进入该托管账号对应的接待队列，不在节点中指定某个客服人员
-- `operatorMessage` 必填，`customerMessage` 可为空，二者最长均为 100 字符
+- `operatorMessage` 只保存用户填写并完成变量解析的内容，不含固定前缀；必填且最长 100 字符
+- `customerMessage` 可为空，最长 100 字符
 - 两段消息已经完成变量解析，Java 不解析 selector
 - `source` 是语义枚举 `workflow`，Java 自行映射平台内部来源值
 
@@ -63,7 +64,7 @@ POST /third-internal/wap-embed/conversation/close-full-auto-with-message?idempot
 {
   "externalMessage": "正在为你转接人工，请稍等",
   "platform": 5,
-  "systemMessage": "客户咨询退款，请及时接待",
+  "systemMessage": "#123 SOP 转人工处理：客户咨询退款，请及时接待",
   "thirdExternalUserid": "third-external-user-id",
   "thirdUserid": "third-user-id",
   "uid": 9
@@ -74,7 +75,7 @@ POST /third-internal/wap-embed/conversation/close-full-auto-with-message?idempot
 
 - `platform`、`thirdUserid` 来自 `xy_wap_embed_user_seat`
 - `thirdExternalUserid` 来自 Prepared Identity
-- `systemMessage` 来自渲染后的 `operatorMessage`，必传非空
+- `systemMessage` 由 Worker 按 `#{workflowId} SOP 转人工处理：{operatorMessage}` 拼接，必传非空；其中 `operatorMessage` 是 Runtime 已完成变量解析的用户内容
 - 只有 `customerMessage` 非空时才传 `externalMessage`；未配置时字段完全省略
 - `idempotentKey` 使用 Runtime 稳定 Execution Key，放在 GET query 参数中
 

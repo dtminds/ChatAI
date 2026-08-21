@@ -1,5 +1,9 @@
 import {
+  ArrowRight02Icon,
   Cancel01Icon,
+  ComputerRemoveIcon,
+  Progress02Icon,
+  RacingFlagIcon,
   RefreshIcon,
   Task01Icon,
 } from "@hugeicons/core-free-icons";
@@ -165,19 +169,61 @@ function WorkflowDataOverviewView({
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState onRetry={load} />;
+  const summaryItems = [
+    {
+      icon: ArrowRight02Icon,
+      iconClassName: "bg-primary/10 text-primary",
+      label: "进入次数",
+      value: totals.entered,
+    },
+    {
+      icon: Progress02Icon,
+      iconClassName: "bg-success-muted text-success",
+      label: "当前停留",
+      value: totals.current,
+    },
+    {
+      icon: RacingFlagIcon,
+      iconClassName: "bg-indigo-500/10 text-indigo-500",
+      label: "已完成",
+      value: totals.completed,
+    },
+    {
+      icon: ComputerRemoveIcon,
+      iconClassName: "bg-warning-muted text-warning",
+      label: "未完成",
+      value: totals.incomplete,
+    },
+  ] as const;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <section aria-label="运行汇总" className="flex shrink-0 items-stretch border-b bg-background" role="region">
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--workflow-canvas-bg)]">
+      <section
+        aria-label="运行汇总"
+        className="m-4 flex shrink-0 items-stretch overflow-hidden rounded-2xl border border-foreground/10 bg-background"
+        role="region"
+      >
         <dl className="grid min-w-0 flex-1 grid-cols-4">
-          {([
-            ["进入次数", totals.entered],
-            ["当前停留", totals.current],
-            ["已完成", totals.completed],
-            ["未完成", totals.incomplete],
-          ] as const).map(([label, value], index) => (
-            <div className={cn("min-w-0 px-6 py-3", index > 0 && "border-l")} key={label}>
-              <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-              <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value.toLocaleString("zh-CN")}</dd>
+          {summaryItems.map(({ icon, iconClassName, label, value }, index) => (
+            <div
+              className="relative flex min-w-0 items-center gap-3 px-5 py-4"
+              key={label}
+            >
+              {index > 0 ? (
+                <span aria-hidden="true" className="absolute inset-y-4 left-0 w-px bg-foreground/10" />
+              ) : null}
+              <span
+                aria-hidden="true"
+                className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", iconClassName)}
+              >
+                <HugeiconsIcon icon={icon} size={20} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0">
+                <dt className="truncate text-xs font-medium text-muted-foreground">{label}</dt>
+                <dd className="mt-1 text-xl font-semibold tabular-nums text-foreground">
+                  {value.toLocaleString("zh-CN")}
+                </dd>
+              </div>
             </div>
           ))}
         </dl>

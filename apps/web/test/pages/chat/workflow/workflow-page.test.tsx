@@ -1232,6 +1232,8 @@ describe("Agent workflow page", () => {
     expect(within(panel).getAllByText("0/100")).toHaveLength(2);
 
     const operatorSection = operatorMessage.closest("section")!;
+    expect(within(operatorSection).getByText("SOP 转人工处理：")).toBeInTheDocument();
+    expect(operatorMessage).not.toHaveTextContent("SOP 转人工处理：");
     await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));

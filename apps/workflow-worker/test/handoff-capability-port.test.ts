@@ -35,6 +35,7 @@ describe("Workflow Handoff Java port", () => {
       signal: new AbortController().signal,
       token: "internal-token",
       uid: 9,
+      workflowId: "workflow-1",
     })).resolves.toEqual({});
 
     expect(queries).toHaveLength(1);
@@ -47,7 +48,7 @@ describe("Workflow Handoff Java port", () => {
       body: JSON.stringify({
         externalMessage: "正在转接",
         platform: 5,
-        systemMessage: "客户需要人工处理",
+        systemMessage: "#workflow-1 SOP 转人工处理：客户需要人工处理",
         thirdExternalUserid: "customer-1",
         thirdUserid: "work-user-1",
         uid: 9,
@@ -74,11 +75,12 @@ describe("Workflow Handoff Java port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
+      workflowId: "workflow-1",
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       platform: 5,
-      systemMessage: "客户需要人工处理",
+      systemMessage: "#workflow-1 SOP 转人工处理：客户需要人工处理",
       thirdExternalUserid: "customer-1",
       thirdUserid: "work-user-1",
       uid: 9,
@@ -115,6 +117,7 @@ describe("Workflow Handoff Java port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
+      workflowId: "workflow-1",
     })).rejects.toMatchObject({
       code: "WORKFLOW_HANDOFF_ACCOUNT_UNAVAILABLE",
       failureKind: "terminal",
@@ -151,6 +154,7 @@ describe("Workflow Handoff Java port", () => {
         signal: new AbortController().signal,
         token: null,
         uid: 9,
+        workflowId: "workflow-1",
       })).rejects.toMatchObject({ code: item.code, failureKind: "retryable" });
     }
   });
@@ -189,6 +193,7 @@ describe("Workflow Handoff Java port", () => {
         signal: new AbortController().signal,
         token: null,
         uid: 9,
+        workflowId: "workflow-1",
       })).rejects.toMatchObject({
         code: item.code,
         ...(item.diagnosticMessage ? { diagnosticMessage: item.diagnosticMessage } : {}),
@@ -212,6 +217,7 @@ describe("Workflow Handoff Java port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
+      workflowId: "workflow-1",
     };
 
     await expect(executeWorkflowHandoff(database, input)).rejects.toMatchObject({
@@ -222,6 +228,11 @@ describe("Workflow Handoff Java port", () => {
       "https://java.example.com/third-internal/wap-embed/conversation/close-full-auto-with-message?idempotentKey=stable-key",
       "https://java.example.com/third-internal/wap-embed/conversation/close-full-auto-with-message?idempotentKey=stable-key",
     ]);
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).systemMessage))
+      .toEqual([
+        "#workflow-1 SOP 转人工处理：客户需要人工处理",
+        "#workflow-1 SOP 转人工处理：客户需要人工处理",
+      ]);
   });
 
   it("propagates cancellation before querying the seat or calling Java", async () => {
@@ -239,6 +250,7 @@ describe("Workflow Handoff Java port", () => {
       signal: controller.signal,
       token: null,
       uid: 9,
+      workflowId: "workflow-1",
     })).rejects.toBe(reason);
     expect(queries).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();

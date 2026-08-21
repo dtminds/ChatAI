@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH = 100;
+export const WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX = "SOP 转人工处理：";
 
 export const WorkflowHandoffCommandSchema = Type.Object({
   customerMessage: Type.String({ maxLength: WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH }),

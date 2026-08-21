@@ -1,6 +1,7 @@
 import {
   isWorkflowNodeExecutionConfig,
   type WorkflowDraft,
+  type WorkflowNodeKind,
 } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 

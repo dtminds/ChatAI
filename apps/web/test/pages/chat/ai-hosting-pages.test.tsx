@@ -6027,7 +6027,7 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
 
     await user.click(
       screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),

@@ -1,7 +1,7 @@
 import {
   Add01Icon,
   Search01Icon,
-  WorkflowSquare01Icon,
+  WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useRef, useState } from "react";
@@ -275,7 +275,7 @@ export function WorkflowListPage({
               <HugeiconsIcon
                 aria-hidden="true"
                 className="text-muted-foreground"
-                icon={WorkflowSquare01Icon}
+                icon={WorkflowSquare06Icon}
                 size={16}
                 strokeWidth={1.8}
               />

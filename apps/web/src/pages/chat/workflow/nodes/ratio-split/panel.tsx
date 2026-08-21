@@ -20,7 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -78,12 +77,17 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
             <Label htmlFor={`ratio-split-label-${node.id}-${group.id}`}>
               分组 {String.fromCharCode(65 + index)}
             </Label>
-            <Input
-              id={`ratio-split-label-${node.id}-${group.id}`}
-              maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
-              onChange={event => updateGroup(group.id, { label: event.target.value })}
-              value={group.label}
-            />
+            <InputGroup>
+              <InputGroupInput
+                id={`ratio-split-label-${node.id}-${group.id}`}
+                maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+                onChange={event => updateGroup(group.id, { label: event.target.value })}
+                value={group.label}
+              />
+              <InputGroupAddon align="inline-end" className="pr-3 text-xs">
+                {group.label.length}/{WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+              </InputGroupAddon>
+            </InputGroup>
             <Button
               aria-label={`删除${group.label || `分组 ${String.fromCharCode(65 + index)}`}`}
               className="size-7 p-0 text-destructive hover:text-destructive"

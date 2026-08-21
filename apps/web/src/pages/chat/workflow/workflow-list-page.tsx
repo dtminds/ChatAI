@@ -1,13 +1,14 @@
 import {
   Add01Icon,
-  Archive04Icon,
   Search01Icon,
+  WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -269,14 +270,16 @@ export function WorkflowListPage({
         ) : null}
 
         {status === "ready" && filteredItems.length === 0 ? (
-          <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="text-muted-foreground/60"
-              icon={Archive04Icon}
-              size={40}
-              strokeWidth={1}
-            />
+          <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
+            <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="text-muted-foreground"
+                icon={WorkflowSquare01Icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </IconStack>
             <p className="text-sm leading-6 text-muted-foreground">暂无数据</p>
           </div>
         ) : null}

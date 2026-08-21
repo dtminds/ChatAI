@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
-  Archive04Icon,
   Attachment02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -19,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
@@ -876,13 +876,15 @@ function KbAttachmentsInitState({
 }) {
   return (
     <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-      <HugeiconsIcon
-        aria-hidden="true"
-        className="mb-6 text-muted-foreground/60"
-        icon={Archive04Icon}
-        size={40}
-        strokeWidth={1}
-      />
+      <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
+        <HugeiconsIcon
+          aria-hidden="true"
+          className="text-muted-foreground"
+          icon={Attachment02Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </IconStack>
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
         暂未启用附件库，开启后，可统一管理图片、链接、小程序等附件，Agent 在回答时会引用并发送
       </p>

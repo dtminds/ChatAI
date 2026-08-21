@@ -60,6 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { IconStack } from "@/components/ui/icon-stack";
 import {
   HoverCard,
   HoverCardContent,
@@ -133,7 +134,6 @@ import "./agent-module.css";
 import "./ai-skill-delivery.css";
 
 const KB_PICKER_PAGE_SIZE = 10;
-const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 type ResourceSectionId = "variables" | "tools" | "knowledge-bases";
 
@@ -1222,12 +1222,15 @@ function SkillResourceSection({
             className="flex flex-col items-center justify-center px-2 py-6"
             role="status"
           >
-            <img
-              alt=""
-              aria-hidden="true"
-              className="h-auto w-20 opacity-50"
-              src={emptyStateIllustrationUrl}
-            />
+            <IconStack aria-hidden="true" className="mb-3 h-14 w-[50px]">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="text-muted-foreground"
+                icon={icon}
+                size={12}
+                strokeWidth={1.8}
+              />
+            </IconStack>
             <p className="text-sm text-muted-foreground">暂未配置</p>
           </div>
         ) : (

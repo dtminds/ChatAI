@@ -30,6 +30,7 @@ import {
   type WorkflowDataRepository,
 } from "./workflow-data-repository";
 import type { WorkflowDraft, WorkflowRenderNode } from "./types";
+import { createWorkflowReadOnlyRenderElements } from "./use-workflow-render-elements";
 
 const defaultWorkflowDataRepository = createWorkflowDataRepository();
 
@@ -142,7 +143,11 @@ function WorkflowDataOverviewView({
   useEffect(load, [load, refreshVersion]);
   const metrics = useMemo(() => new Map(overview?.nodes.map(item => [item.nodeId, item]) ?? []), [overview]);
   const totals = overview?.summary ?? { completed: 0, current: 0, entered: 0, incomplete: 0 };
-  const nodes = useMemo(() => draft.nodes.map(node => ({
+  const rendered = useMemo(
+    () => createWorkflowReadOnlyRenderElements(draft.nodes, draft.edges),
+    [draft.edges, draft.nodes],
+  );
+  const nodes = useMemo(() => rendered.nodes.map(node => ({
     ...node,
     data: {
       ...node.data,
@@ -156,7 +161,7 @@ function WorkflowDataOverviewView({
       },
       onDataMetricClick: () => node.data.kind === "start" ? onViewAllRecords() : onViewNodeRecords(node.id),
     },
-  })) as WorkflowRenderNode[], [draft.nodes, metrics, onViewAllRecords, onViewNodeRecords]);
+  })) as WorkflowRenderNode[], [metrics, onViewAllRecords, onViewNodeRecords, rendered.nodes]);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState onRetry={load} />;
@@ -186,7 +191,7 @@ function WorkflowDataOverviewView({
       <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
         <WorkflowCanvas
           allowedInsertableNodeKinds={[]}
-          canRedo={false} canUndo={false} edges={draft.edges} isReadOnly nodes={nodes} showEditingTools={false}
+          canRedo={false} canUndo={false} edges={rendered.edges} isReadOnly nodes={nodes} showEditingTools={false}
           onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
           onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}
           onNodeHoverEnd={() => {}} onNodeHoverStart={() => {}} onNodesChange={() => {}} onPaletteOpenChange={() => {}}

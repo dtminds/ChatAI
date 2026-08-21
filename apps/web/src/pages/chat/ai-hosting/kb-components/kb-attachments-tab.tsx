@@ -543,7 +543,7 @@ export function KbAttachmentsTab({
   };
 
   const handleAttachmentDialogSubmit = async (item: KbAttachmentItem) => {
-    if (!kbId) {
+    if (!canManage || !kbId) {
       return;
     }
 
@@ -594,7 +594,7 @@ export function KbAttachmentsTab({
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteTarget || deleting) {
+    if (!canManage || !deleteTarget || deleting) {
       setDeleteTarget(null);
       return;
     }

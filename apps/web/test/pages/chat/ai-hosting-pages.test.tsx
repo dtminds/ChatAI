@@ -2345,6 +2345,38 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("disables previewing a skill template for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/new",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills?tab=marketplace"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByRole("button", { name: /订单信息查询/ }));
+
+    const detailDialog = screen.getByRole("dialog");
+    const previewButton = await within(detailDialog).findByRole("button", {
+      name: "预览技能",
+    });
+    expect(previewButton).toBeDisabled();
+
+    await user.click(previewButton);
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills");
+  });
+
   it("previews a skill template directly into create page with recommend resources tips", async () => {
     const user = userEvent.setup();
     const router = createMemoryRouter(
@@ -5774,7 +5806,9 @@ describe("AI hosting pages", () => {
   it("shows a toast when creating a knowledge base fails", async () => {
     const user = userEvent.setup();
     vi.mocked(kbService.createKb).mockRejectedValueOnce({
+      code: "FORBIDDEN",
       message: "当前账号无操作权限",
+      status: 403,
     });
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
@@ -5789,6 +5823,25 @@ describe("AI hosting pages", () => {
       expect(toast.error).toHaveBeenCalledWith("当前账号无操作权限");
     });
     expect(screen.getByRole("dialog", { name: "创建知识库" })).toBeInTheDocument();
+  });
+
+  it("uses the generic operation error when creating a knowledge base times out", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.createKb).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "创建知识库" }));
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("操作失败，请稍后重试");
+    });
+    expect(toast.error).not.toHaveBeenCalledWith("timeout of 15000ms exceeded");
   });
 
   it("shows knowledge base list load failures in a toast", async () => {

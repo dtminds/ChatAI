@@ -170,6 +170,8 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 export function AiSkillsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSkill, setSelectedSkill] = useState<SkillItem | null>(null);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const activeTab =
     searchParams.get("tab") === "marketplace" ? "marketplace" : "mine";
 
@@ -212,6 +214,7 @@ export function AiSkillsPage() {
       </div>
 
       <SkillDetailDialog
+        canManage={canManage}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedSkill(null);
@@ -770,10 +773,12 @@ function SkillCard({
 }
 
 function SkillDetailDialog({
+  canManage,
   onOpenChange,
   open,
   skill,
 }: {
+  canManage: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   skill: SkillItem | null;
@@ -823,7 +828,7 @@ function SkillDetailDialog({
   }, [open, skill]);
 
   function handlePreviewSkill() {
-    if (!detail) {
+    if (!canManage || !detail) {
       return;
     }
 
@@ -877,7 +882,7 @@ function SkillDetailDialog({
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   className="bg-neutral-950 text-white hover:bg-neutral-800"
-                  disabled={!detail}
+                  disabled={!canManage || !detail}
                   onClick={handlePreviewSkill}
                   size="sm"
                   type="button"

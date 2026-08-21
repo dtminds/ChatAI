@@ -94,6 +94,20 @@ const KB_DELETE_DIALOG_MESSAGE_CLASSNAME =
 function buildKbDeleteLinkedAgentsBlockedMessage(linkedAgentCount: number) {
   return `当前知识库已关联${linkedAgentCount}个Agent，不支持删除`;
 }
+
+function resolveKbWriteErrorMessage(error: unknown) {
+  if (
+    isRequestError(error)
+    && error.status != null
+    && error.status >= 400
+    && error.status < 500
+  ) {
+    return error.message;
+  }
+
+  return "操作失败，请稍后重试";
+}
+
 const kbIntroSteps = [
   {
     description: "按特定场景/领域管理知识库，支持结构化和非结构化类型知识",
@@ -298,7 +312,7 @@ export function KbListPage() {
       notifyAiHostingQuotaChanged();
     } catch (error) {
       if (isMountedRef.current) {
-        toast.error(isRequestError(error) ? error.message : "操作失败，请稍后重试");
+        toast.error(resolveKbWriteErrorMessage(error));
       }
     } finally {
       if (isMountedRef.current) {

@@ -793,7 +793,14 @@ describe("WorkflowService", () => {
     const created = await createConfigured(service);
 
     expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "tag", "end"]));
+      .toEqual(expect.arrayContaining([
+        "start",
+        "wait",
+        "message-query",
+        "tag",
+        "customer-update",
+        "end",
+      ]));
     expect(created.capabilitySummary.runtimeSupportedNodeKinds)
       .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
     await expect(service.submitReview(operator, created.id, {
@@ -820,6 +827,34 @@ describe("WorkflowService", () => {
         data: { kind: "tag", operation: "remove", tagIds: [301, 302] },
         id: "tag",
     });
+  });
+
+  it("publishes a complete Customer Update node into an executable revision", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withCustomerUpdateNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const published = await publishApprovedDraft(
+      service,
+      created.id,
+      configured.draftVersion,
+    );
+
+    expect(published.revision.draft.nodes.find(node => node.id === "customer-update"))
+      .toMatchObject({
+        data: {
+          fields: [{
+            field: { id: 301, key: "remark", title: "客户备注", type: 1 },
+            id: "field-1",
+            value: { kind: "literal", value: "重点客户" },
+          }],
+          kind: "customer-update",
+        },
+        id: "customer-update",
+      });
   });
 
   it("keeps draft-ready LLM nodes out of published revisions", async () => {
@@ -1527,6 +1562,51 @@ function withTagNode(
           title: "客户打标",
         },
         id: "tag",
+        position: { x: 340, y: 240 },
+        selected: false,
+        type: "workflowNode",
+      },
+      ...draft.nodes.filter(node => node.id === "end"),
+    ],
+  };
+}
+
+function withCustomerUpdateNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  return {
+    ...draft,
+    edges: [
+      {
+        id: "start-customer-update",
+        source: "start",
+        target: "customer-update",
+        type: "workflowEdge",
+      },
+      {
+        id: "customer-update-end",
+        source: "customer-update",
+        target: "end",
+        type: "workflowEdge",
+      },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      {
+        data: {
+          fields: [{
+            field: { id: 301, key: "remark", title: "客户备注", type: 1 as const },
+            id: "field-1",
+            value: { kind: "literal" as const, value: "重点客户" },
+          }],
+          kind: "customer-update" as const,
+          label: "更新客户信息",
+          metric: "",
+          schemaVersion: 1,
+          status: "ready" as const,
+          title: "更新客户信息",
+        },
+        id: "customer-update",
         position: { x: 340, y: 240 },
         selected: false,
         type: "workflowNode",

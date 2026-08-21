@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
+  WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -160,13 +161,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "customer-update",
-      kind: "customer-update",
+      id: "ai-intent",
+      kind: "ai-intent",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-update", source: "start", sourceOutletId: "default", target: "customer-update" },
-      { id: "update-end", source: "customer-update", sourceOutletId: "default", target: "end" },
+      { id: "start-intent", source: "start", sourceOutletId: "default", target: "ai-intent" },
+      { id: "intent-end", source: "ai-intent", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -177,8 +178,8 @@ describe("Workflow runtime policy", () => {
       context: { outputs: {}, trigger: {} },
       entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "customer-update",
-      initialNodeKind: "customer-update",
+      initialNodeId: "ai-intent",
+      initialNodeKind: "ai-intent",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -341,6 +342,50 @@ describe("Workflow runtime policy", () => {
     });
   });
 
+  it("executes a runtime-ready Customer Update action with prepared identity and a stable key", async () => {
+    const harness = createHarness({
+      capabilityResult: {},
+      entitlement: async () => ({ entitled: true, unentitledSince: null }),
+      executionSpec: createCustomerUpdateExecutionSpec(),
+    });
+    const started = await harness.service.startRun(entryInput({
+      trigger: { projection: { externalUserId: 101 } },
+    }));
+    const startResult = await harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("Customer Update Task was not created");
+    }
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: startResult.nextTask.id,
+      taskVersion: startResult.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+    });
+    expect(harness.capabilityCalls).toHaveLength(1);
+    expect(harness.capabilityCalls[0]).toMatchObject({
+      definition: { capabilityKey: "customer.update", kind: "action" },
+      request: {
+        command: {
+          source: "workflow",
+          updates: [{ fieldId: 301, fieldType: 1, value: "重点客户" }],
+        },
+        idempotencyKey: `9:${started.run.id}:customer-update:2`,
+        identities: { externalUserId: 101 },
+      },
+    });
+  });
+
   it("validates that every runtime-ready node has a composed execution path", () => {
     const incomplete = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -408,6 +453,7 @@ function createHarness(options: {
             capabilityBindings: options.capabilityBindings ?? [
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+              WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
               WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
             ],
@@ -543,6 +589,37 @@ function createTagExecutionSpec(): WorkflowExecutionSpec {
   spec.edges = [
     { id: "start-tag", source: "start", sourceOutletId: "default", target: "tag" },
     { id: "tag-end", source: "tag", sourceOutletId: "default", target: "end" },
+  ];
+  return spec;
+}
+
+function createCustomerUpdateExecutionSpec(): WorkflowExecutionSpec {
+  const spec = createExecutionSpec("chatai-workflow");
+  spec.nodes.splice(1, 0, {
+    config: {
+      fields: [{
+        fieldId: 301,
+        fieldType: 1,
+        value: { kind: "literal", value: "重点客户" },
+      }],
+    },
+    id: "customer-update",
+    kind: "customer-update",
+    nodeSchemaVersion: 1,
+  });
+  spec.edges = [
+    {
+      id: "start-customer-update",
+      source: "start",
+      sourceOutletId: "default",
+      target: "customer-update",
+    },
+    {
+      id: "customer-update-end",
+      source: "customer-update",
+      sourceOutletId: "default",
+      target: "end",
+    },
   ];
   return spec;
 }

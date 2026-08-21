@@ -31,9 +31,8 @@ Java 负责：
 | Node Kind | 所需身份 |
 | --- | --- |
 | Message、Message Query、Handoff | `thirdExternalUserId` |
-| Tag、Tag Query、Order Query、Coupon | `externalUserId` |
+| Tag、Tag Query、Customer Update、Order Query、Coupon | `externalUserId` |
 | Start、Wait、Wait Event、Branch、End | 无 |
-| Customer Update | 当前无直接身份声明 |
 
 任意节点配置出现 `global.*` Selector 时，Runtime 动态判定该节点需要完整 Global Context；当前 Global Context Prepare 的前置身份固定为 `externalUserId`。节点不声明具体全局变量清单。
 

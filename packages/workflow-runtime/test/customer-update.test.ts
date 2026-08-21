@@ -9,13 +9,16 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-17T16:30:00.000Z" },
-  identities: {},
+  identities: { externalUserId: 101 },
   nodeLifecycle: {},
   outputs: {
     llm: {
       birthday: "1995-04-18",
       invalidDate: "not-a-date",
       score: 12.5,
+    },
+    "tag-query": {
+      matchedTagNames: "",
     },
   },
   subjectId: "customer-1",
@@ -149,6 +152,49 @@ describe("Workflow Customer Update capability", () => {
     expect(adapter.calls[0]?.request.command).toEqual({ source: "workflow", updates: [] });
   });
 
+  it("skips an empty text value resolved from a variable without failing the batch", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({}));
+
+    await expect(executeWorkflowCapability({
+      binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+      commandContext: context,
+      config: {
+        fields: [
+          {
+            fieldId: 5,
+            fieldType: 1,
+            value: {
+              kind: "variable",
+              selector: ["node", "tag-query", "matchedTagNames"],
+              valueType: { kind: "string" },
+            },
+          },
+          { fieldId: 6, fieldType: 1, value: { kind: "literal", value: "保留地址" } },
+        ],
+      },
+      deadlineAt: new Date("2026-08-17T16:30:15.000Z"),
+      execution: {
+        nodeId: "customer-update",
+        revision: 2,
+        runId: "run-1",
+        sequence: 3,
+        workflowId: "workflow-1",
+      },
+      executionKey: "9:run-1:customer-update:3",
+      port: adapter,
+      signal: new AbortController().signal,
+      subjectId: "customer-1",
+      subjectType: "wecom_contact",
+      uid: 9,
+    })).resolves.toEqual({});
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0]?.request.command).toEqual({
+      source: "workflow",
+      updates: [{ fieldId: 6, fieldType: 1, value: "保留地址" }],
+    });
+  });
+
   it("rejects unavailable or incompatible values before invoking Java", async () => {
     expect(() => createWorkflowCustomerUpdateCommand({
       config: {
@@ -171,7 +217,7 @@ describe("Workflow Customer Update capability", () => {
     const execute = vi.fn(async () => ({}));
     await expect(executeWorkflowCapability({
       binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
-      commandContext: { ...context, subjectId: "" },
+      commandContext: { ...context, identities: {} },
       config: {
         fields: [{ fieldId: 1, fieldType: 1, value: { kind: "literal", value: "重点客户" } }],
       },
@@ -186,7 +232,7 @@ describe("Workflow Customer Update capability", () => {
       executionKey: "9:run-1:customer-update:3",
       port: new FakeWorkflowCapabilityAdapter(execute),
       signal: new AbortController().signal,
-      subjectId: "",
+      subjectId: "customer-1",
       subjectType: "wecom_contact",
       uid: 9,
     })).rejects.toMatchObject({ code: "WORKFLOW_CUSTOMER_UPDATE_COMMAND_INVALID" });

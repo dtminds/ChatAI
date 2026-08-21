@@ -5746,19 +5746,19 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
-  it("hides knowledge base write actions for non-manage roles", async () => {
+  it("disables knowledge base write actions for non-manage roles", async () => {
     const user = userEvent.setup();
     mockSession("operator");
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "创建知识库" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建知识库" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
-    expect(screen.getByRole("menuitem", { name: "详情" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "详情" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "编辑" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
     expect(kbService.createKb).not.toHaveBeenCalled();
   });
 
@@ -6015,7 +6015,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
   });
 
-  it("hides knowledge write actions for non-manage roles", async () => {
+  it("disables knowledge write actions for non-manage roles", async () => {
     const user = userEvent.setup();
     mockSession("operator");
 
@@ -6026,14 +6026,14 @@ describe("AI hosting pages", () => {
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加知识" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "重试 文本知识集合" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
 
     await user.click(
       screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
     );
-    expect(screen.getByRole("menuitem", { name: "切片详情" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "切片详情" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("shows knowledge list load failures in a toast", async () => {
@@ -7011,6 +7011,27 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("保修期多久")).toBeInTheDocument();
   });
 
+  it("disables knowledge chunk write actions for non-manage roles", async () => {
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答.faq" })).toBeInTheDocument();
+    expect(await screen.findByText("如何恢复出厂设置")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加问答" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
+    for (const button of screen.getAllByRole("button", { name: "编辑" })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole("button", { name: "删除" })) {
+      expect(button).toBeDisabled();
+    }
+  });
+
   it("shows document page load failures in a toast instead of not found", async () => {
     vi.mocked(kbService.getKbDoc).mockRejectedValueOnce({
       code: "ECONNABORTED",
@@ -7415,6 +7436,26 @@ describe("AI hosting pages", () => {
       title: "",
     });
     expect(await screen.findByText("原装充电器与数据线需单独购买")).toBeInTheDocument();
+  });
+
+  it("disables document chunk write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "产品说明大全.doc" });
+    const chunkList = await screen.findByRole("list", { name: "切片列表" });
+    expect(screen.getByRole("button", { name: "添加切片" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑 chunk-doc-1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除 chunk-doc-1" })).toBeDisabled();
+
+    await user.click(within(chunkList).getByText("第一章 产品介绍"));
+    expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
   });
 
   it("filters document chunks by content only", async () => {

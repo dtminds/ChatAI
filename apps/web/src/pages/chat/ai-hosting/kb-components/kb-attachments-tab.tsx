@@ -746,27 +746,24 @@ export function KbAttachmentsTab({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {canManage ? (
-            <>
-              <Button
-                className="h-10 px-4"
-                disabled={selectedCount === 0}
-                onClick={() => setDeleteTarget("batch")}
-                type="button"
-                variant="outline"
-              >
-                批量删除
-              </Button>
-              <Button
-                className="h-10 gap-2 px-4"
-                onClick={() => setAddDialogOpen(true)}
-                type="button"
-              >
-                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                添加附件
-              </Button>
-            </>
-          ) : null}
+          <Button
+            className="h-10 px-4"
+            disabled={!canManage || selectedCount === 0}
+            onClick={() => setDeleteTarget("batch")}
+            type="button"
+            variant="outline"
+          >
+            批量删除
+          </Button>
+          <Button
+            className="h-10 gap-2 px-4"
+            disabled={!canManage}
+            onClick={() => setAddDialogOpen(true)}
+            type="button"
+          >
+            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+            添加附件
+          </Button>
         </div>
       </div>
 
@@ -904,16 +901,15 @@ function KbAttachmentsInitState({
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
         暂未启用附件库，开启后，可统一管理图片、链接、小程序等附件，Agent 在回答时会引用并发送
       </p>
-      {canManage ? (
-        <Button
-          className="mt-6 h-10 px-6"
-          onClick={onInitialize}
-          type="button"
-          variant="outline"
-        >
-          立即启用
-        </Button>
-      ) : null}
+      <Button
+        className="mt-6 h-10 px-6"
+        disabled={!canManage}
+        onClick={onInitialize}
+        type="button"
+        variant="outline"
+      >
+        立即启用
+      </Button>
     </div>
   );
 }
@@ -956,17 +952,15 @@ function KbAttachmentsFailedState({
         strokeWidth={1.8}
       />
       <p className="text-sm text-muted-foreground">附件库同步失败</p>
-      {canManage ? (
-        <Button
-          className="h-10 px-6"
-          disabled={retrying}
-          onClick={onRetry}
-          type="button"
-          variant="outline"
-        >
-          {retrying ? "正在重试" : "重试"}
-        </Button>
-      ) : null}
+      <Button
+        className="h-10 px-6"
+        disabled={!canManage || retrying}
+        onClick={onRetry}
+        type="button"
+        variant="outline"
+      >
+        {retrying ? "正在重试" : "重试"}
+      </Button>
     </div>
   );
 }

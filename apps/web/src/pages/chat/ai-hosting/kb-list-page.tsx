@@ -413,19 +413,17 @@ export function KbListPage() {
               />
             </div>
 
-            {canManage ? (
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <Button
-                  className="h-10 px-4"
-                  disabled={checkingQuota}
-                  onClick={() => void handleOpenCreateDialog()}
-                  type="button"
-                >
-                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>创建知识库</span>
-                </Button>
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <Button
+                className="h-10 px-4"
+                disabled={!canManage || checkingQuota}
+                onClick={() => void handleOpenCreateDialog()}
+                type="button"
+              >
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                <span>创建知识库</span>
+              </Button>
+            </div>
           </div>
 
           <div>
@@ -511,19 +509,19 @@ export function KbListPage() {
                                 详情
                               </Link>
                             </DropdownMenuItem>
-                            {canManage ? (
-                              <>
-                                <DropdownMenuItem onSelect={() => handleOpenEditDialog(item)}>
-                                  编辑
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onSelect={() => void handleDeleteClick(item)}
-                                >
-                                  删除
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
+                            <DropdownMenuItem
+                              disabled={!canManage}
+                              onSelect={() => handleOpenEditDialog(item)}
+                            >
+                              编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={!canManage}
+                              onSelect={() => void handleDeleteClick(item)}
+                            >
+                              删除
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TablePinnedCell>

@@ -88,10 +88,15 @@ function resolveCustomerFieldValue(
     return normalizeWorkflowCustomerDate(value);
   }
 
-  if (typeof value !== "string" || !value.trim()) {
+  if (typeof value !== "string") {
     throw customerUpdateCommandError("Customer text field resolved to an empty or non-string value");
   }
-  return value.trim();
+  const normalized = value.trim();
+  if (!normalized) {
+    if (configuredValue.kind === "variable") return null;
+    throw customerUpdateCommandError("Customer text field resolved to an empty or non-string value");
+  }
+  return normalized;
 }
 
 function readVariableValue(

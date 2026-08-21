@@ -216,6 +216,18 @@ describe("workflow node contracts", () => {
     })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("ratio-split", {
       groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "一二三四五六七八九十" },
+        { basisPoints: 5_000, id: "ratio-b", label: "一二三四五六七八九十" },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeDraftConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "一二三四五六七八九十一" },
+        { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
         { basisPoints: 2_000, id: "ratio-a", label: "A 组" },
         { basisPoints: 3_000, id: "ratio-b", label: "B 组" },
         { basisPoints: 5_000, id: "ratio-c", label: "C 组" },

@@ -77,6 +77,17 @@ describe("workflow Ratio Split node", () => {
     expect(screen.getByRole("button", { name: "添加分组" })).toBeDisabled();
   });
 
+  it("limits group names to ten characters", async () => {
+    const user = userEvent.setup();
+    render(<StatefulRatioSplitConfig />);
+
+    const firstGroupName = screen.getAllByRole("textbox", { name: /分组 [A-E]/ })[0]!;
+    await user.clear(firstGroupName);
+    await user.type(firstGroupName, "一二三四五六七八九十一");
+
+    expect(firstGroupName).toHaveValue("一二三四五六七八九十");
+  });
+
   it("confirms deletion when the removable group already has a downstream edge", async () => {
     const user = userEvent.setup();
     render(<StatefulRatioSplitConfig connectedThirdGroup />);

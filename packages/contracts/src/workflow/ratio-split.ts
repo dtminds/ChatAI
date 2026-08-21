@@ -4,6 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 export const WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS = 10_000;
 export const WORKFLOW_RATIO_SPLIT_GROUP_MIN = 2;
 export const WORKFLOW_RATIO_SPLIT_GROUP_MAX = 5;
+export const WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH = 10;
 
 const WorkflowRatioSplitDraftGroupSchema = Type.Object({
   basisPoints: Type.Integer({
@@ -11,7 +12,7 @@ const WorkflowRatioSplitDraftGroupSchema = Type.Object({
     minimum: 0,
   }),
   id: Type.String({ minLength: 1, maxLength: 128 }),
-  label: Type.String({ maxLength: 32 }),
+  label: Type.String({ maxLength: WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH }),
 }, { additionalProperties: false });
 
 const WorkflowRatioSplitExecutionGroupSchema = Type.Object({
@@ -20,7 +21,10 @@ const WorkflowRatioSplitExecutionGroupSchema = Type.Object({
     minimum: 0,
   }),
   id: Type.String({ minLength: 1, maxLength: 128 }),
-  label: Type.String({ maxLength: 32, minLength: 1 }),
+  label: Type.String({
+    maxLength: WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH,
+    minLength: 1,
+  }),
 }, { additionalProperties: false });
 
 export const WorkflowRatioSplitDraftConfigSchema = Type.Object({

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   WORKFLOW_RATIO_SPLIT_GROUP_MAX,
+  WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH,
   WORKFLOW_RATIO_SPLIT_GROUP_MIN,
   WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS,
   getWorkflowRatioSplitBasisPointsTotal,
@@ -79,7 +80,7 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
             </Label>
             <Input
               id={`ratio-split-label-${node.id}-${group.id}`}
-              maxLength={32}
+              maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
               onChange={event => updateGroup(group.id, { label: event.target.value })}
               value={group.label}
             />

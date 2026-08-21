@@ -793,12 +793,33 @@ describe("WorkflowService", () => {
     const created = await createConfigured(service);
 
     expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "end"]));
+      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "tag", "end"]));
     expect(created.capabilitySummary.runtimeSupportedNodeKinds)
       .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
     await expect(service.submitReview(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
     })).resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("publishes a complete Tag node into an executable revision", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withTagNode(created.draft, { operation: "remove", tagIds: [301, 302] }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const published = await publishApprovedDraft(
+      service,
+      created.id,
+      configured.draftVersion,
+    );
+
+    expect(published.revision.draft.nodes.find(node => node.id === "tag"))
+      .toMatchObject({
+        data: { kind: "tag", operation: "remove", tagIds: [301, 302] },
+        id: "tag",
+    });
   });
 
   it("keeps draft-ready LLM nodes out of published revisions", async () => {
@@ -1474,6 +1495,38 @@ function withWaitNode(
           title: "等待",
         },
         id: "wait",
+        position: { x: 340, y: 240 },
+        selected: false,
+        type: "workflowNode",
+      },
+      ...draft.nodes.filter(node => node.id === "end"),
+    ],
+  };
+}
+
+function withTagNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: { operation: "add" | "remove"; tagIds: number[] },
+) {
+  return {
+    ...draft,
+    edges: [
+      { id: "start-tag", source: "start", target: "tag", type: "workflowEdge" },
+      { id: "tag-end", source: "tag", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      {
+        data: {
+          ...config,
+          kind: "tag" as const,
+          label: "客户打标",
+          metric: "",
+          schemaVersion: 1,
+          status: "ready" as const,
+          title: "客户打标",
+        },
+        id: "tag",
         position: { x: 340, y: 240 },
         selected: false,
         type: "workflowNode",

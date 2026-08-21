@@ -518,7 +518,7 @@ export const workflowNodeContractRegistry = {
     WorkflowStartDraftConfigSchema,
     WorkflowStartConfigSchema,
   ),
-  tag: draftReadyContract(
+  tag: runtimeReadyContract(
     "action",
     1,
     WorkflowTagDraftConfigSchema,

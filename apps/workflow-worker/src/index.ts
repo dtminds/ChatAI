@@ -14,6 +14,7 @@ import {
   WorkflowRuntimeService,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
@@ -34,6 +35,7 @@ import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
 import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
+import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
 
@@ -70,6 +72,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const tagCapabilityPort = new HttpWorkflowTagCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const handoffCapabilityPort = new MysqlWorkflowHandoffCapabilityPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
@@ -77,6 +83,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const capabilityPort = new WorkflowCapabilityRouter([
     { binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING, port: handoffCapabilityPort },
     { binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING, port: messageCapabilityPort },
+    { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
   ]);
   const runtimeService = new WorkflowRuntimeService(
@@ -185,5 +192,6 @@ export * from "./reconciler.js";
 export * from "./role-loop.js";
 export * from "./runtime.js";
 export * from "./scheduler.js";
+export * from "./tag-capability-port.js";
 export * from "./tag-query-capability-port.js";
 export * from "./task-consumer.js";

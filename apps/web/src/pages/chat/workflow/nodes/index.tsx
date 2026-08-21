@@ -38,7 +38,7 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
       />
       {data.dataMetric ? (
         <button
-          className="nodrag nopan absolute inset-x-4 top-full -mt-px flex h-8 items-center justify-between rounded-b-[8px] border-x border-b bg-background px-3 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+          className="nodrag nopan absolute inset-x-0 top-full mt-3 flex h-9 items-center justify-between rounded-xl bg-background px-3 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
           onClick={(event) => {
             event.stopPropagation();
             data.onDataMetricClick?.(id);
@@ -47,18 +47,19 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
         >
           <span className="flex min-w-0 items-center gap-3 whitespace-nowrap text-left">
             {data.kind === "start" ? (
-              <span>已进入 <strong className="font-semibold text-foreground">{data.dataMetric.entered}</strong></span>
+              <span>已进入 <strong className="font-semibold text-success">{data.dataMetric.entered}</strong></span>
             ) : null}
             {data.kind !== "start" && data.kind !== "end" ? (
               <>
                 <span>
-                  当前停留 <strong className="font-semibold text-foreground">{data.dataMetric.current}</strong>
+                  当前停留 <strong className="font-semibold text-success">{data.dataMetric.current}</strong>
                 </span>
-                <span>已通过 <strong className="font-semibold text-foreground">{data.dataMetric.passed}</strong></span>
+                <span aria-hidden="true">·</span>
+                <span>已通过 <strong className="font-semibold text-success">{data.dataMetric.passed}</strong></span>
               </>
             ) : null}
             {data.kind === "end" ? (
-              <span>已完成 <strong className="font-semibold text-foreground">{data.dataMetric.completed}</strong></span>
+              <span>已完成 <strong className="font-semibold text-success">{data.dataMetric.completed}</strong></span>
             ) : null}
           </span>
           <HugeiconsIcon className="shrink-0" icon={ArrowRight01Icon} size={14} strokeWidth={1.8} />

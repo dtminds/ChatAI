@@ -274,7 +274,6 @@ export function WorkflowListPage({
             <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
               <HugeiconsIcon
                 aria-hidden="true"
-                className="text-muted-foreground"
                 icon={WorkflowSquare06Icon}
                 size={16}
                 strokeWidth={1.8}

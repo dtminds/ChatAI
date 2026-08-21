@@ -550,7 +550,6 @@ export function TicketDetailContent({
                     <IconStack aria-hidden="true" className="h-16 w-[58px]">
                       <HugeiconsIcon
                         aria-hidden="true"
-                        className="text-muted-foreground"
                         icon={Clock04Icon}
                         size={13}
                         strokeWidth={1.8}

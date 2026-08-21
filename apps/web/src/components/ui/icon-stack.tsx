@@ -3,14 +3,34 @@ import type { CSSProperties, ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 // Adapted from https://reui.io/components/icon-stack
-type IconStackProps = ComponentProps<"div">;
+const iconStackVariantClassNames = {
+  neutral:
+    "text-foreground [&_[data-slot=icon-stack-content]]:text-muted-foreground",
+  primary: "text-primary [&_[data-slot=icon-stack-content]]:text-primary",
+  success: "text-success [&_[data-slot=icon-stack-content]]:text-success",
+  warning: "text-warning [&_[data-slot=icon-stack-content]]:text-warning",
+} as const;
 
-function IconStack({ className, children, style, ...props }: IconStackProps) {
+type IconStackVariant = keyof typeof iconStackVariantClassNames;
+
+type IconStackProps = ComponentProps<"div"> & {
+  variant?: IconStackVariant;
+};
+
+function IconStack({
+  className,
+  children,
+  style,
+  variant = "neutral",
+  ...props
+}: IconStackProps) {
   return (
     <div
       data-slot="icon-stack"
+      data-variant={variant}
       className={cn(
-        "relative h-20 w-18 text-foreground **:data-[slot=icon-stack-layer]:fill-background",
+        "relative h-20 w-18 **:data-[slot=icon-stack-layer]:fill-background",
+        iconStackVariantClassNames[variant],
         className,
       )}
       style={
@@ -46,7 +66,7 @@ function IconStack({ className, children, style, ...props }: IconStackProps) {
       {children ? (
         <div
           data-slot="icon-stack-content"
-          className="pointer-events-none absolute top-[var(--icon-stack-content-y)] left-[var(--icon-stack-content-x)] flex -translate-x-1/2 -translate-y-1/2 scale-x-90 -skew-y-26 items-center justify-center text-muted-foreground"
+          className="pointer-events-none absolute top-[var(--icon-stack-content-y)] left-[var(--icon-stack-content-x)] flex -translate-x-1/2 -translate-y-1/2 scale-x-90 -skew-y-26 items-center justify-center"
         >
           {children}
         </div>
@@ -90,4 +110,4 @@ function IconStackLayer({
   );
 }
 
-export { IconStack, type IconStackProps };
+export { IconStack, type IconStackProps, type IconStackVariant };

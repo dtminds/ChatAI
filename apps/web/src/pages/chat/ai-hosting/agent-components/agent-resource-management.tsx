@@ -240,7 +240,6 @@ function AgentResourceSection({
             <IconStack aria-hidden="true" className="mb-3 h-14 w-[50px]">
               <HugeiconsIcon
                 aria-hidden="true"
-                className="text-muted-foreground"
                 icon={icon}
                 size={12}
                 strokeWidth={1.8}

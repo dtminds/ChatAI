@@ -1231,7 +1231,7 @@ function SkillResourceSection({
                 strokeWidth={1.8}
               />
             </IconStack>
-            <p className="text-sm text-muted-foreground">暂未配置</p>
+            <p className="text-xs text-muted-foreground">暂未配置</p>
           </div>
         ) : (
           <ul aria-label={`已添加${title}`} className="space-y-1.5 px-0.5 py-2">

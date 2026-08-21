@@ -246,7 +246,7 @@ function AgentResourceSection({
                 strokeWidth={1.8}
               />
             </IconStack>
-            <p className="text-sm text-muted-foreground">暂未配置</p>
+            <p className="text-xs text-muted-foreground">暂未配置</p>
           </div>
         ) : (
           <ul

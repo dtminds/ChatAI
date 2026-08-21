@@ -10,6 +10,7 @@ import {
 describe("workflow state machine", () => {
   it("allows recoverable run transitions and rejects terminal transitions", () => {
     expect(transitionRun("queued", "running")).toBe("running");
+    expect(transitionRun("queued", "waiting")).toBe("waiting");
     expect(transitionRun("running", "running")).toBe("running");
     expect(transitionRun("waiting", "running")).toBe("running");
     expect(transitionRun("waiting", "completed")).toBe("completed");

@@ -20,6 +20,7 @@ import type {
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowCapabilityFailureKind } from "@chatai/workflow-engine";
+import type { WorkflowTaskDeferReasonCode } from "./task-deferral.js";
 
 export type WorkflowRuntimeDefinitionRecord = {
   bizStatus: 0 | 1;
@@ -146,6 +147,7 @@ export type WorkflowTaskRecord = {
   createdAt: Date;
   dueAt: Date;
   id: string;
+  lastErrorCode: string | null;
   leaseExpiresAt: Date | null;
   leaseOwner: string | null;
   nodeId: string;
@@ -682,9 +684,10 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
   deferTask(input: {
     dueAt: Date;
     expectedTaskVersion: number;
+    reasonCode: WorkflowTaskDeferReasonCode;
     taskId: string;
     uid: number;
-  }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  }): Promise<{ kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findEventSubscriptionByTask(
     uid: number,

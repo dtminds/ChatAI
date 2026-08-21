@@ -23,6 +23,7 @@ import {
 } from "@chatai/workflow-engine";
 import { createNodeMetricDeltas } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
+import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -598,12 +599,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.status = transitionTask(task.status, "running");
     task.attempt += 1;
     task.taskVersion += 1;
+    task.lastErrorCode = null;
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
     if (run.status === "queued" || run.status === "waiting") {
       run.status = transitionRun(run.status, "running");
     }
-    if (run.status !== previousRunStatus) this.touchRun(run);
+    if (run.status !== previousRunStatus) {
+      run.nextExecuteAt = null;
+      this.touchRun(run);
+    }
     return { kind: "success" as const, task: clone(task) };
   }
 
@@ -612,12 +617,24 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (!task) return notFound();
     if ((task.status !== "pending" && task.status !== "dispatched" && task.status !== "leased")
       || task.taskVersion !== input.expectedTaskVersion) return conflict();
+    const run = this.runs.find(item => item.id === task.runId && item.uid === task.uid);
+    if (!run || (run.status !== "queued" && run.status !== "running" && run.status !== "waiting")
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
+      || task.workflowId !== run.workflowId
+      || task.shardId !== run.shardId) return conflict();
     task.dueAt = input.dueAt;
+    task.lastErrorCode = input.reasonCode;
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
     task.status = "pending";
     task.taskVersion += 1;
-    return { kind: "success" as const, task: clone(task) };
+    run.status = run.status === "waiting" ? "waiting" : transitionRun(run.status, "waiting");
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.dueAt);
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
   async cancelWorkflowBatch(input: Parameters<WorkflowRuntimeRepository["cancelWorkflowBatch"]>[0]) {
@@ -1307,7 +1324,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.nodeId !== run.currentNodeId
         || (run.status === "waiting" && (
           (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
-            && authoritativeTask.taskType !== "inference")
+            && authoritativeTask.taskType !== "inference"
+            && !(authoritativeTask.taskType === "execute"
+              && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
@@ -1879,6 +1898,7 @@ function createTask(
     createdAt: clone(input.createdAt),
     dueAt: input.dueAt,
     id,
+    lastErrorCode: null,
     leaseExpiresAt: null,
     leaseOwner: null,
     nodeId: input.nodeId,

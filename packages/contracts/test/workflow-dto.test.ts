@@ -461,6 +461,24 @@ describe("workflow contracts", () => {
         title: "进入流程",
       }],
     })).toBe(true);
+    expect(Value.Check(WorkflowEntryRecordDetailSchema, {
+      createdAt: "2026-07-12T09:00:00.000Z",
+      customer: { avatar: null, name: "张三" },
+      recordId: "32",
+      revision: 3,
+      status: "waiting",
+      subjectType: "chatai_contact",
+      terminalReason: null,
+      steps: [{
+        nextExecuteAt: "2026-07-13T01:00:00.000Z",
+        occurredAt: "2026-07-12T12:31:00.000Z",
+        nodeId: "message-1",
+        nodeKind: "message",
+        revision: 3,
+        status: "waiting",
+        title: "消息发送",
+      }],
+    })).toBe(true);
 
     expect(Value.Check(WorkflowEntryRecordDetailSchema, {
       createdAt: "2026-07-12T09:00:00.000Z",

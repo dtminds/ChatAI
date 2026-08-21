@@ -284,11 +284,17 @@ export const WorkflowEntryRecordStepNodeKindSchema = Type.Union([
 
 export const WorkflowEntryRecordStepSchema = Type.Object({
   description: Type.Optional(Type.String()),
+  nextExecuteAt: Type.Optional(Type.String()),
   occurredAt: Type.String(),
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
   nodeKind: WorkflowEntryRecordStepNodeKindSchema,
   revision: Type.Integer({ minimum: 1 }),
-  status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("current")]),
+  status: Type.Union([
+    Type.Literal("completed"),
+    Type.Literal("failed"),
+    Type.Literal("current"),
+    Type.Literal("waiting"),
+  ]),
   title: Type.String(),
 });
 

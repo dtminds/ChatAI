@@ -89,8 +89,13 @@ describe("workflow capability reliability", () => {
     await expect(runtime.findTask(9, advanced.nextTask.id)).resolves.toMatchObject({
       attempt: 0,
       dueAt: new Date("2026-07-13T01:00:00.000Z"),
+      lastErrorCode: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
       status: "pending",
       taskVersion: advanced.nextTask.taskVersion + 1,
+    });
+    await expect(runtime.findRun(9, started.run.id)).resolves.toMatchObject({
+      nextExecuteAt: new Date("2026-07-13T01:00:00.000Z"),
+      status: "waiting",
     });
   });
 

@@ -4,6 +4,7 @@ import {
   ArrowLeft01Icon,
   BadgeAlertIcon,
   Calendar03Icon,
+  Clock04Icon,
   Comment02Icon,
   Delete02Icon,
   Edit02Icon,
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
+import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -55,7 +57,6 @@ import { refreshTicketCounts } from "./ticket-count-store";
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketPriorityText, ticketStatusText } from "./ticket-display";
 import "./tickets.css";
 
-const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 const ticketActivityPageSize = 20;
 
 export function TicketDetailPage() {
@@ -546,7 +547,14 @@ export function TicketDetailContent({
               ) : (
                 <Empty aria-label="暂无处理记录" className="min-h-52 gap-3 border-0 p-6" role="status">
                   <EmptyMedia className="mb-0">
-                    <img alt="" aria-hidden="true" className="size-28 object-contain opacity-40" src={emptyStateIllustrationUrl} />
+                    <IconStack aria-hidden="true" className="h-16 w-[58px]">
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={Clock04Icon}
+                        size={13}
+                        strokeWidth={1.8}
+                      />
+                    </IconStack>
                   </EmptyMedia>
                   <EmptyHeader>
                     <EmptyDescription>暂无处理记录</EmptyDescription>

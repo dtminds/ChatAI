@@ -5955,6 +5955,45 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
   });
 
+  it("offers the existing add flow from the empty knowledge state", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.listKbDocs).mockResolvedValueOnce({
+      docs: [],
+      pagination: { page: 1, pageSize: 10, total: 0 },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    const emptyState = await screen.findByRole("region", { name: "知识库已就绪" });
+    expect(within(emptyState).getByRole("button", { name: "查看建议" })).toBeInTheDocument();
+    await user.click(within(emptyState).getByRole("button", { name: "添加知识" }));
+
+    expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /文档/ })).toBeInTheDocument();
+  });
+
+  it("opens the attachment dialog from the empty attachment state", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&attachmentType=image",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    const emptyState = await screen.findByRole("region", { name: "附件库已就绪" });
+    expect(within(emptyState).getByRole("button", { name: "查看建议" })).toBeInTheDocument();
+    await user.click(within(emptyState).getByRole("button", { name: "添加附件" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "添加图片附件" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows knowledge list load failures in a toast", async () => {
     vi.mocked(kbService.listKbDocs).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),

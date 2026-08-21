@@ -399,6 +399,7 @@ export type WorkflowNodeExecutionRecord = {
   runId: string;
   revision: number;
   sequence: number;
+  sourceOutletId: string | null;
   status: WorkflowNodeExecutionStatus;
   uid: number;
 };
@@ -514,6 +515,7 @@ export type WorkflowCommitNodeResultInput = {
     executionKey: string;
     input: Record<string, unknown>;
     output: Record<string, unknown>;
+    sourceOutletId?: string;
   };
   runId: string;
   sourceOutletId?: string;

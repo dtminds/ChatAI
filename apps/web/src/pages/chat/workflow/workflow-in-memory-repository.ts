@@ -706,7 +706,15 @@ function createNewWorkflowDocument(
 
 function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
   return {
-    runtimeSupportedNodeKinds: ["start", "wait", "wait-event", "branch", "message-query", "end"],
+    runtimeSupportedNodeKinds: [
+      "start",
+      "wait",
+      "wait-event",
+      "branch",
+      "ratio-split",
+      "message-query",
+      "end",
+    ],
   };
 }
 

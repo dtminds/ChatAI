@@ -60,6 +60,12 @@ const draftConfigs = {
       { conditions: [], id: "fallback", isDefault: true, label: "否则", logic: "all" },
     ],
   },
+  "ratio-split": {
+    groups: [
+      { basisPoints: 5_000, id: "ratio-a", label: "A 组" },
+      { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
+    ],
+  },
   coupon: {},
   "customer-update": {
     fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
@@ -162,21 +168,90 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(17);
+    expect(entries).toHaveLength(18);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
         .toContain(contract.executionClass);
       expect(["placeholder", "draft-ready", "runtime-ready"]).toContain(contract.maturity);
+      expect(typeof contract.recordSourceOutlet).toBe("boolean");
       expect(contract.currentDraftSchemaVersion).toBeGreaterThan(0);
     }
 
+    expect(entries.filter(([, contract]) => contract.recordSourceOutlet).map(([kind]) => kind))
+      .toEqual(["ratio-split"]);
+
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "end", "handoff", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
+      .toEqual(["branch", "ratio-split", "end", "handoff", "message", "message-query", "start", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-intent", "customer-update", "llm", "tag"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
+  });
+
+  it("keeps Ratio Split drafts editable while enforcing the published allocation contract", () => {
+    expect(getWorkflowNodeContract("ratio-split")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "core",
+      identityInputs: [],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "" },
+        { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "" },
+        { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 0, id: "ratio-a", label: "A 组" },
+        { basisPoints: 10_000, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "一二三四五六七八九十" },
+        { basisPoints: 5_000, id: "ratio-b", label: "一二三四五六七八九十" },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeDraftConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "一二三四五六七八九十一" },
+        { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 2_000, id: "ratio-a", label: "A 组" },
+        { basisPoints: 3_000, id: "ratio-b", label: "B 组" },
+        { basisPoints: 5_000, id: "ratio-c", label: "C 组" },
+      ],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "ratio-a", label: "A 组" },
+        { basisPoints: 4_999, id: "ratio-b", label: "B 组" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: [
+        { basisPoints: 5_000, id: "duplicate", label: "A 组" },
+        { basisPoints: 5_000, id: "duplicate", label: "B 组" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ratio-split", {
+      groups: Array.from({ length: 6 }, (_, index) => ({
+        basisPoints: index === 5 ? 0 : 2_000,
+        id: `ratio-${index}`,
+        label: `${index + 1} 组`,
+      })),
+    })).toBe(false);
   });
 
   it("validates the Message Query capability command and node output", () => {
@@ -406,6 +481,7 @@ describe("workflow node contracts", () => {
       message: "action",
       "message-query": "query",
       "order-query": "query",
+      "ratio-split": "core",
       start: "core",
       tag: "action",
       "tag-query": "query",
@@ -431,6 +507,7 @@ describe("workflow node contracts", () => {
       message: ["thirdExternalUserId"],
       "message-query": ["thirdExternalUserId"],
       "order-query": ["externalUserId"],
+      "ratio-split": [],
       start: [],
       tag: ["externalUserId"],
       "tag-query": ["externalUserId"],

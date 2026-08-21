@@ -92,7 +92,7 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
         )];
   },
   visual: {
-    accentClassName: "bg-rose-500 text-white",
+    accentClassName: "bg-rose-400 text-white",
     accentRgb: "244 63 94",
     icon: HourglassIcon,
     label: "等待事件",

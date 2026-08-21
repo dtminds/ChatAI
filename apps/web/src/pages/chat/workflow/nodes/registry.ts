@@ -12,6 +12,7 @@ import { llmNodeDefinition } from "./llm/definition";
 import { messageNodeDefinition } from "./message/definition";
 import { messageQueryNodeDefinition } from "./message-query/definition";
 import { orderQueryNodeDefinition } from "./order-query/definition";
+import { ratioSplitNodeDefinition } from "./ratio-split/definition";
 import { startNodeDefinition } from "./start/definition";
 import { tagNodeDefinition } from "./tag/definition";
 import { tagQueryNodeDefinition } from "./tag-query/definition";
@@ -31,6 +32,7 @@ export const workflowNodeDefinitions = {
   message: messageNodeDefinition,
   "message-query": messageQueryNodeDefinition,
   "order-query": orderQueryNodeDefinition,
+  "ratio-split": ratioSplitNodeDefinition,
   start: startNodeDefinition,
   tag: tagNodeDefinition,
   "tag-query": tagQueryNodeDefinition,

@@ -112,6 +112,12 @@ export function projectWorkflowNodeExecutionConfig({
     });
   }
 
+  if (kind === "ratio-split") {
+    return cloneJsonRecord({
+      groups: draftConfig.groups,
+    });
+  }
+
   if (kind === "customer-update") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
     return cloneJsonRecord({
@@ -190,6 +196,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Message Query node requires a valid time range";
     case "branch":
       return "Branch node requires complete ordered paths and conditions";
+    case "ratio-split":
+      return "Ratio Split node requires 2-5 unique groups whose allocations total 100%";
     case "handoff":
       return "Handoff node requires a valid operator message";
     case "tag":

@@ -1,8 +1,10 @@
 import {
   evaluateWorkflowBranchPath,
   isWorkflowBranchConfigComplete,
+  isWorkflowRatioSplitExecutionConfigComplete,
   WORKFLOW_WAIT_DAY_OFFSET_MAX,
   WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
+  WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS,
   WorkflowWaitEventConfigSchema,
   type WorkflowBranchSelector,
   type WorkflowContactIdentity,
@@ -11,6 +13,7 @@ import {
   type WorkflowSubjectType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import { createHash } from "node:crypto";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
@@ -26,6 +29,7 @@ export type WorkflowNodeExecutionContext = {
     subjectId: string;
     subjectType: WorkflowSubjectType;
     uid: string;
+    workflowId: string;
   };
   trigger: Record<string, unknown>;
 };
@@ -82,6 +86,7 @@ export function createCoreNodeExecutorRegistry() {
   registry.register("wait", { execute: executeWait });
   registry.register("wait-event", { execute: executeWaitEvent });
   registry.register("branch", { execute: executeBranch });
+  registry.register("ratio-split", { execute: executeRatioSplit });
   return registry;
 }
 
@@ -182,6 +187,66 @@ function executeBranch(
     sourceOutletId: matchedPath.id,
     type: "advance",
   };
+}
+
+function executeRatioSplit(
+  node: WorkflowExecutionNode,
+  context: WorkflowNodeExecutionContext,
+): WorkflowNodeExecutionResult {
+  if (!isWorkflowRatioSplitExecutionConfigComplete(node.config)) {
+    throw new WorkflowNodeExecutionError("Ratio Split node requires a valid allocation and labels");
+  }
+  const bucket = createWorkflowRatioSplitBucket({
+    nodeId: node.id,
+    subjectId: context.run.subjectId,
+    subjectType: context.run.subjectType,
+    uid: context.run.uid,
+    workflowId: context.run.workflowId,
+  });
+  return {
+    output: {},
+    sourceOutletId: selectWorkflowRatioSplitGroup(node.config.groups, bucket),
+    type: "advance",
+  };
+}
+
+function selectWorkflowRatioSplitGroup(
+  groups: readonly { basisPoints: number; id: string }[],
+  bucket: number,
+) {
+  let upperBound = 0;
+  for (const group of groups) {
+    upperBound += group.basisPoints;
+    if (bucket < upperBound) return group.id;
+  }
+  throw new WorkflowNodeExecutionError("Ratio Split node allocation does not cover every bucket");
+}
+
+export function createWorkflowRatioSplitBucket(input: {
+  nodeId: string;
+  subjectId: string;
+  subjectType: WorkflowSubjectType;
+  uid: string;
+  workflowId: string;
+}) {
+  const hash = createHash("sha256");
+  for (const field of [
+    input.uid,
+    input.workflowId,
+    input.nodeId,
+    input.subjectType,
+    input.subjectId,
+  ]) {
+    const encoded = Buffer.from(field, "utf8");
+    const length = Buffer.allocUnsafe(4);
+    length.writeUInt32BE(encoded.length);
+    hash.update(length);
+    hash.update(encoded);
+  }
+  const value = hash.digest().readUInt32BE(0);
+  return Math.floor(
+    value * WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS / 0x1_0000_0000,
+  );
 }
 
 function resolveBranchSelector(

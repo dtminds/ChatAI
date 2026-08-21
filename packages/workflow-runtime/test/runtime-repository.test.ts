@@ -102,7 +102,10 @@ describe("workflow runtime repository", () => {
 
     expect(committed).toMatchObject({ kind: "success", run: { lockVersion: 2, sequence: 2 } });
     expect(repository.snapshot().nodeExecutions).toHaveLength(1);
-    expect(repository.snapshot().nodeExecutions[0]).toMatchObject({ revision: 1 });
+    expect(repository.snapshot().nodeExecutions[0]).toMatchObject({
+      revision: 1,
+      sourceOutletId: null,
+    });
     expect(repository.snapshot().inbox).toHaveLength(1);
     expect(repository.snapshot().tasks).toHaveLength(2);
     expect(repository.snapshot().tasks[1]).toMatchObject({ nodeId: "end", revision: 2 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractWorkflowNodeDraftConfig,
+  getWorkflowCapabilityProfile,
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowNodeContract,
   isWorkflowNodeDraftConfig,
@@ -190,6 +191,16 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
 }
 
 describe("workflow node catalog", () => {
+  it("filters every capability profile through the catalog without route errors", () => {
+    for (const workflowType of ["chatai_sop", "wecom_sop"] as const) {
+      const allowedInsertableNodeKinds = getWorkflowCapabilityProfile(workflowType)
+        .allowedNodeKinds
+        .filter(canInsertNodeKind);
+
+      expect(allowedInsertableNodeKinds).toContain("ratio-split");
+    }
+  });
+
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
 
@@ -206,6 +217,7 @@ describe("workflow node catalog", () => {
       "message",
       "message-query",
       "order-query",
+      "ratio-split",
       "start",
       "tag",
       "tag-query",
@@ -239,7 +251,7 @@ describe("workflow node catalog", () => {
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -449,6 +461,7 @@ describe("workflow node catalog", () => {
       "flow",
       "flow",
       "flow",
+      "flow",
       "data",
       "data",
       "data",
@@ -477,7 +490,7 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "coupon"] },
@@ -488,7 +501,7 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "coupon"] },

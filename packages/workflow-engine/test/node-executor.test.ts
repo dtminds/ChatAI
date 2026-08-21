@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createCoreNodeExecutorRegistry,
+  createWorkflowRatioSplitBucket,
   type WorkflowNodeExecutionContext,
 } from "../src/index.js";
 
@@ -175,6 +176,53 @@ describe("core node executors", () => {
       .resolves.toEqual({ output: {}, sourceOutletId: "else", type: "advance" });
   });
 
+  it("routes Ratio Split deterministically against the current allocation", async () => {
+    const splitContext = context();
+    const bucket = createWorkflowRatioSplitBucket({
+      nodeId: "ratio-split",
+      subjectId: splitContext.run.subjectId,
+      subjectType: splitContext.run.subjectType,
+      uid: splitContext.run.uid,
+      workflowId: splitContext.run.workflowId,
+    });
+    expect(bucket).toBeGreaterThanOrEqual(0);
+    expect(bucket).toBeLessThan(10_000);
+
+    await expect(registry.execute(node("ratio-split", {
+      groups: [
+        { basisPoints: bucket, id: "ratio-a", label: "A 组" },
+        { basisPoints: 10_000 - bucket, id: "ratio-b", label: "B 组" },
+      ],
+    }), splitContext)).resolves.toMatchObject({ sourceOutletId: "ratio-b" });
+    await expect(registry.execute(node("ratio-split", {
+      groups: [
+        { basisPoints: bucket + 1, id: "ratio-a", label: "A 组" },
+        { basisPoints: 9_999 - bucket, id: "ratio-b", label: "B 组" },
+      ],
+    }), splitContext)).resolves.toMatchObject({ sourceOutletId: "ratio-a" });
+    await expect(registry.execute(node("ratio-split", {
+      groups: [
+        { basisPoints: 0, id: "ratio-a", label: "A 组" },
+        { basisPoints: bucket, id: "ratio-b", label: "B 组" },
+        { basisPoints: 10_000 - bucket, id: "ratio-c", label: "C 组" },
+      ],
+    }), splitContext)).resolves.toMatchObject({ sourceOutletId: "ratio-c" });
+    await expect(registry.execute(node("ratio-split", {
+      groups: [
+        { basisPoints: 10_000, id: "ratio-a", label: "A 组" },
+        { basisPoints: 0, id: "ratio-b", label: "B 组" },
+      ],
+    }), splitContext)).resolves.toMatchObject({ sourceOutletId: "ratio-a" });
+
+    expect(createWorkflowRatioSplitBucket({
+      nodeId: "ratio-split",
+      subjectId: splitContext.run.subjectId,
+      subjectType: splitContext.run.subjectType,
+      uid: splitContext.run.uid,
+      workflowId: splitContext.run.workflowId,
+    })).toBe(bucket);
+  });
+
   it("resolves Subject, Trigger, node output, and lifecycle selectors", async () => {
     const branch = node("branch", {
       branchPaths: [
@@ -221,7 +269,7 @@ describe("core node executors", () => {
 });
 
 function node(
-  kind: "branch" | "end" | "message" | "start" | "wait" | "wait-event",
+  kind: "branch" | "end" | "message" | "ratio-split" | "start" | "wait" | "wait-event",
   config: Record<string, unknown> = {},
 ) {
   return { config, id: kind, kind, nodeSchemaVersion: 1 };
@@ -240,6 +288,7 @@ function context(
       subjectId: "customer-1",
       subjectType: "chatai_contact",
       uid: "8",
+      workflowId: "42",
       workflowType: "chatai_sop",
     },
     trigger: {},

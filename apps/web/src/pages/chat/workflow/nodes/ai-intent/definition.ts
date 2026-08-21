@@ -150,7 +150,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     return issues;
   },
   visual: {
-    accentClassName: "bg-blue-600 text-white",
+    accentClassName: "bg-blue-400 text-white",
     accentRgb: "37 99 235",
     badge: "ai",
     icon: AiBrain04Icon,

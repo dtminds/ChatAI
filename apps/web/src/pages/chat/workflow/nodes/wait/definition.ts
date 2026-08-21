@@ -87,7 +87,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
         )];
   },
   visual: {
-    accentClassName: "bg-indigo-500 text-white",
+    accentClassName: "bg-indigo-400 text-white",
     accentRgb: "99 102 241",
     icon: AlarmClockIcon,
     label: "等待",

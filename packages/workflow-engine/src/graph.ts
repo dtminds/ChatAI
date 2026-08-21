@@ -263,6 +263,7 @@ function validateNodeOutlets(
 
 function getNodeOutletIds(node: WorkflowDraftNode) {
   if (node.data.kind === "branch") return getBranchOutletIds(node);
+  if (node.data.kind === "ratio-split") return getRatioSplitOutletIds(node);
   if (node.data.kind === "wait-event") return ["triggered", "timeout"];
   if (node.data.kind === "ai-intent") return getAiIntentOutletIds(node);
   return [DEFAULT_OUTLET_ID];
@@ -273,6 +274,13 @@ function getBranchOutletIds(node: WorkflowDraftNode) {
   if (!Array.isArray(paths)) return [];
   return paths.flatMap((path) => path && typeof path === "object" && "id" in path
     && typeof path.id === "string" && path.id.length > 0 ? [path.id] : []);
+}
+
+function getRatioSplitOutletIds(node: WorkflowDraftNode) {
+  const groups = (node.data as Record<string, unknown>).groups;
+  if (!Array.isArray(groups)) return [];
+  return groups.flatMap((group) => group && typeof group === "object" && "id" in group
+    && typeof group.id === "string" && group.id.length > 0 ? [group.id] : []);
 }
 
 function getAiIntentOutletIds(node: WorkflowDraftNode) {

@@ -804,6 +804,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   node_id VARCHAR(128) NOT NULL COMMENT '节点ID',
   node_kind VARCHAR(32) NOT NULL COMMENT '节点类型',
   sequence INT UNSIGNED NOT NULL COMMENT 'Run内执行序号',
+  source_outlet_id VARCHAR(128) NULL COMMENT '需记录出口的节点本次选择的源出口ID',
   status VARCHAR(32) NOT NULL COMMENT '节点执行状态',
   execution_key VARCHAR(512) NOT NULL COMMENT '稳定节点执行键',
   input_snapshot_json JSON NULL COMMENT '受控输入快照',

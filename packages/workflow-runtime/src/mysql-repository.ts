@@ -1116,6 +1116,7 @@ export class MysqlWorkflowRuntimeRepository implements
         run_id: run.id,
         revision: task.revision,
         sequence: task.sequence,
+        source_outlet_id: null,
         started_at: input.now,
         status: "running",
         uid: input.uid,
@@ -1133,6 +1134,7 @@ export class MysqlWorkflowRuntimeRepository implements
           runId: run.id,
           revision: task.revision,
           sequence: task.sequence,
+          sourceOutletId: null,
           status: "running" as const,
           uid: input.uid,
         },
@@ -1996,6 +1998,7 @@ export class MysqlWorkflowRuntimeRepository implements
           error_message: input.nodeExecution.errorMessage ?? null,
           failure_kind: null,
           output_json: stringifyJson(input.nodeExecution.output),
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
           status: failed ? "failed" : "completed",
         }).where("uid", "=", input.uid)
           .where("run_id", "=", run.id)
@@ -2016,6 +2019,7 @@ export class MysqlWorkflowRuntimeRepository implements
           revision: task.revision,
           run_id: run.id,
           sequence: task.sequence,
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
           started_at: now,
           status: failed ? "failed" : "completed",
           uid: input.uid,
@@ -3758,6 +3762,7 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
     runId: normalizeId(row.run_id),
     revision: row.revision,
     sequence: row.sequence,
+    sourceOutletId: row.source_outlet_id,
     status: parseNodeExecutionStatus(row.status),
     uid: normalizeTenantId(row.uid),
   };
@@ -4051,6 +4056,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "wait",
     "wait-event",
     "branch",
+    "ratio-split",
     "message",
     "message-query",
     "tag",

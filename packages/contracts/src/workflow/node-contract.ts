@@ -16,6 +16,11 @@ import {
   type WorkflowType,
 } from "./policy.js";
 import {
+  isWorkflowRatioSplitExecutionConfigComplete,
+  WorkflowRatioSplitDraftConfigSchema,
+  WorkflowRatioSplitExecutionConfigSchema,
+} from "./ratio-split.js";
+import {
   WorkflowStartDraftConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitConfigSchema,
@@ -445,6 +450,7 @@ type WorkflowNodeContractDefinition<
   executionConfigSchema: TSchema | null;
   identityInputs: readonly WorkflowIdentityField[];
   maturity: TMaturity;
+  recordSourceOutlet: boolean;
 };
 
 export const workflowNodeContractRegistry = {
@@ -461,6 +467,14 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowBranchConfigSchema,
     WorkflowBranchConfigSchema,
+  ),
+  "ratio-split": runtimeReadyContract(
+    "core",
+    1,
+    WorkflowRatioSplitDraftConfigSchema,
+    WorkflowRatioSplitExecutionConfigSchema,
+    [],
+    true,
   ),
   coupon: placeholderContract("action", ["externalUserId"]),
   "customer-update": draftReadyContract(
@@ -582,6 +596,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
+  if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
@@ -997,6 +1012,7 @@ function placeholderContract<TExecutionClass extends WorkflowNodeExecutionClass>
     executionConfigSchema: null,
     identityInputs,
     maturity: "placeholder",
+    recordSourceOutlet: false,
   };
 }
 
@@ -1006,6 +1022,7 @@ function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
   identityInputs: readonly WorkflowIdentityField[] = [],
+  recordSourceOutlet = false,
 ): WorkflowNodeContractDefinition<"draft-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
@@ -1015,6 +1032,7 @@ function draftReadyContract<TExecutionClass extends WorkflowNodeExecutionClass>(
     executionConfigSchema,
     identityInputs,
     maturity: "draft-ready",
+    recordSourceOutlet,
   };
 }
 
@@ -1024,6 +1042,7 @@ function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass
   draftConfigSchema: TSchema,
   executionConfigSchema: TSchema,
   identityInputs: readonly WorkflowIdentityField[] = [],
+  recordSourceOutlet = false,
 ): WorkflowNodeContractDefinition<"runtime-ready", TExecutionClass> {
   return {
     currentDraftSchemaVersion,
@@ -1033,6 +1052,7 @@ function runtimeReadyContract<TExecutionClass extends WorkflowNodeExecutionClass
     executionConfigSchema,
     identityInputs,
     maturity: "runtime-ready",
+    recordSourceOutlet,
   };
 }
 

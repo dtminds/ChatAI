@@ -156,6 +156,7 @@ export interface WorkflowNodeExecutionTable {
   run_id: DatabaseId;
   revision: number;
   sequence: number;
+  source_outlet_id: string | null;
   started_at: NullableDate;
   status: string;
   uid: number;

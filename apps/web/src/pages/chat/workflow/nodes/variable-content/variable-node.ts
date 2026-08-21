@@ -14,6 +14,9 @@ type SerializedVariableNode = Spread<{
   selector: WorkflowVariableSelector;
 }, SerializedTextNode>;
 
+const variableChipClassName =
+  "workflow-variable-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] px-1.5 align-baseline text-[13px] font-normal leading-[22px]";
+
 export class WorkflowVariableNode extends TextNode {
   __label: string;
   __selector: WorkflowVariableSelector;
@@ -39,7 +42,7 @@ export class WorkflowVariableNode extends TextNode {
 
   createDOM(config: EditorConfig) {
     const dom = super.createDOM(config);
-    dom.className = "mx-0.5 inline-block rounded bg-primary/10 px-1.5 text-primary";
+    dom.className = variableChipClassName;
     dom.dataset.workflowVariable = "true";
     return dom;
   }
@@ -47,7 +50,7 @@ export class WorkflowVariableNode extends TextNode {
   updateDOM(previous: this, dom: HTMLElement, config: EditorConfig) {
     const replace = super.updateDOM(previous, dom, config);
     if (!replace) {
-      dom.className = "mx-0.5 inline-block rounded bg-primary/10 px-1.5 text-primary";
+      dom.className = variableChipClassName;
       dom.dataset.workflowVariable = "true";
     }
     return replace;

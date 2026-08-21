@@ -32,6 +32,7 @@ import {
   $restoreVariableContent,
 } from "./editor-utils";
 import { WorkflowVariableNode } from "./variable-node";
+import "./variable-content.css";
 
 export function VariableContentEditor({
   ariaLabel,
@@ -104,7 +105,7 @@ export function VariableContentEditor({
           />
         </LexicalComposer>
       </div>
-      <div className="flex h-8 items-center justify-between px-2">
+      <div className="flex h-9 items-center justify-between pl-1 pr-3">
         <WorkflowVariablePicker
           onOpenChange={(nextOpen) => {
             if (!readOnly) setOpen(nextOpen);
@@ -114,7 +115,7 @@ export function VariableContentEditor({
           variables={variables}
         >
           <Button
-            className="h-6 gap-1.5 px-2 text-xs"
+            className="h-7 gap-1.5 rounded-[6px] px-2 py-0"
             disabled={readOnly}
             onPointerDown={() => {
               editorRef.current?.getEditorState().read(() => {
@@ -122,6 +123,7 @@ export function VariableContentEditor({
                 if ($isRangeSelection(selection)) selectionRef.current = selection.clone();
               });
             }}
+            size="sm"
             type="button"
             variant="ghost"
           >

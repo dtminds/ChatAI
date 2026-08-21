@@ -6,6 +6,7 @@ import {
   Edit02Icon,
   HelpCircleIcon,
   Image01Icon,
+  Layers01Icon,
   Notification03Icon,
   Search01Icon,
   SparklesIcon,
@@ -77,6 +78,10 @@ import {
 } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import {
+  IconStack,
+  type IconStackVariant,
+} from "@/components/ui/icon-stack";
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
@@ -133,6 +138,16 @@ import {
   uiComponentNames,
 } from "@/pages/chat/settings/demo-data";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
+
+const iconStackVariants = [
+  { label: "Neutral", variant: "neutral" },
+  { label: "Primary", variant: "primary" },
+  { label: "Success", variant: "success" },
+  { label: "Warning", variant: "warning" },
+] as const satisfies ReadonlyArray<{
+  label: string;
+  variant: IconStackVariant;
+}>;
 
 export function UiComponentDemoPage() {
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
@@ -431,6 +446,40 @@ export function UiComponentDemoPage() {
                   </InputGroup>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border p-5">
+            <h2 className="text-base font-semibold text-foreground">
+              图标堆栈 (IconStack)
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              用于空状态插图，通过语义变体统一控制平面和中心图标的颜色
+            </p>
+
+            <div
+              aria-label="IconStack 语义色变体"
+              className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4"
+              role="group"
+            >
+              {iconStackVariants.map(({ label, variant }) => (
+                <div
+                  className="flex min-h-32 flex-col items-center justify-center rounded-[10px] border border-border bg-background p-4"
+                  key={variant}
+                >
+                  <IconStack aria-hidden="true" variant={variant}>
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Layers01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </IconStack>
+                  <span className="mt-3 text-xs font-medium text-muted-foreground">
+                    {label}
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
 

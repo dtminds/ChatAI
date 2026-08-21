@@ -78,13 +78,12 @@ export function KbAttachmentsTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-11 w-12 px-4">
-              {canManage ? (
-                <Checkbox
-                  aria-label="全选附件"
-                  checked={allSelected}
-                  onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
-                />
-              ) : null}
+              <Checkbox
+                aria-label="全选附件"
+                checked={allSelected}
+                disabled={!canManage}
+                onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
+              />
             </TableHead>
             <TableHead
               className={cn(
@@ -113,15 +112,14 @@ export function KbAttachmentsTable({
             ? items.map((item) => (
             <TableRow className="hover:bg-muted/20" key={item.id}>
               <TableCell className="px-4 py-4 align-middle">
-                {canManage ? (
-                  <Checkbox
-                    aria-label={`选择附件 ${item.title}`}
-                    checked={selectedIdSet.has(item.id)}
-                    onCheckedChange={(checked) =>
-                      onToggleSelectItem(item.id, checked === true)
-                    }
-                  />
-                ) : null}
+                <Checkbox
+                  aria-label={`选择附件 ${item.title}`}
+                  checked={selectedIdSet.has(item.id)}
+                  disabled={!canManage}
+                  onCheckedChange={(checked) =>
+                    onToggleSelectItem(item.id, checked === true)
+                  }
+                />
               </TableCell>
               <TableCell
                 className={cn(
@@ -143,26 +141,26 @@ export function KbAttachmentsTable({
                 {formatKbAttachmentCreatedAt(item.createdAt)}
               </TableCell>
               <TableCell className="px-4 py-4 align-middle text-right">
-                {canManage ? (
-                  <div className="inline-flex items-center gap-4">
-                    <Button
-                      className="h-auto p-0 text-sm text-primary"
-                      onClick={() => onEdit(item)}
-                      type="button"
-                      variant="link"
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      className="h-auto p-0 text-sm text-primary"
-                      onClick={() => onDelete(item.id)}
-                      type="button"
-                      variant="link"
-                    >
-                      {deleteActionLabel}
-                    </Button>
-                  </div>
-                ) : null}
+                <div className="inline-flex items-center gap-4">
+                  <Button
+                    className="h-auto p-0 text-sm text-primary"
+                    disabled={!canManage}
+                    onClick={() => onEdit(item)}
+                    type="button"
+                    variant="link"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    className="h-auto p-0 text-sm text-primary"
+                    disabled={!canManage}
+                    onClick={() => onDelete(item.id)}
+                    type="button"
+                    variant="link"
+                  >
+                    {deleteActionLabel}
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -247,7 +247,7 @@ describe("KbAttachmentsTable", () => {
     );
   });
 
-  it("hides write controls when canManage is false", () => {
+  it("disables write controls when canManage is false", () => {
     renderKbAttachmentsTable({
       activeType: KB_ATTACHMENT_TYPE.IMAGE,
       canManage: false,
@@ -266,9 +266,9 @@ describe("KbAttachmentsTable", () => {
       ],
     });
 
-    expect(screen.queryByRole("checkbox", { name: "全选附件" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "全选附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
   });
 });
 
@@ -302,7 +302,7 @@ describe("KbAttachmentsTab", () => {
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
 
-  it("hides attachment init action for non-manage roles", async () => {
+  it("disables attachment init action for non-manage roles", async () => {
     useAuthStore.getState().setSession({
       accountType: "sub",
       displayName: "一线客服",
@@ -321,14 +321,11 @@ describe("KbAttachmentsTab", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(getKbAttachmentStatus).toHaveBeenCalledWith("kb-1");
-    });
-    expect(screen.queryByRole("button", { name: "立即启用" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "立即启用" })).toBeDisabled();
     expect(initKbAttachments).not.toHaveBeenCalled();
   });
 
-  it("hides attachment write actions for non-manage roles", async () => {
+  it("disables attachment write actions for non-manage roles", async () => {
     useAuthStore.getState().setSession({
       accountType: "sub",
       displayName: "一线客服",
@@ -362,11 +359,11 @@ describe("KbAttachmentsTab", () => {
     );
 
     expect(await screen.findByRole("table", { name: "附件列表" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加附件" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "批量删除" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "全选附件" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "批量删除" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "全选附件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
   });
 
   it("shows init loading when doc status is parsing", async () => {

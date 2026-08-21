@@ -559,8 +559,9 @@ export function KbDocDetailPage() {
                   ) : null}
                 </div>
 
-                {canManage && doc && doc.status === "completed" ? (
+                {doc && doc.status === "completed" ? (
                   <AddChunkActions
+                    disabled={!canManage}
                     doc={doc}
                     onAddDoc={() => setAddDocDialogOpen(true)}
                     onAddQa={() => setAddQaDialogOpen(true)}
@@ -691,10 +692,12 @@ function getKnowledgeDocTitleTypeLabel(doc: KbDocViewItem) {
 }
 
 function AddChunkActions({
+  disabled = false,
   doc,
   onAddDoc,
   onAddQa,
 }: {
+  disabled?: boolean;
   doc: KbDocViewItem;
   onAddDoc: () => void;
   onAddQa: () => void;
@@ -705,7 +708,7 @@ function AddChunkActions({
 
   if (doc.type === "qa") {
     return (
-      <Button className="h-10 px-4" onClick={onAddQa} type="button">
+      <Button className="h-10 px-4" disabled={disabled} onClick={onAddQa} type="button">
         <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
         <span>添加问答</span>
       </Button>
@@ -713,7 +716,7 @@ function AddChunkActions({
   }
 
   return (
-    <Button className="h-10 px-4" onClick={onAddDoc} type="button">
+    <Button className="h-10 px-4" disabled={disabled} onClick={onAddDoc} type="button">
       <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
       <span>添加切片</span>
     </Button>
@@ -745,7 +748,7 @@ function KnowledgeChunksTable({
   targetEntryId?: string;
   targetChunkId?: string;
 }) {
-  const columnCount = canManage ? 5 : 4;
+  const columnCount = 5;
 
   return (
     <TooltipProvider>
@@ -756,11 +759,9 @@ function KnowledgeChunksTable({
           <TableHead className="h-11 w-[24%] px-4">问题</TableHead>
           <TableHead className="h-11 w-[38%] px-4">答案</TableHead>
           <TableHead className="h-11 w-[16%] px-4">更新时间</TableHead>
-          {canManage ? (
-            <TablePinnedHead className="h-11 w-[120px] whitespace-nowrap px-4 text-right">
-              操作
-            </TablePinnedHead>
-          ) : null}
+          <TablePinnedHead className="h-11 w-[120px] whitespace-nowrap px-4 text-right">
+            操作
+          </TablePinnedHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -804,28 +805,28 @@ function KnowledgeChunksTable({
               >
                 <TableCellContent>{chunk.updatedAt}</TableCellContent>
               </TableCell>
-              {canManage ? (
-                <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <Button
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onEdit(chunk)}
-                      type="button"
-                      variant="link"
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onDelete(chunk)}
-                      type="button"
-                      variant="link"
-                    >
-                      删除
-                    </Button>
-                  </div>
-                </TablePinnedCell>
-              ) : null}
+              <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
+                <div className="flex items-center justify-end gap-3">
+                  <Button
+                    className="h-auto p-0 text-primary"
+                    disabled={!canManage}
+                    onClick={() => onEdit(chunk)}
+                    type="button"
+                    variant="link"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    className="h-auto p-0 text-primary"
+                    disabled={!canManage}
+                    onClick={() => onDelete(chunk)}
+                    type="button"
+                    variant="link"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </TablePinnedCell>
             </TableRow>
           ))
         ) : (
@@ -924,28 +925,35 @@ function KnowledgeDocumentChunkCard({
             ID {displayChunkId}
           </span>
         </div>
-        {canManage ? (
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <Button
-              aria-label={`编辑 ${chunk.id}`}
-              className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-              onClick={() => onEdit(chunk)}
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon color="currentColor" icon={Edit02Icon} size={16} strokeWidth={1.8} />
-            </Button>
-            <Button
-              aria-label={`删除 ${chunk.id}`}
-              className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-destructive"
-              onClick={() => onDelete(chunk)}
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon color="currentColor" icon={Delete02Icon} size={16} strokeWidth={1.8} />
-            </Button>
-          </div>
-        ) : null}
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            canManage
+              ? "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              : undefined,
+          )}
+        >
+          <Button
+            aria-label={`编辑 ${chunk.id}`}
+            className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            disabled={!canManage}
+            onClick={() => onEdit(chunk)}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon color="currentColor" icon={Edit02Icon} size={16} strokeWidth={1.8} />
+          </Button>
+          <Button
+            aria-label={`删除 ${chunk.id}`}
+            className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-destructive"
+            disabled={!canManage}
+            onClick={() => onDelete(chunk)}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon color="currentColor" icon={Delete02Icon} size={16} strokeWidth={1.8} />
+          </Button>
+        </div>
       </div>
 
       <div className="mt-2 flex min-h-0 flex-1 gap-3 overflow-hidden">

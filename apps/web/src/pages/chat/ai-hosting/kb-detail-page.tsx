@@ -591,9 +591,7 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {canManage ? (
-                <AddKnowledgeMenu onSelect={handleAddKnowledgeSelect} />
-              ) : null}
+              <AddKnowledgeMenu disabled={!canManage} onSelect={handleAddKnowledgeSelect} />
             </div>
           </div>
 
@@ -889,11 +887,11 @@ function KnowledgeRecordsTable({
               <TableCell className="px-4 py-4">
                 <div className="flex items-center gap-2">
                   <KnowledgeStatusBadge status={record.status} />
-                  {canManage && record.status === "failed" ? (
+                  {record.status === "failed" ? (
                     <Button
                       aria-label={`重试 ${record.name}`}
                       className="h-auto p-0 text-primary"
-                      disabled={retryingDocId !== null}
+                      disabled={!canManage || retryingDocId !== null}
                       onClick={() => {
                         void onRetry(record.id);
                       }}
@@ -945,14 +943,13 @@ function KnowledgeRecordsTable({
                     ) : (
                       <DropdownMenuItem disabled>切片详情</DropdownMenuItem>
                     )}
-                    {canManage ? (
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onSelect={() => onDelete(record)}
-                      >
-                        删除
-                      </DropdownMenuItem>
-                    ) : null}
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      disabled={!canManage}
+                      onSelect={() => onDelete(record)}
+                    >
+                      删除
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TablePinnedCell>

@@ -41,7 +41,6 @@ export function VariableContentEditor({
   maxLength,
   onChange,
   placeholder,
-  prefix,
   readOnly = false,
   segments,
   variables,
@@ -53,7 +52,6 @@ export function VariableContentEditor({
   maxLength?: number;
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
   placeholder: string;
-  prefix?: string;
   readOnly?: boolean;
   segments: WorkflowVariableContentSegment[];
   variables: WorkflowVariableDefinition[];
@@ -87,29 +85,24 @@ export function VariableContentEditor({
         maxLength ? "min-h-30" : "min-h-36",
         editorClassName,
       )}>
-        <div className="flex items-start">
-          {prefix ? <span className="shrink-0">{prefix}</span> : null}
-          <div className="relative min-w-0 flex-1">
-            <LexicalComposer initialConfig={editorConfig}>
-              <PlainTextPlugin
-                contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" aria-readonly={readOnly} className={cn("whitespace-pre-wrap break-words outline-none", readOnly && "cursor-default", maxLength ? "min-h-24" : "min-h-30", contentEditableClassName)} role="textbox" />}
-                ErrorBoundary={LexicalErrorBoundary}
-                placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-0 top-0 text-muted-foreground/50">{placeholder}</span>}
-              />
-              <VariableContentEditorPlugin
-                maxLength={maxLength}
-                onChange={onChange}
-                readOnly={readOnly}
-                registerEditor={registerEditor}
-                registerSelection={(selection) => {
-                  selectionRef.current = selection;
-                }}
-                segments={normalizedSegments}
-                variables={variables}
-              />
-            </LexicalComposer>
-          </div>
-        </div>
+        <LexicalComposer initialConfig={editorConfig}>
+          <PlainTextPlugin
+            contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" aria-readonly={readOnly} className={cn("whitespace-pre-wrap break-words outline-none", readOnly && "cursor-default", maxLength ? "min-h-24" : "min-h-30", contentEditableClassName)} role="textbox" />}
+            ErrorBoundary={LexicalErrorBoundary}
+            placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-3 top-3 text-muted-foreground/50">{placeholder}</span>}
+          />
+          <VariableContentEditorPlugin
+            maxLength={maxLength}
+            onChange={onChange}
+            readOnly={readOnly}
+            registerEditor={registerEditor}
+            registerSelection={(selection) => {
+              selectionRef.current = selection;
+            }}
+            segments={normalizedSegments}
+            variables={variables}
+          />
+        </LexicalComposer>
       </div>
       <div className="flex h-8 items-center justify-between px-2">
         <WorkflowVariablePicker

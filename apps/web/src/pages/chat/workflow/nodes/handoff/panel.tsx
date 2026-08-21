@@ -1,9 +1,6 @@
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH,
-  WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX,
-} from "@chatai/contracts";
+import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -37,7 +34,6 @@ export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettings
           });
         }}
         placeholder="用于告诉对应的接待人员，本次转人工的原因或背景"
-        prefix={WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX}
         required
         segments={node.data.operatorMessage}
         title="给客服的转发提示"
@@ -60,7 +56,6 @@ function HandoffMessageField({
   help,
   onChange,
   placeholder,
-  prefix,
   required = false,
   segments,
   title,
@@ -70,7 +65,6 @@ function HandoffMessageField({
   help?: string;
   onChange: Parameters<typeof VariableContentEditor>[0]["onChange"];
   placeholder: string;
-  prefix?: string;
   required?: boolean;
   segments: Parameters<typeof VariableContentEditor>[0]["segments"] | undefined;
   title: string;
@@ -108,7 +102,6 @@ function HandoffMessageField({
         maxLength={WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}
-        prefix={prefix}
         segments={normalizeVariableContent(segments)}
         variables={variables}
       />

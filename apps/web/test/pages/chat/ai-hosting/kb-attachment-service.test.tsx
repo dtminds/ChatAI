@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -246,6 +246,30 @@ describe("KbAttachmentsTable", () => {
       "noopener,noreferrer",
     );
   });
+
+  it("hides write controls when canManage is false", () => {
+    renderKbAttachmentsTable({
+      activeType: KB_ATTACHMENT_TYPE.IMAGE,
+      canManage: false,
+      items: [
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+          payload: {
+            content: {
+              alt: "产品图",
+              fileUrl: "https://example.com/product.png",
+            },
+            type: "image",
+          },
+          title: "产品图",
+        }),
+      ],
+    });
+
+    expect(screen.queryByRole("checkbox", { name: "全选附件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+  });
 });
 
 describe("KbAttachmentsTab", () => {
@@ -276,6 +300,73 @@ describe("KbAttachmentsTab", () => {
     expect(await screen.findByRole("button", { name: "立即启用" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "图片" })).not.toBeInTheDocument();
     expect(listKbAttachments).not.toHaveBeenCalled();
+  });
+
+  it("hides attachment init action for non-manage roles", async () => {
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getKbAttachmentStatus).toHaveBeenCalledWith("kb-1");
+    });
+    expect(screen.queryByRole("button", { name: "立即启用" })).not.toBeInTheDocument();
+    expect(initKbAttachments).not.toHaveBeenCalled();
+  });
+
+  it("hides attachment write actions for non-manage roles", async () => {
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "一线客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "101",
+      uid: 1,
+    });
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [
+        createKbAttachmentListItem({
+          chunkId: "chunk-1",
+          description: "产品图描述",
+          title: "产品图",
+        }),
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("table", { name: "附件列表" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加附件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批量删除" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "全选附件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
   });
 
   it("shows init loading when doc status is parsing", async () => {
@@ -507,14 +598,17 @@ describe("KbAttachmentsTab", () => {
 
 function renderKbAttachmentsTable({
   activeType,
+  canManage,
   items,
 }: {
   activeType: KbAttachmentItem["attachmentType"];
+  canManage?: boolean;
   items: KbAttachmentItem[];
 }) {
   return render(
     <KbAttachmentsTable
       activeType={activeType}
+      canManage={canManage}
       items={items}
       onDelete={vi.fn()}
       onEdit={vi.fn()}

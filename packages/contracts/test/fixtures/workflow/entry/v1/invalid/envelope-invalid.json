@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "contact-change-3",
+  "eventType": "contact.friend_added",
+  "uid": 9,
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "wecom",
+  "payload": {
+    "workUserId": 201,
+    "externalUserId": 3267
+  },
+  "workflowId": "31"
+}

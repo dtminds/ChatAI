@@ -113,6 +113,94 @@ describe("database schema document", () => {
 
     expect(analysisPolicyTable).toMatch(/\n  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1\b/);
   });
+
+  it("defines workflow control and runtime tables with the shared primary key and timestamp convention", () => {
+    const tableNames = [
+      "xy_wap_embed_workflow_definition",
+      "xy_wap_embed_workflow_revision",
+      "xy_wap_embed_workflow_trigger_binding",
+      "xy_wap_embed_workflow_run",
+      "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_event_subscription",
+      "xy_wap_embed_workflow_event_subscription_event",
+      "xy_wap_embed_workflow_inference_job",
+      "xy_wap_embed_workflow_node_execution",
+      "xy_wap_embed_workflow_outbox",
+      "xy_wap_embed_workflow_inbox",
+      "xy_wap_embed_workflow_daily_metric",
+    ];
+
+    for (const tableName of tableNames) {
+      const table = extractCreateTable(schemaSql, tableName);
+
+      expect(table).toContain("id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
+      expect(table).toContain("create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+      expect(table).toContain("update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+      expect(table).toContain("PRIMARY KEY (id)");
+    }
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_inference_job");
+  });
+
+  it("keeps workflow deletion separate from its runtime status", () => {
+    const definitionTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_definition");
+
+    expect(definitionTable).toContain("runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive'");
+    expect(definitionTable).toContain("biz_status TINYINT NOT NULL DEFAULT 1");
+    expect(definitionTable).toContain(
+      "description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述'",
+    );
+  });
+
+  it("keeps only workflow run indexes required by current query paths", () => {
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+
+    expect(runTable.match(/^  KEY .+$/gm)).toEqual([
+      "  KEY idx_workflow_run_records (uid, workflow_id, id),",
+      "  KEY idx_workflow_run_status_records (uid, workflow_id, status, id),",
+      "  KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),",
+      "  KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),",
+      "  KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id),",
+      "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
+      "  KEY idx_workflow_run_status_reconcile (status, id),",
+      "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",
+    ]);
+  });
+
+  it("keeps the indexes required by bounded workflow history cleanup", () => {
+    const nodeExecutionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_node_execution",
+    );
+    const outboxTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_outbox");
+
+    expect(nodeExecutionTable).toContain(
+      "KEY idx_workflow_node_execution_run_cleanup (run_id, id)",
+    );
+    expect(outboxTable).toContain(
+      "KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)",
+    );
+  });
+
+  it("indexes active Wait Event interest and deduplicates collected Entry events", () => {
+    const subscriptionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_event_subscription",
+    );
+    const eventTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_event_subscription_event",
+    );
+
+    expect(subscriptionTable).toContain(
+      "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
+    );
+    expect(subscriptionTable).toContain(
+      "(uid, subject_type, event_type, subject_id, status, collect_until, id)",
+    );
+    expect(eventTable).toContain(
+      "UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id)",
+    );
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

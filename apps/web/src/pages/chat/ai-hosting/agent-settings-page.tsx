@@ -106,7 +106,7 @@ import {
   testAiHostingAgent,
   updateAiHostingAgent,
 } from "./agent-service";
-import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply/quick-reply-attachment-preview";
+import { MessageAttachmentPreview as QuickReplyAttachmentPreview } from "@/pages/chat/components/message-content/message-attachment-preview";
 import { uploadKbImage } from "./api/kb-doc-service";
 import {
   agentModelOptions,

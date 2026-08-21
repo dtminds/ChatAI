@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,8 @@ const routePageModules = [
   "@/pages/chat/settings/chat-settings-page",
   "@/pages/chat/ai-hosting/agent-management-page",
   "@/pages/chat/ai-hosting/agent-hosting-settings-page",
+  "@/pages/chat/workflow/workflow-list-page",
+  "@/pages/chat/workflow/workflow-editor-page",
   "@/pages/chat/ai-hosting/agent-subscription-page",
   "@/pages/chat/ai-hosting/ai-skills-page",
   "@/pages/chat/ai-hosting/ai-skill-settings-page",
@@ -135,10 +137,14 @@ describe("route code splitting", () => {
     render(createElement(RouterProvider, { router }));
 
     await screen.findByRole("alert", { name: "页面加载失败" });
+    await waitFor(() => {
+      expect(consoleErrorSpy.mock.calls.filter(
+        ([message]) => message === "Route error captured:",
+      )).toHaveLength(1);
+    });
     const routeErrorCalls = consoleErrorSpy.mock.calls.filter(
       ([message]) => message === "Route error captured:",
     );
-    expect(routeErrorCalls).toHaveLength(1);
     const loggedError = routeErrorCalls[0]?.[1];
     const loggedMessages = [
       loggedError instanceof Error ? loggedError.message : "",

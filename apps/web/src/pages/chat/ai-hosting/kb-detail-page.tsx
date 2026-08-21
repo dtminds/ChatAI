@@ -117,9 +117,6 @@ const kbAttachmentTypeParamByType = new Map<KbAttachmentType, string>(
   kbAttachmentTypeParamEntries.map(([param, type]) => [type, param] as const),
 );
 
-const kbKnowledgeEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
-
 const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
   "添加各类知识，Agent 会参考相关的知识内容组织回复话术";
 const KB_KNOWLEDGE_EMPTY_SUGGESTION =
@@ -802,7 +799,6 @@ function KbKnowledgeEmptyState() {
   return (
     <KbEmptyStatePanel
       description={KB_KNOWLEDGE_EMPTY_DESCRIPTION}
-      illustrationUrl={kbKnowledgeEmptyIllustrationUrl}
       suggestionContent={KB_KNOWLEDGE_EMPTY_SUGGESTION}
       suggestionLabel="查看建议"
     />

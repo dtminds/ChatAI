@@ -1,0 +1,193 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
+import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
+import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
+import { BranchConfig } from "@/pages/chat/workflow/panels/node-settings/branch-panel";
+import type { WorkflowNode } from "@/pages/chat/workflow/types";
+
+function createBranchNode(): WorkflowNode<"branch"> {
+  return {
+    data: {
+      ...createDefaultNodeData("branch"),
+      branchPaths: [
+        {
+          conditions: [{
+            id: "condition-high",
+            operator: "equals",
+            selector: ["subject", "id"],
+            value: "高意向",
+          }],
+          id: "branch-high",
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{
+            id: "condition-normal",
+            operator: "equals",
+            selector: ["subject", "id"],
+            value: "普通客户",
+          }],
+          id: "branch-normal",
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-default",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
+      ],
+    },
+    id: "branch-intent",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+}
+
+describe("BranchConfig", () => {
+  it("confirms deletion of a connected path and removes it", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+
+    render(
+      <BranchConfig
+        edges={[
+          createEdge("branch-intent", "message-welcome", "如果", {
+            sourceHandle: "branch-high",
+          }),
+        ]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "删除如果 1" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: [
+        expect.objectContaining({ id: "branch-normal", label: "如果" }),
+        expect.objectContaining({ id: "branch-default", isDefault: true, label: "否则" }),
+      ],
+    });
+  });
+
+  it("adds a fixed-label conditional path before the fallback", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+
+    render(
+      <BranchConfig
+        edges={[]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加分支" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: [
+        expect.objectContaining({ id: "branch-high", label: "如果" }),
+        expect.objectContaining({ id: "branch-normal", label: "否则如果" }),
+        expect.objectContaining({ label: "否则如果" }),
+        expect.objectContaining({ id: "branch-default", isDefault: true, label: "否则" }),
+      ],
+    });
+  });
+
+  it("updates the relation between multiple conditions", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+    branchNode.data.branchPaths[0] = {
+      ...branchNode.data.branchPaths[0],
+      conditions: [
+        ...branchNode.data.branchPaths[0].conditions,
+        {
+          id: "condition-second",
+          operator: "is-not-empty",
+          selector: ["subject", "id"],
+        },
+      ],
+    };
+
+    render(
+      <BranchConfig
+        edges={[]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "如果条件关系" }));
+    await user.click(screen.getByRole("option", { name: "或" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: expect.arrayContaining([
+        expect.objectContaining({ id: "branch-high", logic: "any" }),
+      ]),
+    });
+  });
+
+  it("selects a guaranteed predecessor lifecycle time as a condition", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const startNode = createStartNode();
+    const waitNode = createNodeFromKind("wait", "wait", 1);
+    waitNode.data.title = "观察期";
+    const branchNode = createBranchNode();
+
+    render(
+      <BranchConfig
+        edges={[
+          createEdge(startNode.id, waitNode.id),
+          createEdge(waitNode.id, branchNode.id),
+        ]}
+        node={branchNode}
+        nodes={[startNode, waitNode, branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "条件 1 变量" })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: "观察期" }));
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /进入时间.*日期时间/ }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: expect.arrayContaining([
+        expect.objectContaining({
+          conditions: expect.arrayContaining([
+            expect.objectContaining({
+              selector: ["node-lifecycle", waitNode.id, "enteredAt"],
+              valueType: "datetime",
+            }),
+          ]),
+          id: "branch-high",
+        }),
+      ]),
+    });
+  });
+});
+
+function createStartNode(): WorkflowNode<"start"> {
+  return {
+    data: createDefaultNodeData("start"),
+    id: "start",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+}

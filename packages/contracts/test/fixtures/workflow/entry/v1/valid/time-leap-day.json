@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "time-leap-day-1",
+  "eventType": "contact.tag_added",
+  "uid": 9,
+  "occurredAt": "2024-02-29T00:00:00.000Z",
+  "source": "wecom",
+  "payload": {
+    "workUserId": 201,
+    "externalUserId": 3269,
+    "tagId": 301
+  }
+}

@@ -5,12 +5,15 @@ on:
     branches:
       - main
       - dev
+      - "integration/**"
   pull_request:
     branches:
       - main
       - dev
+      - "codex/**"
       - "feat/**"
       - "feature/**"
+      - "integration/**"
   workflow_dispatch:
 
 concurrency:
@@ -41,8 +44,12 @@ jobs:
               - ".github/workflows/backend-ci.yml"
               - ".github/workflows/ci.yml"
               - "apps/backend/**"
+              - "apps/workflow-worker/**"
+              - "deploy/workflow-worker.Dockerfile"
               - "package.json"
               - "packages/contracts/**"
+              - "packages/workflow-engine/**"
+              - "packages/workflow-runtime/**"
               - "pnpm-lock.yaml"
               - "pnpm-workspace.yaml"
               - "tsconfig*.json"
@@ -53,6 +60,20 @@ jobs:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_ROOT_PASSWORD: workflow-test
+          TZ: Asia/Shanghai
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pworkflow-test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -72,8 +93,49 @@ jobs:
       - name: Typecheck backend
         run: pnpm backend:typecheck
 
+      - name: Test contracts
+        run: pnpm --filter @chatai/contracts test
+
+      - name: Test workflow engine
+        run: pnpm --filter @chatai/workflow-engine test
+
+      - name: Test workflow runtime
+        run: pnpm --filter @chatai/workflow-runtime test
+
+      - name: Test workflow runtime MySQL repository
+        run: pnpm --filter @chatai/workflow-runtime test:repository:mysql
+        env:
+          WORKFLOW_TEST_MYSQL_HOST: 127.0.0.1
+          WORKFLOW_TEST_MYSQL_PASSWORD: workflow-test
+          WORKFLOW_TEST_MYSQL_PORT: 3306
+          WORKFLOW_TEST_MYSQL_USER: root
+
+      - name: Test workflow worker
+        run: pnpm --filter @chatai/workflow-worker test
+
       - name: Test backend
         run: pnpm backend:test
+
+      - name: Build contracts
+        run: pnpm --filter @chatai/contracts build
+
+      - name: Build workflow engine
+        run: pnpm --filter @chatai/workflow-engine build
+
+      - name: Build workflow runtime
+        run: pnpm --filter @chatai/workflow-runtime build
+
+      - name: Build workflow worker
+        run: pnpm --filter @chatai/workflow-worker build
+
+      - name: Verify workflow worker production imports
+        run: pnpm --filter @chatai/workflow-worker verify:production-imports
+
+      - name: Build workflow worker image
+        run: docker build -f deploy/workflow-worker.Dockerfile -t chatai-workflow-worker:ci .
+
+      - name: Verify workflow worker Pulsar binding
+        run: docker run --rm --workdir /app/apps/workflow-worker chatai-workflow-worker:ci node --input-type=module -e "await import('pulsar-client')"
 
       - name: Build backend
         run: pnpm backend:build

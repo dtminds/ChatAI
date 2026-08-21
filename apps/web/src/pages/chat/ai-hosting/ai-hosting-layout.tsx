@@ -11,6 +11,7 @@ import {
   RoboticIcon,
   TokenCircleIcon,
   UserAiIcon,
+  WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -29,8 +30,13 @@ const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 const aiHostingNavItems = [
   {
     icon: RoboticIcon,
-    label: "Agent 管理",
+    label: "Agent",
     to: "/chat/ai-hosting/agents",
+  },
+  {
+    icon: WorkflowSquare06Icon,
+    label: "工作流",
+    to: "/chat/workflows",
   },
   {
     icon: AiBookIcon,

@@ -61,7 +61,25 @@ export type WorkTagJavaComponentItem = {
   type?: number | string | null;
 };
 
+export type WorkTagJavaLookupItem = {
+  groupName?: string | null;
+  group_name?: string | null;
+  id?: number | string | null;
+  name?: string | null;
+  tagId?: number | string | null;
+  tagGroupName?: string | null;
+  tagName?: string | null;
+  tag_id?: number | string | null;
+  tag_name?: string | null;
+};
+
 export type WorkTagJavaClient = {
+  getExternalTags: (input: {
+    tagIds: number[];
+    uid: number;
+  }) => Promise<{
+    items: WorkTagJavaLookupItem[];
+  }>;
   listGroups: (input: {
     /** 1 普通，2 互斥；默认 1 */
     attr?: number;
@@ -95,6 +113,29 @@ export function createWorkTagJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    async getExternalTags(input) {
+      const response = await postJavaRequest<
+        JavaApiResponse<WorkTagJavaLookupItem[]>
+      >({
+        baseUrl,
+        body: JSON.stringify({
+          tagIds: input.tagIds,
+          uid: input.uid,
+        }),
+        logContext: { tagIds: input.tagIds, uid: input.uid },
+        logger,
+        operation: "work-tag-external-list",
+        path: "/third-internal/work-tag/get-external-tag-list",
+        token,
+      });
+
+      assertJavaSuccess(response, "work-tag-external-list");
+
+      return {
+        items: extractJavaListItems<WorkTagJavaLookupItem>(response),
+      };
+    },
+
     async listGroups(input) {
       const attr = input.attr ?? 1;
       const type = input.type ?? 0;

@@ -1,0 +1,378 @@
+/*
+ * Workflow canvas global stylesheet.
+ * Keep component-owned node bodies, panels, menus, and form layouts in TSX with Tailwind classes.
+ * Use this file only for React Flow generated DOM, pseudo-elements, canvas-wide states,
+ * responsive canvas shell rules, and shared workflow CSS variables that cannot live on one component.
+ */
+
+.workflow-page {
+  color-scheme: light;
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 95%, var(--foreground));
+  --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
+  --workflow-edge: color-mix(in oklch, var(--foreground) 42%, var(--workflow-canvas-bg));
+  --workflow-border: color-mix(in oklch, var(--border) 82%, transparent);
+  --workflow-soft: var(--muted);
+  --workflow-panel-bg: var(--card);
+  --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 88%, transparent);
+  --workflow-panel-section: var(--accent);
+  --workflow-param-bg: var(--surface-muted);
+  --workflow-text-tertiary: var(--muted-foreground);
+  --workflow-node-card-border: #fff;
+  --workflow-node-card-border-width: 1px;
+  --workflow-node-handle-ring: #fff;
+  --workflow-node-accent-strong: 0.07;
+  --workflow-node-accent-soft: 0.03;
+  --workflow-control-active: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --workflow-divider: color-mix(in oklch, var(--foreground) 10%, transparent);
+  --workflow-blue: var(--primary);
+}
+
+.dark .workflow-page {
+  color-scheme: dark;
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 86%, black);
+  --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
+  --workflow-edge: color-mix(in oklch, var(--foreground) 38%, var(--workflow-canvas-bg));
+  --workflow-border: color-mix(in oklch, var(--border) 74%, transparent);
+  --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 90%, transparent);
+  --workflow-node-card-border: transparent;
+  --workflow-node-card-border-width: 0px;
+  --workflow-node-handle-ring: color-mix(in oklch, var(--foreground) 24%, var(--workflow-panel-bg));
+  --workflow-node-accent-strong: 0.08;
+  --workflow-node-accent-soft: 0.025;
+  --workflow-control-active: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --workflow-divider: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.workflow-page .react-flow {
+  background: var(--workflow-canvas-bg);
+}
+
+.agent-workflow-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.agent-workflow-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.agent-workflow-canvas .react-flow__node {
+  border-radius: 16px;
+}
+
+.agent-workflow-canvas-dragging .react-flow__node,
+.agent-workflow-canvas-dragging .workflow-node-card,
+.agent-workflow-canvas-dragging .workflow-node-actionbar,
+.agent-workflow-canvas-dragging .workflow-node-insert {
+  transition: none !important;
+}
+
+.agent-workflow-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 0.5px solid var(--workflow-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  box-shadow: 0 12px 32px var(--shadow-medium);
+  backdrop-filter: blur(8px);
+}
+
+.agent-workflow-canvas .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  border-bottom-color: var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+.workflow-bottom-toolbar > .react-flow__minimap.workflow-minimap {
+  right: auto !important;
+  bottom: 48px !important;
+  left: 0 !important;
+  z-index: 9;
+  margin: 0 !important;
+  overflow: hidden;
+  border: 0.5px solid var(--workflow-border);
+  border-radius: 8px;
+  background: var(--background);
+  box-shadow: 0 3px 10px var(--shadow-soft);
+}
+
+.agent-workflow-canvas .react-flow__attribution {
+  display: none;
+}
+
+.workflow-node-shell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: auto;
+  height: auto;
+  border-width: 1.5px;
+  border-style: solid;
+  border-radius: 16px;
+}
+
+.workflow-node-card {
+  position: relative;
+  width: 320px;
+  border: var(--workflow-node-card-border-width) solid var(--workflow-node-card-border);
+  border-radius: 15px;
+  background: var(--workflow-panel-bg);
+  padding-bottom: 4px;
+  box-shadow:
+    0 6px 14px -12px var(--shadow-strong);
+}
+
+.workflow-node-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 80px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(
+    180deg,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / var(--workflow-node-accent-strong)) 0%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / var(--workflow-node-accent-soft)) 48%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0) 100%
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.workflow-node-card-branch {
+  width: 320px;
+  padding-bottom: 10px;
+}
+
+.workflow-node-select {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.workflow-node-select:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--ring) 28%, transparent);
+}
+
+.workflow-node-actionbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 16;
+  display: flex;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 150ms ease,
+    visibility 150ms ease;
+}
+
+.workflow-node-actionbar-button {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--workflow-text-tertiary);
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.workflow-node-actionbar-button:hover,
+.workflow-node-actionbar-button[aria-expanded="true"] {
+  background: var(--workflow-control-active);
+  color: var(--workflow-blue);
+}
+
+.react-flow__node:hover .workflow-node-actionbar,
+.workflow-node-actionbar-visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.agent-workflow-canvas-dragging .react-flow__node:hover .workflow-node-actionbar {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workflow-node-handle {
+  z-index: 12 !important;
+  width: 16px !important;
+  height: 16px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  outline: none !important;
+}
+
+.workflow-node-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--workflow-node-handle-ring);
+  border-radius: 999px;
+  background: var(--workflow-blue);
+  content: "";
+  transform: translate(-50%, -50%);
+  transition:
+    width 150ms ease,
+    height 150ms ease;
+}
+
+.react-flow__node:hover .workflow-node-handle::after {
+  width: 16px;
+  height: 16px;
+}
+
+.workflow-node-handle-target {
+  left: -9px !important;
+  top: 16px !important;
+  transform: none !important;
+}
+
+.workflow-node-handle-source {
+  right: -9px !important;
+  transform: none !important;
+}
+
+.workflow-node-handle-source:hover {
+  z-index: 60 !important;
+}
+
+.workflow-node-handle-source:hover::after {
+  width: 20px;
+  height: 20px;
+}
+
+.workflow-branch-path-handle {
+  right: -9px !important;
+  transform: none !important;
+}
+
+.workflow-node-handle-tip {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  z-index: 70;
+  display: none;
+  padding: 6px;
+  border: 0.5px solid var(--workflow-border);
+  border-radius: 8px;
+  background: var(--workflow-panel-bg-blur);
+  box-shadow: 0 12px 32px var(--shadow-medium);
+  color: var(--workflow-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  backdrop-filter: blur(8px);
+}
+
+.workflow-node-handle-source:hover .workflow-node-handle-tip {
+  display: block;
+}
+
+.agent-workflow-canvas-dragging .workflow-node-handle-source:hover .workflow-node-handle-tip {
+  display: none;
+}
+
+.workflow-node-handle-tip-title {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.workflow-node-insert {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--workflow-blue);
+  color: var(--primary-foreground);
+  opacity: 0;
+  pointer-events: none;
+  transform: none;
+  transition:
+    opacity 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.workflow-node-insert svg,
+.workflow-node-insert svg * {
+  opacity: 1;
+}
+
+.react-flow__node:hover .workflow-node-insert,
+.workflow-node-insert-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.agent-workflow-canvas-dragging .react-flow__node:hover .workflow-node-insert {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workflow-node-insert:hover {
+  background: color-mix(in oklch, var(--workflow-blue) 88%, white);
+  color: var(--primary-foreground);
+  transform: scale(1.125);
+}
+
+.agent-workflow-canvas-dragging .workflow-edge-action {
+  opacity: 0;
+  pointer-events: none;
+  transition: none;
+}
+
+.workflow-editor-body[data-inspector-open="true"] .workflow-bottom-toolbar {
+  left: calc((100% - 26.25rem) / 2);
+}
+
+.workflow-editor-body[data-run-panel-open="true"] .workflow-bottom-toolbar {
+  left: calc((100% - 360px - 2rem) / 2);
+}
+
+@media (max-width: 1023px) {
+  .workflow-bottom-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workflow-bottom-toolbar > .react-flow__minimap.workflow-minimap {
+    display: none;
+  }
+
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .workflow-editor-body[data-inspector-open="true"] .workflow-bottom-toolbar {
+    left: calc((100% - 23.5rem) / 2);
+  }
+}
+
+/*
+ * End workflow canvas global stylesheet.
+ * Do not add node-specific or panel-specific component styles here.
+ */

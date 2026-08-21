@@ -1,0 +1,1288 @@
+import { act, renderHook } from "@testing-library/react";
+import { toast } from "sonner";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkflowWorkspace } from "@/pages/chat/workflow/use-workflow-workspace";
+import {
+  createEdge,
+} from "@/pages/chat/workflow/graph";
+import {
+  createInMemoryWorkflowDraftRepository,
+  getWorkflowDocument,
+  importWorkflowDraft,
+  publishWorkflowDraft,
+  resetWorkflowDocumentsForTest,
+} from "@/pages/chat/workflow/workflow-draft-service";
+import type {
+  SyncWorkflowDraftRepository,
+  WorkflowDraftRepository,
+} from "@/pages/chat/workflow/workflow-draft-service";
+import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
+import { isChatAiStartNodeData, type WorkflowDraft } from "@/pages/chat/workflow/types";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+vi.mock("@xyflow/react", async () => {
+  const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
+
+  return {
+    ...actual,
+    applyNodeChanges: (
+      changes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+        type: string;
+      }>,
+      nodes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+      }>,
+    ) =>
+      nodes.map((node) => {
+        const positionChange = changes.find(
+          (change) => change.type === "position" && change.id === node.id && change.position,
+        );
+
+        return positionChange
+          ? {
+              ...node,
+              position: positionChange.position,
+            }
+          : node;
+      }),
+  };
+});
+
+describe("useWorkflowWorkspace", () => {
+  beforeEach(() => {
+    resetWorkflowDocumentsForTest();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+  });
+
+  it("derives canvas and publish capabilities from document permissions", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const editableDocument = repository.getDocument("newcomer-conversion");
+    editableDocument.permissions = {
+      canEdit: true,
+      canOperate: true,
+      canPublish: false,
+    };
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      editableDocument.id,
+      repository,
+      editableDocument,
+    ));
+
+    expect(result.current.canvas.isReadOnly).toBe(false);
+    expect(result.current.topBar.canPublish).toBe(false);
+  });
+
+  it("updates runtime status through detail-page pause and resume actions", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initial = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "active" as const,
+    };
+    const repository = {
+      ...baseRepository,
+      pauseDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "paused" as const,
+      })),
+      resumeDocument: vi.fn(async () => ({
+        ...initial,
+        runtimeStatus: "active" as const,
+      })),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onPause?.();
+    });
+    expect(repository.pauseDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("paused");
+    expect(toast.success).toHaveBeenLastCalledWith("已暂停");
+
+    await act(async () => {
+      await result.current.topBar.onResume?.();
+    });
+    expect(repository.resumeDocument).toHaveBeenCalledWith(initial.id);
+    expect(result.current.document.runtimeStatus).toBe("active");
+    expect(toast.success).toHaveBeenLastCalledWith("已启用");
+  });
+
+  it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+
+    expect(result.current.mode).toBe("read-only");
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.readOnly).toBe(true);
+    expect(result.current.canvas.canMoveNodes).toBe(true);
+    expect(result.current.canvas.nodes.find(node => node.id === "wait-2d")?.data.readOnly).toBe(true);
+  });
+
+  it("persists node movement while keeping a stopped workflow configuration read-only", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.permissions = {
+      canEdit: false,
+      canOperate: true,
+      canPublish: false,
+    };
+    document.runtimeStatus = "stopped";
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
+    const initialNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const movedNode = {
+      ...initialNode,
+      position: { x: initialNode.position.x + 120, y: initialNode.position.y + 48 },
+    };
+
+    act(() => {
+      result.current.canvas.onNodeDragStart(event, initialNode, [initialNode]);
+      result.current.canvas.onNodeDragStop(event, movedNode, [movedNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(movedNode.position);
+    expect(result.current.topBar.saveState).toBe("saving");
+    expect(result.current.inspector.readOnly).toBe(true);
+  });
+
+  it("locks the canvas while a review is pending", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.submitReview("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    expect(result.current.readOnlyReason).toBe("review-locked");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.document.currentReview?.status).toBe("pending");
+  });
+
+  it("selects nodes and opens the inspector while keeping checks open", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.canvas.paletteOpen).toBe(true);
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.canvas.paletteOpen).toBe(false);
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("wait-2d");
+  });
+
+  it("clears selected nodes when clicking the empty canvas pane", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("wait-2d");
+
+    act(() => {
+      result.current.canvas.onPaneClick();
+    });
+
+    expect(result.current.inspector.isOpen).toBe(false);
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.inspector.node).toBeUndefined();
+    expect(result.current.canvas.nodes.some((node) => node.data.selected)).toBe(false);
+  });
+
+  it("navigates from publish check items to the affected node", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+      result.current.checks.onNavigateToNode("branch-intent");
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("branch-intent");
+  });
+
+  it("deletes only the selected edge from shortcut orchestration", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("message-welcome");
+      result.current.canvas.onSelectEdge("edge-message-welcome-end");
+    });
+    expect(result.current.inspector.node).toBeUndefined();
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
+    expect(result.current.canvas.nodes.some((node) => node.id === "message-welcome")).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
+    expect(result.current.canvas.nodes.some((node) => node.id === "message-welcome")).toBe(true);
+  });
+
+  it("persists edge removals from React Flow changes and supports undo", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.canvas.onEdgesChange([{ id: "edge-message-welcome-end", type: "remove" }]);
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) => edge.id === "edge-message-welcome-end"))
+        .toBe(false);
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mark dirty drafts as saved when opening publish checks", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("message-welcome");
+    });
+
+    act(() => {
+      result.current.inspector.onNodeChange({ title: "更新后的动作节点" });
+    });
+    expect(result.current.topBar.saveState).toBe("saving");
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.topBar.saveState).toBe("saving");
+  });
+
+  it("keeps node dragging transient and unsaved until the drag finishes", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDrag>[0];
+    const initialNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const draggingNode = {
+      ...initialNode,
+      position: { x: 520, y: 80 },
+    };
+    const finalNode = {
+      ...initialNode,
+      position: { x: 540, y: 120 },
+    };
+
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onNodeDragStart(event, initialNode, [initialNode]);
+      result.current.canvas.onNodeDrag(event, draggingNode, [draggingNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(draggingNode.position);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onNodeDragStop(event, finalNode, [finalNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(finalNode.position);
+    expect(result.current.canvas.canUndo).toBe(true);
+    expect(result.current.topBar.saveState).toBe("saving");
+  });
+
+  it("persists every selected node position when a multi-node drag finishes", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
+    const waitNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const branchNode = result.current.canvas.nodes.find((node) => node.id === "branch-intent")!;
+    const messageNode = result.current.canvas.nodes.find((node) => node.id === "message-welcome")!;
+    const nextWaitNode = { ...waitNode, position: { x: waitNode.position.x + 120, y: waitNode.position.y + 48 } };
+    const nextBranchNode = { ...branchNode, position: { x: branchNode.position.x + 120, y: branchNode.position.y + 48 } };
+    const nextMessageNode = { ...messageNode, position: { x: messageNode.position.x + 120, y: messageNode.position.y + 48 } };
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onSelectNode("branch-intent", { additive: true });
+      result.current.canvas.onSelectNode("message-welcome", { additive: true });
+      result.current.canvas.onNodeDragStart(event, messageNode, [waitNode, branchNode, messageNode]);
+      result.current.canvas.onNodeDragStop(event, nextMessageNode, [nextWaitNode, nextBranchNode, nextMessageNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(nextWaitNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual(nextBranchNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.position)
+      .toEqual(nextMessageNode.position);
+
+    act(() => {
+      result.current.canvas.onUndo();
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(waitNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual(branchNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.position)
+      .toEqual(messageNode.position);
+  });
+
+  it("adds palette nodes without changing the current selection or closing the palette", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialEdges = result.current.canvas.edges.map((edge) => edge.id);
+
+    act(() => {
+      result.current.canvas.onSelectNode("message-welcome");
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+
+    act(() => {
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+    });
+
+    const handoffNode = result.current.canvas.nodes.find((node) =>
+      node.id !== "message-welcome" && node.data.kind === "handoff",
+    );
+
+    expect(handoffNode?.id).toMatch(/^handoff-/);
+    expect(result.current.canvas.edges.map((edge) => edge.id)).toEqual(initialEdges);
+    expect(result.current.canvas.edges.some((edge) =>
+      edge.source === handoffNode?.id || edge.target === handoffNode?.id,
+    )).toBe(false);
+    expect(handoffNode?.position).toEqual({ x: 1280, y: 420 });
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+    expect(result.current.canvas.paletteOpen).toBe(true);
+  });
+
+  it("persists manual connections through the workspace boundary and supports undo", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithoutEdge("edge-message-welcome-end"));
+      const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
+        .toBe(false);
+
+      act(() => {
+        result.current.canvas.onConnect({
+          source: "message-welcome",
+          sourceHandle: null,
+          target: "end",
+          targetHandle: null,
+        });
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
+        .toBe(true);
+      expect(result.current.canvas.canUndo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
+        .toBe(false);
+      expect(result.current.canvas.canRedo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) =>
+        edge.source === "message-welcome" && edge.target === "end",
+      )).toBe(false);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps automatic layout undoable without confusing saved draft state", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithDisorderedPositions());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const originalPositions = getCanvasPositions(result.current.canvas.nodes);
+
+      act(() => {
+        result.current.canvas.onArrange();
+      });
+
+      const arrangedPositions = getCanvasPositions(result.current.canvas.nodes);
+      expect(arrangedPositions).not.toEqual(originalPositions);
+      expect(result.current.canvas.canUndo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getCanvasPositions(getWorkflowDocument("newcomer-conversion").draft.nodes))
+        .toEqual(arrangedPositions);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(getCanvasPositions(result.current.canvas.nodes)).toEqual(originalPositions);
+      expect(result.current.canvas.canRedo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(getCanvasPositions(result.current.canvas.nodes)).toEqual(arrangedPositions);
+      expect(result.current.topBar.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps viewport changes out of the draft save boundary", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialDraftViewport = result.current.document.draft.viewport;
+    const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
+
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 180, y: 260, zoom: 0.72 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 180, y: 260, zoom: 0.72 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+    expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+    expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
+  });
+
+  it("keeps view and transient canvas interactions out of the draft history boundary", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const assertCleanCanvasState = () => {
+      expect(result.current.canvas.canUndo).toBe(false);
+      expect(result.current.canvas.canRedo).toBe(false);
+      expect(result.current.topBar.saveState).toBe("saved");
+    };
+
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onSelectNode("branch-intent", { additive: true });
+      result.current.canvas.onSelectEdge("edge-message-welcome-end");
+    });
+    expect(result.current.inspector.node).toBeUndefined();
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onNodeHoverStart("message-welcome");
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.highlightState)
+      .toBe("connected");
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onNodeHoverEnd();
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.highlightState)
+      .toBeUndefined();
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.canvas.paletteOpen).toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.onToggleInsertMenu?.("message-welcome");
+    });
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.insertMenuOpen)
+      .toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.onToggleInsertMenu?.(
+        "edge-message-welcome-end",
+      );
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.insertMenuOpen)
+      .toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onPaneClick();
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.insertMenuOpen)
+      .toBe(false);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+    });
+    expect(result.current.checks.isOpen).toBe(true);
+    assertCleanCanvasState();
+
+  });
+
+  it("cancels pending saves when undo returns to the last saved draft", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const initialNodeIds = result.current.canvas.nodes.map((node) => node.id);
+
+      act(() => {
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+      });
+
+      expect(result.current.topBar.saveState).toBe("saving");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.nodes.map((node) => node.id)).toEqual(initialNodeIds);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.map((node) => node.id))
+        .toEqual(initialNodeIds);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens checks instead of publishing when warnings remain", async () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.checks.publishAttempted).toBe(true);
+    expect(getWorkflowDocument("newcomer-conversion").status).toBe("Draft");
+  });
+
+  it("publishes a valid current draft through the workspace boundary", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.canvas.onSelectNode("start");
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({
+          seatIds: encodeStartSourceMarker("更新后的发布人群"),
+        });
+      });
+      expect(result.current.topBar.publishReady).toBe(true);
+
+      await act(async () => {
+        const submitPromise = result.current.topBar.onSubmitReview();
+        await vi.advanceTimersByTimeAsync(500);
+        await submitPromise;
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+        await result.current.topBar.onPublish();
+      });
+
+      expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
+      expect(result.current.document.status).toBe("Published");
+      expect(result.current.document.publishedAt).toBe("刚刚");
+      expect(toast.success).toHaveBeenCalledWith("发布成功");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces review, publication, and activation failures", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    baseRepository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+    const initial = baseRepository.getDocument("newcomer-conversion");
+    const reviewError = new Error("审核操作失败");
+    const repository = {
+      ...baseRepository,
+      approveReview: vi.fn(async () => { throw reviewError; }),
+      enableDocument: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "最多可同时运行 50 个 Workflow",
+          { apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED" },
+        );
+      }),
+      publishReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "conflict",
+          "审核内容依赖的业务资源已变化，请处理后重试发布",
+          { apiCode: "WORKFLOW_REVIEW_RESOURCES_CHANGED" },
+        );
+      }),
+      rejectReview: vi.fn(async () => { throw reviewError; }),
+      submitReview: vi.fn(async () => {
+        throw new WorkflowRepositoryError(
+          "validation",
+          "Workflow 校验未通过",
+        );
+      }),
+      withdrawReview: vi.fn(async () => { throw reviewError; }),
+    } satisfies WorkflowDraftRepository;
+    const { result } = renderHook(() => useWorkflowWorkspace(initial.id, repository, initial));
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("Workflow 校验未通过");
+
+    const pending = baseRepository.submitReview(initial.id);
+    const reviewId = pending.currentReview!.id;
+    const { result: pendingResult } = renderHook(() => useWorkflowWorkspace(
+      pending.id,
+      repository,
+      pending,
+    ));
+    await act(async () => {
+      await pendingResult.current.review.onApprove();
+      await pendingResult.current.review.onReject("需要调整");
+      await pendingResult.current.review.onWithdraw();
+    });
+    expect(repository.approveReview).toHaveBeenCalledWith(initial.id, reviewId, undefined);
+    expect(repository.rejectReview).toHaveBeenCalledWith(initial.id, reviewId, "需要调整");
+    expect(repository.withdrawReview).toHaveBeenCalledWith(initial.id, reviewId);
+    expect(toast.error).toHaveBeenCalledTimes(4);
+
+    const approved = baseRepository.approveReview(initial.id, reviewId);
+    const { result: approvedResult } = renderHook(() => useWorkflowWorkspace(
+      approved.id,
+      repository,
+      approved,
+    ));
+    await act(async () => {
+      await approvedResult.current.topBar.onPublish();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
+    expect(toast.error).toHaveBeenCalledTimes(5);
+
+    const inactive = {
+      ...baseRepository.getDocument("vip-reactivation"),
+      runtimeStatus: "inactive" as const,
+    };
+    const { result: inactiveResult } = renderHook(() => useWorkflowWorkspace(
+      inactive.id,
+      repository,
+      inactive,
+    ));
+    await act(async () => {
+      await inactiveResult.current.topBar.onEnable?.();
+    });
+    expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
+    expect(toast.error).toHaveBeenCalledTimes(6);
+  });
+
+  it("keeps publish state consistent when undo returns to the published draft", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const publishedKeyword = getCanvasStartSourceMarker(result.current.canvas);
+
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
+      await act(async () => {
+        await result.current.topBar.onPublish();
+      });
+
+      expect(result.current.topBar.publishState).toBe("published");
+
+      act(() => {
+        result.current.canvas.onSelectNode("start");
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({
+          seatIds: encodeStartSourceMarker("发布后的草稿修改"),
+        });
+      });
+
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(true);
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
+      expect(getCanvasStartSourceMarker(result.current.canvas)).toBe(publishedKeyword);
+      expect(result.current.canvas.canRedo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(true);
+      expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("发布后的草稿修改");
+      expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe(publishedKeyword);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps publish state published across non-draft canvas interactions", async () => {
+    importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+    await act(async () => {
+      await result.current.review.onApprove();
+    });
+    await act(async () => {
+      await result.current.topBar.onPublish();
+    });
+    expect(result.current.topBar.publishState).toBe("published");
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 180, y: 260, zoom: 0.72 });
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onNodeHoverStart("message-welcome");
+      result.current.canvas.onPaletteOpenChange(true);
+      result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.onToggleInsertMenu?.("message-welcome");
+      result.current.topBar.onPublishCheck();
+      result.current.canvas.onPaneClick();
+    });
+
+    expect(result.current.topBar.publishState).toBe("published");
+    expect(result.current.topBar.saveState).toBe("saved");
+    expect(result.current.canvas.canUndo).toBe(false);
+  });
+
+  it("keeps publish state consistent when undo and redo cross a structural graph edit", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      await act(async () => {
+        await result.current.topBar.onSubmitReview();
+      });
+      await act(async () => {
+        await result.current.review.onApprove();
+      });
+      await act(async () => {
+        await result.current.topBar.onPublish();
+      });
+      expect(result.current.topBar.publishState).toBe("published");
+
+      act(() => {
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+      });
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
+
+      expect(addedNodeId).toMatch(/^handoff-/);
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.saveState).toBe("saving");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(false);
+      expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.saveState).toBe("saved");
+      expect(result.current.canvas.canRedo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.some((node) => node.id === addedNodeId))
+        .toBe(false);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("previews a version history snapshot as read-only and exits back to the draft", () => {
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("历史版本人群"));
+    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("当前草稿人群"));
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const versionId = publishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
+
+    act(() => {
+      result.current.topBar.onOpenVersionHistory();
+    });
+    expect(result.current.versionHistory.isOpen).toBe(true);
+    expect(result.current.versionHistory.versions.map((version) => version.id)).toContain(versionId);
+
+    act(() => {
+      result.current.versionHistory.onSelectVersion(version);
+    });
+
+    expect(result.current.versionHistory.isPreviewing).toBe(true);
+    expect(result.current.mode).toBe("version-preview");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.inspector.isOpen).toBe(false);
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("历史版本人群");
+
+    act(() => {
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    expect(result.current.canvas.nodes).toHaveLength(publishedDocument.publishedDraft?.nodes.length ?? 0);
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBe("当前草稿人群");
+
+    act(() => {
+      result.current.versionHistory.onExitPreview();
+    });
+
+    expect(result.current.versionHistory.isPreviewing).toBe(false);
+    expect(result.current.mode).toBe("editing");
+    expect(result.current.canvas.isReadOnly).toBe(false);
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("当前草稿人群");
+    expect(result.current.inspector.isOpen).toBe(true);
+  });
+
+  it("allows viewport navigation while previewing a read-only version", () => {
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("历史版本人群"));
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialDraftViewport = result.current.document.draft.viewport;
+    const versionId = publishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
+
+    act(() => {
+      result.current.versionHistory.onSelectVersion(version);
+    });
+
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.mode).toBe("version-preview");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 260, y: 180, zoom: 0.68 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 260, y: 180, zoom: 0.68 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+    expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
+  });
+
+  it("allows viewport navigation while publishing without saving a draft change", async () => {
+    const repository = createDeferredPublishRepository();
+    repository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraftFromRepository(repository));
+    const submitted = repository.submitReview("newcomer-conversion");
+    repository.approveReview("newcomer-conversion", submitted.currentReview!.id);
+    const initialRevision = repository.getDocument("newcomer-conversion").revision;
+    const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
+
+    let publishPromise: Promise<void> | undefined;
+    await act(async () => {
+      publishPromise = result.current.topBar.onPublish();
+    });
+
+    expect(result.current.mode).toBe("publishing");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 320, y: 220, zoom: 0.74 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 320, y: 220, zoom: 0.74 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    await act(async () => {
+      repository.resolvePublish(0);
+      await publishPromise;
+    });
+
+    expect(repository.getDocument("newcomer-conversion").revision).toBe(initialRevision);
+    expect(repository.getDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.topBar.publishState).toBe("published");
+  });
+
+  it("keeps saved graph edits after entering and exiting version preview", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const publishedDocument = publishWorkflowDraft(
+        "newcomer-conversion",
+        createWorkflowDraftWithStartSourceMarker("历史版本人群"),
+      );
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const versionId = publishedDocument.currentVersion?.id ?? "";
+      const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
+
+      act(() => {
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+      });
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.some((node) => node.id === addedNodeId))
+        .toBe(true);
+
+      act(() => {
+        result.current.versionHistory.onSelectVersion(version);
+      });
+      expect(result.current.versionHistory.isPreviewing).toBe(true);
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(false);
+
+      act(() => {
+        result.current.versionHistory.onExitPreview();
+      });
+
+      expect(result.current.versionHistory.isPreviewing).toBe(false);
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores the selected version history snapshot into the editable draft", async () => {
+    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("第一版恢复人群"));
+    publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartSourceMarker("第二版仍是发布快照"));
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const versionId = firstPublishedDocument.currentVersion?.id ?? "";
+    const version = result.current.versionHistory.versions.find(item => item.id === versionId)!;
+
+    act(() => {
+      result.current.versionHistory.onSelectVersion(version);
+    });
+
+    await act(async () => {
+      await result.current.versionHistory.onRestoreVersion(version);
+    });
+
+    expect(result.current.versionHistory.isOpen).toBe(false);
+    expect(result.current.versionHistory.isPreviewing).toBe(false);
+    expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("第一版恢复人群");
+    expect(result.current.document.status).toBe("Draft");
+    expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("第二版仍是发布快照");
+  });
+
+  it("persists node config drafts through the workspace save boundary", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.canvas.onSelectNode("message-welcome");
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({ title: "保存后的动作节点" });
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "message-welcome")?.data.title)
+        .toBe("保存后的动作节点");
+      expect(result.current.topBar.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists start and handoff base settings through the workspace save boundary", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.canvas.onSelectNode("start");
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({ entryPolicy: { mode: "never" } });
+      });
+
+      act(() => {
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
+      });
+      const handoffNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
+
+      act(() => {
+        result.current.canvas.onSelectNode(handoffNodeId);
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({ title: "会员运营接管" });
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.entryPolicy)
+        .toEqual({ mode: "never" });
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === handoffNodeId)?.data.title)
+        .toBe("会员运营接管");
+      expect(result.current.topBar.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+});
+
+function createWorkflowDraftWithStartSourceMarker(marker: string): WorkflowDraft {
+  const draft = getWorkflowDocument("newcomer-conversion").draft;
+
+  return {
+    ...draft,
+    nodes: draft.nodes.map((node) =>
+      node.id === "start"
+        ? {
+            ...node,
+            data: node.data.kind === "start" && isChatAiStartNodeData(node.data)
+              ? { ...node.data, seatIds: encodeStartSourceMarker(marker) }
+              : node.data,
+          }
+        : node,
+    ),
+  };
+}
+
+function getStartSourceMarker(draft: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] } | null | undefined) {
+  const start = draft?.nodes.find(node => node.data.kind === "start");
+  if (start?.data.kind !== "start" || !isChatAiStartNodeData(start.data)) return null;
+  return String.fromCodePoint(...start.data.seatIds.map(id => id % 1_000_000));
+}
+
+function getCanvasStartSourceMarker(canvas: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] }) {
+  return getStartSourceMarker(canvas);
+}
+
+function encodeStartSourceMarker(marker: string) {
+  return [...marker].map((character, index) =>
+    (index + 1) * 1_000_000 + character.codePointAt(0)!,
+  );
+}
+
+function createWorkflowDraftWithoutEdge(edgeId: string) {
+  const draft = getWorkflowDocument("newcomer-conversion").draft;
+
+  return {
+    ...draft,
+    edges: draft.edges.filter((edge) => edge.id !== edgeId),
+  };
+}
+
+function createWorkflowDraftWithDisorderedPositions() {
+  const draft = getWorkflowDocument("newcomer-conversion").draft;
+
+  return {
+    ...draft,
+    nodes: draft.nodes.map((node) => {
+      if (node.id === "wait-2d") {
+        return {
+          ...node,
+          position: { x: 960, y: 360 },
+        };
+      }
+
+      if (node.id === "branch-intent") {
+        return {
+          ...node,
+          position: { x: 120, y: -180 },
+        };
+      }
+
+      return node;
+    }),
+  };
+}
+
+function getCanvasPositions(nodes: Array<{ id: string; position: { x: number; y: number } }>) {
+  return Object.fromEntries(nodes.map((node) => [node.id, node.position]));
+}
+
+function createRuntimeSupportedWorkflowDraft() {
+  return toRuntimeSupportedDraft(getWorkflowDocument("newcomer-conversion").draft);
+}
+
+function createRuntimeSupportedWorkflowDraftFromRepository(
+  repository: Pick<SyncWorkflowDraftRepository, "getDocument">,
+) {
+  return toRuntimeSupportedDraft(repository.getDocument("newcomer-conversion").draft);
+}
+
+function toRuntimeSupportedDraft(draft: WorkflowDraft): WorkflowDraft {
+  const supportedNodeIds = new Set(["start", "wait-2d", "end"]);
+
+  return {
+    ...draft,
+    edges: [
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
+    ],
+    nodes: draft.nodes.filter((node) => supportedNodeIds.has(node.id)),
+  };
+}
+
+function createDeferredPublishRepository() {
+  const baseRepository = createInMemoryWorkflowDraftRepository();
+  type PublishResult = ReturnType<typeof baseRepository.publishReview>;
+  const pendingPublishes: Array<{
+    reject: (error: Error) => void;
+    resolve: (document: PublishResult) => void;
+    reviewId: string;
+    workflowId: string;
+  }> = [];
+
+  return {
+    ...baseRepository,
+    pendingPublishes,
+    publishReview: (workflowId: string, reviewId: string) => new Promise<PublishResult>((resolve, reject) => {
+      pendingPublishes.push({
+        reject,
+        resolve,
+        reviewId,
+        workflowId,
+      });
+    }),
+    resolvePublish: (index: number) => {
+      const pendingPublish = pendingPublishes[index];
+
+      if (!pendingPublish) {
+        return;
+      }
+
+      pendingPublish.resolve(baseRepository.publishReview(
+        pendingPublish.workflowId,
+        pendingPublish.reviewId,
+      ));
+    },
+  } satisfies WorkflowDraftRepository & {
+    pendingPublishes: typeof pendingPublishes;
+    resolvePublish: (index: number) => void;
+  };
+}

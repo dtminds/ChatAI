@@ -59,6 +59,7 @@ export function MaterialActionsMenu({
   const [isMoveDialogOpen, setIsMoveDialogOpen] = useState(false);
   const targetGroups = groups.filter((group) => group.id !== item.groupId);
   const canEdit = canEditMaterialItem(item);
+  const canMove = Boolean(onMove) && targetGroups.length > 0;
 
   useEffect(() => {
     if (!position) {
@@ -114,8 +115,12 @@ export function MaterialActionsMenu({
               </button>
               <button
                 className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
-                disabled={targetGroups.length === 0}
+                disabled={!canMove}
                 onClick={() => {
+                  if (!canMove) {
+                    return;
+                  }
+
                   onOpenChange(null);
                   setIsMoveDialogOpen(true);
                 }}
@@ -157,13 +162,15 @@ export function MaterialActionsMenu({
             document.body,
           )
         : null}
-      <MaterialMoveGroupDialog
-        groups={targetGroups}
-        item={item}
-        onMove={(groupId) => onMove?.(item, groupId)}
-        onOpenChange={setIsMoveDialogOpen}
-        open={isMoveDialogOpen}
-      />
+      {onMove ? (
+        <MaterialMoveGroupDialog
+          groups={targetGroups}
+          item={item}
+          onMove={(groupId) => onMove(item, groupId)}
+          onOpenChange={setIsMoveDialogOpen}
+          open={isMoveDialogOpen}
+        />
+      ) : null}
     </>
   );
 }

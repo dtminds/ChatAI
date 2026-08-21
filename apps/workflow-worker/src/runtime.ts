@@ -1,0 +1,337 @@
+import type {
+  WorkflowEventSubscriptionReader,
+  WorkflowInboxRepository,
+  WorkflowInferenceRepository,
+  WorkflowJavaInferencePort,
+  WorkflowLlmTestAttemptRepository,
+  WorkflowTriggerBindingReader,
+} from "@chatai/workflow-runtime";
+import {
+  EMPTY_WORKFLOW_EVENT_CATALOG,
+  type WorkflowEventCatalog,
+} from "@chatai/workflow-engine";
+import type { WorkflowBroker, WorkflowBrokerSubscription } from "./broker/types.js";
+import type { WorkflowWorkerConfig } from "./config.js";
+import type { startEntryConsumer } from "./entry-consumer.js";
+import type { WorkflowReadiness } from "./health.js";
+import {
+  logWorkflowReadinessTransition,
+  logWorkflowRoleHeartbeat,
+  type WorkflowWorkerLogger,
+} from "./observability.js";
+import type { startTaskConsumer } from "./task-consumer.js";
+import type { processWorkflowInferenceBatch } from "./inference-worker.js";
+import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-mock-adapter.js";
+import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
+import type { reconcileWorkflowRuntime } from "./reconciler.js";
+import type { startRoleLoop } from "./role-loop.js";
+import type { scheduleWorkflowTasks } from "./scheduler.js";
+
+type WorkerRuntimeService = Parameters<typeof startEntryConsumer>[0]["runtimeService"]
+  & Parameters<typeof startTaskConsumer>[0]["runtimeService"];
+export async function startWorkflowWorker(input: {
+  config: WorkflowWorkerConfig;
+  logger: { info(value: unknown, message?: string): void };
+  startHealth(input: {
+    getReadiness(): WorkflowReadiness;
+    port: number;
+  }): Promise<{ close(): Promise<void> }>;
+  startRuntime(): Promise<{
+    close(): Promise<void>;
+    getReadiness(): WorkflowReadiness;
+  }>;
+  workerId: string;
+}) {
+  const runtime = await input.startRuntime();
+  let health: { close(): Promise<void> };
+  try {
+    health = await input.startHealth({
+      getReadiness: runtime.getReadiness,
+      port: input.config.healthPort,
+    });
+  } catch (error) {
+    await runtime.close();
+    throw error;
+  }
+  input.logger.info({
+    deadLetterTopics: input.config.deadLetterTopics,
+    environment: input.config.environment,
+    event: "workflow.worker.started",
+    llmTestMode: input.config.llmTestMode,
+    roles: [...input.config.roles],
+    subscriptions: input.config.subscriptions,
+    topics: input.config.topics,
+    workerId: input.workerId,
+  }, "workflow worker started");
+  let closed = false;
+  return {
+    async close() {
+      if (closed) return;
+      closed = true;
+      await runtime.close();
+      await health.close();
+      input.logger.info({ event: "workflow.worker.stopped" }, "workflow worker stopped");
+    },
+  };
+}
+
+export async function startWorkflowWorkerRuntime(input: {
+  broker: WorkflowBroker;
+  config: WorkflowWorkerConfig;
+  database: { destroy(): Promise<void> };
+  entryConsumer: typeof startEntryConsumer;
+  eventCatalog?: WorkflowEventCatalog;
+  eventSubscriptionReader: WorkflowEventSubscriptionReader;
+  inboxRepository: WorkflowInboxRepository;
+  inferenceAdapter: WorkflowJavaInferencePort;
+  inferenceRepository: WorkflowInferenceRepository;
+  inferenceWorker(input: Parameters<typeof processWorkflowInferenceBatch>[0]): ReturnType<typeof processWorkflowInferenceBatch>;
+  llmTestAdapter?: WorkflowLlmTestAdapter;
+  llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
+  llmTestAttemptWorker?: typeof processWorkflowLlmTestAttemptBatch;
+  pingDatabase(): Promise<void>;
+  logger: WorkflowWorkerLogger;
+  now?: () => Date;
+  outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
+  outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
+  reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
+  reconcilerService: Parameters<typeof reconcileWorkflowRuntime>[0]["reconciler"];
+  roleLoop: typeof startRoleLoop;
+  runtimeService: WorkerRuntimeService;
+  scheduler(input: Parameters<typeof scheduleWorkflowTasks>[0]): ReturnType<typeof scheduleWorkflowTasks>;
+  schedulerRepository: Parameters<typeof scheduleWorkflowTasks>[0]["repository"];
+  taskConsumer: typeof startTaskConsumer;
+  triggerBindingReader: WorkflowTriggerBindingReader;
+  workerId: string;
+}) {
+  const subscriptions: WorkflowBrokerSubscription[] = [];
+  const loops: Array<{ close(): Promise<void> }> = [];
+  const readiness: WorkflowReadiness = {
+    broker: true,
+    database: false,
+    roles: Object.fromEntries([...input.config.roles].map(role => [role, false])),
+  };
+  let closed = false;
+  const now = input.now ?? (() => new Date());
+  let previousReadiness = structuredClone(readiness);
+
+  try {
+    await input.pingDatabase();
+    readiness.database = true;
+    if (input.config.roles.has("entry-consumer")) {
+      subscriptions.push(await input.entryConsumer({
+        bindingReader: input.triggerBindingReader,
+        broker: input.broker,
+        deadLetterTopic: input.config.deadLetterTopics.entry ?? undefined,
+        eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
+        inboxRepository: input.inboxRepository,
+        logger: input.logger,
+        maxRedeliverCount: input.config.maxRedeliverCount,
+        now,
+        runtimeService: input.runtimeService,
+        subscriptionReader: input.eventSubscriptionReader,
+        subscription: input.config.subscriptions.entry,
+        topic: input.config.topics.entry,
+      }));
+      readiness.roles["entry-consumer"] = true;
+    }
+    if (input.config.roles.has("task-consumer")) {
+      subscriptions.push(await input.taskConsumer({
+        broker: input.broker,
+        deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
+        maxRedeliverCount: input.config.maxRedeliverCount,
+        logger: input.logger,
+        runtimeService: input.runtimeService,
+        subscription: input.config.subscriptions.task,
+        topic: input.config.topics.task,
+        workerId: input.workerId,
+      }));
+      readiness.roles["task-consumer"] = true;
+    }
+    if (input.config.roles.has("scheduler")) {
+      loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>
+        input.scheduler({
+          limit: input.config.runtime.batchSize,
+          now: now(),
+          repository: input.schedulerRepository,
+          shardIds: input.config.runtime.shardIds,
+        })));
+    }
+    if (input.config.roles.has("inference")) {
+      if (input.config.llmTestMode === "mock"
+        && (!input.llmTestAdapter || !input.llmTestAttemptRepository || !input.llmTestAttemptWorker)) {
+        throw new Error("Workflow LLM test Attempt worker is not configured");
+      }
+      loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, async () => {
+        const inference = input.inferenceWorker({
+          adapter: input.inferenceAdapter,
+          heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
+          leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.inferenceConcurrency,
+          maxAttempts: input.config.runtime.inferenceMaxAttempts,
+          maxRetryDelayMs: input.config.runtime.inferenceMaxRetryDelayMs,
+          now,
+          repository: input.inferenceRepository,
+          retryDelayMs: input.config.runtime.inferenceRetryDelayMs,
+        });
+        if (input.config.llmTestMode !== "mock") return inference;
+        const llmTestAttempt = input.llmTestAttemptWorker!({
+          adapter: input.llmTestAdapter!,
+          heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
+          leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.inferenceConcurrency,
+          now,
+          repository: input.llmTestAttemptRepository!,
+        });
+        const [inferenceResult, llmTestAttemptResult] = await Promise.all([
+          inference,
+          llmTestAttempt,
+        ]);
+        return { inference: inferenceResult, llmTestAttempt: llmTestAttemptResult };
+      }));
+    }
+    if (input.config.roles.has("outbox")) {
+      loops.push(startBackgroundRole("outbox", input.config.runtime.outboxIntervalMs, () =>
+        input.outboxPublisher({
+          broker: input.broker,
+          leaseDurationMs: input.config.runtime.leaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.batchSize,
+          maxAttempts: input.config.runtime.maxOutboxAttempts,
+          maxRetryDelayMs: input.config.runtime.maxOutboxRetryDelayMs,
+          repository: input.outboxRepository,
+          retryDelayMs: input.config.runtime.retryDelayMs,
+          topic: input.config.topics.task,
+        })));
+    }
+    if (input.config.roles.has("reconciler")) {
+      let afterEventSubscriptionId: string | undefined;
+      let afterRunId: string | undefined;
+      let afterConsistencyRunId: string | undefined;
+      let afterConsistencyTaskId: string | undefined;
+      let nextHistoryCleanupAt = 0;
+      loops.push(startBackgroundRole("reconciler", input.config.runtime.reconcileIntervalMs, async () => {
+        const currentTime = now();
+        const historyRetention = currentTime.getTime() >= nextHistoryCleanupAt
+          ? {
+              runBefore: new Date(
+                currentTime.getTime() - input.config.runtime.runRetentionDays * 86_400_000,
+              ),
+              taskOutboxBefore: new Date(
+                currentTime.getTime() - input.config.runtime.taskOutboxRetentionDays * 86_400_000,
+              ),
+            }
+          : undefined;
+        const result = await input.reconciler({
+          afterEventSubscriptionId,
+          afterRunId,
+          afterConsistencyRunId,
+          afterConsistencyTaskId,
+          consistencyGraceMs: input.config.runtime.reconcileIntervalMs * 2,
+          dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
+          historyCleanupBatchSize: input.config.runtime.historyCleanupBatchSize,
+          historyRetention,
+          inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
+          leaseDurationMs: input.config.runtime.leaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.batchSize,
+          maxTaskAttempts: input.config.runtime.maxTaskAttempts,
+          now: currentTime,
+          reconciler: input.reconcilerService,
+          retryDelayMs: input.config.runtime.retryDelayMs,
+        });
+        afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
+        afterRunId = result.nextCursor ?? undefined;
+        afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
+        afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;
+        if (historyRetention) {
+          nextHistoryCleanupAt = result.historyCleanupHasMore
+            ? currentTime.getTime() + input.config.runtime.reconcileIntervalMs
+            : currentTime.getTime() + input.config.runtime.historyCleanupIntervalMs;
+        }
+        return result;
+      }));
+    }
+    loops.push(input.roleLoop({
+      intervalMs: input.config.runtime.readinessIntervalMs,
+      onError: error => input.logger.error({
+        err: error,
+        event: "workflow.worker.readiness.failed",
+        role: "readiness",
+      }, "workflow worker readiness probe failed"),
+      onHeartbeat: heartbeat => {
+        const currentReadiness = heartbeat.result as WorkflowReadiness;
+        logWorkflowReadinessTransition(input.logger, previousReadiness, currentReadiness);
+        previousReadiness = structuredClone(currentReadiness);
+      },
+      role: "readiness",
+      run: async () => {
+        const healthTopics = new Set<string>();
+        if (input.config.roles.has("entry-consumer")) healthTopics.add(input.config.topics.entry);
+        if (input.config.roles.has("task-consumer") || input.config.roles.has("outbox")) {
+          healthTopics.add(input.config.topics.task);
+        }
+        const [database, broker] = await Promise.allSettled([
+          input.pingDatabase(),
+          input.broker.checkHealth([...healthTopics]),
+        ]);
+        readiness.database = database.status === "fulfilled";
+        readiness.broker = broker.status === "fulfilled";
+        if (input.config.roles.has("entry-consumer")) {
+          readiness.roles["entry-consumer"] = subscriptions[0]?.isConnected() ?? false;
+        }
+        if (input.config.roles.has("task-consumer")) {
+          const taskIndex = input.config.roles.has("entry-consumer") ? 1 : 0;
+          readiness.roles["task-consumer"] = subscriptions[taskIndex]?.isConnected() ?? false;
+        }
+        return structuredClone(readiness);
+      },
+    }));
+  } catch (error) {
+    await closeResources();
+    throw error;
+  }
+
+  return {
+    close: closeResources,
+    getReadiness: () => structuredClone(readiness),
+  };
+
+  async function closeResources() {
+    if (closed) return;
+    closed = true;
+    for (const role of Object.keys(readiness.roles)) readiness.roles[role] = false;
+    readiness.broker = false;
+    readiness.database = false;
+    await Promise.allSettled(loops.map(loop => loop.close()));
+    await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
+    await Promise.allSettled([input.broker.close(), input.database.destroy()]);
+  }
+
+  function startBackgroundRole(
+    role: "inference" | "outbox" | "reconciler" | "scheduler",
+    intervalMs: number,
+    run: () => Promise<unknown>,
+  ) {
+    return input.roleLoop({
+      intervalMs,
+      onError: error => {
+        readiness.roles[role] = false;
+        input.logger.error({
+          err: error,
+          event: "workflow.worker.role.failed",
+          role,
+        }, "workflow worker role iteration failed");
+      },
+      onHeartbeat: heartbeat => {
+        readiness.roles[role] = true;
+        logWorkflowRoleHeartbeat(input.logger, role, heartbeat);
+      },
+      role,
+      run,
+    });
+  }
+}

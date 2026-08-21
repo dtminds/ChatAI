@@ -124,6 +124,7 @@ const skillTemplateServiceMock = vi.hoisted(() => ({
   listSkillTemplates: vi.fn(),
 }));
 const workTagServiceMock = vi.hoisted(() => ({
+  getWorkTagsByIds: vi.fn(),
   listWorkTagGroups: vi.fn(),
   listWorkTags: vi.fn(),
 }));
@@ -1028,38 +1029,12 @@ describe("AI hosting pages", () => {
     });
     vi.stubGlobal(
       "Image",
-      class {
-        private readonly listeners = new Map<string, Set<(event: Event) => void>>();
-
-        complete = false;
-        naturalWidth = 0;
-        onerror: ((event: Event) => void) | null = null;
-        onload: ((event: Event) => void) | null = null;
-
-        addEventListener(type: string, listener: (event: Event) => void) {
-          const listeners =
-            this.listeners.get(type) ?? new Set<(event: Event) => void>();
-          listeners.add(listener);
-          this.listeners.set(type, listeners);
-        }
-
-        removeEventListener(type: string, listener: (event: Event) => void) {
-          this.listeners.get(type)?.delete(listener);
-        }
-
-        set src(_value: string) {
-          queueMicrotask(() => {
-            this.complete = true;
-            this.naturalWidth = 1;
-            const event = {
-              currentTarget: this,
-              target: this,
-            } as unknown as Event;
-
-            this.onload?.(event);
-            this.listeners.get("load")?.forEach((listener) => listener(event));
-          });
-        }
+      class extends EventTarget {
+        complete = true;
+        crossOrigin: string | null = null;
+        naturalWidth = 1;
+        referrerPolicy = "";
+        src = "";
       },
     );
     readXlsxFileMock.mockResolvedValue([
@@ -1137,7 +1112,7 @@ describe("AI hosting pages", () => {
   it("renders the agent management page", async () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(
       screen.getByText("创建和管理负责客户接待的智能体"),
     ).toBeInTheDocument();
@@ -1149,7 +1124,7 @@ describe("AI hosting pages", () => {
       "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
     ]);
     expect(screen.getByRole("navigation", { name: "智能体导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Agent 管理" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Agent" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents",
     );
@@ -1393,7 +1368,8 @@ describe("AI hosting pages", () => {
       pageSize: 10,
       status: "pending",
     });
-    await user.hover(screen.getAllByAltText("客服小王")[0]);
+    const seatAvatar = await screen.findByAltText("客服小王");
+    await user.hover(seatAvatar);
     expect(await screen.findByRole("tooltip", { name: "客服小王" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
@@ -3509,7 +3485,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0.5MB/1GB");
   });
@@ -3532,7 +3508,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0/1GB");
   });
@@ -4193,7 +4169,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent" });
 
     await user.type(screen.getByRole("textbox", { name: "搜索 Agent 名称" }), "售后");
 
@@ -4212,7 +4188,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });
     await user.click(moreActions[0]);

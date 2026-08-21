@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
+  Archive04Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -50,12 +51,6 @@ import {
 } from "./kb-attachment-types";
 
 const PAGE_SIZE = 10;
-
-const kbAttachmentInitIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
-
-const kbAttachmentEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const kbAttachmentInitLoadingIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_4.gif";
@@ -880,11 +875,12 @@ function KbAttachmentsInitState({
 }) {
   return (
     <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-      <img
-        alt=""
+      <HugeiconsIcon
         aria-hidden="true"
-        className="mb-6 h-auto w-[200px]"
-        src={kbAttachmentInitIllustrationUrl}
+        className="mb-6 text-muted-foreground/60"
+        icon={Archive04Icon}
+        size={40}
+        strokeWidth={1}
       />
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
         暂未启用附件库，开启后，可统一管理图片、链接、小程序等附件，Agent 在回答时会引用并发送
@@ -954,7 +950,6 @@ function KbAttachmentsEmptyState() {
   return (
     <KbEmptyStatePanel
       description={KB_ATTACHMENT_EMPTY_DESCRIPTION}
-      illustrationUrl={kbAttachmentEmptyIllustrationUrl}
       keepSuggestionOnSameLine
       suggestionContent={KB_ATTACHMENT_EMPTY_SUGGESTION}
       suggestionLabel="查看建议"

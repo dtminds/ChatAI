@@ -1,6 +1,374 @@
 # Database Change Log
 
+## 2026-08-20 Workflow 节点出口执行账本
+
+Node Execution 仅对节点 Contract 明确声明需要记录出口的节点保存实际 Source Outlet；当前只有 A/B 分流节点声明。其他节点保持 `NULL`。该字段不进入 Run Context，也不是客户固定分组。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN source_outlet_id VARCHAR(128) NULL COMMENT '需记录出口的节点本次选择的源出口ID' AFTER sequence;
+```
+
+## 2026-08-16 Workflow 发布审核与独立发布
+
+- Workflow 仍在开发阶段，直接清空全部 Workflow 数据，不保留 `validated_draft_version` 兼容路径。
+- Definition 增加草稿与已发布语义哈希；Revision 关联授权发布的审核记录。
+- 新增不可变候选与审核决定表 `xy_wap_embed_workflow_publish_review`；审核状态仅记录 `pending`、`approved`、`rejected`、`withdrawn`，发布事实由独立字段记录。
+
+```sql
+-- 停止 Backend 与 Workflow Worker 后，先执行 2026-08-15 的全量 Workflow DELETE。
+ALTER TABLE xy_wap_embed_workflow_definition
+  DROP COLUMN validated_draft_version,
+  ADD COLUMN draft_semantic_hash VARCHAR(64) NOT NULL COMMENT '忽略布局后的草稿语义SHA-256' AFTER draft_json,
+  ADD COLUMN published_semantic_hash VARCHAR(64) NULL COMMENT '当前发布Revision的草稿语义SHA-256' AFTER published_revision;
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  ADD COLUMN review_id BIGINT UNSIGNED NOT NULL COMMENT '授权本次发布的审核ID' AFTER publish_sub_uid;
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  uid BIGINT UNSIGNED NOT NULL,
+  workflow_id BIGINT UNSIGNED NOT NULL,
+  workflow_type TINYINT UNSIGNED NOT NULL,
+  subject_type TINYINT UNSIGNED NOT NULL,
+  source_draft_version INT UNSIGNED NOT NULL,
+  base_published_revision INT UNSIGNED NULL,
+  draft_json JSON NOT NULL,
+  execution_spec_json JSON NOT NULL,
+  trigger_bindings_json JSON NOT NULL,
+  candidate_hash VARCHAR(64) NOT NULL,
+  draft_semantic_hash VARCHAR(64) NOT NULL,
+  change_summary_json JSON NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  submit_sub_uid BIGINT UNSIGNED NOT NULL,
+  submit_time DATETIME NOT NULL,
+  checked_at DATETIME NOT NULL,
+  review_sub_uid BIGINT UNSIGNED NULL,
+  review_comment VARCHAR(1000) NULL,
+  review_time DATETIME NULL,
+  publish_sub_uid BIGINT UNSIGNED NULL,
+  resulting_revision INT UNSIGNED NULL,
+  publish_time DATETIME NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_workflow_publish_review_match (
+    uid,
+    workflow_id,
+    draft_semantic_hash,
+    base_published_revision,
+    status,
+    id
+  ),
+  KEY idx_workflow_publish_review_current (uid, workflow_id, id)
+) COMMENT='营销Workflow发布审核表';
+```
+
+## 2026-08-15 Workflow Execution Spec v3
+
+- Execution Spec v3 删除节点级和聚合级 `requiredCapabilities`，Wait Event 配置不再持久化 `capabilityKey` / `contractVersion`。
+- 当前仍处于开发阶段，不保留 Execution Spec v1/v2 兼容读取，也不迁移已有 Draft、Revision 或运行数据。
+- `xy_wap_embed_workflow_inference_job.contract_version` 和 `xy_wap_embed_workflow_llm_test_attempt.contract_version` 是真实推理请求契约版本，继续保留。
+- 本次没有表结构变更。部署新代码前停止 Backend 与 Workflow Worker，并一次性清空全部 Workflow 数据。
+
+```sql
+DELETE FROM xy_wap_embed_workflow_event_subscription_event;
+DELETE FROM xy_wap_embed_workflow_event_subscription;
+DELETE FROM xy_wap_embed_workflow_inference_job;
+DELETE FROM xy_wap_embed_workflow_llm_test_attempt;
+DELETE FROM xy_wap_embed_workflow_node_execution;
+DELETE FROM xy_wap_embed_workflow_outbox;
+DELETE FROM xy_wap_embed_workflow_inbox;
+DELETE FROM xy_wap_embed_workflow_task;
+DELETE FROM xy_wap_embed_workflow_run;
+DELETE FROM xy_wap_embed_workflow_entry_guard;
+DELETE FROM xy_wap_embed_workflow_daily_metric;
+DELETE FROM xy_wap_embed_workflow_node_metric_event;
+DELETE FROM xy_wap_embed_workflow_node_metric;
+DELETE FROM xy_wap_embed_workflow_revision_cleanup;
+DELETE FROM xy_wap_embed_workflow_trigger_binding;
+DELETE FROM xy_wap_embed_workflow_revision;
+DELETE FROM xy_wap_embed_workflow_definition;
+```
+
+## 2026-08-14 Workflow 在途 Run 前向 Revision 路由
+
+- `run.revision` 改为当前节点 Task 使用的 Revision；Task 与 Node Execution 保存各自实际执行 Revision。
+- Fixed Wait 不再提前创建下游 Task；发布删除 Wait/Wait Event 时写入耐久清退请求。
+- 节点指标增加未完成累计，并支持按当前 Node ID 跨 Revision 聚合。
+- 数据页不再按 Revision 过滤 Run，替换相关查询索引。
+- 当前尚无生产运行数据；升级时一次性清空旧执行态和派生指标，保留 Workflow Definition、Draft、Revision 与 Trigger Binding。
+
+```sql
+-- 执行以下一次性重置前，先停止 Workflow Worker 和 Workflow 写入。
+DELETE FROM xy_wap_embed_workflow_event_subscription_event;
+DELETE FROM xy_wap_embed_workflow_event_subscription;
+DELETE FROM xy_wap_embed_workflow_inference_job;
+DELETE FROM xy_wap_embed_workflow_node_execution;
+DELETE FROM xy_wap_embed_workflow_outbox;
+DELETE FROM xy_wap_embed_workflow_inbox;
+DELETE FROM xy_wap_embed_workflow_task;
+DELETE FROM xy_wap_embed_workflow_run;
+DELETE FROM xy_wap_embed_workflow_entry_guard;
+DELETE FROM xy_wap_embed_workflow_daily_metric;
+DELETE FROM xy_wap_embed_workflow_node_metric_event;
+DELETE FROM xy_wap_embed_workflow_node_metric;
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点执行使用的Revision' AFTER run_id;
+
+ALTER TABLE xy_wap_embed_workflow_run
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '当前节点Task使用的Revision',
+  DROP KEY idx_workflow_run_records,
+  DROP KEY idx_workflow_run_status_records,
+  DROP KEY idx_workflow_run_retained_records,
+  DROP KEY idx_workflow_run_node_records,
+  ADD KEY idx_workflow_run_records (uid, workflow_id, id),
+  ADD KEY idx_workflow_run_status_records (uid, workflow_id, status, id),
+  ADD KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),
+  ADD KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),
+  ADD KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id);
+
+ALTER TABLE xy_wap_embed_workflow_task
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '本次节点到达固定使用的Revision';
+
+ALTER TABLE xy_wap_embed_workflow_event_subscription
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '创建订阅的Wait Event Task Revision';
+
+ALTER TABLE xy_wap_embed_workflow_node_metric_event
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '该节点指标所属Revision',
+  ADD COLUMN incomplete_delta BIGINT NOT NULL DEFAULT 0 COMMENT '未完成增量' AFTER completed_delta;
+
+ALTER TABLE xy_wap_embed_workflow_node_metric
+  MODIFY COLUMN revision INT UNSIGNED NOT NULL COMMENT '该节点指标所属Revision',
+  ADD COLUMN incomplete_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计未完成记录数' AFTER completed_count,
+  ADD KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision_cleanup (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT '删除目标节点的发布Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '被删除的等待节点ID',
+  node_kind VARCHAR(32) NOT NULL COMMENT '被删除的等待节点类型',
+  status VARCHAR(32) NOT NULL COMMENT '状态：pending、leased、done、obsolete、dead',
+  after_run_id BIGINT UNSIGNED NULL COMMENT '已处理Run游标',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前游标连续处理尝试次数',
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下次允许领取时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_revision_cleanup_node (uid, workflow_id, revision, node_id),
+  KEY idx_workflow_revision_cleanup_claim (status, next_attempt_at, lease_expires_at, id)
+) COMMENT='营销Workflow发布节点清退请求表';
+```
+
+## 2026-08-13 Workflow 单入口事件与 Trigger Binding 筛选
+
+- 本期一个 Workflow 最多配置一个 Start Event；Binding 按 Revision 和 Event Type 持久化，为未来多事件保留数组模型。
+- `filter_spec_json` 保存事件专属的完整筛选规则；Java Interest Reader 与 Node 最终匹配读取同一份规则。
+- 删除开发期的 Trigger Binding Match 派生表，不改变现有 Revision 级 Binding 唯一约束。
+
+```sql
+DROP TABLE IF EXISTS xy_wap_embed_workflow_trigger_binding_match;
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  DROP KEY idx_workflow_trigger_binding_match;
+```
+
+## 2026-08-13 Workflow 大模型节点试运行
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_llm_test_attempt (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点稳定ID',
+  op_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '发起操作人ID',
+  execution_key VARCHAR(512) NOT NULL COMMENT '本次试运行执行唯一键',
+  contract_version INT UNSIGNED NOT NULL COMMENT '推理请求契约版本',
+  node_snapshot_json JSON NOT NULL COMMENT '节点执行配置快照',
+  input_values_json JSON NOT NULL COMMENT '本次临时输入值',
+  payload_json JSON NOT NULL COMMENT '推理请求载荷',
+  result_json JSON NULL COMMENT '推理适配器结果',
+  output_json JSON NULL COMMENT '映射后的节点输出',
+  status VARCHAR(32) NOT NULL COMMENT '状态：running、succeeded、failed、timed_out、cancelled',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '领取次数',
+  deadline_at DATETIME NOT NULL COMMENT '执行截止时间',
+  expires_at DATETIME NOT NULL COMMENT '数据过期时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  error_code VARCHAR(128) NULL COMMENT '标准错误码',
+  error_message VARCHAR(512) NULL COMMENT '脱敏错误摘要',
+  started_at DATETIME NULL COMMENT '首次开始执行时间',
+  completed_at DATETIME NULL COMMENT '终态完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_llm_test_execution (uid, execution_key),
+  KEY idx_workflow_llm_test_lookup (uid, workflow_id, id),
+  KEY idx_workflow_llm_test_claim (status, deadline_at, lease_expires_at, id),
+  KEY idx_workflow_llm_test_cleanup (expires_at, id)
+) COMMENT='营销Workflow大模型节点试运行记录表';
+```
+
+## 2026-08-12 Workflow 异步推理任务
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow Run ID',
+  task_id BIGINT UNSIGNED NOT NULL COMMENT '等待推理结果的Workflow Task ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点稳定ID',
+  node_kind VARCHAR(64) NOT NULL COMMENT '推理节点类型：llm、ai-intent',
+  sequence INT UNSIGNED NOT NULL COMMENT 'Run内节点执行序号',
+  execution_key VARCHAR(512) NOT NULL COMMENT '节点执行稳定键',
+  contract_version INT UNSIGNED NOT NULL COMMENT '推理请求契约版本',
+  payload_json JSON NOT NULL COMMENT '推理请求载荷',
+  result_json JSON NULL COMMENT '推理结果',
+  status VARCHAR(32) NOT NULL COMMENT '状态：pending、running、retry_wait、succeeded、failed、cancelled',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '推理调用尝试次数',
+  next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
+  deadline_at DATETIME NOT NULL COMMENT '推理总截止时间',
+  paused_at DATETIME NULL COMMENT '执行预算冻结时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  error_code VARCHAR(128) NULL COMMENT '标准错误码',
+  error_message VARCHAR(512) NULL COMMENT '脱敏错误摘要',
+  failure_kind VARCHAR(32) NULL COMMENT '失败分类：retryable、terminal、unknown',
+  started_at DATETIME NULL COMMENT '首次开始调用时间',
+  completed_at DATETIME NULL COMMENT '终态完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_inference_execution (uid, execution_key),
+  UNIQUE KEY uk_workflow_inference_task (uid, task_id),
+  KEY idx_workflow_inference_claim (status, next_attempt_at, deadline_at, id),
+  KEY idx_workflow_inference_lease (status, lease_expires_at, id),
+  KEY idx_workflow_inference_run_cleanup (run_id, id)
+) COMMENT='营销Workflow异步推理任务表';
+```
+
 Manual database changes for the backend should be recorded here.
+
+## 2026-08-11
+
+- The development-only Trigger Binding Match experiment was superseded by the 2026-08-13 Binding filter design and is not part of the final schema.
+- Added the source-oriented Trigger Binding index for `uid + event_type` candidate lookup.
+- Replaced the development-only generic Wait Event `account_id` with the explicit ChatAI `seat_id`; there is no production Workflow data requiring dual-column compatibility.
+- Renamed the development-only Node Execution ledger key to `execution_key`; the ledger identity is not an external Action idempotency contract.
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  ADD KEY idx_workflow_trigger_binding_interest
+    (uid, event_type, status, workflow_id, revision, id);
+
+ALTER TABLE xy_wap_embed_workflow_event_subscription
+  CHANGE COLUMN account_id seat_id BIGINT UNSIGNED NULL COMMENT '可选ChatAI席位约束';
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  DROP KEY uk_workflow_node_execution_idempotency,
+  CHANGE COLUMN idempotency_key execution_key VARCHAR(512) NOT NULL COMMENT '稳定节点执行键',
+  ADD UNIQUE KEY uk_workflow_node_execution_key (uid, execution_key);
+```
+
+## 2026-08-10
+
+- Added immutable Workflow Type and Subject Type identity to control-plane and Runtime records.
+- Added the durable Wait Event subscription table used for event/timeout CAS and paused-run recovery.
+- Database codes are append-only: Workflow Type `1=chatai_sop`, `2=wecom_sop`, `3=member_sop`; Subject Type `1=chatai_contact`, `2=wecom_contact`, `3=miniapp_member`.
+- Existing untyped Workflow rows use the legacy ChatAI semantics. The `ADD COLUMN` statements temporarily default `workflow_type` to `1` (`chatai_sop`) and `subject_type` to `1` (`chatai_contact`) so non-empty tables can be migrated safely; the defaults are removed after the existing rows are backfilled.
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP' AFTER uid,
+  ADD COLUMN status_reason VARCHAR(64) NULL COMMENT '系统状态原因' AFTER runtime_status,
+  ADD KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id);
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  ADD COLUMN workflow_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP' AFTER uid,
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER workflow_type;
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER uid,
+  DROP KEY uk_workflow_trigger_binding_revision,
+  DROP KEY idx_workflow_trigger_binding_match,
+  ADD UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
+  ADD KEY idx_workflow_trigger_binding_match (uid, subject_type, event_type, status, workflow_id);
+
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER workflow_id,
+  DROP KEY uk_workflow_entry_guard_subject,
+  ADD UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id);
+
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD COLUMN subject_type TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员' AFTER revision,
+  DROP KEY idx_workflow_run_entry_window,
+  ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id);
+
+ALTER TABLE xy_wap_embed_workflow_definition
+  MODIFY COLUMN workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP';
+
+ALTER TABLE xy_wap_embed_workflow_revision
+  MODIFY COLUMN workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  MODIFY COLUMN subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT 'Run固定Revision',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID',
+  task_id BIGINT UNSIGNED NOT NULL COMMENT '对应等待事件Task ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '等待事件节点ID',
+  event_type VARCHAR(128) NOT NULL COMMENT '等待的标准事件类型',
+  subject_type TINYINT UNSIGNED NOT NULL COMMENT '主体类型：1 ChatAI联系人，2 企微客户，3 小程序会员',
+  subject_id VARCHAR(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主体类型内不透明ID',
+  account_id VARCHAR(128) NULL COMMENT '可选托管账号约束',
+  status VARCHAR(32) NOT NULL COMMENT '状态：waiting、triggered、timed_out、cancelled',
+  effective_from DATETIME NOT NULL COMMENT '订阅生效时间',
+  expires_at DATETIME NOT NULL COMMENT '最长等待截止时间',
+  collect_until DATETIME NULL COMMENT '事件触发后的消息收集截止时间',
+  trigger_event_id VARCHAR(128) NULL COMMENT '首个命中的入口事件ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_event_subscription_task (uid, task_id, event_type),
+  KEY idx_workflow_event_subscription_lookup
+    (uid, subject_type, event_type, subject_id, status, expires_at, id),
+  KEY idx_workflow_event_subscription_collect
+    (uid, subject_type, event_type, subject_id, status, collect_until, id),
+  KEY idx_workflow_event_subscription_run (uid, run_id, status, id),
+  KEY idx_workflow_event_subscription_reconcile (status, id)
+) COMMENT='营销Workflow动态事件等待订阅表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  subscription_id BIGINT UNSIGNED NOT NULL COMMENT 'Wait Event订阅ID',
+  event_id VARCHAR(128) NOT NULL COMMENT 'Workflow入口事件ID',
+  occurred_at DATETIME NOT NULL COMMENT '事件发生时间',
+  projection_json JSON NOT NULL COMMENT 'Event Catalog允许的变量投影',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收集时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id),
+  KEY idx_workflow_event_subscription_event_list (uid, subscription_id, occurred_at, id)
+) COMMENT='营销Workflow等待事件收集记录表';
+```
 
 ## 2026-08-09
 
@@ -27,6 +395,139 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_support_investigation_log (
 ) COMMENT='问题排查启动记录';
 ```
 
+## 2026-07-13
+
+- Added indexes for the 180-day retained-record query and bounded cleanup of terminal Runs, Node Execution ledgers, and task Outbox rows.
+
+Workflow history retention migration (apply before enabling the Worker cleanup settings):
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_history_cleanup (status, completed_at, id),
+  ADD KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id);
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD KEY idx_workflow_node_execution_run_cleanup (run_id, id);
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  ADD KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id);
+```
+
+- Added the Workflow Capability failure classification used by the durable retry ledger.
+
+Capability reliability migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN failure_kind VARCHAR(32) NULL COMMENT 'Capability失败分类：retryable/unknown/terminal' AFTER error_message;
+```
+
+- Added the active Task status/index cursor used by bounded Run/Task consistency reconciliation.
+
+Run/Task reconciliation migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_task
+  ADD KEY idx_workflow_task_status_reconcile (status, id);
+```
+
+## 2026-07-12
+
+- Added idempotent Workflow node metric events and sharded node counters for the data-mode canvas.
+- Processed metric events are retained for seven days and then removed in bounded Reconciler batches.
+
+Manual migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_run
+  DROP KEY idx_workflow_run_workflow_status_time,
+  DROP KEY idx_workflow_run_subject_status_time,
+  DROP KEY idx_workflow_run_schedule,
+  ADD KEY idx_workflow_run_records (uid, workflow_id, revision, id),
+  ADD KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),
+  ADD KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),
+  ADD KEY idx_workflow_run_status_reconcile (status, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID', uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID', revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID', node_id VARCHAR(128) NOT NULL COMMENT '节点ID',
+  shard_id SMALLINT UNSIGNED NOT NULL COMMENT '统计分片ID', event_key VARCHAR(256) NOT NULL COMMENT '统计事件幂等键',
+  entered_delta BIGINT NOT NULL DEFAULT 0 COMMENT '进入增量', current_delta BIGINT NOT NULL DEFAULT 0 COMMENT '当前停留增量',
+  passed_delta BIGINT NOT NULL DEFAULT 0 COMMENT '已通过增量', completed_delta BIGINT NOT NULL DEFAULT 0 COMMENT '已完成增量',
+  processed_at DATETIME NULL COMMENT '聚合完成时间', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间', PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_node_metric_event_key (uid, event_key), KEY idx_workflow_node_metric_event_pending (processed_at, id)
+) COMMENT='营销Workflow节点统计增量事件表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID', uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID', revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点ID', shard_id SMALLINT UNSIGNED NOT NULL COMMENT '统计分片ID',
+  entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入记录数', current_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前停留记录数',
+  passed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计已通过记录数', completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计已完成记录数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间', PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
+  KEY idx_workflow_node_metric_query (uid, workflow_id, revision, node_id)
+) COMMENT='营销Workflow节点分片统计表';
+```
+
+## 2026-07-11
+
+- Added `xy_wap_embed_workflow_definition.description` for Workflow metadata shown from the canvas header.
+- Added the Workflow entry guard and Run entry-window index for subject-level re-entry limits.
+- Made trigger binding filters required.
+- Added lease ownership and expiry fields to the Workflow Outbox so concurrent publishers can safely claim rows and the Reconciler can recover expired leases.
+- Added the Task version to Workflow Outbox rows so the Reconciler can safely recover dispatched tasks whose published message was never consumed.
+
+Manual migration for databases created from the initial 2026-07-10 Workflow schema:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  ADD COLUMN description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述' AFTER name;
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
+  total_entries INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '历史累计成功进入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_id)
+) COMMENT='营销Workflow客户进入串行化守卫表';
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  MODIFY COLUMN filter_spec_json JSON NOT NULL COMMENT '结构化触发筛选规则';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id);
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  ADD COLUMN lease_owner VARCHAR(128) NULL COMMENT '投递租约持有者' AFTER attempt,
+  ADD COLUMN lease_expires_at DATETIME NULL COMMENT '投递租约过期时间' AFTER lease_owner,
+  ADD COLUMN task_version INT UNSIGNED NULL COMMENT 'Task版本' AFTER aggregate_id,
+  ADD KEY idx_workflow_outbox_lease (status, lease_expires_at, id);
+
+UPDATE xy_wap_embed_workflow_outbox
+SET task_version = CAST(JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.taskVersion')) AS UNSIGNED)
+WHERE task_version IS NULL;
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  MODIFY COLUMN task_version INT UNSIGNED NOT NULL COMMENT 'Task版本',
+  ADD KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id);
+```
+
+## 2026-07-10
+
+- Added the marketing Workflow control-plane tables for mutable definitions and immutable revisions.
+- Added runtime Run, Task, Node Execution, transactional Outbox, consumer Inbox, trigger binding, and daily metric tables.
+- Workflow definitions use `biz_status = 0` for logical deletion; `runtime_status = stopped` remains visible and auditable.
+- All Workflow tables use meaningless auto-increment primary keys and include `create_time` and `update_time`.
+
+Apply the `xy_wap_embed_workflow_*` `CREATE TABLE` statements from `docs/db/schema.sql` before enabling the Workflow HTTP repository.
 ## 2026-07-30
 
 - Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.

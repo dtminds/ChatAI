@@ -1,0 +1,201 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  HttpWorkflowContactIdentityPort,
+  createJavaContactIdentityRequest,
+  decodeJavaContactIdentityResponse,
+} from "../src/contact-identity-port.js";
+
+describe("Workflow contact identity Java port", () => {
+  it.each([
+    [
+      { thirdExternalUserId: "chatai-1", type: "thirdExternalUserId" } as const,
+      { thirdExternalUserId: "chatai-1", type: 1, uid: 9 },
+    ],
+    [
+      { externalUserId: 101, type: "externalUserId" } as const,
+      { externalUserId: 101, type: 2, uid: 9 },
+    ],
+    [
+      { mallUserId: 202, type: "mallUserId" } as const,
+      { mallUserId: 202, type: 3, uid: 9 },
+    ],
+  ])("maps a concrete identity key to the Java DTO", (key, expected) => {
+    expect(createJavaContactIdentityRequest(9, key)).toEqual(expected);
+  });
+
+  it("posts the concrete identity with internal authorization and returns all IDs", async () => {
+    const fetchMock = vi.fn(async () => response({
+      data: {
+        externalUserId: 101,
+        mallUserId: 202,
+        thirdExternalUserId: "chatai-1",
+        xyId: 303,
+      },
+      success: true,
+    }));
+    const port = new HttpWorkflowContactIdentityPort({
+      baseUrl: "https://java.example.com/internal",
+      fetch: fetchMock as typeof fetch,
+      token: "internal-token",
+    });
+
+    await expect(port.getContactIdentity({
+      key: { thirdExternalUserId: "chatai-1", type: "thirdExternalUserId" },
+      uid: 9,
+    })).resolves.toEqual({
+      externalUserId: 101,
+      mallUserId: 202,
+      thirdExternalUserId: "chatai-1",
+      xyId: 303,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://java.example.com/third-internal/wap-embed-contact/get-contact-identity",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({ thirdExternalUserId: "chatai-1", type: 1, uid: 9 }),
+      headers: {
+        authorization: "Bearer internal-token",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+  });
+
+  it.each([
+    { body: { data: {}, success: false }, expectedKind: "terminal" },
+    { body: { data: {}, error: 0 }, expectedKind: "terminal" },
+    { body: { data: {}, success: 1 }, expectedKind: "terminal" },
+  ] as const)("treats a 200 business or envelope failure as $expectedKind", async ({
+    body,
+    expectedKind,
+  }) => {
+    const port = new HttpWorkflowContactIdentityPort({
+      baseUrl: "https://java.example.com",
+      fetch: vi.fn(async () => response(body)) as typeof fetch,
+    });
+    await expect(port.getContactIdentity({
+      key: { externalUserId: 101, type: "externalUserId" },
+      uid: 9,
+    })).rejects.toMatchObject({
+      failureKind: expectedKind,
+      name: "WorkflowContactIdentityLookupError",
+    });
+  });
+
+  it("includes the standard Java error details in a business failure diagnostic", () => {
+    expect(() => decodeJavaContactIdentityResponse({
+      data: {},
+      error: 40001,
+      errorMsg: " 客户身份查询参数无效 ",
+      error_msg: "不应读取的兼容字段",
+      success: false,
+    })).toThrow(expect.objectContaining({
+      message:
+        "Workflow contact identity endpoint rejected the request: 40001 客户身份查询参数无效",
+    }));
+  });
+
+  it("accepts success with no generated IDs and preserves zero or empty values as missing", () => {
+    expect(decodeJavaContactIdentityResponse({
+      data: {
+        externalUserId: 0,
+        mallUserId: 0,
+        thirdExternalUserId: "",
+        xyId: 0,
+      },
+      success: true,
+    })).toEqual({
+      externalUserId: 0,
+      mallUserId: 0,
+      thirdExternalUserId: "",
+      xyId: 0,
+    });
+    expect(decodeJavaContactIdentityResponse({ data: null, success: true })).toEqual({});
+  });
+
+  it("classifies HTTP and network failures as retryable and invalid 200 responses as terminal", async () => {
+    const inputs: Array<{ expectedKind: "retryable" | "terminal"; fetch: typeof fetch }> = [
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 400 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => new Response(null, { status: 201 })) as typeof fetch,
+      },
+      {
+        expectedKind: "retryable",
+        fetch: vi.fn(async () => { throw new Error("network"); }) as typeof fetch,
+      },
+      {
+        expectedKind: "terminal",
+        fetch: vi.fn(async () => new Response("not-json", {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        })) as typeof fetch,
+      },
+      {
+        expectedKind: "terminal",
+        fetch: vi.fn(async () => response({
+          data: { externalUserId: "101" },
+          success: true,
+        })) as typeof fetch,
+      },
+    ];
+    for (const input of inputs) {
+      const port = new HttpWorkflowContactIdentityPort({
+        baseUrl: "https://java.example.com",
+        fetch: input.fetch,
+      });
+      await expect(port.getContactIdentity({
+        key: { externalUserId: 101, type: "externalUserId" },
+        uid: 9,
+      })).rejects.toMatchObject({
+        failureKind: input.expectedKind,
+        name: "WorkflowContactIdentityLookupError",
+      });
+    }
+  });
+
+  it("bounds a hanging Java request with the port timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn((_url: URL | RequestInfo, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        })) as typeof fetch;
+      const port = new HttpWorkflowContactIdentityPort({
+        baseUrl: "https://java.example.com",
+        fetch: fetchMock,
+        timeoutMs: 50,
+      });
+      const pending = port.getContactIdentity({
+        key: { externalUserId: 101, type: "externalUserId" },
+        uid: 9,
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        failureKind: "retryable",
+        name: "WorkflowContactIdentityLookupError",
+      });
+
+      await vi.advanceTimersByTimeAsync(50);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+function response(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json" },
+    status: 200,
+  });
+}

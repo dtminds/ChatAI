@@ -517,16 +517,15 @@ function MySkillsPanel() {
           />
         </div>
 
-        {canManage ? (
-          <Button
-            className="h-10 px-4"
-            onClick={() => navigate("/chat/ai-hosting/skills/new")}
-            type="button"
-          >
-            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-            <span>添加技能</span>
-          </Button>
-        ) : null}
+        <Button
+          className="h-10 px-4"
+          disabled={!canManage}
+          onClick={() => navigate("/chat/ai-hosting/skills/new")}
+          type="button"
+        >
+          <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+          <span>添加技能</span>
+        </Button>
       </div>
 
       <div>
@@ -631,29 +630,28 @@ function MySkillsPanel() {
                             {canManage ? "编辑" : "查看"}
                           </Link>
                         </DropdownMenuItem>
-                        {canManage ? (
-                          <>
-                            {skill.status === "enabled" ? (
-                              <DropdownMenuItem
-                                onSelect={() => void handleDisable(skill.id)}
-                              >
-                                停用
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onSelect={() => setEnableTargetId(skill.id)}
-                              >
-                                启用
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => setDeleteTargetId(skill.id)}
-                            >
-                              删除
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
+                        {skill.status === "enabled" ? (
+                          <DropdownMenuItem
+                            disabled={!canManage}
+                            onSelect={() => void handleDisable(skill.id)}
+                          >
+                            停用
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            disabled={!canManage}
+                            onSelect={() => setEnableTargetId(skill.id)}
+                          >
+                            启用
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={!canManage}
+                          onSelect={() => setDeleteTargetId(skill.id)}
+                        >
+                          删除
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TablePinnedCell>

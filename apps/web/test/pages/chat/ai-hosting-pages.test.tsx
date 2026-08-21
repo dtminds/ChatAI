@@ -2087,7 +2087,7 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(screen.queryByRole("button", { name: "添加技能" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加技能" })).toBeDisabled();
     await screen.findByRole("link", { name: "订单与物流场景查询" });
 
     await user.click(
@@ -2095,8 +2095,14 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "停用" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "停用" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
 
     await user.click(screen.getByRole("menuitem", { name: "查看" }));
 
@@ -4213,11 +4219,14 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });
     await user.click(moreActions[0]);
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("removes agents from the management page after confirmation", async () => {

@@ -9,7 +9,7 @@ import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter
 
 const context = {
   currentNodeLifecycle: { enteredAt: "2026-08-17T16:30:00.000Z" },
-  identities: {},
+  identities: { externalUserId: 101 },
   nodeLifecycle: {},
   outputs: {
     llm: {
@@ -171,7 +171,7 @@ describe("Workflow Customer Update capability", () => {
     const execute = vi.fn(async () => ({}));
     await expect(executeWorkflowCapability({
       binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
-      commandContext: { ...context, subjectId: "" },
+      commandContext: { ...context, identities: {} },
       config: {
         fields: [{ fieldId: 1, fieldType: 1, value: { kind: "literal", value: "重点客户" } }],
       },
@@ -186,7 +186,7 @@ describe("Workflow Customer Update capability", () => {
       executionKey: "9:run-1:customer-update:3",
       port: new FakeWorkflowCapabilityAdapter(execute),
       signal: new AbortController().signal,
-      subjectId: "",
+      subjectId: "customer-1",
       subjectType: "wecom_contact",
       uid: 9,
     })).rejects.toMatchObject({ code: "WORKFLOW_CUSTOMER_UPDATE_COMMAND_INVALID" });

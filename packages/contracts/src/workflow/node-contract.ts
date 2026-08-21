@@ -477,11 +477,12 @@ export const workflowNodeContractRegistry = {
     true,
   ),
   coupon: placeholderContract("action", ["externalUserId"]),
-  "customer-update": draftReadyContract(
+  "customer-update": runtimeReadyContract(
     "action",
     1,
     WorkflowCustomerUpdateDraftConfigSchema,
     WorkflowCustomerUpdateExecutionConfigSchema,
+    ["externalUserId"],
   ),
   end: runtimeReadyContract("core", 1, WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
   handoff: runtimeReadyContract(

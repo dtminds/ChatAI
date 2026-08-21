@@ -1,18 +1,8 @@
 import {
   isWorkflowNodeExecutionConfig,
   type WorkflowDraft,
-  type WorkflowNodeKind,
 } from "@chatai/contracts";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("../src/runtime-support.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/runtime-support.js")>();
-  return {
-    ...actual,
-    isWorkflowRuntimeSupportedNodeKind: (kind: WorkflowNodeKind) =>
-      kind === "customer-update" || actual.isWorkflowRuntimeSupportedNodeKind(kind),
-  };
-});
+import { describe, expect, it } from "vitest";
 
 import { compileWorkflowDraft } from "../src/compiler.js";
 import { WorkflowCompilationError } from "../src/errors.js";

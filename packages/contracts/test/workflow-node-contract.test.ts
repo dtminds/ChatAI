@@ -182,9 +182,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "ratio-split", "end", "handoff", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["branch", "ratio-split", "customer-update", "end", "handoff", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "customer-update", "llm"]);
+      .toEqual(["ai-intent", "llm"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -500,7 +500,7 @@ describe("workflow node contracts", () => {
       "ai-intent": [],
       branch: [],
       coupon: ["externalUserId"],
-      "customer-update": [],
+      "customer-update": ["externalUserId"],
       end: [],
       handoff: ["thirdExternalUserId"],
       llm: [],
@@ -582,7 +582,8 @@ describe("workflow node contracts", () => {
   it("keeps incomplete Customer Update drafts editable and validates typed fields", () => {
     expect(getWorkflowNodeContract("customer-update")).toMatchObject({
       currentDraftSchemaVersion: 1,
-      maturity: "draft-ready",
+      identityInputs: ["externalUserId"],
+      maturity: "runtime-ready",
     });
     expect(isWorkflowNodeDraftConfig("customer-update", { fields: [] })).toBe(false);
     expect(isWorkflowNodeDraftConfig("customer-update", {

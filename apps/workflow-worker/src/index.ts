@@ -12,6 +12,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -23,6 +24,7 @@ import { loadWorkflowWorkerConfig } from "./config.js";
 import { createWorkflowBroker } from "./broker/index.js";
 import { createWorkflowDatabase } from "./database.js";
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
+import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
 import { createWorkflowWorkerLogger } from "./logger.js";
@@ -68,6 +70,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const customerUpdateCapabilityPort = new HttpWorkflowCustomerUpdateCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const tagQueryCapabilityPort = new HttpWorkflowTagQueryCapabilityPort({
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
@@ -81,6 +87,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     token: config.javaInternalApi.token,
   });
   const capabilityPort = new WorkflowCapabilityRouter([
+    {
+      binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+      port: customerUpdateCapabilityPort,
+    },
     { binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING, port: handoffCapabilityPort },
     { binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING, port: messageCapabilityPort },
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
@@ -178,6 +188,7 @@ export * from "./broker/index.js";
 export * from "./capability-router.js";
 export * from "./config.js";
 export * from "./contact-identity-port.js";
+export * from "./customer-update-capability-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./error-policy.js";

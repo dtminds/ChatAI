@@ -46,7 +46,7 @@ export function createWorkflowCustomerUpdateCommand(input: {
   if (!isWorkflowNodeExecutionConfig("customer-update", input.config)) {
     throw customerUpdateCommandError("Customer Update execution config failed schema validation");
   }
-  if (!input.context.subjectId.trim()) {
+  if (!input.context.identities.externalUserId) {
     throw customerUpdateCommandError("Customer Update recipient is unavailable in the Run context");
   }
   const config = input.config as WorkflowCustomerUpdateExecutionConfig;

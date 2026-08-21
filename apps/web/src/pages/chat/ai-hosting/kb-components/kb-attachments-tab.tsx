@@ -6,6 +6,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "@/pages/chat/ai-hosting/agent-permissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +105,8 @@ export function KbAttachmentsTab({
   targetChunkId,
   targetDocId,
 }: KbAttachmentsTabProps) {
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<KbAttachmentItem[]>([]);
@@ -474,7 +478,7 @@ export function KbAttachmentsTab({
   }, [finishAttachmentSync, pollAttachmentSyncStatus]);
 
   const handleInitialize = async () => {
-    if (!kbId || phase === "initializing") {
+    if (!canManage || !kbId || phase === "initializing") {
       return;
     }
 
@@ -502,7 +506,7 @@ export function KbAttachmentsTab({
   };
 
   const handleRetrySync = async () => {
-    if (!attachmentDocId || retrying || !kbId) {
+    if (!canManage || !attachmentDocId || retrying || !kbId) {
       return;
     }
 
@@ -687,13 +691,17 @@ export function KbAttachmentsTab({
 
   if (phase === "uninitialized") {
     return (
-      <KbAttachmentsInitState onInitialize={() => void handleInitialize()} />
+      <KbAttachmentsInitState
+        canManage={canManage}
+        onInitialize={() => void handleInitialize()}
+      />
     );
   }
 
   if (phase === "failed") {
     return (
       <KbAttachmentsFailedState
+        canManage={canManage}
         onRetry={() => void handleRetrySync()}
         retrying={retrying}
       />
@@ -738,23 +746,27 @@ export function KbAttachmentsTab({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            className="h-10 px-4"
-            disabled={selectedCount === 0}
-            onClick={() => setDeleteTarget("batch")}
-            type="button"
-            variant="outline"
-          >
-            批量删除
-          </Button>
-          <Button
-            className="h-10 gap-2 px-4"
-            onClick={() => setAddDialogOpen(true)}
-            type="button"
-          >
-            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-            添加附件
-          </Button>
+          {canManage ? (
+            <>
+              <Button
+                className="h-10 px-4"
+                disabled={selectedCount === 0}
+                onClick={() => setDeleteTarget("batch")}
+                type="button"
+                variant="outline"
+              >
+                批量删除
+              </Button>
+              <Button
+                className="h-10 gap-2 px-4"
+                onClick={() => setAddDialogOpen(true)}
+                type="button"
+              >
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                添加附件
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -762,6 +774,7 @@ export function KbAttachmentsTab({
         <div>
           <KbAttachmentsTable
             activeType={activeType}
+            canManage={canManage}
             items={attachments}
             loading={isListLoading}
             onDelete={setDeleteTarget}
@@ -874,8 +887,10 @@ function KbAttachmentsTabLoadingState() {
 }
 
 function KbAttachmentsInitState({
+  canManage,
   onInitialize,
 }: {
+  canManage: boolean;
   onInitialize: () => void;
 }) {
   return (
@@ -889,14 +904,16 @@ function KbAttachmentsInitState({
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
         暂未启用附件库，开启后，可统一管理图片、链接、小程序等附件，Agent 在回答时会引用并发送
       </p>
-      <Button
-        className="mt-6 h-10 px-6"
-        onClick={onInitialize}
-        type="button"
-        variant="outline"
-      >
-        立即启用
-      </Button>
+      {canManage ? (
+        <Button
+          className="mt-6 h-10 px-6"
+          onClick={onInitialize}
+          type="button"
+          variant="outline"
+        >
+          立即启用
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -920,9 +937,11 @@ function KbAttachmentsInitLoadingState() {
 }
 
 function KbAttachmentsFailedState({
+  canManage,
   onRetry,
   retrying,
 }: {
+  canManage: boolean;
   onRetry: () => void;
   retrying: boolean;
 }) {
@@ -937,15 +956,17 @@ function KbAttachmentsFailedState({
         strokeWidth={1.8}
       />
       <p className="text-sm text-muted-foreground">附件库同步失败</p>
-      <Button
-        className="h-10 px-6"
-        disabled={retrying}
-        onClick={onRetry}
-        type="button"
-        variant="outline"
-      >
-        {retrying ? "正在重试" : "重试"}
-      </Button>
+      {canManage ? (
+        <Button
+          className="h-10 px-6"
+          disabled={retrying}
+          onClick={onRetry}
+          type="button"
+          variant="outline"
+        >
+          {retrying ? "正在重试" : "重试"}
+        </Button>
+      ) : null}
     </div>
   );
 }

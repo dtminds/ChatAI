@@ -54,6 +54,9 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
+import { isRequestError } from "@/lib/request";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
@@ -116,6 +119,8 @@ const kbIntroSteps = [
 ] as const;
 
 export function KbListPage() {
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [items, setItems] = useState<KbListViewItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -208,6 +213,10 @@ export function KbListPage() {
   }
 
   function handleOpenEditDialog(item: KbListViewItem) {
+    if (!canManage) {
+      return;
+    }
+
     setDialogMode("edit");
     setEditingItem(item);
     setCreateForm({
@@ -218,7 +227,7 @@ export function KbListPage() {
   }
 
   async function handleOpenCreateDialog() {
-    if (checkingQuota) {
+    if (!canManage || checkingQuota) {
       return;
     }
 
@@ -257,7 +266,7 @@ export function KbListPage() {
   async function handleDialogSubmit() {
     const name = createForm.name.trim();
 
-    if (!name) {
+    if (!canManage || !name) {
       return;
     }
 
@@ -287,6 +296,10 @@ export function KbListPage() {
       setCurrentPage(1);
       setListReloadKey((value) => value + 1);
       notifyAiHostingQuotaChanged();
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(isRequestError(error) ? error.message : "操作失败，请稍后重试");
+      }
     } finally {
       if (isMountedRef.current) {
         setCreateSubmitting(false);
@@ -304,7 +317,7 @@ export function KbListPage() {
   }
 
   async function handleDeleteClick(item: KbListViewItem) {
-    if (checkingDelete || deleting) {
+    if (!canManage || checkingDelete || deleting) {
       return;
     }
 
@@ -342,7 +355,7 @@ export function KbListPage() {
   }
 
   async function handleConfirmDelete() {
-    if (!deleteTarget || deleting) {
+    if (!canManage || !deleteTarget || deleting) {
       return;
     }
 
@@ -400,17 +413,19 @@ export function KbListPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <Button
-                className="h-10 px-4"
-                disabled={checkingQuota}
-                onClick={() => void handleOpenCreateDialog()}
-                type="button"
-              >
-                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                <span>创建知识库</span>
-              </Button>
-            </div>
+            {canManage ? (
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <Button
+                  className="h-10 px-4"
+                  disabled={checkingQuota}
+                  onClick={() => void handleOpenCreateDialog()}
+                  type="button"
+                >
+                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                  <span>创建知识库</span>
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -496,15 +511,19 @@ export function KbListPage() {
                                 详情
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(item)}>
-                              编辑
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => void handleDeleteClick(item)}
-                            >
-                              删除
-                            </DropdownMenuItem>
+                            {canManage ? (
+                              <>
+                                <DropdownMenuItem onSelect={() => handleOpenEditDialog(item)}>
+                                  编辑
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => void handleDeleteClick(item)}
+                                >
+                                  删除
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TablePinnedCell>

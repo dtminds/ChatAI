@@ -5746,6 +5746,42 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
+  it("hides knowledge base write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建知识库" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    expect(screen.getByRole("menuitem", { name: "详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(kbService.createKb).not.toHaveBeenCalled();
+  });
+
+  it("shows a toast when creating a knowledge base fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.createKb).mockRejectedValueOnce({
+      message: "当前账号无操作权限",
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "创建知识库" }));
+    await screen.findByRole("dialog", { name: "创建知识库" });
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("当前账号无操作权限");
+    });
+    expect(screen.getByRole("dialog", { name: "创建知识库" })).toBeInTheDocument();
+  });
+
   it("shows knowledge base list load failures in a toast", async () => {
     vi.mocked(kbService.listKbs).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),
@@ -5977,6 +6013,27 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
     expect(screen.queryByText("已用 6/100 条知识")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
+  });
+
+  it("hides knowledge write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加知识" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试 文本知识集合" })).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "切片详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
   });
 
   it("shows knowledge list load failures in a toast", async () => {

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useAuthStore } from "@/store/auth-store";
 import {
   getKbAttachmentStatus,
   listKbAttachments,
@@ -250,6 +251,15 @@ describe("KbAttachmentsTable", () => {
 describe("KbAttachmentsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服主管",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "admin",
+      subUserId: "101",
+      uid: 1,
+    });
   });
 
   it("shows init state when attachment status is uninitialized", async () => {

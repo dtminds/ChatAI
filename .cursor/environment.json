@@ -1,0 +1,21 @@
+{
+  "name": "ChatAI Workbench",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "bash .cursor/dev-backend.sh",
+      "description": "Fastify backend dev server (tsx watch) on http://127.0.0.1:3001"
+    },
+    {
+      "name": "web",
+      "command": "bash .cursor/dev-web.sh",
+      "description": "Vite web dev server on http://chat-dev.bokr.com.cn:8086/chat (proxies /api to the backend)"
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 8086 },
+    { "name": "backend", "port": 3001 }
+  ]
+}

@@ -956,7 +956,7 @@ Workflow 暂停时，未终态的 Inference Job 冻结执行超时预算；恢�
 不计入调用次数；旧调用即使晚到也无法通过租约 CAS 写入结果。恢复后沿用同一
 `executionKey` 继续执行，避免暂停窗口把 Job 永久做成超时终态。
 
-两类请求必须保持独立的判别式载荷：
+本期 LLM 请求使用以下判别式载荷：
 
 ```ts
 type LlmInferencePayload = {
@@ -968,17 +968,10 @@ type LlmInferencePayload = {
     | { type: "text" | "markdown" }
     | { type: "json"; fields: Array<{ name: string; type: "string" | "number" | "boolean"; description: string }> };
 };
-
-type IntentInferencePayload = {
-  kind: "template";
-  templateKey: "workflow.intent.classify.v1"; // 临时值，Java 模板确定后替换
-  variables: {
-    input: string;
-    intents: string; // [{ code: "I1", description: "..." }]
-    additionalRules: string;
-  };
-};
 ```
+
+AI Intent 在本期仅保留草稿和编译契约，不进入生产 Runtime Support，因此不定义本期的
+Provider 请求载荷；其固定 Endpoint ID 留待后续接通 AI Intent 时使用。
 
 LLM 的 `messageList` 由 Node 完整渲染，Workflow Worker Adapter 不解析 Workflow 变量；
 `modelTarget.modelId` 是稳定模型身份，Adapter 每次 Attempt 只读取当前有效的 `uid=0`
@@ -1344,7 +1337,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 - 不增加 `DISABLE_AUTH`、开发用户、测试专属公开路由或绕过 Session 校验的环境开关。
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
-- 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
+- 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Test Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
 - LLM test Attempt 与生产 Run 共用真实 Chat Completion Port 和 Provider Adapter；测试替身仅允许通过测试依赖注入使用，不进入生产 import graph。Attempt 结果标记 `executionMode=real`，并保留独立的取消、TTL、超时和轮询生命周期。
 - 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test 联调和后续生产启用验收中。
 

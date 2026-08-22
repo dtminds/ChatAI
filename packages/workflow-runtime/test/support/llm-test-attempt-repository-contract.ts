@@ -116,7 +116,8 @@ function createInput(executionKey = "execution-1") {
     payload: {
       kind: "message-list" as const,
       messageList: [{ content: "Summarize", role: "system" as const }],
-      modelId: "model-1",
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+        reasoningEffort: "medium",
       responseFormat: { type: "text" as const },
     },
     uid: 9,

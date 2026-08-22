@@ -7,7 +7,7 @@ import {
 } from "@chatai/workflow-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processWorkflowLlmTestAttemptBatch } from "../src/llm-test-attempt-worker.js";
-import { WorkflowLlmTestMockAdapter } from "../src/llm-test-mock-adapter.js";
+import { WorkflowLlmTestFakeAdapter } from "./support/llm-test-fake-adapter.js";
 
 const now = new Date("2099-01-01T00:00:00.000Z");
 
@@ -20,7 +20,7 @@ describe("Workflow LLM test Attempt worker", () => {
       const { attempt, repository } = await createAttempt(llmNode(format));
 
       await expect(processWorkflowLlmTestAttemptBatch({
-        adapter: new WorkflowLlmTestMockAdapter(),
+        adapter: new WorkflowLlmTestFakeAdapter(),
         heartbeatIntervalMs: 10_000,
         leaseDurationMs: 60_000,
         leaseOwner: "llm-test-worker-1",
@@ -39,7 +39,7 @@ describe("Workflow LLM test Attempt worker", () => {
     const { attempt, repository } = await createAttempt(llmNode("json"));
 
     await processWorkflowLlmTestAttemptBatch({
-      adapter: new WorkflowLlmTestMockAdapter(),
+      adapter: new WorkflowLlmTestFakeAdapter(),
       heartbeatIntervalMs: 10_000,
       leaseDurationMs: 60_000,
       leaseOwner: "llm-test-worker-1",
@@ -144,7 +144,8 @@ function payloadFor(node: WorkflowExecutionNode): WorkflowInferenceMessageListRe
   return {
     kind: "message-list",
     messageList: [{ content: "Summarize", role: "system" }],
-    modelId: "model-1",
+    modelTarget: { kind: "catalog-model", modelId: "model-1" },
+    reasoningEffort: "medium",
     responseFormat: node.config.output.format === "json"
       ? {
           fields: node.config.output.fields.map(field => ({
@@ -163,6 +164,7 @@ function llmNode(format: "json" | "markdown" | "text"): WorkflowExecutionNode {
     config: {
       inputs: [],
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: format === "json"
         ? {
             fields: [

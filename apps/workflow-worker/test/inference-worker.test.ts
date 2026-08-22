@@ -6,7 +6,7 @@ import {
 } from "@chatai/workflow-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { processWorkflowInferenceBatch } from "../src/inference-worker.js";
-import { FakeJavaInferenceAdapter } from "./support/fake-java-inference-adapter.js";
+import { FakeChatCompletionAdapter } from "./support/fake-chat-completion-adapter.js";
 
 const now = new Date("2099-01-01T00:00:00.000Z");
 
@@ -136,7 +136,7 @@ describe("workflow inference worker", () => {
       .resolves.toMatchObject({ errorCode: "WORKFLOW_INFERENCE_OUTPUT_INVALID", status: "failed" });
   });
 
-  it("terminally fails a Java result above the 8 KiB node-output limit", async () => {
+  it("persists a bounded Provider result for node-level decoding", async () => {
     const oversized = await createWaitingJob();
     const result = await processWorkflowInferenceBatch({
       adapter: { execute: async () => ({ content: "x".repeat(8 * 1024), type: "text" }) },
@@ -151,12 +151,11 @@ describe("workflow inference worker", () => {
       retryDelayMs: 5_000,
     });
 
-    expect(result).toMatchObject({ failed: 1, retried: 0, succeeded: 0 });
+    expect(result).toMatchObject({ failed: 0, retried: 0, succeeded: 1 });
     await expect(oversized.repository.findInferenceByExecutionKey(9, oversized.job.executionKey))
       .resolves.toMatchObject({
-        errorCode: "WORKFLOW_INFERENCE_OUTPUT_TOO_LARGE",
-        failureKind: "terminal",
-        status: "failed",
+        result: { content: "x".repeat(8 * 1024), type: "text" },
+        status: "succeeded",
       });
   });
 
@@ -196,7 +195,7 @@ describe("workflow inference worker", () => {
     await expect(service.executeTask(taskInput(startResult.nextTask, "inference-message")))
       .resolves.toEqual({ kind: "inference-waiting", type: "inference-wait" });
     expect(repository.inferenceJobs).toHaveLength(1);
-    const adapter = new FakeJavaInferenceAdapter(vi.fn(async () => javaResult));
+    const adapter = new FakeChatCompletionAdapter(vi.fn(async () => javaResult));
     await processWorkflowInferenceBatch({
       adapter,
       heartbeatIntervalMs: 10_000,
@@ -364,7 +363,8 @@ async function createWaitingJob(
     payload: {
       kind: "message-list",
       messageList: [{ content: "Summarize", role: "system" }],
-      modelId: "model-1",
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+      reasoningEffort: "medium",
       responseFormat: { type: "text" },
     },
     runId: created.run.id,
@@ -389,6 +389,7 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
             },
           }],
           modelId: "model-1",
+          reasoningEffort: "medium" as const,
           output: {
             field: { description: "", id: "output-id", name: "output", type: "string" as const },
             format: "text" as const,

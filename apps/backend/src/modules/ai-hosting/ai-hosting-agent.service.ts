@@ -107,7 +107,7 @@ export class AiHostingAgentService {
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
     const rowsPromise = this.listAgentRows(scope, pagination, normalizedQuery);
-    const modelsPromise = this.listModelRows(scope);
+    const modelsPromise = this.listModelRows();
     const totalPromise = this.countAgents(scope, normalizedQuery);
     const [rows, models, total] = await Promise.all([
       rowsPromise,
@@ -134,10 +134,8 @@ export class AiHostingAgentService {
   }
 
   async listModels(uid: number): Promise<AiHostingModelListResponse> {
-    const scope = normalizeAgentTenantScope(uid);
-
     return {
-      models: (await this.listModelRows(scope)).map(mapModel),
+      models: (await this.listModelRows()).map(mapModel),
     };
   }
 
@@ -509,12 +507,12 @@ export class AiHostingAgentService {
     }
   }
 
-  private listModelRows(scope: AgentTenantScope) {
+  private listModelRows() {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
       .select(["description", "id", "model", "name", "support_multimodal", "uid"])
       .where("status", "=", dbActiveStatus)
-      .where("uid", "in", [scope.uid, 0])
+      .where("uid", "=", 0)
       .orderBy("uid", "desc")
       .orderBy("id", "asc")
       .execute() as Promise<AiModelRow[]>;
@@ -526,7 +524,7 @@ export class AiHostingAgentService {
       .select(["description", "id", "model", "name", "support_multimodal", "uid"])
       .where("id", "=", modelId)
       .where("status", "=", dbActiveStatus)
-      .where("uid", "in", [scope.uid, 0])
+      .where("uid", "=", 0)
       .executeTakeFirst() as Promise<AiModelRow | undefined>;
   }
 

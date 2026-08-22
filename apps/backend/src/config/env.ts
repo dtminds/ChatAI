@@ -4,10 +4,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insights-worker-observer-access.js";
-import {
-  assertWorkflowLlmTestModeAllowed,
-  parseWorkflowLlmTestMode,
-} from "@chatai/workflow-runtime";
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
@@ -37,7 +33,6 @@ export const EnvSchema = Type.Object({
   PORT: Type.Optional(Type.String()),
   WORKFLOW_ENTITLEMENT_API_URL: Type.Optional(Type.String()),
   WORKFLOW_ENTITLEMENT_MODE: Type.Optional(Type.String()),
-  WORKFLOW_LLM_TEST_MODE: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
@@ -154,9 +149,6 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
   if (env.NODE_ENV === "production" && workflowEntitlementMode !== "enforce") {
     throw new Error("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
   }
-  const workflowLlmTestMode = parseWorkflowLlmTestMode(env.WORKFLOW_LLM_TEST_MODE);
-  assertWorkflowLlmTestModeAllowed(workflowLlmTestMode, env.NODE_ENV);
-
   return {
     workerObserverSubjects: parseInsightsWorkerObserverSubjects(
       env.INSIGHTS_WORKER_OBSERVER_SUBJECTS,

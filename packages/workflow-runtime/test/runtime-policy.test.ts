@@ -208,7 +208,7 @@ describe("Workflow runtime policy", () => {
     });
   });
 
-  it("does not create a Run containing a node that is not runtime-ready", async () => {
+  it("accepts a Run containing a runtime-ready LLM node", async () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
@@ -225,10 +225,10 @@ describe("Workflow runtime policy", () => {
       executionSpec,
     });
 
-    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
-      code: "WORKFLOW_RUNTIME_NODE_UNSUPPORTED",
+    await expect(harness.service.startRun(entryInput())).resolves.toMatchObject({
+      kind: "success",
     });
-    expect(harness.runtime.runs).toHaveLength(0);
+    expect(harness.runtime.runs).toHaveLength(1);
   });
 
   it("keeps identical Subject ids isolated by Subject type", async () => {

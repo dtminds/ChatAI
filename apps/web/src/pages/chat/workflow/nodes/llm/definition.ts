@@ -27,6 +27,7 @@ import {
   normalizeLlmModelSnapshot,
   normalizeLlmOutput,
   normalizeLlmPrompt,
+  normalizeLlmReasoningEffort,
 } from "./config";
 import { getVariableContentText } from "../variable-content/content";
 
@@ -43,6 +44,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
     label: "大模型",
     metric: "待选择模型",
     modelId: "",
+    reasoningEffort: "medium",
     modelLabel: undefined,
     modelName: undefined,
     output: createDefaultLlmOutput(),
@@ -69,6 +71,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
       ...data,
       inputs: normalizeLlmInputs(data.inputs),
       modelId: normalizeLlmModelId(data.modelId),
+      reasoningEffort: normalizeLlmReasoningEffort(data.reasoningEffort),
       modelLabel: normalizeLlmModelSnapshot(data.modelLabel),
       modelName: normalizeLlmModelSnapshot(data.modelName),
       output: normalizeLlmOutput(data.output),

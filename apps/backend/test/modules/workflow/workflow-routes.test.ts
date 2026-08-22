@@ -186,7 +186,7 @@ describe("workflow routes", () => {
     });
     expect(started.statusCode).toBe(200);
     expect(started.json().data).toMatchObject({
-      executionMode: "mock",
+      executionMode: "real",
       inputValues: { "input-message": "退款什么时候到账" },
       nodeId: "llm-1",
       output: null,
@@ -414,7 +414,6 @@ describe("workflow routes", () => {
           },
         },
         llmTestAttemptRepository: new InMemoryWorkflowLlmTestAttemptRepository(),
-        llmTestMode: "mock",
       }),
     });
     return app;
@@ -454,6 +453,7 @@ describe("workflow routes", () => {
         label: "大模型",
         metric: "model-1",
         modelId: "model-1",
+        reasoningEffort: "medium",
         output: {
           field: { description: "", id: "output-1", name: "output", type: "string" },
           format: "text",

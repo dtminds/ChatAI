@@ -17,6 +17,8 @@ import { getVariableContentText, normalizeVariableContent } from "../variable-co
 export const LLM_INPUT_MAX_COUNT = 10;
 export const LLM_INPUT_NAME_MAX_LENGTH = 15;
 export const LLM_PROMPT_MAX_LENGTH = 10_000;
+export const LLM_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+export type LlmReasoningEffort = typeof LLM_REASONING_EFFORTS[number];
 export const LLM_OUTPUT_FIELD_MAX_COUNT = 10;
 export const LLM_OUTPUT_NAME_MAX_LENGTH = 15;
 export const LLM_OUTPUT_DESCRIPTION_MAX_LENGTH = 200;
@@ -52,6 +54,12 @@ export function createDefaultLlmOutput(): WorkflowLlmOutputConfig {
 
 export function normalizeLlmModelId(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function normalizeLlmReasoningEffort(value: unknown): LlmReasoningEffort {
+  return LLM_REASONING_EFFORTS.includes(value as LlmReasoningEffort)
+    ? value as LlmReasoningEffort
+    : "medium";
 }
 
 export function normalizeLlmModelSnapshot(value: unknown) {

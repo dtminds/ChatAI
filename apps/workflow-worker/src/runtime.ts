@@ -2,7 +2,7 @@ import type {
   WorkflowEventSubscriptionReader,
   WorkflowInboxRepository,
   WorkflowInferenceRepository,
-  WorkflowJavaInferencePort,
+  WorkflowChatCompletionPort,
   WorkflowLlmTestAttemptRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
@@ -22,7 +22,7 @@ import {
 import type { startTaskConsumer } from "./task-consumer.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
-import type { WorkflowLlmTestAdapter } from "./llm-test-mock-adapter.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
 import type { reconcileWorkflowRuntime } from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
@@ -58,7 +58,6 @@ export async function startWorkflowWorker(input: {
     deadLetterTopics: input.config.deadLetterTopics,
     environment: input.config.environment,
     event: "workflow.worker.started",
-    llmTestMode: input.config.llmTestMode,
     roles: [...input.config.roles],
     subscriptions: input.config.subscriptions,
     topics: input.config.topics,
@@ -84,7 +83,7 @@ export async function startWorkflowWorkerRuntime(input: {
   eventCatalog?: WorkflowEventCatalog;
   eventSubscriptionReader: WorkflowEventSubscriptionReader;
   inboxRepository: WorkflowInboxRepository;
-  inferenceAdapter: WorkflowJavaInferencePort;
+  inferenceAdapter: WorkflowChatCompletionPort;
   inferenceRepository: WorkflowInferenceRepository;
   inferenceWorker(input: Parameters<typeof processWorkflowInferenceBatch>[0]): ReturnType<typeof processWorkflowInferenceBatch>;
   llmTestAdapter?: WorkflowLlmTestAdapter;
@@ -159,8 +158,7 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("inference")) {
-      if (input.config.llmTestMode === "mock"
-        && (!input.llmTestAdapter || !input.llmTestAttemptRepository || !input.llmTestAttemptWorker)) {
+      if (!input.llmTestAdapter || !input.llmTestAttemptRepository || !input.llmTestAttemptWorker) {
         throw new Error("Workflow LLM test Attempt worker is not configured");
       }
       loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, async () => {
@@ -176,7 +174,6 @@ export async function startWorkflowWorkerRuntime(input: {
           repository: input.inferenceRepository,
           retryDelayMs: input.config.runtime.inferenceRetryDelayMs,
         });
-        if (input.config.llmTestMode !== "mock") return inference;
         const llmTestAttempt = input.llmTestAttemptWorker!({
           adapter: input.llmTestAdapter!,
           heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,

@@ -56,7 +56,6 @@ import {
   assertWorkflowRuntimeValue,
   type WorkflowLlmTestAttemptRecord,
   type WorkflowLlmTestAttemptRepository,
-  type WorkflowLlmTestMode,
   type WorkflowEntitlementPort,
 } from "@chatai/workflow-runtime";
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
@@ -79,7 +78,6 @@ export type WorkflowServiceOptions = {
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
-  llmTestMode?: WorkflowLlmTestMode;
   llmTestTimeoutMs?: number;
   llmTestTtlMs?: number;
 };
@@ -89,7 +87,6 @@ export class WorkflowService {
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
-  private readonly llmTestMode: WorkflowLlmTestMode;
   private readonly llmTestTimeoutMs: number;
   private readonly llmTestTtlMs: number;
 
@@ -103,7 +100,6 @@ export class WorkflowService {
     this.sourceIdentityResolver = options.sourceIdentityResolver
       ?? new UnavailableWorkflowSourceIdentityResolver();
     this.llmTestAttemptRepository = options.llmTestAttemptRepository;
-    this.llmTestMode = options.llmTestMode ?? "disabled";
     this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
   }
@@ -678,7 +674,7 @@ export class WorkflowService {
   }
 
   private requireLlmTestAttemptRepository() {
-    if (this.llmTestMode !== "mock" || !this.llmTestAttemptRepository) {
+    if (!this.llmTestAttemptRepository) {
       throw new AppError(
         "WORKFLOW_LLM_TEST_UNAVAILABLE",
         "大模型试运行暂不可用",
@@ -1162,7 +1158,7 @@ function toLlmTestAttempt(record: WorkflowLlmTestAttemptRecord): WorkflowLlmTest
     completedAt: record.completedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     errorMessage: record.errorMessage,
-    executionMode: "mock",
+    executionMode: "real",
     expiresAt: record.expiresAt.toISOString(),
     inputValues: structuredClone(record.inputValues),
     nodeId: record.nodeId,

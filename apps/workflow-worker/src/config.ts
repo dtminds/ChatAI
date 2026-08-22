@@ -3,10 +3,7 @@ import {
   WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
 } from "@chatai/contracts";
 import {
-  assertWorkflowLlmTestModeAllowed,
-  parseWorkflowLlmTestMode,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
-  type WorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
 
 export type WorkflowEnvironment = "dev" | "test";
@@ -27,7 +24,6 @@ export type WorkflowWorkerConfig = {
     token: string | null;
   };
   logLevel: string;
-  llmTestMode: WorkflowLlmTestMode;
   maxRedeliverCount: number;
   pulsar: {
     serviceUrl: string | null;
@@ -129,8 +125,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   if (env.NODE_ENV === "production" && entitlementMode !== "enforce") {
     throw new Error("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
   }
-  const llmTestMode = parseWorkflowLlmTestMode(env.WORKFLOW_LLM_TEST_MODE);
-  assertWorkflowLlmTestModeAllowed(llmTestMode, env.NODE_ENV);
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
@@ -164,7 +158,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
     },
     logLevel: optionalValue(env.LOG_LEVEL) ?? "info",
-    llmTestMode,
     maxRedeliverCount: parseCount(
       env.WORKFLOW_MAX_REDELIVER_COUNT,
       5,

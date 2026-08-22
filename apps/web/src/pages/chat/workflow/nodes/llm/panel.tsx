@@ -79,6 +79,7 @@ import {
   normalizeLlmModelSnapshot,
   normalizeLlmOutput,
   normalizeLlmPrompt,
+  normalizeLlmReasoningEffort,
 } from "./config";
 
 const outputFormatLabels: Record<WorkflowLlmOutputConfig["format"], string> = {
@@ -112,6 +113,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   const userPrompt = normalizeLlmPrompt(node.data.userPrompt);
   const output = normalizeLlmOutput(node.data.output);
   const modelId = normalizeLlmModelId(node.data.modelId);
+  const reasoningEffort = normalizeLlmReasoningEffort(node.data.reasoningEffort);
   const selectedModel = models.find((model) => model.id === modelId);
   const inputVariables = useMemo(() => getLlmInputVariables(inputs), [inputs]);
   const availableInputValues = useMemo(() =>
@@ -144,11 +146,12 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
 
   const updateConfig = (patch: Partial<Pick<
     LlmNodeData,
-    "inputs" | "modelId" | "modelLabel" | "modelName" | "output" | "systemPrompt" | "userPrompt"
+    "inputs" | "modelId" | "modelLabel" | "modelName" | "output" | "reasoningEffort" | "systemPrompt" | "userPrompt"
   >>) => {
     const nextData = {
       inputs: patch.inputs ?? inputs,
       modelId: patch.modelId ?? modelId,
+      reasoningEffort: patch.reasoningEffort ?? reasoningEffort,
       modelLabel: patch.modelLabel !== undefined
         ? patch.modelLabel
         : normalizeLlmModelSnapshot(node.data.modelLabel),
@@ -236,6 +239,25 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         {modelsError ? (
           <p className="text-xs text-destructive" role="alert">模型加载失败</p>
         ) : null}
+      </WorkflowSettingsSection>
+
+      <WorkflowSettingsSection title="思考深度">
+        <Select
+          onValueChange={(value) => updateConfig({
+            reasoningEffort: normalizeLlmReasoningEffort(value),
+          })}
+          value={reasoningEffort}
+        >
+          <SelectTrigger aria-label="思考深度" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="minimal">Minimal</SelectItem>
+            <SelectItem value="low">Low</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
+            <SelectItem value="high">High</SelectItem>
+          </SelectContent>
+        </Select>
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection

@@ -107,6 +107,7 @@ describe("workflow LLM node", () => {
     })).toEqual({
       inputs: node.data.inputs,
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: node.data.output,
       systemPrompt: node.data.systemPrompt,
       userPrompt: [],
@@ -1162,7 +1163,7 @@ function createAttempt(overrides: Partial<{
     completedAt: null,
     createdAt: createdAt.toISOString(),
     errorMessage: null,
-    executionMode: "mock" as const,
+    executionMode: "real" as const,
     expiresAt: expiresAt.toISOString(),
     inputValues: {},
     nodeId: "llm",

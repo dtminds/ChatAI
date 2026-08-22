@@ -6,14 +6,14 @@ import {
   assertWorkflowRuntimeValue,
   WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   type WorkflowInferenceRepository,
-  type WorkflowJavaInferencePort,
+  type WorkflowChatCompletionPort,
   WorkflowRuntimeValueError,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Value } from "@sinclair/typebox/value";
 
 export async function processWorkflowInferenceBatch(input: {
-  adapter: WorkflowJavaInferencePort;
+  adapter: WorkflowChatCompletionPort;
   heartbeatIntervalMs: number;
   leaseDurationMs: number;
   leaseOwner: string;
@@ -79,7 +79,6 @@ export async function processWorkflowInferenceBatch(input: {
           "执行超时",
         );
       }
-      assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
       if (await input.repository.completeInference({
         completedAt: now(),
         id: job.id,

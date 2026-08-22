@@ -119,7 +119,7 @@ describe("AI hosting agent routes", () => {
     ]);
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
-    expect(db.modelUidFilter).toEqual([9001, 0]);
+    expect(db.modelUidFilter).toBe(0);
     expect(db.queriedTables).toContain("xy_wap_embed_agent_kb_learning_candidate");
 
     await app.close();

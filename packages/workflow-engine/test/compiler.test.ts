@@ -596,6 +596,7 @@ function createInferenceReferenceDraft(input: {
           },
         }],
         modelId: "model-1",
+        reasoningEffort: "medium",
         output: {
           field: { description: "", id: "output-id", name: "output", type: "string" },
           format: "text",

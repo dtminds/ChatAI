@@ -35,7 +35,8 @@ describe("workflow inference payloads", () => {
         { content: "请用简洁方式处理", role: "system" },
         { content: "退款什么时候到账", role: "user" },
       ],
-      modelId: "model-1",
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+      reasoningEffort: "medium",
       responseFormat: {
         fields: [
           { description: "摘要", name: "summary", type: "string" },
@@ -214,6 +215,7 @@ function llmNode(overrides: Record<string, unknown> = {}): WorkflowExecutionNode
     config: {
       inputs: [],
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: {
         field: { description: "", id: "output-1", name: "output", type: "string" },
         format: "text",

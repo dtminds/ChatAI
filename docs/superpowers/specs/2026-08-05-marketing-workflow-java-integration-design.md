@@ -931,8 +931,8 @@ chatai.conversation.transfer-agent
 | Coupon | 类型化命令和 Workflow 重试 | 校验权益并幂等发券 |
 | Handoff | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验会话状态并幂等转人工 |
 | Agent | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验 Agent 并幂等转接会话 |
-| LLM | 解析变量、渲染完整消息列表、校验并映射输出 | 接收消息列表并完成模型调用、计费和供应商路由 |
-| AI Intent | 解析输入、组装模板变量、将结果代码映射到稳定分支 | 按 `templateKey` 获取系统模板并完成模型调用、计费和供应商路由 |
+| LLM | 解析变量、渲染完整消息列表、校验并映射输出；通过 Workflow Chat Completion Port 提交 Inference Job | Workflow Worker 内的火山 Ark Adapter 解析平台模型、完成模型调用和错误分类 |
+| AI Intent | 暂保留草稿契约，暂不进入 Runtime Support | 本期不接通；不新增 `templateKey` 生产调用 |
 | AI Collect | 模型收集和结构化输出 | 提供消息查询/资料写入能力 |
 | End | Run 完成 | 无 |
 
@@ -961,8 +961,9 @@ Workflow 暂停时，未终态的 Inference Job 冻结执行超时预算；恢�
 ```ts
 type LlmInferencePayload = {
   kind: "message-list";
-  modelId: string;
+  modelTarget: { kind: "catalog-model"; modelId: string };
   messageList: Array<{ role: "system" | "user"; content: string }>;
+  reasoningEffort: "minimal" | "low" | "medium" | "high";
   responseFormat:
     | { type: "text" | "markdown" }
     | { type: "json"; fields: Array<{ name: string; type: "string" | "number" | "boolean"; description: string }> };
@@ -979,10 +980,11 @@ type IntentInferencePayload = {
 };
 ```
 
-LLM 的 `messageList` 由 Node 完整渲染，Java 不解析 Workflow 变量。AI Intent 不发送完整
-系统提示词，Java 根据 `templateKey` 读取模板，只接收业务变量。Java 返回意图代码
-`I1...I10 | fallback`；Node 将代码映射回 Revision 内的稳定意图 ID 和出口 Handle。两类
-返回都必须匹配各自 Schema，单节点最终输出受 8 KiB 上限约束。
+LLM 的 `messageList` 由 Node 完整渲染，Workflow Worker Adapter 不解析 Workflow 变量；
+`modelTarget.modelId` 是稳定模型身份，Adapter 每次 Attempt 只读取当前有效的 `uid=0`
+平台模型行并将其 `endpoint` 写入 Provider 请求。`reasoningEffort` 直接映射到 Provider
+的 `reasoning_effort`，并映射 `thinking.type`。AI Intent 暂不进入本期生产执行链路。
+返回必须匹配 LLM Schema，单节点最终输出受 8 KiB 上限约束。
 
 请求公共字段建议为：
 
@@ -1343,7 +1345,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 - 不增加 `DISABLE_AUTH`、开发用户、测试专属公开路由或绕过 Session 校验的环境开关。
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
 - 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
-- LLM Mock Attempt 只允许在开发或测试环境显式启用，响应必须标记 `executionMode=mock`；生产 Backend 和 Workflow Worker 均强制 `disabled`。Java Adapter 接通前，该结果只验证变量替换、请求构造和输出映射，不代表真实模型效果。
+- LLM test Attempt 与生产 Run 共用真实 Chat Completion Port 和 Provider Adapter；测试替身仅允许通过测试依赖注入使用，不进入生产 import graph。Attempt 结果标记 `executionMode=real`，并保留独立的取消、TTL、超时和轮询生命周期。
 - 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test 联调和后续生产启用验收中。
 
 #### Smoke 工具边界

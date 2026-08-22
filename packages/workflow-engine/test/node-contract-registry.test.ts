@@ -98,6 +98,7 @@ const projectableDraftData = {
   llm: {
     inputs: [],
     modelId: "model-1",
+    reasoningEffort: "medium",
     modelLabel: "Model snapshot",
     output: {
       field: { description: "", id: "output-1", name: "output", type: "string" },

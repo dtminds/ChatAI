@@ -12,7 +12,7 @@ import {
   type WorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
-import type { WorkflowLlmTestAdapter } from "./llm-test-mock-adapter.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
 export async function processWorkflowLlmTestAttemptBatch(input: {
   adapter: WorkflowLlmTestAdapter;

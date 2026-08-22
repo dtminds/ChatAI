@@ -29,7 +29,6 @@ const ENV_KEYS = [
   "VOLCENGINE_ARK_BASE_URL",
   "VOLCENGINE_ARK_MODEL",
   "WORKFLOW_ENTITLEMENT_MODE",
-  "WORKFLOW_LLM_TEST_MODE",
 ] as const;
 
 function clearEnv() {
@@ -205,33 +204,6 @@ describe("backend env config", () => {
         WORKFLOW_ENTITLEMENT_MODE: " allow ",
       }),
     ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
-  });
-
-  it("allows the explicit LLM test Mock outside production", () => {
-    expect(() => validateBackendEnv({
-      DATABASE_URL: "mysql://test",
-      NODE_ENV: "test",
-      WORKFLOW_LLM_TEST_MODE: "mock",
-    })).not.toThrow();
-  });
-
-  it.each(["mock", " mock "])("rejects the LLM test Mock in production: %j", mode => {
-    expect(() => validateBackendEnv({
-      DATABASE_URL: "mysql://prod",
-      JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
-      JWT_PRIVATE_KEY: "private",
-      JWT_PUBLIC_KEY: "public",
-      NODE_ENV: "production",
-      WORKFLOW_LLM_TEST_MODE: mode,
-    })).toThrow("WORKFLOW_LLM_TEST_MODE must be disabled in production");
-  });
-
-  it("rejects unknown LLM test modes", () => {
-    expect(() => validateBackendEnv({
-      DATABASE_URL: "mysql://test",
-      NODE_ENV: "test",
-      WORKFLOW_LLM_TEST_MODE: "enabled",
-    })).toThrow("WORKFLOW_LLM_TEST_MODE must be disabled or mock");
   });
 
   it("validates worker observer subjects before backend startup", () => {

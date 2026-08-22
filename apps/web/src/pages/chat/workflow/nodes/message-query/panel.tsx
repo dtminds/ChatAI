@@ -1,7 +1,4 @@
 import { useEffect, useState } from "react";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -20,15 +17,10 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "../../types";
-import {
-  getAvailableTimeReferenceVariablesForNode,
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
+import { WorkflowVariableSelect } from "../../workflow-variable-select";
+import { getAvailableTimeReferenceVariablesForNode } from "../../workflow-variables";
 import {
   createDefaultMessageQueryTimeRange,
-  getDynamicTimeReferenceLabel,
   getMessageQueryMetric,
   getMessageQueryStatus,
   MESSAGE_QUERY_LIMIT_MAX,
@@ -210,38 +202,16 @@ function DynamicTimeField({
   variables: WorkflowVariableDefinition[];
   value: WorkflowVariableSelector;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const selectedVariable = resolveWorkflowVariable(variables, value);
-
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3">
       <span className="text-[13px]">{label}</span>
-      <WorkflowVariablePicker
-        onOpenChange={setPickerOpen}
-        onSelect={(variable) => {
-          onChange(variable.selector);
-          setPickerOpen(false);
-        }}
-        open={pickerOpen}
+      <WorkflowVariableSelect
+        ariaLabel={`${label}时间点`}
+        invalidLabel="时间变量不可用"
+        onSelect={(variable) => onChange(variable.selector)}
+        value={value}
         variables={variables}
-      >
-        <Button
-          aria-label={`${label}时间点`}
-          className="h-9 w-full justify-between px-3 text-[13px] font-normal"
-          type="button"
-          variant="outline"
-        >
-          <span className="min-w-0 truncate">
-            {getDynamicTimeReferenceLabel(
-              value,
-              () => selectedVariable
-                ? getWorkflowVariableDisplayLabel(selectedVariable)
-                : undefined,
-            )}
-          </span>
-          <HugeiconsIcon className="shrink-0 text-muted-foreground" icon={ArrowDown01Icon} size={16} strokeWidth={1.8} />
-        </Button>
-      </WorkflowVariablePicker>
+      />
     </div>
   );
 }

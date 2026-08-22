@@ -20,6 +20,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +42,12 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { RequestNormalizedError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import {
@@ -74,15 +81,22 @@ type InputErrors = Record<string, string | undefined>;
 export function LlmTestWorkspaceTrigger({ nodeId }: { nodeId: string }) {
   const { openEditor } = useSettingWorkspace();
   return (
-    <Button
-      aria-label="试运行大模型节点"
-      className="size-8 rounded-lg p-0"
-      onClick={() => openEditor({ id: getWorkspaceId(nodeId), title: "试运行" })}
-      type="button"
-      variant="ghost"
-    >
-      <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-    </Button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label="试运行大模型节点"
+            className="size-8 rounded-lg p-0"
+            onClick={() => openEditor({ id: getWorkspaceId(nodeId), title: "试运行" })}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>试运行</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -444,6 +458,12 @@ function TestInputField({
             <SelectItem value="false">否</SelectItem>
           </SelectContent>
         </Select>
+      ) : valueType.kind === "datetime" ? (
+        <DateTimePicker
+          aria-label={`${input.name || "输入参数"}的试运行值`}
+          onValueChange={onChange}
+          value={rawValue ?? ""}
+        />
       ) : valueType.kind === "array" || valueType.kind === "object" ? (
         <Textarea
           aria-invalid={Boolean(error)}
@@ -460,11 +480,7 @@ function TestInputField({
           aria-label={`${input.name || "输入参数"}的试运行值`}
           id={inputId}
           onChange={event => onChange(event.target.value)}
-          type={valueType.kind === "number"
-            ? "number"
-            : valueType.kind === "datetime"
-              ? "datetime-local"
-              : "text"}
+          type={valueType.kind === "number" ? "number" : "text"}
           value={rawValue ?? ""}
         />
       )}
@@ -496,7 +512,7 @@ function AttemptResult({
     );
   }
   if (!attempt) {
-    return <ResultState icon={PlayIcon} tone="muted" title="填写输入后开始运行" />;
+    return <ResultState icon={PlayIcon} tone="muted" title="运行后查看" />;
   }
   if (attempt.status === "timed_out") {
     return <ResultState icon={Clock01Icon} tone="warning" title={attempt.errorMessage ?? "试运行超时"} />;

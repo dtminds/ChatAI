@@ -75,6 +75,7 @@ const draftConfigs = {
   llm: {
     inputs: [],
     modelId: "model-1",
+    reasoningEffort: "medium",
     output: {
       field: { description: "", id: "output-1", name: "output", type: "string" },
       format: "text",
@@ -112,7 +113,8 @@ describe("workflow node contracts", () => {
     expect(Value.Check(WorkflowInferenceMessageListRequestSchema, {
       kind: "message-list",
       messageList: [{ content: "Summarize", role: "system" }],
-      modelId: "model-1",
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+      reasoningEffort: "medium",
       responseFormat: { type: "text" },
     })).toBe(true);
     expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
@@ -182,9 +184,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "ratio-split", "customer-update", "end", "handoff", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "llm"]);
+      .toEqual(["ai-intent"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -543,6 +545,7 @@ describe("workflow node contracts", () => {
       "modelLabel",
       "modelName",
       "output",
+      "reasoningEffort",
       "systemPrompt",
       "userPrompt",
     ]);

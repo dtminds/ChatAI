@@ -17,7 +17,6 @@ import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
-  UnavailableWorkflowJavaInferencePort,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityRouter } from "./capability-router.js";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -40,27 +39,35 @@ import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js
 import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
+import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
   const logger = createWorkflowWorkerLogger(config.logLevel);
-  const inferenceAdapter = new UnavailableWorkflowJavaInferencePort();
   const runtimeReadyNodeKinds: readonly WorkflowNodeKind[] = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS;
   const runtimeReadyInferenceKinds = runtimeReadyNodeKinds.filter(kind =>
     getWorkflowNodeContract(kind).executionClass === "inference");
-  if (runtimeReadyInferenceKinds.length > 0) {
+  if (runtimeReadyInferenceKinds.some(kind => kind !== "llm")) {
     throw new Error(
       `Workflow runtime-ready inference nodes lack a production adapter: ${runtimeReadyInferenceKinds.join(", ")}`,
     );
   }
   const database = createWorkflowDatabase(config.databaseUrl);
+  let inferenceAdapter: ReturnType<typeof createVolcengineChatCompletionAdapter> | undefined;
+  let llmTestAttemptRepository: MysqlWorkflowLlmTestAttemptRepository | undefined;
+  let llmTestWorker: Awaited<ReturnType<typeof loadLlmTestWorker>> | undefined;
+  try {
+    if (config.roles.has("inference")) {
+      inferenceAdapter = createVolcengineChatCompletionAdapter(database, env, logger);
+      llmTestAttemptRepository = new MysqlWorkflowLlmTestAttemptRepository(database);
+      llmTestWorker = await loadLlmTestWorker(inferenceAdapter);
+    }
+  } catch (error) {
+    await database.destroy();
+    throw error;
+  }
   const repository = new MysqlWorkflowRuntimeRepository(database);
-  const llmTestAttemptRepository = config.llmTestMode === "mock"
-    ? new MysqlWorkflowLlmTestAttemptRepository(database)
-    : undefined;
-  const llmTestWorker = config.llmTestMode === "mock"
-    ? await loadLlmTestWorker()
-    : undefined;
   const entitlementPort = createWorkflowEntitlementPort({
     endpoint: config.entitlement.apiUrl,
     mode: config.entitlement.mode,
@@ -166,13 +173,20 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   });
 }
 
-async function loadLlmTestWorker() {
-  const [{ processWorkflowLlmTestAttemptBatch }, { WorkflowLlmTestMockAdapter }] = await Promise.all([
-    import("./llm-test-attempt-worker.js"),
-    import("./llm-test-mock-adapter.js"),
-  ]);
+async function loadLlmTestWorker(inferenceAdapter: ReturnType<typeof createVolcengineChatCompletionAdapter>) {
+  const { processWorkflowLlmTestAttemptBatch } = await import("./llm-test-attempt-worker.js");
   return {
-    adapter: new WorkflowLlmTestMockAdapter(),
+    adapter: {
+      execute: async (request: Parameters<WorkflowLlmTestAdapter["execute"]>[0]) =>
+        inferenceAdapter.execute({
+          contractVersion: 1,
+          deadlineAt: request.deadlineAt,
+          executionKey: request.executionKey,
+          payload: request.payload,
+          signal: request.signal,
+          uid: request.uid,
+        }),
+    },
     process: processWorkflowLlmTestAttemptBatch,
   };
 }
@@ -196,6 +210,7 @@ export * from "./health.js";
 export * from "./handoff-capability-port.js";
 export * from "./inference-worker.js";
 export * from "./logger.js";
+export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";
@@ -206,3 +221,4 @@ export * from "./scheduler.js";
 export * from "./tag-capability-port.js";
 export * from "./tag-query-capability-port.js";
 export * from "./task-consumer.js";
+export * from "./volcengine-chat-completion-adapter.js";

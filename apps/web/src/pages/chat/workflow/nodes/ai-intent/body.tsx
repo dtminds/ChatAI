@@ -4,10 +4,8 @@ import {
   normalizeAiIntentInputSelector,
   normalizeAiIntentOptions,
 } from "./config";
-import {
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
+import { resolveWorkflowVariable } from "../../workflow-variables";
+import { createWorkflowVariableReferenceSummarySegments } from "../../workflow-node-summary";
 import { cn } from "@/lib/utils";
 
 export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
@@ -25,7 +23,10 @@ export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
             id: "input",
             label: "输入",
             value: selectedInput
-              ? { kind: "text", text: getWorkflowVariableDisplayLabel(selectedInput) }
+              ? {
+                  items: createWorkflowVariableReferenceSummarySegments(selectedInput),
+                  kind: "segments",
+                }
               : { kind: "empty" },
           },
         ]}

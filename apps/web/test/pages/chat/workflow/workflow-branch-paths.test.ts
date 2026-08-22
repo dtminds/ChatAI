@@ -194,10 +194,12 @@ describe("workflow branch paths", () => {
     const data = { branchPaths: paths };
 
     expect(getBranchConditionSummary(paths[0], workflowContextVariables))
-      .toBe("客户 ID 等于 会员");
+      .toBe("全局变量.客户 ID 等于 会员");
     expect(getBranchConditionSummary(paths[2], workflowContextVariables))
       .toBe("不满足以上条件");
     expect(getBranchConditionSummarySegments(paths[0], workflowContextVariables)).toEqual([
+      { kind: "source", text: "全局变量" },
+      { kind: "text", text: ".", tone: "muted" },
       { kind: "variable", text: "客户 ID" },
       { kind: "operator", text: " 等于", tone: "default" },
       { kind: "value", text: " 会员", tone: "default" },

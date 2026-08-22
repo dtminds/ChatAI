@@ -1034,6 +1034,7 @@ function flowChangedSpec(
             },
           }],
           modelId: "model-1",
+          reasoningEffort: "medium",
           output: {
             field: { description: "", id: "result", name: "result", type: "string" },
             format: "text",

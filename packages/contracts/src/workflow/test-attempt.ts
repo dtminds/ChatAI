@@ -21,7 +21,7 @@ export const WorkflowLlmTestAttemptSchema = Type.Object({
   completedAt: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
   errorMessage: Type.Union([Type.String(), Type.Null()]),
-  executionMode: Type.Literal("mock"),
+  executionMode: Type.Literal("real"),
   expiresAt: Type.String(),
   inputValues: WorkflowJsonObjectSchema,
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),

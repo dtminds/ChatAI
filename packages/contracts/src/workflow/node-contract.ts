@@ -344,6 +344,12 @@ export const WorkflowLlmOutputConfigSchema = Type.Union([
 export const WorkflowLlmDraftConfigSchema = Type.Object({
   inputs: Type.Array(WorkflowLlmInputParameterSchema, { maxItems: 10 }),
   modelId: Type.String({ maxLength: 128 }),
+  reasoningEffort: Type.Optional(Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ])),
   modelLabel: Type.Optional(Type.String({ maxLength: 256 })),
   modelName: Type.Optional(Type.String({ maxLength: 256 })),
   output: WorkflowLlmOutputConfigSchema,
@@ -354,6 +360,12 @@ export const WorkflowLlmDraftConfigSchema = Type.Object({
 export const WorkflowLlmExecutionConfigSchema = Type.Object({
   inputs: Type.Array(WorkflowLlmInputParameterSchema, { maxItems: 10 }),
   modelId: Type.String({ maxLength: 128 }),
+  reasoningEffort: Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ]),
   output: WorkflowLlmOutputConfigSchema,
   systemPrompt: WorkflowVariableContentSchema,
   userPrompt: WorkflowVariableContentSchema,
@@ -492,7 +504,7 @@ export const workflowNodeContractRegistry = {
     WorkflowHandoffExecutionConfigSchema,
     ["thirdExternalUserId"],
   ),
-  llm: draftReadyContract(
+  llm: runtimeReadyContract(
     "inference",
     1,
     WorkflowLlmDraftConfigSchema,

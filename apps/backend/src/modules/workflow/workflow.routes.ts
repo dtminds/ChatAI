@@ -29,7 +29,6 @@ import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
   createWorkflowEntitlementPort,
   MysqlWorkflowLlmTestAttemptRepository,
-  parseWorkflowLlmTestMode,
 } from "@chatai/workflow-runtime";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
@@ -92,7 +91,6 @@ export async function registerWorkflowRoutes(
       }),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
-      llmTestMode: parseWorkflowLlmTestMode(process.env.WORKFLOW_LLM_TEST_MODE),
     },
   );
   const authenticated = { preHandler: app.authenticate };

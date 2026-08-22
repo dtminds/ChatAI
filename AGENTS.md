@@ -25,6 +25,7 @@
 ## Web
 
 - 新页面沿用 shadcn/ui 和 `apps/web/src/components/ui`，不要引入第二套 UI 或图标集；图标用 Hugeicons。交互控件优先用已有基础组件，现有组件无法表达语义时才用原生元素。
+- 日期、时间和日期时间输入统一使用共享 UI 组件：日期和日期时间使用 `apps/web/src/components/ui/date-time-picker.tsx` 导出的 `DatePicker` / `DateTimePicker`，仅选择时间时使用 `apps/web/src/components/ui/time-picker.tsx` 的 `TimePicker`。组件能力不足时扩展共享组件；业务页面不得使用浏览器原生 `<input type="date">`、`<input type="time">` 或 `<input type="datetime-local">`。
 - 不要覆盖基础组件已有的 `disabled` / `hover` / `focus` / `active` / `loading` 状态，除非用户明确要求或基础组件有缺陷。
 - UI 改动限制在用户指出的范围内，先查同模块相邻页面和 `components/ui` 再复用；额外调整先说明并取得确认。
 - 异步操作失败用 `toast.error` 或当前弹窗展示，不要写入页面级 `setError`。页面/区块内联错误只用于自身加载失败，并随重载、重试或路由切换清除；字段校验可在字段附近展示。用户触发的异步失败且没有可行动原因时，toast 用「操作失败，请稍后重试」，不要写成「保存工单失败」这类动作名拼接。

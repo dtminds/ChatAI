@@ -14,7 +14,6 @@ describe("WorkflowService", () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -32,7 +31,7 @@ describe("WorkflowService", () => {
     });
 
     expect(first).toMatchObject({
-      executionMode: "mock",
+      executionMode: "real",
       inputValues: { "input-message": "退款什么时候到账", "input-tone": "简洁" },
       nodeId: "llm-1",
       output: null,
@@ -58,7 +57,6 @@ describe("WorkflowService", () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(repository, {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -88,18 +86,12 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
     expect(attempts.attempts).toHaveLength(0);
 
-    const disabled = createService(repository, { llmTestMode: "disabled" });
-    await expect(disabled.createLlmTestAttempt(operator, created.id, "llm-1", {
-      expectedDraftVersion: saved.draftVersion,
-      inputValues: { "input-message": "test" },
-    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_UNAVAILABLE", statusCode: 503 });
   });
 
   it("rejects LLM test inputs that render an empty system prompt", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const draft = withLlmNode(created.draft);
@@ -134,7 +126,6 @@ describe("WorkflowService", () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -160,7 +151,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -214,7 +204,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
       llmTestTimeoutMs: 1_000,
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -242,7 +231,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
       llmTestTimeoutMs: 1_000,
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -857,7 +845,7 @@ describe("WorkflowService", () => {
       });
   });
 
-  it("keeps draft-ready LLM nodes out of published revisions", async () => {
+  it("allows runtime-ready LLM nodes in published revisions", async () => {
     const service = createService();
     const configured = await createConfigured(service);
     const saved = await service.saveDraft(operator, configured.id, {
@@ -871,15 +859,7 @@ describe("WorkflowService", () => {
 
     await expect(service.submitReview(operator, configured.id, {
       expectedDraftVersion: saved.draftVersion,
-    })).rejects.toMatchObject({
-      code: "WORKFLOW_VALIDATION_FAILED",
-      details: {
-        issues: expect.arrayContaining([expect.objectContaining({
-          code: "unsupported-runtime-node",
-          nodeId: "llm-1",
-        })]),
-      },
-    });
+    })).resolves.toMatchObject({ status: "pending" });
   });
 
   it("rejects an inactive seat during publish validation for message-only Start", async () => {
@@ -1446,6 +1426,7 @@ function withLlmNode(
       label: "大模型",
       metric: "model-1",
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: {
         field: { description: "", id: "output-1", name: "output", type: "string" as const },
         format: "text" as const,

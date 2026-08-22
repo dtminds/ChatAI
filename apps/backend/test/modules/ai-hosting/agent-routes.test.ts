@@ -86,20 +86,20 @@ describe("AI hosting agent routes", () => {
       data: {
         models: [
           {
-            description: "租户自定义",
-            id: "11",
-            label: "Doubao-2.0-lite",
-            model: "doubao-2.0-lite",
-            name: "Doubao-2.0-lite",
-            supportMultimodal: true,
-          },
-          {
             description: "系统默认",
             id: "10",
             label: "默认模型",
             model: "default-model",
             name: "默认模型",
             supportMultimodal: false,
+          },
+          {
+            description: "平台模型",
+            id: "11",
+            label: "Doubao-2.0-lite",
+            model: "doubao-2.0-lite",
+            name: "Doubao-2.0-lite",
+            supportMultimodal: true,
           },
         ],
       },
@@ -119,7 +119,7 @@ describe("AI hosting agent routes", () => {
     ]);
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
-    expect(db.modelUidFilter).toEqual([9001, 0]);
+    expect(db.modelUidFilter).toBe(0);
     expect(db.queriedTables).toContain("xy_wap_embed_agent_kb_learning_candidate");
 
     await app.close();
@@ -1400,7 +1400,7 @@ describe("AI hosting agent routes", () => {
         { status: 200 },
       ),
     );
-    const { app, authorization } = await createAiHostingApp();
+    const { app, authorization, db } = await createAiHostingApp();
 
     const response = await app.inject({
       headers: { authorization },
@@ -1465,6 +1465,7 @@ describe("AI hosting agent routes", () => {
       }),
       uid: 9001,
     });
+    expect(db.modelSingleUidFilters).toContain(0);
 
     fetchMock.mockRestore();
     await app.close();
@@ -1788,13 +1789,13 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       uid: 0,
     },
     {
-      description: "租户自定义",
+      description: "平台模型",
       id: 11,
       model: "doubao-2.0-lite",
       name: "Doubao-2.0-lite",
       status: 1,
       support_multimodal: 1,
-      uid: dataUid,
+      uid: 0,
     },
   ];
   let agentPrompt = "如何客户咨询成分，那么说明功效";
@@ -2049,6 +2050,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     likeSearchValues: [] as unknown[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
+    modelSingleUidFilters: [] as unknown[],
     queriedTables: [] as string[],
     updatedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
@@ -2111,13 +2113,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             state.modelListWheres = wheres;
             state.modelUidFilter = wheres.find(([column]) => column === "uid")?.[2];
 
-            return [...models].sort((left, right) => {
-              if (left.uid !== right.uid) {
-                return left.uid === 9001 ? -1 : 1;
-              }
-
-              return left.id - right.id;
-            });
+            return [...models].sort((left, right) => left.id - right.id);
           }
 
           if (table === "xy_wap_embed_agent_history") {
@@ -2308,14 +2304,15 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           }
 
           if (table === "xy_wap_embed_ai_model") {
+            state.modelSingleUidFilters.push(wheres.find(([column]) => column === "uid")?.[2]);
             const id = Number(wheres.find(([column]) => column === "id")?.[2]);
-            const uidFilter = wheres.find(([column]) => column === "uid")?.[2] as number[] | undefined;
+            const uidFilter = wheres.find(([column]) => column === "uid")?.[2] as number | undefined;
 
             return models.find(
               (model) =>
                 model.id === id &&
                 model.status === 1 &&
-                (!uidFilter || uidFilter.includes(model.uid)),
+                (!Number.isFinite(uidFilter) || model.uid === uidFilter),
             );
           }
 

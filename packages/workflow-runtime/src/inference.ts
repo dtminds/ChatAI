@@ -90,7 +90,8 @@ function createLlmRequest(
   return {
     kind: "message-list",
     messageList,
-    modelId: node.config.modelId,
+    modelTarget: { kind: "catalog-model", modelId: node.config.modelId },
+    reasoningEffort: node.config.reasoningEffort ?? "medium",
     responseFormat,
   };
 }

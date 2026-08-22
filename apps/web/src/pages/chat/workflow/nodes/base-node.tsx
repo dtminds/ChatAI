@@ -1,5 +1,6 @@
 import { memo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { WORKFLOW_NODE_TITLE_MAX_LENGTH } from "@chatai/contracts";
 import {
   Copy01Icon,
   Delete01Icon,
@@ -183,6 +184,7 @@ function NodeHeader({
               aria-label="节点名称"
               autoFocus
               className="nodrag nopan h-7 min-w-0 rounded px-2.5 text-xs font-normal"
+              maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
               onBlur={onCommitRename}
               onChange={(event) => onRenameValueChange(event.target.value)}
               onClick={(event) => event.stopPropagation()}

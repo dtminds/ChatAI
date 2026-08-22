@@ -35,12 +35,6 @@ describe("workflow production availability", () => {
           nodeKind: "start",
         },
         {
-          code: "runtime-node-unsupported",
-          dimension: "runtime",
-          nodeId: "llm",
-          nodeKind: "llm",
-        },
-        {
           code: "workflow-type-unentitled",
           dimension: "entitlement",
         },

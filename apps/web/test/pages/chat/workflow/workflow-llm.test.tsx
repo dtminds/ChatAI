@@ -107,6 +107,7 @@ describe("workflow LLM node", () => {
     })).toEqual({
       inputs: node.data.inputs,
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: node.data.output,
       systemPrompt: node.data.systemPrompt,
       userPrompt: [],
@@ -375,6 +376,37 @@ describe("workflow LLM node", () => {
       modelName: model.model,
     }));
 
+    await user.click(screen.getByRole("button", { name: "深度思考设置" }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "深度思考开关" }));
+    await user.click(screen.getByRole("option", { name: "关闭" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "minimal",
+    }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考开关" }));
+    await user.click(screen.getByRole("option", { name: "开启" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "medium",
+    }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考程度" }));
+    await user.click(screen.getByRole("option", { name: "高" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "high",
+    }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考程度" }));
+    await user.click(screen.getByRole("option", { name: "关闭" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "minimal",
+    }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "深度思考开关" })).toHaveTextContent("关闭");
+
     await user.click(screen.getByRole("button", { name: "删除输入参数" }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       inputs: [],
@@ -416,6 +448,16 @@ describe("workflow LLM node", () => {
         },
       })],
     }));
+
+    const variableLabel = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>("[data-workflow-variable-value-label=true]");
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    Object.defineProperty(variableLabel, "clientWidth", { configurable: true, value: 100 });
+    Object.defineProperty(variableLabel, "scrollWidth", { configurable: true, value: 200 });
+    await user.hover(variableLabel);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(variableLabel.textContent ?? "");
   });
 
   it("groups Start and current-node lifecycle values under their actual node titles", async () => {
@@ -1034,6 +1076,21 @@ describe("workflow LLM node", () => {
       },
     }));
   });
+
+  it("reminds that JSON output is only supported on Doubao models", async () => {
+    const user = userEvent.setup();
+    render(<StatefulLlmConfig
+      initialNode={createLlmNode({ modelId: model.id })}
+      onNodeChange={vi.fn()}
+    />);
+    await screen.findByRole("combobox", { name: "模型" });
+
+    const jsonOption = screen.getByRole("radio", { name: "JSON" });
+    const hint = jsonOption.querySelector("svg");
+    expect(hint).not.toBeNull();
+    await user.hover(hint!);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("仅支持豆包系列模型");
+  });
 });
 
 function StatefulLlmConfig({
@@ -1162,7 +1219,7 @@ function createAttempt(overrides: Partial<{
     completedAt: null,
     createdAt: createdAt.toISOString(),
     errorMessage: null,
-    executionMode: "mock" as const,
+    executionMode: "real" as const,
     expiresAt: expiresAt.toISOString(),
     inputValues: {},
     nodeId: "llm",

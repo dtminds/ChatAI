@@ -1,9 +1,12 @@
 import {
+  WORKFLOW_NODE_TITLE_MAX_LENGTH,
+  type WorkflowType,
+} from "@chatai/contracts";
+import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_LAYOUT_X_GAP,
   WORKFLOW_NODE_TYPE,
 } from "./constants";
-import type { WorkflowType } from "@chatai/contracts";
 import {
   getNodeSourceHandleIndex,
   getNodeSourceHandleLabel,
@@ -188,12 +191,12 @@ export function duplicateWorkflowNode(
 
 export function getNewNodeTitleFromOld(title: string) {
   const match = /^(.+?)\s*\((\d+)\)\s*$/.exec(title);
+  const sequence = match ? Number.parseInt(match[2], 10) + 1 : 1;
+  const suffix = ` (${sequence})`;
+  const baseTitle = (match?.[1] ?? title).trimEnd();
+  const availableBaseLength = Math.max(0, WORKFLOW_NODE_TITLE_MAX_LENGTH - suffix.length);
 
-  if (!match) {
-    return `${title} (1)`;
-  }
-
-  return `${match[1]} (${Number.parseInt(match[2], 10) + 1})`;
+  return `${baseTitle.slice(0, availableBaseLength).trimEnd()}${suffix}`;
 }
 
 export function getUniqueDuplicatedNodeTitle(title: string, reservedTitles: Set<string>) {

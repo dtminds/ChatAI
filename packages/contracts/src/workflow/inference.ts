@@ -8,7 +8,16 @@ export const WorkflowInferenceMessageListRequestSchema = Type.Object({
     content: Type.String({ maxLength: 20_000 }),
     role: Type.Union([Type.Literal("system"), Type.Literal("user")]),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 2 }),
-  modelId: Type.String({ minLength: 1, maxLength: 128 }),
+  modelTarget: Type.Object({
+    kind: Type.Literal("catalog-model"),
+    modelId: Type.String({ minLength: 1, maxLength: 128 }),
+  }, { additionalProperties: false }),
+  reasoningEffort: Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ]),
   responseFormat: Type.Union([
     Type.Object({ type: Type.Literal("text") }, { additionalProperties: false }),
     Type.Object({ type: Type.Literal("markdown") }, { additionalProperties: false }),

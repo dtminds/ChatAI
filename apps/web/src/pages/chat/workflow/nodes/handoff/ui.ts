@@ -1,5 +1,5 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
-import { getVariableContentPreview } from "../variable-content/content";
+import { getVariableContentSummarySegments } from "../variable-content/content";
 import { HandoffConfig } from "./panel";
 
 export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
@@ -10,9 +10,12 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
         label: "客服提示",
         value: data.operatorMessage?.length
           ? {
-              kind: "text",
+              items: getVariableContentSummarySegments(
+                data.operatorMessage,
+                data.availableVariables,
+              ),
+              kind: "segments",
               maxLines: 2,
-              text: getVariableContentPreview(data.operatorMessage, data.availableVariables),
             }
           : { kind: "empty" },
       },
@@ -21,9 +24,12 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
         label: "对客话术",
         value: data.customerMessage?.length
           ? {
-              kind: "text",
+              items: getVariableContentSummarySegments(
+                data.customerMessage,
+                data.availableVariables,
+              ),
+              kind: "segments",
               maxLines: 2,
-              text: getVariableContentPreview(data.customerMessage, data.availableVariables),
             }
           : { kind: "empty" },
       },

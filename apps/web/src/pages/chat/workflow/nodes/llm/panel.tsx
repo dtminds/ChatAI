@@ -241,7 +241,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
               ))}
             </SelectContent>
           </Select>
-          <Popover>
+          <Popover modal={false}>
             <PopoverTrigger asChild>
               <Button
                 aria-label="深度思考设置"
@@ -258,6 +258,8 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
               align="end"
               aria-label="深度思考设置"
               className="w-[18rem] p-4"
+              onInteractOutside={preventThinkingSelectDismiss}
+              onPointerDownOutside={preventThinkingSelectDismiss}
               role="dialog"
               sideOffset={8}
             >
@@ -374,6 +376,14 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
 }
 
 type ThinkingDepth = LlmReasoningEffort;
+
+function preventThinkingSelectDismiss(event: Event) {
+  const target = event.target;
+
+  if (target instanceof Element && target.closest('[role="listbox"]')) {
+    event.preventDefault();
+  }
+}
 
 function ThinkingSettings({
   depth,

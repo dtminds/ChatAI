@@ -69,7 +69,7 @@ export async function processWorkflowInferenceBatch(input: {
           "terminal",
           "WORKFLOW_INFERENCE_OUTPUT_INVALID",
           "返回结果异常，流程已停止",
-          { diagnosticMessage: `Java inference result did not match ${job.payload.kind}` },
+          { diagnosticMessage: `Provider inference result did not match ${job.payload.kind}` },
         );
       }
       if (controller.signal.aborted || now() >= job.deadlineAt) {

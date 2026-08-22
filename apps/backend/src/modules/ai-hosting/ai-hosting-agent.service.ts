@@ -513,7 +513,6 @@ export class AiHostingAgentService {
       .select(["description", "id", "model", "name", "support_multimodal", "uid"])
       .where("status", "=", dbActiveStatus)
       .where("uid", "=", 0)
-      .orderBy("uid", "desc")
       .orderBy("id", "asc")
       .execute() as Promise<AiModelRow[]>;
   }

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
+import { Kysely, MysqlDialect } from "kysely";
+import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import { VolcengineChatCompletionAdapter } from "../src/volcengine-chat-completion-adapter.js";
 
 const request = (overrides: Record<string, unknown> = {}) => ({
@@ -20,7 +22,68 @@ const request = (overrides: Record<string, unknown> = {}) => ({
 
 const database = {} as never;
 
+function createProductionDatabase(rows: Array<Record<string, unknown>>) {
+  const query = vi.fn((
+    _sql: string,
+    _parameters: readonly unknown[],
+    callback: (error: unknown, result: unknown) => void,
+  ) => callback(null, rows));
+  const connection = {
+    config: {},
+    destroy: vi.fn(),
+    query,
+    release: vi.fn(),
+    threadId: 1,
+  };
+  const pool = {
+    end: (callback: (error: unknown) => void) => callback(null),
+    getConnection: (callback: (error: unknown, connection: typeof connection) => void) => {
+      callback(null, connection);
+    },
+  };
+  const db = new Kysely<WorkflowDatabase>({ dialect: new MysqlDialect({ pool: pool as never }) });
+  return { db, query };
+}
+
 describe("VolcengineChatCompletionAdapter", () => {
+  it("resolves the production model row when no resolver is injected", async () => {
+    const { db, query } = createProductionDatabase([{
+      endpoint: "ep-production",
+      model: "doubao-pro",
+    }]);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "answer" } }],
+    }), { status: 200 }));
+    const adapter = new VolcengineChatCompletionAdapter(db, "secret", fetchImpl);
+
+    await expect(adapter.execute(request())).resolves.toEqual({ content: "answer", type: "text" });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    const executedSql = String(query.mock.calls[0]?.[0]).replace(/\s+/g, " ").trim();
+    expect(executedSql).toContain(
+      "SELECT endpoint, model FROM xy_wap_embed_ai_model WHERE id = ? AND uid = 0 AND status = 1 LIMIT 1",
+    );
+    expect(query.mock.calls[0]?.[1]).toEqual([11]);
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body.model).toBe("ep-production");
+  });
+
+  it("rejects a production model row with an empty endpoint", async () => {
+    const { db, query } = createProductionDatabase([{
+      endpoint: "",
+      model: "doubao-pro",
+    }]);
+    const fetchImpl = vi.fn();
+    const adapter = new VolcengineChatCompletionAdapter(db, "secret", fetchImpl);
+
+    await expect(adapter.execute(request())).rejects.toMatchObject({
+      code: "WORKFLOW_INFERENCE_MODEL_INVALID",
+      failureKind: "terminal",
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("resolves the active platform model and sends the endpoint with provider controls", async () => {
     const fetchImpl = vi.fn(async (_url: string, init: RequestInit) =>
       new Response(JSON.stringify({

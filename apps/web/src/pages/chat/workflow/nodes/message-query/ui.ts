@@ -5,7 +5,7 @@ import {
 } from "./config";
 import { MessageQueryConfig } from "./panel";
 import {
-  createWorkflowReferenceSummarySegments,
+  createWorkflowVariableReferenceSummarySegments,
   type WorkflowNodeSummarySegment,
 } from "../../workflow-node-summary";
 import type {
@@ -78,9 +78,6 @@ function createDynamicTimeReferenceSegments(
 ): WorkflowNodeSummarySegment[] {
   const variable = resolveVariable(selector);
   return variable
-    ? createWorkflowReferenceSummarySegments({
-        source: variable.sourceNodeTitle,
-        variable: variable.label,
-      })
+    ? createWorkflowVariableReferenceSummarySegments(variable)
     : [{ kind: "value", text: "时间变量不可用", tone: "warning" }];
 }

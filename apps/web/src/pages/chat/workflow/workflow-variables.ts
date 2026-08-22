@@ -21,6 +21,7 @@ import {
 
 export {
   getWorkflowVariableDisplayLabel,
+  getWorkflowVariableDisplaySourceLabel,
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
 export { workflowContextVariables } from "./workflow-variable-registry";

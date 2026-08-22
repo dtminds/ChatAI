@@ -16,3 +16,10 @@ export function getWorkflowVariableDisplayLabel(variable: WorkflowVariableDefini
     ? `${variable.sourceNodeTitle}.${variable.label}`
     : variable.label;
 }
+
+export function getWorkflowVariableDisplaySourceLabel(variable: WorkflowVariableDefinition) {
+  if (variable.sourceNodeTitle) return variable.sourceNodeTitle;
+  if (variable.scope === "input") return "输入参数";
+  if (variable.scope === "subject" || variable.scope === "trigger") return "全局变量";
+  return undefined;
+}

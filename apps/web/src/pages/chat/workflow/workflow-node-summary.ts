@@ -1,3 +1,6 @@
+import type { WorkflowVariableDefinition } from "./types";
+import { getWorkflowVariableDisplaySourceLabel } from "./workflow-variable-selector";
+
 export type WorkflowNodeSummarySegmentKind =
   | "operator"
   | "source"
@@ -31,9 +34,20 @@ export function createWorkflowReferenceSummarySegments({
     ...(source
       ? [
           { kind: "source" as const, text: source, ...toneAttributes },
-          { kind: "text" as const, text: ".", tone: tone ?? "muted" },
+          { kind: "text" as const, text: " - ", tone: tone ?? "muted" },
         ]
       : []),
     { kind: "variable", text: variable, ...toneAttributes },
   ];
+}
+
+export function createWorkflowVariableReferenceSummarySegments(
+  variable: WorkflowVariableDefinition,
+  tone?: WorkflowNodeSummarySegmentTone,
+) {
+  return createWorkflowReferenceSummarySegments({
+    source: getWorkflowVariableDisplaySourceLabel(variable),
+    tone,
+    variable: variable.label,
+  });
 }

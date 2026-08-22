@@ -46,7 +46,7 @@ describe("NodeFieldList", () => {
             value: {
               items: [
                 { kind: "source", text: "开始" },
-                { kind: "text", text: "." },
+                { kind: "text", text: " - ", tone: "muted" },
                 { kind: "variable", text: "触发时间" },
                 { kind: "operator", text: " 至 " },
                 { kind: "value", text: "未配置", tone: "warning" },

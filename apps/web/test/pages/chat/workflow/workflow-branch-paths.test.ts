@@ -194,10 +194,12 @@ describe("workflow branch paths", () => {
     const data = { branchPaths: paths };
 
     expect(getBranchConditionSummary(paths[0], workflowContextVariables))
-      .toBe("客户 ID 等于 会员");
+      .toBe("全局变量 - 客户 ID 等于 会员");
     expect(getBranchConditionSummary(paths[2], workflowContextVariables))
       .toBe("不满足以上条件");
     expect(getBranchConditionSummarySegments(paths[0], workflowContextVariables)).toEqual([
+      { kind: "source", text: "全局变量" },
+      { kind: "text", text: " - ", tone: "muted" },
       { kind: "variable", text: "客户 ID" },
       { kind: "operator", text: " 等于", tone: "default" },
       { kind: "value", text: " 会员", tone: "default" },
@@ -237,13 +239,13 @@ describe("workflow branch paths", () => {
 
     expect(getBranchConditionSummarySegments(path, variables)).toEqual([
       { kind: "source", text: "意图识别" },
-      { kind: "text", text: ".", tone: "muted" },
+      { kind: "text", text: " - ", tone: "muted" },
       { kind: "variable", text: "命中意图" },
       { kind: "operator", text: " 等于", tone: "default" },
       { kind: "value", text: " 未配置值", tone: "warning" },
     ]);
     expect(getBranchConditionSummary(path, variables))
-      .toBe("意图识别.命中意图 等于 未配置值");
+      .toBe("意图识别 - 命中意图 等于 未配置值");
   });
 
   it("creates the fixed default if and else paths", () => {

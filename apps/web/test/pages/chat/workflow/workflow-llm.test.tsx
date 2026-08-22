@@ -448,6 +448,16 @@ describe("workflow LLM node", () => {
         },
       })],
     }));
+
+    const variableTag = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>("[data-workflow-variable-value-tag=true]");
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    Object.defineProperty(variableTag, "clientWidth", { configurable: true, value: 100 });
+    Object.defineProperty(variableTag, "scrollWidth", { configurable: true, value: 200 });
+    await user.hover(variableTag);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(variableTag.textContent ?? "");
   });
 
   it("groups Start and current-node lifecycle values under their actual node titles", async () => {
@@ -1065,6 +1075,21 @@ describe("workflow LLM node", () => {
         format: "markdown",
       },
     }));
+  });
+
+  it("reminds that JSON output is only supported on Doubao models", async () => {
+    const user = userEvent.setup();
+    render(<StatefulLlmConfig
+      initialNode={createLlmNode({ modelId: model.id })}
+      onNodeChange={vi.fn()}
+    />);
+    await screen.findByRole("combobox", { name: "模型" });
+
+    const jsonOption = screen.getByRole("radio", { name: "JSON" });
+    const hint = jsonOption.querySelector("svg");
+    expect(hint).not.toBeNull();
+    await user.hover(hint!);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("仅支持豆包系列模型");
   });
 });
 

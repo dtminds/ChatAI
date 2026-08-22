@@ -4,6 +4,10 @@ import {
   getWorkflowVariableSelectorKey,
 } from "../../workflow-variable-selector";
 import { workflowContextVariables } from "../../workflow-variable-registry";
+import {
+  createWorkflowVariableReferenceSummarySegments,
+  type WorkflowNodeSummarySegment,
+} from "../../workflow-node-summary";
 
 export function normalizeVariableContent(segments: WorkflowVariableContentSegment[] | undefined) {
   const normalized: WorkflowVariableContentSegment[] = [];
@@ -63,6 +67,29 @@ export function getVariableContentPreview(
   return getVariableContentText(segments, variables).trim();
 }
 
+export function getVariableContentSummarySegments(
+  segments: WorkflowVariableContentSegment[] | undefined,
+  variables: WorkflowVariableDefinition[] = workflowContextVariables,
+) {
+  const variableBySelector = new Map(variables.map((variable) => [
+    getWorkflowVariableSelectorKey(variable.selector),
+    variable,
+  ]));
+  const summary = normalizeVariableContent(segments).flatMap<WorkflowNodeSummarySegment>((segment) => {
+    if (segment.type === "text") {
+      return [{ kind: "text", text: segment.value }];
+    }
+
+    const variable = variableBySelector.get(getWorkflowVariableSelectorKey(segment.selector));
+    return variable
+      ? createWorkflowVariableReferenceSummarySegments(variable)
+      : [{ kind: "variable", text: segment.selector.join("."), tone: "warning" }];
+  });
+
+  trimSummaryText(summary);
+  return summary;
+}
+
 export function downgradeVariableContentSelector(
   segments: WorkflowVariableContentSegment[] | undefined,
   selector: string[],
@@ -75,6 +102,15 @@ export function downgradeVariableContentSelector(
       && getWorkflowVariableSelectorKey(segment.selector) === selectorKey
       ? { type: "text" as const, value: fallbackText }
       : segment));
+}
+
+function trimSummaryText(summary: WorkflowNodeSummarySegment[]) {
+  const first = summary[0];
+  if (first?.kind === "text") first.text = first.text.trimStart();
+  const last = summary[summary.length - 1];
+  if (last?.kind === "text") last.text = last.text.trimEnd();
+  while (summary[0]?.text === "") summary.shift();
+  while (summary[summary.length - 1]?.text === "") summary.pop();
 }
 
 export function truncateVariableContent(

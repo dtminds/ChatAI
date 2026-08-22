@@ -78,10 +78,12 @@ describe("workflow message query", () => {
       id: "time-range",
       value: {
         items: [
+          { kind: "source", text: "全局变量" },
+          { kind: "text", text: " - ", tone: "muted" },
           { kind: "variable", text: "触发时间" },
           { kind: "operator", text: " 至 " },
           { kind: "source", text: "等待" },
-          { kind: "text", text: ".", tone: "muted" },
+          { kind: "text", text: " - ", tone: "muted" },
           { kind: "variable", text: "退出时间" },
         ],
         kind: "segments",
@@ -147,7 +149,7 @@ describe("workflow message query", () => {
         start: ["node-lifecycle", messageNode.id, "exitedAt"],
       }),
     }));
-    expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("消息查询.进入时间");
+    expect(screen.getByRole("button", { name: "结束时间时间点" })).toHaveTextContent("消息查询 - 进入时间");
   });
 
   it("keeps trigger time global and shows lifecycle values under their nodes", async () => {
@@ -162,6 +164,8 @@ describe("workflow message query", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "开始时间时间点" }))
+      .toHaveTextContent("全局变量 - 触发时间");
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
     const startMenuItem = screen.getByRole("menuitem", { name: "开始" });
     await user.click(startMenuItem);

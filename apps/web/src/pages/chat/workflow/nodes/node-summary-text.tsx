@@ -58,6 +58,6 @@ function getSegmentClassName(segment: WorkflowNodeSummarySegment) {
     source: "text-muted-foreground",
     text: "text-foreground",
     value: "font-medium text-foreground",
-    variable: "font-medium text-primary",
+    variable: "font-medium text-foreground",
   }[segment.kind];
 }

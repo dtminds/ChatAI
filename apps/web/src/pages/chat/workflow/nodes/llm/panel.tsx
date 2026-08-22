@@ -3,9 +3,9 @@ import type { AiHostingModel } from "@chatai/contracts";
 import {
   Add01Icon,
   ArrowExpand02Icon,
-  Cancel01Icon,
   Delete01Icon,
   ExpandIcon,
+  InformationCircleIcon,
   MinusSignIcon,
   Settings03Icon,
 } from "@hugeicons/core-free-icons";
@@ -49,12 +49,8 @@ import type {
   WorkflowVariableContentSegment,
   WorkflowVariableDefinition,
 } from "../../types";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
-import {
-  getAvailableLlmInputVariablesForNode,
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
+import { WorkflowLiteralOrVariableInput } from "../../workflow-literal-or-variable-input";
+import { getAvailableLlmInputVariablesForNode } from "../../workflow-variables";
 import {
   downgradeVariableContentSelector,
   variableContentEqual,
@@ -295,7 +291,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
       >
         {inputs.length ? (
           <div className="space-y-2.5">
-            <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
+            <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
               <span>参数名</span>
               <span>参数值</span>
             </div>
@@ -453,10 +449,6 @@ function LlmInputRow({
   onChange: (input: WorkflowLlmInputParameter) => void;
   onDelete: () => void;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const selectedVariable = input.value.kind === "variable"
-    ? resolveWorkflowVariable(availableVariables, input.value.selector)
-    : undefined;
   const nameDuplicate = Boolean(input.name.trim()) && inputs.some((item) =>
     item.id !== input.id && item.name.trim() === input.name.trim());
   const nameInvalid = Boolean(input.name) && (!LLM_IDENTIFIER_PATTERN.test(input.name)
@@ -464,7 +456,7 @@ function LlmInputRow({
     || nameDuplicate);
 
   return (
-    <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_2rem] items-start gap-2">
+    <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_2rem] items-start gap-2">
       <Input
         aria-label="输入参数名"
         aria-invalid={nameInvalid}
@@ -474,59 +466,14 @@ function LlmInputRow({
         placeholder="参数名"
         value={input.name}
       />
-      <div className="relative min-w-0">
-        <Input
-          aria-label={`${input.name || "输入参数"}的值`}
-          className="h-9 min-w-0 pl-3 pr-16 text-xs"
-          onChange={(event) => onChange({
-            ...input,
-            value: { kind: "literal", value: event.target.value },
-          })}
-          placeholder="输入或引用变量"
-          readOnly={input.value.kind === "variable"}
-          value={input.value.kind === "variable"
-            ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
-            : input.value.value}
-        />
-        {input.value.kind === "variable" ? (
-          <Button
-            aria-label="改为固定文本"
-            className="absolute right-8 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => onChange({ ...input, value: { kind: "literal", value: "" } })}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.8} />
-          </Button>
-        ) : null}
-        <WorkflowVariablePicker
-          onOpenChange={setPickerOpen}
-          onSelect={(variable) => {
-            onChange({
-              ...input,
-              value: {
-                kind: "variable",
-                selector: variable.selector,
-                valueType: variable.valueType,
-              },
-            });
-            setPickerOpen(false);
-          }}
-          open={pickerOpen}
-          variables={availableVariables}
-        >
-          <Button
-            aria-label="引用变量"
-            className="absolute right-1 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Settings03Icon} size={14} strokeWidth={1.8} />
-          </Button>
-        </WorkflowVariablePicker>
-      </div>
+      <WorkflowLiteralOrVariableInput
+        ariaLabel={`${input.name || "输入参数"}的值`}
+        clearVariableAriaLabel="改为固定文本"
+        onChange={(value) => onChange({ ...input, value })}
+        placeholder="输入或引用变量"
+        value={input.value}
+        variables={availableVariables}
+      />
       <Button
         aria-label="删除输入参数"
         className="size-8 p-0 text-muted-foreground hover:text-destructive"
@@ -672,6 +619,7 @@ function OutputSection({
               value={format}
             >
               {outputFormatLabels[format]}
+              {format === "json" ? <JsonOutputFormatHint /> : null}
             </SegmentedControlItem>
           ))}
         </SegmentedControl>
@@ -850,6 +798,28 @@ function JsonOutputFieldRow({
         />
       ) : null}
     </div>
+  );
+}
+
+function JsonOutputFormatHint() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="ml-1 inline-flex">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={InformationCircleIcon}
+              size={12}
+              strokeWidth={1.8}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          仅支持豆包系列模型
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

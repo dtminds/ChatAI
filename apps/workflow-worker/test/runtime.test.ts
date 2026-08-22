@@ -40,6 +40,24 @@ describe("workflow worker runtime", () => {
     expect(resources.database.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("does not require inference dependencies when the inference role is disabled", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+      inferenceAdapter: undefined,
+      llmTestAdapter: undefined,
+      llmTestAttemptRepository: undefined,
+      llmTestAttemptWorker: undefined,
+    });
+
+    expect(runtime.getReadiness().roles).toEqual({
+      "entry-consumer": true,
+      "task-consumer": true,
+    });
+    await runtime.close();
+  });
+
   it("cleans up initialized resources when startup fails", async () => {
     const resources = createResources();
     resources.broker.subscribe

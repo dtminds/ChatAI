@@ -54,6 +54,34 @@ describe("VolcengineChatCompletionAdapter", () => {
     expect(body).not.toHaveProperty("model", "doubao-pro");
   });
 
+  it("emits bounded provider diagnostics without prompt or completion content", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      id: "req-123",
+      choices: [{ finish_reason: "stop", message: { content: "answer" } }],
+      usage: { completion_tokens: 3, prompt_tokens: 5, total_tokens: 8 },
+    }), { status: 200 }));
+    const logger = { info: vi.fn() };
+    const adapter = new VolcengineChatCompletionAdapter(
+      database,
+      "secret",
+      fetchImpl,
+      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      logger,
+    );
+
+    await adapter.execute(request());
+
+    expect(logger.info).toHaveBeenCalledWith({
+      event: "workflow.inference.provider.completed",
+      endpoint: "ep-test",
+      finishReason: "stop",
+      model: "doubao-pro",
+      providerRequestId: "req-123",
+      usage: { completion_tokens: 3, prompt_tokens: 5, total_tokens: 8 },
+    }, "workflow inference provider completed");
+    expect(logger.info.mock.calls[0]?.[0]).not.toHaveProperty("content");
+  });
+
   it("sends strict JSON schema and validates the normalized result", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({ summary: "ok", score: 1 }) } }],
@@ -124,5 +152,21 @@ describe("VolcengineChatCompletionAdapter", () => {
     await expect(oversized.execute(request())).rejects.toBeInstanceOf(
       WorkflowCapabilityExecutionError,
     );
+  });
+
+  it("rejects an empty text completion", async () => {
+    const adapter = new VolcengineChatCompletionAdapter(
+      database,
+      "secret",
+      async () => new Response(JSON.stringify({
+        choices: [{ message: { content: "" } }],
+      }), { status: 200 }),
+      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+    );
+
+    await expect(adapter.execute(request())).rejects.toMatchObject({
+      code: "WORKFLOW_INFERENCE_RESPONSE_INVALID",
+      failureKind: "terminal",
+    });
   });
 });

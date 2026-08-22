@@ -16,6 +16,9 @@ const MAX_COMPLETION_TOKENS = 4096;
 
 type ModelRow = { endpoint: string; model: string };
 type ModelResolver = (modelId: string) => Promise<ModelRow | undefined>;
+type ProviderDiagnosticsLogger = {
+  info(value: unknown, message?: string): void;
+};
 
 export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPort {
   constructor(
@@ -23,6 +26,7 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly modelResolver?: ModelResolver,
+    private readonly logger?: ProviderDiagnosticsLogger,
   ) {
     if (!apiKey.trim()) throw new Error("VOLCENGINE_ARK_API_KEY is required");
   }
@@ -68,12 +72,18 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     try { envelope = JSON.parse(body); } catch {
       throw terminal("WORKFLOW_INFERENCE_RESPONSE_INVALID", "模型返回结果异常");
     }
-    const content = readAssistantContent(envelope);
-    if (content === null) throw terminal("WORKFLOW_INFERENCE_RESPONSE_INVALID", "模型返回结果异常");
-    if (request.payload.responseFormat.type !== "json") return { content, type: "text" };
+    const completion = readAssistantCompletion(envelope);
+    if (completion === null) throw terminal("WORKFLOW_INFERENCE_RESPONSE_INVALID", "模型返回结果异常");
+    if (completion.content.length === 0) {
+      throw terminal("WORKFLOW_INFERENCE_RESPONSE_INVALID", "模型返回结果异常");
+    }
+    if (request.payload.responseFormat.type !== "json") {
+      this.logProviderCompletion(model, completion);
+      return { content: completion.content, type: "text" };
+    }
 
     let value: unknown;
-    try { value = JSON.parse(content); } catch {
+    try { value = JSON.parse(completion.content); } catch {
       throw terminal("WORKFLOW_INFERENCE_OUTPUT_INVALID", "模型返回结果异常");
     }
     if (!isRecord(value)) throw terminal("WORKFLOW_INFERENCE_OUTPUT_INVALID", "模型返回结果异常");
@@ -87,7 +97,19 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
         throw terminal("WORKFLOW_INFERENCE_OUTPUT_INVALID", "模型返回结果异常");
       }
     }
+    this.logProviderCompletion(model, completion);
     return { type: "json", value: value as Record<string, boolean | number | string> };
+  }
+
+  private logProviderCompletion(model: ModelRow, completion: ProviderCompletion) {
+    this.logger?.info({
+      event: "workflow.inference.provider.completed",
+      ...(completion.finishReason ? { finishReason: completion.finishReason } : {}),
+      ...(completion.requestId ? { providerRequestId: completion.requestId } : {}),
+      endpoint: model.endpoint,
+      model: model.model,
+      ...(completion.usage ? { usage: completion.usage } : {}),
+    }, "workflow inference provider completed");
   }
 
   private async resolveModel(payload: WorkflowInferenceMessageListRequest) {
@@ -117,10 +139,11 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
 export function createVolcengineChatCompletionAdapter(
   database: Kysely<WorkflowDatabase>,
   env: NodeJS.ProcessEnv = process.env,
+  logger?: ProviderDiagnosticsLogger,
 ) {
   const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
   if (!apiKey) throw new Error("VOLCENGINE_ARK_API_KEY is required for Workflow inference");
-  return new VolcengineChatCompletionAdapter(database, apiKey);
+  return new VolcengineChatCompletionAdapter(database, apiKey, fetch, undefined, logger);
 }
 
 function createRequestBody(payload: WorkflowInferenceMessageListRequest, endpoint: string) {
@@ -186,11 +209,43 @@ async function readResponseBody(response: Response, signal: AbortSignal) {
   return new TextDecoder().decode(bytes);
 }
 
-function readAssistantContent(value: unknown) {
+type ProviderCompletion = {
+  content: string;
+  finishReason?: string;
+  requestId?: string;
+  usage?: Record<string, number>;
+};
+
+function readAssistantCompletion(value: unknown): ProviderCompletion | null {
   if (!isRecord(value) || !Array.isArray(value.choices) || value.choices.length === 0) return null;
   const choice = value.choices[0];
   if (!isRecord(choice) || !isRecord(choice.message) || typeof choice.message.content !== "string") return null;
-  return choice.message.content;
+  return {
+    content: choice.message.content,
+    finishReason: typeof choice.finish_reason === "string"
+      ? choice.finish_reason.slice(0, 64)
+      : undefined,
+    requestId: typeof value.id === "string" ? value.id.slice(0, 128) : undefined,
+    usage: readUsage(value.usage),
+  };
+}
+
+function readUsage(value: unknown) {
+  if (!isRecord(value)) return undefined;
+  const usage: Record<string, number> = {};
+  for (const key of [
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cached_tokens",
+    "reasoning_tokens",
+  ]) {
+    const tokenCount = value[key];
+    if (typeof tokenCount === "number" && Number.isSafeInteger(tokenCount) && tokenCount >= 0) {
+      usage[key] = tokenCount;
+    }
+  }
+  return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

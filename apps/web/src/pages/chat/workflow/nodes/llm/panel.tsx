@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
@@ -81,6 +82,7 @@ import {
   normalizeLlmPrompt,
   normalizeLlmReasoningEffort,
 } from "./config";
+import type { LlmReasoningEffort } from "./config";
 
 const outputFormatLabels: Record<WorkflowLlmOutputConfig["format"], string> = {
   text: "Text",
@@ -115,6 +117,8 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   const modelId = normalizeLlmModelId(node.data.modelId);
   const reasoningEffort = normalizeLlmReasoningEffort(node.data.reasoningEffort);
   const selectedModel = models.find((model) => model.id === modelId);
+  const thinkingEnabled = reasoningEffort !== "minimal";
+  const thinkingDepth = reasoningEffort;
   const inputVariables = useMemo(() => getLlmInputVariables(inputs), [inputs]);
   const availableInputValues = useMemo(() =>
     getAvailableLlmInputVariablesForNode(node.id, nodes, edges),
@@ -196,68 +200,83 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
           </>
         )}
       >
-        <Select
-          disabled={modelsLoading || modelsError}
-          onValueChange={(nextModelId) => {
-            const model = models.find((item) => item.id === nextModelId);
-            if (!model) return;
-            updateConfig({
-              modelId: model.id,
-              modelLabel: model.label,
-              modelName: model.model,
-            });
-          }}
-          value={modelId}
-        >
-          <SelectTrigger aria-label="模型" className="w-full">
-            {selectedModel ? (
-              <div className="min-w-0">
-                <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
-              </div>
-            ) : modelId ? (
-              <div className="min-w-0">
-                <AgentModelBadge
-                  label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
-                  model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
-                />
-              </div>
-            ) : (
-              <SelectValue placeholder="请选择模型" />
-            )}
-          </SelectTrigger>
-          <SelectContent>
-            {modelId && !selectedModel && !modelsLoading ? (
-              <SelectItem disabled value={modelId}>原模型不可用</SelectItem>
-            ) : null}
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                <AgentModelBadge label={model.label} model={model.model} />
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            disabled={modelsLoading || modelsError}
+            onValueChange={(nextModelId) => {
+              const model = models.find((item) => item.id === nextModelId);
+              if (!model) return;
+              updateConfig({
+                modelId: model.id,
+                modelLabel: model.label,
+                modelName: model.model,
+              });
+            }}
+            value={modelId}
+          >
+            <SelectTrigger aria-label="模型" className="w-full">
+              {selectedModel ? (
+                <div className="min-w-0">
+                  <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
+                </div>
+              ) : modelId ? (
+                <div className="min-w-0">
+                  <AgentModelBadge
+                    label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
+                    model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
+                  />
+                </div>
+              ) : (
+                <SelectValue placeholder="请选择模型" />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              {modelId && !selectedModel && !modelsLoading ? (
+                <SelectItem disabled value={modelId}>原模型不可用</SelectItem>
+              ) : null}
+              {models.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  <AgentModelBadge label={model.label} model={model.model} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                aria-label="深度思考设置"
+                className="size-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                disabled={!selectedModel || modelsLoading || modelsError}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Settings03Icon} size={18} strokeWidth={1.8} />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              aria-label="深度思考设置"
+              className="w-[18rem] p-4"
+              role="dialog"
+              sideOffset={8}
+            >
+              <ThinkingSettings
+                depth={thinkingDepth}
+                enabled={thinkingEnabled}
+                onDepthChange={(value) => updateConfig({ reasoningEffort: value })}
+                onEnabledChange={(enabled) => updateConfig({
+                  reasoningEffort: enabled
+                    ? thinkingDepth === "minimal" ? "medium" : thinkingDepth
+                    : "minimal",
+                })}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
         {modelsError ? (
           <p className="text-xs text-destructive" role="alert">模型加载失败</p>
         ) : null}
-      </WorkflowSettingsSection>
-
-      <WorkflowSettingsSection title="思考深度">
-        <Select
-          onValueChange={(value) => updateConfig({
-            reasoningEffort: normalizeLlmReasoningEffort(value),
-          })}
-          value={reasoningEffort}
-        >
-          <SelectTrigger aria-label="思考深度" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="minimal">Minimal</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-          </SelectContent>
-        </Select>
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
@@ -351,6 +370,63 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
       ) : null}
       {testContext ? <LlmTestWorkspace node={node} testContext={testContext} /> : null}
     </>
+  );
+}
+
+type ThinkingDepth = LlmReasoningEffort;
+
+function ThinkingSettings({
+  depth,
+  enabled,
+  onDepthChange,
+  onEnabledChange,
+}: {
+  depth: ThinkingDepth;
+  enabled: boolean;
+  onDepthChange: (value: ThinkingDepth) => void;
+  onEnabledChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-base font-semibold text-foreground">深度思考</h3>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">深度思考开关</span>
+          <Select
+            onValueChange={(value) => onEnabledChange(value === "enabled")}
+            value={enabled ? "enabled" : "disabled"}
+          >
+            <SelectTrigger aria-label="深度思考开关" className="h-8 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="disabled">关闭</SelectItem>
+              <SelectItem value="enabled">开启</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">深度思考程度</span>
+          <Select
+            onValueChange={(value) => {
+              const nextDepth = normalizeLlmReasoningEffort(value);
+              onDepthChange(nextDepth);
+            }}
+            value={depth}
+          >
+            <SelectTrigger aria-label="深度思考程度" className="h-8 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minimal">关闭</SelectItem>
+              <SelectItem value="low">低</SelectItem>
+              <SelectItem value="medium">中</SelectItem>
+              <SelectItem value="high">高</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
   );
 }
 

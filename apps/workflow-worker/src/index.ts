@@ -54,16 +54,20 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     );
   }
   const database = createWorkflowDatabase(config.databaseUrl);
-  let inferenceAdapter: ReturnType<typeof createVolcengineChatCompletionAdapter>;
+  let inferenceAdapter: ReturnType<typeof createVolcengineChatCompletionAdapter> | undefined;
+  let llmTestAttemptRepository: MysqlWorkflowLlmTestAttemptRepository | undefined;
+  let llmTestWorker: Awaited<ReturnType<typeof loadLlmTestWorker>> | undefined;
   try {
-    inferenceAdapter = createVolcengineChatCompletionAdapter(database, env);
+    if (config.roles.has("inference")) {
+      inferenceAdapter = createVolcengineChatCompletionAdapter(database, env, logger);
+      llmTestAttemptRepository = new MysqlWorkflowLlmTestAttemptRepository(database);
+      llmTestWorker = await loadLlmTestWorker(inferenceAdapter);
+    }
   } catch (error) {
     await database.destroy();
     throw error;
   }
   const repository = new MysqlWorkflowRuntimeRepository(database);
-  const llmTestAttemptRepository = new MysqlWorkflowLlmTestAttemptRepository(database);
-  const llmTestWorker = await loadLlmTestWorker(inferenceAdapter);
   const entitlementPort = createWorkflowEntitlementPort({
     endpoint: config.entitlement.apiUrl,
     mode: config.entitlement.mode,

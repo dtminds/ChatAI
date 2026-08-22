@@ -83,7 +83,7 @@ export async function startWorkflowWorkerRuntime(input: {
   eventCatalog?: WorkflowEventCatalog;
   eventSubscriptionReader: WorkflowEventSubscriptionReader;
   inboxRepository: WorkflowInboxRepository;
-  inferenceAdapter: WorkflowChatCompletionPort;
+  inferenceAdapter?: WorkflowChatCompletionPort;
   inferenceRepository: WorkflowInferenceRepository;
   inferenceWorker(input: Parameters<typeof processWorkflowInferenceBatch>[0]): ReturnType<typeof processWorkflowInferenceBatch>;
   llmTestAdapter?: WorkflowLlmTestAdapter;
@@ -158,12 +158,16 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("inference")) {
+      if (!input.inferenceAdapter) {
+        throw new Error("Workflow inference adapter is not configured");
+      }
       if (!input.llmTestAdapter || !input.llmTestAttemptRepository || !input.llmTestAttemptWorker) {
         throw new Error("Workflow LLM test Attempt worker is not configured");
       }
+      const inferenceAdapter = input.inferenceAdapter;
       loops.push(startBackgroundRole("inference", input.config.runtime.inferenceIntervalMs, async () => {
         const inference = input.inferenceWorker({
-          adapter: input.inferenceAdapter,
+          adapter: inferenceAdapter,
           heartbeatIntervalMs: input.config.runtime.inferenceHeartbeatIntervalMs,
           leaseDurationMs: input.config.runtime.inferenceLeaseDurationMs,
           leaseOwner: input.workerId,

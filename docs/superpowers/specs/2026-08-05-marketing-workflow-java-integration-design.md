@@ -453,7 +453,7 @@ Workflow Capability Profile
 
 Event Catalog 是 Start 和 Wait Event 的代码侧权威来源，提供 `supports(eventType, subjectType)` 与运行时 `project(event)`。Publish、Enable 和 Resume 必须确认 Revision 使用的每个事件都受 Catalog 支持。`payloadVersion` 只属于 Java 发出的 Entry Event Envelope，用于选择 Payload Schema 和投影器，不冻结到 Workflow Revision。
 
-Node 不再为节点或外部调用维护 `operation.*` 注册表、Deployment Capability、环境白名单或 capability fingerprint。节点能否发布只由 maturity 对应的 Runtime Support 决定；真正调用 Java、数据库或其他系统时，瞬时不可用继续走该节点既有的 timeout、retry、deadline 和恢复语义。LLM 与 AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
+Node 不再为节点或外部调用维护 `operation.*` 注册表、Deployment Capability、环境白名单或 capability fingerprint。节点能否发布只由 maturity 对应的 Runtime Support 决定；真正调用 Java、数据库或其他系统时，瞬时不可用继续走该节点既有的 timeout、retry、deadline 和恢复语义。LLM 已通过 Workflow Worker 的火山 Ark Adapter 接通；AI Intent 在自身 Adapter 接通前保持 `draft-ready`。
 
 事件接入必须遵守硬发布顺序：Java 先发布但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动完成并具备新 Catalog 定义后，Backend/Web 才开放新事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不能依赖消息重试等待新 Worker 接手。
 
@@ -1274,7 +1274,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
 - 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 不携带调用键，Inference 使用稳定 `executionKey`，Fake Adapter 不进入生产注册。
 - 覆盖 Event Catalog 不支持事件或 Subject Type 时无法 Publish/Enable，以及 Worker 生产组合缺少 `runtime-ready` 执行路径时启动失败。
-- 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，LLM/AI Intent 在真实 Adapter 接通前保持 `draft-ready`。
+- 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，LLM 已接通真实 Adapter，AI Intent 在真实 Adapter 接通前保持 `draft-ready`。
 - 覆盖旧 Node Schema、Event Payload Version 或 Inference Request Version 仍被活动数据引用时对应 handler 不得移除。
 - 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。

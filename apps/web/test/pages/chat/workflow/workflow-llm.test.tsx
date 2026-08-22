@@ -376,6 +376,33 @@ describe("workflow LLM node", () => {
       modelName: model.model,
     }));
 
+    await user.click(screen.getByRole("button", { name: "深度思考设置" }));
+    expect(screen.getByRole("dialog", { name: "深度思考设置" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "深度思考开关" }));
+    await user.click(screen.getByRole("option", { name: "关闭" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "minimal",
+    }));
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考开关" }));
+    await user.click(screen.getByRole("option", { name: "开启" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "medium",
+    }));
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考程度" }));
+    await user.click(screen.getByRole("option", { name: "高" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "high",
+    }));
+
+    await user.click(screen.getByRole("combobox", { name: "深度思考程度" }));
+    await user.click(screen.getByRole("option", { name: "关闭" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      reasoningEffort: "minimal",
+    }));
+    expect(screen.getByRole("combobox", { name: "深度思考开关" })).toHaveTextContent("关闭");
+
     await user.click(screen.getByRole("button", { name: "删除输入参数" }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       inputs: [],

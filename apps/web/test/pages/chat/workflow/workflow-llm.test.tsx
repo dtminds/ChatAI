@@ -449,15 +449,15 @@ describe("workflow LLM node", () => {
       })],
     }));
 
-    const variableTag = await waitFor(() => {
-      const element = document.querySelector<HTMLElement>("[data-workflow-variable-value-tag=true]");
+    const variableLabel = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>("[data-workflow-variable-value-label=true]");
       expect(element).not.toBeNull();
       return element!;
     });
-    Object.defineProperty(variableTag, "clientWidth", { configurable: true, value: 100 });
-    Object.defineProperty(variableTag, "scrollWidth", { configurable: true, value: 200 });
-    await user.hover(variableTag);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(variableTag.textContent ?? "");
+    Object.defineProperty(variableLabel, "clientWidth", { configurable: true, value: 100 });
+    Object.defineProperty(variableLabel, "scrollWidth", { configurable: true, value: 200 });
+    await user.hover(variableLabel);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(variableLabel.textContent ?? "");
   });
 
   it("groups Start and current-node lifecycle values under their actual node titles", async () => {

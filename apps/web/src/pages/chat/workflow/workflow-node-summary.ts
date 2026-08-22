@@ -34,7 +34,7 @@ export function createWorkflowReferenceSummarySegments({
     ...(source
       ? [
           { kind: "source" as const, text: source, ...toneAttributes },
-          { kind: "text" as const, text: " - ", tone: tone ?? "muted" },
+          { kind: "text" as const, text: ".", tone: tone ?? "muted" },
         ]
       : []),
     { kind: "variable", text: variable, ...toneAttributes },

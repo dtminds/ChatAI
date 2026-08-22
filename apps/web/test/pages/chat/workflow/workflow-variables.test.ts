@@ -164,7 +164,7 @@ describe("workflow variables", () => {
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["subject", "id"],
-    )!)).toBe("客户 ID");
+    )!)).toBe("全局变量.客户 ID");
     expect(getInvalidVariableContentSelectors([
       { selector: ["subject", "id"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },

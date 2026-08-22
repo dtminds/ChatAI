@@ -405,12 +405,12 @@ describe("WorkflowDataPage", () => {
     expect(within(messageQuery).queryByText("时间变量不可用")).not.toBeInTheDocument();
     expect(within(messageQuery).getByText("触发时间")).toBeInTheDocument();
     expect(within(intent).queryByText("未配置")).not.toBeInTheDocument();
-    expect(within(intent).getByLabelText("消息查询 - 消息列表")).toBeInTheDocument();
+    expect(within(intent).getByLabelText("消息查询.消息列表")).toBeInTheDocument();
     expect(within(message).queryByText("输出不可用")).not.toBeInTheDocument();
-    expect(within(message).getByLabelText("消息查询 - 文本内容")).toBeInTheDocument();
+    expect(within(message).getByLabelText("消息查询.文本内容")).toBeInTheDocument();
     expect(within(llm).getByText("is_matched")).toBeInTheDocument();
     expect(within(handoff).queryByText("{node.tag-query.matchedTagNames}")).not.toBeInTheDocument();
-    expect(within(handoff).getByLabelText("标签查询 - 匹配标签名")).toBeInTheDocument();
+    expect(within(handoff).getByLabelText("标签查询.匹配标签名")).toBeInTheDocument();
   });
 });
 

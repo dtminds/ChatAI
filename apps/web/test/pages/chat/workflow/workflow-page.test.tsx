@@ -1243,9 +1243,9 @@ describe("Agent workflow page", () => {
 
     await waitFor(() => {
       expect(within(canvas).getByRole("button", { name: "转人工" }))
-        .toHaveTextContent("客服提示：全局变量 - 客户 ID");
+        .toHaveTextContent("客服提示：全局变量.客户 ID");
       expect(within(canvas).getByRole("button", { name: "转人工" }))
-        .toHaveTextContent("对客话术：全局变量 - 客户 ID");
+        .toHaveTextContent("对客话术：全局变量.客户 ID");
     });
     expect(within(panel).queryByText("0/100")).not.toBeInTheDocument();
   });
@@ -1474,11 +1474,11 @@ describe("Agent workflow page", () => {
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
 
     await waitFor(() => {
-      expect(within(panel).getByText("客户 ID")).toBeInTheDocument();
+      expect(within(panel).getByText("全局变量.客户 ID")).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(within(canvas).getByRole("button", { name: "发送欢迎消息" }))
-        .toHaveTextContent("生成营销文案 - output 全局变量 - 客户 ID");
+        .toHaveTextContent("生成营销文案.output 全局变量.客户 ID");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });
@@ -1564,7 +1564,7 @@ describe("Agent workflow page", () => {
     await user.click(await screen.findByRole("option", { name: "output" }));
 
     await waitFor(() => {
-      expect(messageNode).toHaveTextContent("生成营销文案 - output");
+      expect(messageNode).toHaveTextContent("生成营销文案.output");
     });
     await user.click(within(panel).getByRole("radio", { name: "自定义消息" }));
     expect(messageNode).toHaveTextContent("欢迎加入，这是为你准备的新人活动");

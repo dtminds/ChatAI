@@ -1,3 +1,5 @@
+import { AbsoluteIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useRef, useState } from "react";
 import {
   Tooltip,
@@ -13,32 +15,48 @@ export function WorkflowVariableValueTag({
   label: string;
   sourceLabel?: string;
 }) {
-  const tagRef = useRef<HTMLSpanElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
   const [tooltipOpen, setTooltipOpen] = useState(false);
-  const fullLabel = sourceLabel ? `${sourceLabel} - ${label}` : label;
+  const fullLabel = sourceLabel ? `${sourceLabel}.${label}` : label;
 
   return (
     <TooltipProvider>
       <Tooltip
         onOpenChange={(open) => {
-          const tag = tagRef.current;
-          setTooltipOpen(Boolean(open && tag && tag.scrollWidth > tag.clientWidth));
+          const labelElement = labelRef.current;
+          setTooltipOpen(Boolean(
+            open
+            && labelElement
+            && labelElement.scrollWidth > labelElement.clientWidth,
+          ));
         }}
         open={tooltipOpen}
       >
         <TooltipTrigger asChild>
           <span
-            className="pointer-events-auto block min-w-0 max-w-full truncate rounded-[6px] bg-secondary px-1.5 text-xs leading-6"
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center gap-0.5 rounded-[6px] bg-secondary px-1.5 text-xs leading-6"
             data-workflow-variable-value-tag="true"
-            ref={tagRef}
           >
-            {sourceLabel ? (
-              <>
-                <span className="text-muted-foreground">{sourceLabel}</span>
-                <span className="text-muted-foreground"> - </span>
-              </>
-            ) : null}
-            <span className="text-foreground">{label}</span>
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0 text-purple-500"
+              icon={AbsoluteIcon}
+              size={12}
+              strokeWidth={1.8}
+            />
+            <span
+              className="min-w-0 truncate"
+              data-workflow-variable-value-label="true"
+              ref={labelRef}
+            >
+              {sourceLabel ? (
+                <>
+                  <span className="text-muted-foreground">{sourceLabel}</span>
+                  <span className="text-muted-foreground">.</span>
+                </>
+              ) : null}
+              <span className="text-foreground">{label}</span>
+            </span>
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-sm break-words" side="top" sideOffset={4}>

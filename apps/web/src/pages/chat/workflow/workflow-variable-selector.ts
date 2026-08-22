@@ -8,12 +8,9 @@ export function getWorkflowVariableSelectorKey(selector: WorkflowVariableSelecto
 }
 
 export function getWorkflowVariableDisplayLabel(variable: WorkflowVariableDefinition) {
-  if (variable.scope === "input") {
-    return variable.label;
-  }
-
-  return variable.sourceNodeTitle
-    ? `${variable.sourceNodeTitle}.${variable.label}`
+  const sourceLabel = getWorkflowVariableDisplaySourceLabel(variable);
+  return sourceLabel
+    ? `${sourceLabel}.${variable.label}`
     : variable.label;
 }
 

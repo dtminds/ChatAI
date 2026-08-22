@@ -1,4 +1,5 @@
 import type { Connection } from "@xyflow/react";
+import { WORKFLOW_NODE_TITLE_MAX_LENGTH } from "@chatai/contracts";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
 import { WORKFLOW_LAYOUT_X_GAP } from "./constants";
 import {
@@ -805,6 +806,7 @@ export function renameNodeOperation(
     !node
     || !canRenameNodeKind(node.data.kind)
     || !normalizedTitle
+    || normalizedTitle.length > WORKFLOW_NODE_TITLE_MAX_LENGTH
     || normalizedTitle === node.data.title
   ) {
     return undefined;

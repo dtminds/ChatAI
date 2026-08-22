@@ -1946,7 +1946,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("renames editable nodes inline without opening node settings", async () => {
+  it("renames editable nodes inline without opening node settings and limits names to 10 characters", async () => {
     const user = userEvent.setup();
 
     renderWorkflowPage();
@@ -1961,16 +1961,16 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
     const nameInput = within(messageNode).getByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "首购欢迎消息{Enter}");
+    await user.type(nameInput, "12345678901{Enter}");
 
-    expect(within(canvas).getByRole("button", { name: "首购欢迎消息" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "1234567890" })).toBeInTheDocument();
     expect(getUndoButton(canvas)).toHaveAttribute("aria-label", "撤销：修改节点名称");
 
     await user.click(getUndoButton(canvas));
     expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toBeInTheDocument();
 
     await user.click(getRedoButton(canvas));
-    expect(within(canvas).getByRole("button", { name: "首购欢迎消息" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "1234567890" })).toBeInTheDocument();
   });
 
   it("starts inline node renaming by double-clicking the title", async () => {
@@ -1989,7 +1989,7 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: "双击重命名" })).toBeInTheDocument();
   });
 
-  it("renames a node from the settings panel menu", async () => {
+  it("renames a node from the settings panel menu and limits names to 10 characters", async () => {
     const user = userEvent.setup();
 
     renderWorkflowPage();
@@ -2002,10 +2002,10 @@ describe("Agent workflow page", () => {
 
     const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "等待复购{Enter}");
+    await user.type(nameInput, "12345678901{Enter}");
 
-    expect(within(panel).getByRole("heading", { name: "等待复购" })).toBeInTheDocument();
-    expect(within(canvas).getByRole("button", { name: "等待复购" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "1234567890" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "1234567890" })).toBeInTheDocument();
     expect(getUndoButton(canvas)).toHaveAttribute("aria-label", "撤销：修改节点名称");
   });
 

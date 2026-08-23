@@ -119,9 +119,12 @@ describe("workflow entry consumer", () => {
       eventType: "message.received",
       projection: {
         externalUserId: 3267,
-        messageId: 1001,
+        message: {
+          id: 1001,
+          parts: [{ text: "想了解价格", type: "text" }],
+          role: "customer",
+        },
         seatId: 101,
-        text: "想了解价格",
         thirdExternalUserId: "chatai_external_456",
         workUserId: 201,
       },
@@ -585,9 +588,12 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
     occurredAt: "2026-08-10T00:00:04.000Z",
     payload: {
       externalUserId: 3267,
-      messageId: 1001,
+      message: {
+        id: 1001,
+        parts: [{ text: "想了解价格", type: "text" }],
+        role: "customer",
+      },
       seatId: 101,
-      text: "想了解价格",
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
     },

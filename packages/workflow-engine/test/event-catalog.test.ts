@@ -4,7 +4,6 @@ import {
   getWorkflowJsonEncodedByteLength,
   WORKFLOW_CAPABILITY_PROFILES,
   WORKFLOW_ENTRY_JSON_MAX_DEPTH,
-  WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH,
   validateWorkflowEntryEvent,
   type WorkflowEntryEvent,
 } from "@chatai/contracts";
@@ -101,7 +100,7 @@ describe("workflow event catalog", () => {
     }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
   });
 
-  it("retains optional message text in the controlled Trigger Projection", () => {
+  it("retains structured message content in the controlled Trigger Projection", () => {
     const result = WORKFLOW_EVENT_CATALOG.project(readEvent(
       "entry/v1/valid/message-received.json",
     ));
@@ -110,20 +109,26 @@ describe("workflow event catalog", () => {
       kind: "accepted",
       projection: {
         variables: {
-          messageId: 938271,
-          text: "我想了解一下活动详情",
+          message: {
+            id: 938271,
+            parts: [{ text: "我想了解一下活动详情", type: "text" }],
+            role: "customer",
+          },
         },
       },
     });
   });
 
-  it("rejects message text beyond the frozen per-message limit", () => {
+  it("rejects message content outside the closed structured contract", () => {
     expect(WORKFLOW_EVENT_CATALOG.project(event({
       eventType: "message.received",
       payload: {
-        messageId: 938271,
+        message: {
+          id: 938271,
+          parts: [{ text: "x".repeat(10_001), type: "text" }],
+          role: "customer",
+        },
         seatId: 101,
-        text: "x".repeat(WORKFLOW_MESSAGE_RECEIVED_TEXT_MAX_LENGTH + 1),
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
       },

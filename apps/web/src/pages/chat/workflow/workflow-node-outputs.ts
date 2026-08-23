@@ -1,6 +1,7 @@
 import {
   getWorkflowNodeOutputContracts,
   isWorkflowOutputValueTypeEqual as isSharedWorkflowOutputValueTypeEqual,
+  WORKFLOW_MESSAGES_SCHEMA_REF,
 } from "@chatai/contracts";
 import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import type {
@@ -143,7 +144,12 @@ function isOutputUsageCompatible(
   }
   if (usage === "intent-input") {
     return valueType.kind === "string"
-      || (valueType.kind === "array" && valueType.semantic === "message");
+      || (valueType.kind === "object" && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF);
+  }
+  if (usage === "variable"
+    && valueType.kind === "object"
+    && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF) {
+    return true;
   }
   return valueType.kind !== "array" && valueType.kind !== "object";
 }

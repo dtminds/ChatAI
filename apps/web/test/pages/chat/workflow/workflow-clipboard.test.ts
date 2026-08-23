@@ -286,13 +286,12 @@ describe("workflow clipboard", () => {
       mode: "dynamic",
       start: ["node-lifecycle", wait.id, "exitedAt"],
     };
-    intent.data.inputSelector = ["node", query.id, "messageIds"];
+    intent.data.inputSelector = ["node", query.id, "messages"];
     message.data.content = [
-      { selector: ["node", query.id, "textContent"], type: "variable" },
+      { selector: ["node", query.id, "messages"], type: "variable" },
       { selector: ["node", "external-node", "name"], type: "variable" },
     ];
-    message.data.contentMode = "node-output";
-    message.data.outputSelector = ["node", query.id, "textContent"];
+    message.data.contentMode = "custom";
     branch.data.branchPaths = [{
       conditions: [{
         id: "condition-1",
@@ -312,11 +311,11 @@ describe("workflow clipboard", () => {
     }];
     llm.data.inputs = [{
       id: "input-messages",
-      name: "message_ids",
+      name: "messages",
       value: {
         kind: "variable",
-        selector: ["node", query.id, "messageIds"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+        selector: ["node", query.id, "messages"],
+        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
       },
     }];
     llm.data.systemPrompt = [{ selector: ["input", "input-messages"], type: "variable" }];
@@ -367,18 +366,17 @@ describe("workflow clipboard", () => {
       mode: "dynamic",
       start: ["node-lifecycle", "wait-pasted", "exitedAt"],
     });
-    expect(pastedIntent.data.inputSelector).toEqual(["node", "message-query-pasted", "messageIds"]);
-    expect(pastedMessage.data.outputSelector).toEqual(["node", "message-query-pasted", "textContent"]);
+    expect(pastedIntent.data.inputSelector).toEqual(["node", "message-query-pasted", "messages"]);
     expect(pastedMessage.data.content).toEqual([
-      { selector: ["node", "message-query-pasted", "textContent"], type: "variable" },
+      { selector: ["node", "message-query-pasted", "messages"], type: "variable" },
       { selector: ["node", "external-node", "name"], type: "variable" },
     ]);
     expect(pastedBranch.data.branchPaths[0]?.conditions[0]?.selector)
       .toEqual(["node", "message-query-pasted", "messageCount"]);
     expect(pastedLlm.data.inputs[0]?.value).toEqual({
       kind: "variable",
-      selector: ["node", "message-query-pasted", "messageIds"],
-      valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      selector: ["node", "message-query-pasted", "messages"],
+      valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
     });
     expect(pastedLlm.data.systemPrompt).toEqual([
       { selector: ["input", "input-messages"], type: "variable" },

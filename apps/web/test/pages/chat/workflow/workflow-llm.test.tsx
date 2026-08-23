@@ -319,11 +319,11 @@ describe("workflow LLM node", () => {
     const validNode = createLlmNode({
       inputs: [{
         id: "input-messages",
-        name: "message_ids",
+        name: "messages",
         value: {
           kind: "variable",
-          selector: ["node", upstream.id, "messageIds"],
-          valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+          selector: ["node", upstream.id, "messages"],
+          valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
         },
       }],
       modelId: model.id,
@@ -443,8 +443,8 @@ describe("workflow LLM node", () => {
         id: "input-source",
         value: {
           kind: "variable",
-          selector: ["node", query.id, "messageIds"],
-          valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+          selector: ["node", query.id, "messages"],
+          valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
         },
       })],
     }));

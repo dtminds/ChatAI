@@ -16,6 +16,8 @@ import {
   WORKFLOW_INBOX_RETENTION_DAYS,
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
+  WorkflowMessageSchema,
+  type WorkflowMessage,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -68,6 +70,7 @@ import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
+import { fitWorkflowMessagesOutput } from "./workflow-messages.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -1248,26 +1251,19 @@ function aggregateWaitEventOutput(
   events: Awaited<ReturnType<WorkflowRuntimeRepository["listEventSubscriptionEvents"]>>,
 ) {
   if (events.length === 0) throw invalidWaitEventOutput();
-  const messageIds: number[] = [];
-  const textParts: string[] = [];
+  const messages: WorkflowMessage[] = [];
   let lastMessageAt = events[0]!.occurredAt;
   for (const event of events) {
-    const messageId = event.projection.messageId;
-    if (typeof messageId !== "number" || !Number.isSafeInteger(messageId) || messageId <= 0) {
-      throw invalidWaitEventOutput();
-    }
-    messageIds.push(messageId);
-    if (typeof event.projection.text === "string" && event.projection.text.length > 0) {
-      textParts.push(event.projection.text);
-    }
+    const message = event.projection.message;
+    if (!Value.Check(WorkflowMessageSchema, message)) throw invalidWaitEventOutput();
+    messages.push(structuredClone(message));
     if (event.occurredAt > lastMessageAt) lastMessageAt = event.occurredAt;
   }
-  return {
+  return fitWorkflowMessagesOutput(messages, "latest", visibleMessages => ({
     lastMessageAt: lastMessageAt.toISOString(),
     messageCount: events.length,
-    messageIds,
-    textContent: textParts.join("\n"),
-  };
+    messages: visibleMessages,
+  }));
 }
 
 function invalidWaitEventOutput() {

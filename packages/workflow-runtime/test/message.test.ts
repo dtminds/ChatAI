@@ -18,7 +18,24 @@ const context = {
     },
   },
   outputs: {
-    query: { messageCount: 2, textContent: "first\nsecond" },
+    query: {
+      messageCount: 2,
+      messages: [
+        {
+          id: 101,
+          parts: [{ text: "first", type: "text" }],
+          role: "customer",
+        },
+        {
+          id: 102,
+          parts: [
+            { type: "image", url: "/media/order.png" },
+            { text: "second", type: "text" },
+          ],
+          role: "agent",
+        },
+      ],
+    },
   },
   subjectId: "customer-1",
   trigger: {
@@ -110,7 +127,7 @@ describe("Workflow Message capability", () => {
     });
   });
 
-  it("renders a selected text output without leaking its selector to the adapter", async () => {
+  it("derives text from structured messages without leaking its selector to the adapter", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({}));
 
     const result = await executeWorkflowCapability({
@@ -118,8 +135,8 @@ describe("Workflow Message capability", () => {
       commandContext: context,
       config: {
         attachments: [],
-        contentMode: "node-output",
-        outputSelector: ["node", "query", "textContent"],
+        content: [{ selector: ["node", "query", "messages"], type: "variable" }],
+        contentMode: "custom",
       },
       deadlineAt: new Date("2026-08-16T09:30:15.000Z"),
       execution: {
@@ -142,7 +159,7 @@ describe("Workflow Message capability", () => {
       request: {
         command: {
           attachments: [],
-          content: "first\nsecond",
+          content: "用户: first\n客服: [图片]second",
           recipient: { thirdExternalUserId: "customer-1" },
           seatId: 101,
           source: "workflow",
@@ -150,7 +167,7 @@ describe("Workflow Message capability", () => {
         idempotencyKey: "9:run-1:message:3",
       },
     });
-    expect(adapter.calls[0]!.request.command).not.toHaveProperty("outputSelector");
+    expect(adapter.calls[0]!.request.command).not.toHaveProperty("contentMode");
   });
 
   it("rejects unavailable variables before invoking the adapter", async () => {

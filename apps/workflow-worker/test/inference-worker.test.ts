@@ -398,7 +398,7 @@ async function createWaitingJob(
     now,
     payload: {
       kind: "message-list",
-      messageList: [{ content: "Summarize", role: "system" }],
+      messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
       modelTarget: { kind: "catalog-model", modelId: "model-1" },
       reasoningEffort: "medium",
       responseFormat: { type: "text" },

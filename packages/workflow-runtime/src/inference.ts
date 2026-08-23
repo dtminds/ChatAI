@@ -1,21 +1,26 @@
 import {
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  WORKFLOW_MESSAGES_SCHEMA_REF,
   WorkflowAiIntentCompletionValueSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceMessageListResultSchema,
+  WorkflowMessagesV1Schema,
   type WorkflowAiIntentExecutionConfig,
   type WorkflowExecutionNode,
+  type WorkflowInferenceContentPart,
   type WorkflowInferenceRequest,
   type WorkflowInferenceMessageListRequest,
   type WorkflowInferenceResult,
   type WorkflowLlmInputParameter,
+  type WorkflowOutputValueType,
   type WorkflowVariableContentSegment,
   type WorkflowVariableSelector,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type { WorkflowRunRecord } from "./types.js";
+import { getWorkflowMessageRoleLabel } from "./workflow-messages.js";
 
 const WORKFLOW_AI_INTENT_ENDPOINT_ID = "ep-20260227145914-nxcmn";
 
@@ -67,8 +72,8 @@ export function resolveWorkflowInferenceWithoutProvider(
   currentNodeLifecycle: { enteredAt?: string } = {},
 ): { output: Record<string, unknown>; sourceOutletId: string } | null {
   if (node.kind !== "ai-intent") return null;
-  const { input } = resolveAiIntentInput(node, run, currentNodeLifecycle);
-  if (input.trim()) return null;
+  const { content } = resolveAiIntentInput(node, run, currentNodeLifecycle);
+  if (hasInferenceContent(content)) return null;
   return {
     output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
     sourceOutletId: "fallback",
@@ -84,15 +89,23 @@ function createLlmRequest(
   }
   const inputs = new Map(node.config.inputs.map(input => [
     input.id,
-    resolveInput(input),
+    {
+      value: resolveInput(input),
+      valueType: input.value.kind === "literal"
+        ? { kind: "string" as const }
+        : input.value.valueType,
+    },
   ]));
   const system = renderPrompt(node.config.systemPrompt, inputs);
-  if (!system.trim()) throw inferenceConfigError("LLM system prompt is empty");
+  if (!hasInferenceContent(system)) throw inferenceConfigError("LLM system prompt is empty");
   const user = renderPrompt(node.config.userPrompt, inputs);
-  const messageList: Array<{ content: string; role: "system" | "user" }> = [
+  const messageList: Array<{
+    content: WorkflowInferenceContentPart[];
+    role: "system" | "user";
+  }> = [
     { content: system, role: "system" },
   ];
-  if (user.trim()) messageList.push({ content: user, role: "user" });
+  if (hasInferenceContent(user)) messageList.push({ content: user, role: "user" });
   const responseFormat = node.config.output.format === "json"
     ? {
         fields: node.config.output.fields.map(field => ({
@@ -123,11 +136,11 @@ function createIntentRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
 ): WorkflowInferenceMessageListRequest {
-  const { config, input } = resolveAiIntentInput(node, run);
+  const { config, content } = resolveAiIntentInput(node, run);
   return {
     kind: "message-list",
     messageList: buildAiIntentPromptV1(
-      input,
+      content,
       config.intents,
       config.prompt ?? "",
     ),
@@ -152,10 +165,10 @@ function createIntentRequest(
 }
 
 function buildAiIntentPromptV1(
-  input: string,
+  input: WorkflowInferenceContentPart[],
   intents: Array<{ description: string; modelCode: string }>,
   additionalRules: string,
-): Array<{ content: string; role: "system" | "user" }> {
+): Array<{ content: WorkflowInferenceContentPart[]; role: "system" | "user" }> {
   const intentCatalog = JSON.stringify(intents.map(intent => ({
     code: intent.modelCode,
     description: intent.description,
@@ -165,12 +178,15 @@ function buildAiIntentPromptV1(
     : "";
   return [
     {
-      content: [
-        "Classify the user input into exactly one configured intent.",
-        "Use fallback only when none of the configured intents match.",
-        "Return matchedCode and a brief reason. Do not return any other fields.",
-        `Configured intents:\n${intentCatalog}\nfallback: no configured intent matches`,
-      ].join("\n\n") + rules,
+      content: [{
+        text: [
+          "Classify the user input into exactly one configured intent.",
+          "Use fallback only when none of the configured intents match.",
+          "Return matchedCode and a brief reason. Do not return any other fields.",
+          `Configured intents:\n${intentCatalog}\nfallback: no configured intent matches`,
+        ].join("\n\n") + rules,
+        type: "text",
+      }],
       role: "system",
     },
     { content: input, role: "user" },
@@ -181,13 +197,13 @@ function resolveAiIntentInput(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string } = {},
-): { config: WorkflowAiIntentExecutionConfig; input: string } {
+): { config: WorkflowAiIntentExecutionConfig; content: WorkflowInferenceContentPart[] } {
   if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
   }
   return {
     config: node.config,
-    input: stringifyPromptValue(requireSelectorValue(
+    content: renderInferenceValue(requireSelectorValue(
       node.config.inputSelector,
       run,
       currentNodeLifecycle,
@@ -261,16 +277,68 @@ function mapIntentResult(
 
 function renderPrompt(
   segments: WorkflowVariableContentSegment[],
-  inputs: Map<string, unknown>,
+  inputs: Map<string, { value: unknown; valueType: WorkflowOutputValueType }>,
 ) {
-  return segments.map(segment => {
-    if (segment.type === "text") return segment.value;
+  const content: WorkflowInferenceContentPart[] = [];
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      appendTextPart(content, segment.value);
+      continue;
+    }
     const [scope, id] = segment.selector;
     if (scope !== "input" || !id || segment.selector.length !== 2 || !inputs.has(id)) {
       throw inferenceConfigError("LLM prompt references an unavailable input");
     }
-    return stringifyPromptValue(inputs.get(id));
-  }).join("");
+    const input = inputs.get(id)!;
+    if (input.valueType.kind === "object"
+      && input.valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF) {
+      appendWorkflowMessages(content, input.value);
+      continue;
+    }
+    appendTextPart(content, stringifyPromptValue(input.value));
+  }
+  return content;
+}
+
+function renderInferenceValue(value: unknown): WorkflowInferenceContentPart[] {
+  const content: WorkflowInferenceContentPart[] = [];
+  if (Value.Check(WorkflowMessagesV1Schema, value)) {
+    appendWorkflowMessages(content, value);
+  } else {
+    appendTextPart(content, stringifyPromptValue(value));
+  }
+  return content;
+}
+
+function appendWorkflowMessages(
+  content: WorkflowInferenceContentPart[],
+  value: unknown,
+) {
+  if (!Value.Check(WorkflowMessagesV1Schema, value)) {
+    throw inferenceConfigError("Workflow messages input failed schema validation");
+  }
+  for (const message of value) {
+    appendTextPart(
+      content,
+      `${content.length ? "\n" : ""}${getWorkflowMessageRoleLabel(message.role)}: `,
+    );
+    for (const part of message.parts) {
+      if (part.type === "text") appendTextPart(content, part.text);
+      else if (part.type === "unsupported") appendTextPart(content, `[${part.label}]`);
+      else content.push({ type: part.type, url: part.url });
+    }
+  }
+}
+
+function appendTextPart(content: WorkflowInferenceContentPart[], text: string) {
+  if (!text) return;
+  const previous = content.at(-1);
+  if (previous?.type === "text") previous.text += text;
+  else content.push({ text, type: "text" });
+}
+
+function hasInferenceContent(content: WorkflowInferenceContentPart[]) {
+  return content.some(part => part.type !== "text" || Boolean(part.text.trim()));
 }
 
 function requireSelectorValue(

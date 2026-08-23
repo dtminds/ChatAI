@@ -10,7 +10,10 @@ const request = (overrides: Record<string, unknown> = {}) => ({
   executionKey: "workflow:1:llm:1",
   payload: {
     kind: "message-list" as const,
-    messageList: [{ content: "hello", role: "user" as const }],
+    messageList: [{
+      content: [{ text: "hello", type: "text" as const }],
+      role: "user" as const,
+    }],
     modelTarget: { kind: "catalog-model" as const, modelId: "11" },
     reasoningEffort: "minimal" as const,
     responseFormat: { type: "text" as const },
@@ -156,6 +159,43 @@ describe("VolcengineChatCompletionAdapter", () => {
       thinking: { type: "disabled" },
     });
     expect(body).not.toHaveProperty("model", "doubao-pro");
+  });
+
+  it("maps ordered media blocks and resolves platform paths at Provider request time", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "answer" } }],
+    }), { status: 200 }));
+    const adapter = new VolcengineChatCompletionAdapter(
+      database,
+      "secret",
+      fetchImpl,
+      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      undefined,
+      "media.example.com",
+    );
+
+    await adapter.execute(request({
+      messageList: [{
+        content: [
+          { text: "看下这个", type: "text" },
+          { type: "image", url: "/audit/error.png" },
+          { text: "怎么处理？", type: "text" },
+          { type: "video", url: "https://cdn.example.com/demo.mp4" },
+        ],
+        role: "system",
+      }],
+    }));
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body.messages).toEqual([{
+      content: [
+        { text: "看下这个", type: "text" },
+        { image_url: { url: "https://media.example.com/audit/error.png" }, type: "image_url" },
+        { text: "怎么处理？", type: "text" },
+        { type: "video_url", video_url: { url: "https://cdn.example.com/demo.mp4" } },
+      ],
+      role: "system",
+    }]);
   });
 
   it("emits bounded provider diagnostics without prompt or completion content", async () => {

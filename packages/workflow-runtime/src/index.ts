@@ -12,6 +12,7 @@ export * from "./handoff.js";
 export * from "./live-revision-routing.js";
 export * from "./message.js";
 export * from "./message-query.js";
+export * from "./workflow-messages.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";
 export * from "./node-metrics.js";

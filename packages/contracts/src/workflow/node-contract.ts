@@ -10,6 +10,7 @@ import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import { WORKFLOW_MESSAGES_SCHEMA_REF } from "./messages.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -781,15 +782,9 @@ export function getWorkflowNodeOutputContracts(
     return [
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messageIds",
-        usages: ["intent-input"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-      },
-      {
-        availableOnSourceOutlets: ["triggered"],
-        key: "textContent",
-        usages: ["intent-input", "message-content", "variable"],
-        valueType: { kind: "string" },
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
       },
       {
         availableOnSourceOutlets: ["triggered"],
@@ -808,14 +803,9 @@ export function getWorkflowNodeOutputContracts(
   if (kind === "message-query") {
     return [
       {
-        key: "messageIds",
-        usages: ["intent-input"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-      },
-      {
-        key: "textContent",
-        usages: ["intent-input", "message-content", "variable"],
-        valueType: { kind: "string" },
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
       },
       {
         key: "messageCount",

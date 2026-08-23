@@ -58,7 +58,7 @@ describe("workflow node outputs", () => {
       expect.stringContaining("duplicates invalid key"),
     ]));
     expect(validateWorkflowNodeOutputDefinitions(node, [{
-      key: "messageIds",
+      key: "records",
       label: "消息列表",
       usages: ["variable"],
       valueType: { itemType: "bigint", kind: "array", semantic: "message" },
@@ -100,8 +100,8 @@ describe("workflow node outputs", () => {
     const { rerender } = render(<NodeOutputsSection node={queryNode} />);
 
     expect(screen.getByText("节点输出")).toBeInTheDocument();
-    expect(screen.getByText("文本内容")).toBeInTheDocument();
-    expect(screen.getByText("文本")).toBeInTheDocument();
+    expect(screen.getByText("消息列表")).toBeInTheDocument();
+    expect(screen.getByText("结构化内容")).toBeInTheDocument();
 
     rerender(<NodeOutputsSection node={createNode("message", 1)} />);
     expect(screen.queryByText("节点输出")).not.toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("workflow node outputs", () => {
   ])("opens output descriptions with %s", async (_interaction, openDescription) => {
     const user = userEvent.setup();
     render(<NodeOutputsSection node={createNode("message-query", 0)} />);
-    const button = screen.getByRole("button", { name: "查看文本内容说明" });
+    const button = screen.getByRole("button", { name: "查看消息列表说明" });
 
     await openDescription(button, user);
 

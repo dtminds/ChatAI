@@ -1233,7 +1233,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 实现进入等待、事件触发、超时、暂停、停止和恢复语义。
 - 实现 Triggered / Timed Out 两个出口的原子竞争。
 - 将前端旧标识 `customer.message.received` 直接统一为公共事件 `message.received`，不保留不存在历史数据的别名。
-- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出 `messageIds`、`textContent`、`messageCount` 和 `lastMessageAt`。
+- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出结构化 `messages`、`messageCount` 和 `lastMessageAt`；超过节点输出上限时按时间顺序移除整条旧消息，不截断单条消息内容。
 - Runtime 只消费 Event Catalog 产出的 Trigger Projection；Java 原始 payload 未冻结期间由 Fake Event Catalog 提供测试投影。
 - Compiler 将事件源的 `capabilityKey + contractVersion` 冻结到 Revision；能力关闭时不触发 Subscription，超时 Task 保持 Pending，恢复后重新调度。
 - 仅允许 Capability Profile 中声明的事件和主体类型进入等待。

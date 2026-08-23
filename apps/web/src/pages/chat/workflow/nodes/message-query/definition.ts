@@ -1,5 +1,5 @@
 import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
-import { isValidWorkflowLocalDateTime } from "@chatai/contracts";
+import { isValidWorkflowLocalDateTime, WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   compactNodeLayout,
@@ -40,18 +40,11 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
   description: "查询当前客户在指定时间范围内的历史消息",
   getOutputVariables: () => [
     {
-      description: "消息编号列表，可供意图识别等支持多模态消息的节点读取原始消息。",
-      key: "messageIds",
+      description: "按时间顺序组装的文本、图片、视频及其他消息内容。",
+      key: "messages",
       label: "消息列表",
-      usages: ["intent-input"],
-      valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-    },
-    {
-      description: "查询结果中的文本消息按时间顺序合并后的内容。",
-      key: "textContent",
-      label: "文本内容",
-      usages: ["intent-input", "message-content", "variable"],
-      valueType: { kind: "string" },
+      usages: ["intent-input", "variable"],
+      valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
     },
     {
       key: "messageCount",

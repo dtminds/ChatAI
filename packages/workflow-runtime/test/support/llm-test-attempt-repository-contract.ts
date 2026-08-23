@@ -115,7 +115,10 @@ function createInput(executionKey = "execution-1") {
     opSubUserId: "17",
     payload: {
       kind: "message-list" as const,
-      messageList: [{ content: "Summarize", role: "system" as const }],
+      messageList: [{
+        content: [{ text: "Summarize", type: "text" as const }],
+        role: "system" as const,
+      }],
       modelTarget: { kind: "catalog-model", modelId: "model-1" },
         reasoningEffort: "medium",
       responseFormat: { type: "text" as const },

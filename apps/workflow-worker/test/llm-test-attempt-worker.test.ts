@@ -143,7 +143,7 @@ function payloadFor(node: WorkflowExecutionNode): WorkflowInferenceMessageListRe
   if (node.kind !== "llm") throw new Error("Expected LLM node");
   return {
     kind: "message-list",
-    messageList: [{ content: "Summarize", role: "system" }],
+    messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
     modelTarget: { kind: "catalog-model", modelId: "model-1" },
     reasoningEffort: "medium",
     responseFormat: node.config.output.format === "json"

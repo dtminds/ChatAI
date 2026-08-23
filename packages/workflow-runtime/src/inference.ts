@@ -4,6 +4,7 @@ import {
   WorkflowAiIntentCompletionValueSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceMessageListResultSchema,
+  type WorkflowAiIntentExecutionConfig,
   type WorkflowExecutionNode,
   type WorkflowInferenceRequest,
   type WorkflowInferenceMessageListRequest,
@@ -60,6 +61,20 @@ export function mapWorkflowInferenceResult(
   throw inferenceOutputError(`Unsupported inference node kind: ${node.kind}`);
 }
 
+export function resolveWorkflowInferenceWithoutProvider(
+  node: WorkflowExecutionNode,
+  run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
+): { output: Record<string, unknown>; sourceOutletId: string } | null {
+  if (node.kind !== "ai-intent") return null;
+  const { input } = resolveAiIntentInput(node, run, currentNodeLifecycle);
+  if (input.trim()) return null;
+  return {
+    output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+    sourceOutletId: "fallback",
+  };
+}
+
 function createLlmRequest(
   node: WorkflowExecutionNode,
   resolveInput: (input: WorkflowLlmInputParameter) => unknown,
@@ -108,16 +123,13 @@ function createIntentRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
 ): WorkflowInferenceMessageListRequest {
-  if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
-    throw inferenceConfigError("AI Intent execution config failed schema validation");
-  }
-  const input = requireSelectorValue(node.config.inputSelector, run);
+  const { config, input } = resolveAiIntentInput(node, run);
   return {
     kind: "message-list",
     messageList: buildAiIntentPromptV1(
-      stringifyPromptValue(input),
-      node.config.intents,
-      node.config.prompt ?? "",
+      input,
+      config.intents,
+      config.prompt ?? "",
     ),
     modelTarget: { endpointId: WORKFLOW_AI_INTENT_ENDPOINT_ID, kind: "endpoint" },
     reasoningEffort: "low",
@@ -155,16 +167,32 @@ function buildAiIntentPromptV1(
     {
       content: [
         "Classify the user input into exactly one configured intent.",
-        "The user message is a JSON object whose input field contains the complete input.",
-        "If the input field is empty, return fallback.",
         "Use fallback only when none of the configured intents match.",
         "Return matchedCode and a brief reason. Do not return any other fields.",
         `Configured intents:\n${intentCatalog}\nfallback: no configured intent matches`,
       ].join("\n\n") + rules,
       role: "system",
     },
-    { content: JSON.stringify({ input }), role: "user" },
+    { content: input, role: "user" },
   ];
+}
+
+function resolveAiIntentInput(
+  node: WorkflowExecutionNode,
+  run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
+): { config: WorkflowAiIntentExecutionConfig; input: string } {
+  if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
+    throw inferenceConfigError("AI Intent execution config failed schema validation");
+  }
+  return {
+    config: node.config,
+    input: stringifyPromptValue(requireSelectorValue(
+      node.config.inputSelector,
+      run,
+      currentNodeLifecycle,
+    )),
+  };
 }
 
 function mapLlmResult(

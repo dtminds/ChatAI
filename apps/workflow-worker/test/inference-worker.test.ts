@@ -233,6 +233,35 @@ describe("workflow inference worker", () => {
     expect(adapter.calls).toHaveLength(1);
   });
 
+  it("routes empty AI Intent input to fallback without creating an Inference Job", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = new InferenceTestRuntimeService(
+      control(inferenceSpec("ai-intent")),
+      repository,
+      undefined,
+      {
+        clock: () => now,
+        entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+      },
+    );
+    const started = await seedInferenceRun(repository, "event-empty-intent", " \n\t");
+    const startResult = await service.executeTask(taskInput(started.task, "start-empty-intent"));
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("AI Intent Task was not created");
+    }
+
+    await expect(service.executeTask(taskInput(startResult.nextTask, "execute-empty-intent")))
+      .resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
+    expect(repository.inferenceJobs).toHaveLength(0);
+    await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({
+      context: {
+        outputs: {
+          inference: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+        },
+      },
+    });
+  });
+
   it("stops waiting at the Job deadline even when the Java adapter ignores abort", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -306,9 +335,10 @@ describe("workflow inference worker", () => {
 async function seedInferenceRun(
   repository: InMemoryWorkflowRuntimeRepository,
   entryEventId: string,
+  triggerText = "退款什么时候到账",
 ) {
   const started = await repository.createRunWithInitialTask({
-    context: { outputs: {}, trigger: { text: "退款什么时候到账" } },
+    context: { outputs: {}, trigger: { text: triggerText } },
     entryEventId,
     entryPolicy: { mode: "never" },
     initialNodeId: "start",

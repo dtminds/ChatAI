@@ -62,6 +62,7 @@ import {
 import {
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
+  resolveWorkflowInferenceWithoutProvider,
 } from "./inference.js";
 import {
   executeWorkflowMessageQuery,
@@ -628,6 +629,14 @@ export class WorkflowRuntimeService {
       );
     }
     if (existing?.status === "cancelled") throw staleTaskError();
+    if (!existing) {
+      const immediate = resolveWorkflowInferenceWithoutProvider(
+        input.node,
+        input.run,
+        { enteredAt: input.claimedTask.createdAt.toISOString() },
+      );
+      if (immediate) return { ...immediate, type: "advance" };
+    }
     const payload = existing?.payload ?? createWorkflowInferenceRequest(
       input.node,
       input.run,

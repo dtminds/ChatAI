@@ -54,6 +54,85 @@ describe("Workflow LLM test Attempt worker", () => {
     });
   });
 
+  it("completes an empty AI Intent input as fallback without calling the Adapter", async () => {
+    const repository = new InMemoryWorkflowLlmTestAttemptRepository();
+    const node = aiIntentNode();
+    const attempt = await repository.createLlmTestAttempt({
+      contractVersion: 1,
+      createdAt: now,
+      deadlineAt: new Date(now.getTime() + 600_000),
+      executionKey: "test:empty-ai-intent",
+      expiresAt: new Date(now.getTime() + 86_400_000),
+      inputValues: { inputValue: [] },
+      node,
+      opSubUserId: "17",
+      payload: aiIntentPayload(),
+      uid: 9,
+      workflowId: "31",
+    });
+    const execute = vi.fn();
+
+    await expect(processWorkflowLlmTestAttemptBatch({
+      adapter: { execute },
+      heartbeatIntervalMs: 10_000,
+      leaseDurationMs: 60_000,
+      leaseOwner: "llm-test-worker-1",
+      limit: 10,
+      now: () => now,
+      repository,
+    })).resolves.toEqual({ claimed: 1, failed: 0, succeeded: 1, timedOut: 0 });
+
+    expect(execute).not.toHaveBeenCalled();
+    await expect(find(repository, attempt.id)).resolves.toMatchObject({
+      output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+      status: "succeeded",
+    });
+  });
+
+  it("maps a non-empty AI Intent Adapter result to the configured intent", async () => {
+    const repository = new InMemoryWorkflowLlmTestAttemptRepository();
+    const node = aiIntentNode();
+    const attempt = await repository.createLlmTestAttempt({
+      contractVersion: 1,
+      createdAt: now,
+      deadlineAt: new Date(now.getTime() + 600_000),
+      executionKey: "test:ai-intent",
+      expiresAt: new Date(now.getTime() + 86_400_000),
+      inputValues: {
+        inputValue: [{
+          id: 101,
+          parts: [{ text: "退款什么时候到账", type: "text" }],
+          role: "customer",
+        }],
+      },
+      node,
+      opSubUserId: "17",
+      payload: aiIntentPayload(),
+      uid: 9,
+      workflowId: "31",
+    });
+    const execute = vi.fn(async () => ({
+      type: "json" as const,
+      value: { matchedCode: "I1", reason: "用户询问退款" },
+    }));
+
+    await processWorkflowLlmTestAttemptBatch({
+      adapter: { execute },
+      heartbeatIntervalMs: 10_000,
+      leaseDurationMs: 60_000,
+      leaseOwner: "llm-test-worker-1",
+      limit: 10,
+      now: () => now,
+      repository,
+    });
+
+    expect(execute).toHaveBeenCalledOnce();
+    await expect(find(repository, attempt.id)).resolves.toMatchObject({
+      output: { matchedIntentDescription: "咨询退款", reason: "用户询问退款" },
+      status: "succeeded",
+    });
+  });
+
   it("records malformed and oversized Adapter results as failed", async () => {
     const malformed = await createAttempt(llmNode("text"));
     await processWorkflowLlmTestAttemptBatch({
@@ -184,6 +263,35 @@ function llmNode(format: "json" | "markdown" | "text"): WorkflowExecutionNode {
     id: "llm-1",
     kind: "llm",
     nodeSchemaVersion: 1,
+  };
+}
+
+function aiIntentNode(): WorkflowExecutionNode {
+  return {
+    config: {
+      fallback: { id: "fallback" },
+      inputSelector: ["node", "query", "messages"],
+      intents: [{ description: "咨询退款", id: "refund", modelCode: "I1" }],
+    },
+    id: "ai-intent-1",
+    kind: "ai-intent",
+    nodeSchemaVersion: 1,
+  };
+}
+
+function aiIntentPayload(): WorkflowInferenceMessageListRequest {
+  return {
+    kind: "message-list",
+    messageList: [{ content: [{ text: "Classify", type: "text" }], role: "system" }],
+    modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
+    reasoningEffort: "low",
+    responseFormat: {
+      fields: [
+        { description: "Matched code", name: "matchedCode", type: "string" },
+        { description: "Reason", name: "reason", type: "string" },
+      ],
+      type: "json",
+    },
   };
 }
 

@@ -48,8 +48,15 @@ import {
   normalizeAiIntentOptions,
   normalizeAiIntentPrompt,
 } from "./config";
+import { AiIntentTestWorkspace } from "./test-workspace";
 
-export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"ai-intent">) {
+export function AiIntentConfig({
+  edges,
+  node,
+  nodes,
+  onNodeChange,
+  testContext,
+}: NodeSettingsProps<"ai-intent">) {
   const [pendingDeleteIntent, setPendingDeleteIntent] = useState<WorkflowIntentOption | null>(null);
   const advancedEnabled = normalizeAiIntentAdvancedEnabled(node.data.advancedEnabled);
   const intents = normalizeAiIntentOptions(node.data.intents);
@@ -230,6 +237,14 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {testContext ? (
+        <AiIntentTestWorkspace
+          edges={edges}
+          node={node}
+          nodes={nodes}
+          testContext={testContext}
+        />
+      ) : null}
     </>
   );
 }

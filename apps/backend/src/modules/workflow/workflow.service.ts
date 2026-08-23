@@ -19,10 +19,12 @@ import type {
   WorkflowType,
   WorkflowTypeEntitlementResult,
   WorkflowLlmTestAttempt,
+  WorkflowAiIntentTestAttemptCreateRequest,
   WorkflowLlmTestAttemptCreateRequest,
   WorkflowJsonObject,
   WorkflowLlmInputParameter,
   WorkflowOutputValueType,
+  WorkflowVariableSelector,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -30,15 +32,20 @@ import {
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowCapabilityProfile,
   getWorkflowNodeContract,
+  getWorkflowNodeOutputContracts,
+  isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowNodeDraftConfig,
   WorkflowStartConfigSchema,
+  WorkflowMessagesV1Schema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
   evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
+  getWorkflowGuaranteedUpstreamNodeIds,
+  isWorkflowOutputAvailableOnSourceOutlets,
   getWorkflowNodeExecutionConfigError,
   projectWorkflowNodeExecutionConfig,
   normalizeWorkflowDraft,
@@ -53,6 +60,7 @@ import {
   UnavailableWorkflowEntitlementPort,
   WorkflowEntitlementUnavailableError,
   createWorkflowLlmInferenceRequest,
+  createWorkflowAiIntentInferenceRequest,
   assertWorkflowRuntimeValue,
   type WorkflowLlmTestAttemptRecord,
   type WorkflowLlmTestAttemptRepository,
@@ -162,6 +170,85 @@ export class WorkflowService {
       createdAt,
       deadlineAt: new Date(createdAt.getTime() + this.llmTestTimeoutMs),
       executionKey: `workflow-llm-test:${scope.uid}:${workflowId}:${nodeId}:${randomUUID()}`,
+      expiresAt: new Date(createdAt.getTime() + this.llmTestTtlMs),
+      inputValues,
+      node,
+      opSubUserId: scope.subUserId,
+      payload,
+      uid: scope.uid,
+      workflowId,
+    });
+    return toLlmTestAttempt(attempt);
+  }
+
+  async createAiIntentTestAttempt(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    nodeId: string,
+    input: WorkflowAiIntentTestAttemptCreateRequest,
+  ): Promise<WorkflowLlmTestAttempt> {
+    assertWorkflowAccess(scope);
+    const repository = this.requireLlmTestAttemptRepository();
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
+    const draft = normalizeWorkflowDraft(definition.draft);
+    const draftNode = draft.nodes.find(node => node.id === nodeId);
+    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "Workflow 节点不存在");
+    if (draftNode.data.kind !== "ai-intent") {
+      throw new BadRequestError(
+        "WORKFLOW_AI_INTENT_TEST_NODE_INVALID",
+        "仅支持试运行意图识别节点",
+      );
+    }
+    const config = projectWorkflowNodeExecutionConfig({
+      data: draftNode.data,
+      kind: "ai-intent",
+      workflowType: definition.workflowType,
+    });
+    const configError = getWorkflowNodeExecutionConfigError("ai-intent", config);
+    if (configError || !isWorkflowAiIntentExecutionConfigComplete(config)) {
+      throw new BadRequestError(
+        "WORKFLOW_AI_INTENT_TEST_CONFIG_INVALID",
+        "请先完成意图识别节点配置",
+      );
+    }
+    const inputType = resolveAiIntentTestInputType(draft, nodeId, config.inputSelector);
+    if (!inputType || !isAiIntentTestValueCompatible(input.inputValue, inputType)) {
+      throw new BadRequestError(
+        "WORKFLOW_AI_INTENT_TEST_INPUT_INVALID",
+        "试运行输入与节点配置不匹配",
+      );
+    }
+    const node = {
+      config,
+      id: draftNode.id,
+      kind: "ai-intent" as const,
+      nodeSchemaVersion: draftNode.data.schemaVersion,
+    };
+    const inputValues = { inputValue: input.inputValue };
+    try {
+      assertWorkflowRuntimeValue(inputValues, "run-context", WORKFLOW_LLM_TEST_INPUT_MAX_BYTES);
+    } catch {
+      throw new BadRequestError("WORKFLOW_AI_INTENT_TEST_INPUT_INVALID", "试运行输入过大");
+    }
+    let payload;
+    try {
+      payload = createWorkflowAiIntentInferenceRequest(node, input.inputValue);
+    } catch (error) {
+      if (error instanceof WorkflowCapabilityExecutionError) {
+        throw new BadRequestError(
+          "WORKFLOW_AI_INTENT_TEST_INPUT_INVALID",
+          "试运行输入无法生成有效提示词",
+        );
+      }
+      throw error;
+    }
+    const createdAt = this.clock();
+    const attempt = await repository.createLlmTestAttempt({
+      contractVersion: 1,
+      createdAt,
+      deadlineAt: new Date(createdAt.getTime() + this.llmTestTimeoutMs),
+      executionKey: `workflow-ai-intent-test:${scope.uid}:${workflowId}:${nodeId}:${randomUUID()}`,
       expiresAt: new Date(createdAt.getTime() + this.llmTestTtlMs),
       inputValues,
       node,
@@ -1150,6 +1237,42 @@ function isLlmTestValueCompatible(value: unknown, valueType: WorkflowOutputValue
   }
   if (valueType.kind === "object") return isRecord(value);
   return false;
+}
+
+function resolveAiIntentTestInputType(
+  draft: WorkflowDraft,
+  nodeId: string,
+  selector: WorkflowVariableSelector | undefined,
+): WorkflowOutputValueType | null {
+  if (!selector) return null;
+  const [scope, sourceId, outputKey, ...rest] = selector;
+  if (scope !== "node" || !sourceId || !outputKey || rest.length > 0) return null;
+  const upstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+    nodeId,
+    draft.nodes.map(node => node.id),
+    draft.edges,
+  );
+  if (!upstreamIds.has(sourceId)) return null;
+  const sourceNode = draft.nodes.find(node => node.id === sourceId);
+  if (!sourceNode) return null;
+  const output = getWorkflowNodeOutputContracts(sourceNode.data.kind, sourceNode.data)
+    ?.find(candidate => candidate.key === outputKey);
+  if (!output || !output.usages.includes("intent-input")) return null;
+  if (output.availableOnSourceOutlets
+    && !isWorkflowOutputAvailableOnSourceOutlets(
+      sourceId,
+      nodeId,
+      output.availableOnSourceOutlets,
+      draft.edges,
+    )) return null;
+  return output.valueType;
+}
+
+function isAiIntentTestValueCompatible(value: unknown, valueType: WorkflowOutputValueType) {
+  if (valueType.kind === "string") return typeof value === "string";
+  return valueType.kind === "object"
+    && valueType.schemaRef === "workflow.messages.v1"
+    && Value.Check(WorkflowMessagesV1Schema, value);
 }
 
 function toLlmTestAttempt(record: WorkflowLlmTestAttemptRecord): WorkflowLlmTestAttempt {

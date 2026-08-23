@@ -11,6 +11,7 @@ import {
   WorkflowSaveDraftRequestSchema,
   WorkflowEntryRecordStatusSchema,
   WorkflowLlmTestAttemptCreateRequestSchema,
+  WorkflowAiIntentTestAttemptCreateRequestSchema,
   type WorkflowCreateRequest,
   type WorkflowMetadataUpdateRequest,
   type WorkflowPublishRequest,
@@ -21,6 +22,7 @@ import {
   type WorkflowRestoreRequest,
   type WorkflowSaveDraftRequest,
   type WorkflowLlmTestAttemptCreateRequest,
+  type WorkflowAiIntentTestAttemptCreateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -162,6 +164,26 @@ export async function registerWorkflowRoutes(
     )),
   );
 
+  app.post<{
+    Body: WorkflowAiIntentTestAttemptCreateRequest;
+    Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;
+  }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts",
+    {
+      ...authenticated,
+      schema: {
+        body: WorkflowAiIntentTestAttemptCreateRequestSchema,
+        params: WorkflowLlmTestNodeParamsSchema,
+      },
+    },
+    async request => apiSuccess(await service.createAiIntentTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.body,
+    )),
+  );
+
   app.get<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
     "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId",
     {
@@ -176,8 +198,36 @@ export async function registerWorkflowRoutes(
     )),
   );
 
+  app.get<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId",
+    {
+      ...authenticated,
+      schema: { params: WorkflowLlmTestAttemptParamsSchema },
+    },
+    async request => apiSuccess(await service.getLlmTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.params.attemptId,
+    )),
+  );
+
   app.post<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
     "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId/cancel",
+    {
+      ...authenticated,
+      schema: { params: WorkflowLlmTestAttemptParamsSchema },
+    },
+    async request => apiSuccess(await service.cancelLlmTestAttempt(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.params.attemptId,
+    )),
+  );
+
+  app.post<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
+    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId/cancel",
     {
       ...authenticated,
       schema: { params: WorkflowLlmTestAttemptParamsSchema },

@@ -10,6 +10,7 @@ import {
   type WorkflowExecutionNode,
   type WorkflowInferenceContentPart,
   type WorkflowInferenceRequest,
+  type WorkflowInferenceMessageListResult,
   type WorkflowInferenceMessageListRequest,
   type WorkflowInferenceResult,
   type WorkflowLlmInputParameter,
@@ -55,6 +56,38 @@ export function createWorkflowLlmInferenceRequest(
     throw inferenceConfigError("Rendered inference request failed schema validation");
   }
   return request;
+}
+
+export function createWorkflowAiIntentInferenceRequest(
+  node: WorkflowExecutionNode,
+  inputValue: unknown,
+): WorkflowInferenceMessageListRequest {
+  if (node.kind !== "ai-intent") {
+    throw inferenceConfigError(`Expected an AI Intent node, received: ${node.kind}`);
+  }
+  const request = createIntentRequestFromValue(node, inputValue);
+  if (!Value.Check(WorkflowInferenceRequestSchema, request)) {
+    throw inferenceConfigError("Rendered inference request failed schema validation");
+  }
+  return request;
+}
+
+export function resolveWorkflowAiIntentTestWithoutProvider(
+  node: WorkflowExecutionNode,
+  inputValue: unknown,
+): {
+  output: Record<string, unknown>;
+  result: WorkflowInferenceMessageListResult;
+  sourceOutletId: string;
+} | null {
+  if (node.kind !== "ai-intent") return null;
+  const content = renderInferenceValue(inputValue);
+  if (hasInferenceContent(content)) return null;
+  const result: WorkflowInferenceMessageListResult = {
+    type: "json",
+    value: { matchedCode: "fallback", reason: "输入为空" },
+  };
+  return { ...mapIntentResult(node, result), result };
 }
 
 export function mapWorkflowInferenceResult(
@@ -136,13 +169,30 @@ function createIntentRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
 ): WorkflowInferenceMessageListRequest {
-  const { config, content } = resolveAiIntentInput(node, run);
+  const { content } = resolveAiIntentInput(node, run);
+  return createIntentRequestFromContent(node, content);
+}
+
+function createIntentRequestFromValue(
+  node: WorkflowExecutionNode,
+  inputValue: unknown,
+): WorkflowInferenceMessageListRequest {
+  return createIntentRequestFromContent(node, renderInferenceValue(inputValue));
+}
+
+function createIntentRequestFromContent(
+  node: WorkflowExecutionNode,
+  content: WorkflowInferenceContentPart[],
+): WorkflowInferenceMessageListRequest {
+  if (!isWorkflowAiIntentExecutionConfigComplete(node.config)) {
+    throw inferenceConfigError("AI Intent execution config failed schema validation");
+  }
   return {
     kind: "message-list",
     messageList: buildAiIntentPromptV1(
       content,
-      config.intents,
-      config.prompt ?? "",
+      node.config.intents,
+      node.config.prompt ?? "",
     ),
     modelTarget: { endpointId: WORKFLOW_AI_INTENT_ENDPOINT_ID, kind: "endpoint" },
     reasoningEffort: "low",
@@ -176,7 +226,10 @@ function buildAiIntentPromptV1(
   const rules = additionalRules.trim()
     ? `\n\nAdditional classification rules:\n${additionalRules.trim()}`
     : "";
-  return [
+  const messageList: Array<{
+    content: WorkflowInferenceContentPart[];
+    role: "system" | "user";
+  }> = [
     {
       content: [{
         text: [
@@ -189,8 +242,9 @@ function buildAiIntentPromptV1(
       }],
       role: "system",
     },
-    { content: input, role: "user" },
   ];
+  if (hasInferenceContent(input)) messageList.push({ content: input, role: "user" });
+  return messageList;
 }
 
 function resolveAiIntentInput(

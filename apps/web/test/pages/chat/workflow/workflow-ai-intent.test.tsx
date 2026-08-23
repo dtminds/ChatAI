@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
@@ -18,6 +18,7 @@ import {
   normalizeAiIntentOptions,
 } from "@/pages/chat/workflow/nodes/ai-intent/config";
 import { AiIntentConfig } from "@/pages/chat/workflow/nodes/ai-intent/panel";
+import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
 import type {
   AiIntentNodeData,
   WorkflowEdge,
@@ -28,6 +29,17 @@ import { validateWorkflowGraph } from "@/pages/chat/workflow/validation/workflow
 import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
 import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
 import { createWorkflowRenderElements } from "@/pages/chat/workflow/use-workflow-render-elements";
+
+const aiIntentTestServiceMock = vi.hoisted(() => ({
+  cancelWorkflowAiIntentTestAttempt: vi.fn(),
+  createWorkflowAiIntentTestAttempt: vi.fn(),
+  getWorkflowAiIntentTestAttempt: vi.fn(),
+}));
+
+vi.mock(
+  "@/pages/chat/workflow/nodes/ai-intent/test-service",
+  () => aiIntentTestServiceMock,
+);
 
 describe("workflow AI intent", () => {
   it("normalizes missing intent data with stable handle ids", () => {
@@ -270,6 +282,74 @@ describe("workflow AI intent", () => {
       .toBeUndefined();
   });
 
+  it("runs the saved AI Intent node with structured messages and renders the mapped result", async () => {
+    const user = userEvent.setup();
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const baseIntentNode = createAiIntentNode([
+      { description: "咨询退款", id: "intent-refund" },
+    ]);
+    const intentNode = {
+      ...baseIntentNode,
+      data: {
+        ...baseIntentNode.data,
+        inputSelector: ["node", queryNode.id, "messages"] as [string, string, string],
+      },
+    };
+    const edges = [createEdge(queryNode.id, intentNode.id)];
+    const inputValue = [{
+      id: 101,
+      parts: [
+        { text: "看下这个", type: "text" as const },
+        { type: "image" as const, url: "https://example.com/order.png" },
+      ],
+      role: "customer" as const,
+    }];
+    aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({ inputValues: { inputValue }, status: "running" }),
+    );
+    aiIntentTestServiceMock.getWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({
+        completedAt: "2026-08-23T05:00:01.000Z",
+        inputValues: { inputValue },
+        output: { matchedIntentDescription: "咨询退款", reason: "用户在询问退款" },
+        status: "succeeded",
+      }),
+    );
+    const onNodeChange = vi.fn();
+    render(
+      <NodeConfigPanel
+        allowedEntryEventTypes={["message.received"]}
+        edges={edges}
+        node={intentNode}
+        nodes={[queryNode, intentNode]}
+        onClose={vi.fn()}
+        onNodeChange={onNodeChange}
+        onRenameNode={vi.fn()}
+        testContext={{ draftVersion: 3, saveState: "saved", workflowId: "42" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "试运行意图识别节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    const input = within(workspace).getByRole("textbox", { name: "意图识别的试运行输入" });
+    fireEvent.change(input, { target: { value: "{" } });
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: JSON.stringify(inputValue) } });
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).toHaveBeenCalledWith(
+      "42",
+      intentNode.id,
+      { expectedDraftVersion: 3, inputValue },
+    );
+    expect(onNodeChange).not.toHaveBeenCalled();
+    expect(await within(workspace).findByText("咨询退款")).toBeInTheDocument();
+    expect(within(workspace).getByText("用户在询问退款")).toBeInTheDocument();
+  });
+
   it("limits intent rows and confirms deletion when the outcome is connected", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
@@ -498,5 +578,28 @@ function createAiIntentNode(
     id: "ai-intent",
     position: { x: 0, y: 0 },
     type: WORKFLOW_NODE_TYPE,
+  };
+}
+
+function createAiIntentAttempt(overrides: Partial<{
+  completedAt: string | null;
+  inputValues: Record<string, unknown>;
+  output: Record<string, string> | null;
+  status: "cancelled" | "failed" | "running" | "succeeded" | "timed_out";
+}> = {}) {
+  const createdAt = new Date("2026-08-23T05:00:00.000Z");
+  return {
+    attemptId: "1",
+    completedAt: null,
+    createdAt: createdAt.toISOString(),
+    errorMessage: null,
+    executionMode: "real" as const,
+    expiresAt: new Date(createdAt.getTime() + 600_000).toISOString(),
+    inputValues: {},
+    nodeId: "ai-intent",
+    output: null,
+    status: "running" as const,
+    workflowId: "42",
+    ...overrides,
   };
 }

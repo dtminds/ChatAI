@@ -149,7 +149,7 @@ export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
       ));
     }
     if (
-      getInvalidLlmPromptSelectors(systemPrompt, inputs).length
+      getInvalidLlmPromptSelectors(systemPrompt, inputs, { allowWorkflowMessages: false }).length
       || getInvalidLlmPromptSelectors(userPrompt, inputs).length
     ) {
       issues.push(createCatalogIssue("llm-prompt-input-invalid", "提示词引用了不可用输入参数"));

@@ -71,6 +71,7 @@ import {
   getLlmInputVariables,
   getLlmMetric,
   getLlmStatus,
+  getLlmSystemPromptVariables,
   normalizeLlmInputs,
   normalizeLlmModelId,
   normalizeLlmModelSnapshot,
@@ -116,6 +117,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   const thinkingEnabled = reasoningEffort !== "minimal";
   const thinkingDepth = reasoningEffort;
   const inputVariables = useMemo(() => getLlmInputVariables(inputs), [inputs]);
+  const systemPromptVariables = useMemo(() => getLlmSystemPromptVariables(inputs), [inputs]);
   const availableInputValues = useMemo(() =>
     getAvailableLlmInputVariablesForNode(node.id, nodes, edges),
   [edges, node.id, nodes]);
@@ -331,7 +333,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
 
       <PromptSection
         ariaLabel="系统提示词"
-        inputVariables={inputVariables}
+        inputVariables={systemPromptVariables}
         onChange={updateSystemPrompt}
         onExpand={() => settingWorkspace.openEditor({ id: systemPromptEditorId, title: "系统提示词" })}
         placeholder="请输入系统提示词"
@@ -360,7 +362,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         <ExpandedPromptEditor
           ariaLabel={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
           editorId={expandedPrompt === "system" ? systemPromptEditorId : userPromptEditorId}
-          inputVariables={inputVariables}
+          inputVariables={expandedPrompt === "system" ? systemPromptVariables : inputVariables}
           onChange={expandedPrompt === "system" ? updateSystemPrompt : updateUserPrompt}
           placeholder={expandedPrompt === "system" ? "请输入系统提示词" : "请输入用户提示词"}
           segments={expandedPrompt === "system" ? systemPrompt : userPrompt}

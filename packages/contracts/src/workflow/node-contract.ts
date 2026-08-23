@@ -903,6 +903,11 @@ export function isWorkflowOutputValueTypeEqual(
   return true;
 }
 
+export function isWorkflowMessagesValueType(valueType: WorkflowOutputValueType) {
+  return valueType.kind === "object"
+    && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF;
+}
+
 export function isWorkflowLlmExecutionConfigComplete(
   value: unknown,
 ): value is WorkflowLlmExecutionConfig {
@@ -910,7 +915,7 @@ export function isWorkflowLlmExecutionConfigComplete(
   const config = value as WorkflowLlmExecutionConfig;
   const inputIds = config.inputs.map(input => input.id);
   const inputNames = config.inputs.map(input => input.name.trim());
-  const inputNameById = new Map(config.inputs.map(input => [input.id, input.name.trim()]));
+  const inputById = new Map(config.inputs.map(input => [input.id, input]));
   if (
     !config.modelId.trim()
     || !areUniqueNonBlankValues(inputIds)
@@ -919,8 +924,8 @@ export function isWorkflowLlmExecutionConfigComplete(
       input.value.kind === "literal"
         ? !input.value.value.trim()
         : !isWorkflowInferenceSelectorResolvable(input.value.selector))
-    || !isWorkflowPromptComplete(config.systemPrompt, inputNameById, true)
-    || !isWorkflowPromptComplete(config.userPrompt, inputNameById, false)
+    || !isWorkflowPromptComplete(config.systemPrompt, inputById, true, false)
+    || !isWorkflowPromptComplete(config.userPrompt, inputById, false, true)
   ) {
     return false;
   }
@@ -976,8 +981,9 @@ function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelecto
 
 function isWorkflowPromptComplete(
   segments: WorkflowVariableContentSegment[],
-  inputNameById: Map<string, string>,
+  inputById: Map<string, WorkflowLlmInputParameter>,
   required: boolean,
+  allowWorkflowMessages: boolean,
 ) {
   let displayLength = 0;
   let hasContent = false;
@@ -988,11 +994,16 @@ function isWorkflowPromptComplete(
       continue;
     }
     const [scope, inputId] = segment.selector;
-    const inputName = inputId ? inputNameById.get(inputId) : undefined;
+    const input = inputId ? inputById.get(inputId) : undefined;
+    const inputName = input?.name.trim();
     if (
       segment.selector.length !== 2
       || scope !== "input"
+      || !input
       || !inputName
+      || (!allowWorkflowMessages
+        && input.value.kind === "variable"
+        && isWorkflowMessagesValueType(input.value.valueType))
     ) {
       return false;
     }

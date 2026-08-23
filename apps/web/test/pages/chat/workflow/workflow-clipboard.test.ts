@@ -318,7 +318,7 @@ describe("workflow clipboard", () => {
         valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
       },
     }];
-    llm.data.systemPrompt = [{ selector: ["input", "input-messages"], type: "variable" }];
+    llm.data.userPrompt = [{ selector: ["input", "input-messages"], type: "variable" }];
     const sourceDraft = {
       ...draft,
       edges: [
@@ -378,7 +378,7 @@ describe("workflow clipboard", () => {
       selector: ["node", "message-query-pasted", "messages"],
       valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
     });
-    expect(pastedLlm.data.systemPrompt).toEqual([
+    expect(pastedLlm.data.userPrompt).toEqual([
       { selector: ["input", "input-messages"], type: "variable" },
     ]);
   });

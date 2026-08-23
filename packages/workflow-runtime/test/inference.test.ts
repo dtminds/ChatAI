@@ -167,7 +167,7 @@ describe("workflow inference payloads", () => {
     }));
   });
 
-  it("expands structured messages inline in system and user prompts", () => {
+  it("expands structured messages in user prompts and rejects them in system prompts", () => {
     const messages = [
       {
         id: 101,
@@ -198,12 +198,13 @@ describe("workflow inference payloads", () => {
         valueType: { kind: "object" as const, schemaRef: "workflow.messages.v1" },
       },
     };
+    const systemNode = llmNode({
+      inputs: [input],
+      systemPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    });
     const node = llmNode({
       inputs: [input],
-      systemPrompt: [
-        { type: "text", value: "上下文：" },
-        { selector: ["input", "input-messages"], type: "variable" },
-      ],
+      systemPrompt: [{ type: "text", value: "请分析以下上下文" }],
       userPrompt: [
         { selector: ["input", "input-messages"], type: "variable" },
         { type: "text", value: "\n请回答" },
@@ -215,15 +216,12 @@ describe("workflow inference payloads", () => {
       outputs: { query: { messages } },
     };
 
+    expect(() => createWorkflowInferenceRequest(systemNode, workflowRun))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_INPUT_INVALID" }));
     expect(createWorkflowInferenceRequest(node, workflowRun)).toMatchObject({
       messageList: [
         {
-          content: [
-            { text: "上下文：\n用户: 你好，看下这个", type: "text" },
-            { type: "image", url: "/media/error.png" },
-            { text: "这个报错怎么解决？\n客服: 请稍等[语音]", type: "text" },
-            { type: "video", url: "https://media.example/demo.mp4" },
-          ],
+          content: [{ text: "请分析以下上下文", type: "text" }],
           role: "system",
         },
         {

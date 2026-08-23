@@ -693,6 +693,25 @@ describe("workflow node contracts", () => {
       ...llm,
       systemPrompt: [{ selector: ["input", "missing"], type: "variable" }],
     })).toBe(false);
+    const messagesInput = {
+      id: "input-messages",
+      name: "messages",
+      value: {
+        kind: "variable" as const,
+        selector: ["node", "message-query", "messages"],
+        valueType: { kind: "object" as const, schemaRef: "workflow.messages.v1" },
+      },
+    };
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [messagesInput],
+      systemPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [messagesInput],
+      userPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("llm", {
       ...llm,
       inputs: [{

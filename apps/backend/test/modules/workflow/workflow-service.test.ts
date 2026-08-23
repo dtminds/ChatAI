@@ -45,8 +45,8 @@ describe("WorkflowService", () => {
       payload: {
         kind: "message-list",
         messageList: [
-          { content: "请用简洁方式处理", role: "system" },
-          { content: "退款什么时候到账", role: "user" },
+          { content: [{ text: "请用简洁方式处理", type: "text" }], role: "system" },
+          { content: [{ text: "退款什么时候到账", type: "text" }], role: "user" },
         ],
       },
     });
@@ -1482,7 +1482,7 @@ function withAiIntentNode(
   const intentNode = {
     data: {
       advancedEnabled: false,
-      inputSelector: ["node", "message-query-1", "textContent"] as [string, string, string],
+      inputSelector: ["node", "message-query-1", "messages"] as [string, string, string],
       intents: [{ description: "咨询退款", id: "refund" }],
       kind: "ai-intent" as const,
       label: "意图识别",

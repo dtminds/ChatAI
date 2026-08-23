@@ -175,10 +175,9 @@ function createRequestBody(
       ...message,
       content: message.content.map(part => {
         if (part.type === "text") return part;
+        if (part.type === "video") return { text: "[视频]", type: "text" };
         const url = resolveProviderMediaUrl(part.url, playableMediaHost);
-        return part.type === "image"
-          ? { image_url: { url }, type: "image_url" }
-          : { type: "video_url", video_url: { url } };
+        return { image_url: { url }, type: "image_url" };
       }),
     })),
     model: endpoint,

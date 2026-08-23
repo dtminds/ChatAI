@@ -180,7 +180,7 @@ describe("VolcengineChatCompletionAdapter", () => {
           { text: "看下这个", type: "text" },
           { type: "image", url: "/audit/error.png" },
           { text: "怎么处理？", type: "text" },
-          { type: "video", url: "https://cdn.example.com/demo.mp4" },
+          { type: "video", url: "/audit/demo.mp4" },
         ],
         role: "system",
       }],
@@ -192,7 +192,7 @@ describe("VolcengineChatCompletionAdapter", () => {
         { text: "看下这个", type: "text" },
         { image_url: { url: "https://media.example.com/audit/error.png" }, type: "image_url" },
         { text: "怎么处理？", type: "text" },
-        { type: "video_url", video_url: { url: "https://cdn.example.com/demo.mp4" } },
+        { text: "[视频]", type: "text" },
       ],
       role: "system",
     }]);

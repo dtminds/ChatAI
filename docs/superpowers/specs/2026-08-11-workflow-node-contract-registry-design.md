@@ -28,11 +28,12 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 | `draft-ready` | Draft、Setting UI 和执行形状已定义，但 Runtime 尚未闭环 | 是 | 是 | 否 |
 | `runtime-ready` | Schema、Compiler、Executor、输出、错误处理与恢复均已闭环 | 是 | 是 | 是，但仍需满足 Workflow Capability Profile、Event Catalog、Product Entitlement 和资源校验 |
 
-当前分类：
+当前分类以 `packages/contracts/src/workflow/node-contract.ts` 中的
+`workflowNodeContractRegistry` 为权威来源；以下仅为本次文档更新时的快照：
 
-- `draft-ready`：`message`、`handoff`、`tag`、`customer-update`、`llm`、`ai-intent`
-- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`message-query`、`end`
-- `placeholder`：`coupon`、`agent`、`order-query`、`tag-query`、`ai-collect`
+- `draft-ready`：无
+- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`ratio-split`、`message`、`message-query`、`handoff`、`tag-query`、`tag`、`customer-update`、`llm`、`ai-intent`、`end`
+- `placeholder`：`coupon`、`agent`、`order-query`、`ai-collect`
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
 

@@ -23,6 +23,7 @@ export function fitWorkflowMessagesOutput<T extends Record<string, unknown>>(
     } catch (error) {
       if (!(error instanceof WorkflowRuntimeValueError) || error.reason !== "too-large") throw error;
       if (!visibleMessages.length) throw error;
+      if (visibleMessages.length === 1) return candidate;
       visibleMessages = take === "latest"
         ? visibleMessages.slice(1)
         : visibleMessages.slice(0, -1);

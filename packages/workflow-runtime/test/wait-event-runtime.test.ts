@@ -127,7 +127,7 @@ describe("Wait Event runtime", () => {
     });
   });
 
-  it("removes an oversized whole message instead of failing or truncating its parts", async () => {
+  it("fails instead of treating an oversized single message as empty input", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
     await recordMessage(harness, waiting.subscription, {
@@ -141,18 +141,11 @@ describe("Wait Event runtime", () => {
     const completed = await dispatchAndExecute(harness, COLLECT_UNTIL);
 
     expect(completed).toMatchObject({
-      kind: "success",
-      run: {
-        context: {
-          outputs: {
-            "wait-event": {
-              messageCount: 1,
-              messages: [],
-            },
-          },
-        },
-        status: "running",
-      },
+      errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
+      kind: "node-failed",
+      nodeId: "wait-event",
+      nodeKind: "wait-event",
+      run: { status: "failed" },
     });
   });
 

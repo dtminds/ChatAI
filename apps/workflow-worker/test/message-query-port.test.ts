@@ -145,12 +145,13 @@ describe("Workflow Message Query port", () => {
     ]));
   });
 
-  it("removes an oversized whole message without truncating its parts", async () => {
+  it("keeps an oversized single message intact for the runtime output guard", async () => {
+    const text = "x".repeat(9_000);
     const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
       ? { rows: [{ third_userid: "work-user-1" }] }
       : {
           rows: [{
-            content: JSON.stringify({ text: "很长的消息".repeat(5_000) }),
+            content: JSON.stringify({ text }),
             from_type: 2,
             id: 9001,
             msgtime: 1_786_741_800_000,
@@ -171,8 +172,15 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ messageCount: 1, messages: [] });
-    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
+    expect(result).toMatchObject({
+      messageCount: 1,
+      messages: [{
+        id: 9001,
+        parts: [{ text, type: "text" }],
+        role: "customer",
+      }],
+    });
+    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeGreaterThan(8 * 1_024);
   });
 
   it("drops older messages first when the latest result exceeds the output envelope", async () => {

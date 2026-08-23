@@ -161,13 +161,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "ai-intent",
-      kind: "ai-intent",
+      id: "order-query",
+      kind: "order-query",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-intent", source: "start", sourceOutletId: "default", target: "ai-intent" },
-      { id: "intent-end", source: "ai-intent", sourceOutletId: "default", target: "end" },
+      { id: "start-query", source: "start", sourceOutletId: "default", target: "order-query" },
+      { id: "query-end", source: "order-query", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ entitled: true, unentitledSince: null }),
@@ -178,8 +178,8 @@ describe("Workflow runtime policy", () => {
       context: { outputs: {}, trigger: {} },
       entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "ai-intent",
-      initialNodeKind: "ai-intent",
+      initialNodeId: "order-query",
+      initialNodeKind: "order-query",
       occurredAt: now,
       revision: 1,
       shardId: 7,

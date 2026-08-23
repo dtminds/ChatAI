@@ -787,10 +787,10 @@ describe("WorkflowService", () => {
         "message-query",
         "tag",
         "customer-update",
+        "llm",
+        "ai-intent",
         "end",
       ]));
-    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
     await expect(service.submitReview(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
     })).resolves.toMatchObject({ status: "pending" });
@@ -853,6 +853,23 @@ describe("WorkflowService", () => {
         entryPolicy: { mode: "never" },
         seatIds: [101],
         triggers: [{ keywords: ["价格"], type: "message.received" }],
+      })),
+      expectedDraftVersion: configured.draftVersion,
+    });
+
+    await expect(service.submitReview(operator, configured.id, {
+      expectedDraftVersion: saved.draftVersion,
+    })).resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("allows runtime-ready AI Intent nodes in published revisions", async () => {
+    const service = createService();
+    const configured = await createConfigured(service);
+    const saved = await service.saveDraft(operator, configured.id, {
+      draft: withAiIntentNode(withStartConfig(configured.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [{ keywords: ["退款"], type: "message.received" }],
       })),
       expectedDraftVersion: configured.draftVersion,
     });
@@ -1454,6 +1471,85 @@ function withLlmNode(
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
       llmNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
+  };
+}
+
+function withAiIntentNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  const intentNode = {
+    data: {
+      advancedEnabled: false,
+      inputSelector: ["node", "message-query-1", "textContent"] as [string, string, string],
+      intents: [{ description: "咨询退款", id: "refund" }],
+      kind: "ai-intent" as const,
+      label: "意图识别",
+      metric: "",
+      prompt: "",
+      schemaVersion: 1,
+      status: "ready" as const,
+      title: "意图识别",
+    },
+    id: "ai-intent-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  const messageQueryNode = {
+    data: {
+      kind: "message-query" as const,
+      label: "消息查询",
+      limit: 10,
+      metric: "最新 10 条消息",
+      schemaVersion: 1,
+      status: "ready" as const,
+      take: "latest" as const,
+      timeRange: {
+        end: ["current-node-lifecycle", "enteredAt"] as [string, string],
+        mode: "dynamic" as const,
+        start: ["trigger", "occurredAt"] as [string, string],
+      },
+      title: "消息查询",
+    },
+    id: "message-query-1",
+    position: { x: 170, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      {
+        id: "edge-start-query",
+        source: "start",
+        target: "message-query-1",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-query-intent",
+        source: "message-query-1",
+        target: "ai-intent-1",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-intent-refund",
+        source: "ai-intent-1",
+        sourceHandle: "intent:refund",
+        target: "end",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-intent-fallback",
+        source: "ai-intent-1",
+        sourceHandle: "fallback",
+        target: "end",
+        type: "workflowEdge",
+      },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      messageQueryNode,
+      intentNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
   };

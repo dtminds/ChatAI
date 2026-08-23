@@ -1,10 +1,9 @@
 import {
-  WORKFLOW_INTENT_TEMPLATE_KEY,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  WorkflowAiIntentCompletionValueSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceMessageListResultSchema,
-  WorkflowInferenceTemplateResultSchema,
   type WorkflowExecutionNode,
   type WorkflowInferenceRequest,
   type WorkflowInferenceMessageListRequest,
@@ -16,6 +15,8 @@ import {
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type { WorkflowRunRecord } from "./types.js";
+
+const WORKFLOW_AI_INTENT_ENDPOINT_ID = "ep-20260227145914-nxcmn";
 
 export function createWorkflowInferenceRequest(
   node: WorkflowExecutionNode,
@@ -103,23 +104,65 @@ function requireInputValue(inputId: string, inputValues: ReadonlyMap<string, unk
   return inputValues.get(inputId);
 }
 
-function createIntentRequest(node: WorkflowExecutionNode, run: WorkflowRunRecord): WorkflowInferenceRequest {
+function createIntentRequest(
+  node: WorkflowExecutionNode,
+  run: WorkflowRunRecord,
+): WorkflowInferenceMessageListRequest {
   if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
   }
   const input = requireSelectorValue(node.config.inputSelector, run);
   return {
-    kind: "template",
-    templateKey: WORKFLOW_INTENT_TEMPLATE_KEY,
-    variables: {
-      additionalRules: node.config.prompt ?? "",
-      input: stringifyPromptValue(input),
-      intents: JSON.stringify(node.config.intents.map(intent => ({
-        code: intent.modelCode,
-        description: intent.description,
-      }))),
+    kind: "message-list",
+    messageList: buildAiIntentPromptV1(
+      stringifyPromptValue(input),
+      node.config.intents,
+      node.config.prompt ?? "",
+    ),
+    modelTarget: { endpointId: WORKFLOW_AI_INTENT_ENDPOINT_ID, kind: "endpoint" },
+    reasoningEffort: "low",
+    responseFormat: {
+      fields: [
+        {
+          description: "Matched intent code or fallback",
+          name: "matchedCode",
+          type: "string",
+        },
+        {
+          description: "Brief reason for the classification",
+          name: "reason",
+          type: "string",
+        },
+      ],
+      type: "json",
     },
   };
+}
+
+function buildAiIntentPromptV1(
+  input: string,
+  intents: Array<{ description: string; modelCode: string }>,
+  additionalRules: string,
+): Array<{ content: string; role: "system" | "user" }> {
+  const intentCatalog = JSON.stringify(intents.map(intent => ({
+    code: intent.modelCode,
+    description: intent.description,
+  })), null, 2);
+  const rules = additionalRules.trim()
+    ? `\n\nAdditional classification rules:\n${additionalRules.trim()}`
+    : "";
+  return [
+    {
+      content: [
+        "Classify the user input into exactly one configured intent.",
+        "Use fallback only when none of the configured intents match.",
+        "Return matchedCode and a brief reason. Do not return any other fields.",
+        `Configured intents:\n${intentCatalog}\nfallback: no configured intent matches`,
+      ].join("\n\n") + rules,
+      role: "system",
+    },
+    { content: input, role: "user" },
+  ];
 }
 
 function mapLlmResult(
@@ -165,19 +208,23 @@ function mapIntentResult(
   if (!isWorkflowAiIntentExecutionConfigComplete(node.config)) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
   }
-  if (!Value.Check(WorkflowInferenceTemplateResultSchema, result)) {
+  if (!Value.Check(WorkflowInferenceMessageListResultSchema, result)
+    || result.type !== "json"
+    || !Value.Check(WorkflowAiIntentCompletionValueSchema, result.value)) {
     throw inferenceOutputError("AI Intent result failed schema validation");
   }
-  if (result.matchedCode === "fallback") {
+  if (result.value.matchedCode === "fallback") {
     return {
-      output: { matchedIntentDescription: "其他意图", reason: result.reason },
+      output: { matchedIntentDescription: "其他意图", reason: result.value.reason },
       sourceOutletId: "fallback",
     };
   }
-  const intent = node.config.intents.find(item => item.modelCode === result.matchedCode);
-  if (!intent) throw inferenceOutputError(`Unknown AI Intent result code: ${result.matchedCode}`);
+  const intent = node.config.intents.find(item => item.modelCode === result.value.matchedCode);
+  if (!intent) {
+    throw inferenceOutputError(`Unknown AI Intent result code: ${result.value.matchedCode}`);
+  }
   return {
-    output: { matchedIntentDescription: intent.description, reason: result.reason },
+    output: { matchedIntentDescription: intent.description, reason: result.value.reason },
     sourceOutletId: `intent:${intent.id}`,
   };
 }

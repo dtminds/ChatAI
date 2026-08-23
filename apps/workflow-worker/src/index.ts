@@ -48,7 +48,8 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const runtimeReadyNodeKinds: readonly WorkflowNodeKind[] = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS;
   const runtimeReadyInferenceKinds = runtimeReadyNodeKinds.filter(kind =>
     getWorkflowNodeContract(kind).executionClass === "inference");
-  if (runtimeReadyInferenceKinds.some(kind => kind !== "llm")) {
+  const productionInferenceKinds = new Set<WorkflowNodeKind>(["ai-intent", "llm"]);
+  if (runtimeReadyInferenceKinds.some(kind => !productionInferenceKinds.has(kind))) {
     throw new Error(
       `Workflow runtime-ready inference nodes lack a production adapter: ${runtimeReadyInferenceKinds.join(", ")}`,
     );

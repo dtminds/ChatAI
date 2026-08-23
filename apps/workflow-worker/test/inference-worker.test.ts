@@ -101,7 +101,7 @@ describe("workflow inference worker", () => {
 
     const malformed = await createWaitingJob();
     const result = await processWorkflowInferenceBatch({
-      adapter: { execute: async () => ({ bad: true }) as never },
+      adapter: { execute: async () => null as never },
       heartbeatIntervalMs: 10_000,
       leaseDurationMs: 60_000,
       leaseOwner: "inference-worker-1",
@@ -117,10 +117,13 @@ describe("workflow inference worker", () => {
       .resolves.toMatchObject({ errorCode: "WORKFLOW_INFERENCE_OUTPUT_INVALID", status: "failed" });
   });
 
-  it("rejects a valid result shape that belongs to the other inference request kind", async () => {
+  it("rejects a valid result shape that does not match the requested response format", async () => {
     const wrongKind = await createWaitingJob();
     await processWorkflowInferenceBatch({
-      adapter: { execute: async () => ({ matchedCode: "fallback", reason: "wrong result kind" }) },
+      adapter: { execute: async () => ({
+        type: "json",
+        value: { matchedCode: "fallback", reason: "wrong result type" },
+      }) },
       heartbeatIntervalMs: 10_000,
       leaseDurationMs: 60_000,
       leaseOwner: "inference-worker-1",
@@ -169,7 +172,10 @@ describe("workflow inference worker", () => {
     {
       expectedNodeId: "refund",
       expectedOutput: { matchedIntentDescription: "咨询退款", reason: "用户询问退款" },
-      javaResult: { matchedCode: "I1", reason: "用户询问退款" } as const,
+      javaResult: {
+        type: "json",
+        value: { matchedCode: "I1", reason: "用户询问退款" },
+      } as const,
       nodeKind: "ai-intent" as const,
     },
   ])("resumes one $nodeKind Task after its durable Java job succeeds", async ({

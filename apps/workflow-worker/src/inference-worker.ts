@@ -1,6 +1,5 @@
 import {
   WorkflowInferenceMessageListResultSchema,
-  WorkflowInferenceTemplateResultSchema,
 } from "@chatai/contracts";
 import {
   assertWorkflowRuntimeValue,
@@ -61,15 +60,18 @@ export async function processWorkflowInferenceBatch(input: {
           signal: controller.signal,
           uid: job.uid,
         }), controller.signal);
-      const resultSchema = job.payload.kind === "message-list"
-        ? WorkflowInferenceMessageListResultSchema
-        : WorkflowInferenceTemplateResultSchema;
-      if (!Value.Check(resultSchema, output)) {
+      const resultSchemaMatches = Value.Check(WorkflowInferenceMessageListResultSchema, output);
+      const resultTypeMatches = resultSchemaMatches && (
+        job.payload.responseFormat.type === "json"
+          ? output.type === "json"
+          : output.type === "text"
+      );
+      if (!resultSchemaMatches || !resultTypeMatches) {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
           "WORKFLOW_INFERENCE_OUTPUT_INVALID",
           "返回结果异常，流程已停止",
-          { diagnosticMessage: `Provider inference result did not match ${job.payload.kind}` },
+          { diagnosticMessage: "Provider inference result did not match the requested response format" },
         );
       }
       if (controller.signal.aborted || now() >= job.deadlineAt) {

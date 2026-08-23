@@ -84,6 +84,47 @@ describe("VolcengineChatCompletionAdapter", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("uses a direct endpoint target without resolving the model catalog", async () => {
+    const { db, query } = createProductionDatabase([]);
+    const modelResolver = vi.fn();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        matchedCode: "I1",
+        reason: "matched",
+      }) } }],
+    }), { status: 200 }));
+    const adapter = new VolcengineChatCompletionAdapter(
+      db,
+      "secret",
+      fetchImpl,
+      modelResolver,
+    );
+
+    await expect(adapter.execute(request({
+      modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
+      reasoningEffort: "low",
+      responseFormat: {
+        fields: [
+          { description: "Intent code", name: "matchedCode", type: "string" },
+          { description: "Reason", name: "reason", type: "string" },
+        ],
+        type: "json",
+      },
+    }))).resolves.toEqual({
+      type: "json",
+      value: { matchedCode: "I1", reason: "matched" },
+    });
+
+    expect(query).not.toHaveBeenCalled();
+    expect(modelResolver).not.toHaveBeenCalled();
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      model: "ep-20260227145914-nxcmn",
+      reasoning_effort: "low",
+      thinking: { type: "enabled" },
+    });
+  });
+
   it("resolves the active platform model and sends the endpoint with provider controls", async () => {
     const fetchImpl = vi.fn(async (_url: string, init: RequestInit) =>
       new Response(JSON.stringify({

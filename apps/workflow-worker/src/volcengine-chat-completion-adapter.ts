@@ -15,6 +15,7 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_COMPLETION_TOKENS = 4096;
 
 type ModelRow = { endpoint: string; model: string };
+type ResolvedModelTarget = { endpoint: string; model?: string };
 type ModelResolver = (modelId: string) => Promise<ModelRow | undefined>;
 type ProviderDiagnosticsLogger = {
   info(value: unknown, message?: string): void;
@@ -101,18 +102,21 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     return { type: "json", value: value as Record<string, boolean | number | string> };
   }
 
-  private logProviderCompletion(model: ModelRow, completion: ProviderCompletion) {
+  private logProviderCompletion(model: ResolvedModelTarget, completion: ProviderCompletion) {
     this.logger?.info({
       event: "workflow.inference.provider.completed",
       ...(completion.finishReason ? { finishReason: completion.finishReason } : {}),
       ...(completion.requestId ? { providerRequestId: completion.requestId } : {}),
       endpoint: model.endpoint,
-      model: model.model,
+      ...(model.model ? { model: model.model } : {}),
       ...(completion.usage ? { usage: completion.usage } : {}),
     }, "workflow inference provider completed");
   }
 
   private async resolveModel(payload: WorkflowInferenceMessageListRequest) {
+    if (payload.modelTarget.kind === "endpoint") {
+      return { endpoint: payload.modelTarget.endpointId };
+    }
     const modelId = Number(payload.modelTarget.modelId);
     if (!Number.isSafeInteger(modelId) || modelId <= 0) {
       throw terminal("WORKFLOW_INFERENCE_MODEL_INVALID", "模型配置不可用");

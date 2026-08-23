@@ -16,9 +16,15 @@ import {
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -32,7 +38,6 @@ import {
   getAvailableIntentInputOutputsForNode,
   resolveWorkflowVariable,
 } from "../../workflow-variables";
-import { getWorkflowOutputTypeLabel } from "../../workflow-node-outputs";
 import { getAiIntentStatus, normalizeAiIntentInputSelector } from "./config";
 import {
   cancelWorkflowAiIntentTestAttempt,
@@ -156,32 +161,33 @@ function AiIntentTestWorkspaceContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-4">
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">试运行输入</h3>
-          <Badge variant="outline">模拟运行</Badge>
-        </div>
-
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium">输入</span>
-            {inputType ? (
-              <Badge className="rounded-md px-1.5 py-0.5" variant="secondary">
-                {getWorkflowOutputTypeLabel(inputType)}
-              </Badge>
+            {isMessagesType(inputType) ? (
+              <Button
+                disabled={messageRows.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT}
+                onClick={() => {
+                  setMessageRows((current) => current.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT
+                    ? current
+                    : [
+                      ...current,
+                      { key: nextMessageRowKey.current++, role: "customer", text: "" },
+                    ]);
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                添加消息
+              </Button>
             ) : null}
           </div>
           {isMessagesType(inputType) ? (
             <AiIntentTestMessageEditor
               messages={messageRows}
               onChange={setMessageRows}
-              onCreateMessage={() => {
-                setMessageRows((current) => current.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT
-                  ? current
-                  : [
-                    ...current,
-                    { key: nextMessageRowKey.current++, role: "customer", text: "" },
-                  ]);
-              }}
             />
           ) : (
             <Textarea
@@ -254,80 +260,60 @@ function AiIntentTestWorkspaceContent({
 function AiIntentTestMessageEditor({
   messages,
   onChange,
-  onCreateMessage,
 }: {
   messages: AiIntentTestMessageRow[];
   onChange: (messages: AiIntentTestMessageRow[]) => void;
-  onCreateMessage: () => void;
 }) {
   const updateMessage = (key: number, patch: Partial<Pick<AiIntentTestMessageRow, "role" | "text">>) => {
     onChange(messages.map((message) => message.key === key ? { ...message, ...patch } : message));
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {messages.map((message, index) => (
         <div
           aria-label={`消息 ${index + 1}`}
-          className="space-y-2 rounded-lg border bg-background p-3"
+          className="flex items-center gap-2"
           key={message.key}
           role="group"
         >
-          <div className="flex items-center justify-between gap-3">
-            <SegmentedControl
+          <Select
+            onValueChange={(role) => {
+              if (role === "customer" || role === "agent") updateMessage(message.key, { role });
+            }}
+            value={message.role}
+          >
+            <SelectTrigger
               aria-label={`消息 ${index + 1} 角色`}
-              className="h-8 rounded-full p-0.5"
-              onValueChange={(role) => {
-                if (role === "customer" || role === "agent") updateMessage(message.key, { role });
-              }}
-              type="single"
-              value={message.role}
+              className="h-9 w-[5.5rem] shrink-0 px-3 text-[13px]"
             >
-              <SegmentedControlItem
-                className="h-6 w-auto rounded-full px-3 text-xs font-medium"
-                value="customer"
-              >
-                客户
-              </SegmentedControlItem>
-              <SegmentedControlItem
-                className="h-6 w-auto rounded-full px-3 text-xs font-medium"
-                value="agent"
-              >
-                客服
-              </SegmentedControlItem>
-            </SegmentedControl>
-            <Button
-              aria-label={`删除消息 ${index + 1}`}
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={() => onChange(messages.filter((item) => item.key !== message.key))}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
-            </Button>
-          </div>
-          <Textarea
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="customer">客户</SelectItem>
+              <SelectItem value="agent">客服</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
             aria-label={`消息 ${index + 1} 内容`}
-            className="min-h-20 resize-none text-sm"
+            className="h-9 min-w-0 flex-1 text-[13px]"
             maxLength={AI_INTENT_TEST_MESSAGE_TEXT_MAX_LENGTH}
             onChange={(event) => updateMessage(message.key, { text: event.target.value })}
             placeholder="请输入消息内容"
             value={message.text}
           />
+          <Button
+            aria-label={`删除消息 ${index + 1}`}
+            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+            onClick={() => onChange(messages.filter((item) => item.key !== message.key))}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
+          </Button>
         </div>
       ))}
-      <Button
-        className="w-full"
-        disabled={messages.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT}
-        onClick={onCreateMessage}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-        添加消息
-      </Button>
     </div>
   );
 }

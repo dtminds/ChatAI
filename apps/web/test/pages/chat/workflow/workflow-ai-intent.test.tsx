@@ -343,7 +343,8 @@ describe("workflow AI intent", () => {
     const addMessage = within(workspace).getByRole("button", { name: "添加消息" });
     await user.click(addMessage);
     const secondMessage = within(workspace).getByRole("group", { name: "消息 2" });
-    await user.click(within(secondMessage).getByRole("radio", { name: "客服" }));
+    await user.click(within(secondMessage).getByRole("combobox", { name: "消息 2 角色" }));
+    await user.click(screen.getByRole("option", { name: "客服" }));
     await user.type(
       within(secondMessage).getByRole("textbox", { name: "消息 2 内容" }),
       "正在为您查询",

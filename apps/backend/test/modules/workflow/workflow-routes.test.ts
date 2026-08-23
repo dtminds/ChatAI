@@ -242,6 +242,42 @@ describe("workflow routes", () => {
     expect(response.json().error.code).toBe("WORKFLOW_LLM_TEST_INPUT_INVALID");
   });
 
+  it("creates and reads an AI Intent test Attempt through its dedicated endpoint", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: {
+        draft: withAiIntentNode(created.draft),
+        expectedDraftVersion: created.draftVersion,
+      },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const started = await app.inject({
+      method: "POST",
+      payload: { expectedDraftVersion: saved.draftVersion, inputValue: [] },
+      url: `/api/server/workflows/${created.id}/nodes/ai-intent-1/ai-intent-test-attempts`,
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json().data).toMatchObject({
+      inputValues: { inputValue: [] },
+      nodeId: "ai-intent-1",
+      status: "running",
+    });
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${created.id}/nodes/ai-intent-1/ai-intent-test-attempts/${started.json().data.attemptId}`,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().data.attemptId).toBe(started.json().data.attemptId);
+  });
+
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");
 
@@ -477,6 +513,62 @@ describe("workflow routes", () => {
       nodes: [
         ...draft.nodes.filter(node => node.id !== "end"),
         llmNode,
+        draft.nodes.find(node => node.id === "end"),
+      ],
+    };
+  }
+
+  function withAiIntentNode(
+    draft: { edges: unknown[]; nodes: Array<{ id: string }>; viewport: unknown },
+  ) {
+    const queryNode = {
+      data: {
+        kind: "message-query",
+        label: "消息查询",
+        limit: 10,
+        metric: "最新 10 条消息",
+        schemaVersion: 1,
+        status: "ready",
+        take: "latest",
+        timeRange: {
+          end: ["current-node-lifecycle", "enteredAt"],
+          mode: "dynamic",
+          start: ["trigger", "occurredAt"],
+        },
+        title: "消息查询",
+      },
+      id: "message-query-1",
+      position: { x: 180, y: 240 },
+      type: "workflowNode",
+    };
+    const intentNode = {
+      data: {
+        advancedEnabled: false,
+        inputSelector: ["node", "message-query-1", "messages"],
+        intents: [{ description: "咨询退款", id: "refund" }],
+        kind: "ai-intent",
+        label: "意图识别",
+        metric: "",
+        prompt: "",
+        schemaVersion: 1,
+        status: "ready",
+        title: "意图识别",
+      },
+      id: "ai-intent-1",
+      position: { x: 360, y: 240 },
+      type: "workflowNode",
+    };
+    return {
+      ...draft,
+      edges: [
+        { id: "edge-start-query", source: "start", target: queryNode.id, type: "workflowEdge" },
+        { id: "edge-query-intent", source: queryNode.id, target: intentNode.id, type: "workflowEdge" },
+        { id: "edge-intent-end", source: intentNode.id, sourceHandle: "fallback", target: "end", type: "workflowEdge" },
+      ],
+      nodes: [
+        ...draft.nodes.filter(node => node.id !== "end"),
+        queryNode,
+        intentNode,
         draft.nodes.find(node => node.id === "end"),
       ],
     };

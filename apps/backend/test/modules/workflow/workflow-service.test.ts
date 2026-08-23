@@ -122,6 +122,86 @@ describe("WorkflowService", () => {
     expect(attempts.attempts).toHaveLength(0);
   });
 
+  it("creates AI Intent test Attempts from the saved selector contract", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withAiIntentNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const inputValue = [{
+      id: 101,
+      parts: [
+        { text: "看下这个", type: "text" as const },
+        { type: "image" as const, url: "https://example.com/order.png" },
+      ],
+      role: "customer" as const,
+    }];
+
+    const attempt = await service.createAiIntentTestAttempt(
+      operator,
+      created.id,
+      "ai-intent-1",
+      { expectedDraftVersion: saved.draftVersion, inputValue },
+    );
+
+    expect(attempt).toMatchObject({
+      inputValues: { inputValue },
+      nodeId: "ai-intent-1",
+      status: "running",
+    });
+    expect(attempts.attempts[0]).toMatchObject({
+      node: { id: "ai-intent-1", kind: "ai-intent" },
+      payload: {
+        messageList: [
+          { role: "system" },
+          {
+            content: [
+              { text: "用户: 看下这个", type: "text" },
+              { type: "image", url: "https://example.com/order.png" },
+            ],
+            role: "user",
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects stale or source-type-mismatched AI Intent test inputs", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withAiIntentNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "ai-intent-1", {
+      expectedDraftVersion: saved.draftVersion - 1,
+      inputValue: [],
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_CONFLICT", statusCode: 409 });
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "ai-intent-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValue: "客户端不能把消息列表声明成文本",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_AI_INTENT_TEST_INPUT_INVALID",
+      statusCode: 400,
+    });
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "start", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValue: [],
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_AI_INTENT_TEST_NODE_INVALID",
+      statusCode: 400,
+    });
+    expect(attempts.attempts).toHaveLength(0);
+  });
+
   it("isolates LLM test Attempts by tenant, Workflow, and node", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {

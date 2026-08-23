@@ -1,10 +1,12 @@
 import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  createWorkflowAiIntentInferenceRequest,
   createWorkflowLlmInferenceRequest,
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
   resolveWorkflowInferenceWithoutProvider,
+  resolveWorkflowAiIntentTestWithoutProvider,
   type WorkflowRunRecord,
 } from "../src/index.js";
 
@@ -268,6 +270,36 @@ describe("workflow inference payloads", () => {
     expect(resolveWorkflowInferenceWithoutProvider(node, emptyRun)).toEqual({
       output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
       sourceOutletId: "fallback",
+    });
+
+    expect(resolveWorkflowAiIntentTestWithoutProvider(node, [])).toEqual({
+      output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+      result: { type: "json", value: { matchedCode: "fallback", reason: "输入为空" } },
+      sourceOutletId: "fallback",
+    });
+    expect(resolveWorkflowAiIntentTestWithoutProvider(node, [{
+      id: 101,
+      parts: [{ type: "image", url: "/media/order.png" }],
+      role: "customer",
+    }])).toBeNull();
+    expect(createWorkflowAiIntentInferenceRequest(node, [{
+      id: 101,
+      parts: [
+        { text: "看下这个", type: "text" },
+        { type: "image", url: "/media/order.png" },
+      ],
+      role: "customer",
+    }])).toMatchObject({
+      messageList: [
+        { role: "system" },
+        {
+          content: [
+            { text: "用户: 看下这个", type: "text" },
+            { type: "image", url: "/media/order.png" },
+          ],
+          role: "user",
+        },
+      ],
     });
   });
 

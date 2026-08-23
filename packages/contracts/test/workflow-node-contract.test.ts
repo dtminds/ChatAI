@@ -36,7 +36,13 @@ import {
 
 const draftConfigs = {
   agent: {},
-  "ai-collect": {},
+  "ai-collect": {
+    fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
+    inputSelector: undefined,
+    mode: "agent-assisted",
+    openingMessage: "",
+    timeout: { duration: 24, unit: "hour" },
+  },
   "ai-intent": {
     advancedEnabled: false,
     inputSelector: ["node", "message-query", "messages"],
@@ -173,9 +179,9 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual([]);
+      .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
+      .toEqual(["agent", "coupon", "order-query"]);
   });
 
   it("keeps Ratio Split drafts editable while enforcing the published allocation contract", () => {
@@ -787,6 +793,41 @@ describe("workflow node contracts", () => {
     })).toBe(false);
   });
 
+  it("keeps incomplete AI Collect drafts editable and enforces execution boundaries", () => {
+    const smartConfig = draftConfigs["ai-collect"];
+    const extractConfig = {
+      fields: smartConfig.fields,
+      inputSelector: ["node", "message-query", "messages"],
+      mode: "extract-once",
+    };
+
+    expect(isWorkflowNodeDraftConfig("ai-collect", {
+      ...smartConfig,
+      fields: [{ ...smartConfig.fields[0], instruction: "", name: "" }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", smartConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", extractConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...extractConfig,
+      inputSelector: undefined,
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...smartConfig,
+      fields: [
+        ...smartConfig.fields,
+        { ...smartConfig.fields[0], id: "field-phone" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...smartConfig,
+      timeout: { duration: 49, unit: "hour" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...smartConfig,
+      timeout: { duration: 1, unit: "day" },
+    })).toBe(false);
+  });
+
   it("describes public inference and message collection outputs centrally", () => {
     expect(getWorkflowNodeOutputContracts("llm", draftConfigs.llm)).toEqual([
       {
@@ -804,6 +845,18 @@ describe("workflow node contracts", () => {
       {
         key: "reason",
         usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+    ]);
+    expect(getWorkflowNodeOutputContracts("ai-collect", {
+      ...draftConfigs["ai-collect"],
+      status: "ready",
+      title: "资料收集",
+    })).toEqual([
+      {
+        availableOnSourceOutlets: ["completed"],
+        key: "field-order",
+        usages: ["variable", "message-content"],
         valueType: { kind: "string" },
       },
     ]);

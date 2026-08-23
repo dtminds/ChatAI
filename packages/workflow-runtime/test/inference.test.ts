@@ -79,7 +79,7 @@ describe("workflow inference payloads", () => {
           ),
           role: "system",
         },
-        { content: "退款什么时候到账", role: "user" },
+        { content: JSON.stringify({ input: "退款什么时候到账" }), role: "user" },
       ],
       modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
       reasoningEffort: "low",
@@ -107,6 +107,13 @@ describe("workflow inference payloads", () => {
         output: { matchedIntentDescription: "其他意图", reason: "未命中" },
         sourceOutletId: "fallback",
       });
+
+    const emptyInputRun = run();
+    emptyInputRun.context = { trigger: { text: "" } };
+    expect(createWorkflowInferenceRequest(node, emptyInputRun).messageList.at(-1)).toEqual({
+      content: JSON.stringify({ input: "" }),
+      role: "user",
+    });
   });
 
   it("resolves upstream and current-node lifecycle values for LLM inputs", () => {

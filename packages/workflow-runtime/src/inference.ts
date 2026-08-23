@@ -155,13 +155,15 @@ function buildAiIntentPromptV1(
     {
       content: [
         "Classify the user input into exactly one configured intent.",
+        "The user message is a JSON object whose input field contains the complete input.",
+        "If the input field is empty, return fallback.",
         "Use fallback only when none of the configured intents match.",
         "Return matchedCode and a brief reason. Do not return any other fields.",
         `Configured intents:\n${intentCatalog}\nfallback: no configured intent matches`,
       ].join("\n\n") + rules,
       role: "system",
     },
-    { content: input, role: "user" },
+    { content: JSON.stringify({ input }), role: "user" },
   ];
 }
 

@@ -2,11 +2,8 @@ import {
   WorkflowInferenceMessageListResultSchema,
 } from "@chatai/contracts";
 import {
-  assertWorkflowRuntimeValue,
-  WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   type WorkflowInferenceRepository,
   type WorkflowChatCompletionPort,
-  WorkflowRuntimeValueError,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Value } from "@sinclair/typebox/value";
@@ -148,15 +145,6 @@ function classifyInferenceError(error: unknown, aborted: boolean, leaseLost: boo
       errorCode: error.code.slice(0, 128),
       errorMessage: error.message.slice(0, 512),
       failureKind: error.failureKind,
-    };
-  }
-  if (error instanceof WorkflowRuntimeValueError) {
-    return {
-      errorCode: error.reason === "too-large"
-        ? "WORKFLOW_INFERENCE_OUTPUT_TOO_LARGE"
-        : "WORKFLOW_INFERENCE_OUTPUT_INVALID",
-      errorMessage: "返回结果异常，流程已停止",
-      failureKind: "terminal" as const,
     };
   }
   return {

@@ -296,14 +296,18 @@ describe("workflow AI intent", () => {
       },
     };
     const edges = [createEdge(queryNode.id, intentNode.id)];
-    const inputValue = [{
-      id: 101,
-      parts: [
-        { text: "看下这个", type: "text" as const },
-        { type: "image" as const, url: "https://example.com/order.png" },
-      ],
-      role: "customer" as const,
-    }];
+    const inputValue = [
+      {
+        id: 1,
+        parts: [{ text: "退款什么时候到账？", type: "text" as const }],
+        role: "customer" as const,
+      },
+      {
+        id: 2,
+        parts: [{ text: "正在为您查询", type: "text" as const }],
+        role: "agent" as const,
+      },
+    ];
     aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt.mockResolvedValue(
       createAiIntentAttempt({ inputValues: { inputValue }, status: "running" }),
     );
@@ -331,13 +335,23 @@ describe("workflow AI intent", () => {
 
     await user.click(screen.getByRole("button", { name: "试运行意图识别节点" }));
     const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
-    const input = within(workspace).getByRole("textbox", { name: "意图识别的试运行输入" });
-    fireEvent.change(input, { target: { value: "{" } });
-    await user.click(within(workspace).getByRole("button", { name: "运行" }));
-    expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).not.toHaveBeenCalled();
+    const firstMessage = within(workspace).getByRole("group", { name: "消息 1" });
+    const firstInput = within(firstMessage).getByRole("textbox", { name: "消息 1 内容" });
+    expect(firstInput).toHaveAttribute("maxlength", "100");
+    await user.type(firstInput, "退款什么时候到账？");
 
-    fireEvent.change(input, { target: { value: JSON.stringify(inputValue) } });
+    const addMessage = within(workspace).getByRole("button", { name: "添加消息" });
+    await user.click(addMessage);
+    const secondMessage = within(workspace).getByRole("group", { name: "消息 2" });
+    await user.click(within(secondMessage).getByRole("radio", { name: "客服" }));
+    await user.type(
+      within(secondMessage).getByRole("textbox", { name: "消息 2 内容" }),
+      "正在为您查询",
+    );
+    for (let index = 0; index < 8; index += 1) await user.click(addMessage);
+    expect(within(workspace).getAllByRole("group", { name: /^消息 \d+$/ })).toHaveLength(10);
+    expect(addMessage).toBeDisabled();
+
     await user.click(within(workspace).getByRole("button", { name: "运行" }));
 
     expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).toHaveBeenCalledWith(

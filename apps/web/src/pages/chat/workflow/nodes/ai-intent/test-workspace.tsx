@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   WorkflowAiIntentTestAttemptCreateRequest,
   WorkflowInferenceTestAttempt,
@@ -7,15 +7,18 @@ import type {
   WorkflowOutputValueType,
 } from "@chatai/contracts";
 import {
+  Add01Icon,
   AlertCircleIcon,
   CheckmarkCircle02Icon,
   Clock01Icon,
+  Delete01Icon,
   PlayIcon,
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -42,6 +45,20 @@ import {
   WorkflowTestAttemptCloseDialog,
   WorkflowTestWorkspaceTrigger,
 } from "../test-attempt-controller";
+
+const AI_INTENT_TEST_MESSAGE_MAX_COUNT = 10;
+const AI_INTENT_TEST_MESSAGE_TEXT_MAX_LENGTH = 100;
+
+type AiIntentTestMessageRole = "agent" | "customer";
+type AiIntentTestMessageRow = {
+  key: number;
+  role: AiIntentTestMessageRole;
+  text: string;
+};
+
+function createInitialMessageRows(): AiIntentTestMessageRow[] {
+  return [{ key: 1, role: "customer", text: "" }];
+}
 
 export function AiIntentTestWorkspaceTrigger({ nodeId }: { nodeId: string }) {
   return <WorkflowTestWorkspaceTrigger ariaLabel="试运行意图识别节点" nodeId={nodeId} />;
@@ -94,7 +111,9 @@ function AiIntentTestWorkspaceContent({
     : undefined;
   const inputType = inputVariable?.valueType;
   const inputKey = inputType ? JSON.stringify(inputType) : "missing";
-  const [rawValue, setRawValue] = useState(() => getInitialRawValue(inputType));
+  const [rawValue, setRawValue] = useState("");
+  const [messageRows, setMessageRows] = useState(createInitialMessageRows);
+  const nextMessageRowKey = useRef(2);
   const [inputError, setInputError] = useState<string | null>(null);
   const getAttempt = useCallback((attemptId: string) => getWorkflowAiIntentTestAttempt(
     testContext.workflowId,
@@ -111,7 +130,9 @@ function AiIntentTestWorkspaceContent({
   const draftSaved = testContext.saveState === "saved";
 
   useEffect(() => {
-    setRawValue(getInitialRawValue(inputType));
+    setRawValue("");
+    setMessageRows(createInitialMessageRows());
+    nextMessageRowKey.current = 2;
     setInputError(null);
   }, [inputKey]);
 
@@ -119,10 +140,12 @@ function AiIntentTestWorkspaceContent({
     if (controller.running || controller.stopping || !draftSaved || !configReady || !inputType) {
       return;
     }
-    const parsed = parseAiIntentTestInput(rawValue, inputType);
-    setInputError(parsed.error);
-    if (parsed.value === undefined) return;
-    const inputValue = parsed.value;
+    const inputValue = getAiIntentTestInputValue(rawValue, messageRows, inputType);
+    if (inputValue === undefined) {
+      setInputError("当前输入类型不支持试运行");
+      return;
+    }
+    setInputError(null);
     await controller.startAttempt(() => createWorkflowAiIntentTestAttempt(
       testContext.workflowId,
       node.id,
@@ -147,20 +170,32 @@ function AiIntentTestWorkspaceContent({
               </Badge>
             ) : null}
           </div>
-          <Textarea
-            aria-invalid={Boolean(inputError)}
-            aria-label="意图识别的试运行输入"
-            className={cn(
-              "min-h-28",
-              isMessagesType(inputType) && "font-mono text-xs",
-            )}
-            onChange={event => {
-              setRawValue(event.target.value);
-              setInputError(null);
-            }}
-            placeholder={isMessagesType(inputType) ? "[]" : "请输入内容"}
-            value={rawValue}
-          />
+          {isMessagesType(inputType) ? (
+            <AiIntentTestMessageEditor
+              messages={messageRows}
+              onChange={setMessageRows}
+              onCreateMessage={() => {
+                setMessageRows((current) => current.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT
+                  ? current
+                  : [
+                    ...current,
+                    { key: nextMessageRowKey.current++, role: "customer", text: "" },
+                  ]);
+              }}
+            />
+          ) : (
+            <Textarea
+              aria-invalid={Boolean(inputError)}
+              aria-label="意图识别的试运行输入"
+              className="min-h-28"
+              onChange={event => {
+                setRawValue(event.target.value);
+                setInputError(null);
+              }}
+              placeholder="请输入内容"
+              value={rawValue}
+            />
+          )}
           {inputError ? <p className="text-xs text-destructive" role="alert">{inputError}</p> : null}
         </div>
 
@@ -212,6 +247,87 @@ function AiIntentTestWorkspaceContent({
         )}
       </footer>
       <WorkflowTestAttemptCloseDialog controller={controller} />
+    </div>
+  );
+}
+
+function AiIntentTestMessageEditor({
+  messages,
+  onChange,
+  onCreateMessage,
+}: {
+  messages: AiIntentTestMessageRow[];
+  onChange: (messages: AiIntentTestMessageRow[]) => void;
+  onCreateMessage: () => void;
+}) {
+  const updateMessage = (key: number, patch: Partial<Pick<AiIntentTestMessageRow, "role" | "text">>) => {
+    onChange(messages.map((message) => message.key === key ? { ...message, ...patch } : message));
+  };
+
+  return (
+    <div className="space-y-3">
+      {messages.map((message, index) => (
+        <div
+          aria-label={`消息 ${index + 1}`}
+          className="space-y-2 rounded-lg border bg-background p-3"
+          key={message.key}
+          role="group"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <SegmentedControl
+              aria-label={`消息 ${index + 1} 角色`}
+              className="h-8 rounded-full p-0.5"
+              onValueChange={(role) => {
+                if (role === "customer" || role === "agent") updateMessage(message.key, { role });
+              }}
+              type="single"
+              value={message.role}
+            >
+              <SegmentedControlItem
+                className="h-6 w-auto rounded-full px-3 text-xs font-medium"
+                value="customer"
+              >
+                客户
+              </SegmentedControlItem>
+              <SegmentedControlItem
+                className="h-6 w-auto rounded-full px-3 text-xs font-medium"
+                value="agent"
+              >
+                客服
+              </SegmentedControlItem>
+            </SegmentedControl>
+            <Button
+              aria-label={`删除消息 ${index + 1}`}
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={() => onChange(messages.filter((item) => item.key !== message.key))}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
+            </Button>
+          </div>
+          <Textarea
+            aria-label={`消息 ${index + 1} 内容`}
+            className="min-h-20 resize-none text-sm"
+            maxLength={AI_INTENT_TEST_MESSAGE_TEXT_MAX_LENGTH}
+            onChange={(event) => updateMessage(message.key, { text: event.target.value })}
+            placeholder="请输入消息内容"
+            value={message.text}
+          />
+        </div>
+      ))}
+      <Button
+        className="w-full"
+        disabled={messages.length >= AI_INTENT_TEST_MESSAGE_MAX_COUNT}
+        onClick={onCreateMessage}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+        添加消息
+      </Button>
     </div>
   );
 }
@@ -294,26 +410,20 @@ function ResultState({
   );
 }
 
-function getInitialRawValue(valueType: WorkflowOutputValueType | undefined) {
-  return isMessagesType(valueType) ? "[]" : "";
-}
-
-function parseAiIntentTestInput(
+function getAiIntentTestInputValue(
   rawValue: string,
+  messageRows: AiIntentTestMessageRow[],
   valueType: WorkflowOutputValueType,
-): {
-  error: string | null;
-  value: WorkflowAiIntentTestAttemptCreateRequest["inputValue"] | undefined;
-} {
-  if (valueType.kind === "string") return { error: null, value: rawValue };
-  if (!isMessagesType(valueType)) return { error: "当前输入类型不支持试运行", value: undefined };
-  try {
-    const parsed: unknown = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) return { error: "请输入消息列表 JSON", value: undefined };
-    return { error: null, value: parsed as WorkflowMessagesV1 };
-  } catch {
-    return { error: "请输入有效 JSON", value: undefined };
-  }
+): WorkflowAiIntentTestAttemptCreateRequest["inputValue"] | undefined {
+  if (valueType.kind === "string") return rawValue;
+  if (!isMessagesType(valueType)) return undefined;
+  return messageRows
+    .filter((message) => message.text.trim().length > 0)
+    .map((message, index) => ({
+      id: index + 1,
+      parts: [{ text: message.text, type: "text" as const }],
+      role: message.role,
+    })) satisfies WorkflowMessagesV1;
 }
 
 function isMessagesType(

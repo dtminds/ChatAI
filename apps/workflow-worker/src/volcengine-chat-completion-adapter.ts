@@ -11,10 +11,12 @@ import type {
 } from "@chatai/workflow-runtime";
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+const DEFAULT_PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_COMPLETION_TOKENS = 4096;
 
 type ModelRow = { endpoint: string; model: string };
+type ResolvedModelTarget = { endpoint: string; model?: string };
 type ModelResolver = (modelId: string) => Promise<ModelRow | undefined>;
 type ProviderDiagnosticsLogger = {
   info(value: unknown, message?: string): void;
@@ -27,6 +29,8 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly modelResolver?: ModelResolver,
     private readonly logger?: ProviderDiagnosticsLogger,
+    private readonly playableMediaHost = process.env.PLAYABLE_MEDIA_HOST?.trim()
+      || DEFAULT_PLAYABLE_MEDIA_HOST,
   ) {
     if (!apiKey.trim()) throw new Error("VOLCENGINE_ARK_API_KEY is required");
   }
@@ -44,7 +48,11 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
           Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(createRequestBody(request.payload, model.endpoint)),
+        body: JSON.stringify(createRequestBody(
+          request.payload,
+          model.endpoint,
+          this.playableMediaHost,
+        )),
         signal: request.signal,
       });
     } catch (error) {
@@ -101,18 +109,21 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     return { type: "json", value: value as Record<string, boolean | number | string> };
   }
 
-  private logProviderCompletion(model: ModelRow, completion: ProviderCompletion) {
+  private logProviderCompletion(model: ResolvedModelTarget, completion: ProviderCompletion) {
     this.logger?.info({
       event: "workflow.inference.provider.completed",
       ...(completion.finishReason ? { finishReason: completion.finishReason } : {}),
       ...(completion.requestId ? { providerRequestId: completion.requestId } : {}),
       endpoint: model.endpoint,
-      model: model.model,
+      ...(model.model ? { model: model.model } : {}),
       ...(completion.usage ? { usage: completion.usage } : {}),
     }, "workflow inference provider completed");
   }
 
   private async resolveModel(payload: WorkflowInferenceMessageListRequest) {
+    if (payload.modelTarget.kind === "endpoint") {
+      return { endpoint: payload.modelTarget.endpointId };
+    }
     const modelId = Number(payload.modelTarget.modelId);
     if (!Number.isSafeInteger(modelId) || modelId <= 0) {
       throw terminal("WORKFLOW_INFERENCE_MODEL_INVALID", "模型配置不可用");
@@ -143,13 +154,32 @@ export function createVolcengineChatCompletionAdapter(
 ) {
   const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
   if (!apiKey) throw new Error("VOLCENGINE_ARK_API_KEY is required for Workflow inference");
-  return new VolcengineChatCompletionAdapter(database, apiKey, fetch, undefined, logger);
+  return new VolcengineChatCompletionAdapter(
+    database,
+    apiKey,
+    fetch,
+    undefined,
+    logger,
+    env.PLAYABLE_MEDIA_HOST?.trim() || DEFAULT_PLAYABLE_MEDIA_HOST,
+  );
 }
 
-function createRequestBody(payload: WorkflowInferenceMessageListRequest, endpoint: string) {
+function createRequestBody(
+  payload: WorkflowInferenceMessageListRequest,
+  endpoint: string,
+  playableMediaHost: string,
+) {
   const body: Record<string, unknown> = {
     max_completion_tokens: MAX_COMPLETION_TOKENS,
-    messages: payload.messageList,
+    messages: payload.messageList.map(message => ({
+      ...message,
+      content: message.content.map(part => {
+        if (part.type === "text") return part;
+        if (part.type === "video") return { text: "[视频]", type: "text" };
+        const url = resolveProviderMediaUrl(part.url, playableMediaHost);
+        return { image_url: { url }, type: "image_url" };
+      }),
+    })),
     model: endpoint,
     reasoning_effort: payload.reasoningEffort,
     thinking: { type: payload.reasoningEffort === "minimal" ? "disabled" : "enabled" },
@@ -173,6 +203,25 @@ function createRequestBody(payload: WorkflowInferenceMessageListRequest, endpoin
     };
   }
   return body;
+}
+
+function resolveProviderMediaUrl(value: string, playableMediaHost: string) {
+  const url = value.trim();
+  let parsed: URL | undefined;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // Platform media paths are resolved just before the Provider call.
+  }
+  if (parsed) {
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return url;
+    throw terminal("WORKFLOW_INFERENCE_INPUT_INVALID", "执行所需数据不可用，流程已停止");
+  }
+  const host = playableMediaHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (!url || !host) {
+    throw terminal("WORKFLOW_INFERENCE_INPUT_INVALID", "执行所需数据不可用，流程已停止");
+  }
+  return `https://${host}/${url.replace(/^\/+/, "")}`;
 }
 
 async function readResponseBody(response: Response, signal: AbortSignal) {

@@ -35,7 +35,11 @@ describe("workflow entry event envelope", () => {
     expect(createWorkflowEntryPartitionKey(event({
       eventType: "message.received",
       payload: {
-        messageId: 938271,
+        message: {
+          id: 938271,
+          parts: [{ text: "我想了解一下活动详情", type: "text" }],
+          role: "customer",
+        },
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,

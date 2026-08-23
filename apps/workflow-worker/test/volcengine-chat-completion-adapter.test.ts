@@ -10,7 +10,10 @@ const request = (overrides: Record<string, unknown> = {}) => ({
   executionKey: "workflow:1:llm:1",
   payload: {
     kind: "message-list" as const,
-    messageList: [{ content: "hello", role: "user" as const }],
+    messageList: [{
+      content: [{ text: "hello", type: "text" as const }],
+      role: "user" as const,
+    }],
     modelTarget: { kind: "catalog-model" as const, modelId: "11" },
     reasoningEffort: "minimal" as const,
     responseFormat: { type: "text" as const },
@@ -84,6 +87,47 @@ describe("VolcengineChatCompletionAdapter", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("uses a direct endpoint target without resolving the model catalog", async () => {
+    const { db, query } = createProductionDatabase([]);
+    const modelResolver = vi.fn();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        matchedCode: "I1",
+        reason: "matched",
+      }) } }],
+    }), { status: 200 }));
+    const adapter = new VolcengineChatCompletionAdapter(
+      db,
+      "secret",
+      fetchImpl,
+      modelResolver,
+    );
+
+    await expect(adapter.execute(request({
+      modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
+      reasoningEffort: "low",
+      responseFormat: {
+        fields: [
+          { description: "Intent code", name: "matchedCode", type: "string" },
+          { description: "Reason", name: "reason", type: "string" },
+        ],
+        type: "json",
+      },
+    }))).resolves.toEqual({
+      type: "json",
+      value: { matchedCode: "I1", reason: "matched" },
+    });
+
+    expect(query).not.toHaveBeenCalled();
+    expect(modelResolver).not.toHaveBeenCalled();
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      model: "ep-20260227145914-nxcmn",
+      reasoning_effort: "low",
+      thinking: { type: "enabled" },
+    });
+  });
+
   it("resolves the active platform model and sends the endpoint with provider controls", async () => {
     const fetchImpl = vi.fn(async (_url: string, init: RequestInit) =>
       new Response(JSON.stringify({
@@ -115,6 +159,43 @@ describe("VolcengineChatCompletionAdapter", () => {
       thinking: { type: "disabled" },
     });
     expect(body).not.toHaveProperty("model", "doubao-pro");
+  });
+
+  it("maps ordered media blocks and resolves platform paths at Provider request time", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "answer" } }],
+    }), { status: 200 }));
+    const adapter = new VolcengineChatCompletionAdapter(
+      database,
+      "secret",
+      fetchImpl,
+      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      undefined,
+      "media.example.com",
+    );
+
+    await adapter.execute(request({
+      messageList: [{
+        content: [
+          { text: "看下这个", type: "text" },
+          { type: "image", url: "/audit/error.png" },
+          { text: "怎么处理？", type: "text" },
+          { type: "video", url: "/audit/demo.mp4" },
+        ],
+        role: "system",
+      }],
+    }));
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body.messages).toEqual([{
+      content: [
+        { text: "看下这个", type: "text" },
+        { image_url: { url: "https://media.example.com/audit/error.png" }, type: "image_url" },
+        { text: "怎么处理？", type: "text" },
+        { text: "[视频]", type: "text" },
+      ],
+      role: "system",
+    }]);
   });
 
   it("emits bounded provider diagnostics without prompt or completion content", async () => {

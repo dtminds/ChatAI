@@ -1,12 +1,12 @@
 import {
+  type WorkflowMessage,
+  type WorkflowMessagePart,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryResult,
 } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
-  assertWorkflowRuntimeValue,
-  WORKFLOW_NODE_OUTPUT_MAX_BYTES,
-  WorkflowRuntimeValueError,
+  fitWorkflowMessagesOutput,
   type WorkflowDatabase,
   type WorkflowMessageQueryPort,
   type WorkflowMessageQueryRequest,
@@ -25,16 +25,10 @@ type MessageQueryRow = {
   msgtype: string;
 };
 
-type MessageQueryOutputRow = {
-  content: string;
-  id: number;
-  role: string;
-};
-
 type MessageQueryResultInput = {
   rangeEnd: string;
   rangeStart: string;
-  rows: MessageQueryOutputRow[];
+  rows: WorkflowMessage[];
   take: WorkflowMessageQueryCommand["take"];
 };
 
@@ -191,43 +185,79 @@ function asMessageQueryDatabase(database: Kysely<WorkflowDatabase>) {
 }
 
 export function formatMessageQueryRow(row: MessageQueryRow) {
-  return `${getMessageQueryRole(row.from_type)}: ${readMessageText(row.msgtype, row.content)}`;
+  const message = createWorkflowMessage(row);
+  return `${getMessageQueryRoleLabel(message.role)}: ${message.parts.map(part =>
+    part.type === "text" ? part.text : `[${part.type === "unsupported" ? part.label : part.type === "image" ? "图片" : "视频"}]`
+  ).join("")}`;
 }
 
-function createMessageQueryOutputRow(row: MessageQueryRow): MessageQueryOutputRow {
+function createMessageQueryOutputRow(row: MessageQueryRow) {
+  return createWorkflowMessage(row);
+}
+
+function createWorkflowMessage(row: MessageQueryRow): WorkflowMessage {
   return {
-    content: readMessageText(row.msgtype, row.content),
     id: normalizeMessageId(row.id),
+    parts: readMessageParts(row.msgtype, row.content),
     role: getMessageQueryRole(row.from_type),
   };
 }
 
 function getMessageQueryRole(fromType: number | null) {
   return fromType === 2
-    ? "客户"
+    ? "customer" as const
     : fromType === 1
-      ? "托管账号"
+      ? "agent" as const
       : fromType === 3
-        ? "机器人"
-        : "消息";
+        ? "bot" as const
+        : "unknown" as const;
 }
 
-function formatMessageQueryOutputRow(row: MessageQueryOutputRow) {
-  return `${row.role}: ${row.content}`;
+function getMessageQueryRoleLabel(role: WorkflowMessage["role"]) {
+  if (role === "customer") return "客户";
+  if (role === "agent") return "托管账号";
+  if (role === "bot") return "机器人";
+  return "消息";
 }
 
-function readMessageText(msgtype: string, rawContent: string | null) {
+function readMessageParts(msgtype: string, rawContent: string | null): WorkflowMessagePart[] {
   const parsed = parseJson(rawContent);
+  if (Array.isArray(parsed)) {
+    const parts = parsed.flatMap(item => isRecord(item)
+      ? readParsedMessagePart(
+          typeof item.msgtype === "string" ? item.msgtype : msgtype,
+          item,
+        )
+      : []);
+    if (parts.length) return parts.slice(0, 20);
+  }
+  return readParsedMessagePart(msgtype, parsed);
+}
+
+function readParsedMessagePart(msgtype: string, parsed: unknown): WorkflowMessagePart[] {
   if (msgtype === "text" || msgtype === "markdown" || msgtype === "quote") {
-    if (typeof parsed === "string") return parsed;
+    if (typeof parsed === "string") return [{ text: parsed, type: "text" }];
     if (isRecord(parsed)) {
-      if (typeof parsed.text === "string") return parsed.text;
-      if (typeof parsed.content === "string") return parsed.content;
+      if (typeof parsed.text === "string") return [{ text: parsed.text, type: "text" }];
+      if (typeof parsed.content === "string") return [{ text: parsed.content, type: "text" }];
     }
-    return rawContent ?? "";
+    return [{ text: "", type: "text" }];
+  }
+  if (msgtype === "image" || msgtype === "video") {
+    const url = readMediaUrl(parsed, msgtype);
+    if (url) return [{ type: msgtype, url }];
   }
   const label = MESSAGE_TYPE_LABELS[msgtype];
-  return label ? `[${label}]` : `[${msgtype || "消息"}]`;
+  return [{ label: label ?? (msgtype || "消息"), type: "unsupported" }];
+}
+
+function readMediaUrl(parsed: unknown, type: "image" | "video") {
+  if (!isRecord(parsed)) return "";
+  const candidates = type === "image"
+    ? [parsed.fileUrl, parsed.imageUrl, parsed.url]
+    : [parsed.fileUrl, parsed.videoUrl, parsed.url];
+  const url = candidates.find(value => typeof value === "string" && value.trim());
+  return typeof url === "string" && url.trim().length <= 2_048 ? url.trim() : "";
 }
 
 const MESSAGE_TYPE_LABELS: Record<string, string> = {
@@ -243,83 +273,23 @@ const MESSAGE_TYPE_LABELS: Record<string, string> = {
 };
 
 function fitMessageQueryResult(input: MessageQueryResultInput) {
-  let visibleRows = input.rows;
-  let omittedRows = false;
-  while (visibleRows.length > 1) {
-    const candidate = createMessageQueryResult(input, visibleRows, omittedRows);
-    if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
-    omittedRows = true;
-    visibleRows = input.take === "latest" ? visibleRows.slice(1) : visibleRows.slice(0, -1);
-  }
-
-  const candidate = createMessageQueryResult(input, visibleRows, omittedRows);
-  if (isWorkflowMessageQueryResultWithinLimit(candidate)) return candidate;
-  const visibleRow = visibleRows[0];
-  if (!visibleRow) return candidate;
-  return truncateMessageQueryText(
-    createMessageQueryResult(input, visibleRows, false),
-    visibleRow,
+  return fitWorkflowMessagesOutput(
+    input.rows,
     input.take,
+    visibleRows => createMessageQueryResult(input, visibleRows),
   );
 }
 
 function createMessageQueryResult(
   input: MessageQueryResultInput,
-  visibleRows: MessageQueryOutputRow[],
-  omittedRows: boolean,
+  visibleRows: WorkflowMessage[],
 ): WorkflowMessageQueryResult {
-  const content = visibleRows.map(formatMessageQueryOutputRow).join("\n");
   return {
     messageCount: input.rows.length,
-    messageIds: input.rows.map(row => row.id),
+    messages: visibleRows,
     rangeEnd: input.rangeEnd,
     rangeStart: input.rangeStart,
-    textContent: omittedRows
-      ? input.take === "latest"
-        ? `[内容已截断]\n${content}`
-        : `${content}\n[内容已截断]`
-      : content,
   };
-}
-
-function truncateMessageQueryText(
-  result: WorkflowMessageQueryResult,
-  row: MessageQueryOutputRow,
-  take: WorkflowMessageQueryCommand["take"],
-) {
-  const characters = Array.from(row.content);
-  let lower = 0;
-  let upper = characters.length;
-  let fitted = { ...result, textContent: "" };
-  while (lower <= upper) {
-    const length = Math.floor((lower + upper) / 2);
-    const visibleContent = take === "latest"
-      ? characters.slice(characters.length - length).join("")
-      : characters.slice(0, length).join("");
-    const candidate = {
-      ...result,
-      textContent: take === "latest"
-        ? `${row.role}: [内容已截断]${visibleContent ? ` ${visibleContent}` : ""}`
-        : `${row.role}: ${visibleContent}\n[内容已截断]`,
-    };
-    if (isWorkflowMessageQueryResultWithinLimit(candidate)) {
-      fitted = candidate;
-      lower = length + 1;
-    } else {
-      upper = length - 1;
-    }
-  }
-  return fitted;
-}
-
-function isWorkflowMessageQueryResultWithinLimit(result: WorkflowMessageQueryResult) {
-  try {
-    assertWorkflowRuntimeValue(result, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
-    return true;
-  } catch (error) {
-    if (error instanceof WorkflowRuntimeValueError && error.reason === "too-large") return false;
-    throw error;
-  }
 }
 
 function normalizeMessageId(value: number | string) {

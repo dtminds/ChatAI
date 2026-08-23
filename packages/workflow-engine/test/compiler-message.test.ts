@@ -15,19 +15,29 @@ describe("Message compiler validation", () => {
         outputSelector: ["node", "query", "messageCount"],
       },
     ],
-    [
-      "custom variable without variable semantics",
-      {
-        attachments: [],
-        content: [{ selector: ["node", "query", "messageIds"], type: "variable" }],
-        contentMode: "custom",
-      },
-    ],
   ])("rejects %s", (_scenario, config) => {
     expectCompilationIssue(createMessageDraft(config), {
       code: "invalid-node-config",
       message: "Message node references unavailable content data",
       nodeId: "message",
+    });
+  });
+
+  it("compiles structured messages as renderable custom content", () => {
+    const compiled = compileWorkflowDraft({
+      draft: createMessageDraft({
+        attachments: [],
+        content: [{ selector: ["node", "query", "messages"], type: "variable" }],
+        contentMode: "custom",
+      }),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(compiled.nodes.find(node => node.id === "message")?.config).toMatchObject({
+      content: [{ selector: ["node", "query", "messages"], type: "variable" }],
+      contentMode: "custom",
     });
   });
 

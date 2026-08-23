@@ -16,7 +16,14 @@ const context = {
     },
   },
   outputs: {
-    query: { messageCount: 2, textContent: "退款问题" },
+    query: {
+      messageCount: 1,
+      messages: [{
+        id: 101,
+        parts: [{ text: "退款问题", type: "text" }],
+        role: "customer",
+      }],
+    },
   },
   subjectId: "customer-1",
   trigger: {
@@ -39,7 +46,7 @@ describe("Workflow Handoff capability", () => {
           { selector: ["subject", "id"], type: "variable" },
         ],
         operatorMessage: [
-          { selector: ["node", "query", "textContent"], type: "variable" },
+          { selector: ["node", "query", "messages"], type: "variable" },
           { type: "text", value: "，请及时接待" },
         ],
       },
@@ -69,7 +76,7 @@ describe("Workflow Handoff capability", () => {
       request: {
         command: {
           customerMessage: "请稍等，customer-1",
-          operatorMessage: "退款问题，请及时接待",
+          operatorMessage: "用户: 退款问题，请及时接待",
           recipient: { thirdExternalUserId: "customer-1" },
           seatId: 101,
           source: "workflow",
@@ -127,15 +134,25 @@ describe("Workflow Handoff capability", () => {
   it.each([
     ["empty", ""],
     ["too long", "x".repeat(101)],
-  ])("rejects an operator message that renders %s", (_scenario, textContent) => {
+  ])("rejects an operator message that renders %s", (_scenario, text) => {
     expect(() => createWorkflowHandoffCommand({
       config: {
         customerMessage: [],
-        operatorMessage: [{ selector: ["node", "query", "textContent"], type: "variable" }],
+        operatorMessage: [{ selector: ["node", "query", "messages"], type: "variable" }],
       },
       context: {
         ...context,
-        outputs: { query: { textContent } },
+        outputs: {
+          query: {
+            messages: text
+              ? [{
+                  id: 101,
+                  parts: [{ text, type: "text" }],
+                  role: "customer",
+                }]
+              : [],
+          },
+        },
       },
     })).toThrow(expect.objectContaining({
       code: "WORKFLOW_HANDOFF_COMMAND_INVALID",

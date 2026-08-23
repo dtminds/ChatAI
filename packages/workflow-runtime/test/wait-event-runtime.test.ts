@@ -83,8 +83,18 @@ describe("Wait Event runtime", () => {
             "wait-event": {
               lastMessageAt: "2026-08-10T00:00:05.000Z",
               messageCount: 2,
-              messageIds: [102, 101],
-              textContent: "第二条消息\n第一条消息",
+              messages: [
+                {
+                  id: 102,
+                  parts: [{ text: "第二条消息", type: "text" }],
+                  role: "customer",
+                },
+                {
+                  id: 101,
+                  parts: [{ text: "第一条消息", type: "text" }],
+                  role: "customer",
+                },
+              ],
             },
           },
         },
@@ -117,7 +127,7 @@ describe("Wait Event runtime", () => {
     });
   });
 
-  it("fails the node when collected output exceeds the core output limit", async () => {
+  it("fails instead of treating an oversized single message as empty input", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
     await recordMessage(harness, waiting.subscription, {
@@ -133,6 +143,7 @@ describe("Wait Event runtime", () => {
     expect(completed).toMatchObject({
       errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
       kind: "node-failed",
+      nodeId: "wait-event",
       nodeKind: "wait-event",
       run: { status: "failed" },
     });
@@ -233,7 +244,14 @@ function recordMessage(
     eventOccurredAt: input.occurredAt,
     eventType: "message.received",
     match: { seatId: 101 },
-    projection: { messageId: input.messageId, seatId: 101, text: input.text },
+    projection: {
+      message: {
+        id: input.messageId,
+        parts: [{ text: input.text, type: "text" }],
+        role: "customer",
+      },
+      seatId: 101,
+    },
     recordedAt: input.recordedAt,
     subscription,
     subjectId: input.subjectId ?? "customer-1",

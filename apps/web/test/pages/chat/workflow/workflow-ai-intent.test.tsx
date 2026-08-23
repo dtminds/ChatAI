@@ -51,13 +51,14 @@ describe("workflow AI intent", () => {
       nodes: [{
         data: {
           advancedEnabled: "invalid",
-          inputSelector: ["node", "message-query", "messageIds"],
+          inputSelector: ["node", "message-query", "messages"],
           availableIntentInputs: [{
-            key: "messageIds",
+            key: "messages",
             label: "消息列表",
             scope: "node",
-            selector: ["node", "message-query", "messageIds"],
-            type: "message-id-list",
+            selector: ["node", "message-query", "messages"],
+            type: "object",
+            valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
           }],
           intents: [
             { description: "愿意参加活动", id: "stable-intent" },
@@ -76,7 +77,7 @@ describe("workflow AI intent", () => {
     expect(data?.kind).toBe("ai-intent");
     if (data?.kind !== "ai-intent") return;
 
-    expect(data.inputSelector).toEqual(["node", "message-query", "messageIds"]);
+    expect(data.inputSelector).toEqual(["node", "message-query", "messages"]);
     expect(data).not.toHaveProperty("availableIntentInputs");
     expect(data.advancedEnabled).toBe(false);
     expect(data).not.toHaveProperty("mode");
@@ -121,12 +122,12 @@ describe("workflow AI intent", () => {
     expect(projectWorkflowNodeExecutionConfig({
       data: {
         ...node.data,
-        inputSelector: ["node", "message-query", "messageIds"],
+        inputSelector: ["node", "message-query", "messages"],
       },
       kind: "ai-intent",
     })).toEqual({
       fallback: { id: "fallback" },
-      inputSelector: ["node", "message-query", "messageIds"],
+      inputSelector: ["node", "message-query", "messages"],
       intents: [
         { description: "愿意参加活动", id: "intent-accept", modelCode: "I1" },
         { description: "明确拒绝活动", id: "intent-reject", modelCode: "I2" },
@@ -136,7 +137,7 @@ describe("workflow AI intent", () => {
       data: {
         ...node.data,
         advancedEnabled: true,
-        inputSelector: ["node", "message-query", "messageIds"],
+        inputSelector: ["node", "message-query", "messages"],
         prompt: "优先参考客户最近一条消息",
       },
       kind: "ai-intent",
@@ -219,7 +220,7 @@ describe("workflow AI intent", () => {
     await user.click(screen.getByRole("menuitem", { name: /消息查询/ }));
     fireEvent.pointerDown(screen.getByRole("menuitem", { name: /消息列表/ }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      inputSelector: ["node", queryNode.id, "messageIds"],
+      inputSelector: ["node", queryNode.id, "messages"],
     }));
 
     const prompt = screen.getByRole("textbox", { name: "提示词" });
@@ -260,12 +261,9 @@ describe("workflow AI intent", () => {
     expect(rendered.nodes.find((node) => node.id === intentNode.id)?.data.availableIntentInputs)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
-          selector: ["node", queryNode.id, "messageIds"],
-          type: "message-id-list",
-        }),
-        expect.objectContaining({
-          selector: ["node", queryNode.id, "textContent"],
-          type: "string",
+          selector: ["node", queryNode.id, "messages"],
+          type: "object",
+          valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
         }),
       ]));
     expect(rendered.nodes.find((node) => node.id === queryNode.id)?.data.availableIntentInputs)
@@ -427,7 +425,7 @@ describe("workflow AI intent", () => {
       ...createAiIntentNode([{ description: "愿意参加活动", id: "intent-accept" }]),
       data: {
         ...createDefaultNodeData("ai-intent"),
-        inputSelector: ["node", "missing-node", "messageIds"],
+        inputSelector: ["node", "missing-node", "messages"],
         intents: [{ description: "愿意参加活动", id: "intent-accept" }],
       },
     };

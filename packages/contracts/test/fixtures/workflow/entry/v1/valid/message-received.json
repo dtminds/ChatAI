@@ -11,7 +11,12 @@
     "workUserId": 201,
     "thirdExternalUserId": "chatai-contact-1",
     "externalUserId": 3267,
-    "messageId": 938271,
-    "text": "我想了解一下活动详情"
+    "message": {
+      "id": 938271,
+      "role": "customer",
+      "parts": [
+        { "type": "text", "text": "我想了解一下活动详情" }
+      ]
+    }
   }
 }

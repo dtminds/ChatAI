@@ -274,7 +274,7 @@ WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 VOLCENGINE_ARK_API_KEY=<volcengine-ark-api-key>
 ```
 
-Workflow 不维护环境级 Capability 白名单。节点是否可发布由共享节点契约中的 maturity 决定；Worker 启动会确认每个 `runtime-ready` 节点都有生产执行路径。Start 和 Wait Event 额外由 Workflow Event Catalog 校验 Event Type 与 Subject Type。Message 通过 `JAVA_INTERNAL_API_BASE_URL` 复用 Java 发送接口；LLM 已通过 Workflow Worker 的火山 Ark Adapter 接通，AI Intent 仍保持 `draft-ready`。
+Workflow 不维护环境级 Capability 白名单。节点是否可发布由共享节点契约中的 maturity 决定；Worker 启动会确认每个 `runtime-ready` 节点都有生产执行路径。Start 和 Wait Event 额外由 Workflow Event Catalog 校验 Event Type 与 Subject Type。Message 通过 `JAVA_INTERNAL_API_BASE_URL` 复用 Java 发送接口；LLM 与 AI Intent 已通过 Workflow Worker 的共享火山 Ark Adapter 接通。
 
 新增事件必须按固定顺序发布：Java 先上线但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动到包含新 Catalog 定义的版本；最后才由 Backend/Web 开放该事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不会等待新 Worker 重试。
 

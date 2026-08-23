@@ -5,14 +5,20 @@ import { compileWorkflowDraft } from "../src/compiler.js";
 import { WorkflowCompilationError } from "../src/errors.js";
 
 describe("Handoff compiler validation", () => {
-  it("rejects a message variable that is not available for general variable use", () => {
-    expectCompilationIssue(createHandoffDraft({
+  it("compiles structured messages as renderable operator content", () => {
+    const compiled = compileWorkflowDraft({
+      draft: createHandoffDraft({
+        customerMessage: [],
+        operatorMessage: [{ selector: ["node", "query", "messages"], type: "variable" }],
+      }),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(compiled.nodes.find(node => node.id === "handoff")?.config).toMatchObject({
       customerMessage: [],
-      operatorMessage: [{ selector: ["node", "query", "messageIds"], type: "variable" }],
-    }), {
-      code: "invalid-node-config",
-      message: "Handoff node references unavailable message data",
-      nodeId: "handoff",
+      operatorMessage: [{ selector: ["node", "query", "messages"], type: "variable" }],
     });
   });
 

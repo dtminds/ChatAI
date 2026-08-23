@@ -28,10 +28,10 @@ import {
   type WorkflowNodeKind,
 } from "../src/index.js";
 import {
+  WorkflowAiIntentCompletionValueSchema,
   WorkflowInferenceMessageListRequestSchema,
   WorkflowInferenceMessageListResultSchema,
-  WorkflowInferenceTemplateRequestSchema,
-  WorkflowInferenceTemplateResultSchema,
+  WorkflowInferenceRequestSchema,
 } from "../src/index.js";
 
 const draftConfigs = {
@@ -39,7 +39,7 @@ const draftConfigs = {
   "ai-collect": {},
   "ai-intent": {
     advancedEnabled: false,
-    inputSelector: ["node", "message-query", "textContent"],
+    inputSelector: ["node", "message-query", "messages"],
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
@@ -109,41 +109,28 @@ const draftConfigs = {
 } as const satisfies Record<WorkflowNodeKind, Record<string, unknown>>;
 
 describe("workflow node contracts", () => {
-  it("keeps message-list and template inference contracts distinct", () => {
+  it("accepts catalog and direct-endpoint Chat targets while rejecting the removed template shape", () => {
     expect(Value.Check(WorkflowInferenceMessageListRequestSchema, {
       kind: "message-list",
-      messageList: [{ content: "Summarize", role: "system" }],
+      messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
       modelTarget: { kind: "catalog-model", modelId: "model-1" },
       reasoningEffort: "medium",
       responseFormat: { type: "text" },
     })).toBe(true);
-    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
-      kind: "template",
-      templateKey: "workflow.intent.classify.v1",
-      variables: {
-        additionalRules: "",
-        input: "hello",
-        intents: "[]",
+    expect(Value.Check(WorkflowInferenceMessageListRequestSchema, {
+      kind: "message-list",
+      messageList: [{ content: [{ text: "Classify", type: "text" }], role: "system" }],
+      modelTarget: { endpointId: "ep-intent", kind: "endpoint" },
+      reasoningEffort: "low",
+      responseFormat: {
+        fields: [
+          { description: "Intent code", name: "matchedCode", type: "string" },
+          { description: "Reason", name: "reason", type: "string" },
+        ],
+        type: "json",
       },
     })).toBe(true);
-    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
-      kind: "template",
-      templateKey: "workflow.intent.other.v1",
-      variables: {
-        additionalRules: "",
-        input: "hello",
-        intents: "[]",
-      },
-    })).toBe(false);
-    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
-      kind: "template",
-      templateKey: "workflow.intent.classify.v1",
-      variables: {
-        input: "hello",
-        intents: "[]",
-      },
-    })).toBe(false);
-    expect(Value.Check(WorkflowInferenceTemplateRequestSchema, {
+    expect(Value.Check(WorkflowInferenceRequestSchema, {
       kind: "template",
       templateKey: "workflow.intent.classify.v1",
       variables: {
@@ -157,11 +144,11 @@ describe("workflow node contracts", () => {
       content: "summary",
       type: "text",
     })).toBe(true);
-    expect(Value.Check(WorkflowInferenceTemplateResultSchema, {
+    expect(Value.Check(WorkflowAiIntentCompletionValueSchema, {
       matchedCode: "I10",
       reason: "matched",
     })).toBe(true);
-    expect(Value.Check(WorkflowInferenceTemplateResultSchema, {
+    expect(Value.Check(WorkflowAiIntentCompletionValueSchema, {
       matchedCode: "I11",
       reason: "invalid",
     })).toBe(false);
@@ -184,9 +171,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent"]);
+      .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -266,10 +253,13 @@ describe("workflow node contracts", () => {
     })).toBe(true);
     expect(Value.Check(WorkflowMessageQueryResultSchema, {
       messageCount: 1,
-      messageIds: [9001],
+      messages: [{
+        id: 9001,
+        parts: [{ text: "价格是多少", type: "text" }],
+        role: "customer",
+      }],
       rangeEnd: "2026-08-15T02:00:00.000Z",
       rangeStart: "2026-08-15T01:00:00.000Z",
-      textContent: "客户: 价格是多少",
     })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("message-query", {
       limit: 10,
@@ -686,7 +676,7 @@ describe("workflow node contracts", () => {
     const llm = draftConfigs.llm;
     const intent = {
       fallback: { id: "fallback" },
-      inputSelector: ["node", "message-query", "textContent"],
+      inputSelector: ["node", "message-query", "messages"],
       intents: [{ description: "接受邀请", id: "intent-1", modelCode: "I1" }],
     };
 
@@ -703,6 +693,25 @@ describe("workflow node contracts", () => {
       ...llm,
       systemPrompt: [{ selector: ["input", "missing"], type: "variable" }],
     })).toBe(false);
+    const messagesInput = {
+      id: "input-messages",
+      name: "messages",
+      value: {
+        kind: "variable" as const,
+        selector: ["node", "message-query", "messages"],
+        valueType: { kind: "object" as const, schemaRef: "workflow.messages.v1" },
+      },
+    };
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [messagesInput],
+      systemPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("llm", {
+      ...llm,
+      inputs: [messagesInput],
+      userPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("llm", {
       ...llm,
       inputs: [{
@@ -803,8 +812,9 @@ describe("workflow node contracts", () => {
     expect(getWorkflowNodeOutputContracts("wait-event", {}))
       .toContainEqual(expect.objectContaining({
         availableOnSourceOutlets: ["triggered"],
-        key: "messageIds",
-        usages: ["intent-input"],
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
       }));
     expect(isWorkflowOutputValueTypeEqual(
       { itemType: "bigint", kind: "array", semantic: "message" },

@@ -116,7 +116,10 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_READY_AT,
       payload: {
         kind: "message-list" as const,
-        messageList: [{ content: "Summarize", role: "system" as const }],
+        messageList: [{
+          content: [{ text: "Summarize", type: "text" as const }],
+          role: "system" as const,
+        }],
         modelTarget: { kind: "catalog-model", modelId: "model-1" },
         reasoningEffort: "medium",
         responseFormat: { type: "text" as const },
@@ -275,7 +278,7 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_READY_AT,
       payload: {
         kind: "message-list",
-        messageList: [{ content: "Summarize", role: "system" }],
+        messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
         modelTarget: { kind: "catalog-model", modelId: "model-1" },
         reasoningEffort: "medium",
         responseFormat: { type: "text" },
@@ -1009,7 +1012,7 @@ async function createInferenceWait(
     now: OUTBOX_READY_AT,
     payload: {
       kind: "message-list",
-      messageList: [{ content: "Summarize", role: "system" }],
+      messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
       modelTarget: { kind: "catalog-model", modelId: "model-1" },
         reasoningEffort: "medium",
       responseFormat: { type: "text" },

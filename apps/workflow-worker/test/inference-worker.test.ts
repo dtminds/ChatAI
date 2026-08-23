@@ -101,7 +101,7 @@ describe("workflow inference worker", () => {
 
     const malformed = await createWaitingJob();
     const result = await processWorkflowInferenceBatch({
-      adapter: { execute: async () => ({ bad: true }) as never },
+      adapter: { execute: async () => null as never },
       heartbeatIntervalMs: 10_000,
       leaseDurationMs: 60_000,
       leaseOwner: "inference-worker-1",
@@ -117,10 +117,13 @@ describe("workflow inference worker", () => {
       .resolves.toMatchObject({ errorCode: "WORKFLOW_INFERENCE_OUTPUT_INVALID", status: "failed" });
   });
 
-  it("rejects a valid result shape that belongs to the other inference request kind", async () => {
+  it("rejects a valid result shape that does not match the requested response format", async () => {
     const wrongKind = await createWaitingJob();
     await processWorkflowInferenceBatch({
-      adapter: { execute: async () => ({ matchedCode: "fallback", reason: "wrong result kind" }) },
+      adapter: { execute: async () => ({
+        type: "json",
+        value: { matchedCode: "fallback", reason: "wrong result type" },
+      }) },
       heartbeatIntervalMs: 10_000,
       leaseDurationMs: 60_000,
       leaseOwner: "inference-worker-1",
@@ -169,7 +172,10 @@ describe("workflow inference worker", () => {
     {
       expectedNodeId: "refund",
       expectedOutput: { matchedIntentDescription: "咨询退款", reason: "用户询问退款" },
-      javaResult: { matchedCode: "I1", reason: "用户询问退款" } as const,
+      javaResult: {
+        type: "json",
+        value: { matchedCode: "I1", reason: "用户询问退款" },
+      } as const,
       nodeKind: "ai-intent" as const,
     },
   ])("resumes one $nodeKind Task after its durable Java job succeeds", async ({
@@ -225,6 +231,35 @@ describe("workflow inference worker", () => {
     });
     expect(repository.inferenceJobs).toHaveLength(1);
     expect(adapter.calls).toHaveLength(1);
+  });
+
+  it("routes empty AI Intent input to fallback without creating an Inference Job", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = new InferenceTestRuntimeService(
+      control(inferenceSpec("ai-intent")),
+      repository,
+      undefined,
+      {
+        clock: () => now,
+        entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+      },
+    );
+    const started = await seedInferenceRun(repository, "event-empty-intent", " \n\t");
+    const startResult = await service.executeTask(taskInput(started.task, "start-empty-intent"));
+    if (!("nextTask" in startResult) || !startResult.nextTask) {
+      throw new Error("AI Intent Task was not created");
+    }
+
+    await expect(service.executeTask(taskInput(startResult.nextTask, "execute-empty-intent")))
+      .resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
+    expect(repository.inferenceJobs).toHaveLength(0);
+    await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({
+      context: {
+        outputs: {
+          inference: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+        },
+      },
+    });
   });
 
   it("stops waiting at the Job deadline even when the Java adapter ignores abort", async () => {
@@ -300,9 +335,10 @@ describe("workflow inference worker", () => {
 async function seedInferenceRun(
   repository: InMemoryWorkflowRuntimeRepository,
   entryEventId: string,
+  triggerText = "退款什么时候到账",
 ) {
   const started = await repository.createRunWithInitialTask({
-    context: { outputs: {}, trigger: { text: "退款什么时候到账" } },
+    context: { outputs: {}, trigger: { text: triggerText } },
     entryEventId,
     entryPolicy: { mode: "never" },
     initialNodeId: "start",
@@ -362,7 +398,7 @@ async function createWaitingJob(
     now,
     payload: {
       kind: "message-list",
-      messageList: [{ content: "Summarize", role: "system" }],
+      messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
       modelTarget: { kind: "catalog-model", modelId: "model-1" },
       reasoningEffort: "medium",
       responseFormat: { type: "text" },

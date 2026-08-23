@@ -104,7 +104,10 @@ export const WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([
     project: event => ({
       match: {
         seatId: event.payload.seatId,
-        ...(event.payload.text === undefined ? {} : { text: event.payload.text }),
+        text: event.payload.message.parts
+          .filter(part => part.type === "text")
+          .map(part => part.text)
+          .join(""),
       },
       subjects: {
         chatai_contact: {

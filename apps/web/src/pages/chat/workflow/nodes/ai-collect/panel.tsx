@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   Cancel01Icon,
@@ -29,6 +29,7 @@ import {
   SortableItem,
   SortableItemHandle,
 } from "@/components/ui/sortable";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
@@ -63,8 +64,8 @@ import {
 
 const fieldTypes = Object.keys(aiCollectFieldTypeLabels) as WorkflowAiCollectFieldType[];
 const followUpCountOptions = Array.from(
-  { length: AI_COLLECT_MAX_FOLLOW_UP_COUNT + 1 },
-  (_, count) => count,
+  { length: AI_COLLECT_MAX_FOLLOW_UP_COUNT },
+  (_, index) => index + 1,
 );
 
 export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"ai-collect">) {
@@ -74,6 +75,13 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
   const openingMessage = normalizeAiCollectOpeningMessage(node.data.openingMessage);
   const timeout = normalizeAiCollectTimeout(node.data.timeout);
   const inputOptions = getAvailableIntentInputOutputsForNode(node.id, nodes, edges);
+  const lastEnabledFollowUpCountRef = useRef(maxFollowUpCount || 3);
+
+  useEffect(() => {
+    if (maxFollowUpCount > 0) {
+      lastEnabledFollowUpCountRef.current = maxFollowUpCount;
+    }
+  }, [maxFollowUpCount]);
 
   const updateConfig = ({
     fields: nextFields = fields,
@@ -119,22 +127,38 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
 
   return (
     <>
-      <WorkflowSettingsSection title="最多追问次数">
-        <Select
-          onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
-          value={String(maxFollowUpCount)}
-        >
-          <SelectTrigger aria-label="最多追问次数" className="h-9 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {followUpCountOptions.map(count => (
-              <SelectItem key={count} value={String(count)}>
-                {count === 0 ? "不追问" : `最多 ${count} 次`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <WorkflowSettingsSection
+        actions={(
+          <Switch
+            aria-label="智能追问"
+            checked={maxFollowUpCount > 0}
+            onCheckedChange={checked => updateConfig({
+              maxFollowUpCount: checked ? lastEnabledFollowUpCountRef.current : 0,
+            })}
+          />
+        )}
+        title="智能追问"
+      >
+        {maxFollowUpCount > 0 ? (
+          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <span>最多追问</span>
+            <Select
+              onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
+              value={String(maxFollowUpCount)}
+            >
+              <SelectTrigger aria-label="最多追问轮次" className="h-9 w-24 px-2.5 text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {followUpCountOptions.map(count => (
+                  <SelectItem key={count} value={String(count)}>
+                    {count} 轮
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection

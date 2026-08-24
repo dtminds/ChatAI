@@ -147,7 +147,7 @@ export function getAiCollectMetric(data: Pick<
   "fields" | "maxFollowUpCount"
 >) {
   const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount);
-  const followUpLabel = maxFollowUpCount === 0 ? "不追问" : `最多追问 ${maxFollowUpCount} 次`;
+  const followUpLabel = maxFollowUpCount === 0 ? "不追问" : `最多追问 ${maxFollowUpCount} 轮`;
   return `${followUpLabel} · ${normalizeAiCollectFields(data.fields).length} 个字段`;
 }
 

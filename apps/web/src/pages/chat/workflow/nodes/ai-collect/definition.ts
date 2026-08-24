@@ -44,7 +44,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       inputSelector: undefined,
       label: "资料收集",
       maxFollowUpCount: 3,
-      metric: "最多追问 3 次 · 1 个字段",
+      metric: "最多追问 3 轮 · 1 个字段",
       openingMessage: "",
       status: "warning",
       timeout: { duration: 24, unit: "hour" },
@@ -157,7 +157,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       || node.data.maxFollowUpCount > AI_COLLECT_MAX_FOLLOW_UP_COUNT) {
       issues.push(createCatalogIssue(
         "ai-collect-follow-up-count-invalid",
-        `最多追问次数需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 次`,
+        `最多追问轮次需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 轮`,
       ));
     }
     const timeout = normalizeAiCollectTimeout(node.data.timeout);

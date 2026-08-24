@@ -109,10 +109,16 @@ describe("workflow AI Collect", () => {
     }));
 
     expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
-    await user.click(screen.getByRole("combobox", { name: "最多追问次数" }));
-    expect(screen.getByRole("option", { name: "最多 10 次" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "最多 11 次" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "不追问" }));
+    await user.click(screen.getByRole("combobox", { name: "最多追问轮次" }));
+    expect(screen.getByRole("option", { name: "1 轮" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "10 轮" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "11 轮" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "10 轮" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      maxFollowUpCount: 10,
+    }));
+
+    await user.click(screen.getByRole("switch", { name: "智能追问" }));
     expect(screen.queryByRole("textbox", { name: "开场白" })).not.toBeInTheDocument();
     expect(screen.queryByRole("spinbutton", { name: "最长等待时间" })).not.toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -126,6 +132,13 @@ describe("workflow AI Collect", () => {
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       inputSelector: ["node", query.id, "messages"],
       status: "ready",
+    }));
+
+    await user.click(screen.getByRole("switch", { name: "智能追问" }));
+    expect(screen.getByRole("combobox", { name: "最多追问轮次" }))
+      .toHaveTextContent("10 轮");
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      maxFollowUpCount: 10,
     }));
 
     for (let index = 1; index < AI_COLLECT_FIELD_MAX_COUNT; index += 1) {

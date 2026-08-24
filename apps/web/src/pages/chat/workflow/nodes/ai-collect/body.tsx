@@ -18,7 +18,7 @@ export function AiCollectNodeBody({ data }: NodeBodyProps<"ai-collect">) {
             label: "追问",
             value: {
               kind: "text",
-              text: maxFollowUpCount === 0 ? "不追问" : `最多 ${maxFollowUpCount} 次`,
+              text: maxFollowUpCount === 0 ? "不追问" : `最多 ${maxFollowUpCount} 轮`,
             },
           },
           {

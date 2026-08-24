@@ -336,7 +336,7 @@ describe("compileWorkflowDraft", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("collect", "ai-collect", {
       fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
-      mode: "agent-assisted",
+      maxFollowUpCount: 3,
       openingMessage: "",
       timeout: { duration: 24, unit: "hour" },
     }));

@@ -51,13 +51,13 @@ describe("workflow node projection registry", () => {
     });
   });
 
-  it("projects AI Collect mode-specific execution data", () => {
+  it("projects AI Collect follow-up-specific execution data", () => {
     expect(projectWorkflowNodeExecutionConfig({
       data: projectableDraftData["ai-collect"],
       kind: "ai-collect",
     })).toEqual({
       fields: projectableDraftData["ai-collect"].fields,
-      mode: "agent-assisted",
+      maxFollowUpCount: 3,
       openingMessage: "请提供订单号",
       timeout: { duration: 24, unit: "hour" },
     });
@@ -66,13 +66,13 @@ describe("workflow node projection registry", () => {
       data: {
         ...projectableDraftData["ai-collect"],
         inputSelector: ["node", "message-query", "messages"],
-        mode: "extract-once",
+        maxFollowUpCount: 0,
       },
       kind: "ai-collect",
     })).toEqual({
       fields: projectableDraftData["ai-collect"].fields,
       inputSelector: ["node", "message-query", "messages"],
-      mode: "extract-once",
+      maxFollowUpCount: 0,
     });
   });
 
@@ -88,7 +88,7 @@ const projectableDraftData = {
   "ai-collect": {
     fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
     inputSelector: undefined,
-    mode: "agent-assisted",
+    maxFollowUpCount: 3,
     openingMessage: " 请提供订单号 ",
     timeout: { duration: 24, unit: "hour" },
   },

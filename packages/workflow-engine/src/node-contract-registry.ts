@@ -159,16 +159,16 @@ export function projectWorkflowNodeExecutionConfig({
 
   if (kind === "ai-collect") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
-    return cloneJsonRecord(draftConfig.mode === "extract-once"
+    return cloneJsonRecord(draftConfig.maxFollowUpCount === 0
       ? {
           fields,
           inputSelector: draftConfig.inputSelector,
-          mode: "extract-once",
+          maxFollowUpCount: 0,
         }
       : compactUndefined({
           fields,
           inputSelector: draftConfig.inputSelector,
-          mode: "agent-assisted",
+          maxFollowUpCount: draftConfig.maxFollowUpCount,
           openingMessage: typeof draftConfig.openingMessage === "string"
             && draftConfig.openingMessage.trim()
             ? draftConfig.openingMessage.trim()
@@ -202,7 +202,7 @@ export function getWorkflowNodeExecutionConfigError(
 function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
   switch (kind) {
     case "ai-collect":
-      return "AI Collect node requires complete unique fields and a valid mode input";
+      return "AI Collect node requires complete unique fields and valid follow-up settings";
     case "ai-intent":
       return "AI Intent node requires an input and complete unique intents";
     case "start":

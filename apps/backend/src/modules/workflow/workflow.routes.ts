@@ -83,14 +83,15 @@ export async function registerWorkflowRoutes(
   options: { dataService?: WorkflowDataService; service?: WorkflowService } = {},
 ) {
   const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
+  const entitlementPort = createWorkflowEntitlementPort({
+    endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
+    mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
+    token: process.env.JAVA_INTERNAL_API_TOKEN,
+  });
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
-      entitlementPort: createWorkflowEntitlementPort({
-        endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
-        mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
-        token: process.env.JAVA_INTERNAL_API_TOKEN,
-      }),
+      entitlementPort,
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
     },
@@ -98,6 +99,13 @@ export async function registerWorkflowRoutes(
   const authenticated = { preHandler: app.authenticate };
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db),
+    { entitlementPort },
+  );
+
+  app.get(
+    "/api/server/workflows/capacity",
+    authenticated,
+    async request => apiSuccess(await dataService.getCapacityOverview(getWorkflowScope(request))),
   );
 
   app.get<{ Params: WorkflowParams }>(

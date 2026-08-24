@@ -6,11 +6,34 @@ import {
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraftRepository } from "@/pages/chat/workflow/workflow-draft-service";
 import {
+  useWorkflowCapacityResource,
   useWorkflowDocumentResource,
   useWorkflowListResource,
 } from "@/pages/chat/workflow/workflow-resources";
 
 describe("workflow resources", () => {
+  it("loads and retries the capacity independently from the Workflow list", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    let shouldFail = true;
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      getCapacityOverview: () => {
+        if (shouldFail) throw new TypeError("network unavailable");
+        return baseRepository.getCapacityOverview();
+      },
+    };
+    const { result } = renderHook(() => useWorkflowCapacityResource(repository));
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    shouldFail = false;
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.status).toBe("ready");
+    expect(result.current.overview).toEqual(baseRepository.getCapacityOverview());
+  });
+
   it("keeps the list in loading state until an async repository read resolves", async () => {
     const baseRepository = createInMemoryWorkflowDraftRepository();
     let resolveList: ((items: ReturnType<typeof baseRepository.listDocuments>) => void) | undefined;

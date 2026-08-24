@@ -285,6 +285,7 @@ describe("workflow run/task consistency reconciliation", () => {
 
 function createRunInput() {
   return {
+    activeRunLimit: 10_000,
     context: { trigger: { eventType: "customer.created" } },
     entryEventId: "event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },

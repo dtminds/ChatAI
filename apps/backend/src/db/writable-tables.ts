@@ -54,6 +54,8 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_support_investigation_log",
   "xy_wap_embed_ticket_activity",
   "xy_wap_embed_workflow_daily_metric",
+  "xy_wap_embed_workflow_capacity_daily_metric",
+  "xy_wap_embed_workflow_capacity_guard",
   "xy_wap_embed_workflow_definition",
   "xy_wap_embed_workflow_entry_guard",
   "xy_wap_embed_workflow_event_subscription",

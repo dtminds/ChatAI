@@ -442,7 +442,7 @@ describe("workflow routes", () => {
     await registerWorkflowRoutes(app, {
       service: new WorkflowService(new InMemoryWorkflowRepository(), {
         entitlementPort: {
-          check: async () => ({ entitled: true, unentitledSince: null }),
+          check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
         },
         sourceIdentityResolver: {
           async resolveActiveSeatWorkUserIds(_uid, seatIds) {

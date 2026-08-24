@@ -280,7 +280,7 @@ function createRuntimeService(
 }
 
 function entitledPort() {
-  return { check: async () => ({ entitled: true as const, unentitledSince: null }) };
+  return { check: async () => ({ activeRunLimit: 10_000, entitled: true as const, unentitledSince: null }) };
 }
 
 function createDraft() {

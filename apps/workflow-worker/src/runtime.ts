@@ -126,6 +126,7 @@ export async function startWorkflowWorkerRuntime(input: {
         eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
         inboxRepository: input.inboxRepository,
         logger: input.logger,
+        maxInFlight: input.config.consumerConcurrency.entry,
         maxRedeliverCount: input.config.maxRedeliverCount,
         now,
         runtimeService: input.runtimeService,
@@ -139,6 +140,7 @@ export async function startWorkflowWorkerRuntime(input: {
       subscriptions.push(await input.taskConsumer({
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
+        maxInFlight: input.config.consumerConcurrency.task,
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,
         runtimeService: input.runtimeService,

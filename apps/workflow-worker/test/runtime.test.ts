@@ -460,6 +460,7 @@ function createResources() {
       database,
       entryConsumer: vi.fn(async input => input.broker.subscribe({
         handler: async () => {},
+        maxInFlight: input.maxInFlight,
         subscription: input.subscription,
         topic: input.topic,
         type: "Shared",
@@ -503,6 +504,7 @@ function createResources() {
       schedulerRepository: {} as never,
       taskConsumer: vi.fn(async input => input.broker.subscribe({
         handler: async () => {},
+        maxInFlight: input.maxInFlight,
         subscription: input.subscription,
         topic: input.topic,
         type: "Shared",
@@ -580,6 +582,7 @@ function reconcilerResult(overrides: {
 function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
   return {
     broker: "pulsar" as const,
+    consumerConcurrency: { entry: 10, task: 10 },
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
     entitlement: { apiUrl: null, mode: "enforce" as const, token: null },

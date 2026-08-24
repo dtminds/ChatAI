@@ -189,10 +189,11 @@ async function createHarness(clock: () => Date = () => ENTERED_AT) {
   }, repository, undefined, {
     clock,
     entitlementPort: {
-      check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
+      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
     },
   });
   const created = await repository.createRunWithInitialTask({
+    activeRunLimit: 10_000,
     context: { outputs: {}, trigger: { projection: { seatId: 101 } } },
     entryEventId: "entry-event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },

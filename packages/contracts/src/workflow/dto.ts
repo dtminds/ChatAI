@@ -252,6 +252,13 @@ export const WorkflowDataOverviewSchema = Type.Object({
   }),
 });
 
+export const WorkflowCapacityOverviewSchema = Type.Object({
+  activeRunCount: Type.Integer({ minimum: 0 }),
+  activeRunLimit: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  capacityRejectedCountToday: Type.Integer({ minimum: 0 }),
+  date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+});
+
 export const WorkflowEntryRecordStatusSchema = Type.Union([
   Type.Literal("queued"),
   Type.Literal("running"),
@@ -353,6 +360,7 @@ export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>
 export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;
 export type WorkflowNodeMetric = Static<typeof WorkflowNodeMetricSchema>;
 export type WorkflowDataOverview = Static<typeof WorkflowDataOverviewSchema>;
+export type WorkflowCapacityOverview = Static<typeof WorkflowCapacityOverviewSchema>;
 export type WorkflowEntryRecordStatus = Static<typeof WorkflowEntryRecordStatusSchema>;
 export type WorkflowEntryRecord = Static<typeof WorkflowEntryRecordSchema>;
 export type WorkflowEntryRecordPage = Static<typeof WorkflowEntryRecordPageSchema>;

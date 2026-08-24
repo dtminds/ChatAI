@@ -93,7 +93,11 @@ export class UnavailableWorkflowEntitlementPort implements WorkflowEntitlementPo
 
 export class AllowAllWorkflowEntitlementPort implements WorkflowEntitlementPort {
   async check(): Promise<WorkflowTypeEntitlementResult> {
-    return { entitled: true, unentitledSince: null };
+    return {
+      activeRunLimit: Number.MAX_SAFE_INTEGER,
+      entitled: true,
+      unentitledSince: null,
+    };
   }
 }
 

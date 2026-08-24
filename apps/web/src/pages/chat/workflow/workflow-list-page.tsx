@@ -1,6 +1,9 @@
 import {
   Add01Icon,
+  AlertCircleIcon,
+  RefreshIcon,
   Search01Icon,
+  UserMultiple02Icon,
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -10,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -25,6 +29,7 @@ import type {
 } from "./workflow-draft-service";
 import {
   normalizeWorkflowRepositoryError,
+  useWorkflowCapacityResource,
   useWorkflowListResource,
 } from "./workflow-resources";
 import {
@@ -61,6 +66,7 @@ export function WorkflowListPage({
   repository?: WorkflowDraftRepository;
 }) {
   const { items, reload, status } = useWorkflowListResource(repository);
+  const capacity = useWorkflowCapacityResource(repository);
   const navigate = useNavigate();
   const createRequestIdRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
@@ -220,6 +226,12 @@ export function WorkflowListPage({
           title="工作流"
         />
 
+        <WorkflowCapacitySummary
+          onRetry={() => void capacity.reload()}
+          overview={capacity.overview}
+          status={capacity.status}
+        />
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
             className="w-auto"
@@ -371,6 +383,82 @@ export function WorkflowListPage({
         pending={Boolean(stopTarget && lifecyclePendingId === stopTarget.id)}
       />
     </AiHostingLayout>
+  );
+}
+
+function WorkflowCapacitySummary({
+  onRetry,
+  overview,
+  status,
+}: {
+  onRetry(): void;
+  overview: ReturnType<typeof useWorkflowCapacityResource>["overview"];
+  status: ReturnType<typeof useWorkflowCapacityResource>["status"];
+}) {
+  if (status === "loading" && !overview) {
+    return (
+      <div className="flex min-h-20 items-center gap-2 border-y py-4 text-sm text-muted-foreground" role="status">
+        <Spinner />
+        <span>正在加载</span>
+      </div>
+    );
+  }
+  if (status === "error" || !overview) {
+    return (
+      <div className="flex min-h-20 items-center justify-between gap-3 border-y py-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <HugeiconsIcon icon={AlertCircleIcon} size={17} strokeWidth={1.8} />
+          <span>容量暂不可用</span>
+        </div>
+        <Button
+          aria-label="重新加载容量"
+          onClick={onRetry}
+          size="icon"
+          title="重新加载容量"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
+        </Button>
+      </div>
+    );
+  }
+  const full = overview.activeRunCount >= overview.activeRunLimit;
+  const nearFull = !full
+    && overview.activeRunLimit > 0
+    && overview.activeRunCount / overview.activeRunLimit >= 0.8;
+  const usagePercent = overview.activeRunLimit === 0
+    ? 100
+    : Math.min(100, overview.activeRunCount / overview.activeRunLimit * 100);
+
+  return (
+    <section
+      aria-label="SOP 客户容量"
+      className="grid min-h-20 gap-4 border-y py-4 sm:grid-cols-[minmax(10rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] sm:items-center"
+    >
+      <div className="flex items-center gap-2">
+        <HugeiconsIcon className="text-muted-foreground" icon={UserMultiple02Icon} size={18} strokeWidth={1.8} />
+        <h2 className="text-sm font-medium">SOP 客户容量</h2>
+      </div>
+      <div className="min-w-0 space-y-2">
+        <div className="flex items-baseline justify-between gap-3 text-sm">
+          <span className="font-medium tabular-nums">
+            {overview.activeRunCount.toLocaleString()} / {overview.activeRunLimit.toLocaleString()}
+          </span>
+          {full || nearFull ? (
+            <span className="text-xs text-amber-700">
+              {full ? "容量已用完" : "容量即将用完"}
+            </span>
+          ) : null}
+        </div>
+        <Progress aria-label="SOP 客户容量使用进度" className="h-1.5" value={usagePercent} />
+      </div>
+      <div className="text-sm text-muted-foreground sm:text-right">
+        今日因容量不足未进入 <span className="font-medium tabular-nums text-foreground">{overview.capacityRejectedCountToday.toLocaleString()}</span> 次
+      </div>
+      {full ? (
+        <p className="text-xs text-amber-700 sm:col-span-3">新客户暂时无法进入 SOP，已进入的客户会继续运行</p>
+      ) : null}
+    </section>
   );
 }
 

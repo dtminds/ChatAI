@@ -402,7 +402,7 @@ describe("WorkflowService", () => {
 
   it("rejects the reserved Member SOP type before checking entitlement", async () => {
     const repository = new InMemoryWorkflowRepository();
-    const entitlementCheck = vi.fn(async () => ({ entitled: true as const, unentitledSince: null }));
+    const entitlementCheck = vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true as const, unentitledSince: null }));
     const service = createService(repository, {
       entitlementPort: { check: entitlementCheck },
     });
@@ -1450,7 +1450,7 @@ function createService(
 ) {
   return new WorkflowService(repository, {
     entitlementPort: {
-      check: async () => ({ entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
     },
     sourceIdentityResolver: {
       async resolveActiveSeatWorkUserIds(_uid, seatIds) {

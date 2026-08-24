@@ -1315,7 +1315,7 @@ function createService(
     capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
     contactIdentityPort: options.contactIdentityPort,
     entitlementPort: {
-      check: async () => ({ entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
     },
     executors: options.executors,
     inferenceTotalTimeoutMs: options.inferenceTotalTimeoutMs,
@@ -1352,6 +1352,7 @@ async function startCapability(
   trigger: Record<string, unknown> = {},
 ) {
   const started = await runtime.createRunWithInitialTask({
+    activeRunLimit: 10_000,
     context: {
       outputs: {},
       trigger: {

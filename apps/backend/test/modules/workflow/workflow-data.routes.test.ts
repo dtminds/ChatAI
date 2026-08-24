@@ -48,6 +48,80 @@ describe("workflow data routes", () => {
     }));
   });
 
+  it("serves one tenant-level capacity overview independently from the Workflow list", async () => {
+    const dataService = {
+      getCapacityOverview: vi.fn(async () => ({
+        activeRunCount: 8_721,
+        activeRunLimit: 10_000,
+        capacityRejectedCountToday: 12,
+        date: "2026-08-24",
+      })),
+    };
+    const app = await createApp(dataService);
+
+    const response = await app.inject({ method: "GET", url: "/api/server/workflows/capacity" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      activeRunCount: 8_721,
+      activeRunLimit: 10_000,
+      capacityRejectedCountToday: 12,
+      date: "2026-08-24",
+    });
+    expect(dataService.getCapacityOverview).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }));
+  });
+
+  it("combines the tenant Run usage with a consistent entitled capacity", async () => {
+    const reader = {
+      getCapacityUsage: vi.fn(async () => ({
+        activeRunCount: 25,
+        capacityRejectedCountToday: 3,
+      })),
+    };
+    const entitlementPort = {
+      check: vi.fn(async () => ({
+        activeRunLimit: 100,
+        entitled: true as const,
+        unentitledSince: null,
+      })),
+    };
+    const service = new WorkflowDataService(reader as never, {
+      clock: () => new Date("2026-08-24T23:30:00+08:00"),
+      entitlementPort,
+    });
+
+    await expect(service.getCapacityOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
+      .resolves.toEqual({
+        activeRunCount: 25,
+        activeRunLimit: 100,
+        capacityRejectedCountToday: 3,
+        date: "2026-08-24",
+      });
+    expect(reader.getCapacityUsage).toHaveBeenCalledTimes(1);
+    expect(entitlementPort.check).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails the capacity overview when entitled Workflow types disagree on the tenant limit", async () => {
+    const limits = [100, 200];
+    const service = new WorkflowDataService({
+      getCapacityUsage: vi.fn(async () => ({
+        activeRunCount: 25,
+        capacityRejectedCountToday: 3,
+      })),
+    } as never, {
+      entitlementPort: {
+        check: vi.fn(async () => ({
+          activeRunLimit: limits.shift()!,
+          entitled: true as const,
+          unentitledSince: null,
+        })),
+      },
+    });
+
+    await expect(service.getCapacityOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
+      .rejects.toMatchObject({ code: "WORKFLOW_CAPACITY_UNAVAILABLE", statusCode: 503 });
+  });
+
   it("shows a waiting node once as the waiting trajectory step", async () => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock() as never);
 

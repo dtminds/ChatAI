@@ -846,6 +846,7 @@ describe("workflow runtime repository", () => {
 
 function createRunInput(): WorkflowCreateRunInput {
   return {
+    activeRunLimit: 10_000,
     context: { trigger: { eventType: "customer.created" } },
     entryEventId: "event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },

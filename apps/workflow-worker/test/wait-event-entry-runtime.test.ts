@@ -136,10 +136,11 @@ async function createHarness() {
   }, repository, undefined, {
     clock: () => now,
     entitlementPort: {
-      check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
+      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
     },
   });
   const created = await repository.createRunWithInitialTask({
+    activeRunLimit: 10_000,
     context: { outputs: {}, trigger: { projection: { seatId: 101 } } },
     entryEventId: "entry-event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
@@ -158,6 +159,7 @@ async function createHarness() {
 
   await startTaskConsumer({
     broker,
+    maxInFlight: 10,
     now: () => now,
     runtimeService: service,
     subscription: "task-sub",
@@ -170,6 +172,7 @@ async function createHarness() {
     deadLetterTopic: "entry-dlq",
     eventCatalog: createFakeWorkflowEventCatalog(),
     inboxRepository: repository,
+    maxInFlight: 10,
     now: () => now,
     runtimeService: service,
     subscription: "entry-sub",

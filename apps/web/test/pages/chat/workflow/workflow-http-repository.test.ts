@@ -10,6 +10,25 @@ import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
 describe("HTTP workflow repository", () => {
+  it("loads the tenant capacity from its dedicated endpoint", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    client.get.mockResolvedValueOnce(envelope({
+      activeRunCount: 8_721,
+      activeRunLimit: 10_000,
+      capacityRejectedCountToday: 12,
+      date: "2026-08-24",
+    }));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await expect(repository.getCapacityOverview()).resolves.toEqual({
+      activeRunCount: 8_721,
+      activeRunLimit: 10_000,
+      capacityRejectedCountToday: 12,
+      date: "2026-08-24",
+    });
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/capacity");
+  });
+
   it("updates workflow metadata through the metadata endpoint", async () => {
     const definition = createDefinition({ description: "引导新客完成首购" });
     const client = createClient({ definition, revisions: [] });

@@ -190,7 +190,7 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => runtimeNow,
-      entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
     });
     const started = await seedInferenceRun(repository, `event-${nodeKind}`);
     const startResult = await service.executeTask(taskInput(started.task, "start-message"));
@@ -241,7 +241,7 @@ describe("workflow inference worker", () => {
       undefined,
       {
         clock: () => now,
-        entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+        entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
       },
     );
     const started = await seedInferenceRun(repository, "event-empty-intent", " \n\t");
@@ -298,7 +298,7 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
-      entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
       maxTaskAttempts: 5,
     });
     const started = await seedInferenceRun(repository, "event-failed-inference");
@@ -338,6 +338,7 @@ async function seedInferenceRun(
   triggerText = "退款什么时候到账",
 ) {
   const started = await repository.createRunWithInitialTask({
+    activeRunLimit: 10_000,
     context: { outputs: {}, trigger: { text: triggerText } },
     entryEventId,
     entryPolicy: { mode: "never" },
@@ -361,6 +362,7 @@ async function createWaitingJob(
   repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now),
 ) {
   const created = await repository.createRunWithInitialTask({
+    activeRunLimit: 10_000,
     context: { trigger: { text: "hello" } },
     entryEventId,
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },

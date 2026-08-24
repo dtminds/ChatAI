@@ -1,4 +1,5 @@
 import {
+  WORKFLOW_ACTIVE_RUN_STATUSES,
   WorkflowEntryEventType,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceResultSchema,
@@ -25,6 +26,7 @@ import {
 import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import { formatWorkflowMetricDate } from "./workflow-date.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
@@ -68,6 +70,8 @@ import type {
 
 const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
+const CAPACITY_GUARD_TABLE = "xy_wap_embed_workflow_capacity_guard" as const;
+const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
@@ -80,7 +84,7 @@ const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as const;
 const NODE_METRIC_TABLE = "xy_wap_embed_workflow_node_metric" as const;
 const REVISION_CLEANUP_TABLE = "xy_wap_embed_workflow_revision_cleanup" as const;
-const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting"] as const;
+const ACTIVE_RUN_STATUSES = WORKFLOW_ACTIVE_RUN_STATUSES;
 const ACTIVE_TASK_STATUSES = ["pending", "leased", "dispatched", "running"] as const;
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
 const ENTITLEMENT_RUN_CANCEL_BATCH_SIZE = WORKFLOW_MYSQL_WRITE_CHUNK_SIZE;
@@ -199,8 +203,9 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
+    assertNonNegativeSafeInteger(input.activeRunLimit, "Workflow active Run limit");
     try {
-      return await this.db.transaction().execute(async (trx) => {
+      return await this.db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
         const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
           .select(["biz_status", "published_revision", "runtime_status", "workflow_type"])
           .where("uid", "=", input.uid).where("id", "=", input.workflowId)
@@ -260,6 +265,19 @@ export class MysqlWorkflowRuntimeRepository implements
         }
         if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
           return { kind: "entry-policy-rejected" as const };
+        }
+        await trx.insertInto(CAPACITY_GUARD_TABLE).values({
+          uid: input.uid,
+        }).onDuplicateKeyUpdate({
+          uid: sql<number>`uid`,
+        }).executeTakeFirstOrThrow();
+        await trx.selectFrom(CAPACITY_GUARD_TABLE)
+          .select("uid")
+          .where("uid", "=", input.uid)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+        if (await hasReachedActiveRunLimit(trx, input.uid, input.activeRunLimit)) {
+          return { kind: "capacity-rejected" as const };
         }
 
         const runInsert = await trx.insertInto(RUN_TABLE).values({
@@ -338,25 +356,39 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async recordProcessedInboxMessage(input: {
+    capacityRejectedCount: number;
     consumer: string;
     expiresAt: Date;
     messageId: string;
     processedAt: Date;
     uid: number;
   }) {
-    try {
-      await this.db.insertInto(INBOX_TABLE).values({
+    assertNonNegativeSafeInteger(
+      input.capacityRejectedCount,
+      "Workflow capacity rejected count",
+    );
+    return this.db.transaction().execute(async (trx) => {
+      const insertResult = await trx.insertInto(INBOX_TABLE).values({
         consumer: input.consumer,
         expires_at: input.expiresAt,
         message_id: input.messageId,
         processed_at: input.processedAt,
         uid: input.uid,
-      }).executeTakeFirstOrThrow();
+      }).onDuplicateKeyUpdate({
+        message_id: sql<string>`message_id`,
+      }).executeTakeFirst();
+      if ((insertResult.insertId ?? 0n) === 0n) return false;
+      if (input.capacityRejectedCount > 0) {
+        await trx.insertInto(CAPACITY_DAILY_METRIC_TABLE).values({
+          capacity_rejected_count: input.capacityRejectedCount,
+          metric_date: formatWorkflowMetricDate(input.processedAt),
+          uid: input.uid,
+        }).onDuplicateKeyUpdate({
+          capacity_rejected_count: sql<number>`capacity_rejected_count + ${input.capacityRejectedCount}`,
+        }).executeTakeFirstOrThrow();
+      }
       return true;
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
-      return false;
-    }
+    });
   }
 
   beginEventWait(input: WorkflowBeginEventWaitInput) {
@@ -3747,6 +3779,25 @@ async function getDatabaseNow(trx: RuntimeTransaction) {
   const row = await trx.selectNoFrom(sql<Date>`CURRENT_TIMESTAMP`.as("now"))
     .executeTakeFirstOrThrow();
   return row.now instanceof Date ? row.now : new Date(row.now);
+}
+
+async function hasReachedActiveRunLimit(
+  trx: RuntimeTransaction,
+  uid: number,
+  activeRunLimit: number,
+) {
+  const row = await trx.selectFrom(RUN_TABLE)
+    .select(({ fn }) => fn.countAll<number>().as("active_run_count"))
+    .where("uid", "=", uid)
+    .where("status", "in", ACTIVE_RUN_STATUSES)
+    .executeTakeFirstOrThrow();
+  return Number(row.active_run_count) >= activeRunLimit;
+}
+
+function assertNonNegativeSafeInteger(value: number, name: string) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
 }
 
 async function canEnterWorkflow(

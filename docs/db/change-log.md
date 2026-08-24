@@ -1,5 +1,36 @@
 # Database Change Log
 
+## 2026-08-24 Workflow 租户活跃 Run 容量
+
+- 新增租户级容量 guard，串行化同一租户的新 Run 准入；不同租户互不阻塞。
+- 新增租户每日容量拒绝聚合，不保存客户或 Entry 明细。
+- Run 新增租户状态覆盖索引，支持按 `uid + active status` 统计当前容量占用。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid)
+) COMMENT='营销Workflow租户活跃Run容量准入守卫表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '因租户容量不足拒绝的Run准入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)
+) COMMENT='营销Workflow租户容量每日指标表';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_tenant_status (uid, status, id);
+
+ANALYZE TABLE xy_wap_embed_workflow_run;
+```
+
 ## 2026-08-20 Workflow 节点出口执行账本
 
 Node Execution 仅对节点 Contract 明确声明需要记录出口的节点保存实际 Source Outlet；当前只有 A/B 分流节点声明。其他节点保持 `NULL`。该字段不进入 Run Context，也不是客户固定分组。

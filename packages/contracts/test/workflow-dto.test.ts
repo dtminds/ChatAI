@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  WorkflowCapacityOverviewSchema,
   WorkflowDefinitionSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
@@ -27,6 +28,21 @@ import {
 } from "../src/workflow/trigger.js";
 
 describe("workflow contracts", () => {
+  it("validates the tenant Workflow capacity overview", () => {
+    expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      activeRunCount: 8_721,
+      activeRunLimit: 10_000,
+      capacityRejectedCountToday: 12,
+      date: "2026-08-24",
+    })).toBe(true);
+    expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      activeRunCount: 8_721,
+      activeRunLimit: -1,
+      capacityRejectedCountToday: 12,
+      date: "2026-08-24",
+    })).toBe(false);
+  });
+
   it("accepts the production node kinds and rejects legacy kinds", () => {
     const nodeKinds = [
       "start",
@@ -188,9 +204,14 @@ describe("workflow contracts", () => {
 
   it("requires coherent entitlement results", () => {
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      activeRunLimit: 10_000,
       entitled: true,
       unentitledSince: null,
     })).toBe(true);
+    expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      entitled: true,
+      unentitledSince: null,
+    })).toBe(false);
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
       entitled: false,
       unentitledSince: "2026-08-01T00:00:00+08:00",

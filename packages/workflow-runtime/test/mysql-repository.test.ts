@@ -309,6 +309,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
       context: {},
       entryEventId: "event-1",
       entryPolicy: { mode: "never" },
@@ -326,6 +327,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result).toEqual({ action: "cancel", kind: "workflow-unavailable" });
     expect(db.definitionReadShareLocked).toBe(true);
+    expect(db.isolationLevel).toBe("read committed");
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -334,6 +336,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
       context: {},
       entryEventId: "event-1",
       entryPolicy: { mode: "never" },
@@ -352,6 +355,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(result).toMatchObject({ deduplicated: true, kind: "success" });
     expect(db.runReadCount).toBe(2);
     expect(db.guardWriteLocked).toBe(true);
+    expect(db.isolationLevel).toBe("read committed");
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -969,6 +973,7 @@ function createCapabilityExecutionDbMock(options: {
 function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   const db = {
     definitionReadShareLocked: false,
+    isolationLevel: null as string | null,
     runInsertCount: 0,
     insertInto(table: string) {
       if (table === "xy_wap_embed_workflow_run") db.runInsertCount += 1;
@@ -989,9 +994,14 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
       return builder;
     },
     transaction() {
-      return {
+      const builder = {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel(level: string) {
+          db.isolationLevel = level;
+          return builder;
+        },
       };
+      return builder;
     },
   };
   return db;
@@ -1043,6 +1053,7 @@ function createConcurrentDuplicateRunDbMock() {
   };
   const db = {
     guardWriteLocked: false,
+    isolationLevel: null as string | null,
     runInsertCount: 0,
     runReadCount: 0,
     insertInto(table: string) {
@@ -1097,9 +1108,14 @@ function createConcurrentDuplicateRunDbMock() {
       };
     },
     transaction() {
-      return {
+      const builder = {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel(level: string) {
+          db.isolationLevel = level;
+          return builder;
+        },
       };
+      return builder;
     },
   };
   return db;

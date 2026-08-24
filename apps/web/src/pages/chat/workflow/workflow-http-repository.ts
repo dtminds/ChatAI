@@ -1,5 +1,6 @@
 import type {
   ApiSuccessEnvelope,
+  WorkflowCapacityOverview,
   WorkflowDefinition as ApiWorkflowDefinition,
   WorkflowPublishReviewPage,
   WorkflowPublishResult as ApiWorkflowPublishResult,
@@ -46,6 +47,14 @@ export function createHttpWorkflowDraftRepository(
   const writeQueues = new Map<string, Promise<void>>();
 
   const repository: WorkflowDraftRepository = {
+    async getCapacityOverview() {
+      try {
+        return unwrap<WorkflowCapacityOverview>(await client.get("/server/workflows/capacity"));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
     async listDocuments() {
       try {
         const items = unwrap<ApiWorkflowDefinition[]>(await client.get("/server/workflows"));

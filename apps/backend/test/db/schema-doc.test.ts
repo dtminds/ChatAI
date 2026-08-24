@@ -155,6 +155,7 @@ describe("database schema document", () => {
     const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
 
     expect(runTable.match(/^  KEY .+$/gm)).toEqual([
+      "  KEY idx_workflow_run_tenant_status (uid, status, id),",
       "  KEY idx_workflow_run_records (uid, workflow_id, id),",
       "  KEY idx_workflow_run_status_records (uid, workflow_id, status, id),",
       "  KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),",

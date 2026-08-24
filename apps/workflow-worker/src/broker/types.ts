@@ -24,6 +24,7 @@ export type WorkflowBrokerSubscription = {
 export type WorkflowBrokerSubscribeInput = {
   deadLetterTopic?: string;
   handler(message: WorkflowBrokerMessage): Promise<void> | void;
+  maxInFlight: number;
   maxRedeliverCount?: number;
   subscription: string;
   topic: string;

@@ -1,4 +1,5 @@
 import type {
+  WorkflowCapacityOverview,
   WorkflowCapabilitySummary,
   WorkflowPublishReview,
   WorkflowType,
@@ -131,6 +132,7 @@ export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
 };
 
 export type WorkflowDraftReader = {
+  getCapacityOverview: () => Promise<WorkflowCapacityOverview> | WorkflowCapacityOverview;
   getDocument: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
   getVersion: (
     workflowId: string,
@@ -213,6 +215,7 @@ export type SyncWorkflowDraftRepository = {
     workflowType: WorkflowType;
   }) => WorkflowDocument;
   deleteDocument: (workflowId: string) => void;
+  getCapacityOverview: () => WorkflowCapacityOverview;
   getDocument: (workflowId: string) => WorkflowDocument;
   getVersion: (workflowId: string, revision: number) => WorkflowVersionHistoryItem;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;

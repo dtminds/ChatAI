@@ -693,6 +693,24 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id)
 ) COMMENT='营销Workflow客户进入串行化守卫表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid)
+) COMMENT='营销Workflow租户活跃Run容量准入守卫表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '因租户容量不足拒绝的Run准入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)
+) COMMENT='营销Workflow租户容量每日指标表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -714,6 +732,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
+  KEY idx_workflow_run_tenant_status (uid, status, id),
   KEY idx_workflow_run_records (uid, workflow_id, id),
   KEY idx_workflow_run_status_records (uid, workflow_id, status, id),
   KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),

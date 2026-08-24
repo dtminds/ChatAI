@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WorkflowCapacityOverview } from "@chatai/contracts";
 import {
   getWorkflowDraftRepository,
   normalizeWorkflowRepositoryError,
@@ -124,6 +125,50 @@ export function useWorkflowListResource(
   return {
     error: state.error,
     items: state.data ?? [],
+    reload,
+    status: state.status,
+  };
+}
+
+export function useWorkflowCapacityResource(
+  repository: WorkflowDraftRepository = getWorkflowDraftRepository(),
+) {
+  const loadRequestRef = useRef(0);
+  const [state, setState] = useState<WorkflowResourceState<WorkflowCapacityOverview>>({
+    data: null,
+    error: null,
+    status: "loading",
+  });
+
+  const reload = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+    setState(current => ({ ...current, error: null, status: "loading" }));
+    try {
+      const data = await Promise.resolve(repository.getCapacityOverview());
+      if (loadRequestRef.current === requestId) {
+        setState({ data, error: null, status: "ready" });
+      }
+    } catch (error) {
+      if (loadRequestRef.current === requestId) {
+        setState({
+          data: null,
+          error: normalizeWorkflowRepositoryError(error),
+          status: "error",
+        });
+      }
+    }
+  }, [repository]);
+
+  useEffect(() => {
+    void reload();
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [reload]);
+
+  return {
+    overview: state.data,
     reload,
     status: state.status,
   };

@@ -39,6 +39,7 @@ describe("workflow contracts", () => {
       "agent",
       "llm",
       "order-query",
+      "points-transfer",
       "tag-query",
       "tag",
       "customer-update",

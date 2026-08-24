@@ -11,6 +11,7 @@ import { llmNodeUi } from "./llm/ui";
 import { messageNodeUi } from "./message/ui";
 import { messageQueryNodeUi } from "./message-query/ui";
 import { orderQueryNodeUi } from "./order-query/ui";
+import { pointsTransferNodeUi } from "./points-transfer/ui";
 import { ratioSplitNodeUi } from "./ratio-split/ui";
 import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
@@ -32,6 +33,7 @@ export const workflowNodeUiRegistry = {
   message: messageNodeUi,
   "message-query": messageQueryNodeUi,
   "order-query": orderQueryNodeUi,
+  "points-transfer": pointsTransferNodeUi,
   "ratio-split": ratioSplitNodeUi,
   start: startNodeUi,
   tag: tagNodeUi,

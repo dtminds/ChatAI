@@ -94,6 +94,7 @@ const draftConfigs = {
     },
   },
   "order-query": {},
+  "points-transfer": {},
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
@@ -157,7 +158,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(18);
+    expect(entries).toHaveLength(19);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -173,7 +174,7 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual([]);
+      .toEqual(["points-transfer"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -473,6 +474,7 @@ describe("workflow node contracts", () => {
       message: "action",
       "message-query": "query",
       "order-query": "query",
+      "points-transfer": "action",
       "ratio-split": "core",
       start: "core",
       tag: "action",
@@ -499,6 +501,7 @@ describe("workflow node contracts", () => {
       message: ["thirdExternalUserId"],
       "message-query": ["thirdExternalUserId"],
       "order-query": ["externalUserId"],
+      "points-transfer": ["mallUserId"],
       "ratio-split": [],
       start: [],
       tag: ["externalUserId"],
@@ -615,6 +618,26 @@ describe("workflow node contracts", () => {
       ],
     })).toBe(false);
     expect(getWorkflowNodeOutputContracts("customer-update", { fields: [] })).toBeNull();
+  });
+
+  it("keeps incomplete Points Transfer drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("points-transfer")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: ["mallUserId"],
+      maturity: "draft-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("points-transfer", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("points-transfer", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("points-transfer", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("points-transfer", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("points-transfer", {})).toEqual([
+      { key: "result", usages: ["variable"], valueType: { kind: "string" } },
+    ]);
   });
 
   it("keeps the Customer Update Java command batched and bounded", () => {

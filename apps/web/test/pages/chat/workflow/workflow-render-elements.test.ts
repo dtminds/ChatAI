@@ -85,6 +85,7 @@ describe("createWorkflowRenderElements", () => {
       "handoff",
       "agent",
       "coupon",
+      "points-transfer",
     ]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
   });

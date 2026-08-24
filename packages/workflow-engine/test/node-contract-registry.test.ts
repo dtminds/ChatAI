@@ -121,6 +121,9 @@ const projectableDraftData = {
       start: ["trigger", "occurredAt"],
     },
   },
+  "points-transfer": {
+    orderNumberSelector: ["node", "llm", "orderNo"],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],

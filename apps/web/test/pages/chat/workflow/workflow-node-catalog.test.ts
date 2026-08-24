@@ -217,6 +217,7 @@ describe("workflow node catalog", () => {
       "message",
       "message-query",
       "order-query",
+      "points-transfer",
       "ratio-split",
       "start",
       "tag",
@@ -251,7 +252,7 @@ describe("workflow node catalog", () => {
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "points-transfer", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -363,6 +364,7 @@ describe("workflow node catalog", () => {
       "message",
       "message-query",
       "order-query",
+      "points-transfer",
       "start",
       "tag",
       "tag-query",
@@ -473,6 +475,7 @@ describe("workflow node catalog", () => {
       "message",
       "message",
       "operate",
+      "operate",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
@@ -493,7 +496,7 @@ describe("workflow node catalog", () => {
       { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "coupon", "points-transfer"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
@@ -504,7 +507,7 @@ describe("workflow node catalog", () => {
       { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "coupon", "points-transfer"] },
     ]);
   });
 

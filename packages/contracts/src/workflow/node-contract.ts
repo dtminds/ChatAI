@@ -244,6 +244,16 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
   ),
 }, { additionalProperties: false });
 
+export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
+
+export const WorkflowPointsTransferDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowPointsTransferExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
+
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -422,6 +432,8 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
+export type WorkflowPointsTransferDraftConfig = Static<typeof WorkflowPointsTransferDraftConfigSchema>;
+export type WorkflowPointsTransferExecutionConfig = Static<typeof WorkflowPointsTransferExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -526,6 +538,13 @@ export const workflowNodeContractRegistry = {
     ["thirdExternalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
+  "points-transfer": draftReadyContract(
+    "action",
+    1,
+    WorkflowPointsTransferDraftConfigSchema,
+    WorkflowPointsTransferExecutionConfigSchema,
+    ["mallUserId"],
+  ),
   start: runtimeReadyContract(
     "core",
     1,
@@ -840,6 +859,15 @@ export function getWorkflowNodeOutputContracts(
         key: "matchedTagCount",
         usages: ["variable"],
         valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "points-transfer") {
+    return [
+      {
+        key: "result",
+        usages: ["variable"],
+        valueType: { kind: "string" },
       },
     ];
   }

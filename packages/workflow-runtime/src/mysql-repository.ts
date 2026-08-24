@@ -4135,6 +4135,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "agent",
     "llm",
     "order-query",
+    "points-transfer",
     "tag-query",
     "customer-update",
     "ai-collect",

@@ -241,6 +241,31 @@ function validateWorkflowNodeReferences(
       }
     }
 
+    if (node.kind === "points-transfer"
+      && Array.isArray(node.config.orderNumberSelector)) {
+      const valid = validateWorkflowVariableSelector({
+        edges,
+        guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
+          node.id,
+          nodeIds,
+          edges,
+        ),
+        nodeById,
+        requiredUsage: "variable",
+        selector: node.config.orderNumberSelector as WorkflowVariableSelector,
+        targetNodeId: node.id,
+        workflowType,
+        entryEventTypes,
+      });
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Points Transfer node references unavailable order number data",
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.kind === "ai-intent"
       && isWorkflowAiIntentExecutionConfigComplete(node.config)
       && node.config.inputSelector) {

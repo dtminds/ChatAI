@@ -175,6 +175,7 @@ describe("workflow data routes", () => {
     ["customer-update", "修改客户资料"],
     ["llm", "大模型"],
     ["order-query", "订单查询"],
+    ["points-transfer", "代客转积分"],
     ["tag-query", "标签查询"],
   ])("falls back to the product title for %s records", async (nodeKind, title) => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock({

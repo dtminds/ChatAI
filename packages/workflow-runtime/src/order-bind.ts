@@ -23,7 +23,7 @@ export const WORKFLOW_ORDER_BIND_CAPABILITY_BINDING = {
     resultSchema: WorkflowOrderBindResultSchema,
   },
   mapResult({ result }) {
-    return { succeeded: result.succeeded };
+    return { result: result.result };
   },
   nodeKind: "order-bind",
 } satisfies WorkflowCapabilityExecutionBinding<

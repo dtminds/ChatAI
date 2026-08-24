@@ -537,7 +537,7 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageQueryConfigSchema,
     ["thirdExternalUserId"],
   ),
-  "order-bind": draftReadyContract(
+  "order-bind": runtimeReadyContract(
     "action",
     1,
     WorkflowOrderBindDraftConfigSchema,
@@ -865,9 +865,9 @@ export function getWorkflowNodeOutputContracts(
   if (kind === "order-bind") {
     return [
       {
-        key: "succeeded",
+        key: "result",
         usages: ["variable"],
-        valueType: { kind: "boolean" },
+        valueType: { kind: "string" },
       },
     ];
   }

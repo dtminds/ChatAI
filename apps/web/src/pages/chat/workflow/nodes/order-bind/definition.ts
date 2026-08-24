@@ -28,11 +28,11 @@ export const orderBindNodeDefinition: WorkflowNodeDefinition<"order-bind"> = {
   }),
   getOutputVariables: () => [
     {
-      description: "绑定成功为是，失败为否",
-      key: "succeeded",
+      description: "系统会返回绑定订单结果，成功会返回 “success”，失败会返回 “false”",
+      key: "result",
       label: "操作结果",
       usages: ["variable"],
-      valueType: { kind: "boolean" },
+      valueType: { kind: "string" },
     },
   ],
   sanitizeData: (data) => {

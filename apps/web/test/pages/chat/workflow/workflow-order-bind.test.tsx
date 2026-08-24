@@ -30,9 +30,9 @@ describe("workflow Order Bind node", () => {
     );
     expect(definition.getOutputVariables?.(node)).toEqual([
       expect.objectContaining({
-        key: "succeeded",
+        key: "result",
         label: "操作结果",
-        valueType: { kind: "boolean" },
+        valueType: { kind: "string" },
       }),
     ]);
     expect(orderBindNodeUi.body.kind === "fields"
@@ -75,7 +75,7 @@ describe("workflow Order Bind node", () => {
 
     expect(screen.getByText("节点输出")).toBeInTheDocument();
     expect(screen.getByText("操作结果")).toBeInTheDocument();
-    expect(screen.getByText("是/否")).toBeInTheDocument();
+    expect(screen.getByText("文本")).toBeInTheDocument();
   });
 });
 

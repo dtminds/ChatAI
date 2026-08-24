@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["order-bind"]);
+      .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -457,7 +457,7 @@ describe("workflow node contracts", () => {
       currentDraftSchemaVersion: 1,
       executionClass: "action",
       identityInputs: ["externalUserId"],
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
     expect(isWorkflowNodeDraftConfig("order-bind", {})).toBe(true);
     expect(isWorkflowNodeDraftConfig("order-bind", {
@@ -468,7 +468,7 @@ describe("workflow node contracts", () => {
       orderNumberSelector: ["node", "llm", "orderNo"],
     })).toBe(true);
     expect(getWorkflowNodeOutputContracts("order-bind", {})).toEqual([
-      { key: "succeeded", usages: ["variable"], valueType: { kind: "boolean" } },
+      { key: "result", usages: ["variable"], valueType: { kind: "string" } },
     ]);
   });
 

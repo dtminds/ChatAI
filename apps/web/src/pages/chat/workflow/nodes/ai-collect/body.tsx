@@ -1,7 +1,6 @@
 import { NodeFieldList } from "../node-field-list";
 import type { NodeBodyProps } from "../types";
 import {
-  aiCollectFieldTypeLabels,
   normalizeAiCollectFields,
   normalizeAiCollectMode,
 } from "./config";
@@ -27,9 +26,7 @@ export function AiCollectNodeBody({ data }: NodeBodyProps<"ai-collect">) {
             value: hasConfiguredField
               ? {
                   items: fields.map(field => ({
-                    text: field.name.trim()
-                      ? `${field.name.trim()} · ${aiCollectFieldTypeLabels[field.type]}`
-                      : "未配置",
+                    text: field.name.trim() || "未配置",
                     tone: field.name.trim() && field.instruction.trim() ? "default" : "warning",
                   })),
                   kind: "tags",

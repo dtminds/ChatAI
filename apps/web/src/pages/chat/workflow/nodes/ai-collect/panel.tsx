@@ -355,7 +355,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
   return (
-    <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-2.5">
+    <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-3 pl-2">
       <div className="grid grid-cols-[28px_minmax(0,1fr)_5rem_32px] items-start gap-2">
         <SortableItemHandle
           aria-label={`拖动字段 ${index + 1}`}

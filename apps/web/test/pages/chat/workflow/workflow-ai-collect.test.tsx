@@ -110,10 +110,10 @@ describe("workflow AI Collect", () => {
 
     expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
     await user.click(screen.getByRole("combobox", { name: "最多追问轮次" }));
-    expect(screen.getByRole("option", { name: "1" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "10" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "11" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "10" }));
+    expect(screen.getByRole("option", { name: "1 轮" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "10 轮" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "11 轮" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "10 轮" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       maxFollowUpCount: 10,
     }));
@@ -136,7 +136,7 @@ describe("workflow AI Collect", () => {
 
     await user.click(screen.getByRole("switch", { name: "智能体辅助" }));
     expect(screen.getByRole("combobox", { name: "最多追问轮次" }))
-      .toHaveTextContent("10");
+      .toHaveTextContent("10 轮");
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       maxFollowUpCount: 10,
     }));

@@ -251,7 +251,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="智能体辅助"
-            text="关闭时仅从输入消息中提取一次；开启后由智能体继续沟通，达到追问轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续"
+            text="开启后，会引导 Agent 根据资料收集目标和当前对话语境，自行判断是否需要追问以及如何沟通，并不保证每轮都会追问。达到追问轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续。关闭后，仅从输入消息中提取一次，不会引导 Agent 追问"
           />
         )}
       >

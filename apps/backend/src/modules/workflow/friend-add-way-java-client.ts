@@ -112,7 +112,7 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "friend-add-way-activity");
+      assertJavaSuccess(response, "friend-add-way-activity", logger);
 
       const items = extractJavaListItems<FriendAddWayJavaActivity>(response);
 
@@ -136,7 +136,7 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "friend-add-way-list");
+      assertJavaSuccess(response, "friend-add-way-list", logger);
 
       return {
         groups: extractJavaListItems<FriendAddWayJavaGroup>(response),
@@ -169,20 +169,28 @@ function extractJavaListItems<T>(response: JavaApiResponse<unknown>): T[] {
   return emptyFallback ?? [];
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
+function assertJavaSuccess(
+  response: JavaApiResponse<unknown>,
+  operation: string,
+  logger: AppLogger,
+) {
   if (isJavaEnvelopeSuccessful(response)) {
     return;
   }
 
-  throw new BadGatewayError(
-    FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
-    FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
+  logger.error(
     {
       code: response.code,
       error: response.error,
-      errorMsg: response.errorMsg ?? response.error_msg ?? response.message,
+      hasErrorMessage: Boolean(response.errorMsg ?? response.error_msg ?? response.message),
       operation,
     },
+    "内部接口业务失败",
+  );
+
+  throw new BadGatewayError(
+    FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
+    FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
   );
 }
 
@@ -255,7 +263,6 @@ async function postJavaRequest<T>({
       throw new BadGatewayError(
         FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
         FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
-        { operation, status: response.status },
       );
     }
 
@@ -273,8 +280,7 @@ async function postJavaRequest<T>({
       throw new UpstreamHttpError(
         FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
         FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
-        response.status,
-        { operation },
+        mapJavaHttpFailureStatus(response.status),
       );
     }
 
@@ -301,7 +307,6 @@ async function postJavaRequest<T>({
     throw new BadGatewayError(
       FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
       FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
-      { operation },
     );
   } finally {
     clearTimeout(timeoutId);
@@ -327,6 +332,14 @@ function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
 function readJavaApiTimeoutMs() {
   const raw = Number(process.env.JAVA_INTERNAL_API_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function mapJavaHttpFailureStatus(status: number) {
+  if (status === 429 || status === 503 || status === 504) {
+    return status;
+  }
+
+  return 502;
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number) {

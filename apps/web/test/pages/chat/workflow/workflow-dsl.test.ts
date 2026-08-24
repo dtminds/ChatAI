@@ -303,7 +303,7 @@ describe("workflow DSL", () => {
       config: expect.objectContaining({
         seatIds: [101, 102],
         entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
-        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       id: "start",
       kind: "start",
@@ -476,7 +476,7 @@ describe("workflow DSL", () => {
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       pushAccountStrategy: "earliest-added",
       seatIds: [101, 102],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
     expect(configByKind.get("wait")).toEqual({
       duration: 2,

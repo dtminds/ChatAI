@@ -14,13 +14,15 @@ const entryPolicy = {
 };
 
 describe("workflow trigger matching", () => {
-  it("matches friend-added events by member and optional exact source", () => {
+  it("fails closed when a friend-added binding has no source", () => {
     const anySource = friendBinding([]);
     expect(matchWorkflowTrigger(anySource.filter, projection({
       eventType: "contact.friend_added",
       match: { workUserId: 201 },
-    }))).toBe(true);
+    }))).toBe(false);
+  });
 
+  it("matches friend-added events by member and exact source", () => {
     const selectedSources = friendBinding(["qr-code-1", "store-2"]);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
@@ -122,7 +124,7 @@ describe("workflow trigger matching", () => {
       messageSendingWindow: { endTime: "22:30", startTime: "10:15" },
       pushAccountStrategy: "latest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(normalized).toEqual(expect.objectContaining({
@@ -151,7 +153,7 @@ describe("workflow trigger matching", () => {
       entryPolicy,
       seatIds: [101],
       triggers: [
-        { sourceIds: [], type: "contact.friend_added" },
+        { sourceIds: ["qr-code-1"], type: "contact.friend_added" },
         { keywords: ["价格"], type: "message.received" },
       ],
     } as unknown as WorkflowStartConfig;

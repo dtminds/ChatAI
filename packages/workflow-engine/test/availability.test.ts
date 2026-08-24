@@ -110,7 +110,7 @@ function executionSpec(): WorkflowExecutionSpec {
         config: {
           entryPolicy: { mode: "never" },
           seatIds: [1],
-          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+          triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
         },
         id: "start",
         kind: "start",

@@ -1560,7 +1560,7 @@ function startConfig() {
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
     messageSendingWindow: { endTime: "23:59", startTime: "00:00" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" as const }],
   };
 }
 

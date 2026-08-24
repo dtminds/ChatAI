@@ -305,7 +305,7 @@ describe("MysqlWorkflowRepository", () => {
     expect(JSON.parse(String(db.triggerBindingInserts[0]?.filter_spec_json))).toEqual({
       entryPolicy: { mode: "never" },
       eventType: "contact.friend_added",
-      sourceIds: [],
+      sourceIds: ["qr-code-1"],
       workUserIds: [201],
     });
     expect(db.triggerBindingInserts[1]).toMatchObject({
@@ -703,7 +703,7 @@ function startConfig() {
   return {
     entryPolicy: { mode: "never" as const },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" as const }],
   };
 }
 
@@ -741,7 +741,7 @@ function enableInput() {
       filter: {
         entryPolicy: { mode: "never" as const },
         eventType: "contact.friend_added" as const,
-        sourceIds: [],
+        sourceIds: ["qr-code-1"],
         workUserIds: [201],
       },
       subjectType: "chatai_contact" as const,

@@ -28,7 +28,7 @@ describe("compileWorkflowDraft", () => {
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       pushAccountStrategy: "earliest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
     expect(spec.schemaVersion).toBe(3);
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
@@ -662,7 +662,7 @@ function startConfig() {
     entryPolicy: { mode: "never" },
     panelState: { section: "triggers" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   };
 }
 

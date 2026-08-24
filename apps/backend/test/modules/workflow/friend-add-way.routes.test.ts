@@ -277,4 +277,66 @@ describe("workflow friend-add-way routes", () => {
 
     expect(response.statusCode).toBe(400);
   });
+
+  it("maps Java authentication failures to bad gateway", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ message: "service token expired" }), {
+        headers: { "content-type": "application/json" },
+        status: 401,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: {
+        authorization: created.authorization,
+      },
+      method: "GET",
+      url: "/api/server/workflow/friend-add-ways",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: {
+        code: "FRIEND_ADD_WAY_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      },
+      success: false,
+    });
+  });
+
+  it("does not expose Java failure details to the browser", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        error: 62001,
+        errorMsg: "internal entitlement detail",
+        success: false,
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: {
+        authorization: created.authorization,
+      },
+      method: "GET",
+      url: "/api/server/workflow/friend-add-ways",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: {
+        code: "FRIEND_ADD_WAY_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      },
+      success: false,
+    });
+  });
 });

@@ -72,7 +72,7 @@ export function matchWorkflowTrigger(
   const workUserId = projection.match.workUserId;
   if (typeof workUserId !== "number" || !filter.workUserIds.includes(workUserId)) return false;
   if (filter.eventType === "contact.friend_added") {
-    if (filter.sourceIds.length === 0) return true;
+    if (filter.sourceIds.length === 0) return false;
     const sourceId = projection.match.sourceId;
     return typeof sourceId === "string" && filter.sourceIds.includes(sourceId);
   }

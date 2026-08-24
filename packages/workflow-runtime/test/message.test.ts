@@ -55,7 +55,7 @@ describe("Workflow Message capability", () => {
       entryPolicy: { mode: "never" as const },
       pushAccountStrategy: "latest-added" as const,
       seatIds: [101, 102],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" as const }],
     };
 
     const runContext = createWorkflowChatAiRunContext(startConfig);
@@ -77,7 +77,7 @@ describe("Workflow Message capability", () => {
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(getNextWorkflowMessageExecutionAt(

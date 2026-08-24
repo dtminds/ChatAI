@@ -207,13 +207,15 @@ describe("workflow contracts", () => {
   });
 
   it("validates production start and wait configurations", () => {
-    expect(Value.Check(WorkflowStartConfigSchema, {
+    const incompleteFriendSourceConfig = {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       pushAccountStrategy: "earliest-added",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-    })).toBe(true);
+    };
+    expect(Value.Check(WorkflowStartDraftConfigSchema, incompleteFriendSourceConfig)).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, incompleteFriendSourceConfig)).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
@@ -378,7 +380,7 @@ describe("workflow contracts", () => {
     const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
       entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
@@ -394,7 +396,7 @@ describe("workflow contracts", () => {
     ) => ({
       entryPolicy,
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig({

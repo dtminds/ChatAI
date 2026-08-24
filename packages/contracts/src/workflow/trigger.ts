@@ -77,14 +77,30 @@ const WorkflowFriendSourceIdListSchema = Type.Array(
   { maxItems: WORKFLOW_FRIEND_SOURCE_MAX_SELECTED, uniqueItems: true },
 );
 
+const WorkflowRequiredFriendSourceIdListSchema = Type.Array(
+  WorkflowTriggerStringSchema,
+  {
+    maxItems: WORKFLOW_FRIEND_SOURCE_MAX_SELECTED,
+    minItems: 1,
+    uniqueItems: true,
+  },
+);
+
 const WorkflowRequiredTriggerStringListSchema = Type.Array(
   WorkflowTriggerStringSchema,
   { maxItems: 100, minItems: 1, uniqueItems: true },
 );
 
-const WorkflowContactFriendAddedTriggerSchema = Type.Object({
+const WorkflowContactFriendAddedDraftTriggerSchema = Type.Object({
   addWayKey: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
   sourceIds: WorkflowFriendSourceIdListSchema,
+  sourceMatchMode: Type.Optional(WorkflowFriendAddWayMatchModeSchema),
+  type: Type.Literal("contact.friend_added"),
+}, { additionalProperties: false });
+
+const WorkflowContactFriendAddedTriggerSchema = Type.Object({
+  addWayKey: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
+  sourceIds: WorkflowRequiredFriendSourceIdListSchema,
   sourceMatchMode: Type.Optional(WorkflowFriendAddWayMatchModeSchema),
   type: Type.Literal("contact.friend_added"),
 }, { additionalProperties: false });
@@ -134,13 +150,13 @@ export const WorkflowWeComStartTriggerSchema = Type.Union([
 ]);
 
 const WorkflowChatAiStartDraftTriggerSchema = Type.Union([
-  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactFriendAddedDraftTriggerSchema,
   WorkflowContactTagAddedDraftTriggerSchema,
   WorkflowMessageReceivedDraftTriggerSchema,
 ]);
 
 const WorkflowWeComStartDraftTriggerSchema = Type.Union([
-  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactFriendAddedDraftTriggerSchema,
   WorkflowContactTagAddedDraftTriggerSchema,
 ]);
 
@@ -226,7 +242,7 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
   Type.Object({
     entryPolicy: WorkflowEntryPolicySchema,
     eventType: Type.Literal("contact.friend_added"),
-    sourceIds: WorkflowFriendSourceIdListSchema,
+    sourceIds: WorkflowRequiredFriendSourceIdListSchema,
     workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,

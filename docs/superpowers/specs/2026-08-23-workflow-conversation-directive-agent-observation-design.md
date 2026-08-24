@@ -29,7 +29,7 @@
 1. Directive Owner 向 Java 登记结构化、带版本和期限的临时会话指引。
 2. Java 在每次 Agent 回复前读取当前会话的有效指引，并为本轮分配短 Alias。
 3. Agent 一次推理同时生成客户可见回复和可选的极简 `observations`。
-4. Java 只校验 observation 的结构，补齐指引身份、版本和来源消息，再可靠投递给 Directive Owner。
+4. Java 校验 observation 的结构，并为本轮实际使用的每个 Directive 补齐身份、版本、来源消息和候选状态，再可靠投递 Agent Turn Result。
 5. Directive Owner 验证候选观察、持久化业务状态、判断任务完成并撤回指引。
 6. Java 不保存 Workflow 字段进度，不判断节点是否完成，也不等待 Workflow 处理观察后再回复客户。
 7. 关闭智能体辅助的 `ai-collect` 不登记 Directive，只从配置输入中提取一次后直接从 `completed` 或 `incomplete` Outlet 继续。
@@ -96,7 +96,7 @@ type AgentTurnResult = {
 | 模块 | 负责 | 不负责 |
 | --- | --- | --- |
 | Workflow / Directive Owner | 创建稳定 ID；定义目标；验证 observation；保存进度；判断完成、超时和路由；撤回 Directive | 生成 Agent 客户回复；控制 Agent 正常问答内容 |
-| Java Agent Runtime | 持久化 Directive 投影；回复前读取；分配 Alias；渲染受控 Prompt；解析和校验 observations；发送唯一回复；可靠投递观察 | 校验业务字段；保存 Workflow 进度；判断节点完成 |
+| Java Agent Runtime | 持久化 Directive 投影；回复前读取；分配 Alias；渲染受控 Prompt；解析和校验 observations；发送唯一回复；可靠投递 Agent Turn Result | 校验业务字段；保存 Workflow 进度；判断节点完成 |
 | Agent 模型 | 回答客户；结合有效 Directive 自然沟通；输出当前消息中的候选观察 | 决定 Workflow 状态；声称业务校验成功；执行 Workflow 路由 |
 
 ## 5. Directive Kind 注册表
@@ -218,7 +218,7 @@ getConversationDirective(input: {
 - 已撤回或已过期的同一 `directiveId` 不得被旧版本重新激活。
 - Java 必须校验 `uid + conversationId`，不能只按 `directiveId` 更新。
 
-`get` 只用于 Worker / Reconciler 在结果未知时恢复，不供 Web 轮询，也不替代 observation 事件。
+`get` 只用于 Worker / Reconciler 在结果未知时恢复，不供 Web 轮询，也不替代 Agent Turn Result 事件。
 
 ## 7. Agent Turn 集成
 
@@ -232,8 +232,8 @@ getConversationDirective(input: {
 4. 使用注册表中的 Renderer 形成受控上下文。
 5. 调用 Agent 模型，获得一条客户回复和可选 `observations`。
 6. Java 校验 Alias 存在、对应 Kind 允许 observation、`data` 通过 Kind Schema。
-7. Java 正常发送客户回复；无效 observation 被丢弃并记录受控诊断，不能阻断正常回复。
-8. Java 将有效 observation 补齐为可靠内部事件，并异步投递给 Workflow。
+7. Java 正常发送客户回复；无效 observation 被标记为 `rejected` 并记录受控诊断，不能阻断正常回复。
+8. Java 为本轮实际使用的全部 Directive 形成可靠 Agent Turn Result，并异步投递给 Workflow；没有候选值时也必须形成 `absent` 结果。
 
 Java 不等待 Workflow 消费 observation，也不在回复前等待字段提取结果。
 
@@ -277,33 +277,38 @@ Java 不等待 Workflow 消费 observation，也不在回复前等待字段提�
 
 Java 可以使用模型供应商的 Structured Output、受控 JSON Envelope 或隐藏工具调用实现该逻辑结果，但对 Workflow 暴露的接口保持一致。具体实现不得把内部 observations 文本发送给客户。
 
-## 8. Observation 可靠事件
+## 8. Agent Turn 结果可靠事件
 
 ### 8.1 事件信封
 
-Java 将模型输出补齐为：
+Java 将模型输出和本轮 Alias 映射补齐为：
 
 ```ts
-type ConversationDirectiveObservedV1 = {
+type ConversationDirectiveTurnCompletedV1 = {
   eventId: string;
-  eventType: "conversation.directive.observed";
+  eventType: "conversation.directive.turn-completed";
   payloadVersion: 1;
   occurredAt: string;
   uid: number;
   conversationId: string;
   sourceMessageId: number;
-  observations: Array<{
+  results: Array<{
     directiveId: string;
     directiveVersion: number;
     kind: string;
-    data: unknown;
+    observation:
+      | { status: "absent" }
+      | { status: "accepted"; data: unknown }
+      | { status: "rejected" };
   }>;
 };
 ```
 
-一轮中的多个 observations 使用一个批量事件，不按 Directive 逐条投递。`sourceMessageId` 必须等于同一客户消息 `message.received.payload.messageId` 的正整数业务 ID；Java 不复制原始客户消息或模型原始输出，也不另造第二套消息身份。
+一轮中所有实际渲染进 Agent 上下文的 Directive 使用一个批量事件，不按 Directive 逐条投递。即使模型没有输出任何 observation，对应 Directive 仍产生 `status = "absent"` 的结果；Java 接收到结构错误或不符合 Kind Schema 的 observation 时产生 `status = "rejected"`，但不携带原始非法数据。`sourceMessageId` 必须等于同一客户消息 `message.received.payload.messageId` 的正整数业务 ID；Java 不复制原始客户消息或模型原始输出，也不另造第二套消息身份。
 
-该事件明确指向现有 Directive Owner，不能复用用于 Start / Wait Event 匹配的通用 Workflow Entry Event。Java 应通过独立的可靠回调 Topic 或双方确认的等价可靠通道投递，并使用 Transactional Outbox 保证 Java 进程崩溃后可以重试。
+该内部事件比模型侧极简 `observations` 多出的身份和状态均由 Java 根据本轮确定性上下文补齐，不要求模型生成，也不表示 Java 在维护 Workflow 字段进度。
+
+该事件明确指向现有 Directive Owner，不能复用用于 Start / Wait Event 匹配的通用 Workflow Entry Event。Java 应通过独立的可靠回调 Topic 或双方确认的等价可靠通道投递，并使用 Transactional Outbox 保证 Java 进程崩溃后可以重试。客户回复发送成功与 Turn Result Outbox 写入必须位于 Java 可恢复的一致性边界，不能出现客户已收到回复但本轮结果永久丢失。
 
 ### 8.2 消费语义
 
@@ -311,12 +316,14 @@ Workflow 消费时：
 
 - 使用 `eventId` 幂等去重。
 - 找不到 Directive 或 Owner 已终止时丢弃为 stale，不恢复旧任务。
-- 每个 observation 独立执行 Kind Schema 校验和业务验证。
-- 某个 observation 无效不影响同批其它 Directive。
+- 每个 `accepted` observation 独立执行 Kind Schema 校验和业务验证。
+- 某个 result 无效不影响同批其它 Directive。
+- `absent` 表示本轮 Agent 已覆盖该 Directive 但没有候选值，正常路径不再为同一消息调用第二次提取 LLM。
+- `rejected` 只表示模型 observation 未通过 Java 结构校验，Owner 可以把该消息交给补偿提取队列。
 - observation 只能产生候选状态变化，不能直接代表节点成功。
 - 原始值和客户消息正文不得写入普通日志。
 
-默认情况下，Observation 的 `directiveVersion` 必须与 Owner 当前版本一致。Kind 可以注册更严格的单调合并规则；`collect-fields.v1` 的字段定义在一个 Task 内不可变，因此允许消费较早版本中仍在途的候选，但只能填充当前仍为 `missing` 的同一字段，不能覆盖已收集值、恢复已结束 Owner 或接受未声明字段。
+默认情况下，Agent Turn Result 的 `directiveVersion` 必须与 Owner 当前版本一致。Kind 可以注册更严格的单调合并规则；`collect-fields.v1` 的字段定义在一个 Task 内不可变，因此允许消费较早版本中仍在途的 `accepted` 候选，但只能填充当前仍为 `missing` 的同一字段，不能覆盖已收集值、恢复已结束 Owner 或接受未声明字段。
 
 ## 9. `collect-fields.v1`
 
@@ -464,29 +471,36 @@ Java 回复不等待 Workflow，因此 Directive State Hint 和 Workflow 完成�
 
 当前 Execution Config 字段名仍为 `maxFollowUpCount`，但其冻结语义是“最大辅助轮次”，实现不得通过分析 Agent 回复来统计实际问题数。该字段不进入 Java Directive Contract。
 
-- Owner 从自身订阅的客户消息事件按稳定 `sourceMessageId` 幂等计数，同一客户消息重投或重复 observation 不增加轮次；Observation 事件只用于候选值关联，不是轮次计数来源。
+- Owner 从自身订阅的客户消息事件按稳定 `sourceMessageId` 幂等计数，同一客户消息重投或重复 Agent Turn Result 不增加轮次；Turn Result 只用于确认本轮覆盖和关联候选值，不是轮次计数来源。
 - 节点开始前由 `inputSelector` 提供的历史消息只用于初始提取，不消耗辅助轮次。
 - Workflow 发送的一次性开场白不是客户消息，不消耗辅助轮次。
 - 达到预算后仍未收集完成，Owner 不再等待 Agent 是否真的问满相同次数，而是停止新增辅助轮次并进入撤回与有限收敛。
-- Java 不需要输出“本轮是否追问”的标记，也不保存剩余轮次；有效 observation 只需携带稳定来源消息身份。
+- Java 不需要输出“本轮是否追问”的标记，也不保存剩余轮次；Agent Turn Result 只需携带稳定来源消息身份。
 - 对应席位未绑定 Agent，或 Agent 当前不处于自动回复状态时，节点不会自行追问；Owner 仍可从后续客户消息中被动提取，直至轮次预算或 deadline 到达。
 
 该语义解释了“并不保证每轮都会追问”：轮次限制控制这项临时会话目标最多参与多少个后续客户消息回合，而不是强迫 Agent 机械提出固定次数的问题。
 
-达到轮次预算或业务 deadline 时，Owner 先停止接收新的辅助轮次并撤回 Directive，再进入有限 `settling` 阶段，处理终止边界前已经接收的客户消息及其在途 observation / Reconciler 结果。只有这些已接收消息完成处理或到达平台固定的技术收敛期限后，才最终判断 `completed` / `incomplete`；收敛期间不延长客户可继续提供资料的业务期限。
+达到轮次预算或业务 deadline 时，Owner 先停止接收新的辅助轮次并撤回 Directive，再进入有限 `settling` 阶段，处理终止边界前已经接收的客户消息及其在途 Agent Turn Result / Reconciler 结果。只有这些已接收消息完成处理或到达平台固定的技术收敛期限后，才最终判断 `completed` / `incomplete`；收敛期间不延长客户可继续提供资料的业务期限。
 
 ### 11.3 正常路径不重复调用提取 LLM
 
-Agent observation 是正常路径的快速候选来源。`ai-collect` 不应再无条件为每条客户消息调用第二次 LLM。
+Agent Turn Result 是正常路径的快速候选来源。`accepted` 和 `absent` 都表示本轮 Agent 已覆盖对应 Directive；Workflow 不再为同一客户消息调用第二次提取 LLM。只有 result 为 `rejected`、Owner 业务验证拒绝候选，或可靠事件在平台固定宽限期后仍缺失时，该消息才进入补偿提取队列。
 
-为了防止 Agent 漏报、非法输出或历史恢复导致字段永久缺失，Workflow 可以增加异步批量 Reconciler：
+初始输入提取与后续 Reconciler 必须共用一个以 Workflow Task 为 Key 的 **Extraction Scheduler**，不能分别启动独立模型调用：
 
-- 只处理尚未覆盖的客户消息游标。
-- 同一 Directive 最多一个在途提取任务。
-- 在途期间到达的消息合并为下一批。
-- 优先使用字段模板的确定性提取和校验。
-- 只有仍存在语义字段缺口时调用专用提取模型。
-- Reconciler 是补偿路径，不参与 Agent 回复时序。
+1. `message.received` Consumer 只在事务内按 `sourceMessageId` 去重、计数并登记待处理消息，不直接调用 LLM。
+2. Scheduler 持久化 `pendingSourceMessageIds`、`dispatchNotBefore`、`nextBatchSequence` 和最多一个 `inFlightBatch`。
+3. 第一条待补偿消息进入队列后先等待短暂 quiet period；期间连续到达的消息按 `occurredAt + sourceMessageId` 稳定排序并合并。quiet period 必须有固定最大批次等待时间，不能被持续消息无限延后。
+4. 到达派发时间后，Worker 通过数据库原子 claim 取得一个有界批次并生成稳定 `batchId` / Inference Execution Key；同一 Task 在任意时刻最多一个在途提取批次，多实例 Worker 也不能并发派发。
+5. 初始 `inputSelector` 提取占用同一个 single-flight 槽位。初始提取运行期间到达的客户消息只追加到 pending，不启动第二个模型调用。
+6. 在途期间继续到达的消息合并到下一批；当前批次成功后先单调合并结果并重新判断缺失字段，只有仍未完成时才派发下一批。
+7. 同一批次重试复用原 `batchId`、消息集合和 Execution Key，不复制队列项，也不与下一批并行。
+8. 模型结果只能填充当前仍为 `missing` 的字段；Agent Turn Result 或更早批次已经确认的值不能被晚到结果覆盖。
+9. 节点完成、取消、Flow Changed 或进入不可恢复失败后停止派发，清空 pending，并尽力取消在途请求；无法取消的晚到结果按 Task 阶段和批次身份丢弃。
+
+每个批次只读取尚未覆盖的消息，优先执行字段模板的确定性提取和校验，只有仍存在语义字段缺口时才调用专用提取模型。队列最多接收当前节点剩余的 10 个 Agent Assistance Turn，模型请求仍受统一输入体积限制；Reconciler 是补偿路径，不参与 Agent 回复时序。
+
+例如初始输入提取仍在运行时，客户连续发送三条消息：Consumer 只把三个 `sourceMessageId` 追加到 pending。随后到达的 `accepted` / `absent` Turn Result 会移除已被正常 Agent 推理覆盖的消息；仍为 `rejected` 或超出可靠事件宽限期的消息，在当前批次结束后合并成一个下一批请求。整个过程中同一 Task 的模型并发始终为 `1`。
 
 ### 11.4 失败矩阵
 
@@ -499,11 +513,11 @@ Agent observation 是正常路径的快速候选来源。`ai-collect` 不应再�
 | 初始提取暂时失败 | Agent 回复不受影响 | 复用同一 Inference Execution 身份重试，不重复开场白或 Directive 注册 |
 | 初始提取永久失败 | Agent 回复不受影响 | 节点 terminal 失败；不能把模型或契约故障解释为字段缺失 |
 | Java 读取 Directive 失败 | 正常回复，Directive fail-open | Workflow 继续等待；依赖恢复后重新生效，最终受节点 deadline 约束 |
-| Agent 未输出 observation | 正常回复 | 等待后续消息或由 Reconciler 补偿 |
-| observation Alias / Schema 非法 | 正常回复，丢弃非法 observation | 不更新字段，记录受控诊断 |
-| observation 事件暂时无法投递 | 正常回复 | Java Outbox 重试，不要求 Agent 重答 |
-| observation 重复投递 | 无影响 | Workflow Inbox 幂等吸收 |
-| observation 指向旧 Directive 版本 | 无影响 | 默认丢弃；`collect-fields.v1` 仅可按字段不可变规则补齐仍缺字段，绝不覆盖新状态 |
+| Agent 未输出 observation | 正常回复 | Turn Result 记录 `absent`，该消息不触发第二次 LLM |
+| observation Alias / Schema 非法 | 正常回复，不转发非法原文 | Turn Result 记录 `rejected`，该消息进入补偿提取队列 |
+| Agent Turn Result 暂时无法投递 | 正常回复 | Java Outbox 重试，不要求 Agent 重答 |
+| Agent Turn Result 重复投递 | 无影响 | Workflow Inbox 按 `eventId` 幂等吸收 |
+| Agent Turn Result 指向旧 Directive 版本 | 无影响 | 默认丢弃；`collect-fields.v1` 仅可按字段不可变规则补齐仍缺字段，绝不覆盖新状态 |
 | Directive 更新失败 | Agent 可能暂时看到旧 Hint | Workflow 重试更新；当前客户消息仍优先 |
 | Directive 撤回失败 | Agent 可能暂时继续看到旧 Directive | Workflow 重试；Java 到 `expiresAt` 后必须自动忽略 |
 | 节点超时 / 取消 / Flow Changed | Agent 正常回复 | Owner 持久化终止状态并撤回；节点按对应 Outlet / Runtime 语义结束 |
@@ -554,10 +568,10 @@ preparing
 - `conversationId`、绝对 `expiresAt`
 - 字段定义的不可变执行快照
 - 已验证字段值和缺失必填字段
-- 已消费 observation `eventId` 或 Inbox 引用
+- 已消费 Agent Turn Result `eventId` 或 Inbox 引用
 - 已计数的 Agent Assistance Turn `sourceMessageId`
 - 动态 `message.received` Subscription ID、effectiveFrom 和最终状态
-- Reconciler 消息游标和在途提取身份
+- Extraction Scheduler 的 pending 消息、派发时间、批次序号和唯一在途批次
 - `settleUntil` 与终止边界前仍在途的来源消息集合
 - 当前阶段及最后一次 Java 操作结果
 
@@ -573,7 +587,7 @@ Directive 成功登记后节点才进入 `active`。最长等待仅在智能体�
 - Java 按 `uid + conversationId` 隔离 Directive，Workflow Owner 身份不能跨租户复用。
 - Workflow 用户填写的字段名称和提取指引按数据块渲染，不能获得平台 system prompt 同级权限。
 - Java 不记录原始 Directive Payload、observations、客户消息正文或模型原始输出到普通日志。
-- Observation 事件只带结构化候选值和来源消息 ID；敏感值进入 Workflow 执行详情时遵守既有脱敏和访问控制。
+- Agent Turn Result 只带受控候选值、候选状态和来源消息 ID；敏感值进入 Workflow 执行详情时遵守既有脱敏和访问控制。
 - Java 必须限制单条 Directive、单会话总 Directive、字段数、提取指引长度、单字段候选值和 observation 总体积。
 - 模型产生未声明 Alias、额外字段、超长字符串或嵌套对象时直接丢弃对应 observation。
 - Prompt injection 不能通过 observation 触发业务动作；Owner 验证后仍只形成节点输出，后续副作用由独立 Query / Action 契约执行。
@@ -587,9 +601,9 @@ Directive 成功登记后节点才进入 `active`。最长等待仅在智能体�
 
 后续拆分顺序：
 
-1. 双方冻结 Directive / Observation Contract、Kind Registry 和可靠事件通道。
+1. 双方冻结 Directive / Agent Turn Result Contract、Kind Registry 和可靠事件通道。
 2. Java 实现 Directive 存储、过期过滤、Agent Prompt 注入、极简 observation 解析和 Transactional Outbox。
-3. Node 实现 Java Adapter、observation Consumer / Inbox 和 Directive 生命周期 Port。
+3. Node 实现 Java Adapter、Agent Turn Result Consumer / Inbox 和 Directive 生命周期 Port。
 4. 实现 `collect-fields.v1` 的共享 Schema、Renderer 和验证规则。
 5. 实现 `ai-collect` 初始提取、可靠开场白和 Composite Runner。
 6. 完成 Java 联调、异常恢复、双 Directive 和真实 Agent 回复验收后，才将 `ai-collect` 提升为 `runtime-ready`。
@@ -604,9 +618,9 @@ Java 未接通前，Node 可以使用测试 Adapter 推进内部自动化测试�
 2. 同一 Agent Turn 返回回复和字段候选，客户只收到回复正文。
 3. Java 自动补齐 Directive ID、版本和来源消息 ID，Workflow 验证后更新字段。
 4. 模型输出未知 Alias、额外字段或非法类型时，客户回复不受影响且 Workflow 不更新字段。
-5. Agent 漏报 observation 时，后续消息或 Reconciler 可以继续收集。
+5. Agent 无候选时 Turn Result 为 `absent` 且不触发第二次 LLM；候选结构非法时为 `rejected` 并进入批量 Reconciler。
 6. 两个 Workflow Directive 同时生效时，一轮只发送一条回复，并可更新两个 Owner。
-7. 重复 observation 事件不重复修改字段或完成节点。
+7. 重复 Agent Turn Result 不重复修改字段、计数或完成节点。
 8. 旧版本 observation 不能覆盖新状态；`collect-fields.v1` 的在途候选只能补齐当前仍缺字段。
 9. 节点完成、超时、取消和 Workflow 停止后 Directive 均最终失效。
 10. Java 读取 Directive 或事件投递暂时失败时，Agent 聊天不中断，任务可恢复或最终按 deadline 未完成。
@@ -622,10 +636,11 @@ Java 未接通前，Node 可以使用测试 Adapter 推进内部自动化测试�
 
 1. Java Agent 当前模型调用是否支持同轮稳定返回客户回复和隐藏结构化数据；采用 Structured Output、工具调用还是其它 Adapter 实现。
 2. Directive Java Endpoint、存储所有权和 Transactional Outbox 表归属。
-3. Observation 使用的独立 Topic、分区键、订阅和 DLQ 约定。
+3. Agent Turn Result 使用的独立 Topic、分区键、订阅和 DLQ 约定。
 4. 单会话最大有效 Directive 数、总 Prompt 体积和优先级范围。
 5. Java 如何向 Node 暴露对应席位当前是否绑定 Agent、是否处于自动回复状态；该状态只影响是否产生 Agent 追问，不改变 Owner 对客户消息的被动收集所有权。
 6. `ai-collect` 完成后，撤回确认是否必须先于 Task 前向路由，或由独立可靠撤回 Outbox 保证最终失效。
 7. 初始提取和 Reconciler 使用哪个模型 Endpoint、如何选择结构化输出能力，以及每个 Directive 的调用频率和成本上限。
-8. Owner 如何复用现有 `message.received` 动态订阅与 Workflow Inbox 唤醒 Composite Task；Observation 的 `sourceMessageId` 已冻结为同一事件的 `payload.messageId`。
-9. `settling` 的平台固定技术期限，以及 observation 与 Reconciler 在该期限内的完成、取消和丢弃规则。
+8. Owner 如何复用现有 `message.received` 动态订阅与 Workflow Inbox 唤醒 Composite Task；Agent Turn Result 的 `sourceMessageId` 已冻结为同一事件的 `payload.messageId`。
+9. `settling` 的平台固定技术期限，以及 Agent Turn Result 与 Reconciler 在该期限内的完成、取消和丢弃规则。
+10. Extraction Scheduler 的 quiet period、最大批次等待时间、单批消息和请求体积上限。

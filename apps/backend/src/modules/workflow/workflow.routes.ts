@@ -99,7 +99,7 @@ export async function registerWorkflowRoutes(
   const authenticated = { preHandler: app.authenticate };
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db),
-    { entitlementPort },
+    { capacityPort: entitlementPort },
   );
 
   app.get(

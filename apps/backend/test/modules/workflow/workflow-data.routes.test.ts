@@ -71,23 +71,21 @@ describe("workflow data routes", () => {
     expect(dataService.getCapacityOverview).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }));
   });
 
-  it("combines the tenant Run usage with a consistent entitled capacity", async () => {
+  it("combines tenant Run usage with one tenant-scoped capacity lookup", async () => {
     const reader = {
       getCapacityUsage: vi.fn(async () => ({
         activeRunCount: 25,
         capacityRejectedCountToday: 3,
       })),
     };
-    const entitlementPort = {
-      check: vi.fn(async () => ({
+    const capacityPort = {
+      getTenantCapacity: vi.fn(async () => ({
         activeRunLimit: 100,
-        entitled: true as const,
-        unentitledSince: null,
       })),
     };
     const service = new WorkflowDataService(reader as never, {
+      capacityPort,
       clock: () => new Date("2026-08-24T23:30:00+08:00"),
-      entitlementPort,
     });
 
     await expect(service.getCapacityOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
@@ -96,30 +94,45 @@ describe("workflow data routes", () => {
         activeRunLimit: 100,
         capacityRejectedCountToday: 3,
         date: "2026-08-24",
-      });
+    });
     expect(reader.getCapacityUsage).toHaveBeenCalledTimes(1);
-    expect(entitlementPort.check).toHaveBeenCalledTimes(2);
+    expect(capacityPort.getTenantCapacity).toHaveBeenCalledTimes(1);
+    expect(capacityPort.getTenantCapacity).toHaveBeenCalledWith({ uid: 9 });
   });
 
-  it("fails the capacity overview when entitled Workflow types disagree on the tenant limit", async () => {
-    const limits = [100, 200];
+  it("fails the capacity overview when the tenant capacity authority is unavailable", async () => {
     const service = new WorkflowDataService({
       getCapacityUsage: vi.fn(async () => ({
         activeRunCount: 25,
         capacityRejectedCountToday: 3,
       })),
     } as never, {
-      entitlementPort: {
-        check: vi.fn(async () => ({
-          activeRunLimit: limits.shift()!,
-          entitled: true as const,
-          unentitledSince: null,
-        })),
+      capacityPort: {
+        getTenantCapacity: vi.fn(async () => {
+          throw new Error("Java unavailable");
+        }),
       },
     });
 
     await expect(service.getCapacityOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
       .rejects.toMatchObject({ code: "WORKFLOW_CAPACITY_UNAVAILABLE", statusCode: 503 });
+  });
+
+  it("returns zero capacity usage while counting only active Run states", async () => {
+    const db = createCapacityUsageDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
+
+    await expect(reader.getCapacityUsage({ date: "2026-08-24", uid: 9 })).resolves.toEqual({
+      activeRunCount: 0,
+      capacityRejectedCountToday: 0,
+    });
+    expect(db.selectCount).toBe(2);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_run",
+      "status",
+      "in",
+      ["queued", "running", "waiting"],
+    ]);
   });
 
   it("shows a waiting node once as the waiting trajectory step", async () => {
@@ -299,16 +312,24 @@ describe("workflow data routes", () => {
 
   it("rejects data access for users without workflow administration permission", async () => {
     const reader = {
+      getCapacityUsage: vi.fn(),
       getOverview: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };
     const app = await createApp(new WorkflowDataService(reader as never), ["viewer"]);
 
-    const response = await app.inject({ method: "GET", url: "/api/server/workflows/12/data" });
+    const [dataResponse, capacityResponse] = await Promise.all([
+      app.inject({ method: "GET", url: "/api/server/workflows/12/data" }),
+      app.inject({ method: "GET", url: "/api/server/workflows/capacity" }),
+    ]);
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_ACCESS_FORBIDDEN" } });
+    expect(dataResponse.statusCode).toBe(403);
+    expect(capacityResponse.statusCode).toBe(403);
+    expect(capacityResponse.json()).toMatchObject({
+      error: { code: "WORKFLOW_ACCESS_FORBIDDEN" },
+    });
+    expect(reader.getCapacityUsage).not.toHaveBeenCalled();
     expect(reader.getOverview).not.toHaveBeenCalled();
   });
 
@@ -326,6 +347,27 @@ describe("workflow data routes", () => {
     return app;
   }
 });
+
+function createCapacityUsageDbMock() {
+  const db = {
+    selectCount: 0,
+    wheres: [] as unknown[][],
+    selectFrom(table: string) {
+      db.selectCount += 1;
+      const builder = {
+        select() { return builder; },
+        where(...args: unknown[]) {
+          db.wheres.push([table, ...args]);
+          return builder;
+        },
+        async executeTakeFirst() { return undefined; },
+        async executeTakeFirstOrThrow() { return { active_run_count: 0 }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
 
 function createOverviewDbMock() {
   const updatedAt = new Date("2026-07-12T10:00:00.000Z");

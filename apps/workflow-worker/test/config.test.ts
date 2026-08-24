@@ -228,6 +228,9 @@ describe("workflow worker config", () => {
       expect(() => loadWorkflowWorkerConfig(baseEnv({
         WORKFLOW_ENTRY_CONCURRENCY: value,
       }))).toThrow("WORKFLOW_ENTRY_CONCURRENCY must be an integer from 1 to 1000");
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        WORKFLOW_TASK_CONCURRENCY: value,
+      }))).toThrow("WORKFLOW_TASK_CONCURRENCY must be an integer from 1 to 1000");
     },
   );
 

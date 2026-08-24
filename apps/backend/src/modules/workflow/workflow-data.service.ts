@@ -4,11 +4,10 @@ import type {
   WorkflowEntryRecordDetail,
   WorkflowEntryRecordPage,
 } from "@chatai/contracts";
-import { getEnabledWorkflowTypes } from "@chatai/contracts";
 import {
   formatWorkflowMetricDate,
   UnavailableWorkflowEntitlementPort,
-  type WorkflowEntitlementPort,
+  type WorkflowTenantCapacityPort,
 } from "@chatai/workflow-runtime";
 import {
   ForbiddenError,
@@ -34,47 +33,35 @@ export type WorkflowDataReader = {
 };
 
 export class WorkflowDataService {
+  private readonly capacityPort: WorkflowTenantCapacityPort;
   private readonly clock: () => Date;
-  private readonly entitlementPort: WorkflowEntitlementPort;
 
   constructor(
     private readonly reader: WorkflowDataReader,
     options: {
+      capacityPort?: WorkflowTenantCapacityPort;
       clock?: () => Date;
-      entitlementPort?: WorkflowEntitlementPort;
     } = {},
   ) {
+    this.capacityPort = options.capacityPort ?? new UnavailableWorkflowEntitlementPort();
     this.clock = options.clock ?? (() => new Date());
-    this.entitlementPort = options.entitlementPort ?? new UnavailableWorkflowEntitlementPort();
   }
 
   async getCapacityOverview(scope: WorkflowOperatorScope): Promise<WorkflowCapacityOverview> {
     assertAccess(scope);
     const date = formatWorkflowMetricDate(this.clock());
     try {
-      const [usage, entitlements] = await Promise.all([
+      const [usage, capacity] = await Promise.all([
         this.reader.getCapacityUsage({ date, uid: scope.uid }),
-        Promise.all(getEnabledWorkflowTypes().map(workflowType =>
-          this.entitlementPort.check({ uid: scope.uid, workflowType }))),
+        this.capacityPort.getTenantCapacity({ uid: scope.uid }),
       ]);
-      const activeRunLimits = [...new Set(entitlements.flatMap(result =>
-        result.entitled ? [result.activeRunLimit] : []))];
-      if (activeRunLimits.length === 0) {
-        throw new ForbiddenError("WORKFLOW_ENTITLEMENT_REQUIRED", "当前租户未开通 Workflow");
-      }
-      if (activeRunLimits.length !== 1) {
-        throw new ServiceUnavailableError(
-          "WORKFLOW_CAPACITY_UNAVAILABLE",
-          "暂时无法获取 SOP 客户容量",
-        );
-      }
       return {
         ...usage,
-        activeRunLimit: activeRunLimits[0]!,
+        activeRunLimit: capacity.activeRunLimit,
         date,
       };
     } catch (error) {
-      if (error instanceof ForbiddenError || error instanceof ServiceUnavailableError) throw error;
+      if (error instanceof ServiceUnavailableError) throw error;
       throw new ServiceUnavailableError(
         "WORKFLOW_CAPACITY_UNAVAILABLE",
         "暂时无法获取 SOP 客户容量",

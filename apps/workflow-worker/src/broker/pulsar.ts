@@ -56,12 +56,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
     const state = { closing: false, loops: [] as Promise<void>[] };
     state.loops = startConcurrentReceiveLoops({
       handle: async message => {
-        const wrapped = createPulsarBrokerMessage(message, consumer);
-        try {
-          await input.handler(wrapped);
-        } catch {
-          wrapped.negativeAck();
-        }
+        await handlePulsarReceivedMessage(message, consumer, input.handler);
       },
       isClosing: () => state.closing,
       maxInFlight: input.maxInFlight,
@@ -113,6 +108,19 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
 
   private assertOpen() {
     if (this.closed) throw new Error("Workflow broker is closed");
+  }
+}
+
+export async function handlePulsarReceivedMessage(
+  message: Pulsar.Message,
+  consumer: Pulsar.Consumer,
+  handler: WorkflowBrokerSubscribeInput["handler"],
+) {
+  const wrapped = createPulsarBrokerMessage(message, consumer);
+  try {
+    await handler(wrapped);
+  } catch {
+    wrapped.negativeAck();
   }
 }
 

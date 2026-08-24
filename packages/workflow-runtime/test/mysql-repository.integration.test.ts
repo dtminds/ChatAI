@@ -64,7 +64,7 @@ describe("MySQL workflow runtime repository contract", () => {
     for (const tableName of [...workflowTableNames].reverse()) {
       await workflowPool.promise().query(`TRUNCATE TABLE \`${tableName}\``);
     }
-    await database.insertInto("xy_wap_embed_workflow_definition").values({
+    const definition = {
       biz_status: 1,
       client_request_id: null,
       description: "",
@@ -81,7 +81,22 @@ describe("MySQL workflow runtime repository contract", () => {
       status_reason: null,
       uid: 9,
       workflow_type: 1,
-    }).executeTakeFirstOrThrow();
+    } as const;
+    await database.insertInto("xy_wap_embed_workflow_definition").values([
+      definition,
+      {
+        ...definition,
+        id: "32",
+        name: "WeCom repository contract",
+        workflow_type: 2,
+      },
+      {
+        ...definition,
+        id: "33",
+        name: "Tenant 10 repository contract",
+        uid: 10,
+      },
+    ]).executeTakeFirstOrThrow();
   });
 
   afterAll(async () => {
@@ -129,7 +144,7 @@ describe("MySQL workflow runtime repository contract", () => {
       consumer: "workflow-entry",
       expiresAt: new Date("2099-02-01T00:00:00+08:00"),
       messageId: "9:capacity-event-1",
-      processedAt: new Date("2099-01-01T23:30:00+08:00"),
+      processedAt: new Date("2099-01-01T00:30:00+08:00"),
       uid: 9,
     };
 

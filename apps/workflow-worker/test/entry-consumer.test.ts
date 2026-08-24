@@ -251,6 +251,7 @@ describe("workflow entry consumer", () => {
 
   it("ACKs capacity rejection and records its count with the Entry Inbox", async () => {
     const inboxRepository = createInboxRepository();
+    const publishToDeadLetter = vi.fn(async () => undefined);
     const startRun = vi.fn(async () => ({ kind: "capacity-rejected" as const }));
     const message = createBrokerMessage(event());
     const handler = createEntryConsumerHandler({
@@ -259,6 +260,7 @@ describe("workflow entry consumer", () => {
       },
       eventCatalog,
       inboxRepository,
+      publishToDeadLetter,
       runtimeService: { startRun },
       subscriptionReader: createSubscriptionReader(),
     });
@@ -270,9 +272,32 @@ describe("workflow entry consumer", () => {
     });
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(publishToDeadLetter).not.toHaveBeenCalled();
     expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
       expect.objectContaining({ capacityRejectedCount: 1 }),
     );
+  });
+
+  it("still wakes an existing Wait Event when a new Run is rejected by capacity", async () => {
+    const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
+    const startRun = vi.fn(async () => ({ kind: "capacity-rejected" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      capacityRejectedCount: 1,
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(recordWaitEvent).toHaveBeenCalledTimes(1);
   });
 
   it("keeps capacity rejection metrics when another Workflow is admitted", async () => {

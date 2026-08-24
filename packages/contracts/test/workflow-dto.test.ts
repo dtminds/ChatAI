@@ -18,6 +18,7 @@ import {
 import {
   getEnabledWorkflowTypes,
   getWorkflowCapabilityProfile,
+  WorkflowTenantCapacityResultSchema,
   WorkflowTypeEntitlementResultSchema,
 } from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
@@ -220,6 +221,21 @@ describe("workflow contracts", () => {
       entitled: false,
       unentitledSince: null,
     })).toBe(false);
+  });
+
+  it("validates tenant capacity results independently from Workflow Type entitlement", () => {
+    expect(Value.Check(WorkflowTenantCapacityResultSchema, {
+      activeRunLimit: 10_000,
+    })).toBe(true);
+    for (const result of [
+      {},
+      { activeRunLimit: -1 },
+      { activeRunLimit: 1.5 },
+      { activeRunLimit: Number.MAX_SAFE_INTEGER + 1 },
+      { activeRunLimit: 10_000, workflowType: "chatai_sop" },
+    ]) {
+      expect(Value.Check(WorkflowTenantCapacityResultSchema, result)).toBe(false);
+    }
   });
 
   it("models paused and stopped as distinct runtime states", () => {

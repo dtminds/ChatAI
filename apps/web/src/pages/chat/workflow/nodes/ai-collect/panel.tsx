@@ -304,7 +304,10 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         <Input
           aria-label={`字段 ${index + 1} 名称`}
           aria-invalid={!field.name.trim() || duplicateName}
-          className={cn("h-9 text-xs", duplicateName && "border-destructive")}
+          className={cn(
+            "h-9 text-[13px] md:text-[13px]",
+            duplicateName && "border-destructive",
+          )}
           maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
           onChange={event => onChange({ name: event.target.value })}
           placeholder="字段名称"
@@ -314,7 +317,10 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
           onValueChange={(type: WorkflowAiCollectFieldType) => onChange({ type })}
           value={field.type}
         >
-          <SelectTrigger aria-label={`字段 ${index + 1} 类型`} className="h-9 px-2.5 text-xs">
+          <SelectTrigger
+            aria-label={`字段 ${index + 1} 类型`}
+            className="h-9 px-2.5 text-[13px]"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -339,13 +345,13 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         <Textarea
           aria-label={`字段 ${index + 1} 提取指引`}
           aria-invalid={!field.instruction.trim()}
-          className="min-h-24 resize-y pb-7 text-xs"
+          className="min-h-24 resize-y pb-7 text-[13px]"
           maxLength={AI_COLLECT_INSTRUCTION_MAX_LENGTH}
           onChange={event => onChange({ instruction: event.target.value })}
           placeholder="填写提取标准、有效格式和需要排除的情况"
           value={field.instruction}
         />
-        <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs text-muted-foreground">
+        <span className="pointer-events-none absolute bottom-2.5 right-3 text-[13px] text-muted-foreground">
           {field.instruction.length}/{AI_COLLECT_INSTRUCTION_MAX_LENGTH}
         </span>
       </div>

@@ -4,6 +4,7 @@ import {
   Cancel01Icon,
   Delete01Icon,
   DragDropVerticalIcon,
+  InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,12 @@ import {
 } from "@/components/ui/sortable";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
@@ -157,6 +164,31 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
+        title="开场白"
+        titleAccessory={(
+          <SectionInfoTooltip
+            label="开场白"
+            text="开启智能体辅助后，节点开始收集时发送给客户的第一条提问；如果前序节点已发送开场消息，可以留空"
+          />
+        )}
+      >
+        <div className="relative">
+          <Textarea
+            aria-label="开场白"
+            className="h-20 min-h-20 resize-none pb-7"
+            maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
+            onChange={event => updateConfig({ openingMessage: event.target.value })}
+            placeholder="需要 Agent 主动开始收集时填写"
+            rows={2}
+            value={openingMessage}
+          />
+          <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs text-muted-foreground">
+            {openingMessage.length}/{AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
+          </span>
+        </div>
+      </WorkflowSettingsSection>
+
+      <WorkflowSettingsSection
         actions={(
           <div className="flex items-center gap-1">
             <Button
@@ -205,22 +237,6 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         </Sortable>
       </WorkflowSettingsSection>
 
-      <WorkflowSettingsSection title="开场白">
-        <div className="relative">
-          <Textarea
-            aria-label="开场白"
-            className="min-h-24 resize-y pb-7"
-            maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
-            onChange={event => updateConfig({ openingMessage: event.target.value })}
-            placeholder="需要 Agent 主动开始收集时填写"
-            value={openingMessage}
-          />
-          <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs text-muted-foreground">
-            {openingMessage.length}/{AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
-          </span>
-        </div>
-      </WorkflowSettingsSection>
-
       <WorkflowSettingsSection
         actions={(
           <Switch
@@ -232,6 +248,12 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           />
         )}
         title="智能体辅助"
+        titleAccessory={(
+          <SectionInfoTooltip
+            label="智能体辅助"
+            text="关闭时仅从输入消息中提取一次；开启后由智能体继续沟通，达到追问轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续"
+          />
+        )}
       >
         {maxFollowUpCount > 0 ? (
           <p className="text-[13px] leading-7 text-muted-foreground">
@@ -293,6 +315,29 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         </>
       ) : null}
     </>
+  );
+}
+
+function SectionInfoTooltip({ label, text }: { label: string; text: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label={`查看${label}说明`}
+            className="size-5 shrink-0 rounded-full p-0 text-muted-foreground"
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={InformationCircleIcon} size={15} strokeWidth={1.8} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72" side="top" sideOffset={6}>
+          {text}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

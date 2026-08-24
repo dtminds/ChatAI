@@ -7,7 +7,7 @@ import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import { OrderBindConfig } from "@/pages/chat/workflow/nodes/order-bind/panel";
 import { orderBindNodeUi } from "@/pages/chat/workflow/nodes/order-bind/ui";
-import { NodeOutputsSection } from "@/pages/chat/workflow/panels/node-outputs-section";
+import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
 import type {
   WorkflowNode,
   WorkflowNodeConfigPatch,
@@ -39,8 +39,14 @@ describe("workflow Order Bind node", () => {
       ? orderBindNodeUi.body.getFields(node.data)
       : []).toEqual([
       expect.objectContaining({
-        id: "order-number",
+        id: "input",
+        label: "输入",
         value: { kind: "empty" },
+      }),
+      expect.objectContaining({
+        id: "output",
+        label: "输出",
+        value: { kind: "text", text: "操作结果" },
       }),
     ]);
   });
@@ -70,10 +76,23 @@ describe("workflow Order Bind node", () => {
     }));
   });
 
-  it("shows the bind result in the shared output section", () => {
-    render(<NodeOutputsSection node={createOrderBindNode()} />);
+  it("shows the bind result in the settings output section", () => {
+    const node = createOrderBindNode();
 
-    expect(screen.getByText("节点输出")).toBeInTheDocument();
+    render(
+      <NodeConfigPanel
+        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onClose={() => undefined}
+        onNodeChange={() => undefined}
+        onRenameNode={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("节点输入")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "节点输出" })).toBeInTheDocument();
     expect(screen.getByText("操作结果")).toBeInTheDocument();
     expect(screen.getByText("文本")).toBeInTheDocument();
   });

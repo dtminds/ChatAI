@@ -19,7 +19,7 @@ const attempt: WorkflowLlmTestAttempt = {
   completedAt: null,
   createdAt: "2026-08-13T05:00:00.000Z",
   errorMessage: null,
-  executionMode: "mock",
+  executionMode: "real",
   expiresAt: "2026-08-13T05:10:00.000Z",
   inputValues: { input: "hello" },
   nodeId: "llm-1",

@@ -10,6 +10,12 @@
     "seatId": 101,
     "workUserId": 201,
     "thirdExternalUserId": "chatai-contact-time-1",
-    "messageId": 938272
+    "message": {
+      "id": 938272,
+      "role": "customer",
+      "parts": [
+        { "type": "unsupported", "label": "语音" }
+      ]
+    }
   }
 }

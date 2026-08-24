@@ -14,12 +14,11 @@ import {
   workflowBranchOperatorNeedsValue,
 } from "@chatai/contracts";
 import {
-  getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
 import { workflowContextVariables } from "./workflow-variable-registry";
 import {
-  createWorkflowReferenceSummarySegments,
+  createWorkflowVariableReferenceSummarySegments,
   getWorkflowNodeSummaryText,
   type WorkflowNodeSummarySegment,
 } from "./workflow-node-summary";
@@ -358,12 +357,7 @@ export function getBranchConditionSummarySegments(
       .find((item) => item.value === condition.operator);
     const operator = operatorOption?.label ?? "未配置判断";
     const value = getBranchConditionValueLabel(condition.value, condition.operator);
-    const variableSegments = variable.sourceNodeTitle
-      ? createWorkflowReferenceSummarySegments({
-          source: variable.sourceNodeTitle,
-          variable: variable.label,
-        })
-      : [{ kind: "variable" as const, text: getWorkflowVariableDisplayLabel(variable) }];
+    const variableSegments = createWorkflowVariableReferenceSummarySegments(variable);
 
     return [
       ...connector,

@@ -405,12 +405,12 @@ describe("WorkflowDataPage", () => {
     expect(within(messageQuery).queryByText("时间变量不可用")).not.toBeInTheDocument();
     expect(within(messageQuery).getByText("触发时间")).toBeInTheDocument();
     expect(within(intent).queryByText("未配置")).not.toBeInTheDocument();
-    expect(within(intent).getByText("消息查询.消息列表")).toBeInTheDocument();
+    expect(within(intent).getByLabelText("消息查询.消息列表")).toBeInTheDocument();
     expect(within(message).queryByText("输出不可用")).not.toBeInTheDocument();
-    expect(within(message).getByText("消息查询.文本内容")).toBeInTheDocument();
+    expect(within(message).getByLabelText("消息查询.消息列表")).toBeInTheDocument();
     expect(within(llm).getByText("is_matched")).toBeInTheDocument();
     expect(within(handoff).queryByText("{node.tag-query.matchedTagNames}")).not.toBeInTheDocument();
-    expect(within(handoff).getByText("{标签查询.匹配标签名}")).toBeInTheDocument();
+    expect(within(handoff).getByLabelText("标签查询.匹配标签名")).toBeInTheDocument();
   });
 });
 
@@ -459,7 +459,7 @@ function createPublishedVariableEchoDocument(): WorkflowDocument {
     ...createNodeFromKind("ai-intent", "ai-intent", 3),
     data: {
       ...createDefaultNodeData("ai-intent"),
-      inputSelector: ["node", messageQuery.id, "messageIds"],
+      inputSelector: ["node", messageQuery.id, "messages"],
       intents: [{ description: "愿意参加活动", id: "intent-accept" }],
     },
   };
@@ -467,8 +467,8 @@ function createPublishedVariableEchoDocument(): WorkflowDocument {
     ...createNodeFromKind("message", "message", 4),
     data: {
       ...createDefaultNodeData("message"),
-      contentMode: "node-output" as const,
-      outputSelector: ["node", messageQuery.id, "textContent"],
+      content: [{ selector: ["node", messageQuery.id, "messages"], type: "variable" as const }],
+      contentMode: "custom" as const,
     },
   };
   const llm = {

@@ -7,12 +7,13 @@ import { Value } from "@sinclair/typebox/value";
 import {
   assertWorkflowRuntimeValue,
   mapWorkflowInferenceResult,
+  resolveWorkflowAiIntentTestWithoutProvider,
   WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   WorkflowRuntimeValueError,
   type WorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
-import type { WorkflowLlmTestAdapter } from "./llm-test-mock-adapter.js";
+import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
 export async function processWorkflowLlmTestAttemptBatch(input: {
   adapter: WorkflowLlmTestAdapter;
@@ -53,13 +54,20 @@ export async function processWorkflowLlmTestAttemptBatch(input: {
       });
     }, input.heartbeatIntervalMs);
     try {
-      const inferenceResult = await raceAbort(input.adapter.execute({
-        deadlineAt: attempt.deadlineAt,
-        executionKey: attempt.executionKey,
-        payload: attempt.payload,
-        signal: controller.signal,
-        uid: attempt.uid,
-      }), controller.signal);
+      const resolvedWithoutProvider = resolveWorkflowAiIntentTestWithoutProvider(
+        attempt.node,
+        attempt.inputValues.inputValue,
+      );
+      const inferenceResult = resolvedWithoutProvider?.result ?? await raceAbort(
+        input.adapter.execute({
+          deadlineAt: attempt.deadlineAt,
+          executionKey: attempt.executionKey,
+          payload: attempt.payload,
+          signal: controller.signal,
+          uid: attempt.uid,
+        }),
+        controller.signal,
+      );
       if (!Value.Check(WorkflowInferenceMessageListResultSchema, inferenceResult)) {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
@@ -74,7 +82,8 @@ export async function processWorkflowLlmTestAttemptBatch(input: {
           "试运行超时",
         );
       }
-      const { output } = mapWorkflowInferenceResult(attempt.node, inferenceResult);
+      const { output } = resolvedWithoutProvider
+        ?? mapWorkflowInferenceResult(attempt.node, inferenceResult);
       if (!Value.Check(WorkflowJsonObjectSchema, output)) {
         throw new WorkflowCapabilityExecutionError(
           "terminal",

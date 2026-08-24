@@ -1,3 +1,4 @@
+import { isWorkflowMessagesValueType } from "@chatai/contracts";
 import type {
   LlmNodeData,
   WorkflowLlmInputParameter,
@@ -17,6 +18,8 @@ import { getVariableContentText, normalizeVariableContent } from "../variable-co
 export const LLM_INPUT_MAX_COUNT = 10;
 export const LLM_INPUT_NAME_MAX_LENGTH = 15;
 export const LLM_PROMPT_MAX_LENGTH = 10_000;
+export const LLM_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+export type LlmReasoningEffort = typeof LLM_REASONING_EFFORTS[number];
 export const LLM_OUTPUT_FIELD_MAX_COUNT = 10;
 export const LLM_OUTPUT_NAME_MAX_LENGTH = 15;
 export const LLM_OUTPUT_DESCRIPTION_MAX_LENGTH = 200;
@@ -52,6 +55,12 @@ export function createDefaultLlmOutput(): WorkflowLlmOutputConfig {
 
 export function normalizeLlmModelId(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function normalizeLlmReasoningEffort(value: unknown): LlmReasoningEffort {
+  return LLM_REASONING_EFFORTS.includes(value as LlmReasoningEffort)
+    ? value as LlmReasoningEffort
+    : "medium";
 }
 
 export function normalizeLlmModelSnapshot(value: unknown) {
@@ -148,6 +157,13 @@ export function getLlmInputVariables(
   });
 }
 
+export function getLlmSystemPromptVariables(
+  inputs: WorkflowLlmInputParameter[],
+) {
+  return getLlmInputVariables(inputs)
+    .filter(variable => !isWorkflowMessagesValueType(variable.valueType));
+}
+
 export function getLlmInputSelector(inputId: string): WorkflowVariableSelector {
   return ["input", inputId];
 }
@@ -182,6 +198,7 @@ export function getLlmStatus(data: Pick<
 >): WorkflowNodeStatus {
   const inputs = normalizeLlmInputs(data.inputs);
   const inputVariables = getLlmInputVariables(inputs);
+  const systemPromptVariables = getLlmSystemPromptVariables(inputs);
   const output = normalizeLlmOutput(data.output);
   const systemPromptText = getVariableContentText(data.systemPrompt, inputVariables);
   const userPromptText = getVariableContentText(data.userPrompt, inputVariables);
@@ -191,7 +208,7 @@ export function getLlmStatus(data: Pick<
     && Boolean(systemPromptText.trim())
     && systemPromptText.length <= LLM_PROMPT_MAX_LENGTH
     && userPromptText.length <= LLM_PROMPT_MAX_LENGTH
-    && arePromptSelectorsAvailable(data.systemPrompt, inputVariables)
+    && arePromptSelectorsAvailable(data.systemPrompt, systemPromptVariables)
     && arePromptSelectorsAvailable(data.userPrompt, inputVariables)
     && isLlmOutputComplete(output)
     ? "ready"
@@ -228,8 +245,13 @@ export function isLlmOutputComplete(output: WorkflowLlmOutputConfig) {
 export function getInvalidLlmPromptSelectors(
   prompt: WorkflowVariableContentSegment[] | undefined,
   inputs: WorkflowLlmInputParameter[],
+  options: { allowWorkflowMessages?: boolean } = {},
 ) {
-  const availableIds = new Set(normalizeLlmInputs(inputs).map((input) => input.id));
+  const availableIds = new Set(normalizeLlmInputs(inputs)
+    .filter(input => options.allowWorkflowMessages !== false
+      || input.value.kind !== "variable"
+      || !isWorkflowMessagesValueType(input.value.valueType))
+    .map((input) => input.id));
   return normalizeLlmPrompt(prompt)
     .filter((segment): segment is Extract<WorkflowVariableContentSegment, { type: "variable" }> =>
       segment.type === "variable")

@@ -14,7 +14,6 @@ describe("WorkflowService", () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -32,7 +31,7 @@ describe("WorkflowService", () => {
     });
 
     expect(first).toMatchObject({
-      executionMode: "mock",
+      executionMode: "real",
       inputValues: { "input-message": "退款什么时候到账", "input-tone": "简洁" },
       nodeId: "llm-1",
       output: null,
@@ -46,8 +45,8 @@ describe("WorkflowService", () => {
       payload: {
         kind: "message-list",
         messageList: [
-          { content: "请用简洁方式处理", role: "system" },
-          { content: "退款什么时候到账", role: "user" },
+          { content: [{ text: "请用简洁方式处理", type: "text" }], role: "system" },
+          { content: [{ text: "退款什么时候到账", type: "text" }], role: "user" },
         ],
       },
     });
@@ -58,7 +57,6 @@ describe("WorkflowService", () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(repository, {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -88,18 +86,12 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_INPUT_INVALID", statusCode: 400 });
     expect(attempts.attempts).toHaveLength(0);
 
-    const disabled = createService(repository, { llmTestMode: "disabled" });
-    await expect(disabled.createLlmTestAttempt(operator, created.id, "llm-1", {
-      expectedDraftVersion: saved.draftVersion,
-      inputValues: { "input-message": "test" },
-    })).rejects.toMatchObject({ code: "WORKFLOW_LLM_TEST_UNAVAILABLE", statusCode: 503 });
   });
 
   it("rejects LLM test inputs that render an empty system prompt", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const draft = withLlmNode(created.draft);
@@ -130,11 +122,90 @@ describe("WorkflowService", () => {
     expect(attempts.attempts).toHaveLength(0);
   });
 
+  it("creates AI Intent test Attempts from the saved selector contract", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withAiIntentNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const inputValue = [{
+      id: 101,
+      parts: [
+        { text: "看下这个", type: "text" as const },
+        { type: "image" as const, url: "https://example.com/order.png" },
+      ],
+      role: "customer" as const,
+    }];
+
+    const attempt = await service.createAiIntentTestAttempt(
+      operator,
+      created.id,
+      "ai-intent-1",
+      { expectedDraftVersion: saved.draftVersion, inputValue },
+    );
+
+    expect(attempt).toMatchObject({
+      inputValues: { inputValue },
+      nodeId: "ai-intent-1",
+      status: "running",
+    });
+    expect(attempts.attempts[0]).toMatchObject({
+      node: { id: "ai-intent-1", kind: "ai-intent" },
+      payload: {
+        messageList: [
+          { role: "system" },
+          {
+            content: [
+              { text: "用户: 看下这个", type: "text" },
+              { type: "image", url: "https://example.com/order.png" },
+            ],
+            role: "user",
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects stale or source-type-mismatched AI Intent test inputs", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withAiIntentNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "ai-intent-1", {
+      expectedDraftVersion: saved.draftVersion - 1,
+      inputValue: [],
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_CONFLICT", statusCode: 409 });
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "ai-intent-1", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValue: "客户端不能把消息列表声明成文本",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_AI_INTENT_TEST_INPUT_INVALID",
+      statusCode: 400,
+    });
+    await expect(service.createAiIntentTestAttempt(operator, created.id, "start", {
+      expectedDraftVersion: saved.draftVersion,
+      inputValue: [],
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_AI_INTENT_TEST_NODE_INVALID",
+      statusCode: 400,
+    });
+    expect(attempts.attempts).toHaveLength(0);
+  });
+
   it("isolates LLM test Attempts by tenant, Workflow, and node", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -160,7 +231,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -214,7 +284,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
       llmTestTimeoutMs: 1_000,
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -242,7 +311,6 @@ describe("WorkflowService", () => {
     const service = createService(new InMemoryWorkflowRepository(), {
       clock: () => now,
       llmTestAttemptRepository: attempts,
-      llmTestMode: "mock",
       llmTestTimeoutMs: 1_000,
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -793,9 +861,16 @@ describe("WorkflowService", () => {
     const created = await createConfigured(service);
 
     expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .toEqual(expect.arrayContaining(["start", "wait", "message-query", "tag", "end"]));
-    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .not.toEqual(expect.arrayContaining(["llm", "ai-intent"]));
+      .toEqual(expect.arrayContaining([
+        "start",
+        "wait",
+        "message-query",
+        "tag",
+        "customer-update",
+        "llm",
+        "ai-intent",
+        "end",
+      ]));
     await expect(service.submitReview(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
     })).resolves.toMatchObject({ status: "pending" });
@@ -822,7 +897,35 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("keeps draft-ready LLM nodes out of published revisions", async () => {
+  it("publishes a complete Customer Update node into an executable revision", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withCustomerUpdateNode(created.draft),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const published = await publishApprovedDraft(
+      service,
+      created.id,
+      configured.draftVersion,
+    );
+
+    expect(published.revision.draft.nodes.find(node => node.id === "customer-update"))
+      .toMatchObject({
+        data: {
+          fields: [{
+            field: { id: 301, key: "remark", title: "客户备注", type: 1 },
+            id: "field-1",
+            value: { kind: "literal", value: "重点客户" },
+          }],
+          kind: "customer-update",
+        },
+        id: "customer-update",
+      });
+  });
+
+  it("allows runtime-ready LLM nodes in published revisions", async () => {
     const service = createService();
     const configured = await createConfigured(service);
     const saved = await service.saveDraft(operator, configured.id, {
@@ -836,15 +939,24 @@ describe("WorkflowService", () => {
 
     await expect(service.submitReview(operator, configured.id, {
       expectedDraftVersion: saved.draftVersion,
-    })).rejects.toMatchObject({
-      code: "WORKFLOW_VALIDATION_FAILED",
-      details: {
-        issues: expect.arrayContaining([expect.objectContaining({
-          code: "unsupported-runtime-node",
-          nodeId: "llm-1",
-        })]),
-      },
+    })).resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("allows runtime-ready AI Intent nodes in published revisions", async () => {
+    const service = createService();
+    const configured = await createConfigured(service);
+    const saved = await service.saveDraft(operator, configured.id, {
+      draft: withAiIntentNode(withStartConfig(configured.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [{ keywords: ["退款"], type: "message.received" }],
+      })),
+      expectedDraftVersion: configured.draftVersion,
     });
+
+    await expect(service.submitReview(operator, configured.id, {
+      expectedDraftVersion: saved.draftVersion,
+    })).resolves.toMatchObject({ status: "pending" });
   });
 
   it("rejects an inactive seat during publish validation for message-only Start", async () => {
@@ -1411,6 +1523,7 @@ function withLlmNode(
       label: "大模型",
       metric: "model-1",
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: {
         field: { description: "", id: "output-1", name: "output", type: "string" as const },
         format: "text" as const,
@@ -1438,6 +1551,85 @@ function withLlmNode(
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
       llmNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
+  };
+}
+
+function withAiIntentNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  const intentNode = {
+    data: {
+      advancedEnabled: false,
+      inputSelector: ["node", "message-query-1", "messages"] as [string, string, string],
+      intents: [{ description: "咨询退款", id: "refund" }],
+      kind: "ai-intent" as const,
+      label: "意图识别",
+      metric: "",
+      prompt: "",
+      schemaVersion: 1,
+      status: "ready" as const,
+      title: "意图识别",
+    },
+    id: "ai-intent-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  const messageQueryNode = {
+    data: {
+      kind: "message-query" as const,
+      label: "消息查询",
+      limit: 10,
+      metric: "最新 10 条消息",
+      schemaVersion: 1,
+      status: "ready" as const,
+      take: "latest" as const,
+      timeRange: {
+        end: ["current-node-lifecycle", "enteredAt"] as [string, string],
+        mode: "dynamic" as const,
+        start: ["trigger", "occurredAt"] as [string, string],
+      },
+      title: "消息查询",
+    },
+    id: "message-query-1",
+    position: { x: 170, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      {
+        id: "edge-start-query",
+        source: "start",
+        target: "message-query-1",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-query-intent",
+        source: "message-query-1",
+        target: "ai-intent-1",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-intent-refund",
+        source: "ai-intent-1",
+        sourceHandle: "intent:refund",
+        target: "end",
+        type: "workflowEdge",
+      },
+      {
+        id: "edge-intent-fallback",
+        source: "ai-intent-1",
+        sourceHandle: "fallback",
+        target: "end",
+        type: "workflowEdge",
+      },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      messageQueryNode,
+      intentNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
   };
@@ -1527,6 +1719,51 @@ function withTagNode(
           title: "客户打标",
         },
         id: "tag",
+        position: { x: 340, y: 240 },
+        selected: false,
+        type: "workflowNode",
+      },
+      ...draft.nodes.filter(node => node.id === "end"),
+    ],
+  };
+}
+
+function withCustomerUpdateNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+) {
+  return {
+    ...draft,
+    edges: [
+      {
+        id: "start-customer-update",
+        source: "start",
+        target: "customer-update",
+        type: "workflowEdge",
+      },
+      {
+        id: "customer-update-end",
+        source: "customer-update",
+        target: "end",
+        type: "workflowEdge",
+      },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      {
+        data: {
+          fields: [{
+            field: { id: 301, key: "remark", title: "客户备注", type: 1 as const },
+            id: "field-1",
+            value: { kind: "literal" as const, value: "重点客户" },
+          }],
+          kind: "customer-update" as const,
+          label: "更新客户信息",
+          metric: "",
+          schemaVersion: 1,
+          status: "ready" as const,
+          title: "更新客户信息",
+        },
+        id: "customer-update",
         position: { x: 340, y: 240 },
         selected: false,
         type: "workflowNode",

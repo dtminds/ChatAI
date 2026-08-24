@@ -7,6 +7,7 @@ import type { NodeSettingsProps } from "./types";
 import { NodeOutputsSection } from "./node-outputs-section";
 import { SettingWorkspace, SettingWorkspaceProvider, useSettingWorkspace } from "./setting-workspace";
 import { LlmTestWorkspaceTrigger } from "../nodes/llm/test-workspace";
+import { AiIntentTestWorkspaceTrigger } from "../nodes/ai-intent/test-workspace";
 import type { WorkflowNodeTestContext } from "./types";
 
 export function NodeConfigPanel({
@@ -50,8 +51,12 @@ export function NodeConfigPanel({
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
         <GuardedBasePanel
-          headerActions={node.data.kind === "llm" && testContext
-            ? <LlmTestWorkspaceTrigger nodeId={node.id} />
+          headerActions={testContext
+            ? node.data.kind === "llm"
+              ? <LlmTestWorkspaceTrigger nodeId={node.id} />
+              : node.data.kind === "ai-intent"
+                ? <AiIntentTestWorkspaceTrigger nodeId={node.id} />
+                : undefined
             : undefined}
           node={node}
           onClose={onClose}

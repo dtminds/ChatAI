@@ -2076,6 +2076,14 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("导入进度")).toBeInTheDocument();
     expect(screen.getByText("加载占位")).toBeInTheDocument();
     expect(screen.getByText("文字切换")).toBeInTheDocument();
+    const iconStackVariants = screen.getByRole("group", {
+      name: "IconStack 语义色变体",
+    });
+    for (const variant of ["neutral", "primary", "success", "warning"]) {
+      expect(
+        iconStackVariants.querySelector(`[data-variant="${variant}"]`),
+      ).toBeInTheDocument();
+    }
     expect(screen.getByLabelText("文字切换示例")).toHaveTextContent(
       "Agent 正在查看消息",
     );

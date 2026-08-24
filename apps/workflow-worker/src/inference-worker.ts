@@ -1,19 +1,15 @@
 import {
   WorkflowInferenceMessageListResultSchema,
-  WorkflowInferenceTemplateResultSchema,
 } from "@chatai/contracts";
 import {
-  assertWorkflowRuntimeValue,
-  WORKFLOW_NODE_OUTPUT_MAX_BYTES,
   type WorkflowInferenceRepository,
-  type WorkflowJavaInferencePort,
-  WorkflowRuntimeValueError,
+  type WorkflowChatCompletionPort,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Value } from "@sinclair/typebox/value";
 
 export async function processWorkflowInferenceBatch(input: {
-  adapter: WorkflowJavaInferencePort;
+  adapter: WorkflowChatCompletionPort;
   heartbeatIntervalMs: number;
   leaseDurationMs: number;
   leaseOwner: string;
@@ -61,15 +57,18 @@ export async function processWorkflowInferenceBatch(input: {
           signal: controller.signal,
           uid: job.uid,
         }), controller.signal);
-      const resultSchema = job.payload.kind === "message-list"
-        ? WorkflowInferenceMessageListResultSchema
-        : WorkflowInferenceTemplateResultSchema;
-      if (!Value.Check(resultSchema, output)) {
+      const resultSchemaMatches = Value.Check(WorkflowInferenceMessageListResultSchema, output);
+      const resultTypeMatches = resultSchemaMatches && (
+        job.payload.responseFormat.type === "json"
+          ? output.type === "json"
+          : output.type === "text"
+      );
+      if (!resultSchemaMatches || !resultTypeMatches) {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
           "WORKFLOW_INFERENCE_OUTPUT_INVALID",
           "返回结果异常，流程已停止",
-          { diagnosticMessage: `Java inference result did not match ${job.payload.kind}` },
+          { diagnosticMessage: "Provider inference result did not match the requested response format" },
         );
       }
       if (controller.signal.aborted || now() >= job.deadlineAt) {
@@ -79,7 +78,6 @@ export async function processWorkflowInferenceBatch(input: {
           "执行超时",
         );
       }
-      assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
       if (await input.repository.completeInference({
         completedAt: now(),
         id: job.id,
@@ -147,15 +145,6 @@ function classifyInferenceError(error: unknown, aborted: boolean, leaseLost: boo
       errorCode: error.code.slice(0, 128),
       errorMessage: error.message.slice(0, 512),
       failureKind: error.failureKind,
-    };
-  }
-  if (error instanceof WorkflowRuntimeValueError) {
-    return {
-      errorCode: error.reason === "too-large"
-        ? "WORKFLOW_INFERENCE_OUTPUT_TOO_LARGE"
-        : "WORKFLOW_INFERENCE_OUTPUT_INVALID",
-      errorMessage: "返回结果异常，流程已停止",
-      failureKind: "terminal" as const,
     };
   }
   return {

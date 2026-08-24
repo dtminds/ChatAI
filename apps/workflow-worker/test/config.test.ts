@@ -163,23 +163,6 @@ describe("workflow worker config", () => {
     }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
   });
 
-  it("allows the explicit LLM test Mock only outside production", () => {
-    expect(loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "development",
-      WORKFLOW_LLM_TEST_MODE: "mock",
-    })).llmTestMode).toBe("mock");
-    expect(() => loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "production",
-      WORKFLOW_LLM_TEST_MODE: " mock ",
-    }))).toThrow("WORKFLOW_LLM_TEST_MODE must be disabled in production");
-  });
-
-  it("rejects unknown LLM test modes", () => {
-    expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_LLM_TEST_MODE: "enabled",
-    }))).toThrow("WORKFLOW_LLM_TEST_MODE must be disabled or mock");
-  });
-
   it("starts every Phase 3 role by default with bounded runtime settings", () => {
     const config = loadWorkflowWorkerConfig(baseEnv());
 

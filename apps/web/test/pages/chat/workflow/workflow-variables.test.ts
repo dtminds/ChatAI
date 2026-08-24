@@ -109,20 +109,14 @@ describe("workflow variables", () => {
     expect(getAvailableIntentInputOutputsForNode(intentNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
-          selector: ["node", queryNode.id, "messageIds"],
-        }),
-        expect.objectContaining({
-          selector: ["node", queryNode.id, "textContent"],
+          selector: ["node", queryNode.id, "messages"],
         }),
       ]));
     expect(getAvailableLlmInputVariablesForNode(llmNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
-          selector: ["node", queryNode.id, "messageIds"],
-          valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-        }),
-        expect.objectContaining({
-          selector: ["node", queryNode.id, "textContent"],
+          selector: ["node", queryNode.id, "messages"],
+          valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
         }),
         expect.objectContaining({
           selector: ["node-lifecycle", queryNode.id, "enteredAt"],
@@ -136,8 +130,8 @@ describe("workflow variables", () => {
         }),
       ]));
     expect(getAvailableVariablesForNode(llmNode.id, nodes, edges))
-      .not.toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", queryNode.id, "messageIds"] }),
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ selector: ["node", queryNode.id, "messages"] }),
       ]));
   });
 
@@ -164,7 +158,7 @@ describe("workflow variables", () => {
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["subject", "id"],
-    )!)).toBe("客户 ID");
+    )!)).toBe("全局变量.客户 ID");
     expect(getInvalidVariableContentSelectors([
       { selector: ["subject", "id"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
@@ -218,7 +212,7 @@ describe("workflow variables", () => {
       expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "exitedAt"] }),
     ]));
     expect(variables).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ selector: ["node", waitEventNode.id, "textContent"] }),
+      expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
     ]));
   });
 

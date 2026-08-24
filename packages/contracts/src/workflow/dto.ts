@@ -35,6 +35,12 @@ export const WorkflowRuntimeStatusSchema = Type.Union([
   Type.Literal("stopped"),
 ]);
 
+export const WORKFLOW_NODE_TITLE_MAX_LENGTH = 10;
+
+export const WorkflowNodeTitleSchema = Type.String({
+  maxLength: WORKFLOW_NODE_TITLE_MAX_LENGTH,
+});
+
 export const WorkflowDraftNodeDataSchema = Type.Object({
   kind: WorkflowNodeKindSchema,
   label: Type.String(),
@@ -45,7 +51,7 @@ export const WorkflowDraftNodeDataSchema = Type.Object({
     Type.Literal("running"),
     Type.Literal("warning"),
   ]),
-  title: Type.String(),
+  title: WorkflowNodeTitleSchema,
 }, { additionalProperties: true });
 
 export const WorkflowDraftNodeSchema = Type.Object({
@@ -107,7 +113,7 @@ export const WorkflowPublishReviewStatusSchema = Type.Union([
 export const WorkflowPublishReviewNodeSummarySchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 128 }),
   kind: WorkflowNodeKindSchema,
-  title: Type.String(),
+  title: WorkflowNodeTitleSchema,
 });
 
 export const WorkflowPublishReviewChangeSummarySchema = Type.Object({
@@ -296,7 +302,7 @@ export const WorkflowEntryRecordStepSchema = Type.Object({
     Type.Literal("current"),
     Type.Literal("waiting"),
   ]),
-  title: Type.String(),
+  title: WorkflowNodeTitleSchema,
 });
 
 export const WorkflowFlowChangedReasonSchema = Type.Union([

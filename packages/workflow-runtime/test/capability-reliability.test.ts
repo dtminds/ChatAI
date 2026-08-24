@@ -267,10 +267,9 @@ describe("workflow capability reliability", () => {
         requests.push(request);
         return {
           messageCount: 0,
-          messageIds: [],
+          messages: [],
           rangeEnd: now.toISOString(),
           rangeStart: "2026-07-12T23:00:00.000Z",
-          textContent: "",
         };
       },
       spec,

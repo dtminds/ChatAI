@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Add01Icon,
-  ArrowDown01Icon,
   ArrowDown02Icon,
   ArrowUp02Icon,
   Delete01Icon,
@@ -49,10 +48,9 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableValueType,
 } from "../../types";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
+import { WorkflowVariableSelect } from "../../workflow-variable-select";
 import {
   getAvailableBranchVariablesForNode,
-  getWorkflowVariableDisplayLabel,
   resolveWorkflowVariable,
 } from "../../workflow-variables";
 import type { NodeSettingsProps } from "../types";
@@ -243,15 +241,14 @@ function BranchConditionRow({
   showDelete: boolean;
   variables: WorkflowVariableDefinition[];
 }) {
-  const [variablePickerOpen, setVariablePickerOpen] = useState(false);
   const variable = condition.selector ? resolveWorkflowVariable(variables, condition.selector) : undefined;
   const operatorOptions = getBranchOperatorOptions(variable?.type);
 
   return (
     <div className="space-y-2 rounded-[8px] bg-secondary/50 p-2.5">
       <div className="grid grid-cols-[minmax(0,1fr)_8.5rem_2rem] gap-2">
-        <WorkflowVariablePicker
-          onOpenChange={setVariablePickerOpen}
+        <WorkflowVariableSelect
+          ariaLabel={`条件 ${index + 1} 变量`}
           onSelect={(nextVariable) => {
             const operator = getDefaultBranchOperator(nextVariable.type);
             onChange({
@@ -260,23 +257,10 @@ function BranchConditionRow({
               value: getDefaultConditionValue(nextVariable.type, operator),
               valueType: nextVariable.type === "object" ? undefined : nextVariable.type,
             });
-            setVariablePickerOpen(false);
           }}
-          open={variablePickerOpen}
+          value={condition.selector}
           variables={variables}
-        >
-          <Button
-            aria-label={`条件 ${index + 1} 变量`}
-            className="h-9 min-w-0 justify-between rounded-[8px] px-3 text-[13px] font-normal"
-            type="button"
-            variant="outline"
-          >
-            <span className={variable ? "truncate" : "truncate text-muted-foreground"}>
-              {variable ? getWorkflowVariableDisplayLabel(variable) : "选择变量"}
-            </span>
-            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
-          </Button>
-        </WorkflowVariablePicker>
+        />
 
         <Select
           disabled={!variable}

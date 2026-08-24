@@ -3,9 +3,9 @@ import type { AiHostingModel } from "@chatai/contracts";
 import {
   Add01Icon,
   ArrowExpand02Icon,
-  Cancel01Icon,
   Delete01Icon,
   ExpandIcon,
+  InformationCircleIcon,
   MinusSignIcon,
   Settings03Icon,
 } from "@hugeicons/core-free-icons";
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
@@ -48,12 +49,8 @@ import type {
   WorkflowVariableContentSegment,
   WorkflowVariableDefinition,
 } from "../../types";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
-import {
-  getAvailableLlmInputVariablesForNode,
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
+import { WorkflowLiteralOrVariableInput } from "../../workflow-literal-or-variable-input";
+import { getAvailableLlmInputVariablesForNode } from "../../workflow-variables";
 import {
   downgradeVariableContentSelector,
   variableContentEqual,
@@ -74,12 +71,15 @@ import {
   getLlmInputVariables,
   getLlmMetric,
   getLlmStatus,
+  getLlmSystemPromptVariables,
   normalizeLlmInputs,
   normalizeLlmModelId,
   normalizeLlmModelSnapshot,
   normalizeLlmOutput,
   normalizeLlmPrompt,
+  normalizeLlmReasoningEffort,
 } from "./config";
+import type { LlmReasoningEffort } from "./config";
 
 const outputFormatLabels: Record<WorkflowLlmOutputConfig["format"], string> = {
   text: "Text",
@@ -112,8 +112,12 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   const userPrompt = normalizeLlmPrompt(node.data.userPrompt);
   const output = normalizeLlmOutput(node.data.output);
   const modelId = normalizeLlmModelId(node.data.modelId);
+  const reasoningEffort = normalizeLlmReasoningEffort(node.data.reasoningEffort);
   const selectedModel = models.find((model) => model.id === modelId);
+  const thinkingEnabled = reasoningEffort !== "minimal";
+  const thinkingDepth = reasoningEffort;
   const inputVariables = useMemo(() => getLlmInputVariables(inputs), [inputs]);
+  const systemPromptVariables = useMemo(() => getLlmSystemPromptVariables(inputs), [inputs]);
   const availableInputValues = useMemo(() =>
     getAvailableLlmInputVariablesForNode(node.id, nodes, edges),
   [edges, node.id, nodes]);
@@ -144,11 +148,12 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
 
   const updateConfig = (patch: Partial<Pick<
     LlmNodeData,
-    "inputs" | "modelId" | "modelLabel" | "modelName" | "output" | "systemPrompt" | "userPrompt"
+    "inputs" | "modelId" | "modelLabel" | "modelName" | "output" | "reasoningEffort" | "systemPrompt" | "userPrompt"
   >>) => {
     const nextData = {
       inputs: patch.inputs ?? inputs,
       modelId: patch.modelId ?? modelId,
+      reasoningEffort: patch.reasoningEffort ?? reasoningEffort,
       modelLabel: patch.modelLabel !== undefined
         ? patch.modelLabel
         : normalizeLlmModelSnapshot(node.data.modelLabel),
@@ -193,46 +198,82 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
           </>
         )}
       >
-        <Select
-          disabled={modelsLoading || modelsError}
-          onValueChange={(nextModelId) => {
-            const model = models.find((item) => item.id === nextModelId);
-            if (!model) return;
-            updateConfig({
-              modelId: model.id,
-              modelLabel: model.label,
-              modelName: model.model,
-            });
-          }}
-          value={modelId}
-        >
-          <SelectTrigger aria-label="模型" className="w-full">
-            {selectedModel ? (
-              <div className="min-w-0">
-                <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
-              </div>
-            ) : modelId ? (
-              <div className="min-w-0">
-                <AgentModelBadge
-                  label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
-                  model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
-                />
-              </div>
-            ) : (
-              <SelectValue placeholder="请选择模型" />
-            )}
-          </SelectTrigger>
-          <SelectContent>
-            {modelId && !selectedModel && !modelsLoading ? (
-              <SelectItem disabled value={modelId}>原模型不可用</SelectItem>
-            ) : null}
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                <AgentModelBadge label={model.label} model={model.model} />
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            disabled={modelsLoading || modelsError}
+            onValueChange={(nextModelId) => {
+              const model = models.find((item) => item.id === nextModelId);
+              if (!model) return;
+              updateConfig({
+                modelId: model.id,
+                modelLabel: model.label,
+                modelName: model.model,
+              });
+            }}
+            value={modelId}
+          >
+            <SelectTrigger aria-label="模型" className="w-full">
+              {selectedModel ? (
+                <div className="min-w-0">
+                  <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
+                </div>
+              ) : modelId ? (
+                <div className="min-w-0">
+                  <AgentModelBadge
+                    label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
+                    model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
+                  />
+                </div>
+              ) : (
+                <SelectValue placeholder="请选择模型" />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              {modelId && !selectedModel && !modelsLoading ? (
+                <SelectItem disabled value={modelId}>原模型不可用</SelectItem>
+              ) : null}
+              {models.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  <AgentModelBadge label={model.label} model={model.model} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Popover modal={false}>
+            <PopoverTrigger asChild>
+              <Button
+                aria-label="深度思考设置"
+                className="size-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                disabled={!selectedModel || modelsLoading || modelsError}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Settings03Icon} size={18} strokeWidth={1.8} />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              aria-label="深度思考设置"
+              className="w-[18rem] p-4"
+              onInteractOutside={preventThinkingSelectDismiss}
+              onPointerDownOutside={preventThinkingSelectDismiss}
+              role="dialog"
+              sideOffset={8}
+            >
+              <ThinkingSettings
+                depth={thinkingDepth}
+                enabled={thinkingEnabled}
+                onDepthChange={(value) => updateConfig({ reasoningEffort: value })}
+                onEnabledChange={(enabled) => updateConfig({
+                  reasoningEffort: enabled
+                    ? thinkingDepth === "minimal" ? "medium" : thinkingDepth
+                    : "minimal",
+                })}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
         {modelsError ? (
           <p className="text-xs text-destructive" role="alert">模型加载失败</p>
         ) : null}
@@ -252,7 +293,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
       >
         {inputs.length ? (
           <div className="space-y-2.5">
-            <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
+            <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_2rem] gap-2 px-0.5 text-xs text-muted-foreground">
               <span>参数名</span>
               <span>参数值</span>
             </div>
@@ -292,7 +333,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
 
       <PromptSection
         ariaLabel="系统提示词"
-        inputVariables={inputVariables}
+        inputVariables={systemPromptVariables}
         onChange={updateSystemPrompt}
         onExpand={() => settingWorkspace.openEditor({ id: systemPromptEditorId, title: "系统提示词" })}
         placeholder="请输入系统提示词"
@@ -321,7 +362,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
         <ExpandedPromptEditor
           ariaLabel={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
           editorId={expandedPrompt === "system" ? systemPromptEditorId : userPromptEditorId}
-          inputVariables={inputVariables}
+          inputVariables={expandedPrompt === "system" ? systemPromptVariables : inputVariables}
           onChange={expandedPrompt === "system" ? updateSystemPrompt : updateUserPrompt}
           placeholder={expandedPrompt === "system" ? "请输入系统提示词" : "请输入用户提示词"}
           segments={expandedPrompt === "system" ? systemPrompt : userPrompt}
@@ -329,6 +370,71 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
       ) : null}
       {testContext ? <LlmTestWorkspace node={node} testContext={testContext} /> : null}
     </>
+  );
+}
+
+type ThinkingDepth = LlmReasoningEffort;
+
+function preventThinkingSelectDismiss(event: Event) {
+  const target = event.target;
+
+  if (target instanceof Element && target.closest('[role="listbox"]')) {
+    event.preventDefault();
+  }
+}
+
+function ThinkingSettings({
+  depth,
+  enabled,
+  onDepthChange,
+  onEnabledChange,
+}: {
+  depth: ThinkingDepth;
+  enabled: boolean;
+  onDepthChange: (value: ThinkingDepth) => void;
+  onEnabledChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-base font-semibold text-foreground">深度思考</h3>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">深度思考开关</span>
+          <Select
+            onValueChange={(value) => onEnabledChange(value === "enabled")}
+            value={enabled ? "enabled" : "disabled"}
+          >
+            <SelectTrigger aria-label="深度思考开关" className="h-8 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="disabled">关闭</SelectItem>
+              <SelectItem value="enabled">开启</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">深度思考程度</span>
+          <Select
+            onValueChange={(value) => {
+              const nextDepth = normalizeLlmReasoningEffort(value);
+              onDepthChange(nextDepth);
+            }}
+            value={depth}
+          >
+            <SelectTrigger aria-label="深度思考程度" className="h-8 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minimal">关闭</SelectItem>
+              <SelectItem value="low">低</SelectItem>
+              <SelectItem value="medium">中</SelectItem>
+              <SelectItem value="high">高</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -345,10 +451,6 @@ function LlmInputRow({
   onChange: (input: WorkflowLlmInputParameter) => void;
   onDelete: () => void;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const selectedVariable = input.value.kind === "variable"
-    ? resolveWorkflowVariable(availableVariables, input.value.selector)
-    : undefined;
   const nameDuplicate = Boolean(input.name.trim()) && inputs.some((item) =>
     item.id !== input.id && item.name.trim() === input.name.trim());
   const nameInvalid = Boolean(input.name) && (!LLM_IDENTIFIER_PATTERN.test(input.name)
@@ -356,7 +458,7 @@ function LlmInputRow({
     || nameDuplicate);
 
   return (
-    <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_2rem] items-start gap-2">
+    <div className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_2rem] items-start gap-2">
       <Input
         aria-label="输入参数名"
         aria-invalid={nameInvalid}
@@ -366,59 +468,14 @@ function LlmInputRow({
         placeholder="参数名"
         value={input.name}
       />
-      <div className="relative min-w-0">
-        <Input
-          aria-label={`${input.name || "输入参数"}的值`}
-          className="h-9 min-w-0 pl-3 pr-16 text-xs"
-          onChange={(event) => onChange({
-            ...input,
-            value: { kind: "literal", value: event.target.value },
-          })}
-          placeholder="输入或引用变量"
-          readOnly={input.value.kind === "variable"}
-          value={input.value.kind === "variable"
-            ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
-            : input.value.value}
-        />
-        {input.value.kind === "variable" ? (
-          <Button
-            aria-label="改为固定文本"
-            className="absolute right-8 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => onChange({ ...input, value: { kind: "literal", value: "" } })}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.8} />
-          </Button>
-        ) : null}
-        <WorkflowVariablePicker
-          onOpenChange={setPickerOpen}
-          onSelect={(variable) => {
-            onChange({
-              ...input,
-              value: {
-                kind: "variable",
-                selector: variable.selector,
-                valueType: variable.valueType,
-              },
-            });
-            setPickerOpen(false);
-          }}
-          open={pickerOpen}
-          variables={availableVariables}
-        >
-          <Button
-            aria-label="引用变量"
-            className="absolute right-1 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Settings03Icon} size={14} strokeWidth={1.8} />
-          </Button>
-        </WorkflowVariablePicker>
-      </div>
+      <WorkflowLiteralOrVariableInput
+        ariaLabel={`${input.name || "输入参数"}的值`}
+        clearVariableAriaLabel="改为固定文本"
+        onChange={(value) => onChange({ ...input, value })}
+        placeholder="输入或引用变量"
+        value={input.value}
+        variables={availableVariables}
+      />
       <Button
         aria-label="删除输入参数"
         className="size-8 p-0 text-muted-foreground hover:text-destructive"
@@ -564,6 +621,7 @@ function OutputSection({
               value={format}
             >
               {outputFormatLabels[format]}
+              {format === "json" ? <JsonOutputFormatHint /> : null}
             </SegmentedControlItem>
           ))}
         </SegmentedControl>
@@ -742,6 +800,28 @@ function JsonOutputFieldRow({
         />
       ) : null}
     </div>
+  );
+}
+
+function JsonOutputFormatHint() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="ml-1 inline-flex">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={InformationCircleIcon}
+              size={12}
+              strokeWidth={1.8}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          仅支持豆包系列模型
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

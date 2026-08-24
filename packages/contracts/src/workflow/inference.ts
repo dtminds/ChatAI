@@ -1,14 +1,42 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-export const WORKFLOW_INTENT_TEMPLATE_KEY = "workflow.intent.classify.v1";
+export const WorkflowInferenceContentPartSchema = Type.Union([
+  Type.Object({
+    text: Type.String({ maxLength: 20_000 }),
+    type: Type.Literal("text"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    type: Type.Literal("image"),
+    url: Type.String({ maxLength: 2_048, minLength: 1 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    type: Type.Literal("video"),
+    url: Type.String({ maxLength: 2_048, minLength: 1 }),
+  }, { additionalProperties: false }),
+]);
 
 export const WorkflowInferenceMessageListRequestSchema = Type.Object({
   kind: Type.Literal("message-list"),
   messageList: Type.Array(Type.Object({
-    content: Type.String({ maxLength: 20_000 }),
+    content: Type.Array(WorkflowInferenceContentPartSchema, { maxItems: 1_000, minItems: 1 }),
     role: Type.Union([Type.Literal("system"), Type.Literal("user")]),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 2 }),
-  modelId: Type.String({ minLength: 1, maxLength: 128 }),
+  modelTarget: Type.Union([
+    Type.Object({
+      kind: Type.Literal("catalog-model"),
+      modelId: Type.String({ minLength: 1, maxLength: 128 }),
+    }, { additionalProperties: false }),
+    Type.Object({
+      endpointId: Type.String({ minLength: 1, maxLength: 128 }),
+      kind: Type.Literal("endpoint"),
+    }, { additionalProperties: false }),
+  ]),
+  reasoningEffort: Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ]),
   responseFormat: Type.Union([
     Type.Object({ type: Type.Literal("text") }, { additionalProperties: false }),
     Type.Object({ type: Type.Literal("markdown") }, { additionalProperties: false }),
@@ -27,20 +55,7 @@ export const WorkflowInferenceMessageListRequestSchema = Type.Object({
   ]),
 }, { additionalProperties: false });
 
-export const WorkflowInferenceTemplateRequestSchema = Type.Object({
-  kind: Type.Literal("template"),
-  templateKey: Type.Literal(WORKFLOW_INTENT_TEMPLATE_KEY),
-  variables: Type.Object({
-    additionalRules: Type.String({ maxLength: 20_000 }),
-    input: Type.String({ maxLength: 20_000 }),
-    intents: Type.String({ maxLength: 20_000 }),
-  }, { additionalProperties: false }),
-}, { additionalProperties: false });
-
-export const WorkflowInferenceRequestSchema = Type.Union([
-  WorkflowInferenceMessageListRequestSchema,
-  WorkflowInferenceTemplateRequestSchema,
-]);
+export const WorkflowInferenceRequestSchema = WorkflowInferenceMessageListRequestSchema;
 
 export const WorkflowInferenceMessageListResultSchema = Type.Union([
   Type.Object({
@@ -57,27 +72,22 @@ export const WorkflowInferenceMessageListResultSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
-export const WorkflowInferenceTemplateResultSchema = Type.Object({
+export const WorkflowAiIntentCompletionValueSchema = Type.Object({
   matchedCode: Type.String({ pattern: "^(?:I(?:[1-9]|10)|fallback)$" }),
-  reason: Type.String(),
+  reason: Type.String({ maxLength: 2_000 }),
 }, { additionalProperties: false });
 
-export const WorkflowInferenceResultSchema = Type.Union([
-  WorkflowInferenceMessageListResultSchema,
-  WorkflowInferenceTemplateResultSchema,
-]);
+export const WorkflowInferenceResultSchema = WorkflowInferenceMessageListResultSchema;
 
 export type WorkflowInferenceMessageListRequest = Static<
   typeof WorkflowInferenceMessageListRequestSchema
 >;
-export type WorkflowInferenceTemplateRequest = Static<
-  typeof WorkflowInferenceTemplateRequestSchema
->;
+export type WorkflowInferenceContentPart = Static<typeof WorkflowInferenceContentPartSchema>;
 export type WorkflowInferenceRequest = Static<typeof WorkflowInferenceRequestSchema>;
 export type WorkflowInferenceMessageListResult = Static<
   typeof WorkflowInferenceMessageListResultSchema
 >;
-export type WorkflowInferenceTemplateResult = Static<
-  typeof WorkflowInferenceTemplateResultSchema
+export type WorkflowAiIntentCompletionValue = Static<
+  typeof WorkflowAiIntentCompletionValueSchema
 >;
 export type WorkflowInferenceResult = Static<typeof WorkflowInferenceResultSchema>;

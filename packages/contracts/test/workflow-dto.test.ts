@@ -53,6 +53,12 @@ describe("workflow contracts", () => {
       expect(Value.Check(WorkflowDraftSchema, createDraft(kind))).toBe(true);
     });
     expect(Value.Check(WorkflowDraftSchema, createDraft("action"))).toBe(false);
+
+    const maxTitleDraft = createDraft("wait");
+    maxTitleDraft.nodes[0]!.data.title = "一".repeat(10);
+    expect(Value.Check(WorkflowDraftSchema, maxTitleDraft)).toBe(true);
+    maxTitleDraft.nodes[0]!.data.title = "一".repeat(11);
+    expect(Value.Check(WorkflowDraftSchema, maxTitleDraft)).toBe(false);
   });
 
   it("keeps workflow type policy separate from runtime implementation", () => {

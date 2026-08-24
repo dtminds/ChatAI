@@ -20,10 +20,12 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "../../types";
+import { WorkflowVariableValueTag } from "../../workflow-variable-value-tag";
 import {
   getAvailableMessageContentOutputsForNode,
   getAvailableVariablesForNode,
   getWorkflowVariableDisplayLabel,
+  getWorkflowVariableDisplaySourceLabel,
   getWorkflowVariableSelectorKey,
   resolveWorkflowVariable,
 } from "../../workflow-variables";
@@ -162,6 +164,7 @@ function MessageOutputSelect({ onChange, options, value }: {
     option,
   ]));
   const selectedKey = value ? getWorkflowVariableSelectorKey(value) : undefined;
+  const selectedOption = selectedKey ? optionByKey.get(selectedKey) : undefined;
   const hasInvalidSelection = Boolean(selectedKey && !optionByKey.has(selectedKey));
   const groups = groupOutputsByNode(options);
 
@@ -175,7 +178,14 @@ function MessageOutputSelect({ onChange, options, value }: {
       value={selectedKey}
     >
       <SelectTrigger aria-label="节点输出" className="w-full">
-        <SelectValue placeholder={groups.length ? "请选择节点输出" : "暂无可用节点输出"} />
+        <SelectValue placeholder={groups.length ? "请选择节点输出" : "暂无可用节点输出"}>
+          {selectedOption ? (
+            <WorkflowVariableValueTag
+              label={selectedOption.label}
+              sourceLabel={getWorkflowVariableDisplaySourceLabel(selectedOption)}
+            />
+          ) : undefined}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {hasInvalidSelection && selectedKey ? (

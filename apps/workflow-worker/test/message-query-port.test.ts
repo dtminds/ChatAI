@@ -117,10 +117,20 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     })).resolves.toEqual({
       messageCount: 2,
-      messageIds: [9001, 9002],
+      messages: [
+        {
+          id: 9001,
+          parts: [{ text: "价格是多少", type: "text" }],
+          role: "customer",
+        },
+        {
+          id: 9002,
+          parts: [{ text: "收到", type: "text" }],
+          role: "agent",
+        },
+      ],
       rangeEnd: new Date(1_786_742_400_000).toISOString(),
       rangeStart: new Date(1_786_738_800_000).toISOString(),
-      textContent: "客户: 价格是多少\n托管账号: 收到",
     });
 
     expect(queries).toHaveLength(2);
@@ -135,12 +145,13 @@ describe("Workflow Message Query port", () => {
     ]));
   });
 
-  it("keeps oversized message content within the node output envelope", async () => {
+  it("keeps an oversized single message intact for the runtime output guard", async () => {
+    const text = "x".repeat(9_000);
     const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
       ? { rows: [{ third_userid: "work-user-1" }] }
       : {
           rows: [{
-            content: JSON.stringify({ text: "很长的消息".repeat(5_000) }),
+            content: JSON.stringify({ text }),
             from_type: 2,
             id: 9001,
             msgtime: 1_786_741_800_000,
@@ -161,10 +172,15 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ messageCount: 1, messageIds: [9001] });
-    expect(result.textContent).toMatch(/^客户: 很长的消息/);
-    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
-    expect(result.textContent).toMatch(/\[内容已截断\]$/);
+    expect(result).toMatchObject({
+      messageCount: 1,
+      messages: [{
+        id: 9001,
+        parts: [{ text, type: "text" }],
+        role: "customer",
+      }],
+    });
+    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeGreaterThan(8 * 1_024);
   });
 
   it("drops older messages first when the latest result exceeds the output envelope", async () => {
@@ -172,7 +188,7 @@ describe("Workflow Message Query port", () => {
       ? { rows: [{ third_userid: "work-user-1" }] }
       : {
           rows: [
-            messageRow(9003, `LATEST-START-${"c".repeat(10_000)}-LATEST-END`),
+            messageRow(9003, `LATEST-START-${"c".repeat(4_000)}-LATEST-END`),
             messageRow(9002, `MIDDLE-${"b".repeat(5_000)}`),
             messageRow(9001, `EARLIEST-${"a".repeat(5_000)}`),
           ],
@@ -191,12 +207,45 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ messageCount: 3, messageIds: [9001, 9002, 9003] });
-    expect(result.textContent).toMatch(/^客户: \[内容已截断\]/);
-    expect(result.textContent).not.toContain("LATEST-START-");
-    expect(result.textContent).toMatch(/-LATEST-END$/);
-    expect(result.textContent).not.toContain("MIDDLE-");
-    expect(result.textContent).not.toContain("EARLIEST-");
+    expect(result).toMatchObject({
+      messageCount: 3,
+      messages: [{ id: 9003, role: "customer" }],
+    });
+    expect(result.messages[0]?.parts).toEqual([{
+      text: `LATEST-START-${"c".repeat(4_000)}-LATEST-END`,
+      type: "text",
+    }]);
+    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
+  });
+
+  it("drops newer messages first for an oversized earliest result", async () => {
+    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
+      ? { rows: [{ third_userid: "work-user-1" }] }
+      : {
+          rows: [
+            messageRow(9001, `EARLIEST-${"a".repeat(4_000)}`),
+            messageRow(9002, `MIDDLE-${"b".repeat(5_000)}`),
+            messageRow(9003, `LATEST-${"c".repeat(5_000)}`),
+          ],
+        });
+
+    const result = await executeMessageQuery(database, {
+      command: {
+        limit: 3,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "earliest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({
+      messageCount: 3,
+      messages: [{ id: 9001, role: "customer" }],
+    });
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8 * 1_024);
   });
 
@@ -218,8 +267,7 @@ describe("Workflow Message Query port", () => {
       uid: 9,
     })).resolves.toMatchObject({
       messageCount: 0,
-      messageIds: [],
-      textContent: "",
+      messages: [],
     });
   });
 
@@ -287,6 +335,50 @@ describe("Workflow Message Query port", () => {
       id: 2,
       msgtype: "text",
     })).toBe("机器人: 自动回复");
+  });
+
+  it("preserves ordered multimodal parts and marks unsupported content", async () => {
+    const { database } = createRecordingDatabase((query) => query.sql.includes("user_seat")
+      ? { rows: [{ third_userid: "work-user-1" }] }
+      : {
+          rows: [{
+            content: JSON.stringify([
+              { msgtype: "text", text: "看下这个" },
+              { fileUrl: "/media/error.png", msgtype: "image" },
+              { msgtype: "text", text: "怎么处理？" },
+              { msgtype: "voice" },
+              { msgtype: "video", videoUrl: "https://media.example/demo.mp4" },
+            ]),
+            from_type: 2,
+            id: 9001,
+            msgtype: "mixed",
+          }],
+        });
+
+    await expect(executeMessageQuery(database, {
+      command: {
+        limit: 1,
+        rangeEnd: 1_786_742_400_000,
+        rangeStart: 1_786_738_800_000,
+        seatId: 101,
+        take: "latest",
+      },
+      signal: new AbortController().signal,
+      subjectId: "third-external-1",
+      uid: 9,
+    })).resolves.toMatchObject({
+      messages: [{
+        id: 9001,
+        parts: [
+          { text: "看下这个", type: "text" },
+          { type: "image", url: "/media/error.png" },
+          { text: "怎么处理？", type: "text" },
+          { label: "语音", type: "unsupported" },
+          { type: "video", url: "https://media.example/demo.mp4" },
+        ],
+        role: "customer",
+      }],
+    });
   });
 });
 

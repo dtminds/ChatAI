@@ -9,9 +9,7 @@ import {
 import {
   Add01Icon,
   Calendar01Icon,
-  Cancel01Icon,
   Delete01Icon,
-  Settings03Icon,
   TextIcon,
   TextNumberSignIcon,
 } from "@hugeicons/core-free-icons";
@@ -19,11 +17,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-time-picker";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -36,12 +29,8 @@ import { listCustomFields } from "@/pages/chat/ai-hosting/api/custom-field-servi
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type { WorkflowVariableDefinition } from "../../types";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
-import {
-  getAvailableVariablesForNode,
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
+import { WorkflowLiteralOrVariableInput } from "../../workflow-literal-or-variable-input";
+import { getAvailableVariablesForNode } from "../../workflow-variables";
 import {
   createCustomerUpdateDraftField,
   getCompatibleCustomerUpdateVariables,
@@ -165,14 +154,10 @@ function CustomerUpdateFieldRow({
   onChange: (field: WorkflowCustomerUpdateDraftField) => void;
   onDelete: () => void;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
   const selectedIds = new Set(fields.flatMap(item =>
     item.id !== field.id && item.field ? [item.field.id] : []));
   const selectedField = field.field;
   const variables = getCompatibleCustomerUpdateVariables(selectedField, availableVariables);
-  const selectedVariable = field.value.kind === "variable"
-    ? resolveWorkflowVariable(variables, field.value.selector)
-    : undefined;
   const fieldAvailable = selectedField
     ? customFields.some(item => item.id === selectedField.id && item.type === selectedField.type)
     : false;
@@ -241,8 +226,21 @@ function CustomerUpdateFieldRow({
         <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
       </Button>
 
-      <div className="relative col-start-2 min-w-0">
-        {field.value.kind === "literal" && isDateField(selectedField) ? (
+      <WorkflowLiteralOrVariableInput
+        ariaLabel={`${selectedField?.title ?? "客户属性"}的值`}
+        className="col-start-2"
+        disabled={!selectedField}
+        inputMode={selectedField?.type === 11 ? "decimal" : undefined}
+        inputType={getLiteralInputType(selectedField)}
+        leadingAddon={valueTypeIcon ? (
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={valueTypeIcon}
+            size={14}
+            strokeWidth={1.8}
+          />
+        ) : null}
+        literalControl={field.value.kind === "literal" && isDateField(selectedField) ? (
           <DatePicker
             aria-label={`${selectedField.title}的值`}
             className="min-w-0 pr-10 text-xs"
@@ -253,79 +251,13 @@ function CustomerUpdateFieldRow({
             placeholder="选择或引用变量"
             value={field.value.value}
           />
-        ) : (
-          <InputGroup className="h-9">
-            {valueTypeIcon ? (
-              <InputGroupAddon align="inline-start" className="pl-3">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={valueTypeIcon}
-                  size={14}
-                  strokeWidth={1.8}
-                />
-              </InputGroupAddon>
-            ) : null}
-            <InputGroupInput
-              aria-label={`${selectedField?.title ?? "客户属性"}的值`}
-              className="min-w-0 pl-2 pr-16 text-xs"
-              disabled={!selectedField}
-              inputMode={field.value.kind === "literal" && selectedField?.type === 11
-                ? "decimal"
-                : undefined}
-              onChange={(event) => onChange({
-                ...field,
-                value: { kind: "literal", value: event.target.value },
-              })}
-              placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
-              readOnly={field.value.kind === "variable"}
-              type={field.value.kind === "variable" ? "text" : getLiteralInputType(selectedField)}
-              value={field.value.kind === "variable"
-                ? selectedVariable ? getWorkflowVariableDisplayLabel(selectedVariable) : "原变量不可用"
-                : field.value.value}
-            />
-          </InputGroup>
-        )}
-        {field.value.kind === "variable" ? (
-          <Button
-            aria-label="改为固定内容"
-            className="absolute right-8 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => onChange({ ...field, value: { kind: "literal", value: "" } })}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.8} />
-          </Button>
-        ) : null}
-        {selectedField ? (
-          <WorkflowVariablePicker
-            onOpenChange={setPickerOpen}
-            onSelect={(variable) => {
-              onChange({
-                ...field,
-                value: {
-                  kind: "variable",
-                  selector: variable.selector,
-                  valueType: variable.valueType,
-                },
-              });
-              setPickerOpen(false);
-            }}
-            open={pickerOpen}
-            variables={variables}
-          >
-            <Button
-              aria-label="引用变量"
-              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={Settings03Icon} size={14} strokeWidth={1.8} />
-            </Button>
-          </WorkflowVariablePicker>
-        ) : null}
-      </div>
+        ) : undefined}
+        onChange={(value) => onChange({ ...field, value })}
+        placeholder={selectedField ? "输入或引用变量" : "请先选择属性"}
+        showVariablePicker={Boolean(selectedField)}
+        value={field.value}
+        variables={variables}
+      />
     </div>
   );
 }

@@ -26,8 +26,7 @@ describe("workflow message query", () => {
       },
     });
     expect(definition.getOutputVariables?.(createMessageQueryNode())).toEqual([
-      expect.objectContaining({ key: "messageIds", usages: ["intent-input"], valueType: { itemType: "bigint", kind: "array", semantic: "message" } }),
-      expect.objectContaining({ key: "textContent", usages: ["intent-input", "message-content", "variable"], valueType: { kind: "string" } }),
+      expect.objectContaining({ key: "messages", usages: ["intent-input", "variable"], valueType: { kind: "object", schemaRef: "workflow.messages.v1" } }),
       expect.objectContaining({ key: "messageCount", valueType: { kind: "number" } }),
       expect.objectContaining({ key: "rangeStart", usages: ["time-reference", "variable"], valueType: { kind: "datetime" } }),
       expect.objectContaining({ key: "rangeEnd", usages: ["time-reference", "variable"], valueType: { kind: "datetime" } }),
@@ -78,6 +77,8 @@ describe("workflow message query", () => {
       id: "time-range",
       value: {
         items: [
+          { kind: "source", text: "全局变量" },
+          { kind: "text", text: ".", tone: "muted" },
           { kind: "variable", text: "触发时间" },
           { kind: "operator", text: " 至 " },
           { kind: "source", text: "等待" },
@@ -162,6 +163,8 @@ describe("workflow message query", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "开始时间时间点" }))
+      .toHaveTextContent("全局变量.触发时间");
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
     const startMenuItem = screen.getByRole("menuitem", { name: "开始" });
     await user.click(startMenuItem);

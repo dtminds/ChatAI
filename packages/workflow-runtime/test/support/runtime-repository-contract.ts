@@ -116,8 +116,12 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_READY_AT,
       payload: {
         kind: "message-list" as const,
-        messageList: [{ content: "Summarize", role: "system" as const }],
-        modelId: "model-1",
+        messageList: [{
+          content: [{ text: "Summarize", type: "text" as const }],
+          role: "system" as const,
+        }],
+        modelTarget: { kind: "catalog-model", modelId: "model-1" },
+        reasoningEffort: "medium",
         responseFormat: { type: "text" as const },
       },
       runId: created.run.id,
@@ -274,8 +278,9 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_READY_AT,
       payload: {
         kind: "message-list",
-        messageList: [{ content: "Summarize", role: "system" }],
-        modelId: "model-1",
+        messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
+        modelTarget: { kind: "catalog-model", modelId: "model-1" },
+        reasoningEffort: "medium",
         responseFormat: { type: "text" },
       },
       runId: created.run.id,
@@ -1007,8 +1012,9 @@ async function createInferenceWait(
     now: OUTBOX_READY_AT,
     payload: {
       kind: "message-list",
-      messageList: [{ content: "Summarize", role: "system" }],
-      modelId: "model-1",
+      messageList: [{ content: [{ text: "Summarize", type: "text" }], role: "system" }],
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+        reasoningEffort: "medium",
       responseFormat: { type: "text" },
     },
     runId: created.run.id,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -28,12 +29,17 @@ describe("Workflow capability router", () => {
     expect(router.bindings).toEqual([WORKFLOW_TAG_QUERY_CAPABILITY_BINDING]);
   });
 
-  it("keeps Handoff, Message, Tag, and Tag Query routes isolated", async () => {
+  it("keeps Customer Update, Handoff, Message, Tag, and Tag Query routes isolated", async () => {
+    const customerUpdateExecute = vi.fn(async () => ({}));
     const handoffExecute = vi.fn(async () => ({}));
     const messageExecute = vi.fn(async () => ({}));
     const tagExecute = vi.fn(async () => ({}));
     const tagQueryExecute = vi.fn(async () => ({ matchedTags: [] }));
     const router = new WorkflowCapabilityRouter([
+      {
+        binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+        port: { execute: customerUpdateExecute } as unknown as WorkflowCapabilityPort,
+      },
       {
         binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING,
         port: { execute: handoffExecute } as unknown as WorkflowCapabilityPort,
@@ -61,15 +67,50 @@ describe("Workflow capability router", () => {
       WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition,
       request,
     );
+    expect(customerUpdateExecute).not.toHaveBeenCalled();
     expect(handoffExecute).not.toHaveBeenCalled();
     expect(tagExecute).not.toHaveBeenCalled();
     expect(tagQueryExecute).not.toHaveBeenCalled();
     expect(router.bindings).toEqual([
+      WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
       WORKFLOW_HANDOFF_CAPABILITY_BINDING,
       WORKFLOW_MESSAGE_CAPABILITY_BINDING,
       WORKFLOW_TAG_CAPABILITY_BINDING,
       WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
     ]);
+  });
+
+  it("dispatches Customer Update only to its exact action route", async () => {
+    const customerUpdateExecute = vi.fn(async () => ({}));
+    const tagExecute = vi.fn(async () => ({}));
+    const router = new WorkflowCapabilityRouter([
+      {
+        binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+        port: { execute: customerUpdateExecute } as unknown as WorkflowCapabilityPort,
+      },
+      {
+        binding: WORKFLOW_TAG_CAPABILITY_BINDING,
+        port: { execute: tagExecute } as unknown as WorkflowCapabilityPort,
+      },
+    ]);
+    const request = {
+      ...tagQueryRequest(),
+      command: {
+        source: "workflow" as const,
+        updates: [{ fieldId: 301, fieldType: 1 as const, value: "重点客户" }],
+      },
+      idempotencyKey: "9:run-1:customer-update:1",
+    };
+
+    await expect(router.execute(
+      WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING.definition,
+      request,
+    )).resolves.toEqual({});
+    expect(customerUpdateExecute).toHaveBeenCalledWith(
+      WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING.definition,
+      request,
+    );
+    expect(tagExecute).not.toHaveBeenCalled();
   });
 
   it("dispatches Tag only to its exact action route", async () => {

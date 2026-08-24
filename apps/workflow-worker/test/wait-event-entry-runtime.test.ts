@@ -60,8 +60,18 @@ describe("Wait Event Entry runtime composition", () => {
           "wait-event": {
             lastMessageAt: "2026-08-10T00:00:08.000Z",
             messageCount: 2,
-            messageIds: [101, 102],
-            textContent: "第一条消息\n第二条消息",
+            messages: [
+              {
+                id: 101,
+                parts: [{ text: "第一条消息", type: "text" }],
+                role: "customer",
+              },
+              {
+                id: 102,
+                parts: [{ text: "第二条消息", type: "text" }],
+                role: "customer",
+              },
+            ],
           },
         },
       },
@@ -217,10 +227,13 @@ function messageEvent(input: {
     occurredAt: input.occurredAt,
     payload: {
       externalUserId: 3267,
-      messageId: input.messageId,
+      message: {
+        id: input.messageId,
+        parts: [{ text: input.text, type: "text" }],
+        role: "customer",
+      },
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
-      text: input.text,
       workUserId: 201,
     },
     payloadVersion: 1,

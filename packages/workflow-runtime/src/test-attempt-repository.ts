@@ -340,12 +340,12 @@ function mapAttempt(row: Selectable<WorkflowLlmTestAttemptTable>): WorkflowLlmTe
   const result = row.result_json === null ? null : parseJson(row.result_json);
   const output = row.output_json === null ? null : parseJson(row.output_json);
   if (!Value.Check(WorkflowExecutionNodeSchema, node)
-    || node.kind !== "llm"
+    || node.kind !== "llm" && node.kind !== "ai-intent"
     || !Value.Check(WorkflowInferenceMessageListRequestSchema, payload)
     || !Value.Check(WorkflowJsonObjectSchema, inputValues)
     || result !== null && !Value.Check(WorkflowInferenceMessageListResultSchema, result)
     || output !== null && !Value.Check(WorkflowJsonObjectSchema, output)) {
-    throw new Error("Invalid Workflow LLM test Attempt payload");
+    throw new Error("Invalid Workflow inference test Attempt payload");
   }
   const status = row.status;
   if (status !== "running" && status !== "succeeded" && status !== "failed"

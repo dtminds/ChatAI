@@ -198,7 +198,7 @@ describe("createWorkflowRenderElements", () => {
     const intent = createNodeFromKind("ai-intent", "intent", 2);
     intent.data = {
       ...createDefaultNodeData("ai-intent"),
-      inputSelector: ["node", query.id, "messageIds"],
+      inputSelector: ["node", query.id, "messages"],
       intents: [{ description: "愿意参加", id: "intent-1" }],
       status: "ready",
     };

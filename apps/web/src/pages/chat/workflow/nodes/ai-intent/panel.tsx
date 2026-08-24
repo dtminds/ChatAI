@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   Add01Icon,
-  ArrowDown01Icon,
   Delete01Icon,
   DragDropVerticalIcon,
 } from "@hugeicons/core-free-icons";
@@ -26,18 +25,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   AiIntentNodeData,
   WorkflowIntentOption,
 } from "../../types";
-import {
-  getAvailableIntentInputOutputsForNode,
-  getWorkflowVariableDisplayLabel,
-  resolveWorkflowVariable,
-} from "../../workflow-variables";
+import { WorkflowVariableSelect } from "../../workflow-variable-select";
+import { getAvailableIntentInputOutputsForNode } from "../../workflow-variables";
 import {
   AI_INTENT_DESCRIPTION_MAX_LENGTH,
   AI_INTENT_DESCRIPTION_COUNT_THRESHOLD,
@@ -53,19 +48,21 @@ import {
   normalizeAiIntentOptions,
   normalizeAiIntentPrompt,
 } from "./config";
+import { AiIntentTestWorkspace } from "./test-workspace";
 
-export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"ai-intent">) {
-  const [inputPickerOpen, setInputPickerOpen] = useState(false);
+export function AiIntentConfig({
+  edges,
+  node,
+  nodes,
+  onNodeChange,
+  testContext,
+}: NodeSettingsProps<"ai-intent">) {
   const [pendingDeleteIntent, setPendingDeleteIntent] = useState<WorkflowIntentOption | null>(null);
   const advancedEnabled = normalizeAiIntentAdvancedEnabled(node.data.advancedEnabled);
   const intents = normalizeAiIntentOptions(node.data.intents);
   const prompt = normalizeAiIntentPrompt(node.data.prompt);
   const inputSelector = normalizeAiIntentInputSelector(node.data.inputSelector);
   const inputOptions = getAvailableIntentInputOutputsForNode(node.id, nodes, edges);
-  const selectedInput = inputSelector
-    ? resolveWorkflowVariable(inputOptions, inputSelector)
-    : undefined;
-  const hasInvalidInput = Boolean(inputSelector && !selectedInput);
 
   const updateConfig = ({
     advancedEnabled: nextAdvancedEnabled = advancedEnabled,
@@ -105,29 +102,15 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
   return (
     <>
       <WorkflowSettingsSection title="输入">
-        <WorkflowVariablePicker
-          onOpenChange={setInputPickerOpen}
-          onSelect={(variable) => {
-            updateConfig({ inputSelector: variable.selector });
-            setInputPickerOpen(false);
-          }}
-          open={inputPickerOpen}
+        <WorkflowVariableSelect
+          ariaLabel="输入"
+          buttonClassName="h-10"
+          invalidLabel="原节点输出不可用"
+          onSelect={(variable) => updateConfig({ inputSelector: variable.selector })}
+          placeholder="请选择前序节点输出"
+          value={inputSelector}
           variables={inputOptions}
-        >
-          <Button
-            aria-label="输入"
-            className="h-10 w-full justify-between rounded-[8px] px-3 font-normal"
-            type="button"
-            variant="outline"
-          >
-            <span className={selectedInput ? "truncate" : "truncate text-muted-foreground"}>
-              {selectedInput
-                ? getWorkflowVariableDisplayLabel(selectedInput)
-                : hasInvalidInput ? "原节点输出不可用" : "请选择前序节点输出"}
-            </span>
-            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
-          </Button>
-        </WorkflowVariablePicker>
+        />
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
@@ -254,6 +237,14 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {testContext ? (
+        <AiIntentTestWorkspace
+          edges={edges}
+          node={node}
+          nodes={nodes}
+          testContext={testContext}
+        />
+      ) : null}
     </>
   );
 }

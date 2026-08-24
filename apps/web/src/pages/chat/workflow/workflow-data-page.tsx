@@ -26,6 +26,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Timeline,
+  TimelineContent,
+  TimelineDate,
+  TimelineIndicator,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineTitle,
+} from "@/components/ui/timeline";
 import { cn } from "@/lib/utils";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import type { WorkflowDocument } from "./workflow-draft-service";
@@ -332,10 +341,49 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
   return (
     <Sheet onOpenChange={onOpenChange} open={Boolean(detail)}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-[min(680px,calc(100vw-48px))]">
-        {detail ? <><SheetHeader><SheetTitle>{detail.customer.name}</SheetTitle><SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription>{detail.terminalReason ? <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">{flowChangedReasonLabel(detail.terminalReason)}</p> : null}</SheetHeader><div className="border-t px-6 py-5"><h3 className="mb-5 text-sm font-semibold">运行轨迹</h3><ol className="space-y-0">{detail.steps.map((step, index) => <li className="relative flex gap-4 pb-6" key={`${step.nodeId}-${index}`}><span className={cn("mt-1 size-2.5 rounded-full", step.status === "failed" ? "bg-destructive" : step.status === "current" || step.status === "waiting" ? "bg-warning" : "bg-success")} />{index < detail.steps.length - 1 ? <span className="absolute left-[4px] top-3 h-full w-px bg-border" /> : null}<div><div className="text-sm font-medium">{step.title}</div><div className="mt-1 text-xs text-muted-foreground">{step.status === "waiting" && step.nextExecuteAt ? `${step.nodeKind === "message" ? "等待发送" : "等待中"} · ${formatDate(step.nextExecuteAt)} 继续` : formatDate(step.occurredAt)}</div>{step.description ? <div className="mt-1 text-xs text-muted-foreground">{step.description}</div> : null}</div></li>)}</ol></div></> : null}
+        {detail ? (
+          <>
+            <SheetHeader>
+              <SheetTitle>{detail.customer.name}</SheetTitle>
+              <SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription>
+              {detail.terminalReason ? (
+                <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">
+                  {flowChangedReasonLabel(detail.terminalReason)}
+                </p>
+              ) : null}
+            </SheetHeader>
+            <div className="border-t px-6 py-5">
+              <h3 className="mb-5 text-sm font-semibold">运行轨迹</h3>
+              <Timeline aria-label="运行轨迹">
+                {detail.steps.map((step, index) => {
+                  const waitingUntil = step.status === "waiting" ? step.nextExecuteAt : undefined;
+                  return (
+                    <TimelineItem key={`${step.nodeId}-${index}`}>
+                      <TimelineIndicator variant={timelineStepVariant(step.status)} />
+                      <TimelineSeparator />
+                      <TimelineTitle>{step.title}</TimelineTitle>
+                      <TimelineDate dateTime={waitingUntil ?? step.occurredAt}>
+                        {waitingUntil
+                          ? `${step.nodeKind === "message" ? "等待发送" : "等待中"} · ${formatDate(waitingUntil)} 继续`
+                          : formatDate(step.occurredAt)}
+                      </TimelineDate>
+                      {step.description ? <TimelineContent>{step.description}</TimelineContent> : null}
+                    </TimelineItem>
+                  );
+                })}
+              </Timeline>
+            </div>
+          </>
+        ) : null}
       </SheetContent>
     </Sheet>
   );
+}
+
+function timelineStepVariant(status: WorkflowEntryRecordDetail["steps"][number]["status"]) {
+  if (status === "failed") return "destructive";
+  if (status === "current" || status === "waiting") return "warning";
+  return "success";
 }
 
 function RecordStatus({ record }: { record: WorkflowEntryRecord }) {

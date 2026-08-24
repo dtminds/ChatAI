@@ -850,6 +850,7 @@ describe("workflow graph operations", () => {
     expect(renameNodeOperation(draft, "start", "新的开始")).toBeUndefined();
     expect(renameNodeOperation(draft, "end", "新的结束")).toBeUndefined();
     expect(renameNodeOperation(draft, "wait-2d", "   ")).toBeUndefined();
+    expect(renameNodeOperation(draft, "wait-2d", "一".repeat(11))).toBeUndefined();
   });
 
   it("does not rename protected nodes through generic config patches", () => {

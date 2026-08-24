@@ -10,6 +10,7 @@ import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import { WORKFLOW_MESSAGES_SCHEMA_REF } from "./messages.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -354,6 +355,12 @@ export const WorkflowLlmOutputConfigSchema = Type.Union([
 export const WorkflowLlmDraftConfigSchema = Type.Object({
   inputs: Type.Array(WorkflowLlmInputParameterSchema, { maxItems: 10 }),
   modelId: Type.String({ maxLength: 128 }),
+  reasoningEffort: Type.Optional(Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ])),
   modelLabel: Type.Optional(Type.String({ maxLength: 256 })),
   modelName: Type.Optional(Type.String({ maxLength: 256 })),
   output: WorkflowLlmOutputConfigSchema,
@@ -364,6 +371,12 @@ export const WorkflowLlmDraftConfigSchema = Type.Object({
 export const WorkflowLlmExecutionConfigSchema = Type.Object({
   inputs: Type.Array(WorkflowLlmInputParameterSchema, { maxItems: 10 }),
   modelId: Type.String({ maxLength: 128 }),
+  reasoningEffort: Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+  ]),
   output: WorkflowLlmOutputConfigSchema,
   systemPrompt: WorkflowVariableContentSchema,
   userPrompt: WorkflowVariableContentSchema,
@@ -468,7 +481,7 @@ type WorkflowNodeContractDefinition<
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
   "ai-collect": placeholderContract("composite"),
-  "ai-intent": draftReadyContract(
+  "ai-intent": runtimeReadyContract(
     "inference",
     1,
     WorkflowAiIntentDraftConfigSchema,
@@ -489,11 +502,12 @@ export const workflowNodeContractRegistry = {
     true,
   ),
   coupon: placeholderContract("action", ["externalUserId"]),
-  "customer-update": draftReadyContract(
+  "customer-update": runtimeReadyContract(
     "action",
     1,
     WorkflowCustomerUpdateDraftConfigSchema,
     WorkflowCustomerUpdateExecutionConfigSchema,
+    ["externalUserId"],
   ),
   end: runtimeReadyContract("core", 1, WorkflowEmptyNodeConfigSchema, WorkflowEmptyNodeConfigSchema),
   handoff: runtimeReadyContract(
@@ -503,7 +517,7 @@ export const workflowNodeContractRegistry = {
     WorkflowHandoffExecutionConfigSchema,
     ["thirdExternalUserId"],
   ),
-  llm: draftReadyContract(
+  llm: runtimeReadyContract(
     "inference",
     1,
     WorkflowLlmDraftConfigSchema,
@@ -787,15 +801,9 @@ export function getWorkflowNodeOutputContracts(
     return [
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messageIds",
-        usages: ["intent-input"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-      },
-      {
-        availableOnSourceOutlets: ["triggered"],
-        key: "textContent",
-        usages: ["intent-input", "message-content", "variable"],
-        valueType: { kind: "string" },
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
       },
       {
         availableOnSourceOutlets: ["triggered"],
@@ -814,14 +822,9 @@ export function getWorkflowNodeOutputContracts(
   if (kind === "message-query") {
     return [
       {
-        key: "messageIds",
-        usages: ["intent-input"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-      },
-      {
-        key: "textContent",
-        usages: ["intent-input", "message-content", "variable"],
-        valueType: { kind: "string" },
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
       },
       {
         key: "messageCount",
@@ -928,6 +931,11 @@ export function isWorkflowOutputValueTypeEqual(
   return true;
 }
 
+export function isWorkflowMessagesValueType(valueType: WorkflowOutputValueType) {
+  return valueType.kind === "object"
+    && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF;
+}
+
 export function isWorkflowLlmExecutionConfigComplete(
   value: unknown,
 ): value is WorkflowLlmExecutionConfig {
@@ -935,7 +943,7 @@ export function isWorkflowLlmExecutionConfigComplete(
   const config = value as WorkflowLlmExecutionConfig;
   const inputIds = config.inputs.map(input => input.id);
   const inputNames = config.inputs.map(input => input.name.trim());
-  const inputNameById = new Map(config.inputs.map(input => [input.id, input.name.trim()]));
+  const inputById = new Map(config.inputs.map(input => [input.id, input]));
   if (
     !config.modelId.trim()
     || !areUniqueNonBlankValues(inputIds)
@@ -944,8 +952,8 @@ export function isWorkflowLlmExecutionConfigComplete(
       input.value.kind === "literal"
         ? !input.value.value.trim()
         : !isWorkflowInferenceSelectorResolvable(input.value.selector))
-    || !isWorkflowPromptComplete(config.systemPrompt, inputNameById, true)
-    || !isWorkflowPromptComplete(config.userPrompt, inputNameById, false)
+    || !isWorkflowPromptComplete(config.systemPrompt, inputById, true, false)
+    || !isWorkflowPromptComplete(config.userPrompt, inputById, false, true)
   ) {
     return false;
   }
@@ -1001,8 +1009,9 @@ function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelecto
 
 function isWorkflowPromptComplete(
   segments: WorkflowVariableContentSegment[],
-  inputNameById: Map<string, string>,
+  inputById: Map<string, WorkflowLlmInputParameter>,
   required: boolean,
+  allowWorkflowMessages: boolean,
 ) {
   let displayLength = 0;
   let hasContent = false;
@@ -1013,11 +1022,16 @@ function isWorkflowPromptComplete(
       continue;
     }
     const [scope, inputId] = segment.selector;
-    const inputName = inputId ? inputNameById.get(inputId) : undefined;
+    const input = inputId ? inputById.get(inputId) : undefined;
+    const inputName = input?.name.trim();
     if (
       segment.selector.length !== 2
       || scope !== "input"
+      || !input
       || !inputName
+      || (!allowWorkflowMessages
+        && input.value.kind === "variable"
+        && isWorkflowMessagesValueType(input.value.valueType))
     ) {
       return false;
     }

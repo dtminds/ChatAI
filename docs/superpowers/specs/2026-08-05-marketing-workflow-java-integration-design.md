@@ -454,7 +454,7 @@ Workflow Capability Profile
 
 Event Catalog 是 Start 和 Wait Event 的代码侧权威来源，提供 `supports(eventType, subjectType)` 与运行时 `project(event)`。Publish、Enable 和 Resume 必须确认 Revision 使用的每个事件都受 Catalog 支持。`payloadVersion` 只属于 Java 发出的 Entry Event Envelope，用于选择 Payload Schema 和投影器，不冻结到 Workflow Revision。
 
-Node 不再为节点或外部调用维护 `operation.*` 注册表、Deployment Capability、环境白名单或 capability fingerprint。节点能否发布只由 maturity 对应的 Runtime Support 决定；真正调用 Java、数据库或其他系统时，瞬时不可用继续走该节点既有的 timeout、retry、deadline 和恢复语义。LLM 与 AI Intent 在真实 Java Adapter 接通前保持 `draft-ready`。
+Node 不再为节点或外部调用维护 `operation.*` 注册表、Deployment Capability、环境白名单或 capability fingerprint。节点能否发布只由 maturity 对应的 Runtime Support 决定；真正调用 Java、数据库或其他系统时，瞬时不可用继续走该节点既有的 timeout、retry、deadline 和恢复语义。LLM 与 AI Intent 已通过 Workflow Worker 的共享火山 Ark Adapter 接通。
 
 事件接入必须遵守硬发布顺序：Java 先发布但不创建相关 Binding、也不产生新事件；Workflow Worker 全量滚动完成并具备新 Catalog 定义后，Backend/Web 才开放新事件配置。旧 Worker 收到未知事件会写 Entry DLQ 后 ACK，不能依赖消息重试等待新 Worker 接手。
 
@@ -934,8 +934,8 @@ chatai.conversation.transfer-agent
 | Coupon | 类型化命令和 Workflow 重试 | 校验权益并幂等发券 |
 | Handoff | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验会话状态并幂等转人工 |
 | Agent | 类型化命令和 Workflow 重试 | 仅对 `chatai_contact` 校验 Agent 并幂等转接会话 |
-| LLM | 解析变量、渲染完整消息列表、校验并映射输出 | 接收消息列表并完成模型调用、计费和供应商路由 |
-| AI Intent | 解析输入、组装模板变量、将结果代码映射到稳定分支 | 按 `templateKey` 获取系统模板并完成模型调用、计费和供应商路由 |
+| LLM | 解析变量、渲染完整消息列表、校验并映射输出；通过 Workflow Chat Completion Port 提交 Inference Job | Workflow Worker 内的火山 Ark Adapter 解析平台模型、完成模型调用和错误分类 |
+| AI Intent | 解析输入、按版本化 Prompt Builder 渲染完整消息、校验结构化结果并映射稳定 Outlet | Workflow Worker 使用代码固定 Endpoint 直接调用火山 Ark，不查询模型表 |
 | AI Collect | 模型收集和结构化输出 | 提供消息查询/资料写入能力 |
 | End | Run 完成 | 无 |
 
@@ -949,9 +949,9 @@ idempotencyKey = uid + runId + nodeId + sequence
 
 LLM 和 AI Intent 属于无业务副作用但可能长耗时的 Inference。它们不使用 Action
 `idempotencyKey`，而是以同一个 Node Execution Key 作为 `executionKey`。Node 先持久化
-Inference Job，再由独立 Worker 调用 Java；Java 应将 `executionKey` 作为稳定请求身份，Node
+Inference Job，再由 Inference Worker 调用 Provider Adapter；Worker 将 `executionKey` 作为稳定请求身份，Node
 重试同一 Job 时不得生成新键。Inference Job 已负责调用重试，Job 进入终态后恢复的 Workflow
-Task 只消费结果或结束节点，不再叠加第二层调用重试。Java 请求同时携带
+Task 只消费结果或结束节点，不再叠加第二层调用重试。推理请求同时携带
 `contractVersion`，双方按该版本解析下面的判别式载荷。
 
 Workflow 暂停时，未终态的 Inference Job 冻结执行超时预算；恢复时按暂停时长顺延
@@ -959,33 +959,31 @@ Workflow 暂停时，未终态的 Inference Job 冻结执行超时预算；恢�
 不计入调用次数；旧调用即使晚到也无法通过租约 CAS 写入结果。恢复后沿用同一
 `executionKey` 继续执行，避免暂停窗口把 Job 永久做成超时终态。
 
-两类请求必须保持独立的判别式载荷：
+本期 LLM 与 AI Intent 共用以下 Chat Completion 载荷：
 
 ```ts
-type LlmInferencePayload = {
+type WorkflowChatCompletionPayload = {
   kind: "message-list";
-  modelId: string;
+  modelTarget:
+    | { kind: "catalog-model"; modelId: string }
+    | { kind: "endpoint"; endpointId: string };
   messageList: Array<{ role: "system" | "user"; content: string }>;
+  reasoningEffort: "minimal" | "low" | "medium" | "high";
   responseFormat:
     | { type: "text" | "markdown" }
     | { type: "json"; fields: Array<{ name: string; type: "string" | "number" | "boolean"; description: string }> };
 };
-
-type IntentInferencePayload = {
-  kind: "template";
-  templateKey: "workflow.intent.classify.v1"; // 临时值，Java 模板确定后替换
-  variables: {
-    input: string;
-    intents: string; // [{ code: "I1", description: "..." }]
-    additionalRules: string;
-  };
-};
 ```
 
-LLM 的 `messageList` 由 Node 完整渲染，Java 不解析 Workflow 变量。AI Intent 不发送完整
-系统提示词，Java 根据 `templateKey` 读取模板，只接收业务变量。Java 返回意图代码
-`I1...I10 | fallback`；Node 将代码映射回 Revision 内的稳定意图 ID 和出口 Handle。两类
-返回都必须匹配各自 Schema，单节点最终输出受 8 KiB 上限约束。
+LLM 的 `messageList` 由 Node 完整渲染，Workflow Worker Adapter 不解析 Workflow 变量；
+目录目标的 `modelTarget.modelId` 是稳定模型身份，Adapter 每次 Attempt 只读取当前有效的
+`uid=0` 平台模型行并将其 `endpoint` 写入 Provider 请求。AI Intent 由 Runtime 使用版本化
+Prompt Builder 渲染输入、顺序稳定的 `I1` 至 `I10` 意图编码、`fallback` 和可选高级规则，
+固定投影 `{ kind: "endpoint", endpointId: "ep-20260227145914-nxcmn" }` 与 `low`，Adapter
+直接使用该 Endpoint 且不查询模型表。`reasoningEffort` 直接映射到 Provider 的
+`reasoning_effort`，并映射 `thinking.type`。AI Intent 返回严格 JSON
+`{ matchedCode, reason }`；Runtime 只接受当前 Revision 已配置的 code 或 `fallback`，在路由前
+拒绝未知或畸形结果。所有单节点最终输出受 8 KiB 上限约束。
 
 请求公共字段建议为：
 
@@ -1238,7 +1236,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 实现进入等待、事件触发、超时、暂停、停止和恢复语义。
 - 实现 Triggered / Timed Out 两个出口的原子竞争。
 - 将前端旧标识 `customer.message.received` 直接统一为公共事件 `message.received`，不保留不存在历史数据的别名。
-- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出 `messageIds`、`textContent`、`messageCount` 和 `lastMessageAt`。
+- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出结构化 `messages`、`messageCount` 和 `lastMessageAt`；超过节点输出上限时按时间顺序移除整条旧消息，不截断单条消息内容。
 - Runtime 只消费 Event Catalog 产出的 Trigger Projection；Java 原始 payload 未冻结期间由 Fake Event Catalog 提供测试投影。
 - Compiler 将事件源的 `capabilityKey + contractVersion` 冻结到 Revision；能力关闭时不触发 Subscription，超时 Task 保持 Pending，恢复后重新调度。
 - 仅允许 Capability Profile 中声明的事件和主体类型进入等待。
@@ -1282,7 +1280,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
 - 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 不携带调用键，Inference 使用稳定 `executionKey`，Fake Adapter 不进入生产注册。
 - 覆盖 Event Catalog 不支持事件或 Subject Type 时无法 Publish/Enable，以及 Worker 生产组合缺少 `runtime-ready` 执行路径时启动失败。
-- 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，LLM/AI Intent 在真实 Adapter 接通前保持 `draft-ready`。
+- 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，以及 LLM/AI Intent 均通过真实 Chat Completion Adapter 进入生产执行链路。
 - 覆盖旧 Node Schema、Event Payload Version 或 Inference Request Version 仍被活动数据引用时对应 handler 不得移除。
 - 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
 - 覆盖 Java 动作超时后的同幂等键重试。
@@ -1345,8 +1343,8 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 
 - 不增加 `DISABLE_AUTH`、开发用户、测试专属公开路由或绕过 Session 校验的环境开关。
 - Service 和 Route 模块测试可以直接注入 Operator 或替换 `authenticate`，但这不计入鉴权验收。Iteration 1 至少保留一条通过正式 Auth Plugin、签名 JWT 和有效 Session 完成 Create、Save、Publish、Enable 的 App 级集成路径，并覆盖无 Token、失效 Session 和越权租户拒绝。
-- 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Mock Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
-- LLM Mock Attempt 只允许在开发或测试环境显式启用，响应必须标记 `executionMode=mock`；生产 Backend 和 Workflow Worker 均强制 `disabled`。Java Adapter 接通前，该结果只验证变量替换、请求构造和输出映射，不代表真实模型效果。
+- 不增加完整 Workflow“试运行”入口或持久化 Mock Run。LLM 节点可通过鉴权后的独立 API 创建短期 Test Attempt；Attempt 使用不可变节点快照和临时输入，不创建 Run、Task、Binding 或生产 Outbox，不执行上下游节点，也不提供历史列表。
+- LLM test Attempt 与生产 Run 共用真实 Chat Completion Port 和 Provider Adapter；测试替身仅允许通过测试依赖注入使用，不进入生产 import graph。Attempt 结果标记 `executionMode=real`，并保留独立的取消、TTL、超时和轮询生命周期。
 - 自动化测试不调用真实 Java，也不要求真实 Product Entitlement；真实 Java 接口只能出现在 test 联调和后续生产启用验收中。
 
 #### Smoke 工具边界

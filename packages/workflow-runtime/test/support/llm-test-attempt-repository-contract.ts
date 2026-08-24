@@ -1,6 +1,9 @@
 import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { expect, it } from "vitest";
-import type { WorkflowLlmTestAttemptRepository } from "../../src/index.js";
+import {
+  createWorkflowAiIntentInferenceRequest,
+  type WorkflowLlmTestAttemptRepository,
+} from "../../src/index.js";
 
 const createdAt = new Date("2099-01-01T00:00:00.000Z");
 
@@ -14,6 +17,32 @@ export function runWorkflowLlmTestAttemptRepositoryContract(
     const second = await repository.createLlmTestAttempt(createInput("execution-2"));
 
     expect(first.id).not.toBe(second.id);
+  });
+
+  it("creates and reads an AI Intent test Attempt", async () => {
+    const repository = createRepository();
+    const node = aiIntentNode();
+    const inputValue = [{
+      id: 1,
+      parts: [{ text: "退款什么时候到账？", type: "text" }],
+      role: "customer",
+    }];
+    const input = createInput("ai-intent-execution", {
+      inputValues: { inputValue },
+      node,
+      payload: createWorkflowAiIntentInferenceRequest(node, inputValue),
+    });
+
+    const created = await repository.createLlmTestAttempt(input);
+
+    expect(created).toMatchObject({
+      inputValues: input.inputValues,
+      node: { id: "ai-intent-1", kind: "ai-intent" },
+      payload: { modelTarget: { kind: "endpoint" } },
+      status: "running",
+    });
+    await expect(repository.findLlmTestAttempt({ attemptId: created.id, uid: 9, workflowId: "31" }))
+      .resolves.toMatchObject({ node: { kind: "ai-intent" } });
   });
 
   it("reclaims an expired LLM test Attempt lease without replacing the first start time", async () => {
@@ -103,7 +132,10 @@ export function runWorkflowLlmTestAttemptRepositoryContract(
   });
 }
 
-function createInput(executionKey = "execution-1") {
+function createInput(
+  executionKey = "execution-1",
+  overrides: Partial<Parameters<WorkflowLlmTestAttemptRepository["createLlmTestAttempt"]>[0]> = {},
+): Parameters<WorkflowLlmTestAttemptRepository["createLlmTestAttempt"]>[0] {
   return {
     contractVersion: 1,
     createdAt,
@@ -114,13 +146,18 @@ function createInput(executionKey = "execution-1") {
     node: llmNode(),
     opSubUserId: "17",
     payload: {
-      kind: "message-list" as const,
-      messageList: [{ content: "Summarize", role: "system" as const }],
-      modelId: "model-1",
-      responseFormat: { type: "text" as const },
+      kind: "message-list",
+      messageList: [{
+        content: [{ text: "Summarize", type: "text" }],
+        role: "system",
+      }],
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+      reasoningEffort: "medium",
+      responseFormat: { type: "text" },
     },
     uid: 9,
     workflowId: "31",
+    ...overrides,
   };
 }
 
@@ -138,6 +175,19 @@ function llmNode(): WorkflowExecutionNode {
     },
     id: "llm-1",
     kind: "llm",
+    nodeSchemaVersion: 1,
+  };
+}
+
+function aiIntentNode(): WorkflowExecutionNode {
+  return {
+    config: {
+      fallback: { id: "fallback" },
+      inputSelector: ["trigger", "text"],
+      intents: [{ description: "咨询退款", id: "intent-refund", modelCode: "I1" }],
+    },
+    id: "ai-intent-1",
+    kind: "ai-intent",
     nodeSchemaVersion: 1,
   };
 }

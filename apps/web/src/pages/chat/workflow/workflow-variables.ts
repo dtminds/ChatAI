@@ -21,6 +21,7 @@ import {
 
 export {
   getWorkflowVariableDisplayLabel,
+  getWorkflowVariableDisplaySourceLabel,
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
 export { workflowContextVariables } from "./workflow-variable-registry";
@@ -39,7 +40,8 @@ export function getAvailableBranchVariablesForNode(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowVariableDefinition[] {
-  return getAvailableVariablesForNode(nodeId, nodes, edges);
+  return getAvailableVariablesForNode(nodeId, nodes, edges).filter(variable =>
+    variable.valueType.kind !== "array" && variable.valueType.kind !== "object");
 }
 
 export function getAvailableLlmInputVariablesForNode(

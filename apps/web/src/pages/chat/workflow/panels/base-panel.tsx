@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { WORKFLOW_NODE_TITLE_MAX_LENGTH } from "@chatai/contracts";
 import {
   Cancel01Icon,
   Edit03Icon,
@@ -90,6 +91,7 @@ function PanelHeader({
                 aria-label="节点名称"
                 autoFocus
                 className="h-8 min-w-0 rounded px-2.5 text-sm font-normal"
+                maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
                 onBlur={commitRename}
                 onChange={(event) => setRenameValue(event.target.value)}
                 onKeyDown={(event) => {

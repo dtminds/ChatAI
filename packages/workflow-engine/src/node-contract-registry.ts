@@ -137,6 +137,7 @@ export function projectWorkflowNodeExecutionConfig({
     return cloneJsonRecord({
       inputs: draftConfig.inputs,
       modelId: draftConfig.modelId,
+      reasoningEffort: draftConfig.reasoningEffort ?? "medium",
       output: draftConfig.output,
       systemPrompt: draftConfig.systemPrompt,
       userPrompt: draftConfig.userPrompt,

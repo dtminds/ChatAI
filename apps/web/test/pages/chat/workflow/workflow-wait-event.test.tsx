@@ -46,13 +46,9 @@ describe("workflow wait event", () => {
     expect(definition.getOutputVariables?.(node)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-        key: "messageIds",
-        usages: ["intent-input"],
-        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
-      }),
-      expect.objectContaining({
-        key: "textContent",
-        usages: ["intent-input", "message-content", "variable"],
+        key: "messages",
+        usages: ["intent-input", "variable"],
+        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
       }),
       expect.objectContaining({
         key: "lastMessageAt",
@@ -112,11 +108,11 @@ describe("workflow wait event", () => {
 
     expect(getAvailableIntentInputOutputsForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", waitEventNode.id, "messageIds"] }),
+        expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
       ]));
     expect(getAvailableVariablesForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", waitEventNode.id, "textContent"] }),
+        expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
       ]));
     expect(getAvailableTimeReferenceVariablesForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([

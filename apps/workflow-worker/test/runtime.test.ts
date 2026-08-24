@@ -40,6 +40,24 @@ describe("workflow worker runtime", () => {
     expect(resources.database.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("does not require inference dependencies when the inference role is disabled", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+      inferenceAdapter: undefined,
+      llmTestAdapter: undefined,
+      llmTestAttemptRepository: undefined,
+      llmTestAttemptWorker: undefined,
+    });
+
+    expect(runtime.getReadiness().roles).toEqual({
+      "entry-consumer": true,
+      "task-consumer": true,
+    });
+    await runtime.close();
+  });
+
   it("cleans up initialized resources when startup fails", async () => {
     const resources = createResources();
     resources.broker.subscribe
@@ -88,7 +106,7 @@ describe("workflow worker runtime", () => {
     expect(resources.loopClose).toHaveBeenCalledTimes(5);
   });
 
-  it("runs LLM test Attempts only when Mock mode is explicitly enabled", async () => {
+  it("runs LLM test Attempts in real mode", async () => {
     const resources = createResources();
     const llmTestAttemptWorker = vi.fn(async () => ({
       claimed: 0,
@@ -98,7 +116,7 @@ describe("workflow worker runtime", () => {
     }));
     const runtime = await startWorkflowWorkerRuntime({
       ...resources.dependencies,
-      config: { ...config(new Set(["inference"] as const)), llmTestMode: "mock" },
+      config: { ...config(new Set(["inference"] as const)) },
       llmTestAdapter: { execute: vi.fn() },
       llmTestAttemptRepository: {} as never,
       llmTestAttemptWorker,
@@ -111,17 +129,6 @@ describe("workflow worker runtime", () => {
     }));
     await runtime.close();
 
-    const disabled = createResources();
-    const disabledRuntime = await startWorkflowWorkerRuntime({
-      ...disabled.dependencies,
-      config: { ...config(new Set(["inference"] as const)), llmTestMode: "disabled" },
-      llmTestAdapter: { execute: vi.fn() },
-      llmTestAttemptRepository: {} as never,
-      llmTestAttemptWorker,
-    });
-    await vi.waitFor(() => expect(disabled.inferenceWorker).toHaveBeenCalledTimes(1));
-    expect(llmTestAttemptWorker).toHaveBeenCalledTimes(1);
-    await disabledRuntime.close();
   });
 
   it("feeds consistency cursors into the next reconciler iteration and resets after the last page", async () => {
@@ -400,7 +407,6 @@ describe("workflow worker runtime", () => {
       deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
       environment: "dev",
       event: "workflow.worker.started",
-      llmTestMode: "disabled",
       roles: ["entry-consumer", "task-consumer"],
       subscriptions: { entry: "entry-sub", task: "task-sub" },
       topics: { entry: "entry-topic", task: "task-topic" },
@@ -466,6 +472,14 @@ function createResources() {
       inferenceAdapter: { execute: vi.fn() },
       inferenceRepository: {} as never,
       inferenceWorker,
+      llmTestAdapter: { execute: vi.fn() },
+      llmTestAttemptRepository: {} as never,
+      llmTestAttemptWorker: vi.fn(async () => ({
+        claimed: 0,
+        failed: 0,
+        succeeded: 0,
+        timedOut: 0,
+      })),
       pingDatabase: vi.fn(async () => {
         if (!databaseReady) throw new Error("database unavailable");
       }),
@@ -572,7 +586,6 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     environment: "dev" as const,
     healthPort: 3002,
     logLevel: "info",
-    llmTestMode: "disabled" as const,
     maxRedeliverCount: 5,
     pulsar: { serviceUrl: null, token: null },
     roles,

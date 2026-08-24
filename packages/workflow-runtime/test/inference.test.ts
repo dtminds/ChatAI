@@ -1,9 +1,12 @@
 import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  createWorkflowAiIntentInferenceRequest,
   createWorkflowLlmInferenceRequest,
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
+  resolveWorkflowInferenceWithoutProvider,
+  resolveWorkflowAiIntentTestWithoutProvider,
   type WorkflowRunRecord,
 } from "../src/index.js";
 
@@ -32,10 +35,11 @@ describe("workflow inference payloads", () => {
     expect(createWorkflowInferenceRequest(node, run())).toEqual({
       kind: "message-list",
       messageList: [
-        { content: "请用简洁方式处理", role: "system" },
-        { content: "退款什么时候到账", role: "user" },
+        { content: [{ text: "请用简洁方式处理", type: "text" }], role: "system" },
+        { content: [{ text: "退款什么时候到账", type: "text" }], role: "user" },
       ],
-      modelId: "model-1",
+      modelTarget: { kind: "catalog-model", modelId: "model-1" },
+      reasoningEffort: "medium",
       responseFormat: {
         fields: [
           { description: "摘要", name: "summary", type: "string" },
@@ -53,7 +57,7 @@ describe("workflow inference payloads", () => {
     });
   });
 
-  it("sends AI Intent as template variables and maps model code to the stable handle", () => {
+  it("renders AI Intent as a complete direct-endpoint request and maps codes to stable handles", () => {
     const node: WorkflowExecutionNode = {
       config: {
         fallback: { id: "fallback" },
@@ -70,23 +74,41 @@ describe("workflow inference payloads", () => {
     };
 
     expect(createWorkflowInferenceRequest(node, run())).toEqual({
-      kind: "template",
-      templateKey: "workflow.intent.classify.v1",
-      variables: {
-        additionalRules: "退款未到账优先判断为退款",
-        input: "退款什么时候到账",
-        intents: JSON.stringify([
-          { code: "I1", description: "咨询退款" },
-          { code: "I2", description: "咨询物流" },
-        ]),
+      kind: "message-list",
+      messageList: [
+        {
+          content: [{
+            text: expect.stringMatching(
+              /"code": "I1"[\s\S]*"description": "咨询退款"[\s\S]*"code": "I2"[\s\S]*fallback[\s\S]*退款未到账优先判断为退款/,
+            ),
+            type: "text",
+          }],
+          role: "system",
+        },
+        { content: [{ text: "退款什么时候到账", type: "text" }], role: "user" },
+      ],
+      modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
+      reasoningEffort: "low",
+      responseFormat: {
+        fields: [
+          { description: "Matched intent code or fallback", name: "matchedCode", type: "string" },
+          { description: "Brief reason for the classification", name: "reason", type: "string" },
+        ],
+        type: "json",
       },
     });
-    expect(mapWorkflowInferenceResult(node, { matchedCode: "I2", reason: "用户询问物流" }))
+    expect(mapWorkflowInferenceResult(node, {
+      type: "json",
+      value: { matchedCode: "I2", reason: "用户询问物流" },
+    }))
       .toEqual({
         output: { matchedIntentDescription: "咨询物流", reason: "用户询问物流" },
         sourceOutletId: "intent:intent-logistics",
       });
-    expect(mapWorkflowInferenceResult(node, { matchedCode: "fallback", reason: "未命中" }))
+    expect(mapWorkflowInferenceResult(node, {
+      type: "json",
+      value: { matchedCode: "fallback", reason: "未命中" },
+    }))
       .toEqual({
         output: { matchedIntentDescription: "其他意图", reason: "未命中" },
         sourceOutletId: "fallback",
@@ -138,10 +160,147 @@ describe("workflow inference payloads", () => {
       { enteredAt: "2026-08-14T02:00:01.000Z" },
     )).toEqual(expect.objectContaining({
       messageList: [{
-        content: "2026-08-14T02:00:00.000Z -> 2026-08-14T02:00:01.000Z",
+        content: [{
+          text: "2026-08-14T02:00:00.000Z -> 2026-08-14T02:00:01.000Z",
+          type: "text",
+        }],
         role: "system",
       }],
     }));
+  });
+
+  it("expands structured messages in user prompts and rejects them in system prompts", () => {
+    const messages = [
+      {
+        id: 101,
+        parts: [
+          { text: "你好", type: "text" as const },
+          { text: "，看下这个", type: "text" as const },
+          { type: "image" as const, url: "/media/error.png" },
+          { text: "这个报错怎么解决？", type: "text" as const },
+        ],
+        role: "customer" as const,
+      },
+      {
+        id: 102,
+        parts: [
+          { text: "请稍等", type: "text" as const },
+          { label: "语音", type: "unsupported" as const },
+          { type: "video" as const, url: "https://media.example/demo.mp4" },
+        ],
+        role: "agent" as const,
+      },
+    ];
+    const input = {
+      id: "input-messages",
+      name: "messages",
+      value: {
+        kind: "variable" as const,
+        selector: ["node", "query", "messages"] as const,
+        valueType: { kind: "object" as const, schemaRef: "workflow.messages.v1" },
+      },
+    };
+    const systemNode = llmNode({
+      inputs: [input],
+      systemPrompt: [{ selector: ["input", "input-messages"], type: "variable" }],
+    });
+    const node = llmNode({
+      inputs: [input],
+      systemPrompt: [{ type: "text", value: "请分析以下上下文" }],
+      userPrompt: [
+        { selector: ["input", "input-messages"], type: "variable" },
+        { type: "text", value: "\n请回答" },
+      ],
+    });
+    const workflowRun = run();
+    workflowRun.context = {
+      ...workflowRun.context,
+      outputs: { query: { messages } },
+    };
+
+    expect(() => createWorkflowInferenceRequest(systemNode, workflowRun))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_INPUT_INVALID" }));
+    expect(createWorkflowInferenceRequest(node, workflowRun)).toMatchObject({
+      messageList: [
+        {
+          content: [{ text: "请分析以下上下文", type: "text" }],
+          role: "system",
+        },
+        {
+          content: [
+            { text: "用户: 你好，看下这个", type: "text" },
+            { type: "image", url: "/media/error.png" },
+            { text: "这个报错怎么解决？\n客服: 请稍等[语音]", type: "text" },
+            { type: "video", url: "https://media.example/demo.mp4" },
+            { text: "\n请回答", type: "text" },
+          ],
+          role: "user",
+        },
+      ],
+    });
+  });
+
+  it("falls back only when AI Intent has no text or media content", () => {
+    const node: WorkflowExecutionNode = {
+      config: {
+        fallback: { id: "fallback" },
+        inputSelector: ["node", "query", "messages"],
+        intents: [{ description: "咨询退款", id: "intent-refund", modelCode: "I1" }],
+      },
+      id: "intent-1",
+      kind: "ai-intent",
+      nodeSchemaVersion: 1,
+    };
+    const imageRun = run();
+    imageRun.context = {
+      outputs: {
+        query: {
+          messages: [{
+            id: 101,
+            parts: [{ type: "image", url: "/media/order.png" }],
+            role: "customer",
+          }],
+        },
+      },
+    };
+    expect(resolveWorkflowInferenceWithoutProvider(node, imageRun)).toBeNull();
+
+    const emptyRun = run();
+    emptyRun.context = { outputs: { query: { messages: [] } } };
+    expect(resolveWorkflowInferenceWithoutProvider(node, emptyRun)).toEqual({
+      output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+      sourceOutletId: "fallback",
+    });
+
+    expect(resolveWorkflowAiIntentTestWithoutProvider(node, [])).toEqual({
+      output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
+      result: { type: "json", value: { matchedCode: "fallback", reason: "输入为空" } },
+      sourceOutletId: "fallback",
+    });
+    expect(resolveWorkflowAiIntentTestWithoutProvider(node, [{
+      id: 101,
+      parts: [{ type: "image", url: "/media/order.png" }],
+      role: "customer",
+    }])).toBeNull();
+    expect(createWorkflowAiIntentInferenceRequest(node, [{
+      id: 101,
+      parts: [
+        { text: "看下这个", type: "text" },
+        { type: "image", url: "/media/order.png" },
+      ],
+      role: "customer",
+    }])).toMatchObject({
+      messageList: [
+        { role: "system" },
+        {
+          content: [
+            { text: "用户: 看下这个", type: "text" },
+            { type: "image", url: "/media/order.png" },
+          ],
+          role: "user",
+        },
+      ],
+    });
   });
 
   it("rejects unavailable selectors, unknown intent codes, and mismatched JSON fields", () => {
@@ -164,8 +323,19 @@ describe("workflow inference payloads", () => {
       kind: "ai-intent",
       nodeSchemaVersion: 1,
     };
-    expect(() => mapWorkflowInferenceResult(intentNode, { matchedCode: "I2", reason: "wrong" }))
+    expect(() => mapWorkflowInferenceResult(intentNode, {
+      type: "json",
+      value: { matchedCode: "I2", reason: "wrong" },
+    }))
       .toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_OUTPUT_INVALID" }));
+    expect(() => mapWorkflowInferenceResult(intentNode, {
+      type: "json",
+      value: { matchedCode: "I1" },
+    } as never)).toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_OUTPUT_INVALID" }));
+    expect(() => mapWorkflowInferenceResult(intentNode, {
+      type: "json",
+      value: { matchedCode: "I1", reason: "matched", unexpected: true },
+    } as never)).toThrow(expect.objectContaining({ code: "WORKFLOW_INFERENCE_OUTPUT_INVALID" }));
     expect(() => mapWorkflowInferenceResult(llmNode({
       output: {
         fields: [{ description: "摘要", id: "field-summary", name: "summary", type: "string" }],
@@ -214,6 +384,7 @@ function llmNode(overrides: Record<string, unknown> = {}): WorkflowExecutionNode
     config: {
       inputs: [],
       modelId: "model-1",
+      reasoningEffort: "medium",
       output: {
         field: { description: "", id: "output-1", name: "output", type: "string" },
         format: "text",

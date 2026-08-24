@@ -133,7 +133,16 @@ function normalizeTriggers(triggers: WorkflowStartTrigger[]): WorkflowStartTrigg
       return { ...trigger, tagIds: uniqueNumbers(trigger.tagIds) };
     }
     if (trigger.type === "contact.friend_added") {
-      return { ...trigger, sourceIds: uniqueStrings(trigger.sourceIds) };
+      const addWayKey = trigger.addWayKey?.trim();
+      const sourceMatchMode = trigger.sourceMatchMode === "any" || trigger.sourceMatchMode === "all"
+        ? trigger.sourceMatchMode
+        : undefined;
+      return {
+        type: trigger.type,
+        sourceIds: uniqueStrings(trigger.sourceIds),
+        ...(addWayKey ? { addWayKey } : {}),
+        ...(sourceMatchMode ? { sourceMatchMode } : {}),
+      };
     }
     return { ...trigger, keywords: uniqueStrings(trigger.keywords) };
   });

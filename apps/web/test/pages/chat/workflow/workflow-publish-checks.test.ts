@@ -274,6 +274,30 @@ describe("buildPublishChecks", () => {
     );
   });
 
+  it("blocks publishing when a friend-added trigger has no source", () => {
+    const nodes = createInitialNodes();
+    const startNode = nodes.find(
+      (node): node is WorkflowNode<"start"> => node.data.kind === "start",
+    )!;
+    const invalidStartNode: WorkflowNode<"start"> = {
+      ...startNode,
+      data: {
+        ...startNode.data,
+        seatIds: [101],
+        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      },
+    };
+    const issues = validateWorkflowNodeConfig(
+      invalidStartNode,
+      nodes.map(node => node.id === invalidStartNode.id ? invalidStartNode : node),
+      createInitialEdges(),
+    );
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      code: "start-friend-source-required",
+    }));
+  });
+
   it("blocks publishing when a message trigger has no keywords", () => {
     const nodes = createInitialNodes();
     const startNode = nodes.find(

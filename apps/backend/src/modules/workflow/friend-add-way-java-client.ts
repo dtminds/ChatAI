@@ -12,6 +12,7 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const JAVA_ADD_WAY_LIST_PATH = "/third-internal/work-external-contact/add-way-list";
+const JAVA_ADD_WAY_ACTIVITY_PATH = "/third-internal/work-external-contact/get-add-way-activity";
 
 export const FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE = "FRIEND_ADD_WAY_INTERNAL_API_FAILED";
 export const FRIEND_ADD_WAY_INTERNAL_API_NOT_CONFIGURED_CODE =
@@ -20,12 +21,16 @@ export const FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE = "操作失败，请稍�
 
 type JavaApiResponse<T> = {
   code?: number;
+  count?: number;
   data?: T;
   error?: number;
   errorMsg?: string;
   error_msg?: string;
+  hasNext?: boolean;
   list?: T;
   message?: string;
+  page?: number;
+  pageSize?: number;
   success?: boolean;
 };
 
@@ -40,7 +45,29 @@ export type FriendAddWayJavaGroup = {
   title?: string | null;
 };
 
+export type FriendAddWayJavaActivity = {
+  addWayId?: string | null;
+  createTime?: number | string | null;
+  title?: string | null;
+};
+
+export type FriendAddWayJavaActivityPage = {
+  hasNext: boolean;
+  items: FriendAddWayJavaActivity[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
 export type FriendAddWayJavaClient = {
+  listActivities: (input: {
+    addWayIds?: string;
+    key: string;
+    page: number;
+    pageSize: number;
+    title?: string;
+    uid: number;
+  }) => Promise<FriendAddWayJavaActivityPage>;
   listAddWays: (input: { uid: number }) => Promise<{
     groups: FriendAddWayJavaGroup[];
   }>;
@@ -53,6 +80,51 @@ export function createFriendAddWayJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    async listActivities(input) {
+      // Swagger 参数名 reqTO 对应 @RequestBody；实际 JSON 为 flat 字段（与现有 third-internal 一致）
+      const body: Record<string, unknown> = {
+        key: input.key,
+        page: input.page,
+        pageSize: input.pageSize,
+        uid: input.uid,
+      };
+
+      if (input.addWayIds) {
+        body.addWayIds = input.addWayIds;
+      }
+
+      if (input.title) {
+        body.title = input.title;
+      }
+
+      const response = await postJavaRequest<JavaApiResponse<FriendAddWayJavaActivity[]>>({
+        baseUrl,
+        body: JSON.stringify(body),
+        logContext: {
+          key: input.key,
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
+        logger,
+        operation: "friend-add-way-activity",
+        path: JAVA_ADD_WAY_ACTIVITY_PATH,
+        token,
+      });
+
+      assertJavaSuccess(response, "friend-add-way-activity");
+
+      const items = extractJavaListItems<FriendAddWayJavaActivity>(response);
+
+      return {
+        hasNext: Boolean(response.hasNext),
+        items,
+        page: normalizePositiveInteger(response.page, input.page),
+        pageSize: normalizePositiveInteger(response.pageSize, input.pageSize),
+        total: normalizeNonNegativeInteger(response.count ?? items.length),
+      };
+    },
+
     async listAddWays(input) {
       const response = await postJavaRequest<JavaApiResponse<FriendAddWayJavaGroup[]>>({
         baseUrl,
@@ -64,7 +136,7 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      assertJavaSuccess(response);
+      assertJavaSuccess(response, "friend-add-way-list");
 
       return {
         groups: extractJavaListItems<FriendAddWayJavaGroup>(response),
@@ -97,7 +169,7 @@ function extractJavaListItems<T>(response: JavaApiResponse<unknown>): T[] {
   return emptyFallback ?? [];
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>) {
+function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
   if (isJavaEnvelopeSuccessful(response)) {
     return;
   }
@@ -109,7 +181,7 @@ function assertJavaSuccess(response: JavaApiResponse<unknown>) {
       code: response.code,
       error: response.error,
       errorMsg: response.errorMsg ?? response.error_msg ?? response.message,
-      operation: "friend-add-way-list",
+      operation,
     },
   );
 }
@@ -255,4 +327,14 @@ function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
 function readJavaApiTimeoutMs() {
   const raw = Number(process.env.JAVA_INTERNAL_API_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeNonNegativeInteger(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }

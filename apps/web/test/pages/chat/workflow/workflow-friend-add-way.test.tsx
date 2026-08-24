@@ -1,7 +1,18 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FriendAddWaySelection } from "@/pages/chat/workflow/nodes/start/friend-add-way-selection";
+import { listWorkflowFriendAddWayActivities } from "@/pages/chat/workflow/workflow-friend-add-way-resource";
+
+vi.mock("@/pages/chat/workflow/workflow-friend-add-way-resource", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/pages/chat/workflow/workflow-friend-add-way-resource")
+  >("@/pages/chat/workflow/workflow-friend-add-way-resource");
+  return {
+    ...actual,
+    listWorkflowFriendAddWayActivities: vi.fn(),
+  };
+});
 
 const groups = [
   {
@@ -19,113 +30,146 @@ const groups = [
   },
 ];
 
-async function openSelector(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /不限来源|已选择/ }));
-  await screen.findByRole("dialog", { name: "选择添加好友来源" });
-}
-
 describe("friend add-way selection", () => {
-  it("commits catalog picks only after confirm and shows a count", async () => {
+  beforeEach(() => {
+    vi.mocked(listWorkflowFriendAddWayActivities).mockReset();
+  });
+
+  it("selects a single-level source from the cascading menu", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <FriendAddWaySelection
         groups={groups}
         onChange={onChange}
-        selectedKeys={["gone"]}
         status="ready"
+        value={{ addWayKey: null, sourceIds: [], sourceMatchMode: "all" }}
       />,
     );
 
-    expect(screen.getByRole("button", { name: /已选择 1 个来源/ })).toBeInTheDocument();
-    expect(screen.queryByText("原选项不可用")).not.toBeInTheDocument();
+    const sourceSelect = screen.getByRole("button", { name: "添加好友来源" });
+    expect(sourceSelect).toHaveTextContent("请选择");
 
-    await openSelector(user);
+    await user.click(sourceSelect);
+    expect(screen.queryByRole("option", { name: "不限来源" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "搜索手机号" }));
 
-    const groupsList = screen.getByRole("list", { name: "添加方式" });
-    const itemsList = screen.getByRole("list", { name: "子类添加方式" });
-    expect(within(groupsList).getByRole("button", { name: "扫描二维码" })).toBeInTheDocument();
-    expect(within(groupsList).getByRole("checkbox", { name: "搜索手机号" })).toBeInTheDocument();
-    expect(within(itemsList).getByRole("checkbox", { name: "小程序" })).toBeInTheDocument();
-    expect(within(itemsList).getByRole("checkbox", { name: "群二维码" })).toBeInTheDocument();
-    expect(within(itemsList).queryByRole("checkbox", { name: "搜索手机号" })).not.toBeInTheDocument();
-
-    await user.click(within(groupsList).getByRole("checkbox", { name: "搜索手机号" }));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.queryByRole("list", { name: "子类添加方式" })).not.toBeInTheDocument();
-
-    await user.click(within(groupsList).getByRole("button", { name: "扫描二维码" }));
-    const restoredItemsList = screen.getByRole("list", { name: "子类添加方式" });
-    await user.type(screen.getByRole("textbox", { name: "搜索子类添加方式" }), "小程序");
-    expect(within(restoredItemsList).getByRole("checkbox", { name: "小程序" })).toBeInTheDocument();
-    expect(within(restoredItemsList).queryByRole("checkbox", { name: "群二维码" })).not.toBeInTheDocument();
-
-    await user.click(within(restoredItemsList).getByRole("checkbox", { name: "小程序" }));
-    expect(onChange).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "确定" }));
-    expect(onChange).toHaveBeenCalledWith(["search", "scan.mini_program"]);
+    expect(onChange).toHaveBeenCalledWith({
+      addWayKey: "search",
+      sourceIds: ["search"],
+      sourceMatchMode: "all",
+    });
+    expect(screen.queryByRole("combobox", { name: "匹配方式" })).not.toBeInTheDocument();
   });
 
-  it("discards draft picks when cancelled", async () => {
+  it("selects a child source and keeps match mode on the same row", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <FriendAddWaySelection
         groups={groups}
         onChange={onChange}
-        selectedKeys={[]}
         status="ready"
+        value={{ addWayKey: null, sourceIds: [], sourceMatchMode: "all" }}
       />,
     );
 
-    await openSelector(user);
-    await user.click(screen.getByRole("checkbox", { name: "搜索手机号" }));
-    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "添加好友来源" }));
+    await user.click(screen.getByRole("button", { name: "扫描二维码" }));
     expect(onChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "小程序" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      addWayKey: "scan.mini_program",
+      sourceIds: ["scan.mini_program"],
+      sourceMatchMode: "all",
+    });
   });
 
-  it("stops selecting after five sources", async () => {
-    const user = userEvent.setup();
+  it("shows the selected path and match mode together", () => {
     render(
       <FriendAddWaySelection
-        groups={[
-          { children: [], key: "one", title: "来源一" },
-          { children: [], key: "two", title: "来源二" },
-          { children: [], key: "three", title: "来源三" },
-          { children: [], key: "four", title: "来源四" },
-          { children: [], key: "five", title: "来源五" },
-          { children: [], key: "six", title: "来源六" },
-        ]}
+        groups={groups}
         onChange={vi.fn()}
-        selectedKeys={[]}
         status="ready"
+        value={{
+          addWayKey: "scan.mini_program",
+          sourceIds: ["scan.mini_program"],
+          sourceMatchMode: "all",
+        }}
       />,
     );
 
-    await openSelector(user);
-    for (const name of ["来源一", "来源二", "来源三", "来源四", "来源五"]) {
-      await user.click(screen.getByRole("checkbox", { name }));
-    }
-
-    expect(screen.getByText("已选 5 / 5")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "来源六" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加好友来源" }))
+      .toHaveTextContent("扫描二维码 / 小程序");
+    expect(screen.getByRole("combobox", { name: "匹配方式" })).toHaveTextContent("满足全部");
+    expect(screen.queryByRole("button", { name: /请选择活动|已选择/ })).not.toBeInTheDocument();
   });
 
-  it("keeps a single-level dialog when no group has children", async () => {
+  it("opens the activity picker on the second row for any", async () => {
     const user = userEvent.setup();
+    const onChange = vi.fn();
+    vi.mocked(listWorkflowFriendAddWayActivities).mockImplementation(async ({ page }) => {
+      if (page === 2) {
+        return {
+          items: [{ addWayId: "live-21", createTime: 1_710_000_000_000, title: "第二页活动" }],
+          pagination: { hasNext: false, page: 2, pageSize: 20, total: 21 },
+        };
+      }
+
+      return {
+        items: [
+          { addWayId: "live-1", createTime: 1_710_000_000_000, title: "门店活码" },
+          { addWayId: "live-2", title: "活动活码" },
+        ],
+        pagination: { hasNext: true, page: 1, pageSize: 20, total: 21 },
+      };
+    });
+
     render(
       <FriendAddWaySelection
-        groups={[{ children: [], key: "search", title: "搜索手机号" }]}
-        onChange={vi.fn()}
-        selectedKeys={[]}
+        groups={groups}
+        onChange={onChange}
         status="ready"
+        value={{
+          addWayKey: "scan.mini_program",
+          sourceIds: [],
+          sourceMatchMode: "any",
+        }}
       />,
     );
 
-    await openSelector(user);
-    expect(screen.getByRole("checkbox", { name: "搜索手机号" })).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "子类添加方式" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /请选择活动/ }));
+    const dialog = await screen.findByRole("dialog", { name: "选择活动" });
+    expect(await within(dialog).findByRole("checkbox", { name: "门店活码" })).toBeInTheDocument();
+    expect(listWorkflowFriendAddWayActivities).toHaveBeenCalledWith({
+      key: "scan.mini_program",
+      page: 1,
+      pageSize: 20,
+      title: undefined,
+    });
+    expect(within(dialog).getByRole("columnheader", { name: "创建时间" })).toBeInTheDocument();
+    expect(within(dialog).getByText("共 21 条")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: "门店活码" }));
+    expect(onChange).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "下一页" }));
+    expect(await within(dialog).findByRole("checkbox", { name: "第二页活动" })).toBeInTheDocument();
+    expect(listWorkflowFriendAddWayActivities).toHaveBeenCalledWith({
+      key: "scan.mini_program",
+      page: 2,
+      pageSize: 20,
+      title: undefined,
+    });
+
+    await user.click(within(dialog).getByRole("button", { name: "确定" }));
+    expect(onChange).toHaveBeenCalledWith({
+      addWayKey: "scan.mini_program",
+      sourceIds: ["live-1"],
+      sourceMatchMode: "any",
+    });
   });
 
   it("retries catalog loading failures", async () => {
@@ -136,8 +180,8 @@ describe("friend add-way selection", () => {
         groups={[]}
         onChange={vi.fn()}
         onRetry={onRetry}
-        selectedKeys={[]}
         status="error"
+        value={{ addWayKey: null, sourceIds: [], sourceMatchMode: "all" }}
       />,
     );
 

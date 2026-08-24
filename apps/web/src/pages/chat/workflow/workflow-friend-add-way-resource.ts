@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ApiSuccessEnvelope,
+  WorkflowFriendAddWayActivityListResponse,
   WorkflowFriendAddWayGroup,
   WorkflowFriendAddWayListResponse,
+} from "@chatai/contracts";
+import {
+  WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE_DEFAULT,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 
@@ -24,6 +28,39 @@ export async function listWorkflowFriendAddWays(): Promise<WorkflowFriendAddWayG
   );
 
   return response.data.groups;
+}
+
+export async function listWorkflowFriendAddWayActivities(params: {
+  addWayIds?: readonly string[];
+  key: string;
+  page?: number;
+  pageSize?: number;
+  title?: string;
+}): Promise<WorkflowFriendAddWayActivityListResponse> {
+  const query = new URLSearchParams();
+  query.set("key", params.key);
+
+  if (params.addWayIds && params.addWayIds.length > 0) {
+    query.set("addWayIds", params.addWayIds.join(","));
+  }
+
+  if (params.page != null) {
+    query.set("page", String(params.page));
+  }
+
+  if (params.pageSize != null) {
+    query.set("pageSize", String(params.pageSize));
+  }
+
+  if (params.title?.trim()) {
+    query.set("title", params.title.trim());
+  }
+
+  const response = await http.get<ApiSuccessEnvelope<WorkflowFriendAddWayActivityListResponse>>(
+    `/server/workflow/friend-add-way-activities?${query.toString()}`,
+  );
+
+  return response.data;
 }
 
 export function useWorkflowFriendAddWayResource(
@@ -68,16 +105,45 @@ export function useWorkflowFriendAddWayResource(
   return { groups, reload, status };
 }
 
-export function getSelectableFriendAddWays(groups: readonly WorkflowFriendAddWayGroup[]) {
-  return groups.flatMap((group) => {
-    if (group.children.length === 0) {
-      return [{ groupTitle: group.title, key: group.key, title: group.title }];
-    }
+export type WorkflowFriendAddWayPath = {
+  child: WorkflowFriendAddWayGroup["children"][number] | null;
+  group: WorkflowFriendAddWayGroup | null;
+};
 
-    return group.children.map(child => ({
-      groupTitle: group.title,
-      key: child.key,
-      title: child.title,
-    }));
-  });
+export function resolveFriendAddWayPath(
+  groups: readonly WorkflowFriendAddWayGroup[],
+  key: string | null | undefined,
+): WorkflowFriendAddWayPath {
+  if (!key) {
+    return { child: null, group: null };
+  }
+
+  const group = groups.find(item => item.key === key);
+  if (group) {
+    return { child: null, group };
+  }
+
+  for (const item of groups) {
+    const child = item.children.find(option => option.key === key);
+    if (child) {
+      return { child, group: item };
+    }
+  }
+
+  return { child: null, group: null };
 }
+
+export function getFriendAddWayDisplayTitle(path: WorkflowFriendAddWayPath) {
+  if (!path.group) {
+    return null;
+  }
+
+  return path.child ? `${path.group.title} / ${path.child.title}` : path.group.title;
+}
+
+export function friendAddWayHasSecondary(path: WorkflowFriendAddWayPath) {
+  return path.child != null || Boolean(path.group?.children.length);
+}
+
+export const WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE =
+  WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE_DEFAULT;

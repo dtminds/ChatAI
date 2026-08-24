@@ -263,7 +263,7 @@ describe("workflow start configuration", () => {
     expect(screen.queryByRole("option", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
-  it("selects friend add-way keys from the catalog", async () => {
+  it("selects a single friend add-way from the catalog", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -287,6 +287,11 @@ describe("workflow start configuration", () => {
                 key: "scan",
                 title: "扫描二维码",
               },
+              {
+                children: [],
+                key: "search",
+                title: "搜索手机号",
+              },
             ],
             reload: vi.fn(),
             status: "ready",
@@ -295,11 +300,14 @@ describe("workflow start configuration", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /不限来源/ }));
-    await user.click(screen.getByRole("checkbox", { name: "小程序" }));
-    await user.click(screen.getByRole("button", { name: "确定" }));
+    await user.click(screen.getByRole("button", { name: "添加好友来源" }));
+    await user.click(screen.getByRole("button", { name: "搜索手机号" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      triggers: [{ sourceIds: ["scan.mini_program"], type: "contact.friend_added" }],
+      triggers: [{
+        addWayKey: "search",
+        sourceIds: ["search"],
+        type: "contact.friend_added",
+      }],
     }));
   });
 

@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { http } from "@/lib/request";
 import {
-  getSelectableFriendAddWays,
+  friendAddWayHasSecondary,
+  getFriendAddWayDisplayTitle,
+  listWorkflowFriendAddWayActivities,
   listWorkflowFriendAddWays,
+  resolveFriendAddWayPath,
 } from "@/pages/chat/workflow/workflow-friend-add-way-resource";
 
 vi.mock("@/lib/request", () => ({
@@ -40,25 +43,50 @@ describe("workflow friend add-way resource", () => {
     expect(http.get).toHaveBeenCalledWith("/server/workflow/friend-add-ways");
   });
 
-  it("exposes leaf keys for groups with children and parent keys otherwise", () => {
-    expect(getSelectableFriendAddWays([
-      {
-        children: [
-          { key: "scan.mini_program", title: "小程序" },
-          { key: "scan.group", title: "群二维码" },
-        ],
-        key: "scan",
-        title: "扫描二维码",
+  it("loads one activity page for the selected add-way key", async () => {
+    vi.mocked(http.get).mockResolvedValue({
+      data: {
+        items: [{ addWayId: "live-1", title: "门店活码" }],
+        pagination: { hasNext: true, page: 1, pageSize: 20, total: 21 },
       },
-      {
-        children: [],
-        key: "search",
-        title: "搜索手机号",
-      },
-    ])).toEqual([
-      { groupTitle: "扫描二维码", key: "scan.mini_program", title: "小程序" },
-      { groupTitle: "扫描二维码", key: "scan.group", title: "群二维码" },
-      { groupTitle: "搜索手机号", key: "search", title: "搜索手机号" },
-    ]);
+      success: true,
+    });
+
+    await expect(listWorkflowFriendAddWayActivities({
+      key: "scan",
+      page: 1,
+      pageSize: 20,
+      title: "门店",
+    })).resolves.toEqual({
+      items: [{ addWayId: "live-1", title: "门店活码" }],
+      pagination: { hasNext: true, page: 1, pageSize: 20, total: 21 },
+    });
+    expect(http.get).toHaveBeenCalledWith(
+      "/server/workflow/friend-add-way-activities?key=scan&page=1&pageSize=20&title=%E9%97%A8%E5%BA%97",
+    );
+  });
+
+  it("resolves parent and child keys for the cascading path", () => {
+    const scan = {
+      children: [{ key: "scan.mini_program", title: "小程序" }],
+      key: "scan",
+      title: "扫描二维码",
+    };
+    const search = {
+      children: [],
+      key: "search",
+      title: "搜索手机号",
+    };
+
+    expect(resolveFriendAddWayPath([scan, search], "scan.mini_program")).toEqual({
+      child: { key: "scan.mini_program", title: "小程序" },
+      group: scan,
+    });
+    expect(getFriendAddWayDisplayTitle({
+      child: { key: "scan.mini_program", title: "小程序" },
+      group: scan,
+    })).toBe("扫描二维码 / 小程序");
+    expect(friendAddWayHasSecondary({ child: null, group: scan })).toBe(true);
+    expect(friendAddWayHasSecondary({ child: null, group: search })).toBe(false);
   });
 });

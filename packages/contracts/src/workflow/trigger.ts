@@ -58,7 +58,12 @@ export const WorkflowPushAccountStrategySchema = Type.Union([
   Type.Literal("latest-added"),
 ]);
 
-export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
+export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 100;
+
+export const WorkflowFriendAddWayMatchModeSchema = Type.Union([
+  Type.Literal("all"),
+  Type.Literal("any"),
+]);
 
 const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
 
@@ -78,7 +83,9 @@ const WorkflowRequiredTriggerStringListSchema = Type.Array(
 );
 
 const WorkflowContactFriendAddedTriggerSchema = Type.Object({
+  addWayKey: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
   sourceIds: WorkflowFriendSourceIdListSchema,
+  sourceMatchMode: Type.Optional(WorkflowFriendAddWayMatchModeSchema),
   type: Type.Literal("contact.friend_added"),
 }, { additionalProperties: false });
 
@@ -327,6 +334,7 @@ export const WorkflowWaitEventConfigSchema = Type.Object({
   timeout: WorkflowWaitEventTimeoutSchema,
 }, { additionalProperties: false });
 
+export type WorkflowFriendAddWayMatchMode = Static<typeof WorkflowFriendAddWayMatchModeSchema>;
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartEntryMode = Static<typeof WorkflowStartEntryModeSchema>;

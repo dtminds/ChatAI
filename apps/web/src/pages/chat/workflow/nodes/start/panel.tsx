@@ -41,7 +41,10 @@ import {
   getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureWorkUsers,
 } from "./fixture-options";
-import { FriendAddWaySelection } from "./friend-add-way-selection";
+import {
+  FriendAddWaySelection,
+  type FriendAddWaySelectionValue,
+} from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 
@@ -195,12 +198,12 @@ export function StartConfig({
               <TriggerParameter label="添加好友来源">
                 <FriendAddWaySelection
                   groups={resources?.friendAddWays?.groups ?? []}
-                  onChange={(sourceIds) => updateStartConfig({
-                    triggers: [{ sourceIds, type: "contact.friend_added" }],
+                  onChange={(next) => updateStartConfig({
+                    triggers: [toFriendAddedTrigger(next)],
                   })}
                   onRetry={resources?.friendAddWays?.reload}
-                  selectedKeys={getFriendSourceIds(triggers)}
                   status={resources?.friendAddWays?.status ?? "ready"}
+                  value={getFriendAddWayValue(triggers)}
                 />
               </TriggerParameter>
             ) : null}
@@ -567,8 +570,28 @@ function createTrigger(type: WorkflowStartTrigger["type"]): WorkflowStartTrigger
   return { keywords: [], type };
 }
 
-function getFriendSourceIds(triggers: WorkflowStartTrigger[]) {
-  return triggers.find(trigger => trigger.type === "contact.friend_added")?.sourceIds ?? [];
+function getFriendAddWayValue(triggers: WorkflowStartTrigger[]): FriendAddWaySelectionValue {
+  const trigger = triggers.find(item => item.type === "contact.friend_added");
+  if (!trigger || trigger.type !== "contact.friend_added") {
+    return { addWayKey: null, sourceIds: [], sourceMatchMode: "all" };
+  }
+
+  return {
+    addWayKey: trigger.addWayKey ?? null,
+    sourceIds: trigger.sourceIds,
+    sourceMatchMode: trigger.sourceMatchMode ?? "all",
+  };
+}
+
+function toFriendAddedTrigger(value: FriendAddWaySelectionValue): WorkflowStartTrigger {
+  return {
+    type: "contact.friend_added",
+    sourceIds: value.sourceIds,
+    ...(value.addWayKey ? { addWayKey: value.addWayKey } : {}),
+    ...(value.addWayKey && value.sourceMatchMode === "any"
+      ? { sourceMatchMode: "any" }
+      : {}),
+  };
 }
 
 function getTagIds(triggers: WorkflowStartTrigger[]) {

@@ -73,6 +73,11 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       issues.push(createCatalogIssue("start-trigger-required", "未配置触发条件"));
     }
     if (entryMode === "event" && node.data.triggers.some(trigger =>
+      trigger.type === "contact.friend_added" && trigger.sourceIds.length === 0,
+    )) {
+      issues.push(createCatalogIssue("start-friend-source-required", "未选择添加好友来源"));
+    }
+    if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
       issues.push(createCatalogIssue("start-tag-required", "标签触发未选择标签"));
@@ -166,9 +171,15 @@ function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
       return { ...trigger, tagIds: sanitizePositiveIds(trigger.tagIds) };
     }
     if (trigger.type === "contact.friend_added") {
+      const addWayKey = trigger.addWayKey?.trim();
+      const sourceMatchMode = trigger.sourceMatchMode === "any" || trigger.sourceMatchMode === "all"
+        ? trigger.sourceMatchMode
+        : undefined;
       return {
-        ...trigger,
+        type: trigger.type,
         sourceIds: sanitizeStrings(trigger.sourceIds).slice(0, WORKFLOW_FRIEND_SOURCE_MAX_SELECTED),
+        ...(addWayKey ? { addWayKey } : {}),
+        ...(sourceMatchMode ? { sourceMatchMode } : {}),
       };
     }
     return { ...trigger, keywords: sanitizeStrings(trigger.keywords) };

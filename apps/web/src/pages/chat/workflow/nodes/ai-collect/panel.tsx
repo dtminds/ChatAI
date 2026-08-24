@@ -209,33 +209,34 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       <WorkflowSettingsSection
         actions={(
           <Switch
-            aria-label="智能追问"
+            aria-label="智能体辅助"
             checked={maxFollowUpCount > 0}
             onCheckedChange={checked => updateConfig({
               maxFollowUpCount: checked ? lastEnabledFollowUpCountRef.current : 0,
             })}
           />
         )}
-        title="智能追问"
+        title="智能体辅助"
       >
         {maxFollowUpCount > 0 ? (
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            <span>最多追问</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] leading-6 text-muted-foreground">
+            <span>交给智能体辅助收集，最多追问</span>
             <Select
               onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
               value={String(maxFollowUpCount)}
             >
-              <SelectTrigger aria-label="最多追问轮次" className="h-9 w-24 px-2.5 text-[13px]">
+              <SelectTrigger aria-label="最多追问轮次" className="h-9 w-20 px-2.5 text-[13px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {followUpCountOptions.map(count => (
                   <SelectItem key={count} value={String(count)}>
-                    {count} 轮
+                    {count}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <span>轮，若没有提取到所有信息，仍会流转到下一个节点</span>
           </div>
         ) : null}
       </WorkflowSettingsSection>

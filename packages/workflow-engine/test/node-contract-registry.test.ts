@@ -93,6 +93,9 @@ const projectableDraftData = {
     openingMessage: " 请提供订单号 ",
     timeout: { duration: 24, unit: "hour" },
   },
+  "audience-filter": {
+    group: { id: 301, name: "高价值客户" },
+  },
   "ai-intent": {
     advancedEnabled: false,
     inputSelector: ["node", "message-query", "messages"],

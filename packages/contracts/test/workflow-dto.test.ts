@@ -44,6 +44,7 @@ describe("workflow contracts", () => {
       "customer-update",
       "coupon",
       "ai-collect",
+      "audience-filter",
       "ai-intent",
       "end",
     ];

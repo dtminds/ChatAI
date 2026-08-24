@@ -30,7 +30,7 @@ import {
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
 import {
-  executeWorkflowCapability,
+  executeWorkflowCapabilityStep,
   type WorkflowCapabilityExecutionBinding,
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
@@ -982,7 +982,7 @@ async function executeWithCapabilityTimeout(input: {
   });
   try {
     return await Promise.race([
-      executeWorkflowCapability({
+      executeWorkflowCapabilityStep({
         binding: input.binding,
         commandContext: {
           currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
@@ -1015,7 +1015,11 @@ async function executeWithCapabilityTimeout(input: {
         subjectId: input.run.subjectId,
         subjectType: input.run.subjectType,
         uid: input.run.uid,
-      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+      }).then(step => ({
+        output: step.output,
+        sourceOutletId: step.sourceOutletId,
+        type: "advance" as const,
+      })),
       timeout,
     ]);
   } finally {

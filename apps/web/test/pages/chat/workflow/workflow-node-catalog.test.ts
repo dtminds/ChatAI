@@ -198,6 +198,7 @@ describe("workflow node catalog", () => {
         .filter(canInsertNodeKind);
 
       expect(allowedInsertableNodeKinds).toContain("ratio-split");
+      expect(allowedInsertableNodeKinds).toContain("audience-filter");
     }
   });
 
@@ -208,6 +209,7 @@ describe("workflow node catalog", () => {
       "agent",
       "ai-collect",
       "ai-intent",
+      "audience-filter",
       "branch",
       "coupon",
       "customer-update",
@@ -250,7 +252,7 @@ describe("workflow node catalog", () => {
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "customer-update", "handoff", "llm", "message", "message-query", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -377,6 +379,7 @@ describe("workflow node catalog", () => {
     });
     expect(workflowNodeUiBindings["ai-intent"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings["wait-event"].body.kind).toBe("custom");
+    expect(workflowNodeUiBindings["audience-filter"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
     expect(workflowNodeUiBindings.start.settings).toBe(StartConfig);
@@ -461,6 +464,7 @@ describe("workflow node catalog", () => {
       "flow",
       "flow",
       "flow",
+      "flow",
       "data",
       "data",
       "data",
@@ -489,7 +493,7 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "coupon"] },
@@ -500,7 +504,7 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "coupon"] },

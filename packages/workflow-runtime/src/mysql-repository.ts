@@ -4139,6 +4139,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "customer-update",
     "ai-collect",
     "ai-intent",
+    "audience-filter",
     "end",
   ].includes(value)) {
     return value as WorkflowNodeKind;

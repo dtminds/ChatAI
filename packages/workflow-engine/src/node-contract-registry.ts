@@ -229,6 +229,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Tag node requires an operation and at least one valid tag";
     case "tag-query":
       return "Tag Query node requires a match mode and at least one valid tag";
+    case "audience-filter":
+      return "Audience Filter node requires a selected audience group";
     case "customer-update":
       return "Customer Update node requires complete unique fields and values";
     default:

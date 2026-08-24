@@ -6,6 +6,7 @@ import {
   validateQuickReplyAttachment,
   type WorkbenchQuickReplyAttachment,
 } from "../chat/quick-reply-content.js";
+import { WorkflowAudienceGroupSnapshotSchema } from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
@@ -242,6 +243,14 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
     Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
     { maxItems: WORKFLOW_TAG_QUERY_MAX_COUNT, minItems: 1, uniqueItems: true },
   ),
+}, { additionalProperties: false });
+
+export const WorkflowAudienceFilterDraftConfigSchema = Type.Object({
+  group: Type.Optional(WorkflowAudienceGroupSnapshotSchema),
+}, { additionalProperties: false });
+
+export const WorkflowAudienceFilterExecutionConfigSchema = Type.Object({
+  group: WorkflowAudienceGroupSnapshotSchema,
 }, { additionalProperties: false });
 
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
@@ -506,6 +515,8 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
+export type WorkflowAudienceFilterDraftConfig = Static<typeof WorkflowAudienceFilterDraftConfigSchema>;
+export type WorkflowAudienceFilterExecutionConfig = Static<typeof WorkflowAudienceFilterExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -568,6 +579,14 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowAiIntentDraftConfigSchema,
     WorkflowAiIntentExecutionConfigSchema,
+  ),
+  "audience-filter": draftReadyContract(
+    "query",
+    1,
+    WorkflowAudienceFilterDraftConfigSchema,
+    WorkflowAudienceFilterExecutionConfigSchema,
+    ["externalUserId"],
+    true,
   ),
   branch: runtimeReadyContract(
     "core",

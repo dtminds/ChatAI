@@ -49,6 +49,7 @@ const draftConfigs = {
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
+  "audience-filter": {},
   branch: {
     branchPaths: [
       {
@@ -163,7 +164,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(18);
+    expect(entries).toHaveLength(19);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -174,12 +175,12 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.recordSourceOutlet).map(([kind]) => kind))
-      .toEqual(["ratio-split"]);
+      .toEqual(["audience-filter", "ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect"]);
+      .toEqual(["ai-collect", "audience-filter"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "coupon", "order-query"]);
   });
@@ -470,6 +471,7 @@ describe("workflow node contracts", () => {
       agent: "action",
       "ai-collect": "composite",
       "ai-intent": "inference",
+      "audience-filter": "query",
       branch: "core",
       coupon: "action",
       "customer-update": "action",
@@ -496,6 +498,7 @@ describe("workflow node contracts", () => {
       agent: [],
       "ai-collect": [],
       "ai-intent": [],
+      "audience-filter": ["externalUserId"],
       branch: [],
       coupon: ["externalUserId"],
       "customer-update": ["externalUserId"],
@@ -561,6 +564,27 @@ describe("workflow node contracts", () => {
       "time",
       "unit",
     ]);
+  });
+
+  it("keeps incomplete Audience Filter drafts editable while requiring a group to publish", () => {
+    expect(getWorkflowNodeContract("audience-filter")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "query",
+      identityInputs: ["externalUserId"],
+      maturity: "draft-ready",
+      recordSourceOutlet: true,
+    });
+    expect(isWorkflowNodeDraftConfig("audience-filter", {})).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      group: { id: 301, name: "高价值客户" },
+    })).toBe(true);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      group: { id: 0, name: "高价值客户" },
+    })).toBe(false);
+    expect(getWorkflowNodeOutputContracts("audience-filter", {
+      group: { id: 301, name: "高价值客户" },
+    })).toBeNull();
   });
 
   it("marks Tag runtime-ready while keeping incomplete drafts editable", () => {

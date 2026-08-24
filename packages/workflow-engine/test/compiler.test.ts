@@ -349,6 +349,26 @@ describe("compileWorkflowDraft", () => {
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 
+  it("recognizes both Audience Filter outcomes while keeping the node runtime-gated", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("filter", "audience-filter", {
+      group: { id: 301, name: "高价值客户" },
+    }));
+    draft.edges = [
+      { id: "start-filter", source: "start", target: "filter" },
+      { id: "filter-matched", source: "filter", sourceHandle: "matched", target: "end" },
+      { id: "filter-unmatched", source: "filter", sourceHandle: "unmatched", target: "end" },
+    ];
+
+    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+
+    draft.edges = [
+      { id: "start-filter", source: "start", target: "filter" },
+      { id: "filter-matched", source: "filter", sourceHandle: "matched", target: "end" },
+    ];
+    expectCompilationIssues(draft, ["unsupported-runtime-node", "source-outlet-unconnected"]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

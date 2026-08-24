@@ -1,5 +1,6 @@
 export * from "./db.js";
 export * from "./database-timezone.js";
+export * from "./audience-filter.js";
 export * from "./capability-port.js";
 export * from "./chatai-action-context.js";
 export * from "./customer-update.js";

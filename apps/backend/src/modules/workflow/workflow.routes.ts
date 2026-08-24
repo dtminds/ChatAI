@@ -37,6 +37,7 @@ import { WorkflowService } from "./workflow.service.js";
 import { MysqlWorkflowSourceIdentityResolver } from "./workflow-source-identity.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
+import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -96,6 +97,7 @@ export async function registerWorkflowRoutes(
     },
   );
   const authenticated = { preHandler: app.authenticate };
+  await registerAudienceGroupRoutes(app);
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db),
   );

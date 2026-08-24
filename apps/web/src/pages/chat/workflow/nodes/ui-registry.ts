@@ -2,6 +2,7 @@ import type { WorkflowNodeKind } from "../types";
 import { agentNodeUi } from "./agent/ui";
 import { aiCollectNodeUi } from "./ai-collect/ui";
 import { aiIntentNodeUi } from "./ai-intent/ui";
+import { audienceFilterNodeUi } from "./audience-filter/ui";
 import { branchNodeUi } from "./branch/ui";
 import { couponNodeUi } from "./coupon/ui";
 import { customerUpdateNodeUi } from "./customer-update/ui";
@@ -23,6 +24,7 @@ export const workflowNodeUiRegistry = {
   agent: agentNodeUi,
   "ai-collect": aiCollectNodeUi,
   "ai-intent": aiIntentNodeUi,
+  "audience-filter": audienceFilterNodeUi,
   branch: branchNodeUi,
   coupon: couponNodeUi,
   "customer-update": customerUpdateNodeUi,

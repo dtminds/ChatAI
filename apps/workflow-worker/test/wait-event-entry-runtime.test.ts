@@ -32,14 +32,12 @@ describe("Wait Event Entry runtime composition", () => {
       eventId: "message-event-1",
       messageId: 101,
       occurredAt: "2026-08-10T00:00:04.000Z",
-      text: "第一条消息",
     }));
     harness.setNow(new Date("2026-08-10T00:00:09.000Z"));
     await publishEntry(harness.broker, messageEvent({
       eventId: "message-event-2",
       messageId: 102,
       occurredAt: "2026-08-10T00:00:08.000Z",
-      text: "第二条消息",
     }));
 
     const beforeResume = new Date("2026-08-10T00:00:33.999Z");
@@ -171,6 +169,13 @@ async function createHarness() {
     deadLetterTopic: "entry-dlq",
     eventCatalog: createFakeWorkflowEventCatalog(),
     inboxRepository: repository,
+    messageReader: {
+      findById: vi.fn(async ({ messageId }) => ({
+        id: messageId,
+        parts: [{ text: messageId === 101 ? "第一条消息" : "第二条消息", type: "text" as const }],
+        role: "customer" as const,
+      })),
+    },
     now: () => now,
     runtimeService: service,
     subscription: "entry-sub",
@@ -220,7 +225,6 @@ function messageEvent(input: {
   eventId: string;
   messageId: number;
   occurredAt: string;
-  text: string;
 }): WorkflowEntryEvent {
   return {
     eventId: input.eventId,
@@ -228,11 +232,7 @@ function messageEvent(input: {
     occurredAt: input.occurredAt,
     payload: {
       externalUserId: 3267,
-      message: {
-        id: input.messageId,
-        parts: [{ text: input.text, type: "text" }],
-        role: "customer",
-      },
+      messageId: input.messageId,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,

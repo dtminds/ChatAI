@@ -42,7 +42,6 @@ message.received
 | 企微标签 | `tagId` | positive safe integer | 打标签精确匹配维度 |
 | 好友来源 | `sourceId` | non-empty string，最长 128 | 添加好友来源筛选 |
 | 消息 | `messageId` | positive safe integer | 新消息业务事实标识 |
-| 消息正文 | `text` | string，最长 1000 | 新消息关键词预匹配 |
 
 公共 JSON payload、Java DTO 和 TypeScript 类型使用 camelCase；只有 MySQL 物理列使用 snake_case。
 
@@ -156,13 +155,12 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
     "workUserId": 201,
     "thirdExternalUserId": "chatai_external_456",
     "externalUserId": 3267,
-    "messageId": 938271,
-    "text": "我想了解一下活动详情"
+    "messageId": 938271
   }
 }
 ```
 
-必填：`seatId`、`workUserId`、`thirdExternalUserId`、`messageId`。`externalUserId`、`text` 可选。文本消息应提供归一化后的 `text`；非文本消息可以省略。
+必填：`seatId`、`workUserId`、`thirdExternalUserId`、`messageId`，`externalUserId` 可选。Java payload 不携带消息正文或结构化消息内容；Node 仅在存在候选 Start Binding 或 Wait Event Subscription 时，按 `messageId` 查询一次消息并复用查询结果。
 
 ## 4. Java 只读数据库契约
 
@@ -340,10 +338,10 @@ AND tagIds contains payload.tagId
 ```text
 seatIds contains payload.seatId
 AND
-payload.text contains any keyword
+messageText(payload.messageId) contains any keyword
 ```
 
-`keywords` 必须至少包含一项。关键词只支持“包含任意一个”，不支持 `all`、正则、分词或大小写规则。事件缺少 `text` 时不匹配。
+`keywords` 必须至少包含一项。关键词只支持“包含任意一个”，不支持 `all`、正则、分词或大小写规则。Java Interest Reader 可以用消息域已有正文做预匹配，但投递的 Entry payload 仍只携带 `messageId`；Node Entry Consumer 在读取候选 Binding 和 Subscription 后按 ID 查询一次正文，完成最终权威匹配并为 Wait Event 生成结构化消息。没有候选消费者时不查询消息。
 
 ### 6.4 未知 Filter
 
@@ -550,7 +548,8 @@ Filter：workUserIds=[201], tagIds=[301]
 
 ```text
 Filter：seatIds=[101], keywords=[价格, 优惠]
-事件：seatId=101, text=请问有什么优惠
+事件：seatId=101, messageId=938271
+消息查询：请问有什么优惠
 结果：INTERESTED
 ```
 

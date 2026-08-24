@@ -100,7 +100,7 @@ describe("workflow event catalog", () => {
     }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
   });
 
-  it("retains structured message content in the controlled Trigger Projection", () => {
+  it("retains the Java v1 message identity for worker-side hydration", () => {
     const result = WORKFLOW_EVENT_CATALOG.project(readEvent(
       "entry/v1/valid/message-received.json",
     ));
@@ -109,20 +109,17 @@ describe("workflow event catalog", () => {
       kind: "accepted",
       projection: {
         variables: {
-          message: {
-            id: 938271,
-            parts: [{ text: "我想了解一下活动详情", type: "text" }],
-            role: "customer",
-          },
+          messageId: 938271,
         },
       },
     });
   });
 
-  it("rejects message content outside the closed structured contract", () => {
+  it("rejects embedded message content outside the closed Java v1 contract", () => {
     expect(WORKFLOW_EVENT_CATALOG.project(event({
       eventType: "message.received",
       payload: {
+        messageId: 938271,
         message: {
           id: 938271,
           parts: [{ html: "<b>消息</b>", text: "消息", type: "text" }],

@@ -1235,7 +1235,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 实现 Triggered / Timed Out 两个出口的原子竞争。
 - 将前端旧标识 `customer.message.received` 直接统一为公共事件 `message.received`，不保留不存在历史数据的别名。
 - 首条消息先赢得与 Timeout 的 CAS，订阅行只锁存首条消息投影和业务发生时间；触发后固定延迟默认 30 秒，可配置秒、分、时、天，并从 `eventOccurredAt` 计算，实际恢复时间不早于 `recordedAt`。首次 CAS 成功后不再订阅后续事件，原事件超时立即失效。节点只输出首条 `message` 和 `triggeredAt`，超过节点输出上限时静默截断消息尾部。
-- Runtime 只消费 Event Catalog 产出的 Trigger Projection；Java 原始 payload 未冻结期间由 Fake Event Catalog 提供测试投影。
+- Event Catalog 先从 Java v1 payload 投影 `messageId` 和主体身份；Entry Consumer 读取候选 Binding / Subscription 后按 `messageId` 查询一次消息，复用于 Start 关键词匹配和 Wait Event 首次消息锁存。没有候选消费者时不查询消息。
 - Compiler 将事件源的 `capabilityKey + contractVersion` 冻结到 Revision；能力关闭时不触发 Subscription，超时 Task 保持 Pending，恢复后重新调度。
 - 仅允许 Capability Profile 中声明的事件和主体类型进入等待。
 - 验收：重复事件、不同主体类型同值 ID、事件和超时并发、Worker 崩溃后恢复都只推进正确 Run 一次。

@@ -100,6 +100,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
     const fields = normalizeAiCollectFields(node.data.fields);
     const inputSelector = normalizeAiCollectInputSelector(node.data.inputSelector);
     const names = fields.map(field => field.name.trim());
+    const nonBlankNames = names.filter(Boolean);
     const rawFields = Array.isArray(node.data.fields) ? node.data.fields : [];
 
     if (maxFollowUpCount === 0 && !inputSelector) {
@@ -130,7 +131,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
         `字段名称不能超过 ${AI_COLLECT_FIELD_NAME_MAX_LENGTH} 个字`,
       ));
     }
-    if (new Set(names).size !== names.length) {
+    if (new Set(nonBlankNames).size !== nonBlankNames.length) {
       issues.push(createCatalogIssue("ai-collect-field-name-duplicate", "字段名称不能重复"));
     }
     if (fields.some(field => !field.instruction.trim())) {

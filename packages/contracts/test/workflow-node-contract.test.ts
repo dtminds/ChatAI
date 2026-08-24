@@ -804,6 +804,7 @@ describe("workflow node contracts", () => {
       fields: followUpConfig.fields,
       inputSelector: ["node", "message-query", "messages"],
       maxFollowUpCount: 0,
+      openingMessage: "请提供订单号",
     };
 
     expect(isWorkflowNodeDraftConfig("ai-collect", {

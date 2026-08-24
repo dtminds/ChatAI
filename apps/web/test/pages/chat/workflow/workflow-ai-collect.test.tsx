@@ -238,6 +238,21 @@ describe("workflow AI Collect", () => {
     ]));
   });
 
+  it("does not treat multiple blank field names as duplicates", () => {
+    const collect = createAiCollectNode({
+      fields: [
+        { id: "field-1", instruction: "提取第一个字段", name: "", type: "text" },
+        { id: "field-2", instruction: "提取第二个字段", name: " ", type: "text" },
+      ],
+    });
+
+    const issueCodes = validateWorkflowNodeConfig(collect, [collect], [])
+      .map(issue => issue.code);
+
+    expect(issueCodes).toContain("ai-collect-field-name-required");
+    expect(issueCodes).not.toContain("ai-collect-field-name-duplicate");
+  });
+
   it("derives warning status when a configured input becomes unavailable", () => {
     const start = createStartNode();
     const query = createNodeFromKind("message-query", "query", 1);

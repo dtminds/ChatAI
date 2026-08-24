@@ -159,20 +159,22 @@ export function projectWorkflowNodeExecutionConfig({
 
   if (kind === "ai-collect") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
+    const openingMessage = typeof draftConfig.openingMessage === "string"
+      && draftConfig.openingMessage.trim()
+      ? draftConfig.openingMessage.trim()
+      : undefined;
     return cloneJsonRecord(draftConfig.maxFollowUpCount === 0
-      ? {
+      ? compactUndefined({
           fields,
           inputSelector: draftConfig.inputSelector,
           maxFollowUpCount: 0,
-        }
+          openingMessage,
+        })
       : compactUndefined({
           fields,
           inputSelector: draftConfig.inputSelector,
           maxFollowUpCount: draftConfig.maxFollowUpCount,
-          openingMessage: typeof draftConfig.openingMessage === "string"
-            && draftConfig.openingMessage.trim()
-            ? draftConfig.openingMessage.trim()
-            : undefined,
+          openingMessage,
           timeout: draftConfig.timeout,
         }));
   }

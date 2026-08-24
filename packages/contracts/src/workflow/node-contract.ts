@@ -395,7 +395,7 @@ export const WorkflowAiIntentExecutionConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WORKFLOW_AI_COLLECT_FIELD_MIN_COUNT = 1;
-export const WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT = 10;
+export const WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT = 3;
 export const WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH = 10;
 export const WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH = 500;
 export const WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = 500;

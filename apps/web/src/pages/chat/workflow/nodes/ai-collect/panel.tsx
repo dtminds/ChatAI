@@ -185,7 +185,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           <>收集字段<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
         )}
       >
-        <div className="space-y-3 rounded-[8px] border p-3">
+        <div className="space-y-3">
           <Sortable
             flatCursor
             getItemValue={field => field.id}

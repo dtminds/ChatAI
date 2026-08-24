@@ -795,6 +795,11 @@ describe("workflow node contracts", () => {
 
   it("keeps incomplete AI Collect drafts editable and enforces execution boundaries", () => {
     const followUpConfig = draftConfigs["ai-collect"];
+    const maximumFields = Array.from({ length: 3 }, (_, index) => ({
+      ...followUpConfig.fields[0],
+      id: `field-${index + 1}`,
+      name: `字段${index + 1}`,
+    }));
     const noFollowUpConfig = {
       fields: followUpConfig.fields,
       inputSelector: ["node", "message-query", "messages"],
@@ -810,6 +815,17 @@ describe("workflow node contracts", () => {
       mode: "agent-assisted",
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", followUpConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      fields: maximumFields,
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      fields: [
+        ...maximumFields,
+        { ...followUpConfig.fields[0], id: "field-4", name: "字段4" },
+      ],
+    })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", noFollowUpConfig)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...noFollowUpConfig,

@@ -2,22 +2,23 @@ import { NodeFieldList } from "../node-field-list";
 import type { NodeBodyProps } from "../types";
 import {
   normalizeAiCollectFields,
-  normalizeAiCollectMode,
+  normalizeAiCollectMaxFollowUpCount,
 } from "./config";
 
 export function AiCollectNodeBody({ data }: NodeBodyProps<"ai-collect">) {
   const fields = normalizeAiCollectFields(data.fields);
   const hasConfiguredField = fields.some(field => field.name.trim());
+  const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount);
   return (
     <>
       <NodeFieldList
         fields={[
           {
-            id: "mode",
-            label: "模式",
+            id: "follow-up",
+            label: "追问",
             value: {
               kind: "text",
-              text: normalizeAiCollectMode(data.mode) === "extract-once" ? "单次提取" : "智能收集",
+              text: maxFollowUpCount === 0 ? "不追问" : `最多 ${maxFollowUpCount} 次`,
             },
           },
           {

@@ -3,7 +3,6 @@ import type {
   WorkflowAiCollectDraftConfig,
   WorkflowAiCollectField as SharedWorkflowAiCollectField,
   WorkflowAiCollectFieldType as SharedWorkflowAiCollectFieldType,
-  WorkflowAiCollectMode as SharedWorkflowAiCollectMode,
   WorkflowAiCollectTimeout as SharedWorkflowAiCollectTimeout,
   WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
@@ -149,7 +148,6 @@ export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
 export type WorkflowAiCollectField = SharedWorkflowAiCollectField;
 export type WorkflowAiCollectFieldType = SharedWorkflowAiCollectFieldType;
-export type WorkflowAiCollectMode = SharedWorkflowAiCollectMode;
 export type WorkflowAiCollectTimeout = SharedWorkflowAiCollectTimeout;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect"> & WorkflowAiCollectDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;

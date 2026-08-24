@@ -399,15 +399,16 @@ export const WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT = 10;
 export const WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH = 10;
 export const WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH = 500;
 export const WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = 500;
+export const WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT = 10;
 export const WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT = {
   hour: 48,
   minute: 2_880,
 } as const;
 
-export const WorkflowAiCollectModeSchema = Type.Union([
-  Type.Literal("extract-once"),
-  Type.Literal("agent-assisted"),
-]);
+export const WorkflowAiCollectMaxFollowUpCountSchema = Type.Integer({
+  maximum: WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
+  minimum: 0,
+});
 
 export const WorkflowAiCollectFieldTypeSchema = Type.Union([
   Type.Literal("text"),
@@ -449,7 +450,7 @@ const WorkflowAiCollectFieldsSchema = Type.Array(WorkflowAiCollectFieldSchema, {
 export const WorkflowAiCollectDraftConfigSchema = Type.Object({
   fields: WorkflowAiCollectFieldsSchema,
   inputSelector: Type.Optional(WorkflowVariableSelectorSchema),
-  mode: WorkflowAiCollectModeSchema,
+  maxFollowUpCount: WorkflowAiCollectMaxFollowUpCountSchema,
   openingMessage: Type.String({ maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH }),
   timeout: WorkflowAiCollectTimeoutSchema,
 }, { additionalProperties: false });
@@ -458,12 +459,15 @@ export const WorkflowAiCollectExecutionConfigSchema = Type.Union([
   Type.Object({
     fields: WorkflowAiCollectFieldsSchema,
     inputSelector: WorkflowVariableSelectorSchema,
-    mode: Type.Literal("extract-once"),
+    maxFollowUpCount: Type.Literal(0),
   }, { additionalProperties: false }),
   Type.Object({
     fields: WorkflowAiCollectFieldsSchema,
     inputSelector: Type.Optional(WorkflowVariableSelectorSchema),
-    mode: Type.Literal("agent-assisted"),
+    maxFollowUpCount: Type.Integer({
+      maximum: WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
+      minimum: 1,
+    }),
     openingMessage: Type.Optional(Type.String({
       maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
     })),
@@ -516,7 +520,6 @@ export type WorkflowLlmExecutionConfig = Static<typeof WorkflowLlmExecutionConfi
 export type WorkflowIntentOption = Static<typeof WorkflowIntentOptionSchema>;
 export type WorkflowAiIntentDraftConfig = Static<typeof WorkflowAiIntentDraftConfigSchema>;
 export type WorkflowAiIntentExecutionConfig = Static<typeof WorkflowAiIntentExecutionConfigSchema>;
-export type WorkflowAiCollectMode = Static<typeof WorkflowAiCollectModeSchema>;
 export type WorkflowAiCollectFieldType = Static<typeof WorkflowAiCollectFieldTypeSchema>;
 export type WorkflowAiCollectField = Static<typeof WorkflowAiCollectFieldSchema>;
 export type WorkflowAiCollectTimeout = Static<typeof WorkflowAiCollectTimeoutSchema>;
@@ -717,8 +720,9 @@ export function isWorkflowAiCollectExecutionConfigComplete(
   return areUniqueNonBlankValues(fieldIds)
     && areUniqueNonBlankValues(fieldNames)
     && config.fields.every(field => Boolean(field.instruction.trim()))
-    && (config.mode === "agent-assisted"
-      || isWorkflowInferenceSelectorResolvable(config.inputSelector));
+    && (config.maxFollowUpCount > 0
+      || (config.inputSelector !== undefined
+        && isWorkflowInferenceSelectorResolvable(config.inputSelector)));
 }
 
 export function isWorkflowCustomerUpdateExecutionConfigComplete(

@@ -39,7 +39,7 @@ const draftConfigs = {
   "ai-collect": {
     fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
     inputSelector: undefined,
-    mode: "agent-assisted",
+    maxFollowUpCount: 3,
     openingMessage: "",
     timeout: { duration: 24, unit: "hour" },
   },
@@ -794,36 +794,44 @@ describe("workflow node contracts", () => {
   });
 
   it("keeps incomplete AI Collect drafts editable and enforces execution boundaries", () => {
-    const smartConfig = draftConfigs["ai-collect"];
-    const extractConfig = {
-      fields: smartConfig.fields,
+    const followUpConfig = draftConfigs["ai-collect"];
+    const noFollowUpConfig = {
+      fields: followUpConfig.fields,
       inputSelector: ["node", "message-query", "messages"],
-      mode: "extract-once",
+      maxFollowUpCount: 0,
     };
 
     expect(isWorkflowNodeDraftConfig("ai-collect", {
-      ...smartConfig,
-      fields: [{ ...smartConfig.fields[0], instruction: "", name: "" }],
+      ...followUpConfig,
+      fields: [{ ...followUpConfig.fields[0], instruction: "", name: "" }],
     })).toBe(true);
-    expect(isWorkflowNodeExecutionConfig("ai-collect", smartConfig)).toBe(true);
-    expect(isWorkflowNodeExecutionConfig("ai-collect", extractConfig)).toBe(true);
+    expect(isWorkflowNodeDraftConfig("ai-collect", {
+      ...followUpConfig,
+      mode: "agent-assisted",
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", followUpConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", noFollowUpConfig)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
-      ...extractConfig,
+      ...noFollowUpConfig,
       inputSelector: undefined,
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
-      ...smartConfig,
+      ...followUpConfig,
       fields: [
-        ...smartConfig.fields,
-        { ...smartConfig.fields[0], id: "field-phone" },
+        ...followUpConfig.fields,
+        { ...followUpConfig.fields[0], id: "field-phone" },
       ],
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
-      ...smartConfig,
+      ...followUpConfig,
+      maxFollowUpCount: 11,
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
       timeout: { duration: 49, unit: "hour" },
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
-      ...smartConfig,
+      ...followUpConfig,
       timeout: { duration: 1, unit: "day" },
     })).toBe(false);
   });

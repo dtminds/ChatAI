@@ -15,6 +15,7 @@ import {
   AI_COLLECT_FIELD_NAME_MAX_LENGTH,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
   AI_COLLECT_INSTRUCTION_MAX_LENGTH,
+  AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
   createAiCollectField,
@@ -23,7 +24,7 @@ import {
   getAiCollectStatus,
   normalizeAiCollectFields,
   normalizeAiCollectInputSelector,
-  normalizeAiCollectMode,
+  normalizeAiCollectMaxFollowUpCount,
   normalizeAiCollectOpeningMessage,
   normalizeAiCollectTimeout,
 } from "./config";
@@ -42,15 +43,15 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       fields,
       inputSelector: undefined,
       label: "资料收集",
-      metric: "智能收集 · 1 个字段",
-      mode: "agent-assisted",
+      maxFollowUpCount: 3,
+      metric: "最多追问 3 次 · 1 个字段",
       openingMessage: "",
       status: "warning",
       timeout: { duration: 24, unit: "hour" },
       title: "资料收集",
     });
   },
-  description: "从客户对话中提取所需资料，并在智能模式下通过 Agent 自然补充缺失信息",
+  description: "从客户对话中提取所需资料，并在需要时通过 Agent 自然追问缺失信息",
   getOutputVariables: (node) => getAiCollectOutputDefinitions(node.data.fields),
   getSourceHandles: () => [
     {
@@ -82,7 +83,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       ...data,
       fields: normalizeAiCollectFields(data.fields),
       inputSelector: normalizeAiCollectInputSelector(data.inputSelector),
-      mode: normalizeAiCollectMode(data.mode),
+      maxFollowUpCount: normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount),
       openingMessage: normalizeAiCollectOpeningMessage(data.openingMessage),
       timeout: normalizeAiCollectTimeout(data.timeout),
     };
@@ -95,14 +96,14 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
   sort: 50,
   validate: (node, context) => {
     const issues = [];
-    const mode = normalizeAiCollectMode(node.data.mode);
+    const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(node.data.maxFollowUpCount);
     const fields = normalizeAiCollectFields(node.data.fields);
     const inputSelector = normalizeAiCollectInputSelector(node.data.inputSelector);
     const names = fields.map(field => field.name.trim());
     const rawFields = Array.isArray(node.data.fields) ? node.data.fields : [];
 
-    if (mode === "extract-once" && !inputSelector) {
-      issues.push(createCatalogIssue("ai-collect-input-required", "单次提取需要配置输入"));
+    if (maxFollowUpCount === 0 && !inputSelector) {
+      issues.push(createCatalogIssue("ai-collect-input-required", "不追问时需要配置输入"));
     }
     if (inputSelector) {
       const variable = resolveWorkflowVariable(context.availableVariables, inputSelector);
@@ -151,8 +152,16 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
         `开场白不能超过 ${AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH} 字`,
       ));
     }
+    if (!Number.isInteger(node.data.maxFollowUpCount)
+      || node.data.maxFollowUpCount < 0
+      || node.data.maxFollowUpCount > AI_COLLECT_MAX_FOLLOW_UP_COUNT) {
+      issues.push(createCatalogIssue(
+        "ai-collect-follow-up-count-invalid",
+        `最多追问次数需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 次`,
+      ));
+    }
     const timeout = normalizeAiCollectTimeout(node.data.timeout);
-    if (mode === "agent-assisted"
+    if (maxFollowUpCount > 0
       && (!Number.isInteger(node.data.timeout?.duration)
         || node.data.timeout?.unit !== "minute" && node.data.timeout?.unit !== "hour"
         || node.data.timeout.duration < 1

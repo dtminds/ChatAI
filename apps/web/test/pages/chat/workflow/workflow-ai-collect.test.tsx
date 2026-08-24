@@ -40,12 +40,12 @@ describe("workflow AI Collect", () => {
     expect(outcomes.getByText("未完成")).toBeInTheDocument();
   });
 
-  it("creates a stable smart-mode draft and preserves field IDs during hydration", () => {
+  it("creates a stable follow-up draft and preserves field IDs during hydration", () => {
     const first = createDefaultNodeData("ai-collect");
     const second = createDefaultNodeData("ai-collect");
 
     expect(first).toMatchObject({
-      mode: "agent-assisted",
+      maxFollowUpCount: 3,
       openingMessage: "",
       timeout: { duration: 24, unit: "hour" },
     });
@@ -77,7 +77,7 @@ describe("workflow AI Collect", () => {
     expect(hydrateWorkflowDraft(draft).nodes[0]?.data).toEqual(data);
   });
 
-  it("adds editable templates, enforces the field limit, and switches mode-specific controls", async () => {
+  it("adds editable templates, enforces the field limit, and switches follow-up controls", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const start = createStartNode();
@@ -109,11 +109,14 @@ describe("workflow AI Collect", () => {
     }));
 
     expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "单次提取" }));
+    await user.click(screen.getByRole("combobox", { name: "最多追问次数" }));
+    expect(screen.getByRole("option", { name: "最多 10 次" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "最多 11 次" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "不追问" }));
     expect(screen.queryByRole("textbox", { name: "开场白" })).not.toBeInTheDocument();
     expect(screen.queryByRole("spinbutton", { name: "最长等待时间" })).not.toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      mode: "extract-once",
+      maxFollowUpCount: 0,
       status: "warning",
     }));
 
@@ -134,7 +137,7 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
   });
 
-  it("caps smart collection at 48 hours and offers no day unit", async () => {
+  it("caps follow-up collection at 48 hours and offers no day unit", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const collect = createAiCollectNode();
@@ -163,14 +166,14 @@ describe("workflow AI Collect", () => {
     }));
   });
 
-  it("validates mode requirements and exposes dynamic outputs only after completion", () => {
+  it("requires input without follow-ups and exposes dynamic outputs only after completion", () => {
     const definition = getNodeDefinition("ai-collect");
     const collect = createAiCollectNode({
       fields: [
         { id: "field-order", instruction: "提取订单号", name: "订单号", type: "text" },
         { id: "field-paid", instruction: "判断是否支付", name: "已支付", type: "boolean" },
       ],
-      mode: "extract-once",
+      maxFollowUpCount: 0,
     });
     const completedTarget = createNodeFromKind("message", "completed-target", 2);
     const incompleteTarget = createNodeFromKind("message", "incomplete-target", 3);

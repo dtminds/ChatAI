@@ -17,10 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from "@/components/ui/segmented-control";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -50,6 +46,7 @@ import {
   AI_COLLECT_FIELD_MIN_COUNT,
   AI_COLLECT_FIELD_NAME_MAX_LENGTH,
   AI_COLLECT_INSTRUCTION_MAX_LENGTH,
+  AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
   aiCollectFieldTemplates,
@@ -59,17 +56,21 @@ import {
   getAiCollectStatus,
   normalizeAiCollectFields,
   normalizeAiCollectInputSelector,
-  normalizeAiCollectMode,
+  normalizeAiCollectMaxFollowUpCount,
   normalizeAiCollectOpeningMessage,
   normalizeAiCollectTimeout,
 } from "./config";
 
 const fieldTypes = Object.keys(aiCollectFieldTypeLabels) as WorkflowAiCollectFieldType[];
+const followUpCountOptions = Array.from(
+  { length: AI_COLLECT_MAX_FOLLOW_UP_COUNT + 1 },
+  (_, count) => count,
+);
 
 export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"ai-collect">) {
   const fields = normalizeAiCollectFields(node.data.fields);
   const inputSelector = normalizeAiCollectInputSelector(node.data.inputSelector);
-  const mode = normalizeAiCollectMode(node.data.mode);
+  const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(node.data.maxFollowUpCount);
   const openingMessage = normalizeAiCollectOpeningMessage(node.data.openingMessage);
   const timeout = normalizeAiCollectTimeout(node.data.timeout);
   const inputOptions = getAvailableIntentInputOutputsForNode(node.id, nodes, edges);
@@ -77,17 +78,17 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
   const updateConfig = ({
     fields: nextFields = fields,
     inputSelector: nextInputSelector = inputSelector,
-    mode: nextMode = mode,
+    maxFollowUpCount: nextMaxFollowUpCount = maxFollowUpCount,
     openingMessage: nextOpeningMessage = openingMessage,
     timeout: nextTimeout = timeout,
   }: Partial<Pick<
     AiCollectNodeData,
-    "fields" | "inputSelector" | "mode" | "openingMessage" | "timeout"
+    "fields" | "inputSelector" | "maxFollowUpCount" | "openingMessage" | "timeout"
   >>) => {
     const nextData = {
       fields: nextFields,
       inputSelector: nextInputSelector,
-      mode: nextMode,
+      maxFollowUpCount: nextMaxFollowUpCount,
       openingMessage: nextOpeningMessage,
       timeout: nextTimeout,
     };
@@ -118,35 +119,26 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
 
   return (
     <>
-      <WorkflowSettingsSection title="收集模式">
-        <SegmentedControl
-          aria-label="收集模式"
-          className="grid h-9 w-full grid-cols-2 rounded-[8px]"
-          onValueChange={(value) => {
-            if (value === "extract-once" || value === "agent-assisted") {
-              updateConfig({ mode: value });
-            }
-          }}
-          type="single"
-          value={mode}
+      <WorkflowSettingsSection title="最多追问次数">
+        <Select
+          onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
+          value={String(maxFollowUpCount)}
         >
-          <SegmentedControlItem
-            className="h-7 w-full whitespace-nowrap rounded-[6px] text-xs font-medium"
-            value="extract-once"
-          >
-            单次提取
-          </SegmentedControlItem>
-          <SegmentedControlItem
-            className="h-7 w-full whitespace-nowrap rounded-[6px] text-xs font-medium"
-            value="agent-assisted"
-          >
-            智能收集
-          </SegmentedControlItem>
-        </SegmentedControl>
+          <SelectTrigger aria-label="最多追问次数" className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {followUpCountOptions.map(count => (
+              <SelectItem key={count} value={String(count)}>
+                {count === 0 ? "不追问" : `最多 ${count} 次`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
-        title={mode === "extract-once" ? (
+        title={maxFollowUpCount === 0 ? (
           <>输入<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
         ) : "输入（可选）"}
       >
@@ -160,7 +152,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
             value={inputSelector}
             variables={inputOptions}
           />
-          {mode === "agent-assisted" && inputSelector ? (
+          {maxFollowUpCount > 0 && inputSelector ? (
             <Button
               aria-label="清除输入"
               className="size-9 shrink-0 p-0 text-muted-foreground"
@@ -208,7 +200,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         </Sortable>
       </WorkflowSettingsSection>
 
-      {mode === "agent-assisted" ? (
+      {maxFollowUpCount > 0 ? (
         <>
           <WorkflowSettingsSection title="开场白（可选）">
             <div className="relative">

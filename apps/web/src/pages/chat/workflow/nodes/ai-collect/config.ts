@@ -3,6 +3,7 @@ import {
   WORKFLOW_AI_COLLECT_FIELD_MIN_COUNT,
   WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH,
   WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH,
+  WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
 } from "@chatai/contracts";
@@ -10,7 +11,6 @@ import type {
   AiCollectNodeData,
   WorkflowAiCollectField,
   WorkflowAiCollectFieldType,
-  WorkflowAiCollectMode,
   WorkflowAiCollectTimeout,
   WorkflowNodeOutputDefinition,
   WorkflowNodeStatus,
@@ -21,6 +21,7 @@ export const AI_COLLECT_FIELD_MIN_COUNT = WORKFLOW_AI_COLLECT_FIELD_MIN_COUNT;
 export const AI_COLLECT_FIELD_MAX_COUNT = WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT;
 export const AI_COLLECT_FIELD_NAME_MAX_LENGTH = WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH;
 export const AI_COLLECT_INSTRUCTION_MAX_LENGTH = WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH;
+export const AI_COLLECT_MAX_FOLLOW_UP_COUNT = WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT;
 export const AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH;
 export const AI_COLLECT_TIMEOUT_MAX_BY_UNIT = WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT;
 export const AI_COLLECT_COMPLETED_HANDLE_ID = "completed";
@@ -77,8 +78,10 @@ export function createAiCollectField(
   };
 }
 
-export function normalizeAiCollectMode(value: unknown): WorkflowAiCollectMode {
-  return value === "extract-once" ? value : "agent-assisted";
+export function normalizeAiCollectMaxFollowUpCount(value: unknown) {
+  return Number.isInteger(value)
+    ? Math.min(AI_COLLECT_MAX_FOLLOW_UP_COUNT, Math.max(0, value as number))
+    : 3;
 }
 
 export function normalizeAiCollectInputSelector(value: unknown): WorkflowVariableSelector | undefined {
@@ -139,23 +142,27 @@ export function getAiCollectOutputDefinitions(
   }));
 }
 
-export function getAiCollectMetric(data: Pick<AiCollectNodeData, "fields" | "mode">) {
-  const modeLabel = normalizeAiCollectMode(data.mode) === "extract-once" ? "单次提取" : "智能收集";
-  return `${modeLabel} · ${normalizeAiCollectFields(data.fields).length} 个字段`;
+export function getAiCollectMetric(data: Pick<
+  AiCollectNodeData,
+  "fields" | "maxFollowUpCount"
+>) {
+  const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount);
+  const followUpLabel = maxFollowUpCount === 0 ? "不追问" : `最多追问 ${maxFollowUpCount} 次`;
+  return `${followUpLabel} · ${normalizeAiCollectFields(data.fields).length} 个字段`;
 }
 
 export function getAiCollectStatus(data: Pick<
   AiCollectNodeData,
-  "fields" | "inputSelector" | "mode"
+  "fields" | "inputSelector" | "maxFollowUpCount"
 >): WorkflowNodeStatus {
-  const mode = normalizeAiCollectMode(data.mode);
+  const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount);
   const fields = normalizeAiCollectFields(data.fields);
   const names = fields.map(field => field.name.trim());
   const complete = fields.length >= AI_COLLECT_FIELD_MIN_COUNT
     && fields.length <= AI_COLLECT_FIELD_MAX_COUNT
     && fields.every(field => field.name.trim() && field.instruction.trim())
     && new Set(names).size === names.length
-    && (mode === "agent-assisted" || Boolean(normalizeAiCollectInputSelector(data.inputSelector)));
+    && (maxFollowUpCount > 0 || Boolean(normalizeAiCollectInputSelector(data.inputSelector)));
   return complete ? "ready" : "warning";
 }
 

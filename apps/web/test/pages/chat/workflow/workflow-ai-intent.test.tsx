@@ -415,6 +415,10 @@ describe("workflow AI intent", () => {
     const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
     expect(within(workspace).queryByRole("button", { name: "添加消息" })).not.toBeInTheDocument();
     expect(within(workspace).queryByRole("button", { name: "删除消息 1" })).not.toBeInTheDocument();
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    expect(within(workspace).getByRole("alert")).toHaveTextContent("请输入消息内容");
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).not.toHaveBeenCalled();
+
     await user.type(
       within(workspace).getByRole("textbox", { name: "消息 1 内容" }),
       inputValue.parts[0].text,

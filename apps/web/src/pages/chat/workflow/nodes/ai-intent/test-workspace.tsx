@@ -147,7 +147,7 @@ function AiIntentTestWorkspaceContent({
     }
     const inputValue = getAiIntentTestInputValue(rawValue, messageRows, inputType);
     if (inputValue === undefined) {
-      setInputError("当前输入类型不支持试运行");
+      setInputError(isMessageType(inputType) ? "请输入消息内容" : "当前输入类型不支持试运行");
       return;
     }
     setInputError(null);

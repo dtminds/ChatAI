@@ -129,7 +129,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       <WorkflowSettingsSection
         title={maxFollowUpCount === 0 ? (
           <>输入<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
-        ) : "输入（可选）"}
+        ) : "输入"}
       >
         <div className="flex items-center gap-2">
           <WorkflowVariableSelect
@@ -177,7 +177,9 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
             />
           </div>
         )}
-        title="收集字段"
+        title={(
+          <>收集字段<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
+        )}
       >
         <Sortable
           flatCursor
@@ -203,7 +205,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         </Sortable>
       </WorkflowSettingsSection>
 
-      <WorkflowSettingsSection title="开场白（可选）">
+      <WorkflowSettingsSection title="开场白">
         <div className="relative">
           <Textarea
             aria-label="开场白"

@@ -39,6 +39,7 @@ import type {
   WorkflowDraftRepository,
 } from "./workflow-draft-service";
 import { useWorkflowDocumentResource } from "./workflow-resources";
+import { useWorkflowFriendAddWayResource } from "./workflow-friend-add-way-resource";
 import { useWorkflowManagedAccountResource } from "./workflow-managed-account-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
@@ -176,7 +177,9 @@ function WorkflowWorkspaceContent({
   const shouldLoadManagedAccounts = inspector.isOpen
     && inspector.node?.data.kind === "start"
     && "seatIds" in inspector.node.data;
+  const shouldLoadFriendAddWays = inspector.isOpen && inspector.node?.data.kind === "start";
   const managedAccountResource = useWorkflowManagedAccountResource(shouldLoadManagedAccounts);
+  const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
@@ -412,6 +415,11 @@ function WorkflowWorkspaceContent({
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
                 resources={{
+                  friendAddWays: {
+                    groups: friendAddWayResource.groups,
+                    reload: () => void friendAddWayResource.reload(),
+                    status: friendAddWayResource.status,
+                  },
                   managedAccounts: {
                     options: managedAccountResource.options,
                     reload: () => void managedAccountResource.reload(),

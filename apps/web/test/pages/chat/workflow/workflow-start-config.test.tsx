@@ -263,10 +263,10 @@ describe("workflow start configuration", () => {
     expect(screen.queryByRole("option", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
-  it("normalizes comma-separated source IDs and keywords on blur", async () => {
+  it("selects friend add-way keys from the catalog", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
-    const { rerender } = render(
+    render(
       <StartConfig
         allowedEntryEventTypes={["contact.friend_added", "message.received"]}
         edges={[]}
@@ -276,17 +276,37 @@ describe("workflow start configuration", () => {
         })}
         nodes={[]}
         onNodeChange={onNodeChange}
+        resources={{
+          friendAddWays: {
+            groups: [
+              {
+                children: [
+                  { key: "scan.mini_program", title: "小程序" },
+                  { key: "scan.group", title: "群二维码" },
+                ],
+                key: "scan",
+                title: "扫描二维码",
+              },
+            ],
+            reload: vi.fn(),
+            status: "ready",
+          },
+        }}
       />,
     );
 
-    const sourceInput = screen.getByRole("textbox", { name: "添加好友来源 ID" });
-    await user.type(sourceInput, " qr-1,qr-1, store-2 ,");
-    await user.tab();
+    await user.click(screen.getByRole("button", { name: /不限来源/ }));
+    await user.click(screen.getByRole("checkbox", { name: "小程序" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      triggers: [{ sourceIds: ["qr-1", "store-2"], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["scan.mini_program"], type: "contact.friend_added" }],
     }));
+  });
 
-    rerender(
+  it("normalizes comma-separated keywords on blur", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(
       <StartConfig
         allowedEntryEventTypes={["contact.friend_added", "message.received"]}
         edges={[]}

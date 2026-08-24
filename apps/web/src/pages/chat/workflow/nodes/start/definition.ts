@@ -5,6 +5,7 @@ import {
   isWorkflowMessageSendingWindowValid,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+  WORKFLOW_FRIEND_SOURCE_MAX_SELECTED,
   type WorkflowType,
 } from "@chatai/contracts";
 import {
@@ -165,7 +166,10 @@ function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
       return { ...trigger, tagIds: sanitizePositiveIds(trigger.tagIds) };
     }
     if (trigger.type === "contact.friend_added") {
-      return { ...trigger, sourceIds: sanitizeStrings(trigger.sourceIds) };
+      return {
+        ...trigger,
+        sourceIds: sanitizeStrings(trigger.sourceIds).slice(0, WORKFLOW_FRIEND_SOURCE_MAX_SELECTED),
+      };
     }
     return { ...trigger, keywords: sanitizeStrings(trigger.keywords) };
   });

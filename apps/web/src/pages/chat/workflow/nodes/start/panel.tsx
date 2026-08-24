@@ -41,6 +41,7 @@ import {
   getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureWorkUsers,
 } from "./fixture-options";
+import { FriendAddWaySelection } from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 
@@ -192,13 +193,14 @@ export function StartConfig({
 
             {hasTrigger(triggers, "contact.friend_added") ? (
               <TriggerParameter label="添加好友来源">
-                <CommaSeparatedTriggerInput
-                  ariaLabel="添加好友来源 ID"
-                  onCommit={(sourceIds) => updateStartConfig({
+                <FriendAddWaySelection
+                  groups={resources?.friendAddWays?.groups ?? []}
+                  onChange={(sourceIds) => updateStartConfig({
                     triggers: [{ sourceIds, type: "contact.friend_added" }],
                   })}
-                  placeholder="输入来源 ID，多个用英文逗号分隔"
-                  values={getFriendSourceIds(triggers)}
+                  onRetry={resources?.friendAddWays?.reload}
+                  selectedKeys={getFriendSourceIds(triggers)}
+                  status={resources?.friendAddWays?.status ?? "ready"}
                 />
               </TriggerParameter>
             ) : null}

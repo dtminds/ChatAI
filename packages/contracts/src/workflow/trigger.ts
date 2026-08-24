@@ -58,11 +58,18 @@ export const WorkflowPushAccountStrategySchema = Type.Union([
   Type.Literal("latest-added"),
 ]);
 
+export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
+
 const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
 
 const WorkflowTriggerStringListSchema = Type.Array(
   WorkflowTriggerStringSchema,
   { maxItems: 100, uniqueItems: true },
+);
+
+const WorkflowFriendSourceIdListSchema = Type.Array(
+  WorkflowTriggerStringSchema,
+  { maxItems: WORKFLOW_FRIEND_SOURCE_MAX_SELECTED, uniqueItems: true },
 );
 
 const WorkflowRequiredTriggerStringListSchema = Type.Array(
@@ -71,7 +78,7 @@ const WorkflowRequiredTriggerStringListSchema = Type.Array(
 );
 
 const WorkflowContactFriendAddedTriggerSchema = Type.Object({
-  sourceIds: WorkflowTriggerStringListSchema,
+  sourceIds: WorkflowFriendSourceIdListSchema,
   type: Type.Literal("contact.friend_added"),
 }, { additionalProperties: false });
 
@@ -212,7 +219,7 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
   Type.Object({
     entryPolicy: WorkflowEntryPolicySchema,
     eventType: Type.Literal("contact.friend_added"),
-    sourceIds: WorkflowTriggerStringListSchema,
+    sourceIds: WorkflowFriendSourceIdListSchema,
     workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,

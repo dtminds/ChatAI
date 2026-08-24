@@ -130,10 +130,16 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           type="single"
           value={mode}
         >
-          <SegmentedControlItem className="rounded-[6px]" value="extract-once">
+          <SegmentedControlItem
+            className="h-7 w-full whitespace-nowrap rounded-[6px] text-xs font-medium"
+            value="extract-once"
+          >
             单次提取
           </SegmentedControlItem>
-          <SegmentedControlItem className="rounded-[6px]" value="agent-assisted">
+          <SegmentedControlItem
+            className="h-7 w-full whitespace-nowrap rounded-[6px] text-xs font-medium"
+            value="agent-assisted"
+          >
             智能收集
           </SegmentedControlItem>
         </SegmentedControl>

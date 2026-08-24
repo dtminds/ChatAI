@@ -128,40 +128,6 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
   return (
     <>
       <WorkflowSettingsSection
-        actions={(
-          <Switch
-            aria-label="智能追问"
-            checked={maxFollowUpCount > 0}
-            onCheckedChange={checked => updateConfig({
-              maxFollowUpCount: checked ? lastEnabledFollowUpCountRef.current : 0,
-            })}
-          />
-        )}
-        title="智能追问"
-      >
-        {maxFollowUpCount > 0 ? (
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            <span>最多追问</span>
-            <Select
-              onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
-              value={String(maxFollowUpCount)}
-            >
-              <SelectTrigger aria-label="最多追问轮次" className="h-9 w-24 px-2.5 text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {followUpCountOptions.map(count => (
-                  <SelectItem key={count} value={String(count)}>
-                    {count} 轮
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-      </WorkflowSettingsSection>
-
-      <WorkflowSettingsSection
         title={maxFollowUpCount === 0 ? (
           <>输入<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
         ) : "输入（可选）"}
@@ -224,24 +190,58 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         </Sortable>
       </WorkflowSettingsSection>
 
+      <WorkflowSettingsSection title="开场白（可选）">
+        <div className="relative">
+          <Textarea
+            aria-label="开场白"
+            className="min-h-24 resize-y pb-7"
+            maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
+            onChange={event => updateConfig({ openingMessage: event.target.value })}
+            placeholder="需要 Agent 主动开始收集时填写"
+            value={openingMessage}
+          />
+          <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs text-muted-foreground">
+            {openingMessage.length}/{AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
+          </span>
+        </div>
+      </WorkflowSettingsSection>
+
+      <WorkflowSettingsSection
+        actions={(
+          <Switch
+            aria-label="智能追问"
+            checked={maxFollowUpCount > 0}
+            onCheckedChange={checked => updateConfig({
+              maxFollowUpCount: checked ? lastEnabledFollowUpCountRef.current : 0,
+            })}
+          />
+        )}
+        title="智能追问"
+      >
+        {maxFollowUpCount > 0 ? (
+          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <span>最多追问</span>
+            <Select
+              onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
+              value={String(maxFollowUpCount)}
+            >
+              <SelectTrigger aria-label="最多追问轮次" className="h-9 w-24 px-2.5 text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {followUpCountOptions.map(count => (
+                  <SelectItem key={count} value={String(count)}>
+                    {count} 轮
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+      </WorkflowSettingsSection>
+
       {maxFollowUpCount > 0 ? (
         <>
-          <WorkflowSettingsSection title="开场白（可选）">
-            <div className="relative">
-              <Textarea
-                aria-label="开场白"
-                className="min-h-24 resize-y pb-7"
-                maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
-                onChange={event => updateConfig({ openingMessage: event.target.value })}
-                placeholder="需要 Agent 主动开始收集时填写"
-                value={openingMessage}
-              />
-              <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs text-muted-foreground">
-                {openingMessage.length}/{AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
-              </span>
-            </div>
-          </WorkflowSettingsSection>
-
           <WorkflowSettingsSection title="最长等待">
             <div className="flex items-center gap-2">
               <BoundedTimeoutInput

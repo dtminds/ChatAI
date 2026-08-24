@@ -119,7 +119,7 @@ describe("workflow AI Collect", () => {
     }));
 
     await user.click(screen.getByRole("switch", { name: "智能追问" }));
-    expect(screen.queryByRole("textbox", { name: "开场白" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
     expect(screen.queryByRole("spinbutton", { name: "最长等待时间" })).not.toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       maxFollowUpCount: 0,

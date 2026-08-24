@@ -414,7 +414,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         <Textarea
           aria-label={`字段 ${index + 1} 提取指引`}
           aria-invalid={!field.instruction.trim()}
-          className="min-h-24 resize-y pb-7 text-[13px]"
+          className="min-h-24 resize-y bg-background pb-7 text-[13px]"
           maxLength={AI_COLLECT_INSTRUCTION_MAX_LENGTH}
           onChange={event => onChange({ instruction: event.target.value })}
           placeholder="填写提取标准、有效格式和需要排除的情况"

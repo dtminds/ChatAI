@@ -1,4 +1,7 @@
-import { isWorkflowMessagesValueType } from "@chatai/contracts";
+import {
+  isWorkflowMessagesValueType,
+  isWorkflowMessageValueType,
+} from "@chatai/contracts";
 import type {
   LlmNodeData,
   WorkflowLlmInputParameter,
@@ -161,7 +164,7 @@ export function getLlmSystemPromptVariables(
   inputs: WorkflowLlmInputParameter[],
 ) {
   return getLlmInputVariables(inputs)
-    .filter(variable => !isWorkflowMessagesValueType(variable.valueType));
+    .filter(variable => !isWorkflowMessageContentValueType(variable.valueType));
 }
 
 export function getLlmInputSelector(inputId: string): WorkflowVariableSelector {
@@ -250,7 +253,7 @@ export function getInvalidLlmPromptSelectors(
   const availableIds = new Set(normalizeLlmInputs(inputs)
     .filter(input => options.allowWorkflowMessages !== false
       || input.value.kind !== "variable"
-      || !isWorkflowMessagesValueType(input.value.valueType))
+      || !isWorkflowMessageContentValueType(input.value.valueType))
     .map((input) => input.id));
   return normalizeLlmPrompt(prompt)
     .filter((segment): segment is Extract<WorkflowVariableContentSegment, { type: "variable" }> =>
@@ -259,6 +262,10 @@ export function getInvalidLlmPromptSelectors(
     .filter((selector) => selector.length !== 2
       || selector[0] !== "input"
       || !availableIds.has(selector[1]));
+}
+
+function isWorkflowMessageContentValueType(valueType: WorkflowOutputValueType) {
+  return isWorkflowMessageValueType(valueType) || isWorkflowMessagesValueType(valueType);
 }
 
 function arePromptSelectorsAvailable(

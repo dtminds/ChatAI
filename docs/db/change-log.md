@@ -1,5 +1,41 @@
 # Database Change Log
 
+## 2026-08-24 Workflow Wait Event 首事件锁存
+
+- Wait Event 只锁存第一个命中事件，不再收集后续事件。
+- 触发后的固定等待从事件 `occurredAt` 计算；实际恢复时间不早于事件落库时间。
+- 当前仍处于开发阶段，停止 Backend 与 Workflow Worker 后清空全部 Workflow 数据，不兼容旧 Draft、Revision 或在途 Run。
+
+```sql
+DELETE FROM xy_wap_embed_workflow_event_subscription_event;
+DELETE FROM xy_wap_embed_workflow_event_subscription;
+DELETE FROM xy_wap_embed_workflow_inference_job;
+DELETE FROM xy_wap_embed_workflow_llm_test_attempt;
+DELETE FROM xy_wap_embed_workflow_node_execution;
+DELETE FROM xy_wap_embed_workflow_outbox;
+DELETE FROM xy_wap_embed_workflow_inbox;
+DELETE FROM xy_wap_embed_workflow_task;
+DELETE FROM xy_wap_embed_workflow_run;
+DELETE FROM xy_wap_embed_workflow_entry_guard;
+DELETE FROM xy_wap_embed_workflow_daily_metric;
+DELETE FROM xy_wap_embed_workflow_node_metric_event;
+DELETE FROM xy_wap_embed_workflow_node_metric;
+DELETE FROM xy_wap_embed_workflow_revision_cleanup;
+DELETE FROM xy_wap_embed_workflow_trigger_binding;
+DELETE FROM xy_wap_embed_workflow_publish_review;
+DELETE FROM xy_wap_embed_workflow_revision;
+DELETE FROM xy_wap_embed_workflow_definition;
+
+ALTER TABLE xy_wap_embed_workflow_event_subscription
+  DROP KEY idx_workflow_event_subscription_collect,
+  DROP COLUMN collect_until,
+  ADD COLUMN resume_at DATETIME NULL COMMENT '首个事件触发后的固定等待截止时间' AFTER expires_at,
+  ADD COLUMN trigger_occurred_at DATETIME NULL COMMENT '首个命中事件的业务发生时间' AFTER trigger_event_id,
+  ADD COLUMN trigger_projection_json JSON NULL COMMENT '首个命中事件的受控变量投影' AFTER trigger_occurred_at;
+
+DROP TABLE IF EXISTS xy_wap_embed_workflow_event_subscription_event;
+```
+
 ## 2026-08-20 Workflow 节点出口执行账本
 
 Node Execution 仅对节点 Contract 明确声明需要记录出口的节点保存实际 Source Outlet；当前只有 A/B 分流节点声明。其他节点保持 `NULL`。该字段不进入 Run Context，也不是客户固定分组。

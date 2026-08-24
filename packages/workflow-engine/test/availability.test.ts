@@ -46,8 +46,8 @@ describe("workflow production availability", () => {
     const spec = executionSpec();
     spec.nodes.splice(1, 0, {
       config: {
+        delay: { duration: 30, unit: "second" },
         event: {
-          collectWindowSeconds: 10,
           type: "message.received",
         },
         timeout: { duration: 15, unit: "minute" },

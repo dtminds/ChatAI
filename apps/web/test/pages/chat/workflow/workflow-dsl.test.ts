@@ -218,8 +218,8 @@ describe("workflow DSL", () => {
     });
 
     expect(graph.nodes.find((node) => node.id === waitEventNode.id)?.config).toEqual({
+      delay: { duration: 30, unit: "second" },
       event: {
-        collectWindowSeconds: 10,
         type: "message.received",
       },
       timeout: { duration: 24, unit: "hour" },

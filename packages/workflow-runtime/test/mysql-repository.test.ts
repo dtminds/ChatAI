@@ -524,7 +524,6 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.deleteOrder).toEqual([
       "inference",
       "outbox",
-      "subscription_event",
       "subscription",
       "task",
       "execution",
@@ -606,7 +605,6 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.deleteOrder).toEqual([
       "inference",
       "outbox",
-      "subscription_event",
       "subscription",
       "task",
     ]);
@@ -1366,8 +1364,6 @@ function createHistoryCleanupDbMock(options: {
             ? "outbox"
             : table === "xy_wap_embed_workflow_inference_job"
               ? "inference"
-            : table === "xy_wap_embed_workflow_event_subscription_event"
-              ? "subscription_event"
             : table === "xy_wap_embed_workflow_event_subscription"
               ? "subscription"
             : table === "xy_wap_embed_workflow_task"

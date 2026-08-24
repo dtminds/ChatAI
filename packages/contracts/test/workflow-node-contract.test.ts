@@ -24,6 +24,7 @@ import {
   WorkflowTagQueryCommandSchema,
   WorkflowTagQueryResultSchema,
   WorkflowTagResultSchema,
+  WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
@@ -109,6 +110,7 @@ const draftConfigs = {
   "tag-query": { matchMode: "any", tagIds: [] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
+    delay: { duration: 30, unit: "second" },
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },
@@ -182,6 +184,22 @@ describe("workflow node contracts", () => {
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "coupon", "order-query"]);
+  });
+
+  it("enforces Wait Event post-trigger delay boundaries for every supported unit", () => {
+    for (const [unit, maximum] of Object.entries(WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT)) {
+      const minimum = unit === "second" ? 0 : 1;
+      const config = (duration: number) => ({
+        delay: { duration, unit },
+        event: { type: "message.received" },
+        timeout: { duration: 24, unit: "hour" },
+      });
+
+      expect(isWorkflowNodeDraftConfig("wait-event", config(minimum))).toBe(true);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(maximum))).toBe(true);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(minimum - 1))).toBe(false);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(maximum + 1))).toBe(false);
+    }
   });
 
   it("keeps Ratio Split drafts editable while enforcing the published allocation contract", () => {
@@ -890,9 +908,9 @@ describe("workflow node contracts", () => {
     expect(getWorkflowNodeOutputContracts("wait-event", {}))
       .toContainEqual(expect.objectContaining({
         availableOnSourceOutlets: ["triggered"],
-        key: "messages",
+        key: "message",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
+        valueType: { kind: "object", schemaRef: "workflow.message.v1" },
       }));
     expect(isWorkflowOutputValueTypeEqual(
       { itemType: "bigint", kind: "array", semantic: "message" },

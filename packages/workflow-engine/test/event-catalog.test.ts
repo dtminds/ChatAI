@@ -125,7 +125,7 @@ describe("workflow event catalog", () => {
       payload: {
         message: {
           id: 938271,
-          parts: [{ text: "x".repeat(10_001), type: "text" }],
+          parts: [{ html: "<b>消息</b>", text: "消息", type: "text" }],
           role: "customer",
         },
         seatId: 101,

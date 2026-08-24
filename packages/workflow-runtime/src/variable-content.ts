@@ -3,7 +3,10 @@ import type {
   WorkflowVariableSelector,
 } from "@chatai/contracts";
 import type { WorkflowCapabilityCommandContext } from "./capability-port.js";
-import { renderWorkflowMessagesText } from "./workflow-messages.js";
+import {
+  renderWorkflowMessageText,
+  renderWorkflowMessagesText,
+} from "./workflow-messages.js";
 
 export function renderWorkflowVariableContent(
   segments: WorkflowVariableContentSegment[],
@@ -66,6 +69,8 @@ function stringifyWorkflowVariable(
   invalid: (diagnosticMessage: string) => Error,
 ) {
   if (typeof value === "string") return value;
+  const message = renderWorkflowMessageText(value);
+  if (message !== null) return message;
   const messages = renderWorkflowMessagesText(value);
   if (messages !== null) return messages;
   const serialized = JSON.stringify(value);

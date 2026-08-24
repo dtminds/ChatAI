@@ -251,7 +251,16 @@ export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
   minute: 360,
 } as const;
 export const WORKFLOW_WAIT_DAY_OFFSET_MAX = 45;
-export const WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS = 10;
+export const DEFAULT_WORKFLOW_WAIT_EVENT_DELAY = {
+  duration: 30,
+  unit: "second",
+} as const;
+export const WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT = {
+  day: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.day,
+  hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
+  minute: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.minute,
+  second: 3_600,
+} as const;
 export const WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
   day: 15,
   hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
@@ -305,7 +314,39 @@ const WorkflowWaitEventTimeoutSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+const WorkflowWaitEventDelaySchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 0,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.second,
+    }),
+    unit: Type.Literal("second"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.minute,
+    }),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.hour,
+    }),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.day,
+    }),
+    unit: Type.Literal("day"),
+  }, { additionalProperties: false }),
+]);
+
 export const WorkflowWaitEventDraftConfigSchema = Type.Object({
+  delay: WorkflowWaitEventDelaySchema,
   event: Type.Object({
     type: Type.Literal("message.received"),
   }, { additionalProperties: false }),
@@ -313,8 +354,8 @@ export const WorkflowWaitEventDraftConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowWaitEventConfigSchema = Type.Object({
+  delay: WorkflowWaitEventDelaySchema,
   event: Type.Object({
-    collectWindowSeconds: Type.Literal(WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS),
     type: Type.Literal("message.received"),
   }, { additionalProperties: false }),
   timeout: WorkflowWaitEventTimeoutSchema,

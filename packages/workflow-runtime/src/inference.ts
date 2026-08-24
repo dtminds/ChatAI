@@ -1,10 +1,12 @@
 import {
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  WORKFLOW_MESSAGE_SCHEMA_REF,
   WORKFLOW_MESSAGES_SCHEMA_REF,
   WorkflowAiIntentCompletionValueSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceMessageListResultSchema,
+  WorkflowMessageSchema,
   WorkflowMessagesV1Schema,
   type WorkflowAiIntentExecutionConfig,
   type WorkflowExecutionNode,
@@ -345,8 +347,12 @@ function renderPrompt(
     }
     const input = inputs.get(id)!;
     if (input.valueType.kind === "object"
-      && input.valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF) {
-      appendWorkflowMessages(content, input.value);
+      && (input.valueType.schemaRef === WORKFLOW_MESSAGE_SCHEMA_REF
+        || input.valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF)) {
+      appendWorkflowMessages(
+        content,
+        input.valueType.schemaRef === WORKFLOW_MESSAGE_SCHEMA_REF ? [input.value] : input.value,
+      );
       continue;
     }
     appendTextPart(content, stringifyPromptValue(input.value));
@@ -356,7 +362,9 @@ function renderPrompt(
 
 function renderInferenceValue(value: unknown): WorkflowInferenceContentPart[] {
   const content: WorkflowInferenceContentPart[] = [];
-  if (Value.Check(WorkflowMessagesV1Schema, value)) {
+  if (Value.Check(WorkflowMessageSchema, value)) {
+    appendWorkflowMessages(content, [value]);
+  } else if (Value.Check(WorkflowMessagesV1Schema, value)) {
     appendWorkflowMessages(content, value);
   } else {
     appendTextPart(content, stringifyPromptValue(value));

@@ -130,6 +130,7 @@ export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegmen
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
 export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
+export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;

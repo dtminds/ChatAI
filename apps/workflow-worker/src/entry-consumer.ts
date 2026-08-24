@@ -46,7 +46,7 @@ type WorkflowEntryRuntimeService = {
     subjectType: WorkflowSubjectType;
     uid: number;
   }): Promise<
-    | { firstEvent: boolean; kind: "success" }
+    | { kind: "success" }
     | {
         kind:
           | "already-processed"
@@ -149,7 +149,6 @@ export function createEntryConsumerHandler(input: {
             subject.subjectId,
             subject.seatId,
             new Date(parsed.event.occurredAt),
-            observedAt,
           ))).then(results => results.flat()),
       ]);
       let admitted = 0;

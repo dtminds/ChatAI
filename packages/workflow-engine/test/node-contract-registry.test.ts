@@ -163,6 +163,7 @@ const projectableDraftData = {
   "tag-query": { matchMode: "all", tagIds: [101, 102] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
+    delay: { duration: 30, unit: "second" },
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },

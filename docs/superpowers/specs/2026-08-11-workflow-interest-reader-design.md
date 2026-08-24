@@ -244,7 +244,6 @@ seat_id
 status
 effective_from
 expires_at
-collect_until
 ```
 
 ### 4.4 权限
@@ -372,14 +371,9 @@ WHERE subscription.uid = :uid
   AND subscription.event_type = 'message.received'
   AND subscription.subject_id = :thirdExternalUserId
   AND (subscription.seat_id IS NULL OR subscription.seat_id = :seatId)
-  AND (
-    (subscription.status = 'waiting'
-      AND subscription.effective_from <= :occurredAt
-      AND subscription.expires_at > :occurredAt)
-    OR
-    (subscription.status = 'triggered'
-      AND subscription.collect_until > CURRENT_TIMESTAMP)
-  )
+  AND subscription.status = 'waiting'
+  AND subscription.effective_from <= :occurredAt
+  AND subscription.expires_at > :occurredAt
   AND definition.biz_status = 1
   AND definition.runtime_status IN ('active', 'paused')
 LIMIT 1;

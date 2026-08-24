@@ -186,6 +186,7 @@ describe("compileWorkflowDraft", () => {
   it("freezes Wait Event configuration and both runtime outlets", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("wait-event", "wait-event", {
+      delay: { duration: 30, unit: "second" },
       event: { type: "message.received" },
       timeout: { duration: 15, unit: "minute" },
     }));
@@ -214,8 +215,8 @@ describe("compileWorkflowDraft", () => {
 
     expect(spec.nodes.find((item) => item.id === "wait-event")).toEqual({
       config: {
+        delay: { duration: 30, unit: "second" },
         event: {
-          collectWindowSeconds: 10,
           type: "message.received",
         },
         timeout: { duration: 15, unit: "minute" },
@@ -468,6 +469,7 @@ describe("compileWorkflowDraft", () => {
 
     const invalidWaitEvent = createDraft();
     invalidWaitEvent.nodes.splice(1, 1, node("wait-event", "wait-event", {
+      delay: { duration: 30, unit: "second" },
       event: { type: "message.received" },
       timeout: { duration: 0, unit: "minute" },
     }));
@@ -489,7 +491,7 @@ describe("compileWorkflowDraft", () => {
 
     expectCompilationIssue(invalidWaitEvent, {
       code: "invalid-node-config",
-      message: "Wait Event node requires a supported event and timeout",
+      message: "Wait Event node requires a supported event, delay, and timeout",
       nodeId: "wait-event",
     });
 
@@ -664,6 +666,7 @@ function createInferenceReferenceDraft(input: {
     nodes: [
       node("start", "start", startConfig()),
       node("wait-event", "wait-event", {
+        delay: { duration: 30, unit: "second" },
         event: { type: "message.received" },
         timeout: { duration: 15, unit: "minute" },
       }),

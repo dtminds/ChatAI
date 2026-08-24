@@ -76,6 +76,23 @@ describe("workflow entry event envelope", () => {
     })).toMatchObject({ code: "envelope_too_large", kind: "rejected" });
   });
 
+  it("does not impose an arbitrary character limit on message text", () => {
+    expect(validateWorkflowEntryEvent(event({
+      eventType: "message.received",
+      payload: {
+        message: {
+          id: 938271,
+          parts: [{ text: "x".repeat(10_001), type: "text" }],
+          role: "customer",
+        },
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+      },
+      source: "chatai",
+    }))).toMatchObject({ kind: "accepted" });
+  });
+
   it("keeps shared idempotent event pairs byte-for-byte equivalent", () => {
     const groups = new Map<string, typeof manifest.fixtures>();
     for (const fixture of manifest.fixtures) {

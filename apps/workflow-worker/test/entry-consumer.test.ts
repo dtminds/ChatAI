@@ -96,7 +96,7 @@ describe("workflow entry consumer", () => {
 
   it("fans one message event out to both Start bindings and Wait Event subscriptions", async () => {
     const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
-    const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
+    const recordWaitEvent = vi.fn(async () => ({ kind: "success" as const }));
     const subscriptionReader = createSubscriptionReader([subscription("subscription-1")]);
     const message = createBrokerMessage(messageEvent());
     const handler = createEntryConsumerHandler({
@@ -140,14 +140,13 @@ describe("workflow entry consumer", () => {
       "chatai_external_456",
       101,
       new Date("2026-08-10T00:00:04.000Z"),
-      new Date("2026-08-10T00:00:05.000Z"),
     );
   });
 
-  it("admits a subscription-only message event and deduplicates an already collected event", async () => {
+  it("admits a subscription-only message event and deduplicates a lost trigger CAS", async () => {
     const recordWaitEvent = vi.fn()
-      .mockResolvedValueOnce({ firstEvent: true, kind: "success" })
-      .mockResolvedValueOnce({ kind: "already-processed" });
+      .mockResolvedValueOnce({ kind: "success" })
+      .mockResolvedValueOnce({ kind: "conflict" });
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       eventCatalog,
@@ -170,7 +169,7 @@ describe("workflow entry consumer", () => {
       .mockResolvedValueOnce({ deduplicated: true, kind: "success" });
     const recordWaitEvent = vi.fn()
       .mockRejectedValueOnce(new Error("database unavailable"))
-      .mockResolvedValueOnce({ firstEvent: true, kind: "success" });
+      .mockResolvedValueOnce({ kind: "success" });
     const inboxRepository = createInboxRepository();
     const handler = createEntryConsumerHandler({
       bindingReader: {
@@ -604,7 +603,6 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
 
 function subscription(id: string): WorkflowEventSubscriptionRecord {
   return {
-    collectUntil: null,
     createdAt: new Date("2026-08-10T00:00:00.000Z"),
     effectiveFrom: new Date("2026-08-10T00:00:00.000Z"),
     eventType: "message.received",
@@ -612,6 +610,7 @@ function subscription(id: string): WorkflowEventSubscriptionRecord {
     id,
     nodeId: "wait-event",
     revision: 1,
+    resumeAt: null,
     runId: "run-1",
     seatId: 101,
     status: "waiting",
@@ -619,6 +618,8 @@ function subscription(id: string): WorkflowEventSubscriptionRecord {
     subjectType: "chatai_contact",
     taskId: "task-1",
     triggerEventId: null,
+    triggerOccurredAt: null,
+    triggerProjection: null,
     uid: 9,
     updatedAt: new Date("2026-08-10T00:00:00.000Z"),
     workflowId: "31",

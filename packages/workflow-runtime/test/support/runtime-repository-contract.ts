@@ -16,7 +16,7 @@ type CreateRepositoryContractHarness = () => Promise<RepositoryContractHarness> 
 const OUTBOX_READY_AT = new Date("2099-01-01T00:00:00.000Z");
 const OUTBOX_RETRY_AT = new Date("2099-01-01T00:05:00.000Z");
 const EVENT_WAIT_EXPIRES_AT = new Date("2099-01-02T00:00:00.000Z");
-const EVENT_COLLECTION_UNTIL = new Date("2099-01-01T00:00:10.000Z");
+const EVENT_RESUME_AT = new Date("2099-01-01T00:00:10.000Z");
 const INFERENCE_DEADLINE = new Date("2099-01-01T00:10:00.000Z");
 
 export function runWorkflowRuntimeRepositoryContract(
@@ -493,7 +493,6 @@ export function runWorkflowRuntimeRepositoryContract(
       "customer-1",
       null,
       OUTBOX_READY_AT,
-      OUTBOX_READY_AT,
     )).resolves.toEqual([
       expect.objectContaining({
         eventType: "message.received",
@@ -510,7 +509,6 @@ export function runWorkflowRuntimeRepositoryContract(
       "message.received",
       "customer-1",
       null,
-      OUTBOX_READY_AT,
       OUTBOX_READY_AT,
     )).resolves.toEqual([]);
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
@@ -535,7 +533,6 @@ export function runWorkflowRuntimeRepositoryContract(
       "customer-1",
       202,
       OUTBOX_READY_AT,
-      OUTBOX_READY_AT,
     )).resolves.toEqual([]);
     await expect(harness.repository.listMatchingEventSubscriptions(
       9,
@@ -543,7 +540,6 @@ export function runWorkflowRuntimeRepositoryContract(
       "message.received",
       "customer-1",
       101,
-      OUTBOX_READY_AT,
       OUTBOX_READY_AT,
     )).resolves.toEqual([
       expect.objectContaining({ id: waiting.subscription.id, seatId: 101 }),
@@ -591,12 +587,12 @@ export function runWorkflowRuntimeRepositoryContract(
   it("allows only one event or timeout claimant to win a Wait Event subscription", async () => {
     const waiting = await createEventWait(harness.repository);
     const [triggered, timedOut] = await Promise.all([
-      harness.repository.recordEventSubscriptionEvent({
-        collectUntil: EVENT_COLLECTION_UNTIL,
+      harness.repository.triggerEventSubscription({
         eventId: "message-event-1",
         eventOccurredAt: OUTBOX_READY_AT,
         projection: messageProjection(101, "第一条消息"),
         recordedAt: OUTBOX_READY_AT,
+        resumeAt: EVENT_RESUME_AT,
         subscriptionId: waiting.subscription.id,
         uid: 9,
       }),
@@ -616,12 +612,12 @@ export function runWorkflowRuntimeRepositoryContract(
   it("rejects Wait Event triggers outside the subscription interval", async () => {
     const waiting = await createEventWait(harness.repository);
 
-    await expect(harness.repository.recordEventSubscriptionEvent({
-      collectUntil: new Date("2099-01-02T00:00:10.000Z"),
+    await expect(harness.repository.triggerEventSubscription({
       eventId: "late-message-event",
       eventOccurredAt: EVENT_WAIT_EXPIRES_AT,
       projection: messageProjection(102, "迟到消息"),
       recordedAt: EVENT_WAIT_EXPIRES_AT,
+      resumeAt: new Date("2099-01-02T00:00:10.000Z"),
       subscriptionId: waiting.subscription.id,
       uid: 9,
     })).resolves.toEqual({ kind: "conflict" });
@@ -633,12 +629,12 @@ export function runWorkflowRuntimeRepositoryContract(
     const waiting = await createEventWait(harness.repository);
     await harness.setWorkflowRuntimeStatus("paused");
 
-    await expect(harness.repository.recordEventSubscriptionEvent({
-      collectUntil: EVENT_COLLECTION_UNTIL,
+    await expect(harness.repository.triggerEventSubscription({
       eventId: "message-event-1",
       eventOccurredAt: OUTBOX_READY_AT,
       projection: messageProjection(101, "暂停期间消息"),
       recordedAt: OUTBOX_READY_AT,
+      resumeAt: EVENT_RESUME_AT,
       subscriptionId: waiting.subscription.id,
       uid: 9,
     })).resolves.toMatchObject({
@@ -648,77 +644,77 @@ export function runWorkflowRuntimeRepositoryContract(
     });
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
-      now: EVENT_COLLECTION_UNTIL,
+      now: EVENT_RESUME_AT,
     })).resolves.toEqual({ cancelled: 0, deferred: 1, dispatched: 0 });
 
     await harness.setWorkflowRuntimeStatus("active");
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
-      now: EVENT_COLLECTION_UNTIL,
+      now: EVENT_RESUME_AT,
     })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 1 });
   });
 
-  it("collects and deduplicates Wait Event messages within the fixed window", async () => {
+  it("latches only the first Wait Event and removes the subscription from matching", async () => {
     const waiting = await createEventWait(harness.repository);
-    const first = await harness.repository.recordEventSubscriptionEvent({
-      collectUntil: EVENT_COLLECTION_UNTIL,
+    const occurredAt = new Date("2099-01-01T00:00:02.000Z");
+    const recordedAt = new Date("2099-01-01T00:00:03.000Z");
+    const resumeAt = new Date("2099-01-01T00:00:32.000Z");
+    const first = await harness.repository.triggerEventSubscription({
       eventId: "message-event-1",
-      eventOccurredAt: new Date("2099-01-01T00:00:02.000Z"),
+      eventOccurredAt: occurredAt,
       projection: messageProjection(101, "第一条消息"),
-      recordedAt: OUTBOX_READY_AT,
+      recordedAt,
+      resumeAt,
       subscriptionId: waiting.subscription.id,
       uid: 9,
     });
-    const second = await harness.repository.recordEventSubscriptionEvent({
-      collectUntil: EVENT_COLLECTION_UNTIL,
+    const second = await harness.repository.triggerEventSubscription({
       eventId: "message-event-2",
-      eventOccurredAt: new Date("2099-01-01T00:00:01.000Z"),
+      eventOccurredAt: new Date("2099-01-01T00:00:04.000Z"),
       projection: messageProjection(102, "第二条消息"),
       recordedAt: new Date("2099-01-01T00:00:05.000Z"),
-      subscriptionId: waiting.subscription.id,
-      uid: 9,
-    });
-    const duplicate = await harness.repository.recordEventSubscriptionEvent({
-      collectUntil: EVENT_COLLECTION_UNTIL,
-      eventId: "message-event-2",
-      eventOccurredAt: new Date("2099-01-01T00:00:01.000Z"),
-      projection: messageProjection(102, "第二条消息"),
-      recordedAt: new Date("2099-01-01T00:00:06.000Z"),
+      resumeAt: new Date("2099-01-01T00:00:34.000Z"),
       subscriptionId: waiting.subscription.id,
       uid: 9,
     });
 
-    expect(first).toMatchObject({ firstEvent: true, kind: "success" });
-    expect(second).toMatchObject({ firstEvent: false, kind: "success" });
-    expect(duplicate).toEqual({ kind: "already-processed" });
-    await expect(harness.repository.listEventSubscriptionEvents(
+    expect(first).toMatchObject({
+      kind: "success",
+      subscription: {
+        resumeAt,
+        status: "triggered",
+        triggerEventId: "message-event-1",
+        triggerOccurredAt: occurredAt,
+        triggerProjection: messageProjection(101, "第一条消息"),
+      },
+      task: { dueAt: resumeAt },
+    });
+    expect(second).toEqual({ kind: "conflict" });
+    await expect(harness.repository.listMatchingEventSubscriptions(
       9,
-      waiting.subscription.id,
-    )).resolves.toMatchObject([
-      { eventId: "message-event-2", projection: messageProjection(102, "第二条消息") },
-      { eventId: "message-event-1", projection: messageProjection(101, "第一条消息") },
-    ]);
+      "chatai_contact",
+      "message.received",
+      "customer-1",
+      null,
+      new Date("2099-01-01T00:00:04.000Z"),
+    )).resolves.toEqual([]);
   });
 
-  it("records one Wait Event message across concurrent duplicate deliveries", async () => {
+  it("allows one Wait Event trigger across concurrent duplicate deliveries", async () => {
     const waiting = await createEventWait(harness.repository);
     const results = await Promise.all(Array.from({ length: 8 }, () =>
-      harness.repository.recordEventSubscriptionEvent({
-        collectUntil: EVENT_COLLECTION_UNTIL,
+      harness.repository.triggerEventSubscription({
         eventId: "message-event-concurrent",
         eventOccurredAt: OUTBOX_READY_AT,
         projection: messageProjection(103, "并发消息"),
         recordedAt: OUTBOX_READY_AT,
+        resumeAt: EVENT_RESUME_AT,
         subscriptionId: waiting.subscription.id,
         uid: 9,
       })));
 
     expect(results.filter(result => result.kind === "success")).toHaveLength(1);
-    expect(results.filter(result => result.kind === "already-processed")).toHaveLength(7);
-    await expect(harness.repository.listEventSubscriptionEvents(
-      9,
-      waiting.subscription.id,
-    )).resolves.toHaveLength(1);
+    expect(results.filter(result => result.kind === "conflict")).toHaveLength(7);
   });
 
   it("cancels Wait Event subscriptions when their Workflow stops", async () => {

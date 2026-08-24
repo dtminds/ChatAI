@@ -59,8 +59,8 @@ describe("core node executors", () => {
 
   it("starts a Wait Event with an absolute timeout", async () => {
     await expect(registry.execute(node("wait-event", {
+      delay: { duration: 30, unit: "second" },
       event: {
-        collectWindowSeconds: 10,
         type: "message.received",
       },
       timeout: { duration: 2, unit: "hour" },
@@ -71,21 +71,21 @@ describe("core node executors", () => {
     });
   });
 
-  it("rejects Wait Event specs that exceed the frozen timeout or collection contract", async () => {
+  it("rejects Wait Event specs that exceed the frozen timeout or delay contract", async () => {
     await expect(registry.execute(node("wait-event", {
+      delay: { duration: 30, unit: "second" },
       event: {
-        collectWindowSeconds: 10,
         type: "message.received",
       },
       timeout: { duration: 16, unit: "day" },
-    }), context())).rejects.toThrow("Wait Event node requires a supported event and timeout");
+    }), context())).rejects.toThrow("Wait Event node requires a supported event, delay, and timeout");
     await expect(registry.execute(node("wait-event", {
+      delay: { duration: 3_601, unit: "second" },
       event: {
-        collectWindowSeconds: 30,
         type: "message.received",
       },
       timeout: { duration: 15, unit: "day" },
-    }), context())).rejects.toThrow("Wait Event node requires a supported event and timeout");
+    }), context())).rejects.toThrow("Wait Event node requires a supported event, delay, and timeout");
   });
 
   it("rejects regular waits above the selected unit limit", async () => {

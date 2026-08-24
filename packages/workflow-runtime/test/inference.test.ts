@@ -240,6 +240,45 @@ describe("workflow inference payloads", () => {
     });
   });
 
+  it("expands a single Wait Event message in an LLM user prompt", () => {
+    const input = {
+      id: "input-message",
+      name: "message",
+      value: {
+        kind: "variable" as const,
+        selector: ["node", "wait-event", "message"] as const,
+        valueType: { kind: "object" as const, schemaRef: "workflow.message.v1" },
+      },
+    };
+    const node = llmNode({
+      inputs: [input],
+      userPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+    });
+    const workflowRun = run();
+    workflowRun.context = {
+      ...workflowRun.context,
+      outputs: {
+        "wait-event": {
+          message: {
+            id: 101,
+            parts: [{ text: "想了解价格", type: "text" }],
+            role: "customer",
+          },
+        },
+      },
+    };
+
+    expect(createWorkflowInferenceRequest(node, workflowRun)).toMatchObject({
+      messageList: [
+        expect.any(Object),
+        {
+          content: [{ text: "用户: 想了解价格", type: "text" }],
+          role: "user",
+        },
+      ],
+    });
+  });
+
   it("falls back only when AI Intent has no text or media content", () => {
     const node: WorkflowExecutionNode = {
       config: {

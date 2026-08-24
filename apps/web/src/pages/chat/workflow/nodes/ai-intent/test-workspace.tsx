@@ -147,7 +147,7 @@ function AiIntentTestWorkspaceContent({
     }
     const inputValue = getAiIntentTestInputValue(rawValue, messageRows, inputType);
     if (inputValue === undefined) {
-      setInputError("当前输入类型不支持试运行");
+      setInputError(isMessageType(inputType) ? "请输入消息内容" : "当前输入类型不支持试运行");
       return;
     }
     setInputError(null);
@@ -184,8 +184,9 @@ function AiIntentTestWorkspaceContent({
               </Button>
             ) : null}
           </div>
-          {isMessagesType(inputType) ? (
+          {isMessageContentType(inputType) ? (
             <AiIntentTestMessageEditor
+              allowDelete={isMessagesType(inputType)}
               messages={messageRows}
               onChange={setMessageRows}
             />
@@ -258,9 +259,11 @@ function AiIntentTestWorkspaceContent({
 }
 
 function AiIntentTestMessageEditor({
+  allowDelete,
   messages,
   onChange,
 }: {
+  allowDelete: boolean;
   messages: AiIntentTestMessageRow[];
   onChange: (messages: AiIntentTestMessageRow[]) => void;
 }) {
@@ -302,16 +305,18 @@ function AiIntentTestMessageEditor({
             placeholder="请输入消息内容"
             value={message.text}
           />
-          <Button
-            aria-label={`删除消息 ${index + 1}`}
-            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
-            onClick={() => onChange(messages.filter((item) => item.key !== message.key))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
-          </Button>
+          {allowDelete ? (
+            <Button
+              aria-label={`删除消息 ${index + 1}`}
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+              onClick={() => onChange(messages.filter((item) => item.key !== message.key))}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
+            </Button>
+          ) : null}
         </div>
       ))}
     </div>
@@ -402,14 +407,25 @@ function getAiIntentTestInputValue(
   valueType: WorkflowOutputValueType,
 ): WorkflowAiIntentTestAttemptCreateRequest["inputValue"] | undefined {
   if (valueType.kind === "string") return rawValue;
-  if (!isMessagesType(valueType)) return undefined;
-  return messageRows
+  if (!isMessageContentType(valueType)) return undefined;
+  const messages = messageRows
     .filter((message) => message.text.trim().length > 0)
     .map((message, index) => ({
       id: index + 1,
       parts: [{ text: message.text, type: "text" as const }],
       role: message.role,
     })) satisfies WorkflowMessagesV1;
+  return isMessageType(valueType) ? messages[0] : messages;
+}
+
+function isMessageContentType(valueType: WorkflowOutputValueType | undefined) {
+  return isMessageType(valueType) || isMessagesType(valueType);
+}
+
+function isMessageType(
+  valueType: WorkflowOutputValueType | undefined,
+): valueType is Extract<WorkflowOutputValueType, { kind: "object" }> {
+  return valueType?.kind === "object" && valueType.schemaRef === "workflow.message.v1";
 }
 
 function isMessagesType(

@@ -10,7 +10,10 @@ import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
-import { WORKFLOW_MESSAGES_SCHEMA_REF } from "./messages.js";
+import {
+  WORKFLOW_MESSAGE_SCHEMA_REF,
+  WORKFLOW_MESSAGES_SCHEMA_REF,
+} from "./messages.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -907,19 +910,13 @@ export function getWorkflowNodeOutputContracts(
     return [
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messages",
+        key: "message",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGE_SCHEMA_REF },
       },
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messageCount",
-        usages: ["variable"],
-        valueType: { kind: "number" },
-      },
-      {
-        availableOnSourceOutlets: ["triggered"],
-        key: "lastMessageAt",
+        key: "triggeredAt",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
       },
@@ -1033,6 +1030,11 @@ export function isWorkflowMessagesValueType(valueType: WorkflowOutputValueType) 
     && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF;
 }
 
+export function isWorkflowMessageValueType(valueType: WorkflowOutputValueType) {
+  return valueType.kind === "object"
+    && valueType.schemaRef === WORKFLOW_MESSAGE_SCHEMA_REF;
+}
+
 export function isWorkflowLlmExecutionConfigComplete(
   value: unknown,
 ): value is WorkflowLlmExecutionConfig {
@@ -1128,7 +1130,8 @@ function isWorkflowPromptComplete(
       || !inputName
       || (!allowWorkflowMessages
         && input.value.kind === "variable"
-        && isWorkflowMessagesValueType(input.value.valueType))
+        && (isWorkflowMessageValueType(input.value.valueType)
+          || isWorkflowMessagesValueType(input.value.valueType)))
     ) {
       return false;
     }

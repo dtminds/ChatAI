@@ -212,7 +212,7 @@ describe("workflow variables", () => {
       expect.objectContaining({ selector: ["node-lifecycle", waitEventNode.id, "exitedAt"] }),
     ]));
     expect(variables).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
+      expect.objectContaining({ selector: ["node", waitEventNode.id, "message"] }),
     ]));
   });
 

@@ -156,6 +156,12 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
+  if (kind === "order-bind") {
+    return cloneJsonRecord(compactUndefined({
+      orderNumberSelector: draftConfig.orderNumberSelector,
+    }));
+  }
+
   return cloneJsonRecord(draftConfig);
 }
 
@@ -206,6 +212,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Tag Query node requires a match mode and at least one valid tag";
     case "customer-update":
       return "Customer Update node requires complete unique fields and values";
+    case "order-bind":
+      return "Order Bind node requires an order number variable";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

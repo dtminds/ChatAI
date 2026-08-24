@@ -243,6 +243,16 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
   ),
 }, { additionalProperties: false });
 
+export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
+
+export const WorkflowOrderBindDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowOrderBindExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
+
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -409,6 +419,8 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
+export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
+export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -510,6 +522,13 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
     ["thirdExternalUserId"],
+  ),
+  "order-bind": draftReadyContract(
+    "action",
+    1,
+    WorkflowOrderBindDraftConfigSchema,
+    WorkflowOrderBindExecutionConfigSchema,
+    ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
   start: runtimeReadyContract(
@@ -837,6 +856,15 @@ export function getWorkflowNodeOutputContracts(
         key: "matchedTagCount",
         usages: ["variable"],
         valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "order-bind") {
+    return [
+      {
+        key: "succeeded",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

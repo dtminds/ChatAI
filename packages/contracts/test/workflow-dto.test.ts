@@ -38,6 +38,7 @@ describe("workflow contracts", () => {
       "handoff",
       "agent",
       "llm",
+      "order-bind",
       "order-query",
       "tag-query",
       "tag",

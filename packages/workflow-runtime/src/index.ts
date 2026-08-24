@@ -15,6 +15,7 @@ export * from "./message-query.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";
 export * from "./node-metrics.js";
+export * from "./order-bind.js";
 export * from "./persistence-codecs.js";
 export * from "./reconciler.js";
 export * from "./runtime-value-limits.js";

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Add01Icon,
   Cancel01Icon,
@@ -29,7 +29,6 @@ import {
   SortableItem,
   SortableItemHandle,
 } from "@/components/ui/sortable";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -81,13 +80,6 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
   const openingMessage = normalizeAiCollectOpeningMessage(node.data.openingMessage);
   const timeout = normalizeAiCollectTimeout(node.data.timeout);
   const inputOptions = getAvailableIntentInputOutputsForNode(node.id, nodes, edges);
-  const lastEnabledFollowUpCountRef = useRef(maxFollowUpCount || 3);
-
-  useEffect(() => {
-    if (maxFollowUpCount > 0) {
-      lastEnabledFollowUpCountRef.current = maxFollowUpCount;
-    }
-  }, [maxFollowUpCount]);
 
   const updateConfig = ({
     fields: nextFields = fields,
@@ -178,7 +170,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
             className="h-20 min-h-20 resize-none pb-7"
             maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
             onChange={event => updateConfig({ openingMessage: event.target.value })}
-            placeholder="需要 Agent 主动开始收集时填写"
+            placeholder="请输入收集引导话术"
             rows={2}
             value={openingMessage}
           />
@@ -239,13 +231,25 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
 
       <WorkflowSettingsSection
         actions={(
-          <Switch
-            aria-label="智能体辅助"
-            checked={maxFollowUpCount > 0}
-            onCheckedChange={checked => updateConfig({
-              maxFollowUpCount: checked ? lastEnabledFollowUpCountRef.current : 0,
-            })}
-          />
+          <Select
+            onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
+            value={String(maxFollowUpCount)}
+          >
+            <SelectTrigger
+              aria-label="智能体辅助"
+              className="h-8 w-24 px-2.5 text-[13px]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">关闭</SelectItem>
+              {followUpCountOptions.map(count => (
+                <SelectItem key={count} value={String(count)}>
+                  {count} 轮
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
         title="智能体辅助"
         titleAccessory={(
@@ -255,39 +259,13 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           />
         )}
       >
-        {maxFollowUpCount > 0 ? (
-          <p className="text-[13px] leading-7 text-muted-foreground">
-            交给智能体辅助收集，最多追问
-            <span className="mx-1 inline-flex items-center whitespace-nowrap align-middle">
-              <Select
-                onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
-                value={String(maxFollowUpCount)}
-              >
-                <SelectTrigger
-                  aria-label="最多追问轮次"
-                  className="inline-flex h-8 w-[4.5rem] px-2 text-[13px]"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {followUpCountOptions.map(count => (
-                    <SelectItem key={count} value={String(count)}>
-                      {count} 轮
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>，</span>
-            </span>
-            {"若没有提取到所有信息，仍会流转到下一个节点"}
-          </p>
-        ) : null}
+        {null}
       </WorkflowSettingsSection>
 
       {maxFollowUpCount > 0 ? (
-        <>
-          <WorkflowSettingsSection title="最长等待">
-            <div className="flex items-center gap-2">
+        <WorkflowSettingsSection
+          actions={(
+            <div className="flex items-center gap-1.5">
               <BoundedTimeoutInput
                 max={AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
                 onValueChange={duration => updateConfig({ timeout: { ...timeout, duration } })}
@@ -302,7 +280,10 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
                 })}
                 value={timeout.unit}
               >
-                <SelectTrigger aria-label="最长等待时间单位" className="h-9 w-24 px-2.5">
+                <SelectTrigger
+                  aria-label="最长等待时间单位"
+                  className="h-8 w-20 px-2.5 text-[13px]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -311,8 +292,11 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
                 </SelectContent>
               </Select>
             </div>
-          </WorkflowSettingsSection>
-        </>
+          )}
+          title="最长等待"
+        >
+          {null}
+        </WorkflowSettingsSection>
       ) : null}
     </>
   );
@@ -464,7 +448,7 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
   return (
     <Input
       aria-label="最长等待时间"
-      className="h-9 w-24 px-2.5"
+      className="h-8 w-20 px-2.5 text-[13px] md:text-[13px]"
       max={max}
       min={1}
       onBlur={() => commitValue(draftValue)}

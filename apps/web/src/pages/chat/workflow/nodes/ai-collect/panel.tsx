@@ -236,7 +236,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           >
             <SelectTrigger
               aria-label="智能体辅助"
-              className="h-8 w-24 px-2.5 text-[13px]"
+              className="w-24 px-2.5 text-[13px]"
             >
               <SelectValue />
             </SelectTrigger>
@@ -262,39 +262,32 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       </WorkflowSettingsSection>
 
       {maxFollowUpCount > 0 ? (
-        <WorkflowSettingsSection
-          actions={(
-            <div className="flex items-center gap-1.5">
-              <BoundedTimeoutInput
-                max={AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
-                onValueChange={duration => updateConfig({ timeout: { ...timeout, duration } })}
-                value={timeout.duration}
-              />
-              <Select
-                onValueChange={(unit: WorkflowAiCollectTimeout["unit"]) => updateConfig({
-                  timeout: {
-                    duration: Math.min(timeout.duration, AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit]),
-                    unit,
-                  },
-                })}
-                value={timeout.unit}
-              >
-                <SelectTrigger
-                  aria-label="最长等待时间单位"
-                  className="h-8 w-20 px-2.5 text-[13px]"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="minute">分钟</SelectItem>
-                  <SelectItem value="hour">小时</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          title="最长等待"
-        >
-          {null}
+        <WorkflowSettingsSection title="最长等待">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+            <BoundedTimeoutInput
+              max={AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
+              onValueChange={duration => updateConfig({ timeout: { ...timeout, duration } })}
+              value={timeout.duration}
+            />
+            <Select
+              onValueChange={(unit: WorkflowAiCollectTimeout["unit"]) => updateConfig({
+                timeout: {
+                  duration: Math.min(timeout.duration, AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit]),
+                  unit,
+                },
+              })}
+              value={timeout.unit}
+            >
+              <SelectTrigger aria-label="最长等待时间单位" className="h-9 w-24 px-2.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minute">分钟</SelectItem>
+                <SelectItem value="hour">小时</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>后，执行后续节点</span>
+          </div>
         </WorkflowSettingsSection>
       ) : null}
     </>
@@ -446,7 +439,7 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
   return (
     <Input
       aria-label="最长等待时间"
-      className="h-8 w-20 px-2.5 text-[13px] md:text-[13px]"
+      className="h-9 w-24 px-2.5"
       max={max}
       min={1}
       onBlur={() => commitValue(draftValue)}

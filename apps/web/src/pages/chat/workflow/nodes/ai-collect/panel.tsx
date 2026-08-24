@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
+  ArrowDown01Icon,
   Cancel01Icon,
   Delete01Icon,
   DragDropVerticalIcon,
@@ -12,7 +13,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -159,10 +159,24 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
 
       <WorkflowSettingsSection
         actions={(
-          <AddFieldMenu
-            disabled={fields.length >= AI_COLLECT_FIELD_MAX_COUNT}
-            onAdd={addField}
-          />
+          <div className="flex items-center gap-1">
+            <Button
+              aria-label="添加字段"
+              className="h-8 gap-1 px-2 text-xs"
+              disabled={fields.length >= AI_COLLECT_FIELD_MAX_COUNT}
+              onClick={() => addField()}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+              添加
+            </Button>
+            <FieldTemplateMenu
+              disabled={fields.length >= AI_COLLECT_FIELD_MAX_COUNT}
+              onAdd={addField}
+            />
+          </div>
         )}
         title="收集字段"
       >
@@ -281,28 +295,25 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
   );
 }
 
-function AddFieldMenu({ disabled, onAdd }: {
+function FieldTemplateMenu({ disabled, onAdd }: {
   disabled: boolean;
-  onAdd: (template?: (typeof aiCollectFieldTemplates)[number]) => void;
+  onAdd: (template: (typeof aiCollectFieldTemplates)[number]) => void;
 }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label="添加字段"
           className="h-8 gap-1 px-2 text-xs"
           disabled={disabled}
           size="sm"
           type="button"
           variant="ghost"
         >
-          <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-          添加
+          模板
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
-        <DropdownMenuItem onSelect={() => onAdd()}>自定义字段</DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuLabel>常用模板</DropdownMenuLabel>
         {aiCollectFieldTemplates.map(template => (
           <DropdownMenuItem key={template.name} onSelect={() => onAdd(template)}>

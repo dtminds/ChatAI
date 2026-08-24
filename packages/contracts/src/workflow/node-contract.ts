@@ -394,6 +394,90 @@ export const WorkflowAiIntentExecutionConfigSchema = Type.Object({
   prompt: Type.Optional(Type.String({ maxLength: 2_000 })),
 }, { additionalProperties: false });
 
+export const WORKFLOW_AI_COLLECT_FIELD_MIN_COUNT = 1;
+export const WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT = 3;
+export const WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH = 10;
+export const WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH = 500;
+export const WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = 500;
+export const WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT = 10;
+export const WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT = {
+  hour: 48,
+  minute: 2_880,
+} as const;
+
+export const WorkflowAiCollectMaxFollowUpCountSchema = Type.Integer({
+  maximum: WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
+  minimum: 0,
+});
+
+export const WorkflowAiCollectFieldTypeSchema = Type.Union([
+  Type.Literal("text"),
+  Type.Literal("number"),
+  Type.Literal("date"),
+  Type.Literal("time"),
+  Type.Literal("boolean"),
+]);
+
+export const WorkflowAiCollectFieldSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 128 }),
+  instruction: Type.String({ maxLength: WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH }),
+  name: Type.String({ maxLength: WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH }),
+  type: WorkflowAiCollectFieldTypeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowAiCollectTimeoutSchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({
+      maximum: WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT.minute,
+      minimum: 1,
+    }),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      maximum: WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT.hour,
+      minimum: 1,
+    }),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+]);
+
+const WorkflowAiCollectFieldsSchema = Type.Array(WorkflowAiCollectFieldSchema, {
+  maxItems: WORKFLOW_AI_COLLECT_FIELD_MAX_COUNT,
+  minItems: WORKFLOW_AI_COLLECT_FIELD_MIN_COUNT,
+});
+
+export const WorkflowAiCollectDraftConfigSchema = Type.Object({
+  fields: WorkflowAiCollectFieldsSchema,
+  inputSelector: Type.Optional(WorkflowVariableSelectorSchema),
+  maxFollowUpCount: WorkflowAiCollectMaxFollowUpCountSchema,
+  openingMessage: Type.String({ maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH }),
+  timeout: WorkflowAiCollectTimeoutSchema,
+}, { additionalProperties: false });
+
+export const WorkflowAiCollectExecutionConfigSchema = Type.Union([
+  Type.Object({
+    fields: WorkflowAiCollectFieldsSchema,
+    inputSelector: WorkflowVariableSelectorSchema,
+    maxFollowUpCount: Type.Literal(0),
+    openingMessage: Type.Optional(Type.String({
+      maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
+    })),
+  }, { additionalProperties: false }),
+  Type.Object({
+    fields: WorkflowAiCollectFieldsSchema,
+    inputSelector: Type.Optional(WorkflowVariableSelectorSchema),
+    maxFollowUpCount: Type.Integer({
+      maximum: WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
+      minimum: 1,
+    }),
+    openingMessage: Type.Optional(Type.String({
+      maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
+    })),
+    timeout: WorkflowAiCollectTimeoutSchema,
+  }, { additionalProperties: false }),
+]);
+
 export const WorkflowEmptyNodeConfigSchema = Type.Object({}, { additionalProperties: false });
 
 export type WorkflowVariableSelector = Static<typeof WorkflowVariableSelectorSchema>;
@@ -439,6 +523,11 @@ export type WorkflowLlmExecutionConfig = Static<typeof WorkflowLlmExecutionConfi
 export type WorkflowIntentOption = Static<typeof WorkflowIntentOptionSchema>;
 export type WorkflowAiIntentDraftConfig = Static<typeof WorkflowAiIntentDraftConfigSchema>;
 export type WorkflowAiIntentExecutionConfig = Static<typeof WorkflowAiIntentExecutionConfigSchema>;
+export type WorkflowAiCollectFieldType = Static<typeof WorkflowAiCollectFieldTypeSchema>;
+export type WorkflowAiCollectField = Static<typeof WorkflowAiCollectFieldSchema>;
+export type WorkflowAiCollectTimeout = Static<typeof WorkflowAiCollectTimeoutSchema>;
+export type WorkflowAiCollectDraftConfig = Static<typeof WorkflowAiCollectDraftConfigSchema>;
+export type WorkflowAiCollectExecutionConfig = Static<typeof WorkflowAiCollectExecutionConfigSchema>;
 
 const WORKFLOW_LLM_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const WORKFLOW_LLM_PROMPT_MAX_LENGTH = 10_000;
@@ -468,7 +557,12 @@ type WorkflowNodeContractDefinition<
 
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
-  "ai-collect": placeholderContract("composite"),
+  "ai-collect": draftReadyContract(
+    "composite",
+    1,
+    WorkflowAiCollectDraftConfigSchema,
+    WorkflowAiCollectExecutionConfigSchema,
+  ),
   "ai-intent": runtimeReadyContract(
     "inference",
     1,
@@ -609,6 +703,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "handoff") return isWorkflowHandoffExecutionConfigComplete(value);
   if (kind === "llm") return isWorkflowLlmExecutionConfigComplete(value);
   if (kind === "ai-intent") return isWorkflowAiIntentExecutionConfigComplete(value);
+  if (kind === "ai-collect") return isWorkflowAiCollectExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
   if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
@@ -616,6 +711,21 @@ export function isWorkflowNodeExecutionConfig(
   return schema !== null
     && Value.Check(schema, value)
     && (kind !== "start" || isWorkflowStartMessageSendingWindowValid(value));
+}
+
+export function isWorkflowAiCollectExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowAiCollectExecutionConfig {
+  if (!Value.Check(WorkflowAiCollectExecutionConfigSchema, value)) return false;
+  const config = value as WorkflowAiCollectExecutionConfig;
+  const fieldIds = config.fields.map(field => field.id);
+  const fieldNames = config.fields.map(field => field.name.trim());
+  return areUniqueNonBlankValues(fieldIds)
+    && areUniqueNonBlankValues(fieldNames)
+    && config.fields.every(field => Boolean(field.instruction.trim()))
+    && (config.maxFollowUpCount > 0
+      || (config.inputSelector !== undefined
+        && isWorkflowInferenceSelectorResolvable(config.inputSelector)));
 }
 
 export function isWorkflowCustomerUpdateExecutionConfigComplete(
@@ -777,6 +887,21 @@ export function getWorkflowNodeOutputContracts(
         valueType: { kind: "string" },
       },
     ];
+  }
+  if (kind === "ai-collect" && Value.Check(WorkflowAiCollectFieldsSchema, config.fields)) {
+    const fields = config.fields as WorkflowAiCollectField[];
+    return fields.map(field => ({
+      availableOnSourceOutlets: ["completed"],
+      key: field.id,
+      usages: field.type === "text" || field.type === "date" || field.type === "time"
+        ? ["variable", "message-content"]
+        : ["variable"],
+      valueType: field.type === "number"
+        ? { kind: "number" }
+        : field.type === "boolean"
+          ? { kind: "boolean" }
+          : { kind: "string" },
+    }));
   }
   if (kind === "wait-event") {
     return [

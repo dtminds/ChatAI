@@ -1,5 +1,9 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkflowAiCollectDraftConfig,
+  WorkflowAiCollectField as SharedWorkflowAiCollectField,
+  WorkflowAiCollectFieldType as SharedWorkflowAiCollectFieldType,
+  WorkflowAiCollectTimeout as SharedWorkflowAiCollectTimeout,
   WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
   WorkflowBranchConfig,
@@ -142,7 +146,10 @@ export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
-export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
+export type WorkflowAiCollectField = SharedWorkflowAiCollectField;
+export type WorkflowAiCollectFieldType = SharedWorkflowAiCollectFieldType;
+export type WorkflowAiCollectTimeout = SharedWorkflowAiCollectTimeout;
+export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect"> & WorkflowAiCollectDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;

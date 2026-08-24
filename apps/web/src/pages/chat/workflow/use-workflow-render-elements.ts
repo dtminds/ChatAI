@@ -300,6 +300,7 @@ function createWorkflowRenderNodes({
       .join("|") ?? "";
     const isSelected = selectedNodeIdSet.has(node.id);
     const derivesStatusFromGraph = node.data.kind === "branch"
+      || node.data.kind === "ai-collect"
       || node.data.kind === "ai-intent"
       || node.data.kind === "message-query"
       || node.data.kind === "llm";

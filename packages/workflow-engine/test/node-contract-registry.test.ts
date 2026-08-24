@@ -51,6 +51,32 @@ describe("workflow node projection registry", () => {
     });
   });
 
+  it("projects AI Collect follow-up-specific execution data", () => {
+    expect(projectWorkflowNodeExecutionConfig({
+      data: projectableDraftData["ai-collect"],
+      kind: "ai-collect",
+    })).toEqual({
+      fields: projectableDraftData["ai-collect"].fields,
+      maxFollowUpCount: 3,
+      openingMessage: "请提供订单号",
+      timeout: { duration: 24, unit: "hour" },
+    });
+
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...projectableDraftData["ai-collect"],
+        inputSelector: ["node", "message-query", "messages"],
+        maxFollowUpCount: 0,
+      },
+      kind: "ai-collect",
+    })).toEqual({
+      fields: projectableDraftData["ai-collect"].fields,
+      inputSelector: ["node", "message-query", "messages"],
+      maxFollowUpCount: 0,
+      openingMessage: "请提供订单号",
+    });
+  });
+
   it("fails closed for placeholder kinds", () => {
     for (const kind of placeholderKinds) {
       expect(() => projectWorkflowNodeExecutionConfig({ data: {}, kind }))
@@ -60,6 +86,13 @@ describe("workflow node projection registry", () => {
 });
 
 const projectableDraftData = {
+  "ai-collect": {
+    fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
+    inputSelector: undefined,
+    maxFollowUpCount: 3,
+    openingMessage: " 请提供订单号 ",
+    timeout: { duration: 24, unit: "hour" },
+  },
   "ai-intent": {
     advancedEnabled: false,
     inputSelector: ["node", "message-query", "messages"],
@@ -137,7 +170,6 @@ const projectableDraftData = {
 
 const placeholderKinds = [
   "agent",
-  "ai-collect",
   "coupon",
   "order-query",
 ] as const satisfies readonly WorkflowNodeKind[];

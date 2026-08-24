@@ -36,7 +36,13 @@ import {
 
 const draftConfigs = {
   agent: {},
-  "ai-collect": {},
+  "ai-collect": {
+    fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
+    inputSelector: undefined,
+    maxFollowUpCount: 3,
+    openingMessage: "",
+    timeout: { duration: 24, unit: "hour" },
+  },
   "ai-intent": {
     advancedEnabled: false,
     inputSelector: ["node", "message-query", "messages"],
@@ -173,9 +179,9 @@ describe("workflow node contracts", () => {
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
       .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual([]);
+      .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
+      .toEqual(["agent", "coupon", "order-query"]);
   });
 
   it("keeps Ratio Split drafts editable while enforcing the published allocation contract", () => {
@@ -787,6 +793,66 @@ describe("workflow node contracts", () => {
     })).toBe(false);
   });
 
+  it("keeps incomplete AI Collect drafts editable and enforces execution boundaries", () => {
+    const followUpConfig = draftConfigs["ai-collect"];
+    const maximumFields = Array.from({ length: 3 }, (_, index) => ({
+      ...followUpConfig.fields[0],
+      id: `field-${index + 1}`,
+      name: `字段${index + 1}`,
+    }));
+    const noFollowUpConfig = {
+      fields: followUpConfig.fields,
+      inputSelector: ["node", "message-query", "messages"],
+      maxFollowUpCount: 0,
+      openingMessage: "请提供订单号",
+    };
+
+    expect(isWorkflowNodeDraftConfig("ai-collect", {
+      ...followUpConfig,
+      fields: [{ ...followUpConfig.fields[0], instruction: "", name: "" }],
+    })).toBe(true);
+    expect(isWorkflowNodeDraftConfig("ai-collect", {
+      ...followUpConfig,
+      mode: "agent-assisted",
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", followUpConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      fields: maximumFields,
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      fields: [
+        ...maximumFields,
+        { ...followUpConfig.fields[0], id: "field-4", name: "字段4" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", noFollowUpConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...noFollowUpConfig,
+      inputSelector: undefined,
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      fields: [
+        ...followUpConfig.fields,
+        { ...followUpConfig.fields[0], id: "field-phone" },
+      ],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      maxFollowUpCount: 11,
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 49, unit: "hour" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 1, unit: "day" },
+    })).toBe(false);
+  });
+
   it("describes public inference and message collection outputs centrally", () => {
     expect(getWorkflowNodeOutputContracts("llm", draftConfigs.llm)).toEqual([
       {
@@ -804,6 +870,18 @@ describe("workflow node contracts", () => {
       {
         key: "reason",
         usages: ["variable"],
+        valueType: { kind: "string" },
+      },
+    ]);
+    expect(getWorkflowNodeOutputContracts("ai-collect", {
+      ...draftConfigs["ai-collect"],
+      status: "ready",
+      title: "资料收集",
+    })).toEqual([
+      {
+        availableOnSourceOutlets: ["completed"],
+        key: "field-order",
+        usages: ["variable", "message-content"],
         valueType: { kind: "string" },
       },
     ]);

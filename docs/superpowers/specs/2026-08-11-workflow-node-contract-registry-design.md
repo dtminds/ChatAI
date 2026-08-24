@@ -31,9 +31,9 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 当前分类以 `packages/contracts/src/workflow/node-contract.ts` 中的
 `workflowNodeContractRegistry` 为权威来源；以下仅为本次文档更新时的快照：
 
-- `draft-ready`：无
+- `draft-ready`：`ai-collect`
 - `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`ratio-split`、`message`、`message-query`、`handoff`、`tag-query`、`tag`、`customer-update`、`llm`、`ai-intent`、`end`
-- `placeholder`：`coupon`、`agent`、`order-query`、`ai-collect`
+- `placeholder`：`coupon`、`agent`、`order-query`
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
 
@@ -51,7 +51,7 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 
 `action`、`query`、`inference` 统称 Capability 节点，共用 `workflow_node_execution` 生命周期、deadline、输出上限、错误分类和 Retry 框架。账本使用 `execution_key` 保存 Runtime 内部稳定的 Node Execution Key；它不代表 Query 或 Inference 对下游提供幂等承诺。
 
-Capability Binding 注册时必须与共享注册表中的执行类别一致。`core` 和 `composite` 不允许注册为 Capability Binding。`ai-collect` 本期继续保持 `placeholder`，不得把多阶段采集过程伪装成一次 Action 或 Inference 调用。
+Capability Binding 注册时必须与共享注册表中的执行类别一致。`core` 和 `composite` 不允许注册为 Capability Binding。`ai-collect` 当前为 `draft-ready`，不得把尚未接通的多阶段采集过程伪装成一次 Action 或 Inference 调用。
 
 ## 4. Draft 与 Execution 的职责
 

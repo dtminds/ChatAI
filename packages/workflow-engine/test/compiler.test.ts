@@ -332,6 +332,23 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
+  it("recognizes both AI Collect outcomes while keeping the node runtime-gated", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("collect", "ai-collect", {
+      fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
+      maxFollowUpCount: 3,
+      openingMessage: "",
+      timeout: { duration: 24, unit: "hour" },
+    }));
+    draft.edges = [
+      { id: "start-collect", source: "start", target: "collect" },
+      { id: "collect-completed", source: "collect", sourceHandle: "completed", target: "end" },
+      { id: "collect-incomplete", source: "collect", sourceHandle: "incomplete", target: "end" },
+    ];
+
+    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

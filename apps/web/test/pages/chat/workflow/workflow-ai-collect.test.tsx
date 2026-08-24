@@ -98,7 +98,7 @@ describe("workflow AI Collect", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "模板" }));
+    await user.click(screen.getByRole("button", { name: "从模板选择" }));
     await user.click(screen.getByRole("menuitem", { name: "订单号" }));
     const fieldName = screen.getByRole("textbox", { name: "字段 1 名称" });
     expect(fieldName).toHaveValue("订单号");
@@ -147,7 +147,7 @@ describe("workflow AI Collect", () => {
     expect(screen.getAllByRole("textbox", { name: /^字段 \d+ 名称$/ }))
       .toHaveLength(AI_COLLECT_FIELD_MAX_COUNT);
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "模板" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
   it("caps follow-up collection at 48 hours and offers no day unit", async () => {

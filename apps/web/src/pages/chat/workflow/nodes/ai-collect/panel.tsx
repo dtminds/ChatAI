@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
-  ArrowDown01Icon,
   Cancel01Icon,
   Delete01Icon,
   DragDropVerticalIcon,
@@ -303,14 +302,13 @@ function FieldTemplateMenu({ disabled, onAdd }: {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          className="h-8 gap-1 px-2 text-xs"
+          className="h-8 px-2 text-xs text-primary"
           disabled={disabled}
           size="sm"
           type="button"
           variant="ghost"
         >
-          模板
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+          从模板选择
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">

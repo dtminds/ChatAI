@@ -219,14 +219,17 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         title="智能体辅助"
       >
         {maxFollowUpCount > 0 ? (
-          <div className="space-y-1.5 text-[13px] leading-6 text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>交给智能体辅助收集，最多追问</span>
+          <p className="text-[13px] leading-7 text-muted-foreground">
+            交给智能体辅助收集，最多追问
+            <span className="mx-1 inline-flex items-center whitespace-nowrap align-middle">
               <Select
                 onValueChange={value => updateConfig({ maxFollowUpCount: Number(value) })}
                 value={String(maxFollowUpCount)}
               >
-                <SelectTrigger aria-label="最多追问轮次" className="h-9 w-20 px-2.5 text-[13px]">
+                <SelectTrigger
+                  aria-label="最多追问轮次"
+                  className="inline-flex h-8 w-[4.5rem] px-2 text-[13px]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -237,9 +240,10 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <p>若没有提取到所有信息，仍会流转到下一个节点</p>
-          </div>
+              <span>，</span>
+            </span>
+            {"若没有提取到所有信息，仍会流转到下一个节点"}
+          </p>
         ) : null}
       </WorkflowSettingsSection>
 

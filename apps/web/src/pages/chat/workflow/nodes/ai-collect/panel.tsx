@@ -181,52 +181,51 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
-        actions={(
-          <div className="flex items-center gap-1">
+        title={(
+          <>收集字段<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
+        )}
+      >
+        <div className="space-y-3 rounded-[8px] border p-3">
+          <Sortable
+            flatCursor
+            getItemValue={field => field.id}
+            onValueChange={nextFields => updateConfig({ fields: nextFields })}
+            value={fields}
+          >
+            <SortableContent className="space-y-2">
+              {fields.map((field, index) => (
+                <SortableItem key={field.id} value={field.id}>
+                  <AiCollectFieldEditor
+                    field={field}
+                    fields={fields}
+                    index={index}
+                    onChange={patch => updateField(field.id, patch)}
+                    onDelete={() => updateConfig({
+                      fields: fields.filter(item => item.id !== field.id),
+                    })}
+                  />
+                </SortableItem>
+              ))}
+            </SortableContent>
+          </Sortable>
+          <div className="flex items-center gap-4">
             <Button
               aria-label="添加字段"
-              className="h-8 gap-1 px-2 text-xs"
+              className="h-auto justify-start gap-1 rounded-none p-0 text-xs text-primary hover:no-underline"
               disabled={fields.length >= AI_COLLECT_FIELD_MAX_COUNT}
               onClick={() => addField()}
-              size="sm"
               type="button"
-              variant="ghost"
+              variant="link"
             >
-              <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-              添加
+              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+              添加字段
             </Button>
             <FieldTemplateMenu
               disabled={fields.length >= AI_COLLECT_FIELD_MAX_COUNT}
               onAdd={addField}
             />
           </div>
-        )}
-        title={(
-          <>收集字段<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></>
-        )}
-      >
-        <Sortable
-          flatCursor
-          getItemValue={field => field.id}
-          onValueChange={nextFields => updateConfig({ fields: nextFields })}
-          value={fields}
-        >
-          <SortableContent className="space-y-3">
-            {fields.map((field, index) => (
-              <SortableItem key={field.id} value={field.id}>
-                <AiCollectFieldEditor
-                  field={field}
-                  fields={fields}
-                  index={index}
-                  onChange={patch => updateField(field.id, patch)}
-                  onDelete={() => updateConfig({
-                    fields: fields.filter(item => item.id !== field.id),
-                  })}
-                />
-              </SortableItem>
-            ))}
-          </SortableContent>
-        </Sortable>
+        </div>
       </WorkflowSettingsSection>
 
       <WorkflowSettingsSection
@@ -333,16 +332,15 @@ function FieldTemplateMenu({ disabled, onAdd }: {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          className="h-8 px-2 text-xs text-primary"
+          className="h-auto justify-start rounded-none p-0 text-xs text-primary hover:no-underline"
           disabled={disabled}
-          size="sm"
           type="button"
-          variant="ghost"
+          variant="link"
         >
           从模板选择
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-40">
+      <DropdownMenuContent align="start" className="min-w-40">
         <DropdownMenuLabel>常用模板</DropdownMenuLabel>
         {aiCollectFieldTemplates.map(template => (
           <DropdownMenuItem key={template.name} onSelect={() => onAdd(template)}>
@@ -364,7 +362,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
   return (
-    <section className="space-y-2.5 rounded-[8px] border p-3">
+    <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-2.5">
       <div className="grid grid-cols-[28px_minmax(0,1fr)_5rem_32px] items-start gap-2">
         <SortableItemHandle
           aria-label={`拖动字段 ${index + 1}`}

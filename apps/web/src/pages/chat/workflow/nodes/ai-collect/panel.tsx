@@ -168,7 +168,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="开场白"
-            text="开启智能体辅助后，节点开始收集时发送给客户的第一条提问；如果前序节点已发送开场消息，可以留空"
+            text="配置后，运行到该节点时会先向客户发送这条消息；如果前序节点已发送开场消息，可以留空"
           />
         )}
       >

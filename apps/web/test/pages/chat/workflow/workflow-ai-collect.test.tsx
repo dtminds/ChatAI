@@ -99,7 +99,7 @@ describe("workflow AI Collect", () => {
     );
 
     await user.hover(screen.getByRole("button", { name: "查看开场白说明" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("前序节点已发送开场消息");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("运行到该节点时会先向客户发送");
     await user.unhover(screen.getByRole("button", { name: "查看开场白说明" }));
     await user.hover(screen.getByRole("button", { name: "查看智能体辅助说明" }));
     expect(await screen.findByText(/关闭时仅从输入消息中提取一次/)).toBeInTheDocument();

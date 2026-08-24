@@ -208,7 +208,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
               ))}
             </SortableContent>
           </Sortable>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-2">
             <Button
               aria-label="添加字段"
               className="h-auto justify-start gap-1 rounded-none p-0 text-xs text-primary hover:no-underline"

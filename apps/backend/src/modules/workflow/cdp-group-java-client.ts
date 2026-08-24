@@ -1,6 +1,6 @@
 import {
-  WORKFLOW_AUDIENCE_GROUP_LIST_MAX_COUNT,
   WORKFLOW_AUDIENCE_GROUP_NAME_MAX_LENGTH,
+  type WorkflowAudienceGroupListResponse,
   type WorkflowAudienceGroupSnapshot,
 } from "@chatai/contracts";
 import {
@@ -21,21 +21,27 @@ export const CDP_GROUP_INTERNAL_API_FAILED_CODE = "CDP_GROUP_INTERNAL_API_FAILED
 export const CDP_GROUP_INTERNAL_API_NOT_CONFIGURED_CODE =
   "CDP_GROUP_INTERNAL_API_NOT_CONFIGURED";
 export const CDP_GROUP_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-export const CDP_GROUP_OPERATE_LIST_PATH = "/third-internal/cdp-group-operate/list";
+export const CDP_GROUP_OPERATE_LIST_PATH = "/third-internal/cdp-group-operate/list-group";
 
-type JavaApiResponse<T> = {
+type JavaApiResponse = {
   code?: number;
-  data?: T;
+  count?: number;
   error?: number;
   errorMsg?: string;
+  hasNext?: boolean;
+  list?: unknown;
   message?: string;
+  page?: number;
+  pageSize?: number;
   success?: boolean;
 };
 
 export type CdpGroupJavaClient = {
-  listGroups: (input: { uid: number }) => Promise<{
-    groups: WorkflowAudienceGroupSnapshot[];
-  }>;
+  listGroups: (input: {
+    page: number;
+    pageSize: number;
+    uid: number;
+  }) => Promise<WorkflowAudienceGroupListResponse>;
 };
 
 export function createCdpGroupJavaClient(
@@ -46,12 +52,18 @@ export function createCdpGroupJavaClient(
 
   return {
     async listGroups(input) {
-      const response = await postJavaRequest<JavaApiResponse<unknown>>({
+      const response = await postJavaRequest<JavaApiResponse>({
         baseUrl,
         body: JSON.stringify({
+          page: input.page,
+          pageSize: input.pageSize,
           uid: input.uid,
         }),
-        logContext: { uid: input.uid },
+        logContext: {
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
         logger,
         operation: "cdp-group-list",
         path: CDP_GROUP_OPERATE_LIST_PATH,
@@ -60,15 +72,28 @@ export function createCdpGroupJavaClient(
 
       assertJavaSuccess(response, "cdp-group-list");
 
+      const groups = extractGroups(response.list, input.pageSize);
       return {
-        groups: extractGroups(response.data),
+        groups,
+        pagination: {
+          hasNext: Boolean(response.hasNext),
+          page: input.page,
+          pageSize: input.pageSize,
+          total: resolveListTotal({
+            count: response.count,
+            groups,
+            hasNext: Boolean(response.hasNext),
+            page: input.page,
+            pageSize: input.pageSize,
+          }),
+        },
       };
     },
   };
 }
 
-function extractGroups(data: unknown): WorkflowAudienceGroupSnapshot[] {
-  const items = readGroupItems(data);
+function extractGroups(list: unknown, maxItems: number): WorkflowAudienceGroupSnapshot[] {
+  const items = Array.isArray(list) ? list : [];
   const groups: WorkflowAudienceGroupSnapshot[] = [];
   const seen = new Set<number>();
 
@@ -77,27 +102,34 @@ function extractGroups(data: unknown): WorkflowAudienceGroupSnapshot[] {
     if (!group || seen.has(group.id)) continue;
     seen.add(group.id);
     groups.push(group);
-    if (groups.length >= WORKFLOW_AUDIENCE_GROUP_LIST_MAX_COUNT) break;
+    if (groups.length >= maxItems) break;
   }
 
   return groups;
 }
 
-function readGroupItems(data: unknown): unknown[] {
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === "object") {
-    const record = data as Record<string, unknown>;
-    if (Array.isArray(record.groups)) return record.groups;
-    if (Array.isArray(record.list)) return record.list;
-  }
-  return [];
+function resolveListTotal(input: {
+  count: unknown;
+  groups: readonly WorkflowAudienceGroupSnapshot[];
+  hasNext: boolean;
+  page: number;
+  pageSize: number;
+}) {
+  const filled = (input.page - 1) * input.pageSize + input.groups.length;
+  const count = typeof input.count === "number" && Number.isSafeInteger(input.count) && input.count >= 0
+    ? input.count
+    : null;
+  if (count != null) return Math.max(count, filled);
+  return input.hasNext
+    ? Math.max(filled, input.page * input.pageSize + 1)
+    : filled;
 }
 
 function mapGroupItem(value: unknown): WorkflowAudienceGroupSnapshot | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const id = readPositiveInteger(record.id) ?? readPositiveInteger(record.groupId);
-  const name = readGroupName(record.name) ?? readGroupName(record.groupName);
+  const id = readPositiveInteger(record.id);
+  const name = readGroupName(record.name);
   return id && name ? { id, name } : null;
 }
 
@@ -113,7 +145,7 @@ function readGroupName(value: unknown) {
   return name.length > 0 ? name : null;
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
+function assertJavaSuccess(response: JavaApiResponse, operation: string) {
   if (isJavaEnvelopeSuccessful(response)) {
     return;
   }
@@ -225,9 +257,9 @@ async function postJavaRequest<T>({
     return parsed as T;
   } catch (error) {
     if (
-      error instanceof BadGatewayError ||
-      error instanceof ServiceUnavailableError ||
-      error instanceof UpstreamHttpError
+      error instanceof BadGatewayError
+      || error instanceof ServiceUnavailableError
+      || error instanceof UpstreamHttpError
     ) {
       throw error;
     }
@@ -252,7 +284,7 @@ async function postJavaRequest<T>({
   }
 }
 
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
+function isJavaEnvelopeSuccessful(response: JavaApiResponse) {
   if (typeof response.success === "boolean") {
     return response.success;
   }

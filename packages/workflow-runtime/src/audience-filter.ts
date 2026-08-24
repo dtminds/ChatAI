@@ -1,7 +1,5 @@
 import {
   isWorkflowNodeExecutionConfig,
-  WORKFLOW_AUDIENCE_FILTER_OUTLET_MATCHED,
-  WORKFLOW_AUDIENCE_FILTER_OUTLET_UNMATCHED,
   WorkflowAudienceFilterCommandSchema,
   WorkflowAudienceFilterResultSchema,
   type WorkflowAudienceFilterCommand,
@@ -23,13 +21,13 @@ export const WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING = {
     kind: "query",
     resultSchema: WorkflowAudienceFilterResultSchema,
   },
-  mapResult() {
-    return {};
+  mapResult({ config, result }) {
+    return mapWorkflowAudienceFilterResult({
+      config: requireWorkflowAudienceFilterExecutionConfig(config),
+      result,
+    });
   },
   nodeKind: "audience-filter",
-  resolveSourceOutlet({ result }) {
-    return resolveWorkflowAudienceFilterSourceOutlet(result);
-  },
 } satisfies WorkflowCapabilityExecutionBinding<
   typeof WorkflowAudienceFilterCommandSchema,
   typeof WorkflowAudienceFilterResultSchema,
@@ -44,15 +42,38 @@ export function createWorkflowAudienceFilterCommand(input: {
   if (!input.context.identities.externalUserId) {
     throw audienceFilterCommandError("Audience Filter subject is unavailable in the Run context");
   }
-  return { groupId: config.group.id };
+  return { groupIds: [...new Set(config.groups.map((group) => group.id))] };
 }
 
-export function resolveWorkflowAudienceFilterSourceOutlet(
-  result: WorkflowAudienceFilterResult,
-) {
-  return result.exist
-    ? WORKFLOW_AUDIENCE_FILTER_OUTLET_MATCHED
-    : WORKFLOW_AUDIENCE_FILTER_OUTLET_UNMATCHED;
+export function mapWorkflowAudienceFilterResult(input: {
+  config: WorkflowAudienceFilterExecutionConfig;
+  result: WorkflowAudienceFilterResult;
+}): {
+  matched: boolean;
+  matchedGroupCount: number;
+  matchedGroupNames: string;
+} {
+  const selectedIds = input.config.groups.map((group) => group.id);
+  const selectedIdSet = new Set(selectedIds);
+  const membershipIds = new Set(
+    input.result.groupIds.filter((groupId) => selectedIdSet.has(groupId)),
+  );
+  if (membershipIds.size === 0 && input.result.exist) {
+    for (const groupId of selectedIds) membershipIds.add(groupId);
+  }
+  const matchedGroupNames = input.config.groups.flatMap((group) => (
+    membershipIds.has(group.id) ? [group.name] : []
+  ));
+  const matchedGroupCount = matchedGroupNames.length;
+  return {
+    matched: input.config.matchMode === "all"
+      ? matchedGroupCount === selectedIds.length
+      : input.config.matchMode === "none"
+        ? matchedGroupCount === 0
+        : matchedGroupCount > 0,
+    matchedGroupCount,
+    matchedGroupNames: matchedGroupNames.join("、"),
+  };
 }
 
 function requireWorkflowAudienceFilterExecutionConfig(

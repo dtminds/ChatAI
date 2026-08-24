@@ -49,7 +49,7 @@ const draftConfigs = {
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
-  "audience-filter": {},
+  "audience-filter": { groups: [], matchMode: "any" },
   branch: {
     branchPaths: [
       {
@@ -175,12 +175,12 @@ describe("workflow node contracts", () => {
     }
 
     expect(entries.filter(([, contract]) => contract.recordSourceOutlet).map(([kind]) => kind))
-      .toEqual(["audience-filter", "ratio-split"]);
+      .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "audience-filter"]);
+      .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "coupon", "order-query"]);
   });
@@ -566,25 +566,45 @@ describe("workflow node contracts", () => {
     ]);
   });
 
-  it("keeps incomplete Audience Filter drafts editable while requiring a group to publish", () => {
+  it("keeps incomplete Audience Filter drafts editable while requiring groups to publish", () => {
     expect(getWorkflowNodeContract("audience-filter")).toMatchObject({
       currentDraftSchemaVersion: 1,
       executionClass: "query",
       identityInputs: ["externalUserId"],
-      maturity: "draft-ready",
-      recordSourceOutlet: true,
+      maturity: "runtime-ready",
+      recordSourceOutlet: false,
     });
-    expect(isWorkflowNodeDraftConfig("audience-filter", {})).toBe(true);
-    expect(isWorkflowNodeExecutionConfig("audience-filter", {})).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("audience-filter", {
-      group: { id: 301, name: "高价值客户" },
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
     })).toBe(true);
     expect(isWorkflowNodeDraftConfig("audience-filter", {
-      group: { id: 0, name: "高价值客户" },
+      groups: [{ id: 0, name: "高价值客户" }],
+      matchMode: "any",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 302, name: "沉默客户" },
+        { id: 303, name: "活跃客户" },
+        { id: 304, name: "超限" },
+      ],
+      matchMode: "all",
     })).toBe(false);
     expect(getWorkflowNodeOutputContracts("audience-filter", {
-      group: { id: 301, name: "高价值客户" },
-    })).toBeNull();
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    })).toEqual([
+      { key: "matched", usages: ["variable"], valueType: { kind: "boolean" } },
+      {
+        key: "matchedGroupNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      { key: "matchedGroupCount", usages: ["variable"], valueType: { kind: "number" } },
+    ]);
   });
 
   it("marks Tag runtime-ready while keeping incomplete drafts editable", () => {

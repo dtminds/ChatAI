@@ -1,10 +1,18 @@
-import type { WorkflowAudienceGroupSnapshot } from "@chatai/contracts";
+import type {
+  WorkflowAudienceFilterMatchMode,
+  WorkflowAudienceGroupSnapshot,
+} from "@chatai/contracts";
 import {
+  WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE_MAX,
+  WORKFLOW_AUDIENCE_GROUP_MAX_COUNT,
   WORKFLOW_AUDIENCE_GROUP_NAME_MAX_LENGTH,
 } from "@chatai/contracts";
 
-export const AUDIENCE_FILTER_MATCHED_HANDLE_ID = "matched";
-export const AUDIENCE_FILTER_UNMATCHED_HANDLE_ID = "unmatched";
+export function normalizeWorkflowAudienceFilterMatchMode(
+  value: unknown,
+): WorkflowAudienceFilterMatchMode {
+  return value === "all" || value === "none" ? value : "any";
+}
 
 export function normalizeWorkflowAudienceGroup(
   value: unknown,
@@ -20,14 +28,48 @@ export function normalizeWorkflowAudienceGroup(
   };
 }
 
-export function getWorkflowAudienceFilterMetric(
-  group: WorkflowAudienceGroupSnapshot | undefined,
+export function normalizeWorkflowAudienceGroups(value: unknown): WorkflowAudienceGroupSnapshot[] {
+  return uniqueAudienceGroups(value, WORKFLOW_AUDIENCE_GROUP_MAX_COUNT);
+}
+
+export function normalizeWorkflowAudienceGroupCatalog(
+  value: unknown,
+): WorkflowAudienceGroupSnapshot[] {
+  return uniqueAudienceGroups(value, WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE_MAX);
+}
+
+function uniqueAudienceGroups(value: unknown, maxItems: number): WorkflowAudienceGroupSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  const groups: WorkflowAudienceGroupSnapshot[] = [];
+  const seen = new Set<number>();
+  for (const item of value) {
+    const group = normalizeWorkflowAudienceGroup(item);
+    if (!group || seen.has(group.id)) continue;
+    seen.add(group.id);
+    groups.push(group);
+    if (groups.length >= maxItems) break;
+  }
+  return groups;
+}
+
+export function getWorkflowAudienceFilterMatchModeLabel(
+  matchMode: WorkflowAudienceFilterMatchMode,
 ) {
-  return group?.name ?? "未配置人群包";
+  if (matchMode === "all") return "满足全部";
+  if (matchMode === "none") return "均不包含";
+  return "满足任一";
+}
+
+export function getWorkflowAudienceFilterMetric(
+  matchMode: WorkflowAudienceFilterMatchMode,
+  groups: readonly WorkflowAudienceGroupSnapshot[],
+) {
+  if (groups.length === 0) return "未配置人群包";
+  return `${getWorkflowAudienceFilterMatchModeLabel(matchMode)} · ${groups.length} 个人群包`;
 }
 
 export function isWorkflowAudienceFilterConfigured(
-  group: WorkflowAudienceGroupSnapshot | undefined,
+  groups: readonly WorkflowAudienceGroupSnapshot[],
 ) {
-  return group !== undefined;
+  return groups.length > 0;
 }

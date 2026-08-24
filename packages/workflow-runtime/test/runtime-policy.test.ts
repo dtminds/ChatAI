@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
+  WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
@@ -451,6 +452,7 @@ function createHarness(options: {
       ...(hasCapabilityPort
         ? {
             capabilityBindings: options.capabilityBindings ?? [
+              WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
               WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,

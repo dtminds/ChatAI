@@ -1,6 +1,6 @@
 # Workflow 人群筛选跨服务契约
 
-- 状态：Node 子系统可编辑、保存和编译拦截；生产 Worker Adapter 未接通，节点保持 `draft-ready`
+- 状态：编辑、保存、编译和生产 Worker 已接通，节点为 `runtime-ready`
 - 适用节点：ChatAI SOP、WeCom SOP 的人群筛选
 - Capability：`cdp.group.check-contact`，Contract Version `1`
 
@@ -8,18 +8,18 @@
 
 Node 负责：
 
-- 校验用户选择了 1 个人群包快照 `{ id, name }`
+- 校验用户选择了 1 到 3 个人群包快照 `{ id, name }`，以及匹配方式 `any` / `all` / `none`
 - 使用本次 Task Prepare 得到的 `externalUserId` 表达目标客户
-- 调用检查接口后只根据 `exist` 选择出口：`matched`（符合）或 `unmatched`（不符合）
-- 不把 Java 的 `groupIds`、`error` 投影成节点输出
+- 一次调用检查接口，把匹配结果投影为节点输出：`matched`、`matchedGroupNames`、`matchedGroupCount`
+- 查询完成后走默认出口；是否匹配由下游条件分支读取节点输出决定
 - 管理 timeout、retry、terminal failure 和节点结果
 
 Java 负责：
 
 - 按 `uid + externalUserId + groupIds` 判断客户是否存在于指定人群包
-- 返回权威 `exist`
+- 返回权威 `exist` 和命中的 `groupIds`
 
-编辑器人群包下拉另走列表接口，不复用检查接口。
+编辑器人群包选择另走分页列表接口，不复用检查接口。
 
 ## 2. 检查请求
 
@@ -35,9 +35,9 @@ Content-Type: application/json
 
 ```json
 {
-  "uid": 9,
   "externalUserId": 101,
-  "groupIds": [301]
+  "groupIds": [301, 302],
+  "uid": 9
 }
 ```
 
@@ -45,33 +45,49 @@ Content-Type: application/json
 
 - ChatAI SOP 和 WeCom SOP 都先通过 Execution Context Prepare 获得 `externalUserId`
 - Worker 不把 `subjectType + subjectId` 传给 Java
-- 编辑器只允许选择 1 个人群包；Node 把它投影成单元素 `groupIds`
+- 编辑器最多选择 3 个人群包；Node 把快照投影成 `groupIds`
+- 匹配方式留在节点配置，不发给 Java
+- 每个 Task 只调用一次 Java，不按人群包循环
 - Query 不产生副作用，不携带 `idempotencyKey`
 
-## 3. 检查响应与路由
+## 3. 检查响应、匹配与输出
 
 Java 成功响应 envelope：
 
 ```json
 {
-  "success": true,
-  "error": 0,
   "data": {
     "exist": true,
-    "groupIds": [301],
-    "error": 0
-  }
+    "groupIds": [301]
+  },
+  "error": 0,
+  "errorMsg": "",
+  "error_msg": "",
+  "success": true
 }
 ```
 
-路由规则：
+解码规则：
 
-- `exist === true` 走 `matched`（符合）
-- `exist === false` 走 `unmatched`（不符合）
-- 节点输出为 `{}`；下游如需知道节点完成时间，使用 `exitedAt`
-- 只有 HTTP 200 且 envelope 成功表示查询成功
-- `data.exist` 缺失或无法解码为 boolean 时按 terminal 停止
-- `data.groupIds` 和 `data.error` 仅供 Worker 诊断，不进入节点输出
+- `success === false` 视为业务拒绝，terminal
+- `success === true` 或 `error === 0` 视为查询成功
+- `data.exist` 必须是 boolean
+- `data.groupIds` 与请求 ID 求交集；请求外 ID 忽略，不 terminal
+- 节点输出不复制 Java 的 `error` / `error_msg`
+
+匹配规则（membership = `result.groupIds ∩ config.groups[].id`）：
+
+- 若交集为空且 `exist === true`，把本次选中的人群包都视为命中
+- `any`：命中数量 > 0
+- `all`：命中数量等于选中数量
+- `none`：命中数量 = 0
+- 查询成功后走默认出口，不按符合 / 不符合分流
+
+节点输出：
+
+- `matched` boolean 是否匹配
+- `matchedGroupNames` string 匹配人群包名，多个名称用顿号 `、` 分隔，名称取自节点配置快照
+- `matchedGroupCount` number 匹配人群包数量
 
 ## 4. 超时与错误
 
@@ -86,29 +102,68 @@ Java 成功响应 envelope：
 公开接口：
 
 ```http
-GET /api/server/workflow/audience-groups
+GET /api/server/workflow/audience-groups?page=1&pageSize=20
 ```
 
-当前 Backend 代理的 Java 路径按协作约定暂定为：
+- `page` 从 1 开始，默认 `1`
+- `pageSize` 默认 `20`，最大 `50`
+- 一次请求只代理 Java 当前页，不跟随 `hasNext` 自动翻页
+- 已选快照由节点配置保存，翻页不额外 hydration
+
+Backend 代理的 Java 路径：
 
 ```http
-POST /third-internal/cdp-group-operate/list
+POST /third-internal/cdp-group-operate/list-group
 ```
 
-请求体 `{ "uid": 9 }`。该路径和响应字段仍待 Java 确认，确认前不得把节点升为 `runtime-ready`。
+请求体：
+
+```json
+{
+  "page": 1,
+  "pageSize": 20,
+  "uid": 9
+}
+```
+
+Java 成功响应（字段在顶层，不包裹 `data`）：
+
+```json
+{
+  "count": 2,
+  "error": 0,
+  "errorMsg": "",
+  "hasNext": false,
+  "list": [
+    {
+      "createType": 1,
+      "groupNum": 12,
+      "id": 301,
+      "name": "高价值客户",
+      "peopleCalculateTime": "2026-08-24 10:00:00"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "success": true
+}
+```
 
 Node 映射规则：
 
-- 接受 `data` 为数组，或 `{ groups }` / `{ list }`
-- 每项读取 `id` 或 `groupId`，以及 `name` 或 `groupName`
-- 跳过无效项和重复 ID，按 Java 返回顺序保留前 200 条
-- `200` 是文档化的目录上限，不是对更大结果集的分页页大小
-- 列表失败时编辑器 toast「操作失败，请稍后重试」；已选快照仍回显
+- 只读取顶层 `list`
+- 每项只取 `id` 和 `name`；`createType`、`groupNum`、`peopleCalculateTime` 不进入节点配置
+- 跳过无效项和重复 ID，按 Java 返回顺序保留当前页
+- 公开响应为 `{ groups, pagination: { hasNext, page, pageSize, total } }`，`total` 来自 Java `count`
+- `HTTP 200` 且 `success === true` 或 `error === 0` 视为列表成功
+- 列表失败时弹窗展示重试；已选快照仍回显
+
+设置面板：
+
+- 弹窗分页选择人群包，最多 3 个
+- 匹配方式：满足任一 / 满足全部 / 均不包含
+- 节点输出由统一 `NodeOutputsSection` 展示
 
 ## 6. 发布边界
 
-人群筛选为 `draft-ready`。生产 Worker 不注册 `cdp.group.check-contact@1:query`。发布和执行门禁保持拦截，直到：
-
-1. Java 确认检查接口的扁平请求体、成功 envelope 和错误分类
-2. Java 确认人群包列表路径和响应字段
-3. Worker 接入真实 Adapter，且启动组合校验覆盖该 Capability
+人群筛选为 `runtime-ready`。生产 Worker 注册 `cdp.group.check-contact@1:query`。

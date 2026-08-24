@@ -349,24 +349,37 @@ describe("compileWorkflowDraft", () => {
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 
-  it("recognizes both Audience Filter outcomes while keeping the node runtime-gated", () => {
+  it("compiles Audience Filter with a single default outlet", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("filter", "audience-filter", {
-      group: { id: 301, name: "高价值客户" },
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
     }));
     draft.edges = [
       { id: "start-filter", source: "start", target: "filter" },
-      { id: "filter-matched", source: "filter", sourceHandle: "matched", target: "end" },
-      { id: "filter-unmatched", source: "filter", sourceHandle: "unmatched", target: "end" },
+      { id: "filter-end", source: "filter", target: "end" },
     ];
 
-    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+    expect(compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    }).nodes.find((item) => item.id === "filter")).toEqual({
+      config: {
+        groups: [{ id: 301, name: "高价值客户" }],
+        matchMode: "any",
+      },
+      id: "filter",
+      kind: "audience-filter",
+      nodeSchemaVersion: 1,
+    });
 
-    draft.edges = [
-      { id: "start-filter", source: "start", target: "filter" },
-      { id: "filter-matched", source: "filter", sourceHandle: "matched", target: "end" },
-    ];
-    expectCompilationIssues(draft, ["unsupported-runtime-node", "source-outlet-unconnected"]);
+    draft.nodes.splice(1, 1, node("filter", "audience-filter", {
+      groups: [],
+      matchMode: "any",
+    }));
+    expectCompilationIssues(draft, ["invalid-node-config"]);
   });
 
   it("compiles legacy rolling entry windows with the current maximum", () => {

@@ -3,7 +3,7 @@ import {
   createWorkflowAudienceFilterCommand,
   executeWorkflowCapability,
   executeWorkflowCapabilityStep,
-  resolveWorkflowAudienceFilterSourceOutlet,
+  mapWorkflowAudienceFilterResult,
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
 } from "../src/index.js";
 import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter.js";
@@ -18,14 +18,22 @@ const context = {
   workflow: {},
 };
 
+const groups = [
+  { id: 301, name: "高价值客户" },
+  { id: 302, name: "沉默客户" },
+];
+
 describe("Workflow Audience Filter capability", () => {
-  it("queries without an idempotency key and routes by exist", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ exist: true }));
+  it("queries without an idempotency key and maps membership to outputs", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({
+      exist: true,
+      groupIds: [301],
+    }));
 
     const result = await executeWorkflowCapability({
       binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
       commandContext: context,
-      config: { group: { id: 301, name: "高价值客户" } },
+      config: { groups, matchMode: "any" },
       deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
       execution: {
         nodeId: "audience-filter",
@@ -42,7 +50,11 @@ describe("Workflow Audience Filter capability", () => {
       uid: 9,
     });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({
+      matched: true,
+      matchedGroupCount: 1,
+      matchedGroupNames: "高价值客户",
+    });
     expect(adapter.calls[0]).toMatchObject({
       definition: {
         capabilityKey: "cdp.group.check-contact",
@@ -50,21 +62,43 @@ describe("Workflow Audience Filter capability", () => {
         kind: "query",
       },
       request: {
-        command: { groupId: 301 },
+        command: { groupIds: [301, 302] },
         subjectId: "customer-1",
       },
     });
     expect(adapter.calls[0]?.request).not.toHaveProperty("idempotencyKey");
   });
 
-  it("resolves matched and unmatched outlets from the Java exist flag", async () => {
-    expect(resolveWorkflowAudienceFilterSourceOutlet({ exist: true })).toBe("matched");
-    expect(resolveWorkflowAudienceFilterSourceOutlet({ exist: false })).toBe("unmatched");
+  it("maps any, all, and none matching onto node outputs", async () => {
+    expect(mapWorkflowAudienceFilterResult({
+      config: { groups, matchMode: "all" },
+      result: { exist: true, groupIds: [301] },
+    })).toEqual({
+      matched: false,
+      matchedGroupCount: 1,
+      matchedGroupNames: "高价值客户",
+    });
+    expect(mapWorkflowAudienceFilterResult({
+      config: { groups, matchMode: "none" },
+      result: { exist: false, groupIds: [] },
+    })).toEqual({
+      matched: true,
+      matchedGroupCount: 0,
+      matchedGroupNames: "",
+    });
+    expect(mapWorkflowAudienceFilterResult({
+      config: { groups, matchMode: "all" },
+      result: { exist: true, groupIds: [] },
+    })).toEqual({
+      matched: true,
+      matchedGroupCount: 2,
+      matchedGroupNames: "高价值客户、沉默客户",
+    });
 
-    const unmatched = await executeWorkflowCapabilityStep({
+    const step = await executeWorkflowCapabilityStep({
       binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
       commandContext: context,
-      config: { group: { id: 301, name: "高价值客户" } },
+      config: { groups, matchMode: "all" },
       deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
       execution: {
         nodeId: "audience-filter",
@@ -74,22 +108,29 @@ describe("Workflow Audience Filter capability", () => {
         workflowId: "workflow-1",
       },
       executionKey: "9:run-1:audience-filter:3",
-      port: new FakeWorkflowCapabilityAdapter(async () => ({ exist: false })),
+      port: new FakeWorkflowCapabilityAdapter(async () => ({
+        exist: true,
+        groupIds: [301],
+      })),
       signal: new AbortController().signal,
       subjectId: "customer-1",
       subjectType: "chatai_contact",
       uid: 9,
     });
 
-    expect(unmatched).toEqual({
-      output: {},
-      sourceOutletId: "unmatched",
+    expect(step).toEqual({
+      output: {
+        matched: false,
+        matchedGroupCount: 1,
+        matchedGroupNames: "高价值客户",
+      },
+      sourceOutletId: "default",
     });
   });
 
   it("rejects missing identity or incomplete group config before calling Java", () => {
     expect(() => createWorkflowAudienceFilterCommand({
-      config: { group: { id: 301, name: "高价值客户" } },
+      config: { groups, matchMode: "any" },
       context: { ...context, identities: {} },
     })).toThrow(expect.objectContaining({
       code: "WORKFLOW_AUDIENCE_FILTER_COMMAND_INVALID",
@@ -98,7 +139,7 @@ describe("Workflow Audience Filter capability", () => {
     }));
 
     expect(() => createWorkflowAudienceFilterCommand({
-      config: {},
+      config: { groups: [], matchMode: "any" },
       context,
     })).toThrow(expect.objectContaining({
       code: "WORKFLOW_AUDIENCE_FILTER_COMMAND_INVALID",

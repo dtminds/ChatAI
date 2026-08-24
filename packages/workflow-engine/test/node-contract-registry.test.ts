@@ -94,7 +94,8 @@ const projectableDraftData = {
     timeout: { duration: 24, unit: "hour" },
   },
   "audience-filter": {
-    group: { id: 301, name: "高价值客户" },
+    groups: [{ id: 301, name: "高价值客户" }],
+    matchMode: "any",
   },
   "ai-intent": {
     advancedEnabled: false,

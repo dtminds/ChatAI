@@ -356,6 +356,7 @@ describe("workflow node catalog", () => {
   it("supports field, custom, and empty node body bindings", () => {
     const fieldNodeKinds: WorkflowNodeKind[] = [
       "agent",
+      "audience-filter",
       "coupon",
       "customer-update",
       "handoff",
@@ -379,7 +380,6 @@ describe("workflow node catalog", () => {
     });
     expect(workflowNodeUiBindings["ai-intent"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings["wait-event"].body.kind).toBe("custom");
-    expect(workflowNodeUiBindings["audience-filter"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
     expect(workflowNodeUiBindings.start.settings).toBe(StartConfig);

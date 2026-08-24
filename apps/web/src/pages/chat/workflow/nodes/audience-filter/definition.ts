@@ -1,76 +1,73 @@
 import { UserMultiple02Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
+import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import {
-  createCatalogIssue,
-  createDefaultTargetHandles,
-  createNodeData,
-  sourceNodeKinds,
-  targetNodeKinds,
-} from "../definition-shared";
-import {
-  AUDIENCE_FILTER_MATCHED_HANDLE_ID,
-  AUDIENCE_FILTER_UNMATCHED_HANDLE_ID,
   getWorkflowAudienceFilterMetric,
   isWorkflowAudienceFilterConfigured,
-  normalizeWorkflowAudienceGroup,
+  normalizeWorkflowAudienceFilterMatchMode,
+  normalizeWorkflowAudienceGroups,
 } from "./config";
 
+const baseAudienceFilterNodeDefinition = createStandardNodeDefinition({
+  accentClassName: "bg-rose-500 text-white",
+  accentRgb: "244 63 94",
+  description: "检查客户是否在你指定的人群包中，通常接条件分支分流到不同的后续运营路径",
+  icon: UserMultiple02Icon,
+  kind: "audience-filter",
+  label: "人群筛选",
+  metric: "未配置人群包",
+  paletteGroup: "flow",
+  sort: 22,
+});
+
 export const audienceFilterNodeDefinition: WorkflowNodeDefinition<"audience-filter"> = {
-  availableNextKinds: targetNodeKinds,
-  availablePrevKinds: sourceNodeKinds,
-  canDelete: true,
-  canDuplicate: true,
-  canInsertAfter: true,
-  canRename: true,
-  configSections: [],
-  createDefaultData: () => createNodeData("audience-filter", {
-    label: "人群筛选",
-    metric: "未配置人群包",
+  ...baseAudienceFilterNodeDefinition,
+  createDefaultData: () => ({
+    ...baseAudienceFilterNodeDefinition.createDefaultData(),
+    groups: [],
+    matchMode: "any",
     status: "warning",
-    title: "人群筛选",
   }),
-  description: "按人群包判断当前客户是否符合条件，并分流到符合或不符合后续路径",
-  getSourceHandles: () => [
+  getOutputVariables: () => [
     {
-      id: AUDIENCE_FILTER_MATCHED_HANDLE_ID,
-      isDefault: true,
-      label: "符合",
-      outletKind: "outcome",
-      top: 122,
+      description: "客户是否满足当前人群包匹配条件",
+      key: "matched",
+      label: "是否匹配",
+      usages: ["variable"],
+      valueType: { kind: "boolean" },
     },
     {
-      id: AUDIENCE_FILTER_UNMATCHED_HANDLE_ID,
-      label: "不符合",
-      outletKind: "outcome",
-      top: 164,
+      description: "实际匹配的人群包名称，多个名称使用中文顿号分隔",
+      key: "matchedGroupNames",
+      label: "匹配人群包名",
+      usages: ["variable", "message-content"],
+      valueType: { kind: "string" },
+    },
+    {
+      description: "实际匹配的人群包数量",
+      key: "matchedGroupCount",
+      label: "匹配人群包数量",
+      usages: ["variable"],
+      valueType: { kind: "number" },
     },
   ],
-  getTargetHandles: createDefaultTargetHandles,
-  insertable: true,
-  kind: "audience-filter",
-  layout: {
-    estimatedHeight: 220,
-    width: 320,
-  },
-  paletteGroup: "flow",
-  paletteLabel: "人群筛选",
   sanitizeData: (data) => {
-    const group = normalizeWorkflowAudienceGroup(data.group);
+    const groups = normalizeWorkflowAudienceGroups(data.groups);
+    const matchMode = normalizeWorkflowAudienceFilterMatchMode(data.matchMode);
     return {
       ...data,
-      group,
-      metric: getWorkflowAudienceFilterMetric(group),
-      status: isWorkflowAudienceFilterConfigured(group) ? "ready" : "warning",
+      groups,
+      matchMode,
+      metric: getWorkflowAudienceFilterMetric(matchMode, groups),
+      status: isWorkflowAudienceFilterConfigured(groups) ? "ready" : "warning",
     };
   },
-  sort: 22,
-  validate: (node) => isWorkflowAudienceFilterConfigured(normalizeWorkflowAudienceGroup(node.data.group))
+  validate: (node) => isWorkflowAudienceFilterConfigured(normalizeWorkflowAudienceGroups(node.data.groups))
     ? []
-    : [createCatalogIssue("audience-filter-group-required", "需选择人群包")],
-  visual: {
-    accentClassName: "bg-rose-500 text-white",
-    accentRgb: "244 63 94",
-    icon: UserMultiple02Icon,
-    label: "人群筛选",
-  },
+    : [{
+        code: "audience-filter-group-required",
+        message: "需选择人群包",
+        severity: "warning",
+        source: "config",
+      }],
 };

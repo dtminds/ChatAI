@@ -266,7 +266,6 @@ function getNodeOutletIds(node: WorkflowDraftNode) {
   if (node.data.kind === "ratio-split") return getRatioSplitOutletIds(node);
   if (node.data.kind === "wait-event") return ["triggered", "timeout"];
   if (node.data.kind === "ai-collect") return ["completed", "incomplete"];
-  if (node.data.kind === "audience-filter") return ["matched", "unmatched"];
   if (node.data.kind === "ai-intent") return getAiIntentOutletIds(node);
   return [DEFAULT_OUTLET_ID];
 }

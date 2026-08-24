@@ -538,7 +538,7 @@ export const workflowNodeContractRegistry = {
     ["thirdExternalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
-  "points-transfer": draftReadyContract(
+  "points-transfer": runtimeReadyContract(
     "action",
     1,
     WorkflowPointsTransferDraftConfigSchema,

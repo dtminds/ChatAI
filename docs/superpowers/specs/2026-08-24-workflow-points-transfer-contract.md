@@ -1,6 +1,6 @@
 # Workflow 代客转积分跨服务契约
 
-- 状态：Node 侧契约已冻结；Java Endpoint 已确认请求，真实 Adapter、响应信封和幂等仍待联调
+- 状态：Worker Adapter 已接通；Java 成功信封以 `error === 0` 为准
 - 适用节点：ChatAI SOP、WeCom SOP 的代客转积分
 - Capability：`mall.point.transfer`，Contract Version `1`
 - Java：`POST /third-internal/mall-order/transfer-order-point`
@@ -98,7 +98,12 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 - HTTP 200 下的非法 JSON、非法 envelope 属于 terminal
 - 参数非法、小店用户身份不可用属于 terminal
 
-Java 成功 / 业务失败的精确 envelope 仍待联调确认。当前按产品设计把成功映射为 `"success"`，业务拒绝映射为 `"false"`。
+Java HTTP 200 且 `error` 为安全整数时：
+
+- `error === 0` 映射为 `"success"`
+- 其它整数 `error` 映射为 `"false"`，节点完成并继续默认出口
+
+不把 `success` 字段当作成功条件。
 
 ## 4. 幂等与错误
 
@@ -110,4 +115,4 @@ Java 成功 / 业务失败的精确 envelope 仍待联调确认。当前按产�
 
 ## 5. 当前发布边界
 
-代客转积分为 `draft-ready`。编辑器可添加、保存和回显；提交审核 / 发布会被运行门禁阻止，直到 Worker Adapter、Java 响应信封、错误分类和幂等契约接通后升为 `runtime-ready`。生产 Worker 不得注册该 Capability，也不得放入成功 Fake。
+代客转积分为 `runtime-ready`。生产 Worker 注册 `mall.point.transfer@1:action`，路由到真实 Java Adapter `POST /third-internal/mall-order/transfer-order-point`。发布门禁可以放行配置完整且订单号变量有效的代客转积分节点。

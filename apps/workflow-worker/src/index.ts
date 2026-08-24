@@ -15,6 +15,7 @@ import {
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
 } from "@chatai/workflow-runtime";
@@ -39,6 +40,7 @@ import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js
 import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
+import { HttpWorkflowPointsTransferCapabilityPort } from "./points-transfer-capability-port.js";
 import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
@@ -94,6 +96,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const pointsTransferCapabilityPort = new HttpWorkflowPointsTransferCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const capabilityPort = new WorkflowCapabilityRouter([
     {
       binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
@@ -101,6 +107,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     },
     { binding: WORKFLOW_HANDOFF_CAPABILITY_BINDING, port: handoffCapabilityPort },
     { binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING, port: messageCapabilityPort },
+    {
+      binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      port: pointsTransferCapabilityPort,
+    },
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
   ]);

@@ -56,6 +56,32 @@ describe("Workflow Points Transfer capability", () => {
     expect(result).toEqual({ result: "success" });
   });
 
+  it("keeps a business failure as a completed node result", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "false" }));
+
+    await expect(executeWorkflowCapability({
+      binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      commandContext: context,
+      config: {
+        orderNumberSelector: ["node", "llm", "orderNo"],
+      },
+      deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
+      execution: {
+        nodeId: "points-transfer",
+        revision: 2,
+        runId: "run-1",
+        sequence: 3,
+        workflowId: "workflow-1",
+      },
+      executionKey: "9:run-1:points-transfer:3",
+      port: adapter,
+      signal: new AbortController().signal,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 9,
+    })).resolves.toEqual({ result: "false" });
+  });
+
   it("stops before calling Java when the mall user identity is missing", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
 

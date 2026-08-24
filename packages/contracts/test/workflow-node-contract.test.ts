@@ -172,9 +172,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "points-transfer", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["points-transfer"]);
+      .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "ai-collect", "coupon", "order-query"]);
   });
@@ -625,7 +625,7 @@ describe("workflow node contracts", () => {
       currentDraftSchemaVersion: 1,
       executionClass: "action",
       identityInputs: ["mallUserId"],
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
     expect(isWorkflowNodeDraftConfig("points-transfer", {})).toBe(true);
     expect(isWorkflowNodeDraftConfig("points-transfer", {

@@ -24,6 +24,10 @@ describe("Workflow execution context prepare", () => {
       globalContext: true,
       identities: ["externalUserId"],
     });
+    expect(deriveWorkflowExecutionContextRequirements(node("points-transfer"))).toEqual({
+      globalContext: false,
+      identities: ["mallUserId"],
+    });
   });
 
   it("does not call Java when the required identity is already known", async () => {

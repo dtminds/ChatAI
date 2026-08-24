@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
@@ -14,6 +14,7 @@ import {
   AI_COLLECT_FIELD_MAX_COUNT,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
 } from "@/pages/chat/workflow/nodes/ai-collect/config";
+import { AiCollectNodeBody } from "@/pages/chat/workflow/nodes/ai-collect/body";
 import { AiCollectConfig } from "@/pages/chat/workflow/nodes/ai-collect/panel";
 import type {
   WorkflowEdge,
@@ -26,6 +27,19 @@ import { getAvailableVariablesForNode } from "@/pages/chat/workflow/workflow-var
 import { createWorkflowRenderElements } from "@/pages/chat/workflow/use-workflow-render-elements";
 
 describe("workflow AI Collect", () => {
+  it("renders both collection outcomes on the node card", () => {
+    render(
+      <AiCollectNodeBody
+        data={createDefaultNodeData("ai-collect")}
+        visual={getNodeDefinition("ai-collect").visual}
+      />,
+    );
+
+    const outcomes = within(screen.getByLabelText("资料收集出口"));
+    expect(outcomes.getByText("已完成")).toBeInTheDocument();
+    expect(outcomes.getByText("未完成")).toBeInTheDocument();
+  });
+
   it("creates a stable smart-mode draft and preserves field IDs during hydration", () => {
     const first = createDefaultNodeData("ai-collect");
     const second = createDefaultNodeData("ai-collect");

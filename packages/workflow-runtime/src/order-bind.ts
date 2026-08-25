@@ -14,6 +14,7 @@ import type {
 import { requireWorkflowVariableValue } from "./variable-content.js";
 
 export const WORKFLOW_ORDER_BIND_CAPABILITY_BINDING = {
+  completeWithoutExecution: completeWorkflowOrderBindWithoutExecution,
   createCommand: createWorkflowOrderBindCommand,
   definition: {
     capabilityKey: "order.bind",
@@ -36,6 +37,26 @@ export function createWorkflowOrderBindCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowCapabilityCommandContext;
 }): WorkflowOrderBindCommand {
+  const prepared = prepareWorkflowOrderBindCommand(input);
+  if (prepared === null) {
+    throw orderBindCommandError("Order Bind order number did not resolve to usable text");
+  }
+  return prepared;
+}
+
+function completeWorkflowOrderBindWithoutExecution(input: {
+  config: Record<string, unknown>;
+  context: WorkflowCapabilityCommandContext;
+}) {
+  return prepareWorkflowOrderBindCommand(input) === null
+    ? { result: "false" as const }
+    : undefined;
+}
+
+function prepareWorkflowOrderBindCommand(input: {
+  config: Record<string, unknown>;
+  context: WorkflowCapabilityCommandContext;
+}): WorkflowOrderBindCommand | null {
   if (!isWorkflowNodeExecutionConfig("order-bind", input.config)) {
     throw orderBindCommandError("Order Bind execution config failed schema validation");
   }
@@ -43,27 +64,27 @@ export function createWorkflowOrderBindCommand(input: {
     throw orderBindCommandError("Order Bind recipient is unavailable in the Run context");
   }
   const config = input.config as WorkflowOrderBindExecutionConfig;
-  const orderNumber = readOrderNumber(
+  return readOrderNumber(
     requireWorkflowVariableValue(
       config.orderNumberSelector,
       input.context,
       orderBindCommandError,
     ),
   );
+}
+
+function readOrderNumber(value: unknown): WorkflowOrderBindCommand | null {
+  const orderNumber = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  if (!orderNumber) return null;
+  if (orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) {
+    throw orderBindCommandError("Order Bind order number did not resolve to usable text");
+  }
   return {
     orderNumber,
     source: "workflow",
   };
-}
-
-function readOrderNumber(value: unknown) {
-  const orderNumber = typeof value === "number" && Number.isFinite(value)
-    ? String(value)
-    : typeof value === "string" ? value.trim() : "";
-  if (!orderNumber || orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) {
-    throw orderBindCommandError("Order Bind order number did not resolve to usable text");
-  }
-  return orderNumber;
 }
 
 function orderBindCommandError(diagnosticMessage: string) {

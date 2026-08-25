@@ -10,6 +10,7 @@
 Node 负责：
 
 - 从当前节点可用的文本或数字变量中选择一个订单号
+- 发布时校验该变量可达且类型仍是文本或数字
 - 使用 Task 执行前准备的 `externalUserId` 表达目标客户
 - 将解析后的订单号投影成类型化命令
 - 生成并重用稳定 `idempotencyKey`
@@ -100,11 +101,13 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 
 流程继续走默认出口，由后续条件分支消费 `操作结果`。
 
+订单号变量解析为空或空白时，同样输出 `"false"` 并继续默认出口，不调用 Java。这让后续条件分支可以处理「未抽到订单号」。
+
 系统不可用、超时、非法信封和未知结果不属于 `result: "false"`：
 
 - 非 HTTP 200、网络异常和超时属于 retryable
 - HTTP 200 下的非法 JSON、非法 envelope 属于 terminal
-- 参数非法、客户身份不可用属于 terminal
+- 配置非法、客户身份不可用、订单号超过 64 个字符属于 terminal
 
 Java HTTP 200 且 `error` 为安全整数时：
 
@@ -124,4 +127,4 @@ Java HTTP 200 且 `error` 为安全整数时：
 
 ## 5. 当前发布边界
 
-绑定订单为 `runtime-ready`。生产 Worker 注册 `order.bind@1:action`，路由到真实 Java Adapter `POST /third-internal/one-id/order-bind`。发布门禁可以放行配置完整且订单号变量有效的绑定订单节点。
+绑定订单为 `runtime-ready`。生产 Worker 注册 `order.bind@1:action`，路由到真实 Java Adapter `POST /third-internal/one-id/order-bind`。发布门禁可以放行配置完整、订单号变量可达且类型为文本或数字的绑定订单节点。

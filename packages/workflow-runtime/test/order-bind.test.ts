@@ -85,28 +85,60 @@ describe("Workflow Order Bind capability", () => {
   it("stops before calling Java when the customer identity is missing", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
 
-    await expect(executeWorkflowCapability({
-      binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
-      commandContext: { ...context, identities: {} },
-      config: {
-        orderNumberSelector: ["node", "llm", "orderNo"],
-      },
-      deadlineAt: new Date("2026-08-21T09:30:15.000Z"),
-      execution: {
-        nodeId: "order-bind",
-        revision: 2,
-        runId: "run-1",
-        sequence: 3,
-        workflowId: "workflow-1",
-      },
-      executionKey: "9:run-1:order-bind:3",
-      port: adapter,
-      signal: new AbortController().signal,
-      subjectId: "customer-1",
-      subjectType: "chatai_contact",
-      uid: 9,
+    await expect(executeOrderBind(adapter, { ...context, identities: {} })).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
+    });
+    expect(adapter.calls).toHaveLength(0);
+  });
+
+  it("completes empty or blank order numbers as false without calling Java", async () => {
+    for (const orderNo of ["", "   "]) {
+      const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+
+      await expect(executeOrderBind(adapter, {
+        ...context,
+        outputs: { llm: { orderNo } },
+      })).resolves.toEqual({ result: "false" });
+      expect(adapter.calls).toHaveLength(0);
+    }
+  });
+
+  it("stops when the resolved order number exceeds the contract length", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+
+    await expect(executeOrderBind(adapter, {
+      ...context,
+      outputs: { llm: { orderNo: "S".repeat(65) } },
     })).rejects.toMatchObject({
       code: "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
     });
+    expect(adapter.calls).toHaveLength(0);
   });
 });
+
+function executeOrderBind(
+  adapter: FakeWorkflowCapabilityAdapter,
+  commandContext: typeof context,
+) {
+  return executeWorkflowCapability({
+    binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+    commandContext,
+    config: {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    },
+    deadlineAt: new Date("2026-08-21T09:30:15.000Z"),
+    execution: {
+      nodeId: "order-bind",
+      revision: 2,
+      runId: "run-1",
+      sequence: 3,
+      workflowId: "workflow-1",
+    },
+    executionKey: "9:run-1:order-bind:3",
+    port: adapter,
+    signal: new AbortController().signal,
+    subjectId: "customer-1",
+    subjectType: "chatai_contact",
+    uid: 9,
+  });
+}

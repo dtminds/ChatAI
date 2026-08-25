@@ -580,6 +580,20 @@ describe("workflow node contracts", () => {
       groups: [{ id: 301, name: "高价值客户" }],
       matchMode: "any",
     })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "all",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "any",
+    })).toBe(false);
     expect(isWorkflowNodeDraftConfig("audience-filter", {
       groups: [{ id: 0, name: "高价值客户" }],
       matchMode: "any",

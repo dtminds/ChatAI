@@ -53,16 +53,20 @@ export function mapWorkflowAudienceFilterResult(input: {
   matchedGroupCount: number;
   matchedGroupNames: string;
 } {
-  const selectedIds = input.config.groups.map((group) => group.id);
-  const selectedIdSet = new Set(selectedIds);
+  const selectedIds: number[] = [];
+  const selectedIdSet = new Set<number>();
+  const nameById = new Map<number, string>();
+  for (const group of input.config.groups) {
+    if (selectedIdSet.has(group.id)) continue;
+    selectedIdSet.add(group.id);
+    selectedIds.push(group.id);
+    nameById.set(group.id, group.name);
+  }
   const membershipIds = new Set(
     input.result.groupIds.filter((groupId) => selectedIdSet.has(groupId)),
   );
-  if (membershipIds.size === 0 && input.result.exist) {
-    for (const groupId of selectedIds) membershipIds.add(groupId);
-  }
-  const matchedGroupNames = input.config.groups.flatMap((group) => (
-    membershipIds.has(group.id) ? [group.name] : []
+  const matchedGroupNames = selectedIds.flatMap((groupId) => (
+    membershipIds.has(groupId) ? [nameById.get(groupId) ?? ""] : []
   ));
   const matchedGroupCount = matchedGroupNames.length;
   return {

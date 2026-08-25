@@ -90,6 +90,37 @@ describe("Workflow Audience Filter capability", () => {
       config: { groups, matchMode: "all" },
       result: { exist: true, groupIds: [] },
     })).toEqual({
+      matched: false,
+      matchedGroupCount: 0,
+      matchedGroupNames: "",
+    });
+    expect(mapWorkflowAudienceFilterResult({
+      config: { groups, matchMode: "any" },
+      result: { exist: true, groupIds: [] },
+    })).toEqual({
+      matched: false,
+      matchedGroupCount: 0,
+      matchedGroupNames: "",
+    });
+    expect(mapWorkflowAudienceFilterResult({
+      config: { groups, matchMode: "none" },
+      result: { exist: true, groupIds: [] },
+    })).toEqual({
+      matched: true,
+      matchedGroupCount: 0,
+      matchedGroupNames: "",
+    });
+    expect(mapWorkflowAudienceFilterResult({
+      config: {
+        groups: [
+          { id: 301, name: "高价值客户" },
+          { id: 301, name: "重复快照" },
+          { id: 302, name: "沉默客户" },
+        ],
+        matchMode: "all",
+      },
+      result: { exist: true, groupIds: [301, 302] },
+    })).toEqual({
       matched: true,
       matchedGroupCount: 2,
       matchedGroupNames: "高价值客户、沉默客户",

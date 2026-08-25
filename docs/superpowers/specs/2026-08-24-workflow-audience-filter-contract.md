@@ -8,7 +8,7 @@
 
 Node 负责：
 
-- 校验用户选择了 1 到 3 个人群包快照 `{ id, name }`，以及匹配方式 `any` / `all` / `none`
+- 校验用户选择了 1 到 3 个 ID 不重复的人群包快照 `{ id, name }`，以及匹配方式 `any` / `all` / `none`
 - 使用本次 Task Prepare 得到的 `externalUserId` 表达目标客户
 - 一次调用检查接口，把匹配结果投影为节点输出：`matched`、`matchedGroupNames`、`matchedGroupCount`
 - 查询完成后走默认出口；是否匹配由下游条件分支读取节点输出决定
@@ -73,13 +73,15 @@ Java 成功响应 envelope：
 - `success === true` 或 `error === 0` 视为查询成功
 - `data.exist` 必须是 boolean
 - `data.groupIds` 与请求 ID 求交集；请求外 ID 忽略，不 terminal
+- `groupIds` 中的非法项（非正整数）和重复命中 ID 视为返回结果异常，terminal
 - 节点输出不复制 Java 的 `error` / `error_msg`
 
 匹配规则（membership = `result.groupIds ∩ config.groups[].id`）：
 
-- 若交集为空且 `exist === true`，把本次选中的人群包都视为命中
+- 交集是匹配权威；`exist` 不参与 `any` / `all` / `none` 判定
+- 交集为空时按空集计算，不把 `exist === true` 视为全部命中
 - `any`：命中数量 > 0
-- `all`：命中数量等于选中数量
+- `all`：命中数量等于已选唯一人群包数量
 - `none`：命中数量 = 0
 - 查询成功后走默认出口，不按符合 / 不符合分流
 
@@ -153,7 +155,7 @@ Node 映射规则：
 
 - 只读取顶层 `list`
 - 每项只取 `id` 和 `name`；`createType`、`groupNum`、`peopleCalculateTime` 不进入节点配置
-- 跳过无效项和重复 ID，按 Java 返回顺序保留当前页
+- `id` 接受 JSON number 或数字字符串，映射为正整数；无效项和重复 ID 跳过，按 Java 返回顺序保留当前页
 - 公开响应为 `{ groups, pagination: { hasNext, page, pageSize, total } }`，`total` 来自 Java `count`
 - `HTTP 200` 且 `success === true` 或 `error === 0` 视为列表成功
 - 列表失败时弹窗展示重试；已选快照仍回显

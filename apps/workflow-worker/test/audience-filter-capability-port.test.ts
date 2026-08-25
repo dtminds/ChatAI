@@ -10,7 +10,7 @@ import {
 describe("Workflow Audience Filter Java port", () => {
   it("queries once with 1 or 3 groupIds and returns the requested intersection", async () => {
     const fetchMock = vi.fn(async () => javaResponse({
-      data: { exist: true, groupIds: [999, 301, 301, 303] },
+      data: { exist: true, groupIds: [999, 301, 303] },
       error: 0,
       errorMsg: "",
       error_msg: "",
@@ -61,6 +61,31 @@ describe("Workflow Audience Filter Java port", () => {
       data: { exist: false },
       error: 0,
     }, [301])).toEqual({ exist: false, groupIds: [] });
+  });
+
+  it("rejects string, invalid, or duplicate group ids as terminal", () => {
+    expect(() => decodeWorkflowAudienceFilterJavaResponse({
+      data: { exist: true, groupIds: ["301"] },
+      success: true,
+    }, [301])).toThrow(expect.objectContaining({
+      code: "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
+      diagnosticMessage: "Workflow Audience Filter Java result contains an invalid group id",
+      failureKind: "terminal",
+    }));
+    expect(() => decodeWorkflowAudienceFilterJavaResponse({
+      data: { exist: true, groupIds: [301, {}] },
+      success: true,
+    }, [301])).toThrow(expect.objectContaining({
+      code: "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
+      failureKind: "terminal",
+    }));
+    expect(() => decodeWorkflowAudienceFilterJavaResponse({
+      data: { exist: true, groupIds: [301, 301] },
+      success: true,
+    }, [301])).toThrow(expect.objectContaining({
+      diagnosticMessage: "Workflow Audience Filter Java result contains a duplicate group id",
+      failureKind: "terminal",
+    }));
   });
 
   it("treats an explicit Java business failure as terminal", () => {

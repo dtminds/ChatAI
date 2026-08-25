@@ -183,8 +183,21 @@ export function decodeWorkflowAudienceFilterJavaResponse(
   const requestedGroupIdSet = new Set(requestedGroupIds);
   const membershipIds = new Set<number>();
   for (const item of Array.isArray(body.data.groupIds) ? body.data.groupIds : []) {
-    if (typeof item !== "number" || !Number.isSafeInteger(item) || item <= 0) continue;
+    if (typeof item !== "number" || !Number.isSafeInteger(item) || item <= 0) {
+      throw terminalError(
+        "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
+        "返回结果异常，流程已停止",
+        "Workflow Audience Filter Java result contains an invalid group id",
+      );
+    }
     if (!requestedGroupIdSet.has(item)) continue;
+    if (membershipIds.has(item)) {
+      throw terminalError(
+        "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
+        "返回结果异常，流程已停止",
+        "Workflow Audience Filter Java result contains a duplicate group id",
+      );
+    }
     membershipIds.add(item);
   }
   return {

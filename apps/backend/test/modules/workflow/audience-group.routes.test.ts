@@ -57,6 +57,7 @@ describe("workflow audience-group routes", () => {
             peopleCalculateTime: "2026-08-24 11:00:00",
           },
           { id: 301, name: "重复" },
+          { id: "303", name: "字符串 ID" },
           { id: 0, name: "无效" },
           { name: "缺 ID" },
         ],
@@ -81,6 +82,7 @@ describe("workflow audience-group routes", () => {
         groups: [
           { id: 301, name: "高价值客户" },
           { id: 302, name: "沉默客户" },
+          { id: 303, name: "字符串 ID" },
         ],
         pagination: {
           hasNext: true,
@@ -178,6 +180,82 @@ describe("workflow audience-group routes", () => {
     expect(body.data.groups[0]).toEqual({ id: 1, name: "人群包 1" });
     expect(body.data.groups[49]).toEqual({ id: 50, name: "人群包 50" });
     expect(body.data.pagination.pageSize).toBe(50);
+  });
+
+  it("rejects unauthenticated list requests", async () => {
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({ code: "UNAUTHORIZED" }),
+      success: false,
+    });
+  });
+
+  it("returns 503 when the Java internal API is not configured", async () => {
+    delete process.env.JAVA_INTERNAL_API_BASE_URL;
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_NOT_CONFIGURED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
+  it("maps Java HTTP failures and business rejections to retryable list errors", async () => {
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 502 }));
+    const httpFailure = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+    expect(httpFailure.statusCode).toBe(502);
+    expect(httpFailure.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({
+      error: 40001,
+      errorMsg: "人群包查询失败",
+      success: false,
+    }));
+    const rejected = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+    expect(rejected.statusCode).toBe(502);
+    expect(rejected.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
   });
 });
 

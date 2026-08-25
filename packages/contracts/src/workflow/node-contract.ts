@@ -9,6 +9,7 @@ import {
 import {
   WORKFLOW_AUDIENCE_GROUP_MAX_COUNT,
   WorkflowAudienceGroupSnapshotSchema,
+  type WorkflowAudienceGroupSnapshot,
 } from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
@@ -271,6 +272,19 @@ export const WorkflowAudienceFilterExecutionConfigSchema = Type.Object({
   ),
   matchMode: WorkflowAudienceFilterMatchModeSchema,
 }, { additionalProperties: false });
+
+export function hasUniqueWorkflowAudienceFilterGroupIds(
+  groups: readonly WorkflowAudienceGroupSnapshot[],
+) {
+  return new Set(groups.map((group) => group.id)).size === groups.length;
+}
+
+export function isWorkflowAudienceFilterExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowAudienceFilterExecutionConfig {
+  return Value.Check(WorkflowAudienceFilterExecutionConfigSchema, value)
+    && hasUniqueWorkflowAudienceFilterGroupIds(value.groups);
+}
 
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
@@ -719,7 +733,15 @@ export function isWorkflowNodeDraftConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
-  return Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value);
+  if (!Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value)) {
+    return false;
+  }
+  if (kind === "audience-filter") {
+    return hasUniqueWorkflowAudienceFilterGroupIds(
+      (value as WorkflowAudienceFilterDraftConfig).groups,
+    );
+  }
+  return true;
 }
 
 export function getUnknownWorkflowNodeDraftDataKeys(
@@ -744,6 +766,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "ai-collect") return isWorkflowAiCollectExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
   if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
+  if (kind === "audience-filter") return isWorkflowAudienceFilterExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null

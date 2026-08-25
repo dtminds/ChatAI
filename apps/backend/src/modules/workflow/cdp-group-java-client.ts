@@ -134,9 +134,14 @@ function mapGroupItem(value: unknown): WorkflowAudienceGroupSnapshot | null {
 }
 
 function readPositiveInteger(value: unknown) {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1
-    ? value
-    : null;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    if (Number.isSafeInteger(parsed) && parsed >= 1) return parsed;
+  }
+  return null;
 }
 
 function readGroupName(value: unknown) {

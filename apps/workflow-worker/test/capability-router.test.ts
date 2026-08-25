@@ -35,7 +35,7 @@ describe("Workflow capability router", () => {
     const customerUpdateExecute = vi.fn(async () => ({}));
     const handoffExecute = vi.fn(async () => ({}));
     const messageExecute = vi.fn(async () => ({}));
-    const pointsTransferExecute = vi.fn(async () => ({ result: "success" }));
+    const pointsTransferExecute = vi.fn(async () => ({ result: true }));
     const orderBindExecute = vi.fn(async () => ({ result: true }));
     const tagExecute = vi.fn(async () => ({}));
     const tagQueryExecute = vi.fn(async () => ({ matchedTags: [] }));
@@ -161,7 +161,7 @@ describe("Workflow capability router", () => {
 
   it("dispatches Points Transfer only to its exact action route", async () => {
     const messageExecute = vi.fn(async () => ({}));
-    const pointsTransferExecute = vi.fn(async () => ({ result: "success" }));
+    const pointsTransferExecute = vi.fn(async () => ({ result: true }));
     const router = new WorkflowCapabilityRouter([
       {
         binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
@@ -182,7 +182,7 @@ describe("Workflow capability router", () => {
     await expect(router.execute(
       WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition,
       request,
-    )).resolves.toEqual({ result: "success" });
+    )).resolves.toEqual({ result: true });
     expect(pointsTransferExecute).toHaveBeenCalledWith(
       WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition,
       request,

@@ -32,7 +32,7 @@ describe("workflow Points Transfer node", () => {
       expect.objectContaining({
         key: "result",
         label: "操作结果",
-        valueType: { kind: "string" },
+        valueType: { kind: "boolean" },
       }),
     ]);
     expect(pointsTransferNodeUi.body.kind === "fields"
@@ -41,10 +41,6 @@ describe("workflow Points Transfer node", () => {
       expect.objectContaining({
         id: "input",
         value: { kind: "empty" },
-      }),
-      expect.objectContaining({
-        id: "output",
-        value: { kind: "text", text: "操作结果" },
       }),
     ]);
   });
@@ -72,6 +68,38 @@ describe("workflow Points Transfer node", () => {
       orderNumberSelector: ["node", llm.id, "orderNo"],
       status: "ready",
     }));
+    expect(screen.getByRole("button", { name: "订单号" })).toHaveTextContent("大模型.订单号");
+
+    const currentNode = createPointsTransferNode();
+    currentNode.data = {
+      ...currentNode.data,
+      availableVariables: [{
+        key: "orderNo",
+        label: "订单号",
+        scope: "node",
+        selector: ["node", llm.id, "orderNo"],
+        sourceNodeId: llm.id,
+        sourceNodeKind: "llm",
+        sourceNodeTitle: llm.data.title,
+        type: "string",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      }],
+      orderNumberSelector: ["node", llm.id, "orderNo"],
+    };
+    expect(pointsTransferNodeUi.body.kind === "fields"
+      ? pointsTransferNodeUi.body.getFields(currentNode.data)[0]
+      : undefined).toMatchObject({
+      id: "input",
+      value: {
+        items: [
+          { kind: "source", text: "大模型" },
+          { kind: "text", text: "." },
+          { kind: "variable", text: "订单号" },
+        ],
+        kind: "segments",
+      },
+    });
   });
 
   it("shows the transfer result in the shared output section", () => {
@@ -79,7 +107,7 @@ describe("workflow Points Transfer node", () => {
 
     expect(screen.getByText("节点输出")).toBeInTheDocument();
     expect(screen.getByText("操作结果")).toBeInTheDocument();
-    expect(screen.getByText("文本")).toBeInTheDocument();
+    expect(screen.getByText("是/否")).toBeInTheDocument();
   });
 });
 

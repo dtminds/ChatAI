@@ -1,10 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { WORKFLOW_ORDER_NUMBER_MAX_LENGTH } from "./node-contract.js";
 
-export const WorkflowPointsTransferResultValueSchema = Type.Union([
-  Type.Literal("success"),
-  Type.Literal("false"),
-]);
+export const WorkflowPointsTransferResultValueSchema = Type.Boolean();
 
 export const WorkflowPointsTransferCommandSchema = Type.Object({
   orderNumber: Type.String({ maxLength: WORKFLOW_ORDER_NUMBER_MAX_LENGTH, minLength: 1 }),

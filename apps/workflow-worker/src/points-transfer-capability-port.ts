@@ -140,7 +140,7 @@ export async function executeWorkflowPointsTransfer(input: {
     );
   }
   return {
-    result: body.error === 0 ? "success" : "false",
+    result: body.error === 0,
   };
 }
 

@@ -1,4 +1,4 @@
-import { Link04Icon } from "@hugeicons/core-free-icons";
+import { CoinsYenIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import { resolveWorkflowVariable } from "../../workflow-variables";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
@@ -9,10 +9,10 @@ import {
 } from "./config";
 
 const basePointsTransferNodeDefinition = createStandardNodeDefinition({
-  accentClassName: "bg-rose-500 text-white",
+  accentClassName: "bg-rose-400 text-white",
   accentRgb: "244 63 94",
-  description: "根据订单号为客户转积分",
-  icon: Link04Icon,
+  description: "通过「资料收集」提取订单号，然后使用此节点代客转换积分",
+  icon: CoinsYenIcon,
   kind: "points-transfer",
   label: "代客转积分",
   metric: "待配置订单号",
@@ -28,11 +28,11 @@ export const pointsTransferNodeDefinition: WorkflowNodeDefinition<"points-transf
   }),
   getOutputVariables: () => [
     {
-      description: "系统会返回代客转积分结果，成功会返回 “success”，失败会返回 “false”",
+      description: "积分是否转换成功",
       key: "result",
       label: "操作结果",
       usages: ["variable"],
-      valueType: { kind: "string" },
+      valueType: { kind: "boolean" },
     },
   ],
   sanitizeData: (data) => {

@@ -1006,7 +1006,7 @@ export function getWorkflowNodeOutputContracts(
       {
         key: "result",
         usages: ["variable"],
-        valueType: { kind: "string" },
+        valueType: { kind: "boolean" },
       },
     ];
   }

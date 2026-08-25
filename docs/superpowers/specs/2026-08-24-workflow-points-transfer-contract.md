@@ -74,11 +74,11 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 
 ## 3. 响应与节点输出
 
-节点输出是字符串 `result`，编辑器展示为「操作结果」：
+节点输出是布尔值 `result`，编辑器展示为「操作结果」：
 
 ```json
 {
-  "result": "success"
+  "result": true
 }
 ```
 
@@ -86,13 +86,15 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 
 ```json
 {
-  "result": "false"
+  "result": false
 }
 ```
 
 流程继续走默认出口，由后续条件分支消费 `操作结果`。
 
-系统不可用、超时、非法信封和未知结果不属于 `result: "false"`：
+订单号变量解析为空、空白或超过 64 个字符时，同样输出 `false` 并继续默认出口，不调用 Java。这让后续条件分支可以处理无效订单号。
+
+系统不可用、超时、非法信封和未知结果不属于 `result: false`：
 
 - 非 HTTP 200、网络异常和超时属于 retryable
 - HTTP 200 下的非法 JSON、非法 envelope 属于 terminal
@@ -100,8 +102,8 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 
 Java HTTP 200 且 `error` 为安全整数时：
 
-- `error === 0` 映射为 `"success"`
-- 其它整数 `error` 映射为 `"false"`，节点完成并继续默认出口
+- `error === 0` 映射为 `true`
+- 其它整数 `error` 映射为 `false`，节点完成并继续默认出口
 
 不把 `success` 字段当作成功条件。
 

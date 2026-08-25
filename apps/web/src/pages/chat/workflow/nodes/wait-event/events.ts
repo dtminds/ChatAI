@@ -2,7 +2,7 @@ import type {
   WorkflowNodeOutputDefinition,
   WorkflowWaitEventType,
 } from "../../types";
-import { WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
+import { WORKFLOW_MESSAGE_SCHEMA_REF } from "@chatai/contracts";
 
 export const WAIT_EVENT_TRIGGERED_HANDLE_ID = "triggered";
 export const WAIT_EVENT_TIMEOUT_HANDLE_ID = "timeout";
@@ -20,23 +20,16 @@ export const workflowWaitEventDefinitions = {
     outputDefinitions: [
       {
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-        description: "等待期间按时间顺序收集的文本、图片、视频及其他消息内容。",
-        key: "messages",
-        label: "消息列表",
+        description: "首次触发等待事件的消息内容",
+        key: "message",
+        label: "触发消息",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGE_SCHEMA_REF },
       },
       {
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-        key: "messageCount",
-        label: "消息数量",
-        usages: ["variable"],
-        valueType: { kind: "number" },
-      },
-      {
-        availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-        key: "lastMessageAt",
-        label: "最后消息时间",
+        key: "triggeredAt",
+        label: "事件触发时间",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
       },

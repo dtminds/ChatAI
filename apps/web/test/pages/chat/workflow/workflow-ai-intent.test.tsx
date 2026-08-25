@@ -365,6 +365,73 @@ describe("workflow AI intent", () => {
     expect(within(workspace).getByText("用户在询问退款")).toBeInTheDocument();
   });
 
+  it("runs a saved AI Intent node with one Wait Event trigger message", async () => {
+    const user = userEvent.setup();
+    const waitEventNode = createNodeFromKind("wait-event", "wait-event", 1);
+    const baseIntentNode = createAiIntentNode([
+      { description: "咨询退款", id: "intent-refund" },
+    ]);
+    const intentNode = {
+      ...baseIntentNode,
+      data: {
+        ...baseIntentNode.data,
+        inputSelector: ["node", waitEventNode.id, "message"] as [string, string, string],
+      },
+    };
+    const edges = [createEdge(waitEventNode.id, intentNode.id, undefined, {
+      sourceHandle: "triggered",
+    })];
+    const inputValue = {
+      id: 1,
+      parts: [{ text: "退款什么时候到账？", type: "text" as const }],
+      role: "customer" as const,
+    };
+    aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({ inputValues: { inputValue }, status: "running" }),
+    );
+    aiIntentTestServiceMock.getWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({
+        completedAt: "2026-08-23T05:00:01.000Z",
+        inputValues: { inputValue },
+        output: { matchedIntentDescription: "咨询退款", reason: "用户在询问退款" },
+        status: "succeeded",
+      }),
+    );
+
+    render(
+      <NodeConfigPanel
+        allowedEntryEventTypes={["message.received"]}
+        edges={edges}
+        node={intentNode}
+        nodes={[waitEventNode, intentNode]}
+        onClose={vi.fn()}
+        onNodeChange={vi.fn()}
+        onRenameNode={vi.fn()}
+        testContext={{ draftVersion: 3, saveState: "saved", workflowId: "42" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "试运行意图识别节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    expect(within(workspace).queryByRole("button", { name: "添加消息" })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: "删除消息 1" })).not.toBeInTheDocument();
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    expect(within(workspace).getByRole("alert")).toHaveTextContent("请输入消息内容");
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).not.toHaveBeenCalled();
+
+    await user.type(
+      within(workspace).getByRole("textbox", { name: "消息 1 内容" }),
+      inputValue.parts[0].text,
+    );
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).toHaveBeenCalledWith(
+      "42",
+      intentNode.id,
+      { expectedDraftVersion: 3, inputValue },
+    );
+  });
+
   it("limits intent rows and confirms deletion when the outcome is connected", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();

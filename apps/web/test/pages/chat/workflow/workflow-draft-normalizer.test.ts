@@ -413,11 +413,12 @@ describe("workflow draft normalizer", () => {
     }));
   });
 
-  it("normalizes wait event type and timeout without persisting invalid values", () => {
+  it("normalizes wait event type, delay and timeout without persisting invalid values", () => {
     const draft = hydrateWorkflowDraft({
       edges: [],
       nodes: [{
         data: {
+          delay: { duration: 999, unit: "day" },
           event: { type: "unknown-event" },
           kind: "wait-event",
           timeout: { duration: 999, unit: "day" },
@@ -430,9 +431,10 @@ describe("workflow draft normalizer", () => {
     });
 
     expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      delay: { duration: 45, unit: "day" },
       event: { type: "message.received" },
       kind: "wait-event",
-      metric: "等待新消息 · 最长 15 天",
+      metric: "等待新消息 · 达到后等待 45 天 · 最长 15 天",
       timeout: { duration: 15, unit: "day" },
     }));
   });

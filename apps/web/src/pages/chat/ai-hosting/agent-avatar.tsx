@@ -22,10 +22,13 @@ export function AgentAvatar({
   return (
     <Blobatar
       animate={animate}
+      traits={{
+        shape: [0.11, 0.35, 0.54, 0.745, 0.888, 0.933, 0.965, 0.99],
+        "body.r": 0.999,
+      }}
       className={cn("shrink-0", className)}
       name={stableAgentId}
       size={size}
-      title={`${agentName.trim() || "Agent"}头像`}
     />
   );
 }

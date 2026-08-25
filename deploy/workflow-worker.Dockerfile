@@ -22,7 +22,10 @@ COPY packages/contracts ./packages/contracts
 COPY packages/workflow-engine ./packages/workflow-engine
 COPY packages/workflow-runtime ./packages/workflow-runtime
 
-RUN pnpm --filter @chatai/workflow-worker build
+RUN pnpm --filter @chatai/contracts exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/workflow-engine exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/workflow-runtime exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/workflow-worker exec tsc -p tsconfig.json
 
 FROM node:24-bookworm-slim
 

@@ -136,7 +136,7 @@ describe("friend add-way selection", () => {
       if (page === 2) {
         return {
           items: [{ addWayId: "live-21", createTime: 1_710_000_000_000, title: "第二页活动" }],
-          pagination: { hasNext: false, page: 2, pageSize: 20, total: 21 },
+          pagination: { hasNext: false, page: 2, pageSize: 10, total: 21 },
         };
       }
 
@@ -145,7 +145,7 @@ describe("friend add-way selection", () => {
           { addWayId: "live-1", createTime: 1_710_000_000_000, title: "门店活码" },
           { addWayId: "live-2", title: "活动活码" },
         ],
-        pagination: { hasNext: true, page: 1, pageSize: 20, total: 21 },
+        pagination: { hasNext: true, page: 1, pageSize: 10, total: 21 },
       };
     });
 
@@ -168,7 +168,7 @@ describe("friend add-way selection", () => {
     expect(listWorkflowFriendAddWayActivities).toHaveBeenCalledWith({
       key: "scan.mini_program",
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       title: undefined,
     });
     expect(within(dialog).getByRole("columnheader", { name: "创建时间" })).toBeInTheDocument();
@@ -183,7 +183,7 @@ describe("friend add-way selection", () => {
     expect(listWorkflowFriendAddWayActivities).toHaveBeenCalledWith({
       key: "scan.mini_program",
       page: 2,
-      pageSize: 20,
+      pageSize: 10,
       title: undefined,
     });
 

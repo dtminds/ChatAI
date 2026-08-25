@@ -5,9 +5,6 @@ import type {
   WorkflowFriendAddWayGroup,
   WorkflowFriendAddWayListResponse,
 } from "@chatai/contracts";
-import {
-  WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE_DEFAULT,
-} from "@chatai/contracts";
 import { http } from "@/lib/request";
 
 export type WorkflowFriendAddWayResourceStatus =
@@ -172,5 +169,4 @@ export function friendAddWayHasSecondary(path: WorkflowFriendAddWayPath) {
   return path.child != null || Boolean(path.group?.children.length);
 }
 
-export const WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE =
-  WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE_DEFAULT;
+export const WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE = 10;

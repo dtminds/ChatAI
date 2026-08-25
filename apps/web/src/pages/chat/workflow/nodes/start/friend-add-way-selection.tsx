@@ -435,13 +435,10 @@ function FriendAddWayActivityPicker({
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogContent className="flex h-[600px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
-          <div className="shrink-0 px-6 py-5">
+        <DialogContent className="flex h-[680px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
+          <div className="flex shrink-0 items-center gap-6 px-6 py-4">
             <DialogTitle className="text-lg">选择活动</DialogTitle>
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
-            <div className="relative shrink-0">
+            <div className="relative ml-auto w-[min(360px,60%)] shrink-0">
               <HugeiconsIcon
                 aria-hidden="true"
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -451,114 +448,115 @@ function FriendAddWayActivityPicker({
               />
               <Input
                 aria-label="搜索活动"
-                className="h-10 pl-9"
+                className="h-9 pl-9"
                 onChange={event => setQuery(event.target.value)}
                 placeholder="搜索"
                 value={query}
                 variant="soft"
               />
             </div>
+          </div>
 
-            <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
-              <Table aria-label="活动">
-                <TableHeader className="sticky top-0 z-10 bg-background">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6">
+            <Table aria-label="活动">
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                <TableRow>
+                  <TableHead className="w-12 px-4" />
+                  <TableHead className="px-4">活动</TableHead>
+                  <TableHead className="w-[200px] px-4">创建时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
                   <TableRow>
-                    <TableHead className="w-12 px-4" />
-                    <TableHead className="px-4">活动</TableHead>
-                    <TableHead className="w-[200px] px-4">创建时间</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell className="h-40 text-center" colSpan={3}>
-                        <div
-                          className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
-                          role="status"
-                        >
-                          <Spinner />
-                          <span>正在加载</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : error ? (
-                    <TableRow>
-                      <TableCell className="h-40 text-center" colSpan={3}>
-                        <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-                          <span>操作失败，请稍后重试</span>
-                          <Button
-                            onClick={() => setRetryKey(key => key + 1)}
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            重试
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : items.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        className="h-40 text-center text-sm text-muted-foreground"
-                        colSpan={3}
+                    <TableCell className="h-40 text-center" colSpan={3}>
+                      <div
+                        className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+                        role="status"
                       >
-                        暂无数据
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    items.map(item => {
-                      const checked = draftSelectedKeySet.has(item.addWayId);
-                      const disabled = atLimit && !checked;
-                      return (
-                        <TableRow key={item.addWayId}>
-                          <TableCell className="w-12 px-4 py-3">
-                            <Checkbox
-                              aria-label={item.title}
-                              checked={checked}
-                              disabled={disabled}
-                              onCheckedChange={next => toggleDraftId(item.addWayId, next === true)}
-                            />
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            <span className="line-clamp-2">{item.title}</span>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                            {formatActivityCreateTime(item.createTime)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                        <Spinner />
+                        <span>正在加载</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : error ? (
+                  <TableRow>
+                    <TableCell className="h-40 text-center" colSpan={3}>
+                      <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <span>操作失败，请稍后重试</span>
+                        <Button
+                          onClick={() => setRetryKey(key => key + 1)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          重试
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : items.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      className="h-40 text-center text-sm text-muted-foreground"
+                      colSpan={3}
+                    >
+                      暂无数据
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  items.map(item => {
+                    const checked = draftSelectedKeySet.has(item.addWayId);
+                    const disabled = atLimit && !checked;
+                    return (
+                      <TableRow key={item.addWayId}>
+                        <TableCell className="w-12 px-4 py-3">
+                          <Checkbox
+                            aria-label={item.title}
+                            checked={checked}
+                            disabled={disabled}
+                            onCheckedChange={next => toggleDraftId(item.addWayId, next === true)}
+                          />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <span className="line-clamp-2">{item.title}</span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                          {formatActivityCreateTime(item.createTime)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
+          <div className="flex shrink-0 items-center gap-4 px-6 py-4">
             {!error && total > 0 ? (
               <TablePagination
-                className="shrink-0 border-t-0 px-0 py-4"
+                className="min-w-0 flex-1 border-t-0 px-0 py-0 sm:justify-start"
                 onPageChange={setPage}
                 page={pagination.activePage}
                 total={total}
                 totalPages={pagination.totalPages}
               />
             ) : null}
-          </div>
-
-          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-6 py-4">
-            <Button className="min-w-20" onClick={() => setOpen(false)} type="button" variant="outline">
-              取消
-            </Button>
-            <Button
-              className="min-w-20"
-              onClick={() => {
-                onChange(draftSelectedIds);
-                setOpen(false);
-              }}
-              type="button"
-            >
-              确定
-            </Button>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              <Button className="min-w-20" onClick={() => setOpen(false)} type="button" variant="outline">
+                取消
+              </Button>
+              <Button
+                className="min-w-20"
+                onClick={() => {
+                  onChange(draftSelectedIds);
+                  setOpen(false);
+                }}
+                type="button"
+              >
+                确定
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

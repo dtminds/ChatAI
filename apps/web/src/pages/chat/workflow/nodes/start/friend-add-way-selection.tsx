@@ -435,12 +435,12 @@ function FriendAddWayActivityPicker({
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogContent className="flex h-[480px] max-h-[calc(100vh-2rem)] w-[min(560px,calc(100vw-2rem))] max-w-[560px] flex-col gap-0 overflow-hidden p-0">
-          <div className="shrink-0 border-b border-border px-6 py-4">
-            <DialogTitle className="text-base">选择活动</DialogTitle>
+        <DialogContent className="flex h-[600px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
+          <div className="shrink-0 px-6 py-5">
+            <DialogTitle className="text-lg">选择活动</DialogTitle>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+          <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
             <div className="relative shrink-0">
               <HugeiconsIcon
                 aria-hidden="true"
@@ -451,7 +451,7 @@ function FriendAddWayActivityPicker({
               />
               <Input
                 aria-label="搜索活动"
-                className="h-9 pl-9"
+                className="h-10 pl-9"
                 onChange={event => setQuery(event.target.value)}
                 placeholder="搜索"
                 value={query}
@@ -459,13 +459,13 @@ function FriendAddWayActivityPicker({
               />
             </div>
 
-            <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
               <Table aria-label="活动">
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
-                    <TableHead className="w-10" />
-                    <TableHead>活动</TableHead>
-                    <TableHead className="w-[168px]">创建时间</TableHead>
+                    <TableHead className="w-12 px-4" />
+                    <TableHead className="px-4">活动</TableHead>
+                    <TableHead className="w-[200px] px-4">创建时间</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -512,7 +512,7 @@ function FriendAddWayActivityPicker({
                       const disabled = atLimit && !checked;
                       return (
                         <TableRow key={item.addWayId}>
-                          <TableCell className="w-10">
+                          <TableCell className="w-12 px-4 py-3">
                             <Checkbox
                               aria-label={item.title}
                               checked={checked}
@@ -520,10 +520,10 @@ function FriendAddWayActivityPicker({
                               onCheckedChange={next => toggleDraftId(item.addWayId, next === true)}
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-4 py-3">
                             <span className="line-clamp-2">{item.title}</span>
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                             {formatActivityCreateTime(item.createTime)}
                           </TableCell>
                         </TableRow>
@@ -536,7 +536,7 @@ function FriendAddWayActivityPicker({
 
             {!error && total > 0 ? (
               <TablePagination
-                className="shrink-0 border-t-0 px-0 pt-3"
+                className="shrink-0 border-t-0 px-0 py-4"
                 onPageChange={setPage}
                 page={pagination.activePage}
                 total={total}
@@ -545,11 +545,12 @@ function FriendAddWayActivityPicker({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4">
-            <Button onClick={() => setOpen(false)} type="button" variant="outline">
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-6 py-4">
+            <Button className="min-w-20" onClick={() => setOpen(false)} type="button" variant="outline">
               取消
             </Button>
             <Button
+              className="min-w-20"
               onClick={() => {
                 onChange(draftSelectedIds);
                 setOpen(false);

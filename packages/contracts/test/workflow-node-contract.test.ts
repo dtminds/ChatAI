@@ -103,6 +103,7 @@ const draftConfigs = {
   },
   "order-bind": {},
   "order-query": {},
+  "order-conversion": {},
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
@@ -167,7 +168,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(20);
+    expect(entries).toHaveLength(21);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -181,7 +182,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -521,6 +522,7 @@ describe("workflow node contracts", () => {
       "message-query": "query",
       "order-bind": "action",
       "order-query": "query",
+      "order-conversion": "action",
       "ratio-split": "core",
       start: "core",
       tag: "action",
@@ -549,6 +551,7 @@ describe("workflow node contracts", () => {
       "message-query": ["thirdExternalUserId"],
       "order-bind": ["externalUserId"],
       "order-query": ["externalUserId"],
+      "order-conversion": ["mallUserId"],
       "ratio-split": [],
       start: [],
       tag: ["externalUserId"],
@@ -719,6 +722,26 @@ describe("workflow node contracts", () => {
       ],
     })).toBe(false);
     expect(getWorkflowNodeOutputContracts("customer-update", { fields: [] })).toBeNull();
+  });
+
+  it("keeps incomplete Order Conversion drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("order-conversion")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: ["mallUserId"],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("order-conversion", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-conversion", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("order-conversion", {})).toEqual([
+      { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
+    ]);
   });
 
   it("keeps the Customer Update Java command batched and bounded", () => {

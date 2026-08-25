@@ -291,6 +291,14 @@ export function isWorkflowAudienceFilterExecutionConfigComplete(
 
 export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
 
+export const WorkflowOrderConversionDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowOrderConversionExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
+
 export const WorkflowOrderBindDraftConfigSchema = Type.Object({
   orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
 }, { additionalProperties: false });
@@ -563,6 +571,8 @@ export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExec
 export type WorkflowAudienceFilterMatchMode = Static<typeof WorkflowAudienceFilterMatchModeSchema>;
 export type WorkflowAudienceFilterDraftConfig = Static<typeof WorkflowAudienceFilterDraftConfigSchema>;
 export type WorkflowAudienceFilterExecutionConfig = Static<typeof WorkflowAudienceFilterExecutionConfigSchema>;
+export type WorkflowOrderConversionDraftConfig = Static<typeof WorkflowOrderConversionDraftConfigSchema>;
+export type WorkflowOrderConversionExecutionConfig = Static<typeof WorkflowOrderConversionExecutionConfigSchema>;
 export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
 export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
@@ -693,6 +703,13 @@ export const workflowNodeContractRegistry = {
     ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
+  "order-conversion": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowOrderConversionDraftConfigSchema,
+    WorkflowOrderConversionExecutionConfigSchema,
+    ["mallUserId"],
+  ),
   start: runtimeReadyContract(
     "core",
     1,
@@ -1060,6 +1077,15 @@ export function getWorkflowNodeOutputContracts(
         key: "matchedGroupCount",
         usages: ["variable"],
         valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "order-conversion") {
+    return [
+      {
+        key: "result",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

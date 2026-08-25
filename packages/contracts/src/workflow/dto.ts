@@ -21,6 +21,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("llm"),
   Type.Literal("order-bind"),
   Type.Literal("order-query"),
+  Type.Literal("order-conversion"),
   Type.Literal("tag-query"),
   Type.Literal("customer-update"),
   Type.Literal("ai-collect"),

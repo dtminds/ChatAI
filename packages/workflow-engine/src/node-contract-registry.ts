@@ -153,6 +153,12 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
+  if (kind === "order-conversion") {
+    return cloneJsonRecord(compactUndefined({
+      orderNumberSelector: draftConfig.orderNumberSelector,
+    }));
+  }
+
   if (kind === "order-bind") {
     return cloneJsonRecord(compactUndefined({
       orderNumberSelector: draftConfig.orderNumberSelector,
@@ -235,6 +241,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Audience Filter node requires a match mode and 1 to 3 unique audience groups";
     case "customer-update":
       return "Customer Update node requires complete unique fields and values";
+    case "order-conversion":
+      return "Order Conversion node requires an order number variable";
     case "order-bind":
       return "Order Bind node requires an order number variable";
     default:

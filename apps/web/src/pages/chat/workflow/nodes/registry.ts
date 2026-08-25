@@ -14,6 +14,7 @@ import { messageNodeDefinition } from "./message/definition";
 import { messageQueryNodeDefinition } from "./message-query/definition";
 import { orderBindNodeDefinition } from "./order-bind/definition";
 import { orderQueryNodeDefinition } from "./order-query/definition";
+import { orderConversionNodeDefinition } from "./order-conversion/definition";
 import { ratioSplitNodeDefinition } from "./ratio-split/definition";
 import { startNodeDefinition } from "./start/definition";
 import { tagNodeDefinition } from "./tag/definition";
@@ -36,6 +37,7 @@ export const workflowNodeDefinitions = {
   "message-query": messageQueryNodeDefinition,
   "order-bind": orderBindNodeDefinition,
   "order-query": orderQueryNodeDefinition,
+  "order-conversion": orderConversionNodeDefinition,
   "ratio-split": ratioSplitNodeDefinition,
   start: startNodeDefinition,
   tag: tagNodeDefinition,

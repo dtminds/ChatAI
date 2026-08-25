@@ -24,6 +24,10 @@ describe("Workflow execution context prepare", () => {
       globalContext: true,
       identities: ["externalUserId"],
     });
+    expect(deriveWorkflowExecutionContextRequirements(node("order-conversion"))).toEqual({
+      globalContext: false,
+      identities: ["mallUserId"],
+    });
     expect(deriveWorkflowExecutionContextRequirements(node("order-bind"))).toEqual({
       globalContext: false,
       identities: ["externalUserId"],

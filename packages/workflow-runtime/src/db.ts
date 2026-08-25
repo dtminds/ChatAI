@@ -266,7 +266,6 @@ export interface WorkflowInboxTable {
 }
 
 export interface WorkflowEventSubscriptionTable {
-  collect_until: NullableDate;
   create_time: GeneratedDate;
   effective_from: DatabaseDate;
   event_type: string;
@@ -274,6 +273,7 @@ export interface WorkflowEventSubscriptionTable {
   id: Generated<DatabaseId>;
   node_id: string;
   revision: number;
+  resume_at: NullableDate;
   run_id: DatabaseId;
   seat_id: DatabaseId | null;
   status: string;
@@ -281,20 +281,11 @@ export interface WorkflowEventSubscriptionTable {
   subject_type: number;
   task_id: DatabaseId;
   trigger_event_id: string | null;
+  trigger_occurred_at: NullableDate;
+  trigger_projection_json: string | null;
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
-}
-
-export interface WorkflowEventSubscriptionEventTable {
-  create_time: GeneratedDate;
-  event_id: string;
-  id: Generated<DatabaseId>;
-  occurred_at: DatabaseDate;
-  projection_json: string;
-  subscription_id: DatabaseId;
-  uid: number;
-  update_time: GeneratedDate;
 }
 
 export interface WorkflowNodeMetricEventTable {
@@ -336,7 +327,6 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_event_subscription: WorkflowEventSubscriptionTable;
-  xy_wap_embed_workflow_event_subscription_event: WorkflowEventSubscriptionEventTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_inference_job: WorkflowInferenceJobTable;
   xy_wap_embed_workflow_llm_test_attempt: WorkflowLlmTestAttemptTable;

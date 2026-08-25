@@ -12,6 +12,7 @@ import { handoffNodeDefinition } from "./handoff/definition";
 import { llmNodeDefinition } from "./llm/definition";
 import { messageNodeDefinition } from "./message/definition";
 import { messageQueryNodeDefinition } from "./message-query/definition";
+import { orderBindNodeDefinition } from "./order-bind/definition";
 import { orderQueryNodeDefinition } from "./order-query/definition";
 import { ratioSplitNodeDefinition } from "./ratio-split/definition";
 import { startNodeDefinition } from "./start/definition";
@@ -33,6 +34,7 @@ export const workflowNodeDefinitions = {
   llm: llmNodeDefinition,
   message: messageNodeDefinition,
   "message-query": messageQueryNodeDefinition,
+  "order-bind": orderBindNodeDefinition,
   "order-query": orderQueryNodeDefinition,
   "ratio-split": ratioSplitNodeDefinition,
   start: startNodeDefinition,

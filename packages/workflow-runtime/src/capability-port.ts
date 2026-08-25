@@ -78,6 +78,10 @@ export type WorkflowCapabilityExecutionBinding<
   TResultSchema extends TSchema = TSchema,
   TKind extends WorkflowCapabilityKind = WorkflowCapabilityKind,
 > = {
+  completeWithoutExecution?(input: {
+    config: Record<string, unknown>;
+    context: WorkflowCapabilityCommandContext;
+  }): Record<string, unknown> | undefined;
   createCommand(input: {
     config: Record<string, unknown>;
     context: WorkflowCapabilityCommandContext;
@@ -142,6 +146,16 @@ export async function executeWorkflowCapabilityStep<
   subjectType: WorkflowSubjectType;
   uid: number;
 }): Promise<WorkflowCapabilityStepResult> {
+  const localResult = input.binding.completeWithoutExecution?.({
+    config: structuredClone(input.config),
+    context: structuredClone(input.commandContext),
+  });
+  if (localResult !== undefined) {
+    return {
+      output: decodeCapabilityResult(input.binding.definition.resultSchema, localResult),
+      sourceOutletId: "default",
+    };
+  }
   const command = input.binding.createCommand({
     config: structuredClone(input.config),
     context: structuredClone(input.commandContext),
@@ -168,31 +182,35 @@ export async function executeWorkflowCapabilityStep<
       : {}),
   } as WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>;
   const result = await input.port.execute(input.binding.definition, request);
+  const decodedResult = decodeCapabilityResult(
+    input.binding.definition.resultSchema,
+    result,
+  ) as Static<TResultSchema>;
+  const mappedInput = {
+    command: structuredClone(command) as Static<TCommandSchema>,
+    config: structuredClone(input.config),
+    context: structuredClone(input.commandContext),
+    result: decodedResult,
+  };
+  return {
+    output: input.binding.mapResult
+      ? input.binding.mapResult(mappedInput)
+      : decodedResult as Record<string, unknown>,
+    sourceOutletId: input.binding.resolveSourceOutlet?.(mappedInput) ?? "default",
+  };
+}
+
+function decodeCapabilityResult(schema: TSchema, result: unknown) {
   let decodedResult: unknown;
   try {
-    decodedResult = Value.Decode(
-      input.binding.definition.resultSchema,
-      structuredClone(result),
-    );
+    decodedResult = Value.Decode(schema, structuredClone(result));
   } catch {
     throw capabilityOutputInvalid();
   }
   if (!decodedResult || typeof decodedResult !== "object" || Array.isArray(decodedResult)) {
     throw capabilityOutputInvalid();
   }
-  const typedResult = decodedResult as Static<TResultSchema>;
-  const mappedInput = {
-    command: structuredClone(command) as Static<TCommandSchema>,
-    config: structuredClone(input.config),
-    context: structuredClone(input.commandContext),
-    result: typedResult,
-  };
-  return {
-    output: input.binding.mapResult
-      ? input.binding.mapResult(mappedInput)
-      : typedResult as Record<string, unknown>,
-    sourceOutletId: input.binding.resolveSourceOutlet?.(mappedInput) ?? "default",
-  };
+  return decodedResult as Record<string, unknown>;
 }
 
 function capabilityOutputInvalid() {

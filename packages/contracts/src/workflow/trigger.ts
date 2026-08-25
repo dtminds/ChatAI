@@ -42,8 +42,6 @@ export const DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW = {
   startTime: "09:00",
 } as const;
 
-export const DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY = "earliest-added" as const;
-
 const WorkflowClockTimeSchema = Type.String({
   pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
 });
@@ -53,9 +51,11 @@ export const WorkflowMessageSendingWindowSchema = Type.Object({
   startTime: WorkflowClockTimeSchema,
 }, { additionalProperties: false });
 
-export const WorkflowPushAccountStrategySchema = Type.Union([
-  Type.Literal("earliest-added"),
-  Type.Literal("latest-added"),
+export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
+
+export const WorkflowFriendAddWayMatchModeSchema = Type.Union([
+  Type.Literal("all"),
+  Type.Literal("any"),
 ]);
 
 const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
@@ -65,13 +65,36 @@ const WorkflowTriggerStringListSchema = Type.Array(
   { maxItems: 100, uniqueItems: true },
 );
 
+const WorkflowFriendSourceIdListSchema = Type.Array(
+  WorkflowTriggerStringSchema,
+  { maxItems: WORKFLOW_FRIEND_SOURCE_MAX_SELECTED, uniqueItems: true },
+);
+
+const WorkflowRequiredFriendSourceIdListSchema = Type.Array(
+  WorkflowTriggerStringSchema,
+  {
+    maxItems: WORKFLOW_FRIEND_SOURCE_MAX_SELECTED,
+    minItems: 1,
+    uniqueItems: true,
+  },
+);
+
 const WorkflowRequiredTriggerStringListSchema = Type.Array(
   WorkflowTriggerStringSchema,
   { maxItems: 100, minItems: 1, uniqueItems: true },
 );
 
+const WorkflowContactFriendAddedDraftTriggerSchema = Type.Object({
+  addWayKey: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
+  sourceIds: WorkflowFriendSourceIdListSchema,
+  sourceMatchMode: Type.Optional(WorkflowFriendAddWayMatchModeSchema),
+  type: Type.Literal("contact.friend_added"),
+}, { additionalProperties: false });
+
 const WorkflowContactFriendAddedTriggerSchema = Type.Object({
-  sourceIds: WorkflowTriggerStringListSchema,
+  addWayKey: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
+  sourceIds: WorkflowRequiredFriendSourceIdListSchema,
+  sourceMatchMode: Type.Optional(WorkflowFriendAddWayMatchModeSchema),
   type: Type.Literal("contact.friend_added"),
 }, { additionalProperties: false });
 
@@ -120,13 +143,13 @@ export const WorkflowWeComStartTriggerSchema = Type.Union([
 ]);
 
 const WorkflowChatAiStartDraftTriggerSchema = Type.Union([
-  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactFriendAddedDraftTriggerSchema,
   WorkflowContactTagAddedDraftTriggerSchema,
   WorkflowMessageReceivedDraftTriggerSchema,
 ]);
 
 const WorkflowWeComStartDraftTriggerSchema = Type.Union([
-  WorkflowContactFriendAddedTriggerSchema,
+  WorkflowContactFriendAddedDraftTriggerSchema,
   WorkflowContactTagAddedDraftTriggerSchema,
 ]);
 
@@ -134,7 +157,6 @@ export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
   entryMode: Type.Optional(WorkflowStartEntryModeSchema),
   entryPolicy: WorkflowEntryPolicySchema,
   messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
-  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     uniqueItems: true,
@@ -160,7 +182,6 @@ export const WorkflowStartDraftConfigSchema = Type.Union([
 const WorkflowChatAiStartExecutionFields = {
   entryPolicy: WorkflowEntryPolicySchema,
   messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
-  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,
@@ -212,7 +233,7 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
   Type.Object({
     entryPolicy: WorkflowEntryPolicySchema,
     eventType: Type.Literal("contact.friend_added"),
-    sourceIds: WorkflowTriggerStringListSchema,
+    sourceIds: WorkflowRequiredFriendSourceIdListSchema,
     workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,
@@ -251,7 +272,16 @@ export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
   minute: 360,
 } as const;
 export const WORKFLOW_WAIT_DAY_OFFSET_MAX = 45;
-export const WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS = 10;
+export const DEFAULT_WORKFLOW_WAIT_EVENT_DELAY = {
+  duration: 30,
+  unit: "second",
+} as const;
+export const WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT = {
+  day: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.day,
+  hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
+  minute: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.minute,
+  second: 3_600,
+} as const;
 export const WORKFLOW_WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
   day: 15,
   hour: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour,
@@ -305,7 +335,39 @@ const WorkflowWaitEventTimeoutSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+const WorkflowWaitEventDelaySchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 0,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.second,
+    }),
+    unit: Type.Literal("second"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.minute,
+    }),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.hour,
+    }),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({
+      minimum: 1,
+      maximum: WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT.day,
+    }),
+    unit: Type.Literal("day"),
+  }, { additionalProperties: false }),
+]);
+
 export const WorkflowWaitEventDraftConfigSchema = Type.Object({
+  delay: WorkflowWaitEventDelaySchema,
   event: Type.Object({
     type: Type.Literal("message.received"),
   }, { additionalProperties: false }),
@@ -313,18 +375,18 @@ export const WorkflowWaitEventDraftConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowWaitEventConfigSchema = Type.Object({
+  delay: WorkflowWaitEventDelaySchema,
   event: Type.Object({
-    collectWindowSeconds: Type.Literal(WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS),
     type: Type.Literal("message.received"),
   }, { additionalProperties: false }),
   timeout: WorkflowWaitEventTimeoutSchema,
 }, { additionalProperties: false });
 
+export type WorkflowFriendAddWayMatchMode = Static<typeof WorkflowFriendAddWayMatchModeSchema>;
 export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>;
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartEntryMode = Static<typeof WorkflowStartEntryModeSchema>;
 export type WorkflowMessageSendingWindow = Static<typeof WorkflowMessageSendingWindowSchema>;
-export type WorkflowPushAccountStrategy = Static<typeof WorkflowPushAccountStrategySchema>;
 export type WorkflowChatAiStartDraftConfig = Static<typeof WorkflowChatAiStartDraftConfigSchema>;
 export type WorkflowChatAiStartConfig = Static<typeof WorkflowChatAiStartConfigSchema>;
 export type WorkflowWeComStartDraftConfig = Static<typeof WorkflowWeComStartDraftConfigSchema>;

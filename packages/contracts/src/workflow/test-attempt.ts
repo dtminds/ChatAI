@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { WorkflowJsonObjectSchema } from "./entry-event.js";
-import { WorkflowMessagesV1Schema } from "./messages.js";
+import { WorkflowMessageSchema, WorkflowMessagesV1Schema } from "./messages.js";
 
 export const WORKFLOW_LLM_TEST_INPUT_MAX_BYTES = 32 * 1024;
 
@@ -21,6 +21,7 @@ export const WorkflowAiIntentTestAttemptCreateRequestSchema = Type.Object({
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
   inputValue: Type.Union([
     Type.String(),
+    WorkflowMessageSchema,
     WorkflowMessagesV1Schema,
   ]),
 }, { additionalProperties: false });

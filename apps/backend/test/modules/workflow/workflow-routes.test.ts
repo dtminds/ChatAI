@@ -106,10 +106,11 @@ describe("workflow routes", () => {
     })).json().data;
     const waitEventNode = {
       data: {
+        delay: { duration: 30, unit: "second" },
         event: { type: "message.received" },
         kind: "wait-event",
         label: "等待事件",
-        metric: "等待新消息 · 最长 24 小时",
+        metric: "等待新消息 · 达到后等待 30 秒 · 最长 24 小时",
         schemaVersion: 1,
         status: "ready",
         timeout: { duration: 24, unit: "hour" },
@@ -465,7 +466,7 @@ describe("workflow routes", () => {
               ...node.data,
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
             },
           }
         : node),

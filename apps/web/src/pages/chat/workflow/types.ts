@@ -23,6 +23,7 @@ import type {
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
+  WorkflowOrderBindDraftConfig,
   WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
@@ -131,6 +132,7 @@ export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegmen
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
 export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
+export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
@@ -143,6 +145,7 @@ export type WorkflowLlmOutputFieldType = SharedWorkflowLlmOutputFieldType;
 export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
+export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
@@ -170,6 +173,7 @@ export type WorkflowNodeDataMap = {
   llm: LlmNodeData;
   message: MessageNodeData;
   "message-query": MessageQueryNodeData;
+  "order-bind": OrderBindNodeData;
   "order-query": OrderQueryNodeData;
   "ratio-split": RatioSplitNodeData;
   start: StartNodeData;

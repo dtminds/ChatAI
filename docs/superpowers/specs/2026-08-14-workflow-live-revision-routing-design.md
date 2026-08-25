@@ -206,7 +206,7 @@ Workflow Run (FOR UPDATE)
 
 控制面事务可以先锁 Definition，但同一事务不得随后再锁既有 Run 或 Task；停止、删除和权益清退对 Run 的批量取消必须继续使用独立事务。首次创建 Run 时先锁 Definition、随后插入新的 Run/Task 不属于既有行反向加锁。
 
-当前实现中 `claimTask`、`beginEventWait`、`recordEventSubscriptionEvent` 和 Reconciler 已使用 Run/Task 先于 Definition；`beginInference`、`recoverInferenceJobs`、`finishInference` 仍是 Definition 先于 Run/Task，实施时必须调整。`prepareCapabilityExecution`、`cancelWorkflowBatch` 等不读取 Definition 的事务也要纳入审计，确认没有新增反向锁序。批量锁定同一类记录时按主键升序，降低多 Run 批次互相死锁的概率。
+当前实现中 `claimTask`、`beginEventWait`、`triggerEventSubscription` 和 Reconciler 已使用 Run/Task 先于 Definition；`beginInference`、`recoverInferenceJobs`、`finishInference` 仍是 Definition 先于 Run/Task，实施时必须调整。`prepareCapabilityExecution`、`cancelWorkflowBatch` 等不读取 Definition 的事务也要纳入审计，确认没有新增反向锁序。批量锁定同一类记录时按主键升序，降低多 Run 批次互相死锁的概率。
 
 如果 `commitNodeResult` 先锁 Definition 再锁 Run，会与现有 Run 优先路径、发布事务和 InnoDB 等待队列形成死锁窗口。发布事务继续对 Definition 使用 `FOR UPDATE`，且不锁既有 Run；推进事务在读取 `published_revision` 前对同一行加 `FOR SHARE`，因此发布与 Forward Routing 仍有明确先后顺序，同时允许同一 Workflow 的多个节点提交并发进行。
 
@@ -287,7 +287,7 @@ Fixed Wait 不再提前创建下游节点 Task。
 
 Wait Event Subscription 继续保存创建它的 Task Revision、Node ID 和事件契约。
 
-- 已创建 Subscription 不因发布改变事件类型、超时时间或收集窗口。
+- 已创建 Subscription 不因发布改变事件类型、超时时间或触发后固定延迟。
 - 触发或超时后，使用原 Task Revision 完成 Wait Event。
 - 完成时根据最新 Revision 的 `triggered` 或 `timeout` 出口解析下一跳。
 - 删除当前 Wait Event 节点时，按第 5.4 节定向取消 Subscription 和 Run。

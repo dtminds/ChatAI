@@ -60,6 +60,7 @@ export function TablePagination({
   page,
   pageSize,
   pageSizeOptions,
+  showTotal = true,
   total,
   totalPages,
 }: {
@@ -71,6 +72,7 @@ export function TablePagination({
   page: number;
   pageSize?: number;
   pageSizeOptions?: readonly number[];
+  showTotal?: boolean;
   total: number;
   totalPages: number;
 }) {
@@ -91,9 +93,11 @@ export function TablePagination({
           pageSizeOptions={pageSizeOptions}
         />
       ) : null}
-      <span className="shrink-0 whitespace-nowrap">
-        共 {total} {itemLabel}
-      </span>
+      {showTotal ? (
+        <span className="shrink-0 whitespace-nowrap">
+          共 {total} {itemLabel}
+        </span>
+      ) : null}
       <PageButtons
         maxPage={maxPage}
         onPageChange={onPageChange}

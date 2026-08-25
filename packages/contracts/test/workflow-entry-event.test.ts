@@ -35,11 +35,7 @@ describe("workflow entry event envelope", () => {
     expect(createWorkflowEntryPartitionKey(event({
       eventType: "message.received",
       payload: {
-        message: {
-          id: 938271,
-          parts: [{ text: "我想了解一下活动详情", type: "text" }],
-          role: "customer",
-        },
+        messageId: 938271,
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
@@ -74,6 +70,22 @@ describe("workflow entry event envelope", () => {
     expect(validateWorkflowEntryEvent(event(), {
       encodedByteLength: WORKFLOW_ENTRY_EVENT_MAX_BYTES + 1,
     })).toMatchObject({ code: "envelope_too_large", kind: "rejected" });
+  });
+
+  it("accepts the Java v1 message identity without embedded content", () => {
+    expect(validateWorkflowEntryEvent(event({
+      eventType: "message.received",
+      payload: {
+        messageId: 938271,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+      },
+      source: "chatai",
+    }))).toMatchObject({
+      event: { payload: { messageId: 938271 } },
+      kind: "accepted",
+    });
   });
 
   it("keeps shared idempotent event pairs byte-for-byte equivalent", () => {

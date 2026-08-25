@@ -11,6 +11,7 @@ import { handoffNodeUi } from "./handoff/ui";
 import { llmNodeUi } from "./llm/ui";
 import { messageNodeUi } from "./message/ui";
 import { messageQueryNodeUi } from "./message-query/ui";
+import { orderBindNodeUi } from "./order-bind/ui";
 import { orderQueryNodeUi } from "./order-query/ui";
 import { ratioSplitNodeUi } from "./ratio-split/ui";
 import { startNodeUi } from "./start/ui";
@@ -33,6 +34,7 @@ export const workflowNodeUiRegistry = {
   llm: llmNodeUi,
   message: messageNodeUi,
   "message-query": messageQueryNodeUi,
+  "order-bind": orderBindNodeUi,
   "order-query": orderQueryNodeUi,
   "ratio-split": ratioSplitNodeUi,
   start: startNodeUi,

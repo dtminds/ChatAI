@@ -1,12 +1,10 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowEntryPolicy,
   type WorkflowMessageSendingWindow,
-  type WorkflowPushAccountStrategy,
   type WorkflowStartEntryMode,
   type WorkflowStartTrigger,
 } from "@chatai/contracts";
@@ -41,6 +39,10 @@ import {
   getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureWorkUsers,
 } from "./fixture-options";
+import {
+  FriendAddWaySelection,
+  type FriendAddWaySelectionValue,
+} from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 
@@ -64,8 +66,6 @@ export function StartConfig({
   const managedAccounts = resources?.managedAccounts;
   const messageSendingWindow = chatAiStartData?.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
-  const pushAccountStrategy = chatAiStartData?.pushAccountStrategy
-    ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
     : workUsers;
@@ -75,7 +75,6 @@ export function StartConfig({
     entryMode?: WorkflowStartEntryMode;
     entryPolicy?: WorkflowEntryPolicy;
     messageSendingWindow?: WorkflowMessageSendingWindow;
-    pushAccountStrategy?: WorkflowPushAccountStrategy;
     seatIds?: number[];
     triggers?: WorkflowStartTrigger[];
     workUserIds?: number[];
@@ -192,13 +191,14 @@ export function StartConfig({
 
             {hasTrigger(triggers, "contact.friend_added") ? (
               <TriggerParameter label="添加好友来源">
-                <CommaSeparatedTriggerInput
-                  ariaLabel="添加好友来源 ID"
-                  onCommit={(sourceIds) => updateStartConfig({
-                    triggers: [{ sourceIds, type: "contact.friend_added" }],
+                <FriendAddWaySelection
+                  groups={resources?.friendAddWays?.groups ?? []}
+                  onChange={(next) => updateStartConfig({
+                    triggers: [toFriendAddedTrigger(next)],
                   })}
-                  placeholder="输入来源 ID，多个用英文逗号分隔"
-                  values={getFriendSourceIds(triggers)}
+                  onRetry={resources?.friendAddWays?.reload}
+                  status={resources?.friendAddWays?.status ?? "ready"}
+                  value={getFriendAddWayValue(triggers)}
                 />
               </TriggerParameter>
             ) : null}
@@ -320,47 +320,6 @@ export function StartConfig({
             </div>
           </section>
 
-          <section>
-            <div className="flex items-center gap-1.5 px-1 py-3">
-              <h3 className="text-[15px] font-semibold text-foreground">推送账号</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="查看推送账号说明"
-                      className="size-5 rounded-full p-0 text-muted-foreground"
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-80" side="top" sideOffset={6}>
-                    若 SOP 中包含发送消息、转人工等节点，会优先由客户的专属服务官执行。若所选托管账号均不是客户的专属服务官，则按以下优先级选择
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="px-1 pb-3">
-              <RadioGroup
-                className="flex items-center gap-6"
-                onValueChange={(strategy) => updateStartConfig({
-                  pushAccountStrategy: strategy as WorkflowPushAccountStrategy,
-                })}
-                value={pushAccountStrategy}
-              >
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="earliest-added" />
-                  <span>优先最早添加的账号</span>
-                </label>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="latest-added" />
-                  <span>优先最新添加的账号</span>
-                </label>
-              </RadioGroup>
-            </div>
-          </section>
         </>
       ) : null}
     </div>
@@ -565,8 +524,28 @@ function createTrigger(type: WorkflowStartTrigger["type"]): WorkflowStartTrigger
   return { keywords: [], type };
 }
 
-function getFriendSourceIds(triggers: WorkflowStartTrigger[]) {
-  return triggers.find(trigger => trigger.type === "contact.friend_added")?.sourceIds ?? [];
+function getFriendAddWayValue(triggers: WorkflowStartTrigger[]): FriendAddWaySelectionValue {
+  const trigger = triggers.find(item => item.type === "contact.friend_added");
+  if (!trigger || trigger.type !== "contact.friend_added") {
+    return { addWayKey: null, sourceIds: [], sourceMatchMode: "all" };
+  }
+
+  return {
+    addWayKey: trigger.addWayKey ?? null,
+    sourceIds: trigger.sourceIds,
+    sourceMatchMode: trigger.sourceMatchMode ?? "all",
+  };
+}
+
+function toFriendAddedTrigger(value: FriendAddWaySelectionValue): WorkflowStartTrigger {
+  return {
+    type: "contact.friend_added",
+    sourceIds: value.sourceIds,
+    ...(value.addWayKey ? { addWayKey: value.addWayKey } : {}),
+    ...(value.addWayKey && value.sourceMatchMode === "any"
+      ? { sourceMatchMode: "any" }
+      : {}),
+  };
 }
 
 function getTagIds(triggers: WorkflowStartTrigger[]) {

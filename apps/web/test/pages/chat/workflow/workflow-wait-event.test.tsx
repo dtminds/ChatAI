@@ -5,7 +5,10 @@ import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node
 import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
-import { WAIT_EVENT_TIMEOUT_MAX_BY_UNIT } from "@/pages/chat/workflow/nodes/wait-event/config";
+import {
+  WAIT_EVENT_DELAY_MAX_BY_UNIT,
+  WAIT_EVENT_TIMEOUT_MAX_BY_UNIT,
+} from "@/pages/chat/workflow/nodes/wait-event/config";
 import { WaitEventConfig } from "@/pages/chat/workflow/nodes/wait-event/panel";
 import {
   WAIT_EVENT_TIMEOUT_HANDLE_ID,
@@ -25,8 +28,8 @@ describe("workflow wait event", () => {
     const node = createWaitEventNode();
 
     expect(projectWorkflowNodeExecutionConfig({ data: node.data, kind: "wait-event" })).toEqual({
+      delay: { duration: 30, unit: "second" },
       event: {
-        collectWindowSeconds: 10,
         type: "message.received",
       },
       timeout: { duration: 24, unit: "hour" },
@@ -46,19 +49,19 @@ describe("workflow wait event", () => {
     expect(definition.getOutputVariables?.(node)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
-        key: "messages",
+        key: "message",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
+        valueType: { kind: "object", schemaRef: "workflow.message.v1" },
       }),
       expect.objectContaining({
-        key: "lastMessageAt",
+        key: "triggeredAt",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
       }),
     ]));
   });
 
-  it("configures the event and keeps timeout values within unit limits", async () => {
+  it("configures the event and keeps delay and timeout values within unit limits", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const node = createWaitEventNode();
@@ -73,6 +76,14 @@ describe("workflow wait event", () => {
     );
 
     expect(screen.getByRole("combobox", { name: "等待事件类型" })).toHaveTextContent("客户发送新消息");
+    const delayInput = screen.getByRole("spinbutton", { name: "事件到达后等待时间" });
+    expect(delayInput).toHaveValue(30);
+    fireEvent.change(delayInput, { target: { value: "99999" } });
+    fireEvent.blur(delayInput);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      delay: { duration: WAIT_EVENT_DELAY_MAX_BY_UNIT.second, unit: "second" },
+    }));
+
     const timeoutInput = screen.getByRole("spinbutton", { name: "最长等待时间" });
     fireEvent.change(timeoutInput, { target: { value: "999" } });
     fireEvent.blur(timeoutInput);
@@ -108,15 +119,15 @@ describe("workflow wait event", () => {
 
     expect(getAvailableIntentInputOutputsForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
+        expect.objectContaining({ selector: ["node", waitEventNode.id, "message"] }),
       ]));
     expect(getAvailableVariablesForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", waitEventNode.id, "messages"] }),
+        expect.objectContaining({ selector: ["node", waitEventNode.id, "message"] }),
       ]));
     expect(getAvailableTimeReferenceVariablesForNode(triggeredNode.id, nodes, edges))
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ selector: ["node", waitEventNode.id, "lastMessageAt"] }),
+        expect.objectContaining({ selector: ["node", waitEventNode.id, "triggeredAt"] }),
       ]));
     expect(getAvailableIntentInputOutputsForNode(timeoutNode.id, nodes, edges)).toEqual([]);
     expect(getAvailableVariablesForNode(timeoutNode.id, nodes, edges)).toEqual(expect.arrayContaining([
@@ -142,6 +153,20 @@ describe("workflow wait event", () => {
 
     expect(validateWorkflowNodeConfig(node, [node], [])).toContainEqual(expect.objectContaining({
       code: "wait-event-timeout-invalid",
+    }));
+  });
+
+  it("validates the persisted post-trigger delay", () => {
+    const node = {
+      ...createWaitEventNode(),
+      data: {
+        ...createDefaultNodeData("wait-event"),
+        delay: { duration: WAIT_EVENT_DELAY_MAX_BY_UNIT.second + 1, unit: "second" as const },
+      },
+    };
+
+    expect(validateWorkflowNodeConfig(node, [node], [])).toContainEqual(expect.objectContaining({
+      code: "wait-event-delay-invalid",
     }));
   });
 });

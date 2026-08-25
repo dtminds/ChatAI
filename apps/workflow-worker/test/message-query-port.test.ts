@@ -13,14 +13,61 @@ import {
 } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
+  buildEntryMessageQuery,
   buildMessageQueryMessagesQuery,
   buildMessageQuerySeatQuery,
   executeMessageQuery,
   formatMessageQueryRow,
+  MysqlWorkflowEntryMessageReader,
   MysqlWorkflowMessageQueryPort,
 } from "../src/message-query-port.js";
 
 describe("Workflow Message Query port", () => {
+  it("hydrates one Entry message by its tenant, member, contact, and message identity", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({
+      rows: [{
+        content: JSON.stringify({ text: "想了解价格" }),
+        from_type: 2,
+        id: "9001",
+        msgtype: "text",
+      }],
+    }));
+    const reader = new MysqlWorkflowEntryMessageReader(database);
+
+    await expect(reader.findById({
+      messageId: 9001,
+      thirdExternalUserId: "third-external-1",
+      uid: 9,
+      workUserId: 201,
+    })).resolves.toEqual({
+      id: 9001,
+      parts: [{ text: "想了解价格", type: "text" }],
+      role: "customer",
+    });
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.sql).not.toContain(" join ");
+    expect(queries[0]?.parameters).toEqual(expect.arrayContaining([
+      9,
+      9001,
+      5,
+      "third-external-1",
+      201,
+    ]));
+  });
+
+  it("returns no Entry message when the scoped identity query has no row", async () => {
+    const { database } = createRecordingDatabase(() => ({ rows: [] }));
+    const reader = new MysqlWorkflowEntryMessageReader(database);
+
+    await expect(reader.findById({
+      messageId: 9001,
+      thirdExternalUserId: "third-external-1",
+      uid: 9,
+      workUserId: 201,
+    })).resolves.toBeNull();
+  });
+
   it("rejects a missing prepared thirdExternalUserId before querying MySQL", async () => {
     const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
     const port = new MysqlWorkflowMessageQueryPort(database);
@@ -47,6 +94,12 @@ describe("Workflow Message Query port", () => {
 
   it("builds an isolated msgtime query without joins", () => {
     const database = createCompileOnlyDatabase();
+    const entryMessageQuery = buildEntryMessageQuery(database, {
+      messageId: 9001,
+      thirdExternalUserId: "third-external-1",
+      uid: 9,
+      workUserId: 201,
+    }).compile();
     const seatQuery = buildMessageQuerySeatQuery(database, { seatId: 101, uid: 9 }).compile();
     const messageQuery = buildMessageQueryMessagesQuery(database, {
       limit: 10,
@@ -60,6 +113,14 @@ describe("Workflow Message Query port", () => {
     }).compile();
 
     expect(seatQuery.sql).toContain("from `xy_wap_embed_user_seat`");
+    expect(entryMessageQuery.sql).toContain("from `xy_wap_embed_msg_audit_info`");
+    expect(entryMessageQuery.sql).not.toContain(" join ");
+    expect(entryMessageQuery.sql).toContain("`id` = ?");
+    expect(entryMessageQuery.sql).toContain("`third_external_id` = ?");
+    expect(entryMessageQuery.sql).toContain("`user_id` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`biz_status` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`revoke_status` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`status` = ?");
     expect(seatQuery.sql).toContain("`uid` = ?");
     expect(seatQuery.sql).toContain("`id` = ?");
     expect(messageQuery.sql).toContain("from `xy_wap_embed_msg_audit_info`");

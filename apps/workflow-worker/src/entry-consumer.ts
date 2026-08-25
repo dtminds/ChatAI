@@ -1,9 +1,11 @@
 import {
   WORKFLOW_INBOX_RETENTION_DAYS,
   WorkflowEntryEventTypeSchema,
+  WorkflowMessageReceivedPayloadSchema,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
   type WorkflowEntryEventType,
+  type WorkflowMessage,
   type WorkflowSubjectType,
   validateWorkflowEntryEvent,
 } from "@chatai/contracts";
@@ -21,13 +23,14 @@ import type {
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
-import { WorkflowRuntimeError } from "@chatai/workflow-runtime";
+import { fitWorkflowMessageOutput, WorkflowRuntimeError } from "@chatai/workflow-runtime";
 import type {
   WorkflowBroker,
   WorkflowBrokerMessage,
   WorkflowBrokerSubscription,
 } from "./broker/types.js";
 import { classifyEntryError } from "./error-policy.js";
+import type { WorkflowEntryMessageReader } from "./message-query-port.js";
 import {
   createWorkflowEntryConsumeObserver,
   type WorkflowWorkerLogger,
@@ -46,7 +49,7 @@ type WorkflowEntryRuntimeService = {
     subjectType: WorkflowSubjectType;
     uid: number;
   }): Promise<
-    | { firstEvent: boolean; kind: "success" }
+    | { kind: "success" }
     | {
         kind:
           | "already-processed"
@@ -93,6 +96,7 @@ export type WorkflowEntryFailureStage =
   | "dlq_publish"
   | "inbox_check"
   | "inbox_record"
+  | "message_hydration"
   | "routing_read"
   | "runtime_admission";
 
@@ -100,6 +104,7 @@ export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
   eventCatalog: WorkflowEventCatalog;
   inboxRepository: WorkflowInboxRepository;
+  messageReader?: WorkflowEntryMessageReader;
   now?: () => Date;
   publishToDeadLetter?: (
     message: WorkflowBrokerMessage,
@@ -149,24 +154,31 @@ export function createEntryConsumerHandler(input: {
             subject.subjectId,
             subject.seatId,
             new Date(parsed.event.occurredAt),
-            observedAt,
           ))).then(results => results.flat()),
       ]);
+      failureStage = "message_hydration";
+      const projection = await hydrateMessageReceivedProjection({
+        bindings,
+        event: parsed.event,
+        messageReader: input.messageReader,
+        projection: catalogResult.projection,
+        subscriptions,
+      });
       let admitted = 0;
       let deduplicated = 0;
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
       failureStage = "runtime_admission";
       for (const binding of bindings) {
-        if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
-        const subject = getProjectedSubject(catalogResult.projection, binding.subjectType);
+        if (!matchWorkflowTrigger(binding.filter, projection)) continue;
+        const subject = getProjectedSubject(projection, binding.subjectType);
         if (!subject) continue;
         try {
           const result = await admitWorkflow(
             input.runtimeService,
             binding,
             parsed.event,
-            catalogResult.projection,
+            projection,
             subject,
           );
           if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
@@ -183,8 +195,8 @@ export function createEntryConsumerHandler(input: {
             eventId: parsed.event.eventId,
             eventOccurredAt: new Date(parsed.event.occurredAt),
             eventType: entryEventType,
-            match: catalogResult.projection.match,
-            projection: catalogResult.projection.variables,
+            match: projection.match,
+            projection: projection.variables,
             recordedAt: observedAt,
             subscription,
             subjectId: subscription.subjectId,
@@ -234,6 +246,7 @@ export async function startEntryConsumer(input: {
   deadLetterTopic?: string;
   eventCatalog: WorkflowEventCatalog;
   inboxRepository: WorkflowInboxRepository;
+  messageReader: WorkflowEntryMessageReader;
   logger?: WorkflowWorkerLogger;
   maxRedeliverCount?: number;
   now?: () => Date;
@@ -250,6 +263,7 @@ export async function startEntryConsumer(input: {
     bindingReader: input.bindingReader,
     eventCatalog: input.eventCatalog,
     inboxRepository: input.inboxRepository,
+    messageReader: input.messageReader,
     now: input.now,
     publishToDeadLetter: deadLetterTopic
       ? async (message, code) => {
@@ -298,6 +312,79 @@ export async function startEntryConsumer(input: {
 }
 
 const WORKFLOW_ENTRY_INBOX_CONSUMER = "workflow-entry";
+
+async function hydrateMessageReceivedProjection(input: {
+  bindings: WorkflowTriggerBindingRecord[];
+  event: WorkflowEntryEvent;
+  messageReader?: WorkflowEntryMessageReader;
+  projection: WorkflowTriggerProjection;
+  subscriptions: WorkflowEventSubscriptionRecord[];
+}): Promise<WorkflowTriggerProjection> {
+  if (input.event.eventType !== "message.received") return input.projection;
+  if (!Value.Check(WorkflowMessageReceivedPayloadSchema, input.event.payload)) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_PAYLOAD_INVALID",
+      "Workflow Entry 消息标识无效",
+      500,
+    );
+  }
+  if (!hasMessageHydrationCandidate(input.bindings, input.projection, input.subscriptions)) {
+    return input.projection;
+  }
+  if (!input.messageReader) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_READER_UNAVAILABLE",
+      "Workflow Entry 消息读取器不可用",
+      503,
+    );
+  }
+  const message = await input.messageReader.findById({
+    messageId: input.event.payload.messageId,
+    thirdExternalUserId: input.event.payload.thirdExternalUserId,
+    uid: input.event.uid,
+    workUserId: input.event.payload.workUserId,
+  });
+  if (!message || message.id !== input.event.payload.messageId) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_UNAVAILABLE",
+      "Workflow Entry 消息暂不可用",
+      503,
+    );
+  }
+  const visibleMessage = fitWorkflowMessageOutput(message, candidate => ({ message: candidate })).message;
+  return {
+    ...input.projection,
+    match: {
+      ...input.projection.match,
+      text: renderMessageText(message),
+    },
+    variables: {
+      ...input.projection.variables,
+      message: visibleMessage,
+    },
+  };
+}
+
+function hasMessageHydrationCandidate(
+  bindings: WorkflowTriggerBindingRecord[],
+  projection: WorkflowTriggerProjection,
+  subscriptions: WorkflowEventSubscriptionRecord[],
+) {
+  if (subscriptions.length > 0) return true;
+  const seatId = projection.match.seatId;
+  return typeof seatId === "number" && bindings.some(binding =>
+    binding.subjectType === "chatai_contact"
+    && binding.filter.eventType === "message.received"
+    && binding.filter.seatIds.includes(seatId));
+}
+
+function renderMessageText(message: WorkflowMessage) {
+  return message.parts
+    .filter((part): part is Extract<WorkflowMessage["parts"][number], { type: "text" }> =>
+      part.type === "text")
+    .map(part => part.text)
+    .join("");
+}
 
 function createEntryInboxMessageId(event: Pick<WorkflowEntryEvent, "eventId" | "uid">) {
   return `${event.uid}:${event.eventId}`;

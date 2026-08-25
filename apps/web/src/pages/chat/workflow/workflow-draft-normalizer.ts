@@ -1,4 +1,7 @@
-import { getWorkflowNodeContract } from "@chatai/contracts";
+import {
+  getUnknownWorkflowNodeDraftDataKeys,
+  getWorkflowNodeContract,
+} from "@chatai/contracts";
 import { DEFAULT_WORKFLOW_VIEWPORT } from "./graph";
 import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
@@ -226,7 +229,15 @@ function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
     schemaVersion: Math.max(fromVersion, contract.currentDraftSchemaVersion),
   } as WorkflowNodeData<TKind>;
 
-  return definition.sanitizeData?.(nextData) ?? nextData;
+  const sanitizedData = definition.sanitizeData?.(nextData) ?? nextData;
+  if (fromVersion > contract.currentDraftSchemaVersion) return sanitizedData;
+
+  const unknownKeys = new Set(getUnknownWorkflowNodeDraftDataKeys(kind, sanitizedData));
+  if (unknownKeys.size === 0) return sanitizedData;
+
+  return Object.fromEntries(
+    Object.entries(sanitizedData).filter(([key]) => !unknownKeys.has(key)),
+  ) as WorkflowNodeData<TKind>;
 }
 
 function sanitizeNodeData<TKind extends WorkflowNodeKind>(

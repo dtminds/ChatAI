@@ -58,6 +58,14 @@ describe("Workflow AI Intent test Attempt contract", () => {
     })).toBe(true);
     expect(Value.Check(WorkflowAiIntentTestAttemptCreateRequestSchema, {
       expectedDraftVersion: 3,
+      inputValue: {
+        id: 100,
+        parts: [{ text: "退款什么时候到账", type: "text" }],
+        role: "customer",
+      },
+    })).toBe(true);
+    expect(Value.Check(WorkflowAiIntentTestAttemptCreateRequestSchema, {
+      expectedDraftVersion: 3,
       inputValue: [{
         id: 101,
         parts: [{ type: "image", url: "https://example.com/order.png" }],

@@ -15,7 +15,10 @@ import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
-import { WORKFLOW_MESSAGES_SCHEMA_REF } from "./messages.js";
+import {
+  WORKFLOW_MESSAGE_SCHEMA_REF,
+  WORKFLOW_MESSAGES_SCHEMA_REF,
+} from "./messages.js";
 import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
@@ -286,6 +289,15 @@ export function isWorkflowAudienceFilterExecutionConfigComplete(
     && hasUniqueWorkflowAudienceFilterGroupIds(value.groups);
 }
 
+export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
+
+export const WorkflowOrderBindDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowOrderBindExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -551,6 +563,8 @@ export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExec
 export type WorkflowAudienceFilterMatchMode = Static<typeof WorkflowAudienceFilterMatchModeSchema>;
 export type WorkflowAudienceFilterDraftConfig = Static<typeof WorkflowAudienceFilterDraftConfigSchema>;
 export type WorkflowAudienceFilterExecutionConfig = Static<typeof WorkflowAudienceFilterExecutionConfigSchema>;
+export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
+export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -670,6 +684,13 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
     ["thirdExternalUserId"],
+  ),
+  "order-bind": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowOrderBindDraftConfigSchema,
+    WorkflowOrderBindExecutionConfigSchema,
+    ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
   start: runtimeReadyContract(
@@ -968,19 +989,13 @@ export function getWorkflowNodeOutputContracts(
     return [
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messages",
+        key: "message",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
+        valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGE_SCHEMA_REF },
       },
       {
         availableOnSourceOutlets: ["triggered"],
-        key: "messageCount",
-        usages: ["variable"],
-        valueType: { kind: "number" },
-      },
-      {
-        availableOnSourceOutlets: ["triggered"],
-        key: "lastMessageAt",
+        key: "triggeredAt",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
       },
@@ -1048,6 +1063,15 @@ export function getWorkflowNodeOutputContracts(
       },
     ];
   }
+  if (kind === "order-bind") {
+    return [
+      {
+        key: "result",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
+      },
+    ];
+  }
   return null;
 }
 
@@ -1111,6 +1135,11 @@ export function isWorkflowOutputValueTypeEqual(
 export function isWorkflowMessagesValueType(valueType: WorkflowOutputValueType) {
   return valueType.kind === "object"
     && valueType.schemaRef === WORKFLOW_MESSAGES_SCHEMA_REF;
+}
+
+export function isWorkflowMessageValueType(valueType: WorkflowOutputValueType) {
+  return valueType.kind === "object"
+    && valueType.schemaRef === WORKFLOW_MESSAGE_SCHEMA_REF;
 }
 
 export function isWorkflowLlmExecutionConfigComplete(
@@ -1208,7 +1237,8 @@ function isWorkflowPromptComplete(
       || !inputName
       || (!allowWorkflowMessages
         && input.value.kind === "variable"
-        && isWorkflowMessagesValueType(input.value.valueType))
+        && (isWorkflowMessageValueType(input.value.valueType)
+          || isWorkflowMessagesValueType(input.value.valueType)))
     ) {
       return false;
     }

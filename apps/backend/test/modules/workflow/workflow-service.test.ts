@@ -170,6 +170,47 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("creates AI Intent test Attempts from a single Wait Event message", async () => {
+    const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
+    const service = createService(new InMemoryWorkflowRepository(), {
+      llmTestAttemptRepository: attempts,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withAiIntentNode(created.draft, "wait-event"),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const inputValue = {
+      id: 101,
+      parts: [{ text: "退款什么时候到账", type: "text" as const }],
+      role: "customer" as const,
+    };
+
+    const attempt = await service.createAiIntentTestAttempt(
+      operator,
+      created.id,
+      "ai-intent-1",
+      { expectedDraftVersion: saved.draftVersion, inputValue },
+    );
+
+    expect(attempt).toMatchObject({
+      inputValues: { inputValue },
+      nodeId: "ai-intent-1",
+      status: "running",
+    });
+    expect(attempts.attempts[0]).toMatchObject({
+      payload: {
+        messageList: [
+          { role: "system" },
+          {
+            content: [{ text: "用户: 退款什么时候到账", type: "text" }],
+            role: "user",
+          },
+        ],
+      },
+    });
+  });
+
   it("rejects stale or source-type-mismatched AI Intent test inputs", async () => {
     const attempts = new InMemoryWorkflowLlmTestAttemptRepository();
     const service = createService(new InMemoryWorkflowRepository(), {
@@ -418,7 +459,7 @@ describe("WorkflowService", () => {
     const created = await service.create(operator, { workflowType: "wecom_sop" });
     const startConfigured = withStartConfig(created.draft, {
       entryPolicy: { mode: "never" },
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
     });
     const draft = {
@@ -996,7 +1037,7 @@ describe("WorkflowService", () => {
         windowUnit: "day",
       },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     const seeded = await service.saveDraft(operator, created.id, {
@@ -1021,7 +1062,7 @@ describe("WorkflowService", () => {
       draft: withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [102],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -1114,7 +1155,7 @@ describe("WorkflowService", () => {
       draft: withWaitNode(withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }), { duration: 2, mode: "duration", unit: "day" }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -1482,7 +1523,7 @@ async function createConfigured(
   const draft = withStartConfig(created.draft, {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   });
   return service.saveDraft(operator, created.id, {
     draft,
@@ -1558,11 +1599,14 @@ function withLlmNode(
 
 function withAiIntentNode(
   draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  sourceKind: "message-query" | "wait-event" = "message-query",
 ) {
+  const sourceNodeId = sourceKind === "wait-event" ? "wait-event-1" : "message-query-1";
+  const sourceOutputKey = sourceKind === "wait-event" ? "message" : "messages";
   const intentNode = {
     data: {
       advancedEnabled: false,
-      inputSelector: ["node", "message-query-1", "messages"] as [string, string, string],
+      inputSelector: ["node", sourceNodeId, sourceOutputKey] as [string, string, string],
       intents: [{ description: "咨询退款", id: "refund" }],
       kind: "ai-intent" as const,
       label: "意图识别",
@@ -1576,38 +1620,56 @@ function withAiIntentNode(
     position: { x: 340, y: 240 },
     type: "workflowNode",
   };
-  const messageQueryNode = {
-    data: {
-      kind: "message-query" as const,
-      label: "消息查询",
-      limit: 10,
-      metric: "最新 10 条消息",
-      schemaVersion: 1,
-      status: "ready" as const,
-      take: "latest" as const,
-      timeRange: {
-        end: ["current-node-lifecycle", "enteredAt"] as [string, string],
-        mode: "dynamic" as const,
-        start: ["trigger", "occurredAt"] as [string, string],
-      },
-      title: "消息查询",
-    },
-    id: "message-query-1",
-    position: { x: 170, y: 240 },
-    type: "workflowNode",
-  };
+  const sourceNode = sourceKind === "wait-event"
+    ? {
+        data: {
+          delay: { duration: 30, unit: "second" as const },
+          event: { type: "message.received" as const },
+          kind: "wait-event" as const,
+          label: "等待事件",
+          metric: "等待新消息 · 达到后等待 30 秒 · 最长 24 小时",
+          schemaVersion: 1,
+          status: "ready" as const,
+          timeout: { duration: 24, unit: "hour" as const },
+          title: "等待事件",
+        },
+        id: sourceNodeId,
+        position: { x: 170, y: 240 },
+        type: "workflowNode",
+      }
+    : {
+        data: {
+          kind: "message-query" as const,
+          label: "消息查询",
+          limit: 10,
+          metric: "最新 10 条消息",
+          schemaVersion: 1,
+          status: "ready" as const,
+          take: "latest" as const,
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"] as [string, string],
+            mode: "dynamic" as const,
+            start: ["trigger", "occurredAt"] as [string, string],
+          },
+          title: "消息查询",
+        },
+        id: sourceNodeId,
+        position: { x: 170, y: 240 },
+        type: "workflowNode",
+      };
   return {
     ...draft,
     edges: [
       {
         id: "edge-start-query",
         source: "start",
-        target: "message-query-1",
+        target: sourceNodeId,
         type: "workflowEdge",
       },
       {
         id: "edge-query-intent",
-        source: "message-query-1",
+        source: sourceNodeId,
+        ...(sourceKind === "wait-event" ? { sourceHandle: "triggered" } : {}),
         target: "ai-intent-1",
         type: "workflowEdge",
       },
@@ -1628,7 +1690,7 @@ function withAiIntentNode(
     ],
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
-      messageQueryNode,
+      sourceNode,
       intentNode,
       draft.nodes.find(node => node.id === "end")!,
     ],

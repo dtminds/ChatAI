@@ -17,7 +17,6 @@ import {
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowMessageSchema,
-  type WorkflowMessage,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -70,7 +69,7 @@ import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
-import { fitWorkflowMessagesOutput } from "./workflow-messages.js";
+import { fitWorkflowMessageOutput } from "./workflow-messages.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
@@ -294,16 +293,18 @@ export class WorkflowRuntimeService {
         && input.match.seatId !== input.subscription.seatId)) {
       return { kind: "not-matched" as const };
     }
-    const collectUntil = input.subscription.status === "waiting"
-      ? new Date(input.recordedAt.getTime() + config.event.collectWindowSeconds * 1_000)
-      : input.subscription.collectUntil;
-    if (!collectUntil) throw staleTaskError();
-    const recorded = await this.runtimeRepository.recordEventSubscriptionEvent({
-      collectUntil,
+    const message = input.projection.message;
+    if (!Value.Check(WorkflowMessageSchema, message)) throw staleDefinitionError();
+    const delayedUntil = new Date(
+      input.eventOccurredAt.getTime() + getWaitEventDelayMilliseconds(config),
+    );
+    const resumeAt = delayedUntil > input.recordedAt ? delayedUntil : input.recordedAt;
+    const recorded = await this.runtimeRepository.triggerEventSubscription({
       eventId: input.eventId,
       eventOccurredAt: input.eventOccurredAt,
-      projection: input.projection,
+      projection: { message: structuredClone(message) },
       recordedAt: input.recordedAt,
+      resumeAt,
       subscriptionId: input.subscription.id,
       uid: input.uid,
     });
@@ -723,9 +724,6 @@ export class WorkflowRuntimeService {
       };
     }
 
-    let collectedEvents: Awaited<ReturnType<WorkflowRuntimeRepository[
-      "listEventSubscriptionEvents"
-    ]>> | null = null;
     let sourceOutletId: "timeout" | "triggered";
     if (input.existingSubscription.status === "waiting") {
       const timedOut = await this.runtimeRepository.timeoutEventSubscription({
@@ -740,10 +738,6 @@ export class WorkflowRuntimeService {
     } else if (input.existingSubscription.status === "timed_out") {
       sourceOutletId = "timeout";
     } else if (input.existingSubscription.status === "triggered") {
-      collectedEvents = await this.runtimeRepository.listEventSubscriptionEvents(
-        input.input.uid,
-        input.existingSubscription.id,
-      );
       sourceOutletId = "triggered";
     } else {
       throw staleTaskError();
@@ -752,11 +746,13 @@ export class WorkflowRuntimeService {
     let output: Record<string, unknown>;
     let nextContext: Record<string, unknown>;
     try {
-      output = collectedEvents ? aggregateWaitEventOutput(collectedEvents) : {};
+      output = sourceOutletId === "triggered"
+        ? createTriggeredWaitEventOutput(input.existingSubscription)
+        : {};
       assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
       const completedAt = this.clock();
       nextContext = appendNodeOutput(input.run.context, input.node.id, output, {
-        enteredAt: input.claimedTask.dueAt,
+        enteredAt: input.existingSubscription.effectiveFrom,
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
@@ -1251,23 +1247,26 @@ function requireWaitEventConfig(node: WorkflowExecutionNode): WorkflowWaitEventC
   return structuredClone(node.config) as WorkflowWaitEventConfig;
 }
 
-function aggregateWaitEventOutput(
-  events: Awaited<ReturnType<WorkflowRuntimeRepository["listEventSubscriptionEvents"]>>,
-) {
-  if (events.length === 0) throw invalidWaitEventOutput();
-  const messages: WorkflowMessage[] = [];
-  let lastMessageAt = events[0]!.occurredAt;
-  for (const event of events) {
-    const message = event.projection.message;
-    if (!Value.Check(WorkflowMessageSchema, message)) throw invalidWaitEventOutput();
-    messages.push(structuredClone(message));
-    if (event.occurredAt > lastMessageAt) lastMessageAt = event.occurredAt;
+function createTriggeredWaitEventOutput(subscription: WorkflowEventSubscriptionRecord) {
+  const message = subscription.triggerProjection?.message;
+  if (!subscription.triggerOccurredAt || !Value.Check(WorkflowMessageSchema, message)) {
+    throw invalidWaitEventOutput();
   }
-  return fitWorkflowMessagesOutput(messages, "latest", visibleMessages => ({
-    lastMessageAt: lastMessageAt.toISOString(),
-    messageCount: events.length,
-    messages: visibleMessages,
+  return fitWorkflowMessageOutput(message, visibleMessage => ({
+    message: visibleMessage,
+    triggeredAt: subscription.triggerOccurredAt!.toISOString(),
   }));
+}
+
+function getWaitEventDelayMilliseconds(config: WorkflowWaitEventConfig) {
+  const unitMilliseconds = config.delay.unit === "second"
+    ? 1_000
+    : config.delay.unit === "minute"
+      ? 60_000
+      : config.delay.unit === "hour"
+        ? 3_600_000
+        : 86_400_000;
+  return config.delay.duration * unitMilliseconds;
 }
 
 function invalidWaitEventOutput() {

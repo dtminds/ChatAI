@@ -45,9 +45,8 @@ describe("workflow node projection registry", () => {
       entryMode: "event",
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
   });
 
@@ -158,15 +157,19 @@ const projectableDraftData = {
       start: ["trigger", "occurredAt"],
     },
   },
+  "order-bind": {
+    orderNumberSelector: ["node", "llm", "orderNo"],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   },
   tag: { operation: "add", tagIds: [101, 102] },
   "tag-query": { matchMode: "all", tagIds: [101, 102] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
+    delay: { duration: 30, unit: "second" },
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },

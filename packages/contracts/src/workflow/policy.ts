@@ -78,6 +78,7 @@ const CHATAI_NODE_KINDS = [
   "tag-query",
   "tag",
   "customer-update",
+  "order-bind",
   "coupon",
   "end",
 ] as const satisfies readonly WorkflowNodeKind[];
@@ -93,6 +94,7 @@ const WECOM_NODE_KINDS = [
   "tag-query",
   "tag",
   "customer-update",
+  "order-bind",
   "coupon",
   "end",
 ] as const satisfies readonly WorkflowNodeKind[];

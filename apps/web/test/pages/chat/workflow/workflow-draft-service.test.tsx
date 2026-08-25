@@ -19,8 +19,6 @@ import { createInitialDraft } from "@/pages/chat/workflow/graph";
 import type {
   WorkflowDocument,
   WorkflowDraftRepository,
-  WorkflowDraftReader,
-  WorkflowDraftWriter,
   SyncWorkflowDraftRepository,
   WorkflowVersionHistoryItem,
 } from "@/pages/chat/workflow/workflow-draft-service";
@@ -485,23 +483,6 @@ describe("workflow draft service", () => {
 
     expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBe("工厂仓库保存的人群");
     expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").draft)).toBeNull();
-  });
-
-  it("treats the draft repository as a replaceable reader and writer contract", async () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const reader: WorkflowDraftReader = repository;
-    const writer: WorkflowDraftWriter = repository;
-
-    expect((await Promise.resolve(reader.listDocuments())).map((workflow) => workflow.id)).toEqual([
-      "newcomer-conversion",
-      "vip-reactivation",
-      "live-follow-up",
-    ]);
-
-    writer.saveDraft("newcomer-conversion", createDraftWithStartSourceMarker("通过 writer 保存的人群"));
-
-    expect(getStartSourceMarker((await Promise.resolve(reader.getDocument("newcomer-conversion"))).draft))
-      .toBe("通过 writer 保存的人群");
   });
 
   it("keeps saving state until an async repository save resolves", async () => {

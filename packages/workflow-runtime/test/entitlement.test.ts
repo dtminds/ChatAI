@@ -5,18 +5,18 @@ import {
 } from "../src/entitlement.js";
 
 describe("workflow entitlement port", () => {
-  it("allows workflow operations when the explicit test mode is enabled", async () => {
-    const port = createWorkflowEntitlementPort({ mode: "allow" });
+  it.each(["chatai_sop", "wecom_sop"] as const)(
+    "allows workflow operations in test mode for %s",
+    async (workflowType) => {
+      const port = createWorkflowEntitlementPort({ mode: "allow" });
 
-    await expect(port.check({ uid: 9, workflowType: "chatai_sop" })).resolves.toEqual({
-      entitled: true,
-      unentitledSince: null,
-    });
-    await expect(port.check({ uid: 9, workflowType: "wecom_sop" })).resolves.toEqual({
-      entitled: true,
-      unentitledSince: null,
-    });
-  });
+      await expect(port.check({ uid: 9, workflowType })).resolves.toEqual({
+        entitled: true,
+        unentitledSince: null,
+      });
+    },
+  );
+
 
   it("fails closed by default when the Java endpoint is not configured", async () => {
     const port = createWorkflowEntitlementPort({});

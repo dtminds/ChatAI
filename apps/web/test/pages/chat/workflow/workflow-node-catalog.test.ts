@@ -191,16 +191,18 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
 }
 
 describe("workflow node catalog", () => {
-  it("filters every capability profile through the catalog without route errors", () => {
-    for (const workflowType of ["chatai_sop", "wecom_sop"] as const) {
+  it.each(["chatai_sop", "wecom_sop"] as const)(
+    "filters the %s capability profile through the catalog without route errors",
+    (workflowType) => {
       const allowedInsertableNodeKinds = getWorkflowCapabilityProfile(workflowType)
         .allowedNodeKinds
         .filter(canInsertNodeKind);
 
       expect(allowedInsertableNodeKinds).toContain("ratio-split");
       expect(allowedInsertableNodeKinds).toContain("audience-filter");
-    }
-  });
+    },
+  );
+
 
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];

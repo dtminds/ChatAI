@@ -43,45 +43,28 @@ describe("Order Conversion compiler validation", () => {
     );
   });
 
-  it("compiles when the selected order number is a reachable number", () => {
-    const spec = compileWorkflowDraft({
-      draft: createOrderConversionDraft({
-        orderNumberSelector: ["node", "llm", "orderNo"],
-      }, "number"),
-      revision: 1,
-      workflowId: "42",
-      workflowType: "chatai_sop",
-    });
+  it.each(["string", "number"] as const)(
+    "compiles when the selected order number is a reachable %s",
+    (llmFieldType) => {
+      const spec = compileWorkflowDraft({
+        draft: createOrderConversionDraft({
+          orderNumberSelector: ["node", "llm", "orderNo"],
+        }, llmFieldType),
+        revision: 1,
+        workflowId: "42",
+        workflowType: "chatai_sop",
+      });
 
-    expect(spec.nodes.find(node => node.id === "order-conversion")).toEqual({
-      config: {
-        orderNumberSelector: ["node", "llm", "orderNo"],
-      },
-      id: "order-conversion",
-      kind: "order-conversion",
-      nodeSchemaVersion: 1,
-    });
-  });
-
-  it("compiles when the selected order number is reachable", () => {
-    const spec = compileWorkflowDraft({
-      draft: createOrderConversionDraft({
-        orderNumberSelector: ["node", "llm", "orderNo"],
-      }),
-      revision: 1,
-      workflowId: "42",
-      workflowType: "chatai_sop",
-    });
-
-    expect(spec.nodes.find(node => node.id === "order-conversion")).toEqual({
-      config: {
-        orderNumberSelector: ["node", "llm", "orderNo"],
-      },
-      id: "order-conversion",
-      kind: "order-conversion",
-      nodeSchemaVersion: 1,
-    });
-  });
+      expect(spec.nodes.find(node => node.id === "order-conversion")).toEqual({
+        config: {
+          orderNumberSelector: ["node", "llm", "orderNo"],
+        },
+        id: "order-conversion",
+        kind: "order-conversion",
+        nodeSchemaVersion: 1,
+      });
+    },
+  );
 });
 
 function expectCompilationIssue(

@@ -1,29 +1,21 @@
-import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { BlobatarProps } from "@blobatar/react";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AgentAvatar,
   resolveAgentAvatarIdentity,
 } from "@/pages/chat/ai-hosting/agent-avatar";
-import { useAppearanceStore } from "@/store/appearance-store";
+
+vi.mock("@blobatar/react", () => ({
+  Blobatar: ({ animate, name, size }: BlobatarProps) => (
+    <output data-animate={animate} data-name={name} data-size={size} data-testid="blobatar" />
+  ),
+}));
 
 describe("AgentAvatar", () => {
-  beforeEach(() => {
-    useAppearanceStore.setState({
-      isSystemDarkMode: false,
-      themePreference: "light",
-    });
-  });
-
-  afterEach(() => {
-    useAppearanceStore.setState({
-      isSystemDarkMode: false,
-      themePreference: "system",
-    });
-  });
-
-  it("uses hover-capable avatars with stable identities across renames", () => {
-    const { container } = render(
+  it("uses the stable agent id and hover animation by default", () => {
+    render(
       <>
         <AgentAvatar agentId="301" agentName="护肤小助理" />
         <AgentAvatar agentId="301" agentName="护肤顾问" />
@@ -31,63 +23,15 @@ describe("AgentAvatar", () => {
       </>,
     );
 
-    expect(screen.getByRole("img", { name: "护肤小助理头像" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "护肤顾问头像" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "售后小助理头像" })).toBeInTheDocument();
-
-    const avatars = Array.from(container.querySelectorAll("svg"));
-
-    expect(avatars).toHaveLength(3);
-    expect(getVisualMarkup(avatars[0])).toBe(getVisualMarkup(avatars[1]));
-    expect(getVisualMarkup(avatars[0])).not.toBe(getVisualMarkup(avatars[2]));
+    expect(screen.getAllByTestId("blobatar")).toEqual([
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "301" }) }),
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "301" }) }),
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "302" }) }),
+    ]);
   });
 
-  it("uses the stable agent id and reserves a draft identity before creation", () => {
+  it("reserves a draft identity before creation", () => {
     expect(resolveAgentAvatarIdentity(" 301 ")).toBe("301");
     expect(resolveAgentAvatarIdentity("  ")).toBe("draft");
   });
-
-  it("keeps the identity colors stable across appearance modes", () => {
-    const { container } = render(
-      <AgentAvatar agentId="301" agentName="护肤小助理" />,
-    );
-    const lightMarkup = getAvatarVisualMarkup(container);
-
-    act(() => {
-      useAppearanceStore.setState({ themePreference: "dark" });
-    });
-
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
-
-    act(() => {
-      useAppearanceStore.setState({
-        isSystemDarkMode: false,
-        themePreference: "system",
-      });
-    });
-
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
-
-    act(() => {
-      useAppearanceStore.setState({ isSystemDarkMode: true });
-    });
-
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
-  });
 });
-
-function getVisualMarkup(avatar: SVGSVGElement) {
-  const clone = avatar.cloneNode(true) as SVGSVGElement;
-
-  clone.querySelector("title")?.remove();
-
-  return clone.innerHTML;
-}
-
-function getAvatarVisualMarkup(container: HTMLElement) {
-  const avatar = container.querySelector("svg");
-
-  expect(avatar).not.toBeNull();
-
-  return getVisualMarkup(avatar as SVGSVGElement);
-}

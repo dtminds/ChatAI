@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      worker_image: ${{ steps.filter.outputs.worker_image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -46,7 +45,6 @@ jobs:
               - ".github/workflows/ci.yml"
               - "apps/backend/**"
               - "apps/workflow-worker/**"
-              - "deploy/workflow-worker.Dockerfile"
               - "package.json"
               - "packages/contracts/**"
               - "packages/workflow-engine/**"
@@ -55,19 +53,6 @@ jobs:
               - "pnpm-workspace.yaml"
               - "tsconfig*.json"
               - "tsconfig.base.json"
-            worker_image:
-              - ".github/workflows/backend-ci.yml"
-              - "apps/workflow-worker/**"
-              - "deploy/workflow-worker.Dockerfile"
-              - "package.json"
-              - "packages/contracts/**"
-              - "packages/workflow-engine/**"
-              - "packages/workflow-runtime/**"
-              - "pnpm-lock.yaml"
-              - "pnpm-workspace.yaml"
-              - "tsconfig*.json"
-              - "tsconfig.base.json"
-
   backend:
     name: Backend
     needs: changes
@@ -143,22 +128,3 @@ jobs:
 
       - name: Verify workflow worker production imports
         run: pnpm --filter @chatai/workflow-worker verify:production-imports
-
-      - name: Set up Docker Buildx
-        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.worker_image == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build workflow worker image
-        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.worker_image == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/workflow-worker.Dockerfile
-          load: true
-          tags: chatai-workflow-worker:ci
-          cache-from: type=gha,scope=workflow-worker
-          cache-to: type=gha,mode=max,scope=workflow-worker
-
-      - name: Verify workflow worker Pulsar binding
-        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.worker_image == 'true'
-        run: docker run --rm --workdir /app/apps/workflow-worker chatai-workflow-worker:ci node --input-type=module -e "await import('pulsar-client')"

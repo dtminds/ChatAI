@@ -1,6 +1,7 @@
 import {
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
+  isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowCustomerUpdateExecutionConfigComplete,
   isWorkflowHandoffExecutionConfigComplete,
@@ -288,6 +289,33 @@ function validateWorkflowNodeReferences(
         issues.push({
           code: "invalid-node-config",
           message: "Order Bind node references unavailable order number data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "ai-collect"
+      && isWorkflowAiCollectExecutionConfigComplete(node.config)
+      && node.config.inputSelector) {
+      const valid = validateWorkflowVariableSelector({
+        edges,
+        guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
+          node.id,
+          nodeIds,
+          edges,
+        ),
+        nodeById,
+        allowedSourceKinds: ["node-output"],
+        requiredUsage: "intent-input",
+        selector: node.config.inputSelector,
+        targetNodeId: node.id,
+        workflowType,
+        entryEventTypes,
+      });
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "AI Collect node references unavailable input data",
           nodeId: node.id,
         });
       }

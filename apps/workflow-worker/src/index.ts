@@ -35,7 +35,10 @@ import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
 import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
-import { MysqlWorkflowMessageQueryPort } from "./message-query-port.js";
+import {
+  MysqlWorkflowEntryMessageReader,
+  MysqlWorkflowMessageQueryPort,
+} from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
 import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
@@ -160,6 +163,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       eventCatalog: WORKFLOW_EVENT_CATALOG,
       eventSubscriptionReader: repository,
       inboxRepository: repository,
+      messageReader: new MysqlWorkflowEntryMessageReader(database),
       inferenceAdapter,
       inferenceRepository: repository,
       inferenceWorker: processWorkflowInferenceBatch,

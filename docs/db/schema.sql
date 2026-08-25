@@ -768,33 +768,19 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   status VARCHAR(32) NOT NULL COMMENT '状态：waiting、triggered、timed_out、cancelled',
   effective_from DATETIME NOT NULL COMMENT '订阅生效时间',
   expires_at DATETIME NOT NULL COMMENT '最长等待截止时间',
-  collect_until DATETIME NULL COMMENT '事件触发后的消息收集截止时间',
+  resume_at DATETIME NULL COMMENT '首个事件触发后的固定等待截止时间',
   trigger_event_id VARCHAR(128) NULL COMMENT '首个命中的入口事件ID',
+  trigger_occurred_at DATETIME NULL COMMENT '首个命中事件的业务发生时间',
+  trigger_projection_json JSON NULL COMMENT '首个命中事件的受控变量投影',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_event_subscription_task (uid, task_id, event_type),
   KEY idx_workflow_event_subscription_lookup
     (uid, subject_type, event_type, subject_id, status, expires_at, id),
-  KEY idx_workflow_event_subscription_collect
-    (uid, subject_type, event_type, subject_id, status, collect_until, id),
   KEY idx_workflow_event_subscription_run (uid, run_id, status, id),
   KEY idx_workflow_event_subscription_reconcile (status, id)
 ) COMMENT='营销Workflow动态事件等待订阅表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription_event (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  subscription_id BIGINT UNSIGNED NOT NULL COMMENT 'Wait Event订阅ID',
-  event_id VARCHAR(128) NOT NULL COMMENT 'Workflow入口事件ID',
-  occurred_at DATETIME NOT NULL COMMENT '事件发生时间',
-  projection_json JSON NOT NULL COMMENT 'Event Catalog允许的变量投影',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收集时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id),
-  KEY idx_workflow_event_subscription_event_list (uid, subscription_id, occurred_at, id)
-) COMMENT='营销Workflow等待事件收集记录表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

@@ -2,6 +2,7 @@ import { NodeFieldList } from "../node-field-list";
 import type { NodeBodyProps } from "../types";
 import {
   getWaitEventUnitLabel,
+  normalizeWaitEventDelay,
   normalizeWaitEventTimeout,
   normalizeWaitEventType,
 } from "./config";
@@ -9,6 +10,7 @@ import { getWorkflowWaitEventDefinition } from "./events";
 
 export function WaitEventNodeBody({ data }: NodeBodyProps<"wait-event">) {
   const event = getWorkflowWaitEventDefinition(normalizeWaitEventType(data.event?.type));
+  const delay = normalizeWaitEventDelay(data.delay);
   const timeout = normalizeWaitEventTimeout(data.timeout);
 
   return (
@@ -19,6 +21,14 @@ export function WaitEventNodeBody({ data }: NodeBodyProps<"wait-event">) {
             id: "event",
             label: "等待事件",
             value: { kind: "text", text: event.label },
+          },
+          {
+            id: "delay",
+            label: "达到后等待",
+            value: {
+              kind: "text",
+              text: `${delay.duration} ${getWaitEventUnitLabel(delay.unit)}`,
+            },
           },
           {
             id: "timeout",

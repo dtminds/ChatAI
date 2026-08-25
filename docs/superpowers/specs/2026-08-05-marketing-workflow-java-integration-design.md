@@ -832,13 +832,14 @@ void recordWorkflowEvent(DomainFact fact) {
 同一条事件还需要查询动态 Subscription：
 
 ```text
-按 uid + subjectType + eventType + subjectId 查询 waiting / 收集窗口内的 triggered Subscription
+按 uid + subjectType + eventType + subjectId 查询 waiting Subscription
   -> 校验 account、事件配置和事件有效时间
   -> waiting：首条事件与 Timeout 竞争 subscription.status = waiting
-       - 首条事件成功：写 trigger_event_id，状态改为 triggered
-       - 将等待 Task 的 due_at 改为 recordedAt + 10 秒
-  -> triggered：collect_until 前按 eventId 幂等追加受控 Trigger Projection
-  -> collect_until 到达后由等待 Task 一次聚合消息输出
+       - 首条事件成功：写 trigger_event_id、trigger_occurred_at 和受控 Trigger Projection，状态改为 triggered
+       - resume_at = max(recordedAt, eventOccurredAt + Revision 中冻结的固定延迟)
+       - 将等待 Task 的 due_at 改为 resume_at，原事件超时立即失效
+  -> triggered Subscription 不再参与事件匹配，不记录任何后续事件
+  -> resume_at 到达后输出首条 message 和 triggeredAt；超过节点输出上限时静默截断消息尾部
   -> 根据“事件到达”出口创建下一 Task
   -> 未被首条事件抢占的 Timeout 根据“等待超时”出口继续
 ```
@@ -1236,8 +1237,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 实现进入等待、事件触发、超时、暂停、停止和恢复语义。
 - 实现 Triggered / Timed Out 两个出口的原子竞争。
 - 将前端旧标识 `customer.message.received` 直接统一为公共事件 `message.received`，不保留不存在历史数据的别名。
-- 首条消息先赢得与 Timeout 的 CAS，再进入固定 10 秒收集窗口；窗口内事件按 `eventId` 幂等聚合，结束后一次输出结构化 `messages`、`messageCount` 和 `lastMessageAt`；超过节点输出上限时按时间顺序移除整条旧消息，不截断单条消息内容。
-- Runtime 只消费 Event Catalog 产出的 Trigger Projection；Java 原始 payload 未冻结期间由 Fake Event Catalog 提供测试投影。
+- 首条消息先赢得与 Timeout 的 CAS，订阅行只锁存首条消息投影和业务发生时间；触发后固定延迟默认 30 秒，可配置秒、分、时、天，并从 `eventOccurredAt` 计算，实际恢复时间不早于 `recordedAt`。首次 CAS 成功后不再订阅后续事件，原事件超时立即失效。节点只输出首条 `message` 和 `triggeredAt`，超过节点输出上限时静默截断消息尾部。
+- Event Catalog 先从 Java v1 payload 投影 `messageId` 和主体身份；Entry Consumer 读取候选 Binding / Subscription 后按 `messageId` 查询一次消息，复用于 Start 关键词匹配和 Wait Event 首次消息锁存。没有候选消费者时不查询消息。
 - Compiler 将事件源的 `capabilityKey + contractVersion` 冻结到 Revision；能力关闭时不触发 Subscription，超时 Task 保持 Pending，恢复后重新调度。
 - 仅允许 Capability Profile 中声明的事件和主体类型进入等待。
 - 验收：重复事件、不同主体类型同值 ID、事件和超时并发、Worker 崩溃后恢复都只推进正确 Run 一次。
@@ -1276,7 +1277,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Java Outbox 重发与 Node 入口幂等。
 - 覆盖一个事件命中多个 Workflow。
 - 覆盖 Wait Event 事件/超时竞争和暂停恢复。
-- 覆盖固定 10 秒收集窗口内多消息乱序、重复投递、首事件与超时竞争，以及 Trigger Projection 的输出上限。
+- 覆盖首事件 CAS、后续事件失效、重复投递、首事件与超时竞争、事件时间延迟，以及 Trigger Projection 的输出尾部截断。
 - 覆盖 Branch 全部当前操作符、`all / any`、首个匹配、默认兜底、变量不可用和 routing-only 输出。
 - 覆盖 Capability Port 不接受原始 Node 配置，Action 必须有幂等键，Query 不携带调用键，Inference 使用稳定 `executionKey`，Fake Adapter 不进入生产注册。
 - 覆盖 Event Catalog 不支持事件或 Subject Type 时无法 Publish/Enable，以及 Worker 生产组合缺少 `runtime-ready` 执行路径时启动失败。
@@ -1395,11 +1396,11 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 1. 版本化 Workflow Entry Event Envelope、Event Catalog、Trigger Projection 和消费结果分类。
 2. 源事件身份、Binding Filter、Run Subject 解析、Entry Guard、Partition Key、Inbox 与扇出。
 3. Event Subscription 持久化、事件/超时 CAS、暂停/停止/恢复和 Reconciler。
-4. Wait Event Compiler、Executor、固定 10 秒消息收集及 Triggered/Timeout 路由。
+4. Wait Event Compiler、Executor、首事件锁存、触发后固定等待及 Triggered/Timeout 路由。
 
 开放结果：`wait-event` 在全部当前产品模式完成后加入 Runtime Support；对应 Event Type 只有在 Java Producer 接通、Worker Catalog 全量滚动完成后才由 Backend/Web 开放配置。旧 `customer.message.received` 直接删除，不做兼容。
 
-合并验收：Fake Broker 与 Fake Event Catalog 覆盖非法事件、DLQ、重复投递、一个事件扇出多个 Workflow、跨 Subject Type 同值 ID、Entry 幂等、Subscription CAS、10 秒收集窗口、输出上限、暂停/停止/恢复和 Worker 崩溃恢复；MySQL Repository 行为与内存实现一致。
+合并验收：Fake Broker 与 Fake Event Catalog 覆盖非法事件、DLQ、重复投递、一个事件扇出多个 Workflow、跨 Subject Type 同值 ID、Entry 幂等、Subscription CAS、事件时间延迟、首事件后失效、输出尾部截断、暂停/停止/恢复和 Worker 崩溃恢复；MySQL Repository 行为与内存实现一致。
 
 ### Iteration 3：Branch 闭环与 Java Capability Port
 

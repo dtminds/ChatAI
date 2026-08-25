@@ -1,10 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const WORKFLOW_MESSAGE_SCHEMA_REF = "workflow.message.v1";
 export const WORKFLOW_MESSAGES_SCHEMA_REF = "workflow.messages.v1";
 
 export const WorkflowMessagePartSchema = Type.Union([
   Type.Object({
-    text: Type.String({ maxLength: 10_000 }),
+    text: Type.String(),
     type: Type.Literal("text"),
   }, { additionalProperties: false }),
   Type.Object({

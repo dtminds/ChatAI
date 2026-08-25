@@ -36,6 +36,7 @@ import {
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowNodeDraftConfig,
+  WorkflowMessageSchema,
   WorkflowStartConfigSchema,
   WorkflowMessagesV1Schema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
@@ -1270,8 +1271,11 @@ function resolveAiIntentTestInputType(
 
 function isAiIntentTestValueCompatible(value: unknown, valueType: WorkflowOutputValueType) {
   if (valueType.kind === "string") return typeof value === "string";
-  return valueType.kind === "object"
-    && valueType.schemaRef === "workflow.messages.v1"
+  if (valueType.kind !== "object") return false;
+  if (valueType.schemaRef === "workflow.message.v1") {
+    return Value.Check(WorkflowMessageSchema, value);
+  }
+  return valueType.schemaRef === "workflow.messages.v1"
     && Value.Check(WorkflowMessagesV1Schema, value);
 }
 

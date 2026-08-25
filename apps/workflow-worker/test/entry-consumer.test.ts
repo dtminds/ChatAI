@@ -96,8 +96,9 @@ describe("workflow entry consumer", () => {
 
   it("fans one message event out to both Start bindings and Wait Event subscriptions", async () => {
     const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
-    const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
+    const recordWaitEvent = vi.fn(async () => ({ kind: "success" as const }));
     const subscriptionReader = createSubscriptionReader([subscription("subscription-1")]);
+    const messageReader = createMessageReader();
     const message = createBrokerMessage(messageEvent());
     const handler = createEntryConsumerHandler({
       bindingReader: {
@@ -105,6 +106,7 @@ describe("workflow entry consumer", () => {
       },
       eventCatalog,
       inboxRepository: createInboxRepository(),
+      messageReader,
       now: () => new Date("2026-08-10T00:00:05.000Z"),
       runtimeService: { recordWaitEvent, startRun },
       subscriptionReader,
@@ -113,12 +115,25 @@ describe("workflow entry consumer", () => {
     await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
 
     expect(startRun).toHaveBeenCalledTimes(1);
+    expect(startRun).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: expect.objectContaining({
+        projection: expect.objectContaining({
+          messageId: 1001,
+          message: {
+            id: 1001,
+            parts: [{ text: "想了解价格", type: "text" }],
+            role: "customer",
+          },
+        }),
+      }),
+    }));
     expect(recordWaitEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventId: "message-event-1",
       eventOccurredAt: new Date("2026-08-10T00:00:04.000Z"),
       eventType: "message.received",
       projection: {
         externalUserId: 3267,
+        messageId: 1001,
         message: {
           id: 1001,
           parts: [{ text: "想了解价格", type: "text" }],
@@ -140,18 +155,68 @@ describe("workflow entry consumer", () => {
       "chatai_external_456",
       101,
       new Date("2026-08-10T00:00:04.000Z"),
-      new Date("2026-08-10T00:00:05.000Z"),
     );
+    expect(messageReader.findById).toHaveBeenCalledTimes(1);
+    expect(messageReader.findById).toHaveBeenCalledWith({
+      messageId: 1001,
+      thirdExternalUserId: "chatai_external_456",
+      uid: 9,
+      workUserId: 201,
+    });
   });
 
-  it("admits a subscription-only message event and deduplicates an already collected event", async () => {
-    const recordWaitEvent = vi.fn()
-      .mockResolvedValueOnce({ firstEvent: true, kind: "success" })
-      .mockResolvedValueOnce({ kind: "already-processed" });
+  it("does not hydrate a message when no Start binding or Wait Event subscription can consume it", async () => {
+    const messageReader = createMessageReader();
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       eventCatalog,
       inboxRepository: createInboxRepository(),
+      messageReader,
+      runtimeService: { recordWaitEvent: vi.fn(), startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "no_match",
+      disposition: "ack",
+    });
+    expect(messageReader.findById).not.toHaveBeenCalled();
+  });
+
+  it("NACKs without partial fan-out when an interested message is not queryable yet", async () => {
+    const startRun = vi.fn();
+    const recordWaitEvent = vi.fn();
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: { findById: vi.fn(async () => null) },
+      runtimeService: { recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      code: "temporary_failure",
+      disposition: "nack",
+      errorCode: "WORKFLOW_ENTRY_MESSAGE_UNAVAILABLE",
+      errorName: "WorkflowRuntimeError",
+      failureStage: "message_hydration",
+    });
+    expect(startRun).not.toHaveBeenCalled();
+    expect(recordWaitEvent).not.toHaveBeenCalled();
+  });
+
+  it("admits a subscription-only message event and deduplicates a lost trigger CAS", async () => {
+    const recordWaitEvent = vi.fn()
+      .mockResolvedValueOnce({ kind: "success" })
+      .mockResolvedValueOnce({ kind: "conflict" });
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
       runtimeService: { recordWaitEvent, startRun: vi.fn() },
       subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
     });
@@ -170,7 +235,7 @@ describe("workflow entry consumer", () => {
       .mockResolvedValueOnce({ deduplicated: true, kind: "success" });
     const recordWaitEvent = vi.fn()
       .mockRejectedValueOnce(new Error("database unavailable"))
-      .mockResolvedValueOnce({ firstEvent: true, kind: "success" });
+      .mockResolvedValueOnce({ kind: "success" });
     const inboxRepository = createInboxRepository();
     const handler = createEntryConsumerHandler({
       bindingReader: {
@@ -178,6 +243,7 @@ describe("workflow entry consumer", () => {
       },
       eventCatalog,
       inboxRepository,
+      messageReader: createMessageReader(),
       runtimeService: { recordWaitEvent, startRun },
       subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
     });
@@ -204,6 +270,7 @@ describe("workflow entry consumer", () => {
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       eventCatalog,
       inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
       runtimeService: {
         recordWaitEvent: vi.fn(async () => ({ kind: "not-matched" as const })),
         startRun: vi.fn(),
@@ -311,6 +378,7 @@ describe("workflow entry consumer", () => {
       inboxRepository: createInboxRepository(),
       logger,
       maxRedeliverCount: 2,
+      messageReader: createMessageReader(),
       runtimeService: { startRun: vi.fn() },
       subscriptionReader: createSubscriptionReader(),
       subscription: "entry-sub",
@@ -588,11 +656,7 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
     occurredAt: "2026-08-10T00:00:04.000Z",
     payload: {
       externalUserId: 3267,
-      message: {
-        id: 1001,
-        parts: [{ text: "想了解价格", type: "text" }],
-        role: "customer",
-      },
+      messageId: 1001,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
@@ -602,9 +666,18 @@ function messageEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntr
   });
 }
 
+function createMessageReader(text = "想了解价格") {
+  return {
+    findById: vi.fn(async (input: { messageId: number }) => ({
+      id: input.messageId,
+      parts: [{ text, type: "text" as const }],
+      role: "customer" as const,
+    })),
+  };
+}
+
 function subscription(id: string): WorkflowEventSubscriptionRecord {
   return {
-    collectUntil: null,
     createdAt: new Date("2026-08-10T00:00:00.000Z"),
     effectiveFrom: new Date("2026-08-10T00:00:00.000Z"),
     eventType: "message.received",
@@ -612,6 +685,7 @@ function subscription(id: string): WorkflowEventSubscriptionRecord {
     id,
     nodeId: "wait-event",
     revision: 1,
+    resumeAt: null,
     runId: "run-1",
     seatId: 101,
     status: "waiting",
@@ -619,6 +693,8 @@ function subscription(id: string): WorkflowEventSubscriptionRecord {
     subjectType: "chatai_contact",
     taskId: "task-1",
     triggerEventId: null,
+    triggerOccurredAt: null,
+    triggerProjection: null,
     uid: 9,
     updatedAt: new Date("2026-08-10T00:00:00.000Z"),
     workflowId: "31",

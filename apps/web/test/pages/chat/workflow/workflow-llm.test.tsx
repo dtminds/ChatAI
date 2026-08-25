@@ -345,6 +345,34 @@ describe("workflow LLM node", () => {
       [upstream, invalidSystemNode],
       edges,
     )).toContainEqual(expect.objectContaining({ code: "llm-prompt-input-invalid" }));
+
+    const waitEvent = createNodeFromKind("wait-event", "wait-event", 0);
+    const invalidSingleMessageSystemNode = createLlmNode({
+      inputs: [{
+        id: "input-message",
+        name: "message",
+        value: {
+          kind: "variable",
+          selector: ["node", waitEvent.id, "message"],
+          valueType: { kind: "object", schemaRef: "workflow.message.v1" },
+        },
+      }],
+      modelId: model.id,
+      systemPrompt: [{ selector: ["input", "input-message"], type: "variable" }],
+      userPrompt: [],
+    });
+    const singleMessageEdge = createEdge(
+      waitEvent.id,
+      invalidSingleMessageSystemNode.id,
+      undefined,
+      { sourceHandle: "triggered" },
+    );
+    expect(validateWorkflowNodeConfig(
+      invalidSingleMessageSystemNode,
+      [waitEvent, invalidSingleMessageSystemNode],
+      [singleMessageEdge],
+    )).toContainEqual(expect.objectContaining({ code: "llm-prompt-input-invalid" }));
+
     expect(validateWorkflowNodeConfig(validNode, [upstream, validNode], []))
       .toContainEqual(expect.objectContaining({ code: "llm-input-variable-invalid" }));
 

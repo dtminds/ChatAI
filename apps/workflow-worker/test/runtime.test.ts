@@ -480,6 +480,7 @@ function createResources() {
         succeeded: 0,
         timedOut: 0,
       })),
+      messageReader: { findById: vi.fn(async () => null) },
       pingDatabase: vi.fn(async () => {
         if (!databaseReady) throw new Error("database unavailable");
       }),

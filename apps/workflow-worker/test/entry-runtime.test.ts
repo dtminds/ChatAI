@@ -49,6 +49,7 @@ describe("Workflow Entry runtime composition", () => {
       deadLetterTopic: "entry-dlq",
       eventCatalog: createFakeWorkflowEventCatalog(),
       inboxRepository: repository,
+      messageReader: { findById: vi.fn(async () => null) },
       now: () => now,
       runtimeService: service,
       subscriptionReader: repository,

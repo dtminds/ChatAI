@@ -45,6 +45,7 @@ interface WorkflowMessageQueryMessageTable {
   third_external_id: string;
   third_user_id: string;
   uid: number;
+  user_id: number;
 }
 
 interface WorkflowMessageQuerySeatTable {
@@ -94,6 +95,24 @@ export class MysqlWorkflowMessageQueryPort implements WorkflowMessageQueryPort {
         { diagnosticMessage: error instanceof Error ? error.message : "Message Query failed" },
       );
     }
+  }
+}
+
+export type WorkflowEntryMessageReader = {
+  findById(input: {
+    messageId: number;
+    thirdExternalUserId: string;
+    uid: number;
+    workUserId: number;
+  }): Promise<WorkflowMessage | null>;
+};
+
+export class MysqlWorkflowEntryMessageReader implements WorkflowEntryMessageReader {
+  constructor(private readonly database: Kysely<WorkflowDatabase>) {}
+
+  async findById(input: Parameters<WorkflowEntryMessageReader["findById"]>[0]) {
+    const row = await buildEntryMessageQuery(this.database, input).executeTakeFirst();
+    return row ? createWorkflowMessage(row) : null;
   }
 }
 
@@ -177,6 +196,27 @@ export function buildMessageQueryMessagesQuery(
     .orderBy("msgtime", direction)
     .orderBy("id", direction)
     .limit(input.limit);
+}
+
+export function buildEntryMessageQuery(
+  database: Kysely<WorkflowDatabase>,
+  input: {
+    messageId: number;
+    thirdExternalUserId: string;
+    uid: number;
+    workUserId: number;
+  },
+) {
+  return asMessageQueryDatabase(database)
+    .selectFrom("xy_wap_embed_msg_audit_info")
+    .select(["content", "from_type", "id", "msgtype"])
+    .where("uid", "=", input.uid)
+    .where("id", "=", input.messageId)
+    .where("platform", "=", CHATAI_PLATFORM)
+    .where("third_external_id", "=", input.thirdExternalUserId)
+    .where("user_id", "=", input.workUserId)
+    .where("chat_type", "=", DIRECT_CHAT_TYPE)
+    .limit(1);
 }
 
 function asMessageQueryDatabase(database: Kysely<WorkflowDatabase>) {

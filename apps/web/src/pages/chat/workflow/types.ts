@@ -1,5 +1,9 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkflowAiCollectDraftConfig,
+  WorkflowAiCollectField as SharedWorkflowAiCollectField,
+  WorkflowAiCollectFieldType as SharedWorkflowAiCollectFieldType,
+  WorkflowAiCollectTimeout as SharedWorkflowAiCollectTimeout,
   WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
   WorkflowBranchConfig,
@@ -127,6 +131,7 @@ export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegmen
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
 export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
+export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
@@ -144,7 +149,10 @@ export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
-export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
+export type WorkflowAiCollectField = SharedWorkflowAiCollectField;
+export type WorkflowAiCollectFieldType = SharedWorkflowAiCollectFieldType;
+export type WorkflowAiCollectTimeout = SharedWorkflowAiCollectTimeout;
+export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect"> & WorkflowAiCollectDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;

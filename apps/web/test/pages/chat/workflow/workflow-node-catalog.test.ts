@@ -248,11 +248,10 @@ describe("workflow node catalog", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
     const schemaNodeKinds: WorkflowNodeKind[] = [
       "agent",
-      "ai-collect",
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -356,7 +355,6 @@ describe("workflow node catalog", () => {
   it("supports field, custom, and empty node body bindings", () => {
     const fieldNodeKinds: WorkflowNodeKind[] = [
       "agent",
-      "ai-collect",
       "coupon",
       "customer-update",
       "handoff",
@@ -374,6 +372,7 @@ describe("workflow node catalog", () => {
     fieldNodeKinds.forEach((kind) => {
       expect(workflowNodeUiBindings[kind].body.kind).toBe("fields");
     });
+    expect(workflowNodeUiBindings["ai-collect"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.branch.body).toEqual({
       component: BranchNodeBody,
       kind: "custom",

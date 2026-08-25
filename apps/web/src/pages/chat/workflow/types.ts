@@ -22,6 +22,7 @@ import type {
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
+  WorkflowOrderBindDraftConfig,
   WorkflowPointsTransferDraftConfig,
   WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
@@ -144,6 +145,7 @@ export type WorkflowLlmOutputFieldType = SharedWorkflowLlmOutputFieldType;
 export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
+export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type PointsTransferNodeData = WorkflowNodeDataBase<"points-transfer">
   & WorkflowPointsTransferDraftConfig;
@@ -170,6 +172,7 @@ export type WorkflowNodeDataMap = {
   llm: LlmNodeData;
   message: MessageNodeData;
   "message-query": MessageQueryNodeData;
+  "order-bind": OrderBindNodeData;
   "order-query": OrderQueryNodeData;
   "points-transfer": PointsTransferNodeData;
   "ratio-split": RatioSplitNodeData;

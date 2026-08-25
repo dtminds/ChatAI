@@ -9,7 +9,6 @@ import type {
 } from "@chatai/contracts";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   normalizeWorkflowEntryPolicy,
 } from "@chatai/contracts";
 import type { WorkflowTriggerProjection } from "./event-catalog.js";
@@ -29,8 +28,6 @@ export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): Workf
         entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
         messageSendingWindow:
           config.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-        pushAccountStrategy:
-          config.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
         seatIds: uniqueNumbers(config.seatIds),
         triggers,
       } as WorkflowChatAiStartConfig
@@ -72,7 +69,7 @@ export function matchWorkflowTrigger(
   const workUserId = projection.match.workUserId;
   if (typeof workUserId !== "number" || !filter.workUserIds.includes(workUserId)) return false;
   if (filter.eventType === "contact.friend_added") {
-    if (filter.sourceIds.length === 0) return true;
+    if (filter.sourceIds.length === 0) return false;
     const sourceId = projection.match.sourceId;
     return typeof sourceId === "string" && filter.sourceIds.includes(sourceId);
   }
@@ -133,7 +130,16 @@ function normalizeTriggers(triggers: WorkflowStartTrigger[]): WorkflowStartTrigg
       return { ...trigger, tagIds: uniqueNumbers(trigger.tagIds) };
     }
     if (trigger.type === "contact.friend_added") {
-      return { ...trigger, sourceIds: uniqueStrings(trigger.sourceIds) };
+      const addWayKey = trigger.addWayKey?.trim();
+      const sourceMatchMode = trigger.sourceMatchMode === "any" || trigger.sourceMatchMode === "all"
+        ? trigger.sourceMatchMode
+        : undefined;
+      return {
+        type: trigger.type,
+        sourceIds: uniqueStrings(trigger.sourceIds),
+        ...(addWayKey ? { addWayKey } : {}),
+        ...(sourceMatchMode ? { sourceMatchMode } : {}),
+      };
     }
     return { ...trigger, keywords: uniqueStrings(trigger.keywords) };
   });

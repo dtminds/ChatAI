@@ -19,6 +19,7 @@ import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
+import { registerFriendAddWayRoutes } from "./modules/workflow/friend-add-way.routes.js";
 import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
 import type { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
@@ -77,6 +78,7 @@ export async function buildApp(options: AppBuildOptions = {}) {
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
   await registerWorkflowRoutes(app, { service: options.workflowService });
+  await registerFriendAddWayRoutes(app);
   await registerTicketsRoutes(app);
 
   return app;

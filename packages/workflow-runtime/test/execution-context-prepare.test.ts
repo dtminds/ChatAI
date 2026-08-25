@@ -28,6 +28,10 @@ describe("Workflow execution context prepare", () => {
       globalContext: false,
       identities: ["mallUserId"],
     });
+    expect(deriveWorkflowExecutionContextRequirements(node("order-bind"))).toEqual({
+      globalContext: false,
+      identities: ["externalUserId"],
+    });
   });
 
   it("does not call Java when the required identity is already known", async () => {

@@ -1,6 +1,5 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   extractWorkflowNodeDraftConfig,
   getWorkflowNodeContract,
   isWorkflowBranchConfigComplete,
@@ -52,8 +51,6 @@ export function projectWorkflowNodeExecutionConfig({
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
           messageSendingWindow:
             draftConfig.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-          pushAccountStrategy:
-            draftConfig.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
           seatIds: draftConfig.seatIds,
           triggers,
         }
@@ -162,6 +159,12 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
+  if (kind === "order-bind") {
+    return cloneJsonRecord(compactUndefined({
+      orderNumberSelector: draftConfig.orderNumberSelector,
+    }));
+  }
+
   if (kind === "ai-collect") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
     const openingMessage = typeof draftConfig.openingMessage === "string"
@@ -238,6 +241,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Customer Update node requires complete unique fields and values";
     case "points-transfer":
       return "Points Transfer node requires an order number variable";
+    case "order-bind":
+      return "Order Bind node requires an order number variable";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

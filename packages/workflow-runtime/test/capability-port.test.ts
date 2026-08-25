@@ -69,6 +69,19 @@ describe("Workflow Capability Port", () => {
     expect(adapter.calls).toHaveLength(0);
   });
 
+  it("returns a local result without calling the adapter", async () => {
+    const adapter = new FakeWorkflowCapabilityAdapter(vi.fn(async () => ({ value: "ok" })));
+
+    await expect(executeWorkflowCapability(invocation({
+      adapter,
+      binding: {
+        ...actionBinding,
+        completeWithoutExecution: () => ({ value: "local" }),
+      },
+    }))).resolves.toEqual({ value: "local" });
+    expect(adapter.calls).toHaveLength(0);
+  });
+
   it("classifies an invalid result as a terminal output failure", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ value: 42 }));
     await expect(executeWorkflowCapability(invocation({ adapter, binding: actionBinding })))

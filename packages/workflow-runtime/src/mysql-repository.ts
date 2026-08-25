@@ -4074,6 +4074,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "handoff",
     "agent",
     "llm",
+    "order-bind",
     "order-query",
     "points-transfer",
     "tag-query",

@@ -4,6 +4,7 @@ import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   type WorkflowCapabilityPort,
@@ -30,11 +31,12 @@ describe("Workflow capability router", () => {
     expect(router.bindings).toEqual([WORKFLOW_TAG_QUERY_CAPABILITY_BINDING]);
   });
 
-  it("keeps Customer Update, Handoff, Message, Points Transfer, Tag, and Tag Query routes isolated", async () => {
+  it("keeps Customer Update, Handoff, Message, Order Bind, Points Transfer, Tag, and Tag Query routes isolated", async () => {
     const customerUpdateExecute = vi.fn(async () => ({}));
     const handoffExecute = vi.fn(async () => ({}));
     const messageExecute = vi.fn(async () => ({}));
     const pointsTransferExecute = vi.fn(async () => ({ result: "success" }));
+    const orderBindExecute = vi.fn(async () => ({ result: true }));
     const tagExecute = vi.fn(async () => ({}));
     const tagQueryExecute = vi.fn(async () => ({ matchedTags: [] }));
     const router = new WorkflowCapabilityRouter([
@@ -53,6 +55,10 @@ describe("Workflow capability router", () => {
       {
         binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
         port: { execute: pointsTransferExecute } as unknown as WorkflowCapabilityPort,
+      },
+      {
+        binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+        port: { execute: orderBindExecute } as unknown as WorkflowCapabilityPort,
       },
       {
         binding: WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -76,6 +82,7 @@ describe("Workflow capability router", () => {
     expect(customerUpdateExecute).not.toHaveBeenCalled();
     expect(handoffExecute).not.toHaveBeenCalled();
     expect(pointsTransferExecute).not.toHaveBeenCalled();
+    expect(orderBindExecute).not.toHaveBeenCalled();
     expect(tagExecute).not.toHaveBeenCalled();
     expect(tagQueryExecute).not.toHaveBeenCalled();
     expect(router.bindings).toEqual([
@@ -83,6 +90,7 @@ describe("Workflow capability router", () => {
       WORKFLOW_HANDOFF_CAPABILITY_BINDING,
       WORKFLOW_MESSAGE_CAPABILITY_BINDING,
       WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
       WORKFLOW_TAG_CAPABILITY_BINDING,
       WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
     ]);
@@ -177,6 +185,37 @@ describe("Workflow capability router", () => {
     )).resolves.toEqual({ result: "success" });
     expect(pointsTransferExecute).toHaveBeenCalledWith(
       WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition,
+      request,
+    );
+    expect(messageExecute).not.toHaveBeenCalled();
+  });
+
+  it("dispatches Order Bind only to its exact action route", async () => {
+    const messageExecute = vi.fn(async () => ({}));
+    const orderBindExecute = vi.fn(async () => ({ result: true }));
+    const router = new WorkflowCapabilityRouter([
+      {
+        binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+        port: { execute: messageExecute } as unknown as WorkflowCapabilityPort,
+      },
+      {
+        binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+        port: { execute: orderBindExecute } as unknown as WorkflowCapabilityPort,
+      },
+    ]);
+    const request = {
+      ...tagQueryRequest(),
+      command: { orderNumber: "SO20260821001", source: "workflow" as const },
+      identities: { externalUserId: 101 },
+      idempotencyKey: "9:run-1:order-bind:1",
+    };
+
+    await expect(router.execute(
+      WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition,
+      request,
+    )).resolves.toEqual({ result: true });
+    expect(orderBindExecute).toHaveBeenCalledWith(
+      WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition,
       request,
     );
     expect(messageExecute).not.toHaveBeenCalled();

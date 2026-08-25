@@ -80,6 +80,7 @@ describe("createWorkflowRenderElements", () => {
       "tag-query",
       "tag",
       "customer-update",
+      "order-bind",
       "message",
       "message-query",
       "handoff",

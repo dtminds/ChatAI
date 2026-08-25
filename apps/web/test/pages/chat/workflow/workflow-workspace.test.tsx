@@ -641,12 +641,48 @@ describe("useWorkflowWorkspace", () => {
     expect(getWorkflowDocument("newcomer-conversion").status).toBe("Draft");
   });
 
+  it("does not submit a review when the selected friend source is no longer in the catalog", async () => {
+    importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      "newcomer-conversion",
+      undefined,
+      undefined,
+      {
+        friendAddWays: {
+          groups: [{ children: [], key: "search", title: "搜索手机号" }],
+          status: "ready",
+        },
+      },
+    ));
+
+    expect(result.current.topBar.publishReady).toBe(false);
+
+    await act(async () => {
+      await result.current.topBar.onSubmitReview();
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.checks.checks.find(check => check.nodeId === "start")?.messages)
+      .toContain("添加好友来源已失效");
+    expect(getWorkflowDocument("newcomer-conversion").status).toBe("Draft");
+  });
+
   it("publishes a valid current draft through the workspace boundary", async () => {
     vi.useFakeTimers();
 
     try {
       importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
-      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const { result } = renderHook(() => useWorkflowWorkspace(
+        "newcomer-conversion",
+        undefined,
+        undefined,
+        {
+          friendAddWays: {
+            groups: [{ children: [], key: "qr-code-1", title: "扫码添加" }],
+            status: "ready",
+          },
+        },
+      ));
 
       act(() => {
         result.current.canvas.onSelectNode("start");

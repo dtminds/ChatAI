@@ -4,7 +4,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import type { WorkflowPublishReview } from "@chatai/contracts";
+import {
+  getWorkflowCapabilityProfile,
+  type WorkflowPublishReview,
+} from "@chatai/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +42,7 @@ import type {
   WorkflowDraftRepository,
 } from "./workflow-draft-service";
 import { useWorkflowDocumentResource } from "./workflow-resources";
+import { useWorkflowFriendAddWayResource } from "./workflow-friend-add-way-resource";
 import { useWorkflowManagedAccountResource } from "./workflow-managed-account-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
@@ -171,7 +175,17 @@ function WorkflowWorkspaceContent({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const workspace = useWorkflowWorkspace(document.id, repository, document);
+  const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const shouldLoadFriendAddWays = mode === "design"
+    && getWorkflowCapabilityProfile(document.workflowType)
+    .allowedEntryEventTypes.includes("contact.friend_added");
+  const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
+  const workspace = useWorkflowWorkspace(document.id, repository, document, {
+    friendAddWays: {
+      groups: friendAddWayResource.groups,
+      status: friendAddWayResource.status,
+    },
+  });
   const { canvas, checks, document: currentDocument, inspector, review, topBar, versionHistory } = workspace;
   const shouldLoadManagedAccounts = inspector.isOpen
     && inspector.node?.data.kind === "start"
@@ -179,7 +193,6 @@ function WorkflowWorkspaceContent({
   const managedAccountResource = useWorkflowManagedAccountResource(shouldLoadManagedAccounts);
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
-  const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const canRestoreVersion = currentDocument.permissions.canEdit
     && currentDocument.currentReview?.status !== "pending";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
@@ -412,6 +425,11 @@ function WorkflowWorkspaceContent({
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
                 resources={{
+                  friendAddWays: {
+                    groups: friendAddWayResource.groups,
+                    reload: () => void friendAddWayResource.reload(),
+                    status: friendAddWayResource.status,
+                  },
                   managedAccounts: {
                     options: managedAccountResource.options,
                     reload: () => void managedAccountResource.reload(),

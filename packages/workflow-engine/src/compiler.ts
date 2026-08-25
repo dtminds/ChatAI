@@ -294,6 +294,38 @@ function validateWorkflowNodeReferences(
       }
     }
 
+    if (node.kind === "order-bind"
+      && Array.isArray(node.config.orderNumberSelector)) {
+      const selectorInput = {
+        edges,
+        guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
+          node.id,
+          nodeIds,
+          edges,
+        ),
+        nodeById,
+        requiredUsage: "variable" as const,
+        selector: node.config.orderNumberSelector as WorkflowVariableSelector,
+        targetNodeId: node.id,
+        workflowType,
+        entryEventTypes,
+      };
+      const valid = validateWorkflowVariableSelector({
+        ...selectorInput,
+        expectedValueType: { kind: "string" },
+      }) || validateWorkflowVariableSelector({
+        ...selectorInput,
+        expectedValueType: { kind: "number" },
+      });
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Order Bind node references unavailable or incompatible order number data",
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.kind === "ai-collect"
       && isWorkflowAiCollectExecutionConfigComplete(node.config)
       && node.config.inputSelector) {

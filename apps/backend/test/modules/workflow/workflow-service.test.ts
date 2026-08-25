@@ -459,7 +459,7 @@ describe("WorkflowService", () => {
     const created = await service.create(operator, { workflowType: "wecom_sop" });
     const startConfigured = withStartConfig(created.draft, {
       entryPolicy: { mode: "never" },
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
     });
     const draft = {
@@ -1037,7 +1037,7 @@ describe("WorkflowService", () => {
         windowUnit: "day",
       },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     const seeded = await service.saveDraft(operator, created.id, {
@@ -1062,7 +1062,7 @@ describe("WorkflowService", () => {
       draft: withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [102],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -1155,7 +1155,7 @@ describe("WorkflowService", () => {
       draft: withWaitNode(withStartConfig(created.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }), { duration: 2, mode: "duration", unit: "day" }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -1523,7 +1523,7 @@ async function createConfigured(
   const draft = withStartConfig(created.draft, {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   });
   return service.saveDraft(operator, created.id, {
     draft,

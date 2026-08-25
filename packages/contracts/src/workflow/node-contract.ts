@@ -257,6 +257,14 @@ export const WorkflowPointsTransferExecutionConfigSchema = Type.Object({
   orderNumberSelector: WorkflowVariableSelectorSchema,
 }, { additionalProperties: false });
 
+export const WorkflowOrderBindDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowOrderBindExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
+
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -521,6 +529,8 @@ export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftCon
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
 export type WorkflowPointsTransferDraftConfig = Static<typeof WorkflowPointsTransferDraftConfigSchema>;
 export type WorkflowPointsTransferExecutionConfig = Static<typeof WorkflowPointsTransferExecutionConfigSchema>;
+export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
+export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
 export type WorkflowCustomerUpdateValue = Static<typeof WorkflowCustomerUpdateValueSchema>;
 export type WorkflowCustomerFieldSnapshot = Static<typeof WorkflowCustomerFieldSnapshotSchema>;
@@ -633,6 +643,13 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageQueryConfigSchema,
     WorkflowMessageQueryConfigSchema,
     ["thirdExternalUserId"],
+  ),
+  "order-bind": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowOrderBindDraftConfigSchema,
+    WorkflowOrderBindExecutionConfigSchema,
+    ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
   "points-transfer": runtimeReadyContract(
@@ -990,6 +1007,15 @@ export function getWorkflowNodeOutputContracts(
         key: "result",
         usages: ["variable"],
         valueType: { kind: "string" },
+      },
+    ];
+  }
+  if (kind === "order-bind") {
+    return [
+      {
+        key: "result",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

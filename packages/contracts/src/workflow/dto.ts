@@ -19,6 +19,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("handoff"),
   Type.Literal("agent"),
   Type.Literal("llm"),
+  Type.Literal("order-bind"),
   Type.Literal("order-query"),
   Type.Literal("points-transfer"),
   Type.Literal("tag-query"),

@@ -151,7 +151,7 @@ export function AudienceGroupSelector({
 
       <Dialog onOpenChange={handleOpenChange} open={open}>
         <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(800px,calc(100vw-2rem))] max-w-[800px] flex-col gap-0 overflow-hidden p-0">
-          <div className="shrink-0 border-b border-border px-6 py-4">
+          <div className="shrink-0 px-6 py-4">
             <div className="flex items-center gap-2">
               <DialogTitle className="shrink-0 text-base">选择人群包</DialogTitle>
               <DialogDescription className="text-xs">
@@ -189,7 +189,7 @@ export function AudienceGroupSelector({
                 <col className="w-20" />
                 <col className="w-44" />
               </colgroup>
-              <TableHeader>
+              <TableHeader className="[&_tr]:border-border/70">
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-11 px-3">
                     <span className="sr-only">选择</span>
@@ -200,7 +200,7 @@ export function AudienceGroupSelector({
                   <TableHead className="h-11 whitespace-nowrap px-3">上一次计算完成时间</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="[&_tr]:border-border/70">
                 {loading || error || groups.length === 0 ? (
                   <TableStateRow
                     error={error}
@@ -240,7 +240,7 @@ export function AudienceGroupSelector({
           </div>
 
           <TablePagination
-            className="px-6"
+            className="border-t-0 px-6 py-4"
             itemLabel="个"
             onPageChange={setPage}
             page={activePage}

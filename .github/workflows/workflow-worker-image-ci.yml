@@ -1,4 +1,4 @@
-name: Worker Image CI
+name: Workflow Worker Image CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - dev
       - "integration/**"
     paths:
-      - ".github/workflows/worker-image-ci.yml"
+      - ".github/workflows/workflow-worker-image-ci.yml"
       - "deploy/workflow-worker.Dockerfile"
       - "apps/workflow-worker/package.json"
       - "package.json"
@@ -25,7 +25,7 @@ on:
       - "feature/**"
       - "integration/**"
     paths:
-      - ".github/workflows/worker-image-ci.yml"
+      - ".github/workflows/workflow-worker-image-ci.yml"
       - "deploy/workflow-worker.Dockerfile"
       - "apps/workflow-worker/package.json"
       - "package.json"
@@ -37,15 +37,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: worker-image-ci-${{ github.ref }}
+  group: workflow-worker-image-ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  worker-image:
-    name: Worker Image
+  workflow-worker-image:
+    name: Workflow Worker Image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

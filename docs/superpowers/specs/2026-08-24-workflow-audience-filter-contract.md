@@ -104,11 +104,12 @@ Java 成功响应 envelope：
 公开接口：
 
 ```http
-GET /api/server/workflow/audience-groups?page=1&pageSize=20
+GET /api/server/workflow/audience-groups?page=1&pageSize=20&name=
 ```
 
 - `page` 从 1 开始，默认 `1`
 - `pageSize` 默认 `20`，最大 `50`
+- `name` 可选，按人群包名称搜索，空值不传给 Java
 - 一次请求只代理 Java 当前页，不跟随 `hasNext` 自动翻页
 - 已选快照由节点配置保存，翻页不额外 hydration
 
@@ -124,9 +125,14 @@ POST /third-internal/cdp-group-operate/list-group
 {
   "page": 1,
   "pageSize": 20,
-  "uid": 9
+  "uid": 9,
+  "userType": 1,
+  "name": "高价值客户"
 }
 ```
+
+- `userType` 固定为 `1`（企微客户人群包），由 Backend 写入，不接受前端选择
+- `name` 仅在公开查询提供非空名称时转发
 
 Java 成功响应（字段在顶层，不包裹 `data`）：
 
@@ -138,6 +144,7 @@ Java 成功响应（字段在顶层，不包裹 `data`）：
   "hasNext": false,
   "list": [
     {
+      "conditions": "近30天消费大于1000",
       "createType": 1,
       "groupNum": 12,
       "id": 301,
@@ -154,7 +161,10 @@ Java 成功响应（字段在顶层，不包裹 `data`）：
 Node 映射规则：
 
 - 只读取顶层 `list`
-- 每项只取 `id` 和 `name`；`createType`、`groupNum`、`peopleCalculateTime` 不进入节点配置
+- 列表项读取 `id`、`name`，以及展示字段 `conditions`、`createType`、`groupNum`、`peopleCalculateTime`
+- `conditions` 为规则展示条目，字符串按换行拆成数组，字符串数组逐条截断，最多 20 条；不进入节点配置
+- `createType` 仅接受 `1`（规则配置）和 `2`（数据导入）；`groupNum` 为不少于 0 的整数；计算时间按 Java 原文回传，不做时区换算
+- 节点配置快照仍只保存 `id` 和 `name`
 - `id` 接受 JSON number 或数字字符串，映射为正整数；无效项和重复 ID 跳过，按 Java 返回顺序保留当前页
 - 公开响应为 `{ groups, pagination: { hasNext, page, pageSize, total } }`，`total` 来自 Java `count`
 - `HTTP 200` 且 `success === true` 或 `error === 0` 视为列表成功
@@ -162,7 +172,10 @@ Node 映射规则：
 
 设置面板：
 
-- 弹窗分页选择人群包，最多 3 个
+- 弹窗用分页表格选择人群包，最多 3 个；表格展示名称、规则、总人数、上一次计算完成时间
+- 规则列：`createType === 2` 展示「导入创建」标签，其余按 `conditions` 逐条展示灰底文案
+- 弹窗提示「当前仅支持选择企微客户人群包」，表格按 `name` 搜索，防抖后回第一页
+- 左下角展示已选择数量和清空
 - 匹配方式：满足任一 / 满足全部 / 均不包含
 - 节点输出由统一 `NodeOutputsSection` 展示
 

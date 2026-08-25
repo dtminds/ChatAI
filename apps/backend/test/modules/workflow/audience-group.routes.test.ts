@@ -43,6 +43,7 @@ describe("workflow audience-group routes", () => {
         hasNext: true,
         list: [
           {
+            conditions: "近30天消费大于1000",
             createType: 1,
             groupNum: 12,
             id: 301,
@@ -50,6 +51,7 @@ describe("workflow audience-group routes", () => {
             peopleCalculateTime: "2026-08-24 10:00:00",
           },
           {
+            conditions: ["最近未下单", "流失风险"],
             createType: 2,
             groupNum: 3,
             id: 302,
@@ -80,8 +82,22 @@ describe("workflow audience-group routes", () => {
     expect(response.json()).toEqual({
       data: {
         groups: [
-          { id: 301, name: "高价值客户" },
-          { id: 302, name: "沉默客户" },
+          {
+            conditions: ["近30天消费大于1000"],
+            createType: 1,
+            groupNum: 12,
+            id: 301,
+            name: "高价值客户",
+            peopleCalculateTime: "2026-08-24 10:00:00",
+          },
+          {
+            conditions: ["最近未下单", "流失风险"],
+            createType: 2,
+            groupNum: 3,
+            id: 302,
+            name: "沉默客户",
+            peopleCalculateTime: "2026-08-24 11:00:00",
+          },
           { id: 303, name: "字符串 ID" },
         ],
         pagination: {
@@ -101,6 +117,7 @@ describe("workflow audience-group routes", () => {
       page: 2,
       pageSize: 20,
       uid: 9001,
+      userType: 1,
     });
   });
 
@@ -132,6 +149,7 @@ describe("workflow audience-group routes", () => {
       page: 1,
       pageSize: 20,
       uid: 9001,
+      userType: 1,
     });
     expect(response.json().data.pagination).toEqual({
       hasNext: true,
@@ -172,6 +190,7 @@ describe("workflow audience-group routes", () => {
       page: 1,
       pageSize: 50,
       uid: 9001,
+      userType: 1,
     });
     const body = response.json() as {
       data: { groups: Array<{ id: number }>; pagination: { pageSize: number } };
@@ -180,6 +199,70 @@ describe("workflow audience-group routes", () => {
     expect(body.data.groups[0]).toEqual({ id: 1, name: "人群包 1" });
     expect(body.data.groups[49]).toEqual({ id: 50, name: "人群包 50" });
     expect(body.data.pagination.pageSize).toBe(50);
+  });
+
+  it("always sends userType 1 and forwards a non-empty name to Java", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        count: 1,
+        error: 0,
+        hasNext: false,
+        list: [{ id: 301, name: "高价值客户" }],
+        page: 1,
+        pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
+        success: true,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups?page=1&pageSize=20&name=高价值客户",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+      name: "高价值客户",
+      page: 1,
+      pageSize: 20,
+      uid: 9001,
+      userType: 1,
+    });
+  });
+
+  it("omits empty name from the Java request body", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        count: 1,
+        error: 0,
+        hasNext: false,
+        list: [{ id: 1, name: "人群包 1" }],
+        page: 1,
+        pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
+        success: true,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups?name=",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+      page: 1,
+      pageSize: 20,
+      uid: 9001,
+      userType: 1,
+    });
   });
 
   it("rejects unauthenticated list requests", async () => {

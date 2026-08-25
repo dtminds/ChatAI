@@ -1,7 +1,13 @@
 import {
+  WORKFLOW_AUDIENCE_GROUP_CALCULATE_TIME_MAX_LENGTH,
+  WORKFLOW_AUDIENCE_GROUP_CONDITION_MAX_COUNT,
+  WORKFLOW_AUDIENCE_GROUP_CONDITIONS_MAX_LENGTH,
+  WORKFLOW_AUDIENCE_GROUP_CREATE_TYPE_IMPORT,
+  WORKFLOW_AUDIENCE_GROUP_CREATE_TYPE_RULE,
   WORKFLOW_AUDIENCE_GROUP_NAME_MAX_LENGTH,
+  WORKFLOW_AUDIENCE_GROUP_USER_TYPE_WECOM,
+  type WorkflowAudienceGroupListItem,
   type WorkflowAudienceGroupListResponse,
-  type WorkflowAudienceGroupSnapshot,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
@@ -37,6 +43,7 @@ type JavaApiResponse = {
 
 export type CdpGroupJavaClient = {
   listGroups: (input: {
+    name?: string;
     page: number;
     pageSize: number;
     uid: number;
@@ -51,18 +58,17 @@ export function createCdpGroupJavaClient(
 
   return {
     async listGroups(input) {
+      const body = {
+        page: input.page,
+        pageSize: input.pageSize,
+        uid: input.uid,
+        userType: WORKFLOW_AUDIENCE_GROUP_USER_TYPE_WECOM,
+        ...(input.name ? { name: input.name } : {}),
+      };
       const response = await postJavaRequest<JavaApiResponse>({
         baseUrl,
-        body: JSON.stringify({
-          page: input.page,
-          pageSize: input.pageSize,
-          uid: input.uid,
-        }),
-        logContext: {
-          page: input.page,
-          pageSize: input.pageSize,
-          uid: input.uid,
-        },
+        body: JSON.stringify(body),
+        logContext: body,
         logger,
         operation: "cdp-group-list",
         path: CDP_GROUP_OPERATE_LIST_PATH,
@@ -91,9 +97,9 @@ export function createCdpGroupJavaClient(
   };
 }
 
-function extractGroups(list: unknown, maxItems: number): WorkflowAudienceGroupSnapshot[] {
+function extractGroups(list: unknown, maxItems: number): WorkflowAudienceGroupListItem[] {
   const items = Array.isArray(list) ? list : [];
-  const groups: WorkflowAudienceGroupSnapshot[] = [];
+  const groups: WorkflowAudienceGroupListItem[] = [];
   const seen = new Set<number>();
 
   for (const item of items) {
@@ -109,7 +115,7 @@ function extractGroups(list: unknown, maxItems: number): WorkflowAudienceGroupSn
 
 function resolveListTotal(input: {
   count: unknown;
-  groups: readonly WorkflowAudienceGroupSnapshot[];
+  groups: readonly WorkflowAudienceGroupListItem[];
   hasNext: boolean;
   page: number;
   pageSize: number;
@@ -124,12 +130,67 @@ function resolveListTotal(input: {
     : filled;
 }
 
-function mapGroupItem(value: unknown): WorkflowAudienceGroupSnapshot | null {
+function mapGroupItem(value: unknown): WorkflowAudienceGroupListItem | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const id = readPositiveInteger(record.id);
   const name = readGroupName(record.name);
-  return id && name ? { id, name } : null;
+  if (!id || !name) return null;
+
+  const group: WorkflowAudienceGroupListItem = { id, name };
+  const conditions = readConditions(record.conditions);
+  if (conditions) group.conditions = conditions;
+  const createType = readCreateType(record.createType);
+  if (createType != null) group.createType = createType;
+  const groupNum = readNonNegativeInteger(record.groupNum);
+  if (groupNum != null) group.groupNum = groupNum;
+  const peopleCalculateTime = readCalculateTime(record.peopleCalculateTime);
+  if (peopleCalculateTime) group.peopleCalculateTime = peopleCalculateTime;
+  return group;
+}
+
+function readConditions(value: unknown) {
+  const parts: string[] = [];
+  const source = typeof value === "string"
+    ? value.split(/\r?\n/)
+    : Array.isArray(value)
+      ? value
+      : null;
+  if (!source) return null;
+
+  for (const item of source) {
+    if (typeof item !== "string") continue;
+    const part = item.trim().slice(0, WORKFLOW_AUDIENCE_GROUP_CONDITIONS_MAX_LENGTH);
+    if (!part) continue;
+    parts.push(part);
+    if (parts.length >= WORKFLOW_AUDIENCE_GROUP_CONDITION_MAX_COUNT) break;
+  }
+
+  return parts.length > 0 ? parts : null;
+}
+
+function readCreateType(value: unknown) {
+  return value === WORKFLOW_AUDIENCE_GROUP_CREATE_TYPE_RULE
+    || value === WORKFLOW_AUDIENCE_GROUP_CREATE_TYPE_IMPORT
+    ? value
+    : null;
+}
+
+function readNonNegativeInteger(value: unknown) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
+  }
+  return null;
+}
+
+function readCalculateTime(value: unknown) {
+  if (typeof value !== "string") return null;
+  const time = value.trim().slice(0, WORKFLOW_AUDIENCE_GROUP_CALCULATE_TIME_MAX_LENGTH);
+  return time.length > 0 ? time : null;
 }
 
 function readPositiveInteger(value: unknown) {

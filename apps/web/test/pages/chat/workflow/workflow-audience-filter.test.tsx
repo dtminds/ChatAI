@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,20 @@ vi.mock("@/pages/chat/workflow/nodes/audience-filter/api", () => ({
 describe("workflow Audience Filter node", () => {
   beforeEach(() => {
     listWorkflowAudienceGroups.mockReset();
-    listWorkflowAudienceGroups.mockImplementation(async ({ page = 1 } = {}) => {
+    listWorkflowAudienceGroups.mockImplementation(async ({ page = 1, name } = {}) => {
+      if (name === "高价值") {
+        return {
+          groups: [{
+            conditions: ["近30天消费大于1000"],
+            createType: 1,
+            groupNum: 12,
+            id: 301,
+            name: "高价值客户",
+            peopleCalculateTime: "2026-08-24 10:00:00",
+          }],
+          pagination: { hasNext: false, page: 1, pageSize: 20, total: 1 },
+        };
+      }
       if (page === 2) {
         return {
           groups: [{ id: 401, name: "第二页人群包" }],
@@ -31,8 +44,22 @@ describe("workflow Audience Filter node", () => {
       }
       return {
         groups: [
-          { id: 301, name: "高价值客户" },
-          { id: 302, name: "沉默客户" },
+          {
+            conditions: ["近30天消费大于1000", "确认订单 的 净成交金额 大于等于 1"],
+            createType: 1,
+            groupNum: 12,
+            id: 301,
+            name: "高价值客户",
+            peopleCalculateTime: "2026-08-24 10:00:00",
+          },
+          {
+            conditions: ["最近未下单"],
+            createType: 2,
+            groupNum: 3,
+            id: 302,
+            name: "沉默客户",
+            peopleCalculateTime: "2026-08-24 11:00:00",
+          },
           { id: 303, name: "活跃客户" },
           { id: 304, name: "流失客户" },
         ],
@@ -128,8 +155,8 @@ describe("workflow Audience Filter node", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
-    expect(within(screen.getByRole("list", { name: "已选人群包" })).getByText("高价值客户"))
-      .toBeInTheDocument();
+    expect(screen.getByText("已选择 1/3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "清空" })).toBeEnabled();
   });
 
   it("selects up to 3 groups through paged dialog requests and match mode", async () => {
@@ -146,11 +173,24 @@ describe("workflow Audience Filter node", () => {
       page: 1,
       pageSize: 20,
     });
+    expect(screen.getByText("当前仅支持选择企微客户人群包")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索人群包" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "人群包名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "规则" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "总人数" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "上一次计算完成时间" })).toBeInTheDocument();
+    expect(screen.getByText("近30天消费大于1000")).toBeInTheDocument();
+    expect(screen.getByText("确认订单 的 净成交金额 大于等于 1")).toBeInTheDocument();
+    expect(screen.getByText("导入创建")).toBeInTheDocument();
+    expect(screen.queryByText("最近未下单")).not.toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-24 10:00:00")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "高价值客户" }));
     await user.click(screen.getByRole("checkbox", { name: "沉默客户" }));
     await user.click(screen.getByRole("checkbox", { name: "活跃客户" }));
     expect(screen.getByRole("checkbox", { name: "流失客户" })).toBeDisabled();
+    expect(screen.getByText("已选择 3/3")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "下一页" }));
     await screen.findByRole("checkbox", { name: "第二页人群包" });
@@ -160,8 +200,16 @@ describe("workflow Audience Filter node", () => {
       pageSize: 20,
     });
     expect(screen.getByRole("checkbox", { name: "第二页人群包" })).toBeDisabled();
-    expect(within(screen.getByRole("list", { name: "已选人群包" })).getByText("高价值客户"))
-      .toBeInTheDocument();
+    expect(screen.getByText("已选择 3/3")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+    await screen.findByRole("checkbox", { name: "流失客户" });
+    await user.click(screen.getByRole("button", { name: "清空" }));
+    expect(screen.getByText("已选择 0/3")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "流失客户" })).toBeEnabled();
+    await user.click(screen.getByRole("checkbox", { name: "高价值客户" }));
+    await user.click(screen.getByRole("checkbox", { name: "沉默客户" }));
+    await user.click(screen.getByRole("checkbox", { name: "活跃客户" }));
 
     await user.click(screen.getByRole("button", { name: "确认" }));
     expect(onNodeChange).toHaveBeenLastCalledWith({
@@ -186,6 +234,28 @@ describe("workflow Audience Filter node", () => {
       metric: "满足全部 · 3 个人群包",
       status: "ready",
     });
+  });
+
+  it("searches audience groups by name and resets to the first page", async () => {
+    const user = userEvent.setup();
+
+    render(<StatefulAudienceFilterConfig onNodeChange={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /请选择人群包/ }));
+    await screen.findByRole("checkbox", { name: "高价值客户" });
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByRole("checkbox", { name: "第二页人群包" });
+
+    await user.type(screen.getByRole("textbox", { name: "搜索人群包" }), "高价值");
+    await waitFor(() => {
+      expect(listWorkflowAudienceGroups).toHaveBeenLastCalledWith({
+        name: "高价值",
+        page: 1,
+        pageSize: 20,
+      });
+    });
+    await screen.findByRole("checkbox", { name: "高价值客户" });
+    expect(screen.queryByRole("checkbox", { name: "第二页人群包" })).not.toBeInTheDocument();
   });
 
   it("projects and summarizes the configured query without screening chips", () => {

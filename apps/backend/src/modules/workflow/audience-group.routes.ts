@@ -18,6 +18,7 @@ export async function registerAudienceGroupRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createAudienceGroupService(app.log).listGroups(getUid(request), {
+          name: request.query.name,
           page: parseOptionalInteger(request.query.page),
           pageSize: parseOptionalInteger(request.query.pageSize),
         }),

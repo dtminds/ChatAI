@@ -456,7 +456,7 @@ describe("Agent workflow page", () => {
       "message-query",
       "order-bind",
       "order-query",
-      "points-transfer",
+      "order-conversion",
       "ratio-split",
       "start",
       "tag",
@@ -499,7 +499,7 @@ describe("Agent workflow page", () => {
       "handoff",
       "agent",
       "coupon",
-      "points-transfer",
+      "order-conversion",
     ]);
     expect(paletteNodeIds).toEqual(insertableNodeKinds);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
@@ -521,7 +521,7 @@ describe("Agent workflow page", () => {
       "handoff",
       "agent",
       "coupon",
-      "points-transfer",
+      "order-conversion",
       "end",
     ]);
   });

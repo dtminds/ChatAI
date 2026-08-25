@@ -249,11 +249,11 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
 
 export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
 
-export const WorkflowPointsTransferDraftConfigSchema = Type.Object({
+export const WorkflowOrderConversionDraftConfigSchema = Type.Object({
   orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
 }, { additionalProperties: false });
 
-export const WorkflowPointsTransferExecutionConfigSchema = Type.Object({
+export const WorkflowOrderConversionExecutionConfigSchema = Type.Object({
   orderNumberSelector: WorkflowVariableSelectorSchema,
 }, { additionalProperties: false });
 
@@ -527,8 +527,8 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
-export type WorkflowPointsTransferDraftConfig = Static<typeof WorkflowPointsTransferDraftConfigSchema>;
-export type WorkflowPointsTransferExecutionConfig = Static<typeof WorkflowPointsTransferExecutionConfigSchema>;
+export type WorkflowOrderConversionDraftConfig = Static<typeof WorkflowOrderConversionDraftConfigSchema>;
+export type WorkflowOrderConversionExecutionConfig = Static<typeof WorkflowOrderConversionExecutionConfigSchema>;
 export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
 export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
@@ -652,11 +652,11 @@ export const workflowNodeContractRegistry = {
     ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
-  "points-transfer": runtimeReadyContract(
+  "order-conversion": runtimeReadyContract(
     "action",
     1,
-    WorkflowPointsTransferDraftConfigSchema,
-    WorkflowPointsTransferExecutionConfigSchema,
+    WorkflowOrderConversionDraftConfigSchema,
+    WorkflowOrderConversionExecutionConfigSchema,
     ["mallUserId"],
   ),
   start: runtimeReadyContract(
@@ -1001,7 +1001,7 @@ export function getWorkflowNodeOutputContracts(
       },
     ];
   }
-  if (kind === "points-transfer") {
+  if (kind === "order-conversion") {
     return [
       {
         key: "result",

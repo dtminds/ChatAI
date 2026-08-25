@@ -3,28 +3,28 @@ import type { WorkflowNodeDefinition } from "../definition-types";
 import { resolveWorkflowVariable } from "../../workflow-variables";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import {
-  getPointsTransferNodePatch,
-  isPointsTransferOrderNumberVariable,
-  normalizePointsTransferSelector,
+  getOrderConversionNodePatch,
+  isOrderConversionOrderNumberVariable,
+  normalizeOrderConversionSelector,
 } from "./config";
 
-const basePointsTransferNodeDefinition = createStandardNodeDefinition({
+const baseOrderConversionNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-rose-400 text-white",
   accentRgb: "244 63 94",
   description: "通过「资料收集」提取订单号，然后使用此节点代客转换积分",
   icon: CoinsYenIcon,
-  kind: "points-transfer",
+  kind: "order-conversion",
   label: "代客转积分",
   metric: "待配置订单号",
   paletteGroup: "operate",
   sort: 140,
 });
 
-export const pointsTransferNodeDefinition: WorkflowNodeDefinition<"points-transfer"> = {
-  ...basePointsTransferNodeDefinition,
+export const orderConversionNodeDefinition: WorkflowNodeDefinition<"order-conversion"> = {
+  ...baseOrderConversionNodeDefinition,
   createDefaultData: () => ({
-    ...basePointsTransferNodeDefinition.createDefaultData(),
-    ...getPointsTransferNodePatch(undefined),
+    ...baseOrderConversionNodeDefinition.createDefaultData(),
+    ...getOrderConversionNodePatch(undefined),
   }),
   getOutputVariables: () => [
     {
@@ -36,29 +36,29 @@ export const pointsTransferNodeDefinition: WorkflowNodeDefinition<"points-transf
     },
   ],
   sanitizeData: (data) => {
-    const selector = normalizePointsTransferSelector(data.orderNumberSelector);
+    const selector = normalizeOrderConversionSelector(data.orderNumberSelector);
     const next = {
       ...data,
-      ...getPointsTransferNodePatch(selector),
+      ...getOrderConversionNodePatch(selector),
     };
     if (!selector) delete next.orderNumberSelector;
     return next;
   },
   validate: (node, context) => {
-    const selector = normalizePointsTransferSelector(node.data.orderNumberSelector);
+    const selector = normalizeOrderConversionSelector(node.data.orderNumberSelector);
     if (!selector) {
       return [{
-        code: "points-transfer-selector-required",
+        code: "order-conversion-selector-required",
         message: "需选择订单号",
         severity: "warning",
         source: "config",
       }];
     }
     const variable = resolveWorkflowVariable(context.availableVariables, selector);
-    return variable && isPointsTransferOrderNumberVariable(variable.valueType)
+    return variable && isOrderConversionOrderNumberVariable(variable.valueType)
       ? []
       : [{
-          code: "points-transfer-variable-invalid",
+          code: "order-conversion-variable-invalid",
           message: "订单号引用了不可用或类型已变化的变量",
           severity: "warning",
           source: "config",

@@ -6,21 +6,21 @@ import {
   getAvailableVariablesForNode,
 } from "../../workflow-variables";
 import {
-  getPointsTransferNodePatch,
-  isPointsTransferOrderNumberVariable,
-  normalizePointsTransferSelector,
+  getOrderConversionNodePatch,
+  isOrderConversionOrderNumberVariable,
+  normalizeOrderConversionSelector,
 } from "./config";
 
-export function PointsTransferConfig({
+export function OrderConversionConfig({
   edges,
   node,
   nodes,
   onNodeChange,
-}: NodeSettingsProps<"points-transfer">) {
-  const selector = normalizePointsTransferSelector(node.data.orderNumberSelector);
+}: NodeSettingsProps<"order-conversion">) {
+  const selector = normalizeOrderConversionSelector(node.data.orderNumberSelector);
   const availableVariables = useMemo(
     () => getAvailableVariablesForNode(node.id, nodes, edges)
-      .filter((variable) => isPointsTransferOrderNumberVariable(variable.valueType)),
+      .filter((variable) => isOrderConversionOrderNumberVariable(variable.valueType)),
     [edges, node.id, nodes],
   );
   return (
@@ -30,7 +30,7 @@ export function PointsTransferConfig({
         buttonClassName="h-10 text-sm"
         invalidLabel="原节点输出不可用"
         onSelect={(variable) => {
-          onNodeChange(getPointsTransferNodePatch(variable.selector));
+          onNodeChange(getOrderConversionNodePatch(variable.selector));
         }}
         placeholder="请选择订单号"
         value={selector}

@@ -102,7 +102,7 @@ const draftConfigs = {
   },
   "order-bind": {},
   "order-query": {},
-  "points-transfer": {},
+  "order-conversion": {},
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
@@ -181,7 +181,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "points-transfer", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -520,7 +520,7 @@ describe("workflow node contracts", () => {
       "message-query": "query",
       "order-bind": "action",
       "order-query": "query",
-      "points-transfer": "action",
+      "order-conversion": "action",
       "ratio-split": "core",
       start: "core",
       tag: "action",
@@ -548,7 +548,7 @@ describe("workflow node contracts", () => {
       "message-query": ["thirdExternalUserId"],
       "order-bind": ["externalUserId"],
       "order-query": ["externalUserId"],
-      "points-transfer": ["mallUserId"],
+      "order-conversion": ["mallUserId"],
       "ratio-split": [],
       start: [],
       tag: ["externalUserId"],
@@ -666,22 +666,22 @@ describe("workflow node contracts", () => {
     expect(getWorkflowNodeOutputContracts("customer-update", { fields: [] })).toBeNull();
   });
 
-  it("keeps incomplete Points Transfer drafts editable and requires an order number selector to execute", () => {
-    expect(getWorkflowNodeContract("points-transfer")).toMatchObject({
+  it("keeps incomplete Order Conversion drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("order-conversion")).toMatchObject({
       currentDraftSchemaVersion: 1,
       executionClass: "action",
       identityInputs: ["mallUserId"],
       maturity: "runtime-ready",
     });
-    expect(isWorkflowNodeDraftConfig("points-transfer", {})).toBe(true);
-    expect(isWorkflowNodeDraftConfig("points-transfer", {
+    expect(isWorkflowNodeDraftConfig("order-conversion", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-conversion", {
       orderNumberSelector: ["node", "llm", "orderNo"],
     })).toBe(true);
-    expect(isWorkflowNodeExecutionConfig("points-transfer", {})).toBe(false);
-    expect(isWorkflowNodeExecutionConfig("points-transfer", {
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {
       orderNumberSelector: ["node", "llm", "orderNo"],
     })).toBe(true);
-    expect(getWorkflowNodeOutputContracts("points-transfer", {})).toEqual([
+    expect(getWorkflowNodeOutputContracts("order-conversion", {})).toEqual([
       { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
     ]);
   });

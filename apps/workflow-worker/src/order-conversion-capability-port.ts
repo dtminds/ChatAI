@@ -1,10 +1,10 @@
 import {
-  WorkflowPointsTransferCommandSchema,
-  type WorkflowPointsTransferCommand,
+  WorkflowOrderConversionCommandSchema,
+  type WorkflowOrderConversionCommand,
 } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
-  WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
   type WorkflowCapabilityKind,
   type WorkflowCapabilityPort,
@@ -13,9 +13,9 @@ import {
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-const JAVA_POINTS_TRANSFER_PATH = "/third-internal/mall-order/transfer-order-point";
+const JAVA_ORDER_CONVERSION_PATH = "/third-internal/mall-order/transfer-order-point";
 
-export class HttpWorkflowPointsTransferCapabilityPort implements WorkflowCapabilityPort {
+export class HttpWorkflowOrderConversionCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
 
   constructor(private readonly options: {
@@ -36,20 +36,20 @@ export class HttpWorkflowPointsTransferCapabilityPort implements WorkflowCapabil
   ): Promise<unknown> {
     if (
       definition.capabilityKey
-        !== WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition.capabilityKey
+        !== WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition.capabilityKey
       || definition.contractVersion
-        !== WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition.contractVersion
+        !== WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition.contractVersion
       || definition.kind !== "action"
     ) {
       throw terminalError(
         "WORKFLOW_CAPABILITY_UNSUPPORTED",
         "执行服务暂不可用，流程已停止",
-        `Workflow Points Transfer port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
+        `Workflow Order Conversion port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
       );
     }
     const mallUserId = request.identities.mallUserId;
     if (
-      !Value.Check(WorkflowPointsTransferCommandSchema, request.command)
+      !Value.Check(WorkflowOrderConversionCommandSchema, request.command)
       || !("idempotencyKey" in request)
       || typeof request.idempotencyKey !== "string"
       || !request.idempotencyKey
@@ -58,15 +58,15 @@ export class HttpWorkflowPointsTransferCapabilityPort implements WorkflowCapabil
       || mallUserId <= 0
     ) {
       throw terminalError(
-        "WORKFLOW_POINTS_TRANSFER_REQUEST_INVALID",
+        "WORKFLOW_ORDER_CONVERSION_REQUEST_INVALID",
         "执行所需数据不可用，流程已停止",
-        "Workflow Points Transfer port received an invalid command, prepared identity, or idempotency key",
+        "Workflow Order Conversion port received an invalid command, prepared identity, or idempotency key",
       );
     }
 
-    return executeWorkflowPointsTransfer({
+    return executeWorkflowOrderConversion({
       baseUrl: this.options.baseUrl,
-      command: structuredClone(request.command) as WorkflowPointsTransferCommand,
+      command: structuredClone(request.command) as WorkflowOrderConversionCommand,
       fetch: this.fetch,
       idempotencyKey: request.idempotencyKey,
       mallUserId,
@@ -77,9 +77,9 @@ export class HttpWorkflowPointsTransferCapabilityPort implements WorkflowCapabil
   }
 }
 
-export async function executeWorkflowPointsTransfer(input: {
+export async function executeWorkflowOrderConversion(input: {
   baseUrl: string;
-  command: WorkflowPointsTransferCommand;
+  command: WorkflowOrderConversionCommand;
   fetch: typeof fetch;
   idempotencyKey: string;
   mallUserId: number;
@@ -88,7 +88,7 @@ export async function executeWorkflowPointsTransfer(input: {
   uid: number;
 }) {
   throwIfAborted(input.signal);
-  const endpoint = new URL(JAVA_POINTS_TRANSFER_PATH, `${input.baseUrl}/`);
+  const endpoint = new URL(JAVA_ORDER_CONVERSION_PATH, `${input.baseUrl}/`);
   endpoint.searchParams.set("idempotentKey", input.idempotencyKey);
   let response: Response;
   try {
@@ -108,17 +108,17 @@ export async function executeWorkflowPointsTransfer(input: {
   } catch (error) {
     if (input.signal.aborted) throwIfAborted(input.signal);
     throw retryableError(
-      "WORKFLOW_POINTS_TRANSFER_FAILED",
+      "WORKFLOW_ORDER_CONVERSION_FAILED",
       "转积分暂时失败",
-      `Workflow Points Transfer Java request failed: ${error instanceof Error ? error.name : "unknown"}`,
+      `Workflow Order Conversion Java request failed: ${error instanceof Error ? error.name : "unknown"}`,
     );
   }
 
   if (response.status !== 200) {
     throw retryableError(
-      "WORKFLOW_POINTS_TRANSFER_UNAVAILABLE",
+      "WORKFLOW_ORDER_CONVERSION_UNAVAILABLE",
       "转积分暂时失败",
-      `Workflow Points Transfer Java endpoint returned HTTP ${response.status}`,
+      `Workflow Order Conversion Java endpoint returned HTTP ${response.status}`,
     );
   }
 
@@ -127,16 +127,16 @@ export async function executeWorkflowPointsTransfer(input: {
     body = await response.json();
   } catch {
     throw terminalError(
-      "WORKFLOW_POINTS_TRANSFER_RESPONSE_INVALID",
+      "WORKFLOW_ORDER_CONVERSION_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Points Transfer Java endpoint returned invalid JSON",
+      "Workflow Order Conversion Java endpoint returned invalid JSON",
     );
   }
   if (!isRecord(body) || typeof body.error !== "number" || !Number.isSafeInteger(body.error)) {
     throw terminalError(
-      "WORKFLOW_POINTS_TRANSFER_RESPONSE_INVALID",
+      "WORKFLOW_ORDER_CONVERSION_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Points Transfer Java endpoint returned an invalid envelope",
+      "Workflow Order Conversion Java endpoint returned an invalid envelope",
     );
   }
   return {
@@ -148,9 +148,9 @@ function throwIfAborted(signal: AbortSignal): never | void {
   if (!signal.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
   throw retryableError(
-    "WORKFLOW_POINTS_TRANSFER_ABORTED",
+    "WORKFLOW_ORDER_CONVERSION_ABORTED",
     "转积分暂时失败",
-    "Workflow Points Transfer execution was aborted",
+    "Workflow Order Conversion execution was aborted",
   );
 }
 

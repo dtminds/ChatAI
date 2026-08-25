@@ -1,6 +1,6 @@
 import type { WorkflowVariableSelector } from "../../types";
 
-export function normalizePointsTransferSelector(
+export function normalizeOrderConversionSelector(
   value: unknown,
 ): WorkflowVariableSelector | undefined {
   if (
@@ -15,27 +15,27 @@ export function normalizePointsTransferSelector(
   return [...value];
 }
 
-export function getPointsTransferMetric(selector: WorkflowVariableSelector | undefined) {
+export function getOrderConversionMetric(selector: WorkflowVariableSelector | undefined) {
   return selector ? "已选择订单号" : "待配置订单号";
 }
 
-export function getPointsTransferStatus(selector: WorkflowVariableSelector | undefined) {
+export function getOrderConversionStatus(selector: WorkflowVariableSelector | undefined) {
   return selector ? "ready" as const : "warning" as const;
 }
 
-export function getPointsTransferNodePatch(selector: WorkflowVariableSelector | undefined) {
+export function getOrderConversionNodePatch(selector: WorkflowVariableSelector | undefined) {
   return selector
     ? {
-        metric: getPointsTransferMetric(selector),
+        metric: getOrderConversionMetric(selector),
         orderNumberSelector: selector,
-        status: getPointsTransferStatus(selector),
+        status: getOrderConversionStatus(selector),
       }
     : {
-        metric: getPointsTransferMetric(selector),
-        status: getPointsTransferStatus(selector),
+        metric: getOrderConversionMetric(selector),
+        status: getOrderConversionStatus(selector),
       };
 }
 
-export function isPointsTransferOrderNumberVariable(valueType: { kind: string }) {
+export function isOrderConversionOrderNumberVariable(valueType: { kind: string }) {
   return valueType.kind === "string" || valueType.kind === "number";
 }

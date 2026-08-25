@@ -1,13 +1,13 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
 import { createWorkflowVariableReferenceSummarySegments } from "../../workflow-node-summary";
 import { resolveWorkflowVariable } from "../../workflow-variables";
-import { normalizePointsTransferSelector } from "./config";
-import { PointsTransferConfig } from "./panel";
+import { normalizeOrderConversionSelector } from "./config";
+import { OrderConversionConfig } from "./panel";
 
-export const pointsTransferNodeUi: WorkflowNodeUiBinding<"points-transfer"> = {
+export const orderConversionNodeUi: WorkflowNodeUiBinding<"order-conversion"> = {
   body: {
     getFields: (data) => {
-      const selector = normalizePointsTransferSelector(data.orderNumberSelector);
+      const selector = normalizeOrderConversionSelector(data.orderNumberSelector);
       const selectedVariable = selector
         ? resolveWorkflowVariable(data.availableVariables ?? [], selector)
         : undefined;
@@ -28,5 +28,5 @@ export const pointsTransferNodeUi: WorkflowNodeUiBinding<"points-transfer"> = {
     },
     kind: "fields",
   },
-  settings: { component: PointsTransferConfig, kind: "custom" },
+  settings: { component: OrderConversionConfig, kind: "custom" },
 };

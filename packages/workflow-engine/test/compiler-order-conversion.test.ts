@@ -8,36 +8,36 @@ import {
   projectWorkflowNodeExecutionConfig,
 } from "../src/node-contract-registry.js";
 
-describe("Points Transfer compiler validation", () => {
+describe("Order Conversion compiler validation", () => {
   it("projects the selected order number into execution config", () => {
     expect(projectWorkflowNodeExecutionConfig({
       data: {
-        kind: "points-transfer",
+        kind: "order-conversion",
         orderNumberSelector: ["node", "llm", "orderNo"],
       },
-      kind: "points-transfer",
+      kind: "order-conversion",
     })).toEqual({
       orderNumberSelector: ["node", "llm", "orderNo"],
     });
-    expect(getWorkflowNodeExecutionConfigError("points-transfer", {})).toBe(
-      "Points Transfer node requires an order number variable",
+    expect(getWorkflowNodeExecutionConfigError("order-conversion", {})).toBe(
+      "Order Conversion node requires an order number variable",
     );
   });
 
   it("rejects incomplete configuration and unreachable order numbers", () => {
     expectCompilationIssue(
       {},
-      "Points Transfer node requires an order number variable",
+      "Order Conversion node requires an order number variable",
     );
     expectCompilationIssue(
       { orderNumberSelector: ["node", "missing", "orderNo"] },
-      "Points Transfer node references unavailable order number data",
+      "Order Conversion node references unavailable order number data",
     );
   });
 
   it("compiles when the selected order number is reachable", () => {
     const spec = compileWorkflowDraft({
-      draft: createPointsTransferDraft({
+      draft: createOrderConversionDraft({
         orderNumberSelector: ["node", "llm", "orderNo"],
       }),
       revision: 1,
@@ -45,12 +45,12 @@ describe("Points Transfer compiler validation", () => {
       workflowType: "chatai_sop",
     });
 
-    expect(spec.nodes.find(node => node.id === "points-transfer")).toEqual({
+    expect(spec.nodes.find(node => node.id === "order-conversion")).toEqual({
       config: {
         orderNumberSelector: ["node", "llm", "orderNo"],
       },
-      id: "points-transfer",
-      kind: "points-transfer",
+      id: "order-conversion",
+      kind: "order-conversion",
       nodeSchemaVersion: 1,
     });
   });
@@ -60,7 +60,7 @@ function expectCompilationIssue(config: Record<string, unknown>, message: string
   let error: unknown;
   try {
     compileWorkflowDraft({
-      draft: createPointsTransferDraft(config),
+      draft: createOrderConversionDraft(config),
       revision: 1,
       workflowId: "42",
       workflowType: "chatai_sop",
@@ -73,16 +73,16 @@ function expectCompilationIssue(config: Record<string, unknown>, message: string
   expect((error as WorkflowCompilationError).issues).toContainEqual({
     code: "invalid-node-config",
     message,
-    nodeId: "points-transfer",
+    nodeId: "order-conversion",
   });
 }
 
-function createPointsTransferDraft(config: Record<string, unknown>): WorkflowDraft {
+function createOrderConversionDraft(config: Record<string, unknown>): WorkflowDraft {
   return {
     edges: [
       { id: "start-llm", source: "start", target: "llm" },
-      { id: "llm-points", source: "llm", target: "points-transfer" },
-      { id: "points-end", source: "points-transfer", target: "end" },
+      { id: "llm-conversion", source: "llm", target: "order-conversion" },
+      { id: "conversion-end", source: "order-conversion", target: "end" },
     ],
     nodes: [
       node("start", "start", {
@@ -101,7 +101,7 @@ function createPointsTransferDraft(config: Record<string, unknown>): WorkflowDra
         systemPrompt: [{ type: "text", value: "Extract the order number" }],
         userPrompt: [{ type: "text", value: "order number" }],
       }),
-      node("points-transfer", "points-transfer", config),
+      node("order-conversion", "order-conversion", config),
       node("end", "end"),
     ],
     viewport: { x: 0, y: 0, zoom: 1 },

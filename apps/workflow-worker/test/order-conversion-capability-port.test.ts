@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { WorkflowPointsTransferCommand } from "@chatai/contracts";
-import { WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING } from "@chatai/workflow-runtime";
+import type { WorkflowOrderConversionCommand } from "@chatai/contracts";
+import { WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING } from "@chatai/workflow-runtime";
 import {
-  HttpWorkflowPointsTransferCapabilityPort,
-  executeWorkflowPointsTransfer,
-} from "../src/points-transfer-capability-port.js";
+  HttpWorkflowOrderConversionCapabilityPort,
+  executeWorkflowOrderConversion,
+} from "../src/order-conversion-capability-port.js";
 
-describe("Workflow Points Transfer Java port", () => {
+describe("Workflow Order Conversion Java port", () => {
   it("maps one idempotent Java request and treats error 0 as success", async () => {
     const fetchMock = vi.fn(async () => javaResponse({
       data: null,
@@ -14,11 +14,11 @@ describe("Workflow Points Transfer Java port", () => {
       errorMsg: "",
     }));
 
-    await expect(executeWorkflowPointsTransfer({
+    await expect(executeWorkflowOrderConversion({
       baseUrl: "https://java.example.com/internal",
-      command: pointsTransferCommand(),
+      command: orderConversionCommand(),
       fetch: fetchMock as typeof fetch,
-      idempotencyKey: "9:run-1:points-transfer-1:2",
+      idempotencyKey: "9:run-1:order-conversion-1:2",
       mallUserId: 202,
       signal: new AbortController().signal,
       token: "internal-token",
@@ -27,7 +27,7 @@ describe("Workflow Points Transfer Java port", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      "https://java.example.com/third-internal/mall-order/transfer-order-point?idempotentKey=9%3Arun-1%3Apoints-transfer-1%3A2",
+      "https://java.example.com/third-internal/mall-order/transfer-order-point?idempotentKey=9%3Arun-1%3Aorder-conversion-1%3A2",
     );
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       body: JSON.stringify({
@@ -45,12 +45,12 @@ describe("Workflow Points Transfer Java port", () => {
 
   it("rejects an invalid command, prepared identity, or idempotency key before Java", async () => {
     const fetchMock = vi.fn();
-    const port = new HttpWorkflowPointsTransferCapabilityPort({
+    const port = new HttpWorkflowOrderConversionCapabilityPort({
       baseUrl: "https://java.example.com",
       fetch: fetchMock as typeof fetch,
     });
     const invalidRequests = [
-      { ...request(), command: { ...pointsTransferCommand(), orderNumber: "" } },
+      { ...request(), command: { ...orderConversionCommand(), orderNumber: "" } },
       { ...request(), identities: {} },
       { ...request(), identities: { mallUserId: 0 } },
       { ...request(), idempotencyKey: "" },
@@ -58,10 +58,10 @@ describe("Workflow Points Transfer Java port", () => {
 
     for (const invalidRequest of invalidRequests) {
       await expect(port.execute(
-        WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition,
+        WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition,
         invalidRequest,
       )).rejects.toMatchObject({
-        code: "WORKFLOW_POINTS_TRANSFER_REQUEST_INVALID",
+        code: "WORKFLOW_ORDER_CONVERSION_REQUEST_INVALID",
         failureKind: "terminal",
       });
     }
@@ -70,13 +70,13 @@ describe("Workflow Points Transfer Java port", () => {
 
   it("rejects an unsupported capability before Java", async () => {
     const fetchMock = vi.fn();
-    const port = new HttpWorkflowPointsTransferCapabilityPort({
+    const port = new HttpWorkflowOrderConversionCapabilityPort({
       baseUrl: "https://java.example.com",
       fetch: fetchMock as typeof fetch,
     });
 
     await expect(port.execute(
-      { ...WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING.definition, contractVersion: 2 },
+      { ...WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition, contractVersion: 2 },
       request(),
     )).rejects.toMatchObject({
       code: "WORKFLOW_CAPABILITY_UNSUPPORTED",
@@ -86,7 +86,7 @@ describe("Workflow Points Transfer Java port", () => {
   });
 
   it("completes HTTP 200 business rejection as result false", async () => {
-    await expect(executeWorkflowPointsTransfer({
+    await expect(executeWorkflowOrderConversion({
       ...executeInput(),
       fetch: vi.fn(async () => javaResponse({
         data: "",
@@ -101,17 +101,17 @@ describe("Workflow Points Transfer Java port", () => {
   it("classifies transport and every non-200 response as retryable", async () => {
     const cases = [
       {
-        code: "WORKFLOW_POINTS_TRANSFER_FAILED",
+        code: "WORKFLOW_ORDER_CONVERSION_FAILED",
         fetch: vi.fn(async () => { throw new Error("network"); }),
       },
       ...[400, 408, 429, 503, 201].map(status => ({
-        code: "WORKFLOW_POINTS_TRANSFER_UNAVAILABLE",
+        code: "WORKFLOW_ORDER_CONVERSION_UNAVAILABLE",
         fetch: vi.fn(async () => new Response(null, { status })),
       })),
     ];
 
     for (const item of cases) {
-      await expect(executeWorkflowPointsTransfer({
+      await expect(executeWorkflowOrderConversion({
         ...executeInput(),
         fetch: item.fetch as typeof fetch,
       })).rejects.toMatchObject({ code: item.code, failureKind: "retryable" });
@@ -127,11 +127,11 @@ describe("Workflow Points Transfer Java port", () => {
     ];
 
     for (const fetchImplementation of fetches) {
-      await expect(executeWorkflowPointsTransfer({
+      await expect(executeWorkflowOrderConversion({
         ...executeInput(),
         fetch: fetchImplementation,
       })).rejects.toMatchObject({
-        code: "WORKFLOW_POINTS_TRANSFER_RESPONSE_INVALID",
+        code: "WORKFLOW_ORDER_CONVERSION_RESPONSE_INVALID",
         failureKind: "terminal",
       });
     }
@@ -143,10 +143,10 @@ describe("Workflow Points Transfer Java port", () => {
       .mockResolvedValueOnce(javaResponse({ error: 0 }));
     const input = { ...executeInput(), fetch: fetchMock as typeof fetch };
 
-    await expect(executeWorkflowPointsTransfer(input)).rejects.toMatchObject({
+    await expect(executeWorkflowOrderConversion(input)).rejects.toMatchObject({
       failureKind: "retryable",
     });
-    await expect(executeWorkflowPointsTransfer(input)).resolves.toEqual({
+    await expect(executeWorkflowOrderConversion(input)).resolves.toEqual({
       result: true,
     });
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
@@ -161,7 +161,7 @@ describe("Workflow Points Transfer Java port", () => {
     const reason = new Error("cancelled");
     controller.abort(reason);
 
-    await expect(executeWorkflowPointsTransfer({
+    await expect(executeWorkflowOrderConversion({
       ...executeInput(),
       fetch: fetchMock as typeof fetch,
       signal: controller.signal,
@@ -170,23 +170,23 @@ describe("Workflow Points Transfer Java port", () => {
   });
 });
 
-function pointsTransferCommand(): WorkflowPointsTransferCommand {
+function orderConversionCommand(): WorkflowOrderConversionCommand {
   return { orderNumber: "SO20260824001", source: "workflow" };
 }
 
 function request() {
   return {
-    command: pointsTransferCommand(),
+    command: orderConversionCommand(),
     deadlineAt: new Date("2026-08-24T10:00:15.000Z"),
     execution: {
-      nodeId: "points-transfer-1",
+      nodeId: "order-conversion-1",
       revision: 1,
       runId: "run-1",
       sequence: 2,
       workflowId: "workflow-1",
     },
     identities: { mallUserId: 202 },
-    idempotencyKey: "9:run-1:points-transfer-1:2",
+    idempotencyKey: "9:run-1:order-conversion-1:2",
     signal: new AbortController().signal,
     subjectId: "contact-1",
     subjectType: "chatai_contact" as const,
@@ -197,7 +197,7 @@ function request() {
 function executeInput() {
   return {
     baseUrl: "https://java.example.com",
-    command: pointsTransferCommand(),
+    command: orderConversionCommand(),
     fetch: vi.fn(async () => javaResponse({ error: 0 })) as typeof fetch,
     idempotencyKey: "stable-key",
     mallUserId: 202,

@@ -2,7 +2,7 @@
 
 - 状态：Worker Adapter 已接通；Java 成功信封以 `error === 0` 为准
 - 适用节点：ChatAI SOP、WeCom SOP 的代客转积分
-- Capability：`mall.point.transfer`，Contract Version `1`
+- Capability：`mall.order.convert`，Contract Version `1`
 - Java：`POST /third-internal/mall-order/transfer-order-point`
 
 ## 1. 职责
@@ -30,7 +30,7 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
 
 ```json
 {
-  "capabilityKey": "mall.point.transfer",
+  "capabilityKey": "mall.order.convert",
   "contractVersion": 1,
   "uid": 9,
   "subjectType": "chatai_contact",
@@ -38,13 +38,13 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
   "identities": {
     "mallUserId": 202
   },
-  "idempotencyKey": "9:run-id:points-transfer-node-id:3",
+  "idempotencyKey": "9:run-id:order-conversion-node-id:3",
   "deadlineAt": "2026-08-24T10:00:15.000Z",
   "execution": {
     "workflowId": "workflow-id",
     "revision": 2,
     "runId": "run-id",
-    "nodeId": "points-transfer-node-id",
+    "nodeId": "order-conversion-node-id",
     "sequence": 3
   },
   "command": {
@@ -117,4 +117,4 @@ Java HTTP 200 且 `error` 为安全整数时：
 
 ## 5. 当前发布边界
 
-代客转积分为 `runtime-ready`。生产 Worker 注册 `mall.point.transfer@1:action`，路由到真实 Java Adapter `POST /third-internal/mall-order/transfer-order-point`。发布门禁可以放行配置完整且订单号变量有效的代客转积分节点。
+代客转积分为 `runtime-ready`。生产 Worker 注册 `mall.order.convert@1:action`，路由到真实 Java Adapter `POST /third-internal/mall-order/transfer-order-point`。发布门禁可以放行配置完整且订单号变量有效的代客转积分节点。

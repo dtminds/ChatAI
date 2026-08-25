@@ -12,7 +12,7 @@ import { messageNodeUi } from "./message/ui";
 import { messageQueryNodeUi } from "./message-query/ui";
 import { orderBindNodeUi } from "./order-bind/ui";
 import { orderQueryNodeUi } from "./order-query/ui";
-import { pointsTransferNodeUi } from "./points-transfer/ui";
+import { orderConversionNodeUi } from "./order-conversion/ui";
 import { ratioSplitNodeUi } from "./ratio-split/ui";
 import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
@@ -35,7 +35,7 @@ export const workflowNodeUiRegistry = {
   "message-query": messageQueryNodeUi,
   "order-bind": orderBindNodeUi,
   "order-query": orderQueryNodeUi,
-  "points-transfer": pointsTransferNodeUi,
+  "order-conversion": orderConversionNodeUi,
   "ratio-split": ratioSplitNodeUi,
   start: startNodeUi,
   tag: tagNodeUi,

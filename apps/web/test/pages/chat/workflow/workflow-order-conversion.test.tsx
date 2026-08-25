@@ -5,18 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
-import { PointsTransferConfig } from "@/pages/chat/workflow/nodes/points-transfer/panel";
-import { pointsTransferNodeUi } from "@/pages/chat/workflow/nodes/points-transfer/ui";
+import { OrderConversionConfig } from "@/pages/chat/workflow/nodes/order-conversion/panel";
+import { orderConversionNodeUi } from "@/pages/chat/workflow/nodes/order-conversion/ui";
 import { NodeOutputsSection } from "@/pages/chat/workflow/panels/node-outputs-section";
 import type {
   WorkflowNode,
   WorkflowNodeConfigPatch,
 } from "@/pages/chat/workflow/types";
 
-describe("workflow Points Transfer node", () => {
-  it("starts incomplete, sits in customer operations, and exposes the transfer result", () => {
-    const definition = getNodeDefinition("points-transfer");
-    const node = createPointsTransferNode();
+describe("workflow Order Conversion node", () => {
+  it("starts incomplete, sits in customer operations, and exposes the conversion result", () => {
+    const definition = getNodeDefinition("order-conversion");
+    const node = createOrderConversionNode();
 
     expect(definition.paletteGroup).toBe("operate");
     expect(definition.visual.label).toBe("代客转积分");
@@ -26,7 +26,7 @@ describe("workflow Points Transfer node", () => {
       edges: [],
       nodes: [node],
     })).toContainEqual(
-      expect.objectContaining({ code: "points-transfer-selector-required" }),
+      expect.objectContaining({ code: "order-conversion-selector-required" }),
     );
     expect(definition.getOutputVariables?.(node)).toEqual([
       expect.objectContaining({
@@ -35,8 +35,8 @@ describe("workflow Points Transfer node", () => {
         valueType: { kind: "boolean" },
       }),
     ]);
-    expect(pointsTransferNodeUi.body.kind === "fields"
-      ? pointsTransferNodeUi.body.getFields(node.data)
+    expect(orderConversionNodeUi.body.kind === "fields"
+      ? orderConversionNodeUi.body.getFields(node.data)
       : []).toEqual([
       expect.objectContaining({
         id: "input",
@@ -49,10 +49,10 @@ describe("workflow Points Transfer node", () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const llm = createLlmOrderNumberNode();
-    const node = createPointsTransferNode();
+    const node = createOrderConversionNode();
 
     render(
-      <StatefulPointsTransferConfig
+      <StatefulOrderConversionConfig
         llm={llm}
         node={node}
         onNodeChange={onNodeChange}
@@ -70,7 +70,7 @@ describe("workflow Points Transfer node", () => {
     }));
     expect(screen.getByRole("button", { name: "订单号" })).toHaveTextContent("大模型.订单号");
 
-    const currentNode = createPointsTransferNode();
+    const currentNode = createOrderConversionNode();
     currentNode.data = {
       ...currentNode.data,
       availableVariables: [{
@@ -87,8 +87,8 @@ describe("workflow Points Transfer node", () => {
       }],
       orderNumberSelector: ["node", llm.id, "orderNo"],
     };
-    expect(pointsTransferNodeUi.body.kind === "fields"
-      ? pointsTransferNodeUi.body.getFields(currentNode.data)[0]
+    expect(orderConversionNodeUi.body.kind === "fields"
+      ? orderConversionNodeUi.body.getFields(currentNode.data)[0]
       : undefined).toMatchObject({
       id: "input",
       value: {
@@ -102,8 +102,8 @@ describe("workflow Points Transfer node", () => {
     });
   });
 
-  it("shows the transfer result in the shared output section", () => {
-    render(<NodeOutputsSection node={createPointsTransferNode()} />);
+  it("shows the conversion result in the shared output section", () => {
+    render(<NodeOutputsSection node={createOrderConversionNode()} />);
 
     expect(screen.getByText("节点输出")).toBeInTheDocument();
     expect(screen.getByText("操作结果")).toBeInTheDocument();
@@ -111,19 +111,19 @@ describe("workflow Points Transfer node", () => {
   });
 });
 
-function StatefulPointsTransferConfig({
+function StatefulOrderConversionConfig({
   llm,
   node,
   onNodeChange,
 }: {
   llm: WorkflowNode<"llm">;
-  node: WorkflowNode<"points-transfer">;
-  onNodeChange: (patch: WorkflowNodeConfigPatch<"points-transfer">) => void;
+  node: WorkflowNode<"order-conversion">;
+  onNodeChange: (patch: WorkflowNodeConfigPatch<"order-conversion">) => void;
 }) {
   const [current, setCurrent] = useState(node);
 
   return (
-    <PointsTransferConfig
+    <OrderConversionConfig
       edges={[createEdge(llm.id, current.id)]}
       node={current}
       nodes={[llm, current]}
@@ -150,10 +150,10 @@ function createLlmOrderNumberNode(): WorkflowNode<"llm"> {
   return node;
 }
 
-function createPointsTransferNode(): WorkflowNode<"points-transfer"> {
+function createOrderConversionNode(): WorkflowNode<"order-conversion"> {
   return {
-    data: createDefaultNodeData("points-transfer"),
-    id: "points-transfer",
+    data: createDefaultNodeData("order-conversion"),
+    id: "order-conversion",
     position: { x: 0, y: 0 },
     type: WORKFLOW_NODE_TYPE,
   };

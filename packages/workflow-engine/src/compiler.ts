@@ -242,7 +242,7 @@ function validateWorkflowNodeReferences(
       }
     }
 
-    if (node.kind === "points-transfer"
+    if (node.kind === "order-conversion"
       && Array.isArray(node.config.orderNumberSelector)) {
       const valid = validateWorkflowVariableSelector({
         edges,
@@ -261,7 +261,7 @@ function validateWorkflowNodeReferences(
       if (!valid) {
         issues.push({
           code: "invalid-node-config",
-          message: "Points Transfer node references unavailable order number data",
+          message: "Order Conversion node references unavailable order number data",
           nodeId: node.id,
         });
       }

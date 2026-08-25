@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  createWorkflowPointsTransferCommand,
+  createWorkflowOrderConversionCommand,
   executeWorkflowCapability,
-  WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
 } from "../src/index.js";
 import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter.js";
 
@@ -20,25 +20,25 @@ const context = {
   workflow: {},
 };
 
-describe("Workflow Points Transfer capability", () => {
-  it("resolves the order number and maps the transfer result", async () => {
+describe("Workflow Order Conversion capability", () => {
+  it("resolves the order number and maps the conversion result", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     const result = await executeWorkflowCapability({
-      binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      binding: WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
       commandContext: context,
       config: {
         orderNumberSelector: ["node", "llm", "orderNo"],
       },
       deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
       execution: {
-        nodeId: "points-transfer",
+        nodeId: "order-conversion",
         revision: 2,
         runId: "run-1",
         sequence: 3,
         workflowId: "workflow-1",
       },
-      executionKey: "9:run-1:points-transfer:3",
+      executionKey: "9:run-1:order-conversion:3",
       port: adapter,
       signal: new AbortController().signal,
       subjectId: "customer-1",
@@ -46,7 +46,7 @@ describe("Workflow Points Transfer capability", () => {
       uid: 9,
     });
 
-    expect(createWorkflowPointsTransferCommand({
+    expect(createWorkflowOrderConversionCommand({
       config: { orderNumberSelector: ["node", "llm", "orderNo"] },
       context,
     })).toEqual({
@@ -60,20 +60,20 @@ describe("Workflow Points Transfer capability", () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: false }));
 
     await expect(executeWorkflowCapability({
-      binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      binding: WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
       commandContext: context,
       config: {
         orderNumberSelector: ["node", "llm", "orderNo"],
       },
       deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
       execution: {
-        nodeId: "points-transfer",
+        nodeId: "order-conversion",
         revision: 2,
         runId: "run-1",
         sequence: 3,
         workflowId: "workflow-1",
       },
-      executionKey: "9:run-1:points-transfer:3",
+      executionKey: "9:run-1:order-conversion:3",
       port: adapter,
       signal: new AbortController().signal,
       subjectId: "customer-1",
@@ -86,27 +86,27 @@ describe("Workflow Points Transfer capability", () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     await expect(executeWorkflowCapability({
-      binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+      binding: WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
       commandContext: { ...context, identities: {} },
       config: {
         orderNumberSelector: ["node", "llm", "orderNo"],
       },
       deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
       execution: {
-        nodeId: "points-transfer",
+        nodeId: "order-conversion",
         revision: 2,
         runId: "run-1",
         sequence: 3,
         workflowId: "workflow-1",
       },
-      executionKey: "9:run-1:points-transfer:3",
+      executionKey: "9:run-1:order-conversion:3",
       port: adapter,
       signal: new AbortController().signal,
       subjectId: "customer-1",
       subjectType: "chatai_contact",
       uid: 9,
     })).rejects.toMatchObject({
-      code: "WORKFLOW_POINTS_TRANSFER_COMMAND_INVALID",
+      code: "WORKFLOW_ORDER_CONVERSION_COMMAND_INVALID",
     });
     expect(adapter.calls).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("Workflow Points Transfer capability", () => {
     for (const orderNo of ["", "   ", "S".repeat(65)]) {
       const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
-      await expect(executePointsTransfer(adapter, {
+      await expect(executeOrderConversion(adapter, {
         ...context,
         outputs: { llm: { orderNo } },
       })).resolves.toEqual({ result: false });
@@ -124,25 +124,25 @@ describe("Workflow Points Transfer capability", () => {
   });
 });
 
-function executePointsTransfer(
+function executeOrderConversion(
   adapter: FakeWorkflowCapabilityAdapter,
   commandContext: typeof context,
 ) {
   return executeWorkflowCapability({
-    binding: WORKFLOW_POINTS_TRANSFER_CAPABILITY_BINDING,
+    binding: WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
     commandContext,
     config: {
       orderNumberSelector: ["node", "llm", "orderNo"],
     },
     deadlineAt: new Date("2026-08-24T09:30:15.000Z"),
     execution: {
-      nodeId: "points-transfer",
+      nodeId: "order-conversion",
       revision: 2,
       runId: "run-1",
       sequence: 3,
       workflowId: "workflow-1",
     },
-    executionKey: "9:run-1:points-transfer:3",
+    executionKey: "9:run-1:order-conversion:3",
     port: adapter,
     signal: new AbortController().signal,
     subjectId: "customer-1",

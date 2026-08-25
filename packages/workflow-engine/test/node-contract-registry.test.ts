@@ -153,7 +153,7 @@ const projectableDraftData = {
       start: ["trigger", "occurredAt"],
     },
   },
-  "points-transfer": {
+  "order-conversion": {
     orderNumberSelector: ["node", "llm", "orderNo"],
   },
   "order-bind": {

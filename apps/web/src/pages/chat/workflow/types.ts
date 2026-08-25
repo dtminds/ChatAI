@@ -23,7 +23,7 @@ import type {
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
   WorkflowOrderBindDraftConfig,
-  WorkflowPointsTransferDraftConfig,
+  WorkflowOrderConversionDraftConfig,
   WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
@@ -147,8 +147,8 @@ export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
-export type PointsTransferNodeData = WorkflowNodeDataBase<"points-transfer">
-  & WorkflowPointsTransferDraftConfig;
+export type OrderConversionNodeData = WorkflowNodeDataBase<"order-conversion">
+  & WorkflowOrderConversionDraftConfig;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
@@ -174,7 +174,7 @@ export type WorkflowNodeDataMap = {
   "message-query": MessageQueryNodeData;
   "order-bind": OrderBindNodeData;
   "order-query": OrderQueryNodeData;
-  "points-transfer": PointsTransferNodeData;
+  "order-conversion": OrderConversionNodeData;
   "ratio-split": RatioSplitNodeData;
   start: StartNodeData;
   tag: TagNodeData;

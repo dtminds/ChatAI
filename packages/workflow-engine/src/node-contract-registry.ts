@@ -153,7 +153,7 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
-  if (kind === "points-transfer") {
+  if (kind === "order-conversion") {
     return cloneJsonRecord(compactUndefined({
       orderNumberSelector: draftConfig.orderNumberSelector,
     }));
@@ -239,8 +239,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Tag Query node requires a match mode and at least one valid tag";
     case "customer-update":
       return "Customer Update node requires complete unique fields and values";
-    case "points-transfer":
-      return "Points Transfer node requires an order number variable";
+    case "order-conversion":
+      return "Order Conversion node requires an order number variable";
     case "order-bind":
       return "Order Bind node requires an order number variable";
     default:

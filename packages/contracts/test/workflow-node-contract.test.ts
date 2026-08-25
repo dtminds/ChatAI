@@ -364,11 +364,11 @@ describe("workflow node contracts", () => {
       source: "workflow",
     })).toBe(false);
     expect(Value.Check(WorkflowHandoffCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       customerMessage: "请稍等",
       operatorMessage: "需要人工处理",
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
+      unexpected: true,
     })).toBe(false);
     expect(Value.Check(WorkflowHandoffResultSchema, {})).toBe(true);
     expect(Value.Check(WorkflowHandoffResultSchema, { unexpected: true })).toBe(false);
@@ -543,7 +543,6 @@ describe("workflow node contracts", () => {
       "entryMode",
       "entryPolicy",
       "messageSendingWindow",
-      "pushAccountStrategy",
       "seatIds",
       "triggers",
       "workUserIds",

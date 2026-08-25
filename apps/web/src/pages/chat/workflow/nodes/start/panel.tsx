@@ -1,12 +1,10 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowEntryPolicy,
   type WorkflowMessageSendingWindow,
-  type WorkflowPushAccountStrategy,
   type WorkflowStartEntryMode,
   type WorkflowStartTrigger,
 } from "@chatai/contracts";
@@ -68,8 +66,6 @@ export function StartConfig({
   const managedAccounts = resources?.managedAccounts;
   const messageSendingWindow = chatAiStartData?.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
-  const pushAccountStrategy = chatAiStartData?.pushAccountStrategy
-    ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
     : workUsers;
@@ -79,7 +75,6 @@ export function StartConfig({
     entryMode?: WorkflowStartEntryMode;
     entryPolicy?: WorkflowEntryPolicy;
     messageSendingWindow?: WorkflowMessageSendingWindow;
-    pushAccountStrategy?: WorkflowPushAccountStrategy;
     seatIds?: number[];
     triggers?: WorkflowStartTrigger[];
     workUserIds?: number[];
@@ -325,47 +320,6 @@ export function StartConfig({
             </div>
           </section>
 
-          <section>
-            <div className="flex items-center gap-1.5 px-1 py-3">
-              <h3 className="text-[15px] font-semibold text-foreground">推送账号</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="查看推送账号说明"
-                      className="size-5 rounded-full p-0 text-muted-foreground"
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-80" side="top" sideOffset={6}>
-                    若 SOP 中包含发送消息、转人工等节点，会优先由客户的专属服务官执行。若所选托管账号均不是客户的专属服务官，则按以下优先级选择
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="px-1 pb-3">
-              <RadioGroup
-                className="flex items-center gap-6"
-                onValueChange={(strategy) => updateStartConfig({
-                  pushAccountStrategy: strategy as WorkflowPushAccountStrategy,
-                })}
-                value={pushAccountStrategy}
-              >
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="earliest-added" />
-                  <span>优先最早添加的账号</span>
-                </label>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="latest-added" />
-                  <span>优先最新添加的账号</span>
-                </label>
-              </RadioGroup>
-            </div>
-          </section>
         </>
       ) : null}
     </div>

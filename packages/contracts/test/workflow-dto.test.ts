@@ -210,7 +210,6 @@ describe("workflow contracts", () => {
     const incompleteFriendSourceConfig = {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     };
@@ -297,14 +296,6 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "25:00" },
-      pushAccountStrategy: "earliest-added",
-      seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-    })).toBe(false);
-    expect(Value.Check(WorkflowStartConfigSchema, {
-      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
-      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "random",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     })).toBe(false);

@@ -1,7 +1,6 @@
 import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   isWorkflowMessageSendingWindowValid,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
@@ -134,7 +133,6 @@ export function createStartNodeData(
     ? createNodeData("start", {
         ...common,
         messageSendingWindow: DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-        pushAccountStrategy: DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
         seatIds: [],
       })
     : createNodeData("start", { ...common, workUserIds: [] });

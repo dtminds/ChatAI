@@ -474,7 +474,6 @@ describe("workflow DSL", () => {
       entryMode: "event",
       entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101, 102],
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });

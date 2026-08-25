@@ -385,7 +385,6 @@ describe("workflow capability reliability", () => {
       trigger: { padding: "" },
       workflow: {
         message: {
-          accountSelection: { seatIds: [101], strategy: "earliest-added" },
           sendingWindow: startConfig().messageSendingWindow,
         },
       },
@@ -1360,7 +1359,6 @@ async function startCapability(
       },
       workflow: {
         message: {
-          accountSelection: { seatIds: [101], strategy: "earliest-added" },
           sendingWindow: startConfig().messageSendingWindow,
         },
       },

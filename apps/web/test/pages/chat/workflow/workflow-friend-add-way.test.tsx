@@ -172,11 +172,13 @@ describe("friend add-way selection", () => {
       title: undefined,
     });
     expect(within(dialog).getByRole("columnheader", { name: "创建时间" })).toBeInTheDocument();
-    expect(within(dialog).queryByText("共 21 条")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("共 21 条")).toBeInTheDocument();
+    expect(within(dialog).getByText("已选择 0/5")).toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("checkbox", { name: "门店活码" }));
     expect(onChange).not.toHaveBeenCalled();
+    expect(within(dialog).getByText("已选择 1/5")).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "下一页" }));
     expect(await within(dialog).findByRole("checkbox", { name: "第二页活动" })).toBeInTheDocument();
@@ -221,13 +223,13 @@ describe("friend add-way selection", () => {
 
     await user.click(screen.getByRole("button", { name: /请选择活动/ }));
     const dialog = await screen.findByRole("dialog", { name: "选择活动" });
-    expect(within(dialog).getByText("0 / 5")).toBeInTheDocument();
+    expect(within(dialog).getByText("已选择 0/5")).toBeInTheDocument();
     const firstFive = Array.from({ length: 5 }, (_, index) => `活动 ${index + 1}`);
     for (const title of firstFive) {
       await user.click(await within(dialog).findByRole("checkbox", { name: title }));
     }
 
-    expect(within(dialog).getByText("5 / 5")).toBeInTheDocument();
+    expect(within(dialog).getByText("已选择 5/5")).toBeInTheDocument();
     expect(within(dialog).getByRole("checkbox", { name: "活动 6" })).toBeDisabled();
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
     expect(onChange).toHaveBeenCalledWith({
@@ -237,10 +239,10 @@ describe("friend add-way selection", () => {
     });
   });
 
-  it("shows a fallback for an activity with an empty title", async () => {
+  it("shows a fallback for an activity with a missing title", async () => {
     const user = userEvent.setup();
     vi.mocked(listWorkflowFriendAddWayActivities).mockResolvedValue({
-      items: [{ addWayId: "live-1", title: "   " }],
+      items: [{ addWayId: "live-1", title: undefined as never }],
       pagination: { hasNext: false, page: 1, pageSize: 10, total: 1 },
     });
 
@@ -261,6 +263,39 @@ describe("friend add-way selection", () => {
     const dialog = await screen.findByRole("dialog", { name: "选择活动" });
     expect(await within(dialog).findByRole("checkbox", { name: "未命名" })).toBeInTheDocument();
     expect(within(dialog).getByText("未命名")).toBeInTheDocument();
+  });
+
+  it("does not allow selecting an activity without an add-way ID", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    vi.mocked(listWorkflowFriendAddWayActivities).mockResolvedValue({
+      items: [{ addWayId: "", title: "异常活动" }],
+      pagination: { hasNext: false, page: 1, pageSize: 10, total: 1 },
+    });
+
+    render(
+      <FriendAddWaySelection
+        groups={groups}
+        onChange={onChange}
+        status="ready"
+        value={{
+          addWayKey: "scan.mini_program",
+          sourceIds: [],
+          sourceMatchMode: "any",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /请选择活动/ }));
+    const dialog = await screen.findByRole("dialog", { name: "选择活动" });
+    expect(await within(dialog).findByRole("checkbox", { name: "异常活动" })).toBeDisabled();
+
+    await user.click(within(dialog).getByRole("button", { name: "确定" }));
+    expect(onChange).toHaveBeenCalledWith({
+      addWayKey: "scan.mini_program",
+      sourceIds: [],
+      sourceMatchMode: "any",
+    });
   });
 
   it("retries catalog loading failures", async () => {

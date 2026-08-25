@@ -42,8 +42,6 @@ export const DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW = {
   startTime: "09:00",
 } as const;
 
-export const DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY = "earliest-added" as const;
-
 const WorkflowClockTimeSchema = Type.String({
   pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
 });
@@ -52,11 +50,6 @@ export const WorkflowMessageSendingWindowSchema = Type.Object({
   endTime: WorkflowClockTimeSchema,
   startTime: WorkflowClockTimeSchema,
 }, { additionalProperties: false });
-
-export const WorkflowPushAccountStrategySchema = Type.Union([
-  Type.Literal("earliest-added"),
-  Type.Literal("latest-added"),
-]);
 
 export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
 
@@ -164,7 +157,6 @@ export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
   entryMode: Type.Optional(WorkflowStartEntryModeSchema),
   entryPolicy: WorkflowEntryPolicySchema,
   messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
-  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     uniqueItems: true,
@@ -190,7 +182,6 @@ export const WorkflowStartDraftConfigSchema = Type.Union([
 const WorkflowChatAiStartExecutionFields = {
   entryPolicy: WorkflowEntryPolicySchema,
   messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
-  pushAccountStrategy: Type.Optional(WorkflowPushAccountStrategySchema),
   seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,
@@ -355,7 +346,6 @@ export type WorkflowEntryEventType = Static<typeof WorkflowEntryEventTypeSchema>
 export type WorkflowEntryPolicy = Static<typeof WorkflowEntryPolicySchema>;
 export type WorkflowStartEntryMode = Static<typeof WorkflowStartEntryModeSchema>;
 export type WorkflowMessageSendingWindow = Static<typeof WorkflowMessageSendingWindowSchema>;
-export type WorkflowPushAccountStrategy = Static<typeof WorkflowPushAccountStrategySchema>;
 export type WorkflowChatAiStartDraftConfig = Static<typeof WorkflowChatAiStartDraftConfigSchema>;
 export type WorkflowChatAiStartConfig = Static<typeof WorkflowChatAiStartConfigSchema>;
 export type WorkflowWeComStartDraftConfig = Static<typeof WorkflowWeComStartDraftConfigSchema>;

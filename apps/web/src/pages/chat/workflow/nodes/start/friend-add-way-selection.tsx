@@ -405,6 +405,10 @@ function FriendAddWayActivityPicker({
 
   function toggleDraftId(id: string, checked: boolean) {
     setDraftSelectedIds(current => {
+      if (typeof id !== "string" || !id.trim()) {
+        return current;
+      }
+
       if (!checked) {
         return current.filter(item => item !== id);
       }
@@ -437,13 +441,8 @@ function FriendAddWayActivityPicker({
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogContent className="flex h-[600px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
           <div className="shrink-0 px-6 pb-3 pt-5">
-            <div className="flex items-baseline gap-2">
-              <DialogTitle className="text-lg">选择活动</DialogTitle>
-              <span className="text-sm font-normal text-muted-foreground">
-                {draftSelectedIds.length} / {WORKFLOW_FRIEND_SOURCE_MAX_SELECTED}
-              </span>
-            </div>
-            <div className="relative mt-4">
+            <DialogTitle className="text-lg">选择活动</DialogTitle>
+            <div className="relative mt-4 w-[260px] max-w-full">
               <HugeiconsIcon
                 aria-hidden="true"
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -465,9 +464,9 @@ function FriendAddWayActivityPicker({
             <Table aria-label="活动" className="table-fixed">
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-12 rounded-l-[10px] bg-muted/50 px-4" />
-                  <TableHead className="bg-muted/50 px-4">活动名称</TableHead>
-                  <TableHead className="w-[200px] rounded-r-[10px] bg-muted/50 px-4">创建时间</TableHead>
+                  <TableHead className="w-12 px-4" />
+                  <TableHead className="px-4">活动名称</TableHead>
+                  <TableHead className="w-[200px] px-4">创建时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -510,12 +509,15 @@ function FriendAddWayActivityPicker({
                   </TableRow>
                 ) : (
                   items.map(item => {
-                    const checked = draftSelectedKeySet.has(item.addWayId);
-                    const disabled = atLimit && !checked;
-                    const displayTitle = item.title.trim() || "未命名";
+                    const selectable = typeof item.addWayId === "string" && Boolean(item.addWayId.trim());
+                    const checked = selectable && draftSelectedKeySet.has(item.addWayId);
+                    const disabled = !selectable || (atLimit && !checked);
+                    const displayTitle = typeof item.title === "string" && item.title.trim()
+                      ? item.title.trim()
+                      : "未命名";
                     return (
                       <TableRow key={item.addWayId}>
-                        <TableCell className="w-12 px-4 py-2">
+                        <TableCell className="w-12 px-4 py-3">
                           <Checkbox
                             aria-label={displayTitle}
                             checked={checked}
@@ -523,10 +525,10 @@ function FriendAddWayActivityPicker({
                             onCheckedChange={next => toggleDraftId(item.addWayId, next === true)}
                           />
                         </TableCell>
-                        <TableCell className="max-w-0 px-4 py-2">
+                        <TableCell className="max-w-0 px-4 py-3">
                           <span className="block truncate">{displayTitle}</span>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap px-4 py-2 text-muted-foreground">
+                        <TableCell className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                           {formatActivityCreateTime(item.createTime)}
                         </TableCell>
                       </TableRow>
@@ -537,17 +539,22 @@ function FriendAddWayActivityPicker({
             </Table>
           </div>
 
-          <div className="flex shrink-0 items-center gap-4 px-6 py-4">
-            {!error && total > 0 ? (
+          {!error && total > 0 ? (
+            <div className="shrink-0 px-6">
               <TablePagination
-                className="min-w-0 flex-1 border-t-0 px-0 py-0 sm:justify-start"
+                className="border-t-0 px-0 py-3"
                 onPageChange={setPage}
                 page={pagination.activePage}
-                showTotal={false}
                 total={total}
                 totalPages={pagination.totalPages}
               />
-            ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex shrink-0 items-center gap-4 border-t px-6 py-4">
+            <span className="shrink-0 text-sm text-muted-foreground">
+              已选择 {draftSelectedIds.length}/{WORKFLOW_FRIEND_SOURCE_MAX_SELECTED}
+            </span>
             <div className="ml-auto flex shrink-0 items-center gap-3">
               <Button className="min-w-20" onClick={() => setOpen(false)} type="button" variant="outline">
                 取消

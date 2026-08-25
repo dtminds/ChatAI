@@ -100,8 +100,6 @@ describe("workflow trigger matching", () => {
     expect(normalized.entryMode).toBe("event");
     expect("messageSendingWindow" in normalized ? normalized.messageSendingWindow : undefined)
       .toEqual({ endTime: "20:00", startTime: "09:00" });
-    expect("pushAccountStrategy" in normalized ? normalized.pushAccountStrategy : undefined)
-      .toBe("earliest-added");
     expect(normalized.triggers).toEqual([{
       keywords: ["价格", "优惠"],
       type: "message.received",
@@ -118,18 +116,16 @@ describe("workflow trigger matching", () => {
     }]);
   });
 
-  it("preserves configured ChatAI delivery settings during normalization", () => {
+  it("preserves the configured ChatAI sending window during normalization", () => {
     const normalized = normalizeWorkflowStartConfig({
       entryPolicy,
       messageSendingWindow: { endTime: "22:30", startTime: "10:15" },
-      pushAccountStrategy: "latest-added",
       seatIds: [101],
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(normalized).toEqual(expect.objectContaining({
       messageSendingWindow: { endTime: "22:30", startTime: "10:15" },
-      pushAccountStrategy: "latest-added",
     }));
   });
 

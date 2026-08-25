@@ -9,7 +9,6 @@ import type {
 } from "@chatai/contracts";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   normalizeWorkflowEntryPolicy,
 } from "@chatai/contracts";
 import type { WorkflowTriggerProjection } from "./event-catalog.js";
@@ -29,8 +28,6 @@ export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): Workf
         entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
         messageSendingWindow:
           config.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-        pushAccountStrategy:
-          config.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
         seatIds: uniqueNumbers(config.seatIds),
         triggers,
       } as WorkflowChatAiStartConfig

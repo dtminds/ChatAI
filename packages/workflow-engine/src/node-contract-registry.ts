@@ -1,6 +1,5 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   extractWorkflowNodeDraftConfig,
   getWorkflowNodeContract,
   isWorkflowBranchConfigComplete,
@@ -53,8 +52,6 @@ export function projectWorkflowNodeExecutionConfig({
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
           messageSendingWindow:
             draftConfig.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-          pushAccountStrategy:
-            draftConfig.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
           seatIds: draftConfig.seatIds,
           triggers,
         }

@@ -101,13 +101,13 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 
 流程继续走默认出口，由后续条件分支消费 `操作结果`。
 
-订单号变量解析为空或空白时，同样输出 `false` 并继续默认出口，不调用 Java。这让后续条件分支可以处理「未抽到订单号」。
+订单号变量解析为空、空白或超过 64 个字符时，同样输出 `false` 并继续默认出口，不调用 Java。这让后续条件分支可以处理无效订单号。
 
 系统不可用、超时、非法信封和未知结果不属于 `result: false`：
 
 - 非 HTTP 200、网络异常和超时属于 retryable
 - HTTP 200 下的非法 JSON、非法 envelope 属于 terminal
-- 配置非法、客户身份不可用、订单号超过 64 个字符属于 terminal
+- 配置非法、客户身份不可用属于 terminal
 
 Java HTTP 200 且 `error` 为安全整数时：
 

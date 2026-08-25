@@ -103,15 +103,13 @@ describe("Workflow Order Bind capability", () => {
     }
   });
 
-  it("stops when the resolved order number exceeds the contract length", async () => {
+  it("completes an overlong order number as false without calling Java", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     await expect(executeOrderBind(adapter, {
       ...context,
       outputs: { llm: { orderNo: "S".repeat(65) } },
-    })).rejects.toMatchObject({
-      code: "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
-    });
+    })).resolves.toEqual({ result: false });
     expect(adapter.calls).toHaveLength(0);
   });
 });

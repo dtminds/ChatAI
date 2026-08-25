@@ -78,9 +78,7 @@ function readOrderNumber(value: unknown): WorkflowOrderBindCommand | null {
     ? String(value)
     : typeof value === "string" ? value.trim() : "";
   if (!orderNumber) return null;
-  if (orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) {
-    throw orderBindCommandError("Order Bind order number did not resolve to usable text");
-  }
+  if (orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) return null;
   return {
     orderNumber,
     source: "workflow",

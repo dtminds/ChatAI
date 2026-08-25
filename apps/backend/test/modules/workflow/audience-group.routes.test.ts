@@ -265,6 +265,60 @@ describe("workflow audience-group routes", () => {
     });
   });
 
+  it("rejects error zero when the Java success flag is false", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        count: 1,
+        error: 0,
+        hasNext: false,
+        list: [{ id: 301, name: "高价值客户" }],
+        page: 1,
+        pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
+        success: false,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
+  it("rejects Java envelopes without an explicit success marker", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({}));
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
   it("rejects unauthenticated list requests", async () => {
     const created = await createAuthenticatedApp();
     app = created.app;

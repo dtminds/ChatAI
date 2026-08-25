@@ -348,19 +348,7 @@ async function postJavaRequest<T>({
 }
 
 function isJavaEnvelopeSuccessful(response: JavaApiResponse) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
+  return response.success === true;
 }
 
 function readJavaApiTimeoutMs() {

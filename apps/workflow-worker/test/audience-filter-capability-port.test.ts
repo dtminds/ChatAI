@@ -57,10 +57,6 @@ describe("Workflow Audience Filter Java port", () => {
       data: { exist: true, groupIds: [999] },
       success: true,
     }, [301, 302])).toEqual({ exist: true, groupIds: [] });
-    expect(decodeWorkflowAudienceFilterJavaResponse({
-      data: { exist: false },
-      error: 0,
-    }, [301])).toEqual({ exist: false, groupIds: [] });
   });
 
   it("rejects string, invalid, or duplicate group ids as terminal", () => {
@@ -105,6 +101,7 @@ describe("Workflow Audience Filter Java port", () => {
 
   it.each([
     { data: { exist: true, groupIds: [] }, error: 1 },
+    { data: { exist: true, groupIds: [] }, error: 0 },
     { data: { exist: true, groupIds: [] }, success: 1 },
   ])("treats an invalid success envelope as terminal", (body) => {
     expect(() => decodeWorkflowAudienceFilterJavaResponse(body, [301])).toThrow(

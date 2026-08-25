@@ -70,7 +70,7 @@ Java 成功响应 envelope：
 解码规则：
 
 - `success === false` 视为业务拒绝，terminal
-- `success === true` 或 `error === 0` 视为查询成功
+- 只有 `success === true` 视为查询成功；`error` 只用于失败诊断
 - `data.exist` 必须是 boolean
 - `data.groupIds` 与请求 ID 求交集；请求外 ID 忽略，不 terminal
 - `groupIds` 中的非法项（非正整数）和重复命中 ID 视为返回结果异常，terminal
@@ -167,7 +167,7 @@ Node 映射规则：
 - 节点配置快照仍只保存 `id` 和 `name`
 - `id` 接受 JSON number 或数字字符串，映射为正整数；无效项和重复 ID 跳过，按 Java 返回顺序保留当前页
 - 公开响应为 `{ groups, pagination: { hasNext, page, pageSize, total } }`，`total` 来自 Java `count`
-- `HTTP 200` 且 `success === true` 或 `error === 0` 视为列表成功
+- `HTTP 200` 且 `success === true` 视为列表成功；`error` 只用于失败诊断
 - 列表失败时弹窗展示重试；已选快照仍回显
 
 设置面板：

@@ -151,7 +151,7 @@ export function decodeWorkflowAudienceFilterJavaResponse(
       `Workflow Audience Filter Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
     );
   }
-  if (body.success !== true && body.error !== 0) {
+  if (body.success !== true) {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_RESPONSE_INVALID",
       "返回结果异常，流程已停止",

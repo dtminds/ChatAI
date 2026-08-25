@@ -86,11 +86,7 @@ describe("Audience Filter compiler validation", () => {
           { id: "branch-default", source: "branch", sourceHandle: "default", target: "end" },
         ],
         nodes: [
-          node("start", "start", {
-            entryPolicy: { mode: "never" },
-            seatIds: [101],
-            triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-          }),
+          node("start", "start", startConfig()),
           node("audience-filter", "audience-filter", {
             groups: [{ id: 301, name: "高价值客户" }],
             matchMode: "any",
@@ -140,15 +136,20 @@ function createDraft(config: Record<string, unknown>): WorkflowDraft {
       { id: "filter-end", source: "audience-filter", target: "end" },
     ],
     nodes: [
-      node("start", "start", {
-        entryPolicy: { mode: "never" },
-        seatIds: [101],
-        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-      }),
+      node("start", "start", startConfig()),
       node("audience-filter", "audience-filter", config),
       node("end", "end"),
     ],
     viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
+function startConfig() {
+  return {
+    entryPolicy: { mode: "never" },
+    panelState: { section: "triggers" },
+    seatIds: [101],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   };
 }
 

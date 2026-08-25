@@ -121,6 +121,7 @@ describe("workflow runtime repository", () => {
     ["current node kind changes", flowChangedSpec("node-kind-changed"), "flow_changed_node_kind_changed"],
     ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Order Conversion target needs unavailable context", flowChangedSpec("order-conversion-context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Handoff target lacks its frozen seat", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
@@ -896,6 +897,7 @@ function flowChangedSpec(
     | "handoff-context-incompatible"
     | "message-context-incompatible"
     | "node-kind-changed"
+    | "order-conversion-context-incompatible"
     | "outlet-deleted",
 ): WorkflowExecutionSpec {
   const spec = publishedSpec();
@@ -954,6 +956,27 @@ function flowChangedSpec(
           id: "message-1",
           kind: "message",
           nodeSchemaVersion: 2,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
+  if (scenario === "order-conversion-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-order-conversion", source: "start", sourceOutletId: "default", target: "order-conversion-1" },
+        { id: "order-conversion-end", source: "order-conversion-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            orderNumberSelector: ["node", "llm-1", "result"],
+          },
+          id: "order-conversion-1",
+          kind: "order-conversion",
+          nodeSchemaVersion: 1,
         },
         spec.nodes[1]!,
       ],

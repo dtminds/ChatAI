@@ -249,6 +249,14 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
 
 export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
 
+export const WorkflowOrderConversionDraftConfigSchema = Type.Object({
+  orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
+}, { additionalProperties: false });
+
+export const WorkflowOrderConversionExecutionConfigSchema = Type.Object({
+  orderNumberSelector: WorkflowVariableSelectorSchema,
+}, { additionalProperties: false });
+
 export const WorkflowOrderBindDraftConfigSchema = Type.Object({
   orderNumberSelector: Type.Optional(WorkflowVariableSelectorSchema),
 }, { additionalProperties: false });
@@ -519,6 +527,8 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
+export type WorkflowOrderConversionDraftConfig = Static<typeof WorkflowOrderConversionDraftConfigSchema>;
+export type WorkflowOrderConversionExecutionConfig = Static<typeof WorkflowOrderConversionExecutionConfigSchema>;
 export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
 export type WorkflowOrderBindExecutionConfig = Static<typeof WorkflowOrderBindExecutionConfigSchema>;
 export type WorkflowCustomerFieldType = Static<typeof WorkflowCustomerFieldTypeSchema>;
@@ -642,6 +652,13 @@ export const workflowNodeContractRegistry = {
     ["externalUserId"],
   ),
   "order-query": placeholderContract("query", ["externalUserId"]),
+  "order-conversion": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowOrderConversionDraftConfigSchema,
+    WorkflowOrderConversionExecutionConfigSchema,
+    ["mallUserId"],
+  ),
   start: runtimeReadyContract(
     "core",
     1,
@@ -981,6 +998,15 @@ export function getWorkflowNodeOutputContracts(
         key: "matchedTagCount",
         usages: ["variable"],
         valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "order-conversion") {
+    return [
+      {
+        key: "result",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

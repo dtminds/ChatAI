@@ -218,6 +218,7 @@ describe("workflow node catalog", () => {
       "message-query",
       "order-bind",
       "order-query",
+      "order-conversion",
       "ratio-split",
       "start",
       "tag",
@@ -251,7 +252,7 @@ describe("workflow node catalog", () => {
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -363,6 +364,7 @@ describe("workflow node catalog", () => {
       "message-query",
       "order-bind",
       "order-query",
+      "order-conversion",
       "start",
       "tag",
       "tag-query",
@@ -475,6 +477,7 @@ describe("workflow node catalog", () => {
       "message",
       "message",
       "operate",
+      "operate",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
@@ -495,7 +498,7 @@ describe("workflow node catalog", () => {
       { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
@@ -506,7 +509,7 @@ describe("workflow node catalog", () => {
       { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);
   });
 

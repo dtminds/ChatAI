@@ -40,6 +40,7 @@ describe("workflow contracts", () => {
       "llm",
       "order-bind",
       "order-query",
+      "order-conversion",
       "tag-query",
       "tag",
       "customer-update",

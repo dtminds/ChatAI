@@ -58,7 +58,7 @@ export const WorkflowPushAccountStrategySchema = Type.Union([
   Type.Literal("latest-added"),
 ]);
 
-export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 100;
+export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
 
 export const WorkflowFriendAddWayMatchModeSchema = Type.Union([
   Type.Literal("all"),

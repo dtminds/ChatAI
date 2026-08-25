@@ -67,21 +67,7 @@ export class FriendAddWayService {
       title: normalizeOptionalText(input.title),
       uid,
     });
-    const items = result.items
-      .map(mapActivity)
-      .filter((item): item is WorkflowFriendAddWayActivity => item != null)
-      .slice(0, pageSize);
-
-    if (result.items.length > 0 && items.length === 0) {
-      this.logger.warn(
-        {
-          itemCount: result.items.length,
-          key: input.key,
-          uid,
-        },
-        "friend-add-way-activities 上游有列表项但字段映射后为空",
-      );
-    }
+    const items = result.items.map(mapActivity);
 
     return {
       items,
@@ -154,15 +140,11 @@ function normalizeTitle(value: unknown) {
   return title && title.length <= WORKFLOW_FRIEND_ADD_WAY_TITLE_MAX_LENGTH ? title : null;
 }
 
-function mapActivity(item: FriendAddWayJavaActivity): WorkflowFriendAddWayActivity | null {
-  const addWayId = normalizeKey(item.addWayId);
-  const title = normalizeTitle(item.title);
-  if (!addWayId || !title) {
-    return null;
-  }
-
+function mapActivity(item: FriendAddWayJavaActivity): WorkflowFriendAddWayActivity {
   const createTime = normalizeCreateTime(item.createTime);
-  return createTime == null ? { addWayId, title } : { addWayId, createTime, title };
+  return createTime == null
+    ? { addWayId: item.addWayId, title: item.title }
+    : { addWayId: item.addWayId, createTime, title: item.title };
 }
 
 function normalizeCreateTime(value: unknown) {

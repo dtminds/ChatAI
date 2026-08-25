@@ -152,8 +152,8 @@ export function FriendAddWaySelection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">满足全部</SelectItem>
-                <SelectItem value="any">满足任意一个</SelectItem>
+                <SelectItem value="all">不限</SelectItem>
+                <SelectItem value="any">指定（满足任一）</SelectItem>
               </SelectContent>
             </Select>
           ) : null}
@@ -435,10 +435,15 @@ function FriendAddWayActivityPicker({
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogContent className="flex h-[680px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
-          <div className="flex shrink-0 items-center gap-6 px-6 py-4">
-            <DialogTitle className="text-lg">选择活动</DialogTitle>
-            <div className="relative ml-auto w-[min(360px,60%)] shrink-0">
+        <DialogContent className="flex h-[600px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
+          <div className="shrink-0 px-6 pb-3 pt-5">
+            <div className="flex items-baseline gap-2">
+              <DialogTitle className="text-lg">选择活动</DialogTitle>
+              <span className="text-sm font-normal text-muted-foreground">
+                {draftSelectedIds.length} / {WORKFLOW_FRIEND_SOURCE_MAX_SELECTED}
+              </span>
+            </div>
+            <div className="relative mt-4">
               <HugeiconsIcon
                 aria-hidden="true"
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -448,22 +453,21 @@ function FriendAddWayActivityPicker({
               />
               <Input
                 aria-label="搜索活动"
-                className="h-9 pl-9"
+                className="h-10 pl-9"
                 onChange={event => setQuery(event.target.value)}
-                placeholder="搜索"
+                placeholder="搜索活动名称"
                 value={query}
-                variant="soft"
               />
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6">
-            <Table aria-label="活动">
+            <Table aria-label="活动" className="table-fixed">
               <TableHeader className="sticky top-0 z-10 bg-background">
-                <TableRow>
-                  <TableHead className="w-12 px-4" />
-                  <TableHead className="px-4">活动</TableHead>
-                  <TableHead className="w-[200px] px-4">创建时间</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-12 rounded-l-[10px] bg-muted/50 px-4" />
+                  <TableHead className="bg-muted/50 px-4">活动名称</TableHead>
+                  <TableHead className="w-[200px] rounded-r-[10px] bg-muted/50 px-4">创建时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -508,20 +512,21 @@ function FriendAddWayActivityPicker({
                   items.map(item => {
                     const checked = draftSelectedKeySet.has(item.addWayId);
                     const disabled = atLimit && !checked;
+                    const displayTitle = item.title.trim() || "未命名";
                     return (
                       <TableRow key={item.addWayId}>
-                        <TableCell className="w-12 px-4 py-3">
+                        <TableCell className="w-12 px-4 py-2">
                           <Checkbox
-                            aria-label={item.title}
+                            aria-label={displayTitle}
                             checked={checked}
                             disabled={disabled}
                             onCheckedChange={next => toggleDraftId(item.addWayId, next === true)}
                           />
                         </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <span className="line-clamp-2">{item.title}</span>
+                        <TableCell className="max-w-0 px-4 py-2">
+                          <span className="block truncate">{displayTitle}</span>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                        <TableCell className="whitespace-nowrap px-4 py-2 text-muted-foreground">
                           {formatActivityCreateTime(item.createTime)}
                         </TableCell>
                       </TableRow>
@@ -538,6 +543,7 @@ function FriendAddWayActivityPicker({
                 className="min-w-0 flex-1 border-t-0 px-0 py-0 sm:justify-start"
                 onPageChange={setPage}
                 page={pagination.activePage}
+                showTotal={false}
                 total={total}
                 totalPages={pagination.totalPages}
               />

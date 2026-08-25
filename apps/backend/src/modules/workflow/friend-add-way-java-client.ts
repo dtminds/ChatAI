@@ -46,9 +46,9 @@ export type FriendAddWayJavaGroup = {
 };
 
 export type FriendAddWayJavaActivity = {
-  addWayId?: string | null;
+  addWayId: string;
   createTime?: number | string | null;
-  title?: string | null;
+  title: string;
 };
 
 export type FriendAddWayJavaActivityPage = {

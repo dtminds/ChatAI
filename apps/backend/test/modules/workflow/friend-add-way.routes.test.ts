@@ -156,19 +156,22 @@ describe("workflow friend-add-way routes", () => {
     });
   });
 
-  it("lists friend add-way activities from the Java activity page", async () => {
+  it("preserves the Java activity page cardinality", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 21,
+          count: 84,
           hasNext: true,
           list: [
-            { addWayId: "live-1", createTime: 1_710_000_000, title: "门店活码" },
-            { addWayId: "live-2", title: "活动活码" },
+            { addWayId: "live-61", createTime: 1_710_000_000, title: "活动 61" },
+            ...Array.from({ length: 8 }, (_, index) => ({
+              addWayId: `live-${index + 62}`,
+              title: `活动 ${index + 62}`,
+            })),
             { addWayId: "", title: "无效活动" },
           ],
-          page: 1,
-          pageSize: 20,
+          page: 7,
+          pageSize: 10,
           success: true,
         }),
         {
@@ -186,34 +189,32 @@ describe("workflow friend-add-way routes", () => {
         authorization: created.authorization,
       },
       method: "GET",
-      url: "/api/server/workflow/friend-add-way-activities?key=scan&title=%E6%B4%BB%E7%A0%81&page=1&pageSize=20",
+      url: "/api/server/workflow/friend-add-way-activities?key=1_1&page=7&pageSize=10",
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      data: {
-        items: [
-          { addWayId: "live-1", createTime: 1_710_000_000_000, title: "门店活码" },
-          { addWayId: "live-2", title: "活动活码" },
-        ],
-        pagination: {
-          hasNext: true,
-          page: 1,
-          pageSize: 20,
-          total: 21,
-        },
-      },
-      success: true,
+    const responseData = response.json().data;
+    expect(responseData.items).toHaveLength(10);
+    expect(responseData.items[0]).toEqual({
+      addWayId: "live-61",
+      createTime: 1_710_000_000_000,
+      title: "活动 61",
+    });
+    expect(responseData.items[9]).toEqual({ addWayId: "", title: "无效活动" });
+    expect(responseData.pagination).toEqual({
+      hasNext: true,
+      page: 7,
+      pageSize: 10,
+      total: 84,
     });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] ?? [];
     expect(url).toBe("https://java.internal/third-internal/work-external-contact/get-add-way-activity");
     expect(JSON.parse(String(init?.body))).toEqual({
-      key: "scan",
-      page: 1,
-      pageSize: 20,
-      title: "活码",
+      key: "1_1",
+      page: 7,
+      pageSize: 10,
       uid: 9001,
     });
   });

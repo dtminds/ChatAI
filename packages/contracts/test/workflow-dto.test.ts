@@ -234,7 +234,7 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [{
-        sourceIds: ["a", "b", "c", "d", "e", "f"],
+        sourceIds: ["a", "b", "c", "d", "e"],
         type: "contact.friend_added",
       }],
       workUserIds: [201],
@@ -242,7 +242,7 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [{
-        sourceIds: Array.from({ length: 101 }, (_, index) => `source-${index + 1}`),
+        sourceIds: ["a", "b", "c", "d", "e", "f"],
         type: "contact.friend_added",
       }],
       workUserIds: [201],

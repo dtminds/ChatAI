@@ -7,21 +7,10 @@ import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insight
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_DAILY_TIME: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_EXECUTION_MODE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_TIMEZONE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_WORKER_ENABLED: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_BATCH_SIZE: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),
   INSIGHTS_WORKER_OBSERVER_SUBJECTS: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: Type.Optional(Type.String()),
   INSIGHTS_WORKER_UID_ALLOWLIST: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),
@@ -38,12 +27,6 @@ export const EnvSchema = Type.Object({
   REDIS_ENABLED: Type.Optional(Type.String()),
   REDIS_KEY_PREFIX: Type.Optional(Type.String()),
   REDIS_URL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_LITE_MAX_TOKENS: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_LITE_MODEL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_MAX_TOKENS: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_MODEL: Type.Optional(Type.String()),
 });
 
 export type Env = Static<typeof EnvSchema>;

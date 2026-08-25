@@ -44,9 +44,14 @@ jobs:
               - ".github/workflows/backend-ci.yml"
               - ".github/workflows/ci.yml"
               - "apps/backend/**"
+              - "apps/backend-worker/**"
               - "apps/workflow-worker/**"
               - "package.json"
               - "packages/contracts/**"
+              - "packages/database/**"
+              - "packages/insights/**"
+              - "packages/tickets/**"
+              - "packages/user-memory/**"
               - "packages/workflow-engine/**"
               - "packages/workflow-runtime/**"
               - "pnpm-lock.yaml"
@@ -91,6 +96,18 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @chatai/contracts exec tsc -p tsconfig.json
 
+      - name: Build database
+        run: pnpm --filter @chatai/database exec tsc -p tsconfig.json
+
+      - name: Build tickets
+        run: pnpm --filter @chatai/tickets exec tsc -p tsconfig.json
+
+      - name: Build insights
+        run: pnpm --filter @chatai/insights exec tsc -p tsconfig.json
+
+      - name: Build user memory
+        run: pnpm --filter @chatai/user-memory exec tsc -p tsconfig.json
+
       - name: Build workflow engine
         run: pnpm --filter @chatai/workflow-engine exec tsc -p tsconfig.json
 
@@ -103,8 +120,23 @@ jobs:
       - name: Build backend
         run: pnpm --filter @chatai/backend exec tsc -p tsconfig.json
 
+      - name: Build backend worker
+        run: pnpm --filter @chatai/backend-worker exec tsc -p tsconfig.json
+
       - name: Test contracts
         run: pnpm --filter @chatai/contracts test
+
+      - name: Test database
+        run: pnpm --filter @chatai/database test
+
+      - name: Test tickets
+        run: pnpm --filter @chatai/tickets test
+
+      - name: Test insights
+        run: pnpm --filter @chatai/insights test
+
+      - name: Test user memory
+        run: pnpm --filter @chatai/user-memory test
 
       - name: Test workflow engine
         run: pnpm --filter @chatai/workflow-engine test
@@ -125,6 +157,12 @@ jobs:
 
       - name: Test backend
         run: pnpm backend:test
+
+      - name: Test backend worker
+        run: pnpm --filter @chatai/backend-worker test
+
+      - name: Verify backend worker production imports
+        run: pnpm --filter @chatai/backend-worker verify:production-imports
 
       - name: Verify workflow worker production imports
         run: pnpm --filter @chatai/workflow-worker verify:production-imports

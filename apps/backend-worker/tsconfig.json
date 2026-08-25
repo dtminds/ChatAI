@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@chatai/database": ["../../packages/database/src/index.ts"],
+      "@chatai/insights": ["../../packages/insights/src/index.ts"],
+      "@chatai/user-memory": ["../../packages/user-memory/src/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/database" },
+    { "path": "../../packages/insights" },
+    { "path": "../../packages/user-memory" }
+  ]
+}

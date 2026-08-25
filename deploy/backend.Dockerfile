@@ -1,61 +1,70 @@
-# 构建阶段
 FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
-# 复制 workspace 配置和根 package.json
-COPY pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY package.json ./
-
-# 复制所有包的 package.json（用于依赖安装）
-COPY apps/web/package.json ./apps/web/
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/database/package.json ./packages/database/
+COPY packages/insights/package.json ./packages/insights/
+COPY packages/tickets/package.json ./packages/tickets/
+COPY packages/user-memory/package.json ./packages/user-memory/
+COPY packages/workflow-engine/package.json ./packages/workflow-engine/
+COPY packages/workflow-runtime/package.json ./packages/workflow-runtime/
 
-# 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 复制源码
-COPY apps/web/ ./apps/web/
-COPY apps/backend/ ./apps/backend/
-COPY packages/contracts/ ./packages/contracts/
+COPY tsconfig.base.json ./
+COPY apps/backend ./apps/backend
+COPY packages/contracts ./packages/contracts
+COPY packages/database ./packages/database
+COPY packages/insights ./packages/insights
+COPY packages/tickets ./packages/tickets
+COPY packages/user-memory ./packages/user-memory
+COPY packages/workflow-engine ./packages/workflow-engine
+COPY packages/workflow-runtime ./packages/workflow-runtime
 
-# 构建 backend（会先构建 contracts）
-RUN pnpm backend:build
+RUN pnpm --filter @chatai/contracts exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/database exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/tickets exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/insights exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/user-memory exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/workflow-engine exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/workflow-runtime exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/backend exec tsc -p tsconfig.json
 
-# 运行阶段
 FROM node:24-alpine
 
 WORKDIR /app
 
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
-# 复制 package.json 和 lockfile
-COPY pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY package.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/database/package.json ./packages/database/
+COPY packages/insights/package.json ./packages/insights/
+COPY packages/tickets/package.json ./packages/tickets/
+COPY packages/user-memory/package.json ./packages/user-memory/
+COPY packages/workflow-engine/package.json ./packages/workflow-engine/
+COPY packages/workflow-runtime/package.json ./packages/workflow-runtime/
 
-# 只安装生产依赖
 RUN pnpm install --frozen-lockfile --prod
 
-# 复制构建产物
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/insights/dist ./packages/insights/dist
+COPY --from=builder /app/packages/tickets/dist ./packages/tickets/dist
+COPY --from=builder /app/packages/user-memory/dist ./packages/user-memory/dist
+COPY --from=builder /app/packages/workflow-engine/dist ./packages/workflow-engine/dist
+COPY --from=builder /app/packages/workflow-runtime/dist ./packages/workflow-runtime/dist
 
-# 设置工作目录
-WORKDIR /app
-
-# 暴露端口
 EXPOSE 3001
 
-# 健康检查
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/healthz || exit 1
 
-# 启动服务
 CMD ["node", "apps/backend/dist/server.js"]

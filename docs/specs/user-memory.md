@@ -948,7 +948,7 @@ AGENT_USER_MEMORY_EXECUTION_MODE=sync
 
 候选会话基数 200、额度倍数 2、最少 5 条、每会话 50 条和默认客户额度 100 先作为集中策略常量/套餐 resolver，不增加环境变量或页面设置。
 
-Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独立 runtime、模块内持久化代码、错误码和观测，不得并入 Insights service；本期不为仅代理 Kysely 的空壳 Repository 增加层级。
+Worker 由独立的 `apps/backend-worker/src/index.ts` 启动，使用独立 runtime、模块内持久化代码、错误码和观测，不得并入 Insights service；本期不为仅代理 Kysely 的空壳 Repository 增加层级。
 
 ## 17. 上线与回滚
 

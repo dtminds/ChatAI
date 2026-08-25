@@ -31,8 +31,36 @@ describe("Order Bind compiler validation", () => {
     );
     expectCompilationIssue(
       { orderNumberSelector: ["node", "missing", "orderNo"] },
-      "Order Bind node references unavailable order number data",
+      "Order Bind node references unavailable or incompatible order number data",
     );
+  });
+
+  it("rejects an order number whose type is no longer text or number", () => {
+    expectCompilationIssue(
+      { orderNumberSelector: ["node", "llm", "orderNo"] },
+      "Order Bind node references unavailable or incompatible order number data",
+      "boolean",
+    );
+  });
+
+  it("compiles when the selected order number is a reachable number", () => {
+    const spec = compileWorkflowDraft({
+      draft: createOrderBindDraft({
+        orderNumberSelector: ["node", "llm", "orderNo"],
+      }, "number"),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.id === "order-bind")).toEqual({
+      config: {
+        orderNumberSelector: ["node", "llm", "orderNo"],
+      },
+      id: "order-bind",
+      kind: "order-bind",
+      nodeSchemaVersion: 1,
+    });
   });
 
   it("compiles when the selected order number is reachable", () => {
@@ -56,11 +84,15 @@ describe("Order Bind compiler validation", () => {
   });
 });
 
-function expectCompilationIssue(config: Record<string, unknown>, message: string) {
+function expectCompilationIssue(
+  config: Record<string, unknown>,
+  message: string,
+  llmFieldType: "boolean" | "number" | "string" = "string",
+) {
   let error: unknown;
   try {
     compileWorkflowDraft({
-      draft: createOrderBindDraft(config),
+      draft: createOrderBindDraft(config, llmFieldType),
       revision: 1,
       workflowId: "42",
       workflowType: "chatai_sop",
@@ -77,7 +109,10 @@ function expectCompilationIssue(config: Record<string, unknown>, message: string
   });
 }
 
-function createOrderBindDraft(config: Record<string, unknown>): WorkflowDraft {
+function createOrderBindDraft(
+  config: Record<string, unknown>,
+  llmFieldType: "boolean" | "number" | "string" = "string",
+): WorkflowDraft {
   return {
     edges: [
       { id: "start-llm", source: "start", target: "llm" },
@@ -94,10 +129,15 @@ function createOrderBindDraft(config: Record<string, unknown>): WorkflowDraft {
         inputs: [],
         modelId: "model-1",
         reasoningEffort: "medium",
-        output: {
-          field: { description: "", id: "orderNo", name: "orderNo", type: "string" },
-          format: "text",
-        },
+        output: llmFieldType === "string"
+          ? {
+              field: { description: "", id: "orderNo", name: "orderNo", type: "string" },
+              format: "text",
+            }
+          : {
+              fields: [{ description: "", id: "orderNo", name: "orderNo", type: llmFieldType }],
+              format: "json",
+            },
         systemPrompt: [{ type: "text", value: "Extract the order number" }],
         userPrompt: [{ type: "text", value: "order number" }],
       }),

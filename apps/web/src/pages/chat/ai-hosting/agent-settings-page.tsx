@@ -1202,7 +1202,6 @@ export function AgentSettingsPage() {
       />
       <AgentPreviewFloatingPanel
         agentId={agentDetail?.id ?? agentId ?? "draft"}
-        agentName={form.name}
         inputValue={previewInput}
         messages={previewMessages}
         onClear={handlePreviewClear}
@@ -1462,7 +1461,6 @@ function AgentResourceRemoveDialog({
 
 function AgentPreviewFloatingPanel({
   agentId,
-  agentName,
   inputValue,
   messages,
   onClear,
@@ -1474,7 +1472,6 @@ function AgentPreviewFloatingPanel({
   testing,
 }: {
   agentId: string;
-  agentName: string;
   inputValue: string;
   messages: PreviewMessage[];
   onClear: () => void;
@@ -1568,7 +1565,6 @@ function AgentPreviewFloatingPanel({
             {visibleMessages.map((message) => (
               <PreviewMessageRow
                 agentId={agentId}
-                agentName={agentName}
                 key={message.id}
                 message={message}
                 onMediaLoad={scrollPreviewToBottom}
@@ -1625,12 +1621,10 @@ function AgentPreviewFloatingPanel({
 
 function PreviewMessageRow({
   agentId,
-  agentName,
   message,
   onMediaLoad,
 }: {
   agentId: string;
-  agentName: string;
   message: PreviewMessage;
   onMediaLoad?: () => void;
 }) {
@@ -1646,7 +1640,7 @@ function PreviewMessageRow({
 
   return (
     <div className={cn("flex min-w-0 items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
-      {isAgent ? <PreviewAgentAvatar agentId={agentId} agentName={agentName} /> : null}
+      {isAgent ? <PreviewAgentAvatar agentId={agentId} /> : null}
       {richAttachment && !message.pending ? (
         <div
           className={cn(
@@ -1701,8 +1695,8 @@ function PreviewMessageRow({
   );
 }
 
-function PreviewAgentAvatar({ agentId, agentName }: { agentId: string; agentName: string }) {
-  return <AgentAvatar agentId={agentId} agentName={agentName} size={36} />;
+function PreviewAgentAvatar({ agentId }: { agentId: string }) {
+  return <AgentAvatar agentId={agentId} interaction="reaction" size={36} />;
 }
 
 function PreviewCustomerAvatar() {

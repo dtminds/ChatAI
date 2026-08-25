@@ -822,7 +822,7 @@ function HostingSummaryCell({
       <div className="flex min-w-0 max-w-48 items-center gap-1.5">
         {agent ? (
           <>
-            <AgentAvatar agentId={agent.id} agentName={agent.name} size={32} />
+            <AgentAvatar agentId={agent.id} interaction="reaction" size={32} />
             <span
               className="truncate text-sm font-medium text-foreground"
               title={agent.name}

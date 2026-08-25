@@ -1,6 +1,6 @@
 import Fastify from "fastify";
-import { assertDatabaseUtc8Timezone } from "@chatai/workflow-runtime";
 import { loadBackendEnv } from "./config/env.js";
+import { assertDatabaseUtc8Timezone } from "./db/database-timezone.js";
 import { dbPlugin } from "./plugins/db.js";
 import { createInsightsWorkerRuntime } from "./modules/insights/insights-worker-runtime.js";
 import { createUserMemoryWorkerRuntime } from "./modules/ai-hosting/user-memory/user-memory-worker-runtime.js";

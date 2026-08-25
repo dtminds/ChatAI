@@ -244,7 +244,7 @@ function validateWorkflowNodeReferences(
 
     if (node.kind === "order-conversion"
       && Array.isArray(node.config.orderNumberSelector)) {
-      const valid = validateWorkflowVariableSelector({
+      const selectorInput = {
         edges,
         guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
           node.id,
@@ -252,16 +252,23 @@ function validateWorkflowNodeReferences(
           edges,
         ),
         nodeById,
-        requiredUsage: "variable",
+        requiredUsage: "variable" as const,
         selector: node.config.orderNumberSelector as WorkflowVariableSelector,
         targetNodeId: node.id,
         workflowType,
         entryEventTypes,
+      };
+      const valid = validateWorkflowVariableSelector({
+        ...selectorInput,
+        expectedValueType: { kind: "string" },
+      }) || validateWorkflowVariableSelector({
+        ...selectorInput,
+        expectedValueType: { kind: "number" },
       });
       if (!valid) {
         issues.push({
           code: "invalid-node-config",
-          message: "Order Conversion node references unavailable order number data",
+          message: "Order Conversion node references unavailable or incompatible order number data",
           nodeId: node.id,
         });
       }

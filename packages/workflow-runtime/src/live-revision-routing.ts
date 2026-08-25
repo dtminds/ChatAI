@@ -102,6 +102,9 @@ function getRequiredContextSelectors(
   }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
   if (node.kind === "order-bind") return selectorFrom(config.orderNumberSelector);
+  if (node.kind === "order-conversion") {
+    return selectorFrom(config.orderNumberSelector);
+  }
   if (node.kind === "message-query") return selectorsFromTimeRange(config.timeRange);
   if (node.kind === "branch") return requiredBranchSelectors(node, spec);
   return [];

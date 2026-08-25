@@ -39,6 +39,7 @@ import {
 } from "./agent-components/agent-conditional-logic-lexical-utils";
 import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
+import { AgentAvatar } from "./agent-avatar";
 // 先注释按钮，不要删除。智能生成入口隐藏期间保留 import 位置。
 // import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
@@ -1200,6 +1201,8 @@ export function AgentSettingsPage() {
         resource={resourceRemoveTarget}
       />
       <AgentPreviewFloatingPanel
+        agentId={agentDetail?.id ?? agentId ?? "draft"}
+        agentName={form.name}
         inputValue={previewInput}
         messages={previewMessages}
         onClear={handlePreviewClear}
@@ -1458,6 +1461,8 @@ function AgentResourceRemoveDialog({
 }
 
 function AgentPreviewFloatingPanel({
+  agentId,
+  agentName,
   inputValue,
   messages,
   onClear,
@@ -1468,6 +1473,8 @@ function AgentPreviewFloatingPanel({
   open,
   testing,
 }: {
+  agentId: string;
+  agentName: string;
   inputValue: string;
   messages: PreviewMessage[];
   onClear: () => void;
@@ -1560,6 +1567,8 @@ function AgentPreviewFloatingPanel({
           >
             {visibleMessages.map((message) => (
               <PreviewMessageRow
+                agentId={agentId}
+                agentName={agentName}
                 key={message.id}
                 message={message}
                 onMediaLoad={scrollPreviewToBottom}
@@ -1615,9 +1624,13 @@ function AgentPreviewFloatingPanel({
 }
 
 function PreviewMessageRow({
+  agentId,
+  agentName,
   message,
   onMediaLoad,
 }: {
+  agentId: string;
+  agentName: string;
   message: PreviewMessage;
   onMediaLoad?: () => void;
 }) {
@@ -1633,7 +1646,7 @@ function PreviewMessageRow({
 
   return (
     <div className={cn("flex min-w-0 items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
-      {isAgent ? <PreviewAgentAvatar /> : null}
+      {isAgent ? <PreviewAgentAvatar agentId={agentId} agentName={agentName} /> : null}
       {richAttachment && !message.pending ? (
         <div
           className={cn(
@@ -1688,14 +1701,8 @@ function PreviewMessageRow({
   );
 }
 
-function PreviewAgentAvatar() {
-  return (
-    <Avatar className="size-9 shrink-0 rounded-[8px]">
-      <AvatarFallback className="rounded-[8px] bg-emerald-500 text-white">
-        <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
-      </AvatarFallback>
-    </Avatar>
-  );
+function PreviewAgentAvatar({ agentId, agentName }: { agentId: string; agentName: string }) {
+  return <AgentAvatar agentId={agentId} agentName={agentName} size={36} />;
 }
 
 function PreviewCustomerAvatar() {

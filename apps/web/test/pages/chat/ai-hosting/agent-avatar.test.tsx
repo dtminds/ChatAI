@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   AgentAvatar,
-  resolveAgentAvatarRecipe,
+  resolveAgentAvatarIdentity,
 } from "@/pages/chat/ai-hosting/agent-avatar";
 import { useAppearanceStore } from "@/store/appearance-store";
 
@@ -22,7 +22,7 @@ describe("AgentAvatar", () => {
     });
   });
 
-  it("keeps the generated identity stable across renames and varies it by agent id", () => {
+  it("uses hover-capable avatars with stable identities across renames", () => {
     const { container } = render(
       <>
         <AgentAvatar agentId="301" agentName="护肤小助理" />
@@ -42,13 +42,9 @@ describe("AgentAvatar", () => {
     expect(getVisualMarkup(avatars[0])).not.toBe(getVisualMarkup(avatars[2]));
   });
 
-  it("selects shape and palette independently from a stable agent id", () => {
-    const firstRecipe = resolveAgentAvatarRecipe("301");
-    const repeatedRecipe = resolveAgentAvatarRecipe("301");
-
-    expect(["nova", "flare", "void"]).toContain(firstRecipe.shape);
-    expect(firstRecipe).toEqual(repeatedRecipe);
-    expect(firstRecipe.palette).toBeTruthy();
+  it("uses the stable agent id and reserves a draft identity before creation", () => {
+    expect(resolveAgentAvatarIdentity(" 301 ")).toBe("301");
+    expect(resolveAgentAvatarIdentity("  ")).toBe("draft");
   });
 
   it("keeps the identity colors stable across appearance modes", () => {

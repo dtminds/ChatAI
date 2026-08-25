@@ -819,10 +819,10 @@ function HostingSummaryCell({
 }) {
   return (
     <div className="grid min-w-0 gap-3">
-      <div className="flex min-w-0 max-w-48 items-center gap-2.5">
+      <div className="flex min-w-0 max-w-48 items-center gap-1.5">
         {agent ? (
           <>
-            <AgentAvatar agentId={agent.id} agentName={agent.name} size={24} />
+            <AgentAvatar agentId={agent.id} agentName={agent.name} size={32} />
             <span
               className="truncate text-sm font-medium text-foreground"
               title={agent.name}

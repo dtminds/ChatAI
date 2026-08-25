@@ -100,6 +100,7 @@ const draftConfigs = {
       start: ["trigger", "occurredAt"],
     },
   },
+  "order-bind": {},
   "order-query": {},
   start: {
     entryPolicy: { mode: "never" },
@@ -165,7 +166,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(18);
+    expect(entries).toHaveLength(19);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -179,7 +180,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -475,6 +476,26 @@ describe("workflow node contracts", () => {
     ]);
   });
 
+  it("keeps incomplete Order Bind drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("order-bind")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: ["externalUserId"],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("order-bind", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-bind", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-bind", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-bind", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("order-bind", {})).toEqual([
+      { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
+    ]);
+  });
+
   it("assigns every node kind one stable execution class", () => {
     expectTypeOf(getWorkflowNodeContract("message").executionClass).toEqualTypeOf<"action">();
     expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
@@ -496,6 +517,7 @@ describe("workflow node contracts", () => {
       llm: "inference",
       message: "action",
       "message-query": "query",
+      "order-bind": "action",
       "order-query": "query",
       "ratio-split": "core",
       start: "core",
@@ -522,6 +544,7 @@ describe("workflow node contracts", () => {
       llm: [],
       message: ["thirdExternalUserId"],
       "message-query": ["thirdExternalUserId"],
+      "order-bind": ["externalUserId"],
       "order-query": ["externalUserId"],
       "ratio-split": [],
       start: [],

@@ -12,7 +12,7 @@ import {
 const baseCustomerUpdateNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-blue-400 text-white",
   accentRgb: "37 99 235",
-  description: "更新客户资料字段",
+  description: "更新客户画像上的自定义属性字段",
   icon: UserEdit01Icon,
   kind: "customer-update",
   label: "修改客户资料",

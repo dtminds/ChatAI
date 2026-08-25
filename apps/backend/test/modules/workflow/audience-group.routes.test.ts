@@ -223,7 +223,23 @@ describe("workflow audience-group routes", () => {
     const created = await createAuthenticatedApp();
     app = created.app;
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 502 }));
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 502 }));
+    const unauthorizedUpstream = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+    expect(unauthorizedUpstream.statusCode).toBe(502);
+    expect(unauthorizedUpstream.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+
     const httpFailure = await app.inject({
       headers: { authorization: created.authorization },
       method: "GET",

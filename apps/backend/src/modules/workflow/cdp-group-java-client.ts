@@ -6,7 +6,6 @@ import {
 import {
   BadGatewayError,
   ServiceUnavailableError,
-  UpstreamHttpError,
 } from "../../shared/errors.js";
 import {
   getLoggerRequestId,
@@ -251,11 +250,10 @@ async function postJavaRequest<T>({
         },
         "内部接口 HTTP 失败",
       );
-      throw new UpstreamHttpError(
+      throw new BadGatewayError(
         CDP_GROUP_INTERNAL_API_FAILED_CODE,
         CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-        response.status,
-        { operation },
+        { operation, status: response.status },
       );
     }
 
@@ -264,7 +262,6 @@ async function postJavaRequest<T>({
     if (
       error instanceof BadGatewayError
       || error instanceof ServiceUnavailableError
-      || error instanceof UpstreamHttpError
     ) {
       throw error;
     }

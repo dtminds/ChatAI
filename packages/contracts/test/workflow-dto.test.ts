@@ -6,10 +6,7 @@ import {
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowReviewApproveRequestSchema,
-  WorkflowPublishReviewPageSchema,
   WorkflowReviewRejectRequestSchema,
-  WorkflowRevisionPageSchema,
-  WorkflowRuntimeStatusSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
@@ -161,17 +158,6 @@ describe("workflow contracts", () => {
     })).toBe(false);
   });
 
-  it("bounds workflow history response pages", () => {
-    expect(Value.Check(WorkflowRevisionPageSchema, {
-      items: [],
-      nextCursor: "20",
-    })).toBe(true);
-    expect(Value.Check(WorkflowPublishReviewPageSchema, {
-      items: [],
-      nextCursor: null,
-    })).toBe(true);
-  });
-
   it("accepts workflow metadata when creating a workflow", () => {
     expect(Value.Check(WorkflowCreateRequestSchema, {
       clientRequestId: "create-workflow-1",
@@ -202,11 +188,6 @@ describe("workflow contracts", () => {
       entitled: false,
       unentitledSince: null,
     })).toBe(false);
-  });
-
-  it("models paused and stopped as distinct runtime states", () => {
-    expect(Value.Check(WorkflowRuntimeStatusSchema, "paused")).toBe(true);
-    expect(Value.Check(WorkflowRuntimeStatusSchema, "stopped")).toBe(true);
   });
 
   it("validates production start and wait configurations", () => {

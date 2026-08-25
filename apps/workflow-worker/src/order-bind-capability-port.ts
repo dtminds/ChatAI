@@ -113,7 +113,7 @@ export async function executeWorkflowOrderBind(input: {
     if (input.signal.aborted) throwIfAborted(input.signal);
     throw retryableError(
       "WORKFLOW_ORDER_BIND_FAILED",
-      "绑定订单暂时失败",
+      "关联订单暂时失败",
       `Workflow Order Bind Java request failed: ${error instanceof Error ? error.name : "unknown"}`,
     );
   }
@@ -121,7 +121,7 @@ export async function executeWorkflowOrderBind(input: {
   if (response.status !== 200) {
     throw retryableError(
       "WORKFLOW_ORDER_BIND_UNAVAILABLE",
-      "绑定订单暂时失败",
+      "关联订单暂时失败",
       `Workflow Order Bind Java endpoint returned HTTP ${response.status}`,
     );
   }
@@ -144,7 +144,7 @@ export async function executeWorkflowOrderBind(input: {
     );
   }
   return {
-    result: body.error === 0 ? "success" : "false",
+    result: body.error === 0,
   };
 }
 
@@ -153,7 +153,7 @@ function throwIfAborted(signal: AbortSignal): never | void {
   if (signal.reason instanceof Error) throw signal.reason;
   throw retryableError(
     "WORKFLOW_ORDER_BIND_ABORTED",
-    "绑定订单暂时失败",
+    "关联订单暂时失败",
     "Workflow Order Bind execution was aborted",
   );
 }

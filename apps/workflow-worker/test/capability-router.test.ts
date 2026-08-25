@@ -34,7 +34,7 @@ describe("Workflow capability router", () => {
     const customerUpdateExecute = vi.fn(async () => ({}));
     const handoffExecute = vi.fn(async () => ({}));
     const messageExecute = vi.fn(async () => ({}));
-    const orderBindExecute = vi.fn(async () => ({ result: "success" }));
+    const orderBindExecute = vi.fn(async () => ({ result: true }));
     const tagExecute = vi.fn(async () => ({}));
     const tagQueryExecute = vi.fn(async () => ({ matchedTags: [] }));
     const router = new WorkflowCapabilityRouter([
@@ -153,7 +153,7 @@ describe("Workflow capability router", () => {
 
   it("dispatches Order Bind only to its exact action route", async () => {
     const messageExecute = vi.fn(async () => ({}));
-    const orderBindExecute = vi.fn(async () => ({ result: "success" }));
+    const orderBindExecute = vi.fn(async () => ({ result: true }));
     const router = new WorkflowCapabilityRouter([
       {
         binding: WORKFLOW_MESSAGE_CAPABILITY_BINDING,
@@ -174,7 +174,7 @@ describe("Workflow capability router", () => {
     await expect(router.execute(
       WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition,
       request,
-    )).resolves.toEqual({ result: "success" });
+    )).resolves.toEqual({ result: true });
     expect(orderBindExecute).toHaveBeenCalledWith(
       WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition,
       request,

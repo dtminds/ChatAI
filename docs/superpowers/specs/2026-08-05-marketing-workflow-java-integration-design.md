@@ -138,7 +138,7 @@ Workflow 是 `apps/web/src/pages/chat/workflow` 下的独立大型模块，菜�
 | `agent` | 转 Agent | 转入指定 Agent |
 | `llm` | 大模型 | 模型、提示词、输入参数和结构化输出 |
 | `order-query` | 订单查询 | 查询客户订单 |
-| `order-bind` | 绑定订单 | 把订单号绑定到当前客户 |
+| `order-bind` | 关联订单 | 把订单号关联到当前客户 |
 | `tag-query` | 标签查询 | 查询客户标签 |
 | `customer-update` | 修改客户资料 | 修改客户属性 |
 | `ai-collect` | AI 收集资料 | 基于会话收集结构化资料 |
@@ -928,7 +928,7 @@ chatai.conversation.transfer-agent
 | Message Query | 时间范围和变量解析 | 仅对 `chatai_contact` 解析会话并查询消息 |
 | Message | 内容和附件命令组装、Workflow 重试 | 仅对 `chatai_contact` 解析发送目标并实际发送消息 |
 | Order Query | 查询参数和输出映射 | 按 operation 支持的 Subject Type 查询并校验订单 |
-| Order Bind | 类型化命令和 Workflow 重试 | 按订单号把订单绑定到当前客户并保证幂等 |
+| Order Bind | 类型化命令和 Workflow 重试 | 按订单号把订单关联到当前客户并保证幂等 |
 | Tag Query | 查询参数和输出映射 | 按客户或会员 operation 查询标签 |
 | Tag | 类型化命令和 Workflow 重试 | 按客户或会员 operation 校验标签并幂等打标 |
 | Customer Update | 类型化命令和 Workflow 重试 | 按 Subject Type 校验字段并幂等修改资料 |

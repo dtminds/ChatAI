@@ -1,4 +1,4 @@
-import { Link04Icon } from "@hugeicons/core-free-icons";
+import { FileUserIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import { resolveWorkflowVariable } from "../../workflow-variables";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
@@ -9,12 +9,12 @@ import {
 } from "./config";
 
 const baseOrderBindNodeDefinition = createStandardNodeDefinition({
-  accentClassName: "bg-amber-600 text-white",
+  accentClassName: "bg-amber-500 text-white",
   accentRgb: "217 119 6",
-  description: "把订单号绑定到当前客户",
-  icon: Link04Icon,
+  description: "通过「资料收集」提取订单号，然后通过此节点将订单关联到当前客户，用于完善客户画像",
+  icon: FileUserIcon,
   kind: "order-bind",
-  label: "绑定订单",
+  label: "关联订单",
   metric: "待配置订单号",
   paletteGroup: "operate",
   sort: 95,
@@ -28,11 +28,11 @@ export const orderBindNodeDefinition: WorkflowNodeDefinition<"order-bind"> = {
   }),
   getOutputVariables: () => [
     {
-      description: "系统会返回绑定订单结果，成功会返回 “success”，失败会返回 “false”",
+      description: "订单是否关联成功",
       key: "result",
       label: "操作结果",
       usages: ["variable"],
-      valueType: { kind: "string" },
+      valueType: { kind: "boolean" },
     },
   ],
   sanitizeData: (data) => {

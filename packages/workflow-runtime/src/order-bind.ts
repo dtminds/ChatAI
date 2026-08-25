@@ -49,7 +49,7 @@ function completeWorkflowOrderBindWithoutExecution(input: {
   context: WorkflowCapabilityCommandContext;
 }) {
   return prepareWorkflowOrderBindCommand(input) === null
-    ? { result: "false" as const }
+    ? { result: false }
     : undefined;
 }
 

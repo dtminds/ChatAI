@@ -22,7 +22,7 @@ const context = {
 
 describe("Workflow Order Bind capability", () => {
   it("resolves the order number and maps the bind result", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     const result = await executeWorkflowCapability({
       binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
@@ -53,11 +53,11 @@ describe("Workflow Order Bind capability", () => {
       orderNumber: "SO20260821001",
       source: "workflow",
     });
-    expect(result).toEqual({ result: "success" });
+    expect(result).toEqual({ result: true });
   });
 
   it("keeps a business failure as a completed node result", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "false" }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: false }));
 
     await expect(executeWorkflowCapability({
       binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
@@ -79,11 +79,11 @@ describe("Workflow Order Bind capability", () => {
       subjectId: "customer-1",
       subjectType: "chatai_contact",
       uid: 9,
-    })).resolves.toEqual({ result: "false" });
+    })).resolves.toEqual({ result: false });
   });
 
   it("stops before calling Java when the customer identity is missing", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     await expect(executeOrderBind(adapter, { ...context, identities: {} })).rejects.toMatchObject({
       code: "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
@@ -93,18 +93,18 @@ describe("Workflow Order Bind capability", () => {
 
   it("completes empty or blank order numbers as false without calling Java", async () => {
     for (const orderNo of ["", "   "]) {
-      const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+      const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
       await expect(executeOrderBind(adapter, {
         ...context,
         outputs: { llm: { orderNo } },
-      })).resolves.toEqual({ result: "false" });
+      })).resolves.toEqual({ result: false });
       expect(adapter.calls).toHaveLength(0);
     }
   });
 
   it("stops when the resolved order number exceeds the contract length", async () => {
-    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: "success" }));
+    const adapter = new FakeWorkflowCapabilityAdapter(async () => ({ result: true }));
 
     await expect(executeOrderBind(adapter, {
       ...context,

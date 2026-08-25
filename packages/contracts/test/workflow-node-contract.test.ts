@@ -492,7 +492,7 @@ describe("workflow node contracts", () => {
       orderNumberSelector: ["node", "llm", "orderNo"],
     })).toBe(true);
     expect(getWorkflowNodeOutputContracts("order-bind", {})).toEqual([
-      { key: "result", usages: ["variable"], valueType: { kind: "string" } },
+      { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
     ]);
   });
 

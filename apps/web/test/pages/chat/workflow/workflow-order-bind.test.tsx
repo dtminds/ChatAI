@@ -19,7 +19,8 @@ describe("workflow Order Bind node", () => {
     const node = createOrderBindNode();
 
     expect(definition.paletteGroup).toBe("operate");
-    expect(definition.visual.label).toBe("绑定订单");
+    expect(definition.visual.label).toBe("关联订单");
+    expect(node.data.title).toBe("关联订单");
     expect(node.data.status).toBe("warning");
     expect(definition.validate?.(node, {
       availableVariables: [],
@@ -32,7 +33,7 @@ describe("workflow Order Bind node", () => {
       expect.objectContaining({
         key: "result",
         label: "操作结果",
-        valueType: { kind: "string" },
+        valueType: { kind: "boolean" },
       }),
     ]);
     expect(orderBindNodeUi.body.kind === "fields"
@@ -42,11 +43,6 @@ describe("workflow Order Bind node", () => {
         id: "input",
         label: "输入",
         value: { kind: "empty" },
-      }),
-      expect.objectContaining({
-        id: "output",
-        label: "输出",
-        value: { kind: "text", text: "操作结果" },
       }),
     ]);
   });
@@ -74,6 +70,38 @@ describe("workflow Order Bind node", () => {
       orderNumberSelector: ["node", llm.id, "orderNo"],
       status: "ready",
     }));
+    expect(screen.getByRole("button", { name: "订单号" })).toHaveTextContent("大模型.订单号");
+
+    const currentNode = createOrderBindNode();
+    currentNode.data = {
+      ...currentNode.data,
+      availableVariables: [{
+        key: "orderNo",
+        label: "订单号",
+        scope: "node",
+        selector: ["node", llm.id, "orderNo"],
+        sourceNodeId: llm.id,
+        sourceNodeKind: "llm",
+        sourceNodeTitle: llm.data.title,
+        type: "string",
+        usages: ["variable"],
+        valueType: { kind: "string" },
+      }],
+      orderNumberSelector: ["node", llm.id, "orderNo"],
+    };
+    expect(orderBindNodeUi.body.kind === "fields"
+      ? orderBindNodeUi.body.getFields(currentNode.data)[0]
+      : undefined).toMatchObject({
+      id: "input",
+      value: {
+        items: [
+          { kind: "source", text: "大模型" },
+          { kind: "text", text: "." },
+          { kind: "variable", text: "订单号" },
+        ],
+        kind: "segments",
+      },
+    });
   });
 
   it("shows the bind result in the settings output section", () => {
@@ -94,7 +122,7 @@ describe("workflow Order Bind node", () => {
     expect(screen.getByText("节点输入")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "节点输出" })).toBeInTheDocument();
     expect(screen.getByText("操作结果")).toBeInTheDocument();
-    expect(screen.getByText("文本")).toBeInTheDocument();
+    expect(screen.getByText("是/否")).toBeInTheDocument();
   });
 });
 

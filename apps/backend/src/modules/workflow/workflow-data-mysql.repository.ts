@@ -370,7 +370,7 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     llm: "大模型",
     message: "消息发送",
     "message-query": "消息查询",
-    "order-bind": "绑定订单",
+    "order-bind": "关联订单",
     "order-query": "订单查询",
     "ratio-split": "A/B 分流",
     start: "开始",

@@ -23,7 +23,7 @@ describe("Workflow Order Bind Java port", () => {
       signal: new AbortController().signal,
       token: "internal-token",
       uid: 9,
-    })).resolves.toEqual({ result: "success" });
+    })).resolves.toEqual({ result: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
@@ -98,7 +98,7 @@ describe("Workflow Order Bind Java port", () => {
         error_msg: "不应读取的兼容字段",
         success: false,
       })) as typeof fetch,
-    })).resolves.toEqual({ result: "false" });
+    })).resolves.toEqual({ result: false });
   });
 
   it("classifies transport and every non-200 response as retryable", async () => {
@@ -150,7 +150,7 @@ describe("Workflow Order Bind Java port", () => {
       failureKind: "retryable",
     });
     await expect(executeWorkflowOrderBind(input)).resolves.toEqual({
-      result: "success",
+      result: true,
     });
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://java.example.com/third-internal/one-id/order-bind?idempotentKey=stable-key",

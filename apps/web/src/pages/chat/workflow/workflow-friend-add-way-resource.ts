@@ -133,6 +133,33 @@ export function resolveFriendAddWayPath(
   return { child: null, group: null };
 }
 
+export type WorkflowFriendAddWaySelectionIdentity = {
+  addWayKey?: string | null;
+  sourceIds: readonly string[];
+};
+
+export function getFriendAddWaySelectionKey(
+  selection: WorkflowFriendAddWaySelectionIdentity,
+) {
+  return selection.addWayKey
+    ?? (selection.sourceIds.length === 1 ? selection.sourceIds[0] : null);
+}
+
+export function resolveFriendAddWaySelectionPath(
+  groups: readonly WorkflowFriendAddWayGroup[],
+  selection: WorkflowFriendAddWaySelectionIdentity,
+) {
+  return resolveFriendAddWayPath(groups, getFriendAddWaySelectionKey(selection));
+}
+
+export function isFriendAddWaySelectionInvalid(
+  groups: readonly WorkflowFriendAddWayGroup[],
+  selection: WorkflowFriendAddWaySelectionIdentity,
+) {
+  const hasSelection = Boolean(selection.addWayKey) || selection.sourceIds.length > 0;
+  return hasSelection && !resolveFriendAddWaySelectionPath(groups, selection).group;
+}
+
 export function getFriendAddWayDisplayTitle(path: WorkflowFriendAddWayPath) {
   if (!path.group) {
     return null;

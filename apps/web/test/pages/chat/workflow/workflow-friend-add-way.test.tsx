@@ -106,6 +106,29 @@ describe("friend add-way selection", () => {
     expect(screen.queryByRole("button", { name: /请选择活动|已选择/ })).not.toBeInTheDocument();
   });
 
+  it.each([
+    {
+      addWayKey: "removed-way",
+      sourceIds: ["removed-way"],
+    },
+    {
+      addWayKey: null,
+      sourceIds: ["activity-1", "activity-2"],
+    },
+  ])("marks a configured source that the catalog cannot resolve as invalid", (value) => {
+    render(
+      <FriendAddWaySelection
+        groups={groups}
+        onChange={vi.fn()}
+        status="ready"
+        value={{ ...value, sourceMatchMode: "all" }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "添加好友来源" }))
+      .toHaveTextContent("已失效的添加好友来源");
+  });
+
   it("opens the activity picker on the second row for any", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

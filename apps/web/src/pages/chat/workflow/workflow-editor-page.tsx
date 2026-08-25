@@ -4,7 +4,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import type { WorkflowPublishReview } from "@chatai/contracts";
+import {
+  getWorkflowCapabilityProfile,
+  type WorkflowPublishReview,
+} from "@chatai/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -172,17 +175,24 @@ function WorkflowWorkspaceContent({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const workspace = useWorkflowWorkspace(document.id, repository, document);
+  const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const shouldLoadFriendAddWays = mode === "design"
+    && getWorkflowCapabilityProfile(document.workflowType)
+    .allowedEntryEventTypes.includes("contact.friend_added");
+  const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
+  const workspace = useWorkflowWorkspace(document.id, repository, document, {
+    friendAddWays: {
+      groups: friendAddWayResource.groups,
+      status: friendAddWayResource.status,
+    },
+  });
   const { canvas, checks, document: currentDocument, inspector, review, topBar, versionHistory } = workspace;
   const shouldLoadManagedAccounts = inspector.isOpen
     && inspector.node?.data.kind === "start"
     && "seatIds" in inspector.node.data;
-  const shouldLoadFriendAddWays = inspector.isOpen && inspector.node?.data.kind === "start";
   const managedAccountResource = useWorkflowManagedAccountResource(shouldLoadManagedAccounts);
-  const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
-  const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const canRestoreVersion = currentDocument.permissions.canEdit
     && currentDocument.currentReview?.status !== "pending";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);

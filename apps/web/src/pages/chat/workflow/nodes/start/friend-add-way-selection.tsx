@@ -36,9 +36,12 @@ import { TablePagination, resolveTablePagination } from "@/components/ui/table-p
 import { cn } from "@/lib/utils";
 import {
   friendAddWayHasSecondary,
+  getFriendAddWaySelectionKey,
   getFriendAddWayDisplayTitle,
+  isFriendAddWaySelectionInvalid,
   listWorkflowFriendAddWayActivities,
   resolveFriendAddWayPath,
+  resolveFriendAddWaySelectionPath,
   WORKFLOW_FRIEND_ADD_WAY_ACTIVITY_PAGE_SIZE,
   type WorkflowFriendAddWayResourceStatus,
 } from "../../workflow-friend-add-way-resource";
@@ -81,10 +84,10 @@ export function FriendAddWaySelection({
   status: WorkflowFriendAddWayResourceStatus;
   value: FriendAddWaySelectionValue;
 }) {
-  const selectedPath = resolveFriendAddWayPath(
-    groups,
-    value.addWayKey ?? (value.sourceIds.length === 1 ? value.sourceIds[0] : null),
-  );
+  const selectedKey = getFriendAddWaySelectionKey(value);
+  const selectedPath = resolveFriendAddWaySelectionPath(groups, value);
+  const invalidSelection = status === "ready"
+    && isFriendAddWaySelectionInvalid(groups, value);
   const hasSecondary = friendAddWayHasSecondary(selectedPath);
 
   function commit(next: Partial<FriendAddWaySelectionValue>) {
@@ -125,7 +128,8 @@ export function FriendAddWaySelection({
                 sourceMatchMode: "all",
               });
             }}
-            selectedKey={selectedPath.child?.key ?? selectedPath.group?.key ?? null}
+            invalidSelection={invalidSelection}
+            selectedKey={selectedKey}
           />
           {hasSecondary ? (
             <Select
@@ -169,10 +173,12 @@ export function FriendAddWaySelection({
 
 function FriendAddWayCascadingPicker({
   groups,
+  invalidSelection,
   onSelect,
   selectedKey,
 }: {
   groups: readonly WorkflowFriendAddWayGroup[];
+  invalidSelection: boolean;
   onSelect(key: string): void;
   selectedKey: string | null;
 }) {
@@ -181,7 +187,9 @@ function FriendAddWayCascadingPicker({
   const [activeGroupKey, setActiveGroupKey] = useState<string | null>(selectedPath.group?.key ?? null);
   const activeGroup = groups.find(group => group.key === activeGroupKey) ?? null;
   const showRightPane = Boolean(activeGroup?.children.length);
-  const displayTitle = getFriendAddWayDisplayTitle(selectedPath);
+  const displayTitle = invalidSelection
+    ? "已失效的添加好友来源"
+    : getFriendAddWayDisplayTitle(selectedPath);
 
   useEffect(() => {
     if (!open) {

@@ -3,6 +3,7 @@ import { http } from "@/lib/request";
 import {
   friendAddWayHasSecondary,
   getFriendAddWayDisplayTitle,
+  isFriendAddWaySelectionInvalid,
   listWorkflowFriendAddWayActivities,
   listWorkflowFriendAddWays,
   resolveFriendAddWayPath,
@@ -88,5 +89,19 @@ describe("workflow friend add-way resource", () => {
     })).toBe("扫描二维码 / 小程序");
     expect(friendAddWayHasSecondary({ child: null, group: scan })).toBe(true);
     expect(friendAddWayHasSecondary({ child: null, group: search })).toBe(false);
+    expect(isFriendAddWaySelectionInvalid([scan, search], {
+      addWayKey: "scan.mini_program",
+      sourceIds: ["activity-1"],
+    })).toBe(false);
+    expect(isFriendAddWaySelectionInvalid([scan, search], {
+      sourceIds: ["scan.mini_program"],
+    })).toBe(false);
+    expect(isFriendAddWaySelectionInvalid([scan, search], {
+      addWayKey: "removed-way",
+      sourceIds: ["removed-way"],
+    })).toBe(true);
+    expect(isFriendAddWaySelectionInvalid([scan, search], {
+      sourceIds: ["activity-1", "activity-2"],
+    })).toBe(true);
   });
 });

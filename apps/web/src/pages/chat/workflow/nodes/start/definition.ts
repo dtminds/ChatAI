@@ -1,10 +1,10 @@
 import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   isWorkflowMessageSendingWindowValid,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+  WORKFLOW_FRIEND_SOURCE_MAX_SELECTED,
   type WorkflowType,
 } from "@chatai/contracts";
 import {
@@ -72,6 +72,11 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       issues.push(createCatalogIssue("start-trigger-required", "未配置触发条件"));
     }
     if (entryMode === "event" && node.data.triggers.some(trigger =>
+      trigger.type === "contact.friend_added" && trigger.sourceIds.length === 0,
+    )) {
+      issues.push(createCatalogIssue("start-friend-source-required", "未选择添加好友来源"));
+    }
+    if (entryMode === "event" && node.data.triggers.some(trigger =>
       trigger.type === "contact.tag_added" && trigger.tagIds.length === 0,
     )) {
       issues.push(createCatalogIssue("start-tag-required", "标签触发未选择标签"));
@@ -128,7 +133,6 @@ export function createStartNodeData(
     ? createNodeData("start", {
         ...common,
         messageSendingWindow: DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-        pushAccountStrategy: DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
         seatIds: [],
       })
     : createNodeData("start", { ...common, workUserIds: [] });
@@ -165,7 +169,16 @@ function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
       return { ...trigger, tagIds: sanitizePositiveIds(trigger.tagIds) };
     }
     if (trigger.type === "contact.friend_added") {
-      return { ...trigger, sourceIds: sanitizeStrings(trigger.sourceIds) };
+      const addWayKey = trigger.addWayKey?.trim();
+      const sourceMatchMode = trigger.sourceMatchMode === "any" || trigger.sourceMatchMode === "all"
+        ? trigger.sourceMatchMode
+        : undefined;
+      return {
+        type: trigger.type,
+        sourceIds: sanitizeStrings(trigger.sourceIds).slice(0, WORKFLOW_FRIEND_SOURCE_MAX_SELECTED),
+        ...(addWayKey ? { addWayKey } : {}),
+        ...(sourceMatchMode ? { sourceMatchMode } : {}),
+      };
     }
     return { ...trigger, keywords: sanitizeStrings(trigger.keywords) };
   });

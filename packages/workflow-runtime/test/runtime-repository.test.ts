@@ -1060,7 +1060,7 @@ function publishedSpec(): WorkflowExecutionSpec {
         config: {
           entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
           eventType: "contact.friend_added",
-          filter: { sourceIds: [] },
+          filter: { sourceIds: ["qr-code-1"] },
           seatIds: [101],
         },
         id: "start",

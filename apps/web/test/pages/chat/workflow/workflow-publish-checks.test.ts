@@ -274,6 +274,101 @@ describe("buildPublishChecks", () => {
     );
   });
 
+  it("blocks publishing when a friend-added trigger has no source", () => {
+    const nodes = createInitialNodes();
+    const startNode = nodes.find(
+      (node): node is WorkflowNode<"start"> => node.data.kind === "start",
+    )!;
+    const invalidStartNode: WorkflowNode<"start"> = {
+      ...startNode,
+      data: {
+        ...startNode.data,
+        seatIds: [101],
+        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      },
+    };
+    const issues = validateWorkflowNodeConfig(
+      invalidStartNode,
+      nodes.map(node => node.id === invalidStartNode.id ? invalidStartNode : node),
+      createInitialEdges(),
+    );
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      code: "start-friend-source-required",
+    }));
+  });
+
+  it.each([
+    {
+      addWayKey: "removed-way",
+      sourceIds: ["removed-way"],
+    },
+    {
+      addWayKey: undefined,
+      sourceIds: ["activity-1", "activity-2"],
+    },
+  ])("blocks publishing when the friend source catalog cannot resolve the selection", (trigger) => {
+    const nodes = createInitialNodes();
+    const startNode = nodes.find(
+      (node): node is WorkflowNode<"start"> => node.data.kind === "start",
+    )!;
+    const invalidStartNode: WorkflowNode<"start"> = {
+      ...startNode,
+      data: {
+        ...startNode.data,
+        seatIds: [101],
+        triggers: [{
+          ...(trigger.addWayKey ? { addWayKey: trigger.addWayKey } : {}),
+          sourceIds: trigger.sourceIds,
+          type: "contact.friend_added",
+        }],
+      },
+    };
+    const workflowNodes = nodes.map(node =>
+      node.id === invalidStartNode.id ? invalidStartNode : node);
+    const checklist = buildPublishChecklistWithPolicy(
+      workflowNodes,
+      createInitialEdges(),
+      {
+        ...validationPolicy,
+        resources: {
+          friendAddWays: {
+            groups: [{
+              children: [{ key: "scan.mini_program", title: "小程序" }],
+              key: "scan",
+              title: "扫描二维码",
+            }],
+            status: "ready",
+          },
+        },
+      },
+    );
+
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.checks.find(check => check.id === "start")?.messages)
+      .toContain("添加好友来源已失效");
+  });
+
+  it.each([
+    { message: "正在校验添加好友来源", status: "loading" as const },
+    { message: "添加好友来源加载失败", status: "error" as const },
+  ])("blocks publishing until the friend source catalog is available", ({ message, status }) => {
+    const nodes = createInitialNodes();
+    const checklist = buildPublishChecklistWithPolicy(nodes, createInitialEdges(), {
+      ...validationPolicy,
+      resources: {
+        friendAddWays: {
+          groups: [],
+          status,
+        },
+      },
+    });
+
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.checks.find(check => check.id === "start")?.messages)
+      .toContain(message);
+  });
+
   it("blocks publishing when a message trigger has no keywords", () => {
     const nodes = createInitialNodes();
     const startNode = nodes.find(

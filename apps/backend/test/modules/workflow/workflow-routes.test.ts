@@ -466,7 +466,7 @@ describe("workflow routes", () => {
               ...node.data,
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
             },
           }
         : node),

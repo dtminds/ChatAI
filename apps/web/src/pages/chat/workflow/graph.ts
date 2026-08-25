@@ -65,7 +65,7 @@ export function createInitialNodes(): WorkflowNode[] {
         status: "running",
         title: "新人入会触发",
         triggers: [
-          { sourceIds: [], type: "contact.friend_added" },
+          { sourceIds: ["qr-code-1"], type: "contact.friend_added" },
         ],
       },
       id: "start",

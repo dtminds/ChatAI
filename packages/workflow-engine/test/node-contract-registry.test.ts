@@ -45,9 +45,8 @@ describe("workflow node projection registry", () => {
       entryMode: "event",
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
   });
 
@@ -157,7 +156,7 @@ const projectableDraftData = {
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   },
   tag: { operation: "add", tagIds: [101, 102] },
   "tag-query": { matchMode: "all", tagIds: [101, 102] },

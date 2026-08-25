@@ -47,7 +47,6 @@ describe("workflow start configuration", () => {
       entryMode: "event",
       entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [],
       triggers: data.triggers,
     });
@@ -69,7 +68,7 @@ describe("workflow start configuration", () => {
     })).toEqual([]);
   });
 
-  it("configures ChatAI message delivery settings", async () => {
+  it("configures the ChatAI message sending window without exposing account strategy", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -84,7 +83,9 @@ describe("workflow start configuration", () => {
 
     expect(screen.getByRole("button", { name: "消息发送开始时间" })).toHaveTextContent("09:00");
     expect(screen.getByRole("button", { name: "消息发送结束时间" })).toHaveTextContent("20:00");
-    expect(screen.getByRole("radio", { name: "优先最早添加的账号" })).toBeChecked();
+    expect(screen.queryByText("推送账号")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "优先最早添加的账号" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "优先最新添加的账号" })).not.toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "查看消息发送时段说明" }));
     expect(await screen.findByRole("tooltip")).toBeInTheDocument();
@@ -93,11 +94,6 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("button", { name: "10时" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
-    }));
-
-    await user.click(screen.getByRole("radio", { name: "优先最新添加的账号" }));
-    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      pushAccountStrategy: "latest-added",
     }));
   });
 
@@ -263,10 +259,10 @@ describe("workflow start configuration", () => {
     expect(screen.queryByRole("option", { name: "用户发送消息" })).not.toBeInTheDocument();
   });
 
-  it("normalizes comma-separated source IDs and keywords on blur", async () => {
+  it("selects a single friend add-way from the catalog", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
-    const { rerender } = render(
+    render(
       <StartConfig
         allowedEntryEventTypes={["contact.friend_added", "message.received"]}
         edges={[]}
@@ -276,17 +272,45 @@ describe("workflow start configuration", () => {
         })}
         nodes={[]}
         onNodeChange={onNodeChange}
+        resources={{
+          friendAddWays: {
+            groups: [
+              {
+                children: [
+                  { key: "scan.mini_program", title: "小程序" },
+                  { key: "scan.group", title: "群二维码" },
+                ],
+                key: "scan",
+                title: "扫描二维码",
+              },
+              {
+                children: [],
+                key: "search",
+                title: "搜索手机号",
+              },
+            ],
+            reload: vi.fn(),
+            status: "ready",
+          },
+        }}
       />,
     );
 
-    const sourceInput = screen.getByRole("textbox", { name: "添加好友来源 ID" });
-    await user.type(sourceInput, " qr-1,qr-1, store-2 ,");
-    await user.tab();
+    await user.click(screen.getByRole("button", { name: "添加好友来源" }));
+    await user.click(screen.getByRole("button", { name: "搜索手机号" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      triggers: [{ sourceIds: ["qr-1", "store-2"], type: "contact.friend_added" }],
+      triggers: [{
+        addWayKey: "search",
+        sourceIds: ["search"],
+        type: "contact.friend_added",
+      }],
     }));
+  });
 
-    rerender(
+  it("normalizes comma-separated keywords on blur", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(
       <StartConfig
         allowedEntryEventTypes={["contact.friend_added", "message.received"]}
         edges={[]}

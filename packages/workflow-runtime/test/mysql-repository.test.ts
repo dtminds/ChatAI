@@ -1196,7 +1196,7 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
             filter_spec_json: JSON.stringify({
               entryPolicy: { mode: "never" },
               eventType: "contact.friend_added",
-              sourceIds: [],
+              sourceIds: ["qr-code-1"],
               workUserIds: [201],
             }),
             id: "9",

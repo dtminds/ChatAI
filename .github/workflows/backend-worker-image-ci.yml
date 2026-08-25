@@ -58,8 +58,13 @@ jobs:
       - name: Build Backend Worker image
         run: docker build -f deploy/backend-worker.Dockerfile -t chatai-backend-worker:ci .
 
-      - name: Verify Backend Worker module graph
-        run: >-
-          docker run --rm --entrypoint node --workdir /app/apps/backend-worker chatai-backend-worker:ci
-          --input-type=module -e
-          "await import('@chatai/database'); await import('@chatai/insights'); await import('@chatai/user-memory')"
+      - name: Verify Backend Worker entrypoint
+        run: |
+          set +e
+          output=$(docker run --rm chatai-backend-worker:ci 2>&1)
+          status=$?
+          set -e
+
+          printf '%s\n' "$output"
+          test "$status" -ne 0
+          grep --fixed-strings "DATABASE_URL must be configured" <<<"$output"

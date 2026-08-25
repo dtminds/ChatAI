@@ -75,7 +75,7 @@ deploy/workflow-worker.Dockerfile
 deploy/nginx.conf
 ```
 
-两个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
+四个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
 
 ```bash
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
@@ -105,7 +105,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 
 注意事项：
 
-- Web 和 backend 镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml`、根 `package.json`、`apps/*` 和 `packages/contracts`，不要在子目录内单独执行上述 `docker build`。
+- 所有镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml` 和根 `package.json`，并按各自 Dockerfile 复制所需的 `apps/*`、`packages/*`；不要在子目录内单独执行上述 `docker build`。
 - 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
 - `deploy/web.Dockerfile` 不复制根目录 `.env.*` 文件。Workflow 临时账号/标签 fixture 仅通过 `VITE_WORKFLOW_FIXTURES_ENABLED` build arg 控制；其它自定义 `VITE_*` 变量仍需按需增加 `ARG`。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
 

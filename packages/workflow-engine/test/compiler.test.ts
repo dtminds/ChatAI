@@ -349,6 +349,39 @@ describe("compileWorkflowDraft", () => {
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 
+  it("compiles Audience Filter with a single default outlet", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("filter", "audience-filter", {
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    }));
+    draft.edges = [
+      { id: "start-filter", source: "start", target: "filter" },
+      { id: "filter-end", source: "filter", target: "end" },
+    ];
+
+    expect(compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    }).nodes.find((item) => item.id === "filter")).toEqual({
+      config: {
+        groups: [{ id: 301, name: "高价值客户" }],
+        matchMode: "any",
+      },
+      id: "filter",
+      kind: "audience-filter",
+      nodeSchemaVersion: 1,
+    });
+
+    draft.nodes.splice(1, 1, node("filter", "audience-filter", {
+      groups: [],
+      matchMode: "any",
+    }));
+    expectCompilationIssues(draft, ["invalid-node-config"]);
+  });
+
   it("compiles legacy rolling entry windows with the current maximum", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find(node => node.id === "start")!.data, {

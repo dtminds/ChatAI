@@ -3,6 +3,7 @@ import type { WorkflowNodeDefinition } from "./definition-types";
 import { agentNodeDefinition } from "./agent/definition";
 import { aiCollectNodeDefinition } from "./ai-collect/definition";
 import { aiIntentNodeDefinition } from "./ai-intent/definition";
+import { audienceFilterNodeDefinition } from "./audience-filter/definition";
 import { branchNodeDefinition } from "./branch/definition";
 import { couponNodeDefinition } from "./coupon/definition";
 import { customerUpdateNodeDefinition } from "./customer-update/definition";
@@ -25,6 +26,7 @@ export const workflowNodeDefinitions = {
   agent: agentNodeDefinition,
   "ai-collect": aiCollectNodeDefinition,
   "ai-intent": aiIntentNodeDefinition,
+  "audience-filter": audienceFilterNodeDefinition,
   branch: branchNodeDefinition,
   coupon: couponNodeDefinition,
   "customer-update": customerUpdateNodeDefinition,

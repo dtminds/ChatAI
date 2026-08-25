@@ -4,6 +4,7 @@ import type {
   WorkflowAiCollectField as SharedWorkflowAiCollectField,
   WorkflowAiCollectFieldType as SharedWorkflowAiCollectFieldType,
   WorkflowAiCollectTimeout as SharedWorkflowAiCollectTimeout,
+  WorkflowAudienceFilterDraftConfig,
   WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
   WorkflowBranchConfig,
@@ -156,6 +157,8 @@ export type WorkflowAiCollectField = SharedWorkflowAiCollectField;
 export type WorkflowAiCollectFieldType = SharedWorkflowAiCollectFieldType;
 export type WorkflowAiCollectTimeout = SharedWorkflowAiCollectTimeout;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect"> & WorkflowAiCollectDraftConfig;
+export type AudienceFilterNodeData = WorkflowNodeDataBase<"audience-filter">
+  & WorkflowAudienceFilterDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
@@ -164,6 +167,7 @@ export type WorkflowNodeDataMap = {
   agent: AgentNodeData;
   "ai-collect": AiCollectNodeData;
   "ai-intent": AiIntentNodeData;
+  "audience-filter": AudienceFilterNodeData;
   branch: BranchNodeData;
   coupon: CouponNodeData;
   "customer-update": CustomerUpdateNodeData;

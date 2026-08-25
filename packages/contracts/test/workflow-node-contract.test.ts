@@ -50,6 +50,7 @@ const draftConfigs = {
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
+  "audience-filter": { groups: [], matchMode: "any" },
   branch: {
     branchPaths: [
       {
@@ -167,7 +168,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(20);
+    expect(entries).toHaveLength(21);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -181,7 +182,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -510,6 +511,7 @@ describe("workflow node contracts", () => {
       agent: "action",
       "ai-collect": "composite",
       "ai-intent": "inference",
+      "audience-filter": "query",
       branch: "core",
       coupon: "action",
       "customer-update": "action",
@@ -538,6 +540,7 @@ describe("workflow node contracts", () => {
       agent: [],
       "ai-collect": [],
       "ai-intent": [],
+      "audience-filter": ["externalUserId"],
       branch: [],
       coupon: ["externalUserId"],
       "customer-update": ["externalUserId"],
@@ -603,6 +606,61 @@ describe("workflow node contracts", () => {
       "mode",
       "time",
       "unit",
+    ]);
+  });
+
+  it("keeps incomplete Audience Filter drafts editable while requiring groups to publish", () => {
+    expect(getWorkflowNodeContract("audience-filter")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "query",
+      identityInputs: ["externalUserId"],
+      maturity: "runtime-ready",
+      recordSourceOutlet: false,
+    });
+    expect(isWorkflowNodeDraftConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "all",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "any",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [{ id: 0, name: "高价值客户" }],
+      matchMode: "any",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 302, name: "沉默客户" },
+        { id: 303, name: "活跃客户" },
+        { id: 304, name: "超限" },
+      ],
+      matchMode: "all",
+    })).toBe(false);
+    expect(getWorkflowNodeOutputContracts("audience-filter", {
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    })).toEqual([
+      { key: "matched", usages: ["variable"], valueType: { kind: "boolean" } },
+      {
+        key: "matchedGroupNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      { key: "matchedGroupCount", usages: ["variable"], valueType: { kind: "number" } },
     ]);
   });
 

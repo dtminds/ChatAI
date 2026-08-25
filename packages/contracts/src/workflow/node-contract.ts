@@ -6,6 +6,11 @@ import {
   validateQuickReplyAttachment,
   type WorkbenchQuickReplyAttachment,
 } from "../chat/quick-reply-content.js";
+import {
+  WORKFLOW_AUDIENCE_GROUP_MAX_COUNT,
+  WorkflowAudienceGroupSnapshotSchema,
+  type WorkflowAudienceGroupSnapshot,
+} from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
@@ -247,6 +252,43 @@ export const WorkflowTagQueryExecutionConfigSchema = Type.Object({
   ),
 }, { additionalProperties: false });
 
+export const WorkflowAudienceFilterMatchModeSchema = Type.Union([
+  Type.Literal("any"),
+  Type.Literal("all"),
+  Type.Literal("none"),
+]);
+
+const WorkflowAudienceFilterGroupsSchema = Type.Array(
+  WorkflowAudienceGroupSnapshotSchema,
+  { maxItems: WORKFLOW_AUDIENCE_GROUP_MAX_COUNT },
+);
+
+export const WorkflowAudienceFilterDraftConfigSchema = Type.Object({
+  groups: WorkflowAudienceFilterGroupsSchema,
+  matchMode: WorkflowAudienceFilterMatchModeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowAudienceFilterExecutionConfigSchema = Type.Object({
+  groups: Type.Array(
+    WorkflowAudienceGroupSnapshotSchema,
+    { maxItems: WORKFLOW_AUDIENCE_GROUP_MAX_COUNT, minItems: 1 },
+  ),
+  matchMode: WorkflowAudienceFilterMatchModeSchema,
+}, { additionalProperties: false });
+
+export function hasUniqueWorkflowAudienceFilterGroupIds(
+  groups: readonly WorkflowAudienceGroupSnapshot[],
+) {
+  return new Set(groups.map((group) => group.id)).size === groups.length;
+}
+
+export function isWorkflowAudienceFilterExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowAudienceFilterExecutionConfig {
+  return Value.Check(WorkflowAudienceFilterExecutionConfigSchema, value)
+    && hasUniqueWorkflowAudienceFilterGroupIds(value.groups);
+}
+
 export const WORKFLOW_ORDER_NUMBER_MAX_LENGTH = 64;
 
 export const WorkflowOrderConversionDraftConfigSchema = Type.Object({
@@ -264,7 +306,6 @@ export const WorkflowOrderBindDraftConfigSchema = Type.Object({
 export const WorkflowOrderBindExecutionConfigSchema = Type.Object({
   orderNumberSelector: WorkflowVariableSelectorSchema,
 }, { additionalProperties: false });
-
 export const WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT = 10;
 
 export const WorkflowCustomerFieldTypeSchema = Type.Union([
@@ -527,6 +568,9 @@ export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfi
 export type WorkflowTagQueryMatchMode = Static<typeof WorkflowTagQueryMatchModeSchema>;
 export type WorkflowTagQueryDraftConfig = Static<typeof WorkflowTagQueryDraftConfigSchema>;
 export type WorkflowTagQueryExecutionConfig = Static<typeof WorkflowTagQueryExecutionConfigSchema>;
+export type WorkflowAudienceFilterMatchMode = Static<typeof WorkflowAudienceFilterMatchModeSchema>;
+export type WorkflowAudienceFilterDraftConfig = Static<typeof WorkflowAudienceFilterDraftConfigSchema>;
+export type WorkflowAudienceFilterExecutionConfig = Static<typeof WorkflowAudienceFilterExecutionConfigSchema>;
 export type WorkflowOrderConversionDraftConfig = Static<typeof WorkflowOrderConversionDraftConfigSchema>;
 export type WorkflowOrderConversionExecutionConfig = Static<typeof WorkflowOrderConversionExecutionConfigSchema>;
 export type WorkflowOrderBindDraftConfig = Static<typeof WorkflowOrderBindDraftConfigSchema>;
@@ -593,6 +637,13 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowAiIntentDraftConfigSchema,
     WorkflowAiIntentExecutionConfigSchema,
+  ),
+  "audience-filter": runtimeReadyContract(
+    "query",
+    1,
+    WorkflowAudienceFilterDraftConfigSchema,
+    WorkflowAudienceFilterExecutionConfigSchema,
+    ["externalUserId"],
   ),
   branch: runtimeReadyContract(
     "core",
@@ -720,7 +771,15 @@ export function isWorkflowNodeDraftConfig(
   kind: WorkflowNodeKind,
   value: unknown,
 ) {
-  return Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value);
+  if (!Value.Check(getWorkflowNodeContract(kind).draftConfigSchema, value)) {
+    return false;
+  }
+  if (kind === "audience-filter") {
+    return hasUniqueWorkflowAudienceFilterGroupIds(
+      (value as WorkflowAudienceFilterDraftConfig).groups,
+    );
+  }
+  return true;
 }
 
 export function getUnknownWorkflowNodeDraftDataKeys(
@@ -745,6 +804,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "ai-collect") return isWorkflowAiCollectExecutionConfigComplete(value);
   if (kind === "message-query") return isWorkflowMessageQueryExecutionConfigComplete(value);
   if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
+  if (kind === "audience-filter") return isWorkflowAudienceFilterExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
@@ -996,6 +1056,25 @@ export function getWorkflowNodeOutputContracts(
       },
       {
         key: "matchedTagCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "audience-filter") {
+    return [
+      {
+        key: "matched",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
+      },
+      {
+        key: "matchedGroupNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      {
+        key: "matchedGroupCount",
         usages: ["variable"],
         valueType: { kind: "number" },
       },

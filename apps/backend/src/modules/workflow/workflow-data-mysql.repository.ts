@@ -298,6 +298,7 @@ function parseKnownNodeKind(value: string): WorkflowNodeKind | null {
     "customer-update",
     "ai-collect",
     "ai-intent",
+    "audience-filter",
     "end",
   ].includes(value)) {
     return value as WorkflowNodeKind;
@@ -363,6 +364,7 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     agent: "转 Agent",
     "ai-collect": "资料收集",
     "ai-intent": "意图识别",
+    "audience-filter": "人群筛选",
     branch: "条件分支",
     coupon: "发券",
     "customer-update": "修改客户资料",

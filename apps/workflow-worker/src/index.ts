@@ -12,6 +12,7 @@ import {
   MysqlWorkflowLlmTestAttemptRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
+  WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
@@ -24,6 +25,7 @@ import { WorkflowCapabilityRouter } from "./capability-router.js";
 import { loadWorkflowWorkerConfig } from "./config.js";
 import { createWorkflowBroker } from "./broker/index.js";
 import { createWorkflowDatabase } from "./database.js";
+import { HttpWorkflowAudienceFilterCapabilityPort } from "./audience-filter-capability-port.js";
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
 import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
 import { startEntryConsumer } from "./entry-consumer.js";
@@ -93,6 +95,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const audienceFilterCapabilityPort = new HttpWorkflowAudienceFilterCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const tagCapabilityPort = new HttpWorkflowTagCapabilityPort({
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
@@ -110,6 +116,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     token: config.javaInternalApi.token,
   });
   const capabilityPort = new WorkflowCapabilityRouter([
+    {
+      binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
+      port: audienceFilterCapabilityPort,
+    },
     {
       binding: WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
       port: customerUpdateCapabilityPort,
@@ -223,6 +233,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   process.once("SIGTERM", shutdown);
 }
 
+export * from "./audience-filter-capability-port.js";
 export * from "./broker/index.js";
 export * from "./capability-router.js";
 export * from "./config.js";

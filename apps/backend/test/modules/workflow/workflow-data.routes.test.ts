@@ -172,6 +172,7 @@ describe("workflow data routes", () => {
     ["agent", "转 Agent"],
     ["ai-collect", "资料收集"],
     ["ai-intent", "意图识别"],
+    ["audience-filter", "人群筛选"],
     ["customer-update", "修改客户资料"],
     ["llm", "大模型"],
     ["order-bind", "关联订单"],

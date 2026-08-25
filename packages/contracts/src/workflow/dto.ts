@@ -25,6 +25,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("tag-query"),
   Type.Literal("customer-update"),
   Type.Literal("ai-collect"),
+  Type.Literal("audience-filter"),
   Type.Literal("ai-intent"),
   Type.Literal("end"),
 ]);

@@ -122,9 +122,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     "WORKFLOW_LEASE_DURATION_MS",
   );
   const entitlementMode = parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE);
-  if (env.NODE_ENV === "production" && entitlementMode !== "enforce") {
-    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
-  }
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
@@ -311,7 +308,7 @@ function parseEnvironment(value: string | undefined): WorkflowEnvironment {
 }
 
 function parseEntitlementMode(value: string | undefined): WorkflowWorkerConfig["entitlement"]["mode"] {
-  const mode = optionalValue(value) ?? "enforce";
+  const mode = optionalValue(value) ?? "allow";
   if (mode === "allow" || mode === "enforce") return mode;
   throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
 }

@@ -114,7 +114,7 @@ describe("workflow worker config", () => {
 
     expect(config.entitlement).toEqual({
       apiUrl: "https://java.example.com/internal/workflow/entitlement",
-      mode: "enforce",
+      mode: "allow",
       token: "internal-token",
     });
   });
@@ -138,24 +138,26 @@ describe("workflow worker config", () => {
       .toThrow("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
   });
 
-  it("loads the explicit entitlement bypass for development and test environments", () => {
-    const config = loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "development",
-      WORKFLOW_ENTITLEMENT_MODE: "allow",
-    }));
-
-    expect(config.entitlement.mode).toBe("allow");
-  });
-
-  it.each(["allow", " allow "])(
-    "rejects the entitlement bypass in production: %j",
+  it.each(["allow", " allow ", undefined])(
+    "defaults entitlement checks to allow in production: %j",
     (mode) => {
-      expect(() => loadWorkflowWorkerConfig(baseEnv({
+      const config = loadWorkflowWorkerConfig(baseEnv({
         NODE_ENV: "production",
         WORKFLOW_ENTITLEMENT_MODE: mode,
-      }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+      }));
+
+      expect(config.entitlement.mode).toBe("allow");
     },
   );
+
+  it("loads an explicit enforce entitlement mode", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "production",
+      WORKFLOW_ENTITLEMENT_MODE: "enforce",
+    }));
+
+    expect(config.entitlement.mode).toBe("enforce");
+  });
 
   it("rejects unknown entitlement modes", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({

@@ -22,10 +22,9 @@ import {
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
+import { VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL } from "@chatai/llm";
 import type { WorkflowRunRecord } from "./types.js";
 import { getWorkflowMessageRoleLabel } from "./workflow-messages.js";
-
-const WORKFLOW_AI_INTENT_ENDPOINT_ID = "ep-20260227145914-nxcmn";
 
 export function createWorkflowInferenceRequest(
   node: WorkflowExecutionNode,
@@ -196,7 +195,10 @@ function createIntentRequestFromContent(
       node.config.intents,
       node.config.prompt ?? "",
     ),
-    modelTarget: { endpointId: WORKFLOW_AI_INTENT_ENDPOINT_ID, kind: "endpoint" },
+    modelTarget: {
+      endpointId: VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL,
+      kind: "endpoint",
+    },
     reasoningEffort: "low",
     responseFormat: {
       fields: [

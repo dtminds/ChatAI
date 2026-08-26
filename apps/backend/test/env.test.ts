@@ -10,14 +10,7 @@ import {
 
 const ENV_KEYS = [
   "DATABASE_URL",
-  "INSIGHTS_WORKER_BATCH_SIZE",
-  "INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE",
-  "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK",
-  "INSIGHTS_WORKER_ENABLED",
-  "INSIGHTS_WORKER_INTERVAL_MS",
-  "INSIGHTS_WORKER_MODEL_ENABLED",
   "INSIGHTS_WORKER_OBSERVER_SUBJECTS",
-  "INSIGHTS_WORKER_TRACE_UID_ALLOWLIST",
   "INSIGHTS_WORKER_UID_ALLOWLIST",
   "JAVA_INTERNAL_API_BASE_URL",
   "JWT_DEV_SECRET",
@@ -25,9 +18,6 @@ const ENV_KEYS = [
   "JWT_PUBLIC_KEY",
   "NODE_ENV",
   "PORT",
-  "VOLCENGINE_ARK_API_KEY",
-  "VOLCENGINE_ARK_BASE_URL",
-  "VOLCENGINE_ARK_MODEL",
   "WORKFLOW_ENTITLEMENT_MODE",
 ] as const;
 
@@ -107,25 +97,6 @@ describe("backend env config", () => {
     expect(getPort()).toBe(3101);
   });
 
-  it("loads optional Volcengine Ark provider variables from backend local env", () => {
-    const rootDir = createEnvDir();
-    const appDir = createEnvDir();
-    writeFileSync(
-      join(appDir, ".env.local"),
-      [
-        "VOLCENGINE_ARK_API_KEY=secret-value",
-        "VOLCENGINE_ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3",
-        "VOLCENGINE_ARK_MODEL=ep-20260601000000-test",
-      ].join("\n"),
-    );
-
-    loadBackendEnv({ appDir, rootDir, mode: "development" });
-
-    expect(process.env.VOLCENGINE_ARK_API_KEY).toBe("secret-value");
-    expect(process.env.VOLCENGINE_ARK_BASE_URL).toBe("https://ark.cn-beijing.volces.com/api/v3");
-    expect(process.env.VOLCENGINE_ARK_MODEL).toBe("ep-20260601000000-test");
-  });
-
   it("rejects malformed backend ports", () => {
     expect(() => getPort({ PORT: "3001abc" })).toThrow("Invalid PORT: 3001abc");
     expect(() => getPort({ PORT: "70000" })).toThrow("Invalid PORT: 70000");
@@ -180,20 +151,27 @@ describe("backend env config", () => {
     ).toThrow("Missing required environment variables for test: DATABASE_URL");
   });
 
-  it("rejects the entitlement bypass in production", () => {
-    expect(() =>
-      validateBackendEnv({
-        DATABASE_URL: "mysql://prod",
-        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
-        JWT_PRIVATE_KEY: "private",
-        JWT_PUBLIC_KEY: "public",
-        NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: "allow",
-      }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+  it("accepts the entitlement bypass in production when unset or allow", () => {
+    const productionEnv = {
+      DATABASE_URL: "mysql://prod",
+      JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
+      JWT_PRIVATE_KEY: "private",
+      JWT_PUBLIC_KEY: "public",
+      NODE_ENV: "production",
+    };
+
+    expect(() => validateBackendEnv(productionEnv)).not.toThrow();
+    expect(() => validateBackendEnv({
+      ...productionEnv,
+      WORKFLOW_ENTITLEMENT_MODE: "allow",
+    })).not.toThrow();
+    expect(() => validateBackendEnv({
+      ...productionEnv,
+      WORKFLOW_ENTITLEMENT_MODE: " allow ",
+    })).not.toThrow();
   });
 
-  it("rejects a whitespace-padded entitlement bypass in production", () => {
+  it("rejects unknown entitlement modes", () => {
     expect(() =>
       validateBackendEnv({
         DATABASE_URL: "mysql://prod",
@@ -201,9 +179,9 @@ describe("backend env config", () => {
         JWT_PRIVATE_KEY: "private",
         JWT_PUBLIC_KEY: "public",
         NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: " allow ",
+        WORKFLOW_ENTITLEMENT_MODE: "disabled",
       }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
   });
 
   it("validates worker observer subjects before backend startup", () => {

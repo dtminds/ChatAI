@@ -1,0 +1,88 @@
+name: Backend Image CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "integration/**"
+    paths:
+      - ".github/workflows/backend-image-ci.yml"
+      - "deploy/backend.Dockerfile"
+      - "apps/backend/package.json"
+      - "package.json"
+      - "packages/contracts/package.json"
+      - "packages/database/package.json"
+      - "packages/insights/package.json"
+      - "packages/llm/package.json"
+      - "packages/tickets/package.json"
+      - "packages/user-memory/package.json"
+      - "packages/workflow-engine/package.json"
+      - "packages/workflow-runtime/package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  pull_request:
+    branches:
+      - main
+      - dev
+      - "codex/**"
+      - "feat/**"
+      - "feature/**"
+      - "integration/**"
+    paths:
+      - ".github/workflows/backend-image-ci.yml"
+      - "deploy/backend.Dockerfile"
+      - "apps/backend/package.json"
+      - "package.json"
+      - "packages/contracts/package.json"
+      - "packages/database/package.json"
+      - "packages/insights/package.json"
+      - "packages/llm/package.json"
+      - "packages/tickets/package.json"
+      - "packages/user-memory/package.json"
+      - "packages/workflow-engine/package.json"
+      - "packages/workflow-runtime/package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-image-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-image:
+    name: Backend Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build Backend image
+        run: docker build -f deploy/backend.Dockerfile -t chatai-backend:ci .
+
+      - name: Verify Backend entrypoint and health check
+        run: |
+          docker run --detach --name chatai-backend-ci \
+            --env NODE_ENV=test \
+            --env DATABASE_URL=mysql://user:password@127.0.0.1:3306/chatai \
+            chatai-backend:ci
+
+          cleanup() {
+            docker logs chatai-backend-ci || true
+            docker rm --force chatai-backend-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 20); do
+            if docker exec chatai-backend-ci \
+              wget --quiet --tries=1 --spider http://127.0.0.1:3001/healthz; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          exit 1

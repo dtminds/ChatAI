@@ -243,6 +243,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && run.subjectType === input.subjectType
       && run.subjectId === input.subjectId,
     );
+    if (previousRuns.some(run =>
+      run.status === "queued" || run.status === "running" || run.status === "waiting")) {
+      return { kind: "active-run-rejected" as const };
+    }
     const entryGuardKey = `${input.uid}:${input.workflowId}:${input.subjectType}:${input.subjectId}`;
     const totalEntries = this.totalEntries.get(entryGuardKey) ?? 0;
     if (!canEnterWorkflow(input.entryPolicy, previousRuns, totalEntries, admittedAt)) {

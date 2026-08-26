@@ -48,6 +48,7 @@ describe("workflow worker observability", () => {
     expect(logger.warn.mock.calls[1]?.[0]).not.toHaveProperty("diagnosticMessage");
     expect(logger.warn).toHaveBeenCalledTimes(2);
     expect(logger.info).toHaveBeenCalledWith({
+      activeRunRejected: 0,
       admitted: 1,
       deduplicated: 0,
       entryPolicyRejected: 0,

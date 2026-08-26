@@ -50,6 +50,20 @@ describe("workflow node projection registry", () => {
     });
   });
 
+  it("drops draft triggers when projecting a direct-push Start", () => {
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...projectableDraftData.start,
+        entryMode: "direct-push",
+      },
+      kind: "start",
+      workflowType: "chatai_sop",
+    })).toEqual(expect.objectContaining({
+      entryMode: "direct-push",
+      triggers: [],
+    }));
+  });
+
   it("projects AI Collect follow-up-specific execution data", () => {
     expect(projectWorkflowNodeExecutionConfig({
       data: projectableDraftData["ai-collect"],

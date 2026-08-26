@@ -437,6 +437,7 @@ function WorkflowWorkspaceContent({
                   },
                 }}
                 testContext={inspector.testContext}
+                workflowId={currentDocument.id}
             />
           ) : null}
           {displayedReview ? (

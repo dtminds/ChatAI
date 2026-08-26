@@ -1,5 +1,6 @@
 import type {
   WorkflowEntryEventType,
+  WorkflowDirectEntryPayload,
   WorkflowExecutionNode,
   WorkflowExecutionSpec,
   WorkflowJsonObject,
@@ -74,6 +75,7 @@ import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
   WorkflowRuntimeControlReader,
+  WorkflowRuntimeRevisionRecord,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
@@ -205,10 +207,74 @@ export class WorkflowRuntimeService {
       || revision.subjectType !== input.subjectType) {
       throw staleDefinitionError();
     }
+    const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
+    const startConfig = requireStartConfig(entryNode);
+    return this.createInitialRun({
+      ...input,
+      revision,
+      startConfig,
+    });
+  }
+
+  async startDirectRun(input: {
+    entryEventId: string;
+    occurredAt: string;
+    payload: WorkflowDirectEntryPayload;
+    payloadVersion: number;
+    source: string;
+    uid: number;
+  }) {
+    const definition = await this.controlRepository.findDefinition(input.uid, input.payload.workflowId);
+    if (!definition) throw workflowUnavailable();
+    if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
+      throw runtimeStatusError(definition.runtimeStatus);
+    }
+    const revision = await this.controlRepository.findRevision(
+      input.uid,
+      input.payload.workflowId,
+      definition.publishedRevision,
+    );
+    if (!revision || revision.workflowType !== definition.workflowType) {
+      throw staleDefinitionError();
+    }
+    const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
+    const startConfig = requireStartConfig(entryNode);
+    if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
+    const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
+    const { workflowId, ...projection } = input.payload;
+    return this.createInitialRun({
+      entryEventId: input.entryEventId,
+      revision,
+      startConfig,
+      subjectId: subject.subjectId,
+      subjectType: revision.subjectType,
+      trigger: {
+        eventId: input.entryEventId,
+        eventType: "workflow.direct_entry.requested",
+        occurredAt: input.occurredAt,
+        payloadVersion: input.payloadVersion,
+        projection: structuredClone(projection),
+        source: input.source,
+      },
+      uid: input.uid,
+      workflowId,
+    });
+  }
+
+  private async createInitialRun(input: {
+    entryEventId: string;
+    revision: WorkflowRuntimeRevisionRecord;
+    startConfig: WorkflowStartConfig;
+    subjectId: string;
+    subjectType: WorkflowSubjectType;
+    trigger: Record<string, unknown>;
+    uid: number;
+    workflowId: string;
+  }) {
+    const { revision, startConfig } = input;
     await this.requireEntitlement(input.uid, revision.workflowType);
     this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
 
     let context: Record<string, unknown>;
     try {
@@ -247,7 +313,9 @@ export class WorkflowRuntimeService {
         ? runtimeStatusError("paused")
         : workflowUnavailable();
     }
-    if (created.kind === "entry-policy-rejected") return created;
+    if (created.kind === "entry-policy-rejected" || created.kind === "active-run-rejected") {
+      return created;
+    }
     if (created.kind !== "success") throw staleDefinitionError();
     return created;
   }
@@ -1284,6 +1352,30 @@ function parseOccurredAt(trigger: Record<string, unknown>) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function resolveDirectEntrySubject(
+  subjectType: WorkflowSubjectType,
+  startConfig: WorkflowStartConfig,
+  payload: WorkflowDirectEntryPayload,
+) {
+  if (subjectType === "chatai_contact") {
+    if (!("seatIds" in startConfig)
+      || !("thirdExternalUserId" in payload)
+      || !startConfig.seatIds.includes(payload.seatId)) {
+      throw directEntryIdentityError();
+    }
+    return { subjectId: payload.thirdExternalUserId };
+  }
+  if (subjectType === "wecom_contact") {
+    if (!("workUserIds" in startConfig)
+      || !("externalUserId" in payload)
+      || !startConfig.workUserIds.includes(payload.workUserId)) {
+      throw directEntryIdentityError();
+    }
+    return { subjectId: String(payload.externalUserId) };
+  }
+  throw directEntryIdentityError();
+}
+
 function getWorkflowShardId(
   uid: number,
   subjectType: WorkflowSubjectType,
@@ -1310,6 +1402,21 @@ function runtimeStatusError(status: "active" | "inactive" | "paused" | "stopped"
 
 function workflowUnavailable() {
   return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
+}
+
+function directEntryUnavailableError() {
+  return new WorkflowRuntimeError(
+    "WORKFLOW_DIRECT_ENTRY_UNAVAILABLE",
+    "Workflow 不允许外部推送进入",
+  );
+}
+
+function directEntryIdentityError() {
+  return new WorkflowRuntimeError(
+    "WORKFLOW_DIRECT_ENTRY_IDENTITY_INVALID",
+    "Workflow 外部推送身份无效",
+    400,
+  );
 }
 
 function runtimeNodeUnsupportedError() {

@@ -6,6 +6,16 @@ import {
 
 export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
 
+export const WorkflowDirectEntryEndpointKeySchema = Type.String({
+  maxLength: 512,
+  minLength: 1,
+  pattern: "^[A-Za-z0-9._~-]+$",
+});
+
+export const WorkflowDirectEntryEndpointResponseSchema = Type.Object({
+  endpointKey: WorkflowDirectEntryEndpointKeySchema,
+}, { additionalProperties: false });
+
 export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("start"),
   Type.Literal("wait"),
@@ -341,6 +351,9 @@ export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
 export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
 export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
 export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
+export type WorkflowDirectEntryEndpointResponse = Static<
+  typeof WorkflowDirectEntryEndpointResponseSchema
+>;
 export type WorkflowRevision = Static<typeof WorkflowRevisionSchema>;
 export type WorkflowRevisionPage = Static<typeof WorkflowRevisionPageSchema>;
 export type WorkflowPublishReviewPage = Static<typeof WorkflowPublishReviewPageSchema>;

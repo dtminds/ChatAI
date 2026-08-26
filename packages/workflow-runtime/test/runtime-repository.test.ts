@@ -827,7 +827,11 @@ describe("workflow runtime repository", () => {
   it("cancels stopped workflow runs in cursor-based batches", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     await repository.createRunWithInitialTask(createRunInput());
-    await repository.createRunWithInitialTask({ ...createRunInput(), entryEventId: "event-2" });
+    await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    });
     const reconciler = new WorkflowRuntimeReconciler(repository);
 
     const first = await reconciler.cancelStoppedWorkflow({ limit: 1, uid: 9, workflowId: "31" });
@@ -1192,6 +1196,7 @@ async function createWaitingRun(
     entryEventId,
     initialNodeId: "wait-1",
     initialNodeKind: "wait",
+    subjectId: entryEventId,
   });
   if (created.kind !== "success") throw new Error("create failed");
   const claimed = await repository.claimTask({

@@ -17,21 +17,42 @@ describe("workflow entry admission", () => {
     expect(repository.snapshot().runs).toHaveLength(1);
   });
 
-  it.each([
-    [{ mode: "never" } satisfies WorkflowEntryPolicy, 1],
-    [{ maxEntries: 2, mode: "lifetime_limit" } satisfies WorkflowEntryPolicy, 2],
-  ])("atomically enforces lifetime policy %#", async (entryPolicy, expectedStarted) => {
+  it("atomically allows only one active Run for different entry events", async () => {
     const repository = createRepository();
     const results = await Promise.all(Array.from({ length: 10 }, (_, index) =>
       repository.createRunWithInitialTask(createInput({
         entryEventId: `event-${index}`,
-        entryPolicy,
+        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       })),
     ));
 
-    expect(results.filter(result => result.kind === "success")).toHaveLength(expectedStarted);
-    expect(results.filter(result => result.kind === "entry-policy-rejected"))
-      .toHaveLength(10 - expectedStarted);
+    expect(results.filter(result => result.kind === "success")).toHaveLength(1);
+    expect(results.filter(result => result.kind === "active-run-rejected")).toHaveLength(9);
+    expect(repository.snapshot().runs).toHaveLength(1);
+  });
+
+  it("applies entry policy again after the previous Run becomes terminal", async () => {
+    const repository = createRepository();
+    const entryPolicy: WorkflowEntryPolicy = {
+      maxEntries: 2,
+      mode: "lifetime_limit",
+    };
+    await repository.createRunWithInitialTask(createInput({ entryPolicy }));
+    await expect(repository.createRunWithInitialTask(createInput({
+      entryEventId: "event-2",
+      entryPolicy,
+    }))).resolves.toMatchObject({ kind: "active-run-rejected" });
+
+    repository.runs[0]!.status = "completed";
+    await expect(repository.createRunWithInitialTask(createInput({
+      entryEventId: "event-2",
+      entryPolicy,
+    }))).resolves.toMatchObject({ deduplicated: false, kind: "success" });
+    repository.runs[1]!.status = "completed";
+    await expect(repository.createRunWithInitialTask(createInput({
+      entryEventId: "event-3",
+      entryPolicy,
+    }))).resolves.toMatchObject({ kind: "entry-policy-rejected" });
   });
 
   it("uses repository time for rolling-window admission and counts terminal runs", async () => {
@@ -48,6 +69,7 @@ describe("workflow entry admission", () => {
     repository.runs[0]!.status = "completed";
     now = new Date("2026-07-01T12:00:00.000Z");
     await repository.createRunWithInitialTask(createInput({ entryEventId: "event-2", entryPolicy }));
+    repository.runs[1]!.status = "completed";
     now = new Date("2026-07-01T23:00:00.000Z");
     await expect(repository.createRunWithInitialTask(createInput({ entryEventId: "event-3", entryPolicy })))
       .resolves.toMatchObject({ kind: "entry-policy-rejected" });
@@ -78,7 +100,9 @@ function createInput(overrides: {
     revision: 1,
     shardId: 7,
     subjectId: "external-user-1",
+    subjectType: "chatai_contact" as const,
     uid: 9,
     workflowId: "31",
+    workflowType: "chatai_sop" as const,
   };
 }

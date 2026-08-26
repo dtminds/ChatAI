@@ -24,6 +24,7 @@ export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind>
   onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
   resources?: WorkflowNodeSettingsResources;
   testContext?: WorkflowNodeTestContext;
+  workflowId?: string;
 };
 
 export type WorkflowNodeTestContext = {

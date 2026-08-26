@@ -355,6 +355,32 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.runInsertCount).toBe(0);
   });
 
+  it("rejects another active Run after locking the subject admission guard", async () => {
+    const db = createConcurrentDuplicateRunDbMock({ duplicateAfterGuard: false });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.createRunWithInitialTask({
+      context: {},
+      entryEventId: "event-2",
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2020-01-01T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(result).toEqual({ kind: "active-run-rejected" });
+    expect(db.runReadCount).toBe(3);
+    expect(db.guardWriteLocked).toBe(true);
+    expect(db.runInsertCount).toBe(0);
+  });
+
   it("uses a shared definition lock when claiming an execution task", async () => {
     const db = createClaimDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -995,7 +1021,10 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   return db;
 }
 
-function createConcurrentDuplicateRunDbMock() {
+function createConcurrentDuplicateRunDbMock(
+  options: { duplicateAfterGuard?: boolean } = {},
+) {
+  const duplicateAfterGuard = options.duplicateAfterGuard ?? true;
   const admittedAt = new Date("2026-07-10T00:00:00.000Z");
   const run = {
     completed_at: null,
@@ -1075,7 +1104,9 @@ function createConcurrentDuplicateRunDbMock() {
           }
           if (table === "xy_wap_embed_workflow_run") {
             db.runReadCount += 1;
-            return db.runReadCount === 1 ? undefined : run;
+            if (db.runReadCount === 1) return undefined;
+            if (db.runReadCount === 2) return duplicateAfterGuard ? run : undefined;
+            return run;
           }
           if (table === "xy_wap_embed_workflow_task") return task;
           return undefined;

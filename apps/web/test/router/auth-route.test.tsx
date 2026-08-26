@@ -88,6 +88,18 @@ describe("auth routes", () => {
     });
   });
 
+  it("renders a direct-entry protocol page without checking the login session", async () => {
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/workflow/endpoint/java.key-1"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("请按照协议推送数据")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/workflow/endpoint/java.key-1");
+    expect(mock.history.get.filter(request => request.url === "/auth/session")).toHaveLength(0);
+  });
+
   it("allows /chat when the session cookie is valid", async () => {
     mock.onGet("/auth/session").reply(200, {
       data: {

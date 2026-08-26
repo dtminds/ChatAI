@@ -480,7 +480,7 @@ export function runWorkflowRuntimeRepositoryContract(
 
     expect(first).toMatchObject({ deduplicated: false, kind: "success" });
     expect(otherSubjectType).toMatchObject({ deduplicated: false, kind: "success" });
-    expect(repeatedOriginalSubject).toEqual({ kind: "entry-policy-rejected" });
+    expect(repeatedOriginalSubject).toEqual({ kind: "active-run-rejected" });
   });
 
   it("persists one Wait Event subscription under the complete Subject identity", async () => {
@@ -985,6 +985,7 @@ async function createInferenceWait(
     entryEventId: `inference-event-${suffix}`,
     initialNodeId: `llm-${suffix}`,
     initialNodeKind: "llm",
+    subjectId: `customer-${suffix}`,
   })));
   const claimed = await repository.claimTask({
     expectedTaskVersion: created.task.taskVersion,

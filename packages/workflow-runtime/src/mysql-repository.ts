@@ -255,6 +255,16 @@ export class MysqlWorkflowRuntimeRepository implements
         if (concurrentDuplicate) {
           return { deduplicated: true, kind: "success" as const, ...concurrentDuplicate };
         }
+        const activeRun = await trx.selectFrom(RUN_TABLE)
+          .select("id")
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", input.workflowId)
+          .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+          .where("subject_id", "=", input.subjectId)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .limit(1)
+          .executeTakeFirst();
+        if (activeRun) return { kind: "active-run-rejected" as const };
         if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
           return { kind: "entry-policy-rejected" as const };
         }

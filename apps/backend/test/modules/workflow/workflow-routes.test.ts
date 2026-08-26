@@ -15,6 +15,26 @@ describe("workflow routes", () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
 
+  it("returns only the direct-entry endpoint key for an accessible Workflow", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${created.id}/direct-entry-endpoint`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: { endpointKey: expect.stringMatching(/^mock\./) },
+      success: true,
+    });
+  });
+
   it("updates workflow metadata and keeps descriptions through the legacy name route", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({

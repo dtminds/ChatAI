@@ -369,7 +369,7 @@ async function createWaitingJob(
     occurredAt: now,
     revision: 1,
     shardId: 1,
-    subjectId: "customer-1",
+    subjectId: entryEventId,
     subjectType: "chatai_contact",
     uid: 9,
     workflowId: "31",

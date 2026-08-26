@@ -9,7 +9,9 @@ import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
-const PUBLIC_PATHS = new Set(["/login"]);
+function isPublicPath(pathname: string) {
+  return pathname === "/login" || /^\/workflow\/endpoint\/[^/]+$/.test(pathname);
+}
 
 export function RootLayout() {
   useAppearancePreferences();
@@ -39,7 +41,7 @@ export function RootLayout() {
   useEffect(() => {
     let isActive = true;
 
-    if (PUBLIC_PATHS.has(location.pathname)) {
+    if (isPublicPath(location.pathname)) {
       resetWorkbenchSession();
       lastSubUserIdRef.current = null;
       clearSession();
@@ -101,14 +103,14 @@ export function RootLayout() {
     location.pathname,
   ]);
 
-  const isPublicPath = PUBLIC_PATHS.has(location.pathname);
+  const publicPath = isPublicPath(location.pathname);
   const shouldVerifyPrivatePath =
-    !isPublicPath &&
+    !publicPath &&
     status !== "authenticated" &&
     checkedPath !== location.pathname;
 
   if (
-    !isPublicPath &&
+    !publicPath &&
     (status === "checking" || shouldVerifyPrivatePath)
   ) {
     return (
@@ -133,7 +135,7 @@ export function RootLayout() {
     );
   }
 
-  if (!isPublicPath && status === "anonymous") {
+  if (!publicPath && status === "anonymous") {
     return <Navigate replace to={buildLoginRedirectPath(location)} />;
   }
 

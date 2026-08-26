@@ -527,6 +527,14 @@ function createEntitlementLossDbMock() {
   let runExecuteCount = 0;
   const db = {
     updates,
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       const builder = {
         distinct() { return builder; },
@@ -540,7 +548,7 @@ function createEntitlementLossDbMock() {
           if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
           if (table === "xy_wap_embed_workflow_run") {
             runExecuteCount += 1;
-            return runExecuteCount === 1 ? [{ id: "101" }] : [];
+            return runExecuteCount === 1 ? [{ id: "101", workflow_id: "42" }] : [];
           }
           return [];
         },

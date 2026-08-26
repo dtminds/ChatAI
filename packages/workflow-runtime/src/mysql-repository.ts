@@ -70,6 +70,8 @@ const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
 const CAPACITY_GUARD_TABLE = "xy_wap_embed_workflow_capacity_guard" as const;
 const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric" as const;
+const WORKFLOW_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_daily_metric" as const;
+const WORKFLOW_METRIC_TABLE = "xy_wap_embed_workflow_metric" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
@@ -341,6 +343,12 @@ export class MysqlWorkflowRuntimeRepository implements
           nodeId: input.initialNodeId,
           nodeKind: input.initialNodeKind,
         }));
+        await recordWorkflowRunMetrics(trx, [{
+          kind: "entered",
+          occurredAt: admittedAt,
+          uid: input.uid,
+          workflowId: input.workflowId,
+        }]);
         return {
           deduplicated: false,
           kind: "success" as const,
@@ -1794,6 +1802,12 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("status", "=", "running")
         .executeTakeFirstOrThrow();
       await releaseTenantCapacity(trx, input.uid, 1);
+      await recordWorkflowRunMetrics(trx, [{
+        kind: "failed",
+        occurredAt: input.now,
+        uid: input.uid,
+        workflowId: run.workflowId,
+      }]);
       return {
         kind: "success" as const,
         run: nextRun,
@@ -1949,6 +1963,12 @@ export class MysqlWorkflowRuntimeRepository implements
           .executeTakeFirstOrThrow();
         if (Number(runUpdate.numUpdatedRows) === 1) {
           await releaseTenantCapacity(trx, outboxRow.uid, 1);
+          await recordWorkflowRunMetrics(trx, [{
+            kind: "failed",
+            occurredAt: input.failedAt,
+            uid: outboxRow.uid,
+            workflowId: taskRow.workflow_id,
+          }]);
         }
       }
       return true;
@@ -2168,6 +2188,14 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("lock_version", "=", run.lockVersion).executeTakeFirstOrThrow();
       if (TERMINAL_RUN_STATUSES.includes(nextRun.status as typeof TERMINAL_RUN_STATUSES[number])) {
         await releaseTenantCapacity(trx, input.uid, 1);
+        await recordWorkflowRunMetrics(trx, [{
+          kind: nextRun.status === "completed"
+            ? "completed"
+            : nextRun.status === "failed" ? "failed" : "cancelled",
+          occurredAt: now,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }]);
       }
       if (failed) {
         await insertNodeMetricEvents(trx, {
@@ -2325,6 +2353,14 @@ export class MysqlWorkflowRuntimeRepository implements
           await releaseTenantCapacityForRuns(trx, deadRows
             .filter(row => deadRunIdSet.has(normalizeId(row.run_id)))
             .map(row => ({ uid: normalizeTenantId(row.uid) })));
+          await recordWorkflowRunMetrics(trx, [...new Map(deadRows
+            .filter(row => deadRunIdSet.has(normalizeId(row.run_id)))
+            .map(row => [normalizeId(row.run_id), {
+              kind: "failed" as const,
+              occurredAt: input.now,
+              uid: normalizeTenantId(row.uid),
+              workflowId: row.workflow_id,
+            }])).values()]);
         }
       }
       return { dead: deadIds.length, recovered: recoverableIds.length };
@@ -2481,6 +2517,12 @@ export class MysqlWorkflowRuntimeRepository implements
         if (inconsistentRunsFailed === runsToFail.length) {
           await releaseTenantCapacityForRuns(trx, runsToFail.map(run => ({
             uid: normalizeTenantId(run.uid),
+          })));
+          await recordWorkflowRunMetrics(trx, runsToFail.map(run => ({
+            kind: "failed" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(run.uid),
+            workflowId: run.workflow_id,
           })));
         }
       }
@@ -2914,6 +2956,14 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("status", "in", ACTIVE_RUN_STATUSES)
           .executeTakeFirstOrThrow();
         await releaseTenantCapacity(trx, normalizeTenantId(request.uid), Number(runUpdate.numUpdatedRows));
+        if (Number(runUpdate.numUpdatedRows) === runsToCancel.length) {
+          await recordWorkflowRunMetrics(trx, runsToCancel.map(run => ({
+            kind: "cancelled" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(run.uid),
+            workflowId: run.workflow_id,
+          })));
+        }
       }
 
       const hasMore = candidateRuns.length > selectedRuns.length;
@@ -3259,6 +3309,14 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("status", "in", ["queued", "running", "waiting"])
         .executeTakeFirst();
       await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
+      if (Number(runUpdate.numUpdatedRows) === selectedRows.length) {
+        await recordWorkflowRunMetrics(trx, selectedRows.map(run => ({
+          kind: "cancelled" as const,
+          occurredAt: now,
+          uid: input.uid,
+          workflowId: run.workflow_id,
+        })));
+      }
       await recordCancellationMetrics(trx, selectedRows.map(run => ({
         currentNodeId: run.current_node_id,
         id: run.id,
@@ -3327,6 +3385,12 @@ export class MysqlWorkflowRuntimeRepository implements
         await releaseTenantCapacityForRuns(trx, selected.map(run => ({
           uid: normalizeTenantId(run.uid),
         })));
+        await recordWorkflowRunMetrics(trx, selected.map(run => ({
+          kind: "cancelled" as const,
+          occurredAt: now,
+          uid: normalizeTenantId(run.uid),
+          workflowId: run.workflow_id,
+        })));
       }
       await recordCancellationMetrics(trx, selected.map(run => ({
         currentNodeId: run.current_node_id,
@@ -3393,7 +3457,7 @@ export async function cancelMysqlEntitlementRuns(
   if (input.workflowIds.length === 0) return;
   for (;;) {
     const cancelled = await db.transaction().execute(async (trx) => {
-      const runs = await trx.selectFrom(RUN_TABLE).select("id")
+      const runs = await trx.selectFrom(RUN_TABLE).select(["id", "workflow_id"])
         .where("uid", "=", input.uid)
         .where("workflow_id", "in", input.workflowIds)
         .where("status", "in", ACTIVE_RUN_STATUSES)
@@ -3413,6 +3477,14 @@ export async function cancelMysqlEntitlementRuns(
         .where("status", "in", ACTIVE_RUN_STATUSES)
         .executeTakeFirstOrThrow();
       await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
+      if (Number(runUpdate.numUpdatedRows) === runs.length) {
+        await recordWorkflowRunMetrics(trx, runs.map(run => ({
+          kind: "cancelled" as const,
+          occurredAt: input.now,
+          uid: input.uid,
+          workflowId: run.workflow_id,
+        })));
+      }
       await trx.updateTable(TASK_TABLE).set({
         lease_expires_at: null,
         lease_owner: null,
@@ -3826,6 +3898,123 @@ function assertNonNegativeSafeInteger(value: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${name} must be a non-negative safe integer`);
   }
+}
+
+type WorkflowRunMetricEvent = {
+  kind: "cancelled" | "completed" | "entered" | "failed";
+  occurredAt: Date;
+  uid: number;
+  workflowId: DatabaseId;
+};
+
+async function recordWorkflowRunMetrics(
+  trx: RuntimeTransaction,
+  events: WorkflowRunMetricEvent[],
+) {
+  if (events.length === 0) return;
+
+  const summaries = new Map<string, {
+    cancelled: number;
+    completed: number;
+    entered: number;
+    failed: number;
+    lastRunAt: Date | null;
+    uid: number;
+    workflowId: DatabaseId;
+  }>();
+  const daily = new Map<string, {
+    cancelled: number;
+    completed: number;
+    entered: number;
+    failed: number;
+    metricDate: string;
+    uid: number;
+    workflowId: DatabaseId;
+  }>();
+
+  for (const event of events) {
+    const summaryKey = `${event.uid}:${normalizeId(event.workflowId)}`;
+    const summary = summaries.get(summaryKey) ?? {
+      cancelled: 0,
+      completed: 0,
+      entered: 0,
+      failed: 0,
+      lastRunAt: null,
+      uid: event.uid,
+      workflowId: event.workflowId,
+    };
+    summary[event.kind === "entered" ? "entered" : event.kind] += 1;
+    if (event.kind === "entered" && (!summary.lastRunAt || event.occurredAt > summary.lastRunAt)) {
+      summary.lastRunAt = event.occurredAt;
+    }
+    summaries.set(summaryKey, summary);
+
+    const metricDate = formatWorkflowMetricDate(event.occurredAt);
+    const dailyKey = `${summaryKey}:${metricDate}`;
+    const dailyMetric = daily.get(dailyKey) ?? {
+      cancelled: 0,
+      completed: 0,
+      entered: 0,
+      failed: 0,
+      metricDate,
+      uid: event.uid,
+      workflowId: event.workflowId,
+    };
+    dailyMetric[event.kind === "entered" ? "entered" : event.kind] += 1;
+    daily.set(dailyKey, dailyMetric);
+  }
+
+  const orderedSummaries = [...summaries.values()].sort(compareWorkflowMetricKeys);
+  for (const chunk of writeChunks(orderedSummaries)) {
+    await trx.insertInto(WORKFLOW_METRIC_TABLE).values(chunk.map(metric => ({
+      cancelled_run_count: metric.cancelled,
+      completed_run_count: metric.completed,
+      failed_run_count: metric.failed,
+      last_run_at: metric.lastRunAt,
+      total_run_count: metric.entered,
+      uid: metric.uid,
+      workflow_id: metric.workflowId,
+    }))).onDuplicateKeyUpdate({
+      cancelled_run_count: sql<number>`cancelled_run_count + VALUES(cancelled_run_count)`,
+      completed_run_count: sql<number>`completed_run_count + VALUES(completed_run_count)`,
+      failed_run_count: sql<number>`failed_run_count + VALUES(failed_run_count)`,
+      last_run_at: sql<Date | null>`CASE
+        WHEN VALUES(last_run_at) IS NULL THEN last_run_at
+        WHEN last_run_at IS NULL OR last_run_at < VALUES(last_run_at) THEN VALUES(last_run_at)
+        ELSE last_run_at
+      END`,
+      total_run_count: sql<number>`total_run_count + VALUES(total_run_count)`,
+    }).executeTakeFirstOrThrow();
+  }
+
+  const orderedDailyMetrics = [...daily.values()].sort((left, right) =>
+    compareWorkflowMetricKeys(left, right) || left.metricDate.localeCompare(right.metricDate));
+  for (const chunk of writeChunks(orderedDailyMetrics)) {
+    await trx.insertInto(WORKFLOW_DAILY_METRIC_TABLE).values(chunk.map(metric => ({
+      cancelled_count: metric.cancelled,
+      completed_count: metric.completed,
+      entered_count: metric.entered,
+      failed_count: metric.failed,
+      metric_date: metric.metricDate,
+      uid: metric.uid,
+      workflow_id: metric.workflowId,
+    }))).onDuplicateKeyUpdate({
+      cancelled_count: sql<number>`cancelled_count + VALUES(cancelled_count)`,
+      completed_count: sql<number>`completed_count + VALUES(completed_count)`,
+      entered_count: sql<number>`entered_count + VALUES(entered_count)`,
+      failed_count: sql<number>`failed_count + VALUES(failed_count)`,
+    }).executeTakeFirstOrThrow();
+  }
+}
+
+function compareWorkflowMetricKeys(
+  left: { uid: number; workflowId: DatabaseId },
+  right: { uid: number; workflowId: DatabaseId },
+) {
+  if (left.uid !== right.uid) return left.uid - right.uid;
+  const leftWorkflowId = normalizeId(left.workflowId);
+  const rightWorkflowId = normalizeId(right.workflowId);
+  return leftWorkflowId < rightWorkflowId ? -1 : leftWorkflowId > rightWorkflowId ? 1 : 0;
 }
 
 async function releaseTenantCapacity(

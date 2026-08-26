@@ -188,6 +188,7 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
   description: Type.String({ maxLength: 1000 }),
   hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
+  lastRunAt: Type.Union([Type.String(), Type.Null()]),
   managedAccountCount: Type.Integer({ minimum: 0, maximum: 100 }),
   managedAccounts: Type.Array(Type.Object({
     avatarUrl: Type.String(),
@@ -198,6 +199,7 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
   publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   runtimeStatus: WorkflowRuntimeStatusSchema,
   trigger: Type.String(),
+  totalRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
   updatedAt: Type.String(),
   workflowType: WorkflowTypeSchema,
 }, { additionalProperties: false });

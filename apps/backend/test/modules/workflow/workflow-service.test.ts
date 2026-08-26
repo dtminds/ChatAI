@@ -498,6 +498,27 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.managedAccounts.map(account => account.id)).toEqual([101, 102, 103]);
   });
 
+  it("loads persisted Run totals for only the current Workflow page", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });
+    const lastRunAt = new Date("2026-08-26T10:20:00.000Z");
+    const findByWorkflowIds = vi.fn(async () => new Map([[created.id, {
+      lastRunAt,
+      totalRunCount: 12_345,
+    }]]));
+    const service = createService(repository, {
+      metricReader: { findByWorkflowIds },
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(findByWorkflowIds).toHaveBeenCalledWith(operator.uid, [created.id]);
+    expect(page.items[0]).toMatchObject({
+      lastRunAt: lastRunAt.toISOString(),
+      totalRunCount: 12_345,
+    });
+  });
+
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 

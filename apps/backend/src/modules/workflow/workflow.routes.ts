@@ -37,6 +37,7 @@ import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
 import { MysqlWorkflowSourceIdentityResolver } from "./workflow-source-identity.js";
 import { MysqlWorkflowManagedAccountReader } from "./workflow-managed-account-reader.js";
+import { MysqlWorkflowMetricReader } from "./workflow-metric-reader.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
@@ -102,6 +103,7 @@ export async function registerWorkflowRoutes(
     {
       entitlementPort,
       managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),
+      metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
     },

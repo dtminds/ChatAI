@@ -604,6 +604,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "124.8万",
       hasUnpublishedChanges: true,
       id: "newcomer-conversion",
+      lastRunAt: "今天 18:20",
       managedAccountCount: 4,
       managedAccounts: [
         { avatarUrl: "", id: 101, name: "销售一组" },
@@ -622,6 +623,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       savedAt: "18:20",
       status: "Draft",
       trigger: "近 30 天新入会且未首购客户",
+      totalRunCount: 1_248_000,
       updatedAt: "今天 18:20",
       versionHistory: [],
       versionHistoryNextCursor: null,
@@ -639,6 +641,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "86.3万",
       hasUnpublishedChanges: false,
       id: "vip-reactivation",
+      lastRunAt: "昨天 21:04",
       managedAccountCount: 2,
       managedAccounts: [
         { avatarUrl: "", id: 101, name: "销售一组" },
@@ -656,6 +659,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       savedAt: "昨天 21:04",
       status: "Published",
       trigger: "90 天未复购会员",
+      totalRunCount: 863_000,
       updatedAt: "昨天 21:04",
       versionHistory: [
         createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
@@ -675,6 +679,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "42.6万",
       hasUnpublishedChanges: false,
       id: "live-follow-up",
+      lastRunAt: "7月4日 16:12",
       managedAccountCount: 1,
       managedAccounts: [{ avatarUrl: "", id: 103, name: "客户服务" }],
       name: "直播后跟进",
@@ -689,6 +694,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       savedAt: "7月4日 16:12",
       status: "Paused",
       trigger: "直播间互动但未下单客户",
+      totalRunCount: 426_000,
       updatedAt: "7月4日 16:12",
       versionHistory: [
         createWorkflowVersionHistoryItem("live-follow-up", 1, "7月4日 16:12", liveFollowUpDraft),
@@ -722,6 +728,7 @@ function createNewWorkflowDocument(
     entered: "0",
     hasUnpublishedChanges: true,
     id,
+    lastRunAt: null,
     managedAccountCount: 0,
     managedAccounts: [],
     name: name?.trim() || "未命名 Workflow",
@@ -736,6 +743,7 @@ function createNewWorkflowDocument(
     savedAt: "刚刚",
     status: "Draft",
     trigger: "待配置进入条件",
+    totalRunCount: 0,
     updatedAt: "刚刚",
     versionHistory: [],
     versionHistoryNextCursor: null,

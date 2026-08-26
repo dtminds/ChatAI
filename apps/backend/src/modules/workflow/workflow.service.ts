@@ -96,6 +96,11 @@ import {
   type WorkflowManagedAccountSummary,
 } from "./workflow-managed-account-reader.js";
 import {
+  EmptyWorkflowMetricReader,
+  type WorkflowMetricReader,
+  type WorkflowMetricSummary,
+} from "./workflow-metric-reader.js";
+import {
   UnavailableWorkflowSourceIdentityResolver,
   type WorkflowSourceIdentityResolver,
 } from "./workflow-source-identity.js";
@@ -115,6 +120,7 @@ export type WorkflowServiceOptions = {
   llmTestTimeoutMs?: number;
   llmTestTtlMs?: number;
   managedAccountReader?: WorkflowManagedAccountReader;
+  metricReader?: WorkflowMetricReader;
 };
 
 export class WorkflowService {
@@ -126,6 +132,7 @@ export class WorkflowService {
   private readonly llmTestTimeoutMs: number;
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
+  private readonly metricReader: WorkflowMetricReader;
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -143,6 +150,7 @@ export class WorkflowService {
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
     this.managedAccountReader = options.managedAccountReader
       ?? new EmptyWorkflowManagedAccountReader();
+    this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
   }
 
   async getDirectEntryEndpoint(
@@ -392,16 +400,17 @@ export class WorkflowService {
     const visibleManagedAccountIds = [...new Set(
       [...managedAccountIdsByWorkflowId.values()].flatMap(ids => ids.slice(0, 3)),
     )];
-    const managedAccountsById = await this.managedAccountReader.findByIds(
-      scope.uid,
-      visibleManagedAccountIds,
-    );
+    const [managedAccountsById, metricsByWorkflowId] = await Promise.all([
+      this.managedAccountReader.findByIds(scope.uid, visibleManagedAccountIds),
+      this.metricReader.findByWorkflowIds(scope.uid, page.items.map(record => record.id)),
+    ]);
 
     return {
       items: page.items.map(record => toDefinitionListItem(
         record,
         managedAccountIdsByWorkflowId.get(record.id) ?? [],
         managedAccountsById,
+        metricsByWorkflowId.get(record.id),
       )),
       nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
     };
@@ -1014,12 +1023,14 @@ function toDefinitionListItem(
   record: WorkflowDefinitionListRecord,
   managedAccountIds: number[],
   managedAccountsById: Map<number, WorkflowManagedAccountSummary>,
+  metric: WorkflowMetricSummary | undefined,
 ): WorkflowDefinitionListItem {
   return {
     canOperate: true,
     description: record.description,
     hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
     id: record.id,
+    lastRunAt: metric?.lastRunAt?.toISOString() ?? null,
     managedAccountCount: managedAccountIds.length,
     managedAccounts: managedAccountIds.slice(0, 3)
       .flatMap(id => managedAccountsById.get(id) ?? []),
@@ -1027,6 +1038,7 @@ function toDefinitionListItem(
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
     trigger: getWorkflowListTrigger(record.draft),
+    totalRunCount: metric?.totalRunCount ?? 0,
     updatedAt: record.updatedAt.toISOString(),
     workflowType: record.workflowType,
   };

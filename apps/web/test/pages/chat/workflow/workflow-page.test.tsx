@@ -627,9 +627,10 @@ describe("Agent workflow page", () => {
     const pausedRow = within(table).getByRole("row", { name: /直播后跟进/ });
 
     expect(within(row).getByText("草稿")).toBeInTheDocument();
-    expect(within(row).getAllByText("-")).toHaveLength(2);
     expect(within(row).getAllByLabelText(/^托管账号 /)).toHaveLength(3);
     expect(within(row).getByText("+1")).toBeInTheDocument();
+    expect(within(row).getByText("1,248,000")).toBeInTheDocument();
+    expect(within(row).getByText("今天 18:20")).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
       "href",
       "/chat/workflows/newcomer-conversion",

@@ -115,6 +115,12 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       terminal_reason: "DOWNSTREAM_REJECTED",
     });
     expect(db.updates.xy_wap_embed_workflow_capacity_guard).toBeDefined();
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ failed_run_count: 1, total_run_count: 0 }),
+    ]);
+    expect(db.inserts.xy_wap_embed_workflow_daily_metric).toEqual([
+      expect.objectContaining({ failed_count: 1, entered_count: 0 }),
+    ]);
   });
 
   it("atomically fails a core node without persisting its rejected context", async () => {
@@ -222,6 +228,45 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       source_outlet_id: "ratio-a",
       status: "completed",
     });
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ cancelled_run_count: 1, total_run_count: 0 }),
+    ]);
+  });
+
+  it("increments the completed Run metric when a Workflow reaches its terminal node", async () => {
+    const db = createCapabilityExecutionDbMock({
+      nodeId: "end",
+      nodeKind: "end",
+      sequence: 2,
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.commitNodeResult({
+      context: { outputs: { end: {} }, trigger: {} },
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-completed",
+      },
+      nodeExecution: {
+        executionKey: "9:5:end:2",
+        input: { subjectId: "customer-1" },
+        output: {},
+      },
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({ kind: "success", run: { status: "completed" } });
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ completed_run_count: 1, total_run_count: 0 }),
+    ]);
+    expect(db.inserts.xy_wap_embed_workflow_daily_metric).toEqual([
+      expect.objectContaining({ completed_count: 1, entered_count: 0 }),
+    ]);
   });
 
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
@@ -1688,6 +1733,14 @@ function createRunTaskConsistencyDbMock(options: {
     lockOrder: [] as string[],
     runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       const builder = {
         forShare() { return builder; },

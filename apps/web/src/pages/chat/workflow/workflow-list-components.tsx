@@ -154,8 +154,12 @@ function WorkflowListRow({
       <TableCell className="px-4 py-4">
         <WorkflowManagedAccountsPreview workflow={workflow} />
       </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground">-</TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground">-</TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
+        {workflow.totalRunCount.toLocaleString("zh-CN")}
+      </TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground">
+        {workflow.lastRunAt ?? "-"}
+      </TableCell>
       <TableCell className="px-4 py-4">
         <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
           <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />

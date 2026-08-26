@@ -134,6 +134,30 @@ export interface WorkflowCapacityDailyMetricTable {
   update_time: GeneratedDate;
 }
 
+export interface WorkflowDailyMetricTable {
+  cancelled_count: number;
+  completed_count: number;
+  create_time: GeneratedDate;
+  entered_count: number;
+  failed_count: number;
+  metric_date: DatabaseDate;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
+export interface WorkflowMetricTable {
+  cancelled_run_count: number;
+  completed_run_count: number;
+  create_time: GeneratedDate;
+  failed_run_count: number;
+  last_run_at: NullableDate;
+  total_run_count: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowTaskTable {
   attempt: number;
   bucket_time: DatabaseDate;
@@ -343,11 +367,13 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_capacity_daily_metric: WorkflowCapacityDailyMetricTable;
   xy_wap_embed_workflow_capacity_guard: WorkflowCapacityGuardTable;
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
+  xy_wap_embed_workflow_daily_metric: WorkflowDailyMetricTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_event_subscription: WorkflowEventSubscriptionTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_inference_job: WorkflowInferenceJobTable;
   xy_wap_embed_workflow_llm_test_attempt: WorkflowLlmTestAttemptTable;
+  xy_wap_embed_workflow_metric: WorkflowMetricTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
   xy_wap_embed_workflow_node_metric: WorkflowNodeMetricTable;
   xy_wap_embed_workflow_node_metric_event: WorkflowNodeMetricEventTable;

@@ -173,6 +173,124 @@ describe("MySQL workflow runtime repository contract", () => {
     })).resolves.toEqual({ kind: "capacity-rejected" });
   });
 
+  it("maintains Workflow totals and daily terminal outcomes without double-counting", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const createRun = async (suffix: string) => {
+      const result = await repository.createRunWithInitialTask({
+        activeRunLimit: 10_000,
+        context: {},
+        entryEventId: `metric-event-${suffix}`,
+        entryPolicy: { mode: "never" },
+        initialNodeId: "start",
+        initialNodeKind: "start",
+        occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+        revision: 1,
+        shardId: 0,
+        subjectId: `metric-subject-${suffix}`,
+        subjectType: "chatai_contact",
+        uid: 9,
+        workflowId: "31",
+        workflowType: "chatai_sop",
+      });
+      if (result.kind !== "success") throw new Error(`Run creation failed: ${result.kind}`);
+      return result;
+    };
+    const completeRun = async (
+      created: Awaited<ReturnType<typeof createRun>>,
+      outcome: "completed" | "failed",
+    ) => {
+      await database!.updateTable("xy_wap_embed_workflow_run")
+        .set({ status: "running" })
+        .where("id", "=", created.run.id)
+        .executeTakeFirstOrThrow();
+      await database!.updateTable("xy_wap_embed_workflow_task")
+        .set({ status: "running" })
+        .where("id", "=", created.task.id)
+        .executeTakeFirstOrThrow();
+      await repository.commitNodeResult({
+        context: {},
+        expectedRunLockVersion: created.run.lockVersion,
+        expectedTaskVersion: created.task.taskVersion,
+        inbox: {
+          consumer: "workflow-task",
+          expiresAt: new Date("2099-02-01T00:00:00+08:00"),
+          messageId: `metric-result-${created.run.id}`,
+        },
+        nodeExecution: {
+          ...(outcome === "failed"
+            ? { errorCode: "METRIC_TEST_FAILURE", errorMessage: "metric test failure" }
+            : {}),
+          executionKey: `metric-execution-${created.run.id}`,
+          input: {},
+          output: {},
+        },
+        runId: created.run.id,
+        taskId: created.task.id,
+        uid: 9,
+      });
+    };
+
+    const completed = await createRun("completed");
+    const failed = await createRun("failed");
+    const cancelled = await createRun("cancelled");
+    await completeRun(completed, "completed");
+    await completeRun(failed, "failed");
+    await repository.cancelWorkflowBatch({ limit: 10, uid: 9, workflowId: "31" });
+    await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "metric-event-completed",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "metric-subject-completed",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+
+    const metric = await database.selectFrom("xy_wap_embed_workflow_metric")
+      .selectAll()
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow();
+    const daily = await database.selectFrom("xy_wap_embed_workflow_daily_metric")
+      .selectAll()
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow();
+
+    expect({
+      cancelledRunCount: Number(metric.cancelled_run_count),
+      completedRunCount: Number(metric.completed_run_count),
+      failedRunCount: Number(metric.failed_run_count),
+      totalRunCount: Number(metric.total_run_count),
+    }).toEqual({
+      cancelledRunCount: 1,
+      completedRunCount: 1,
+      failedRunCount: 1,
+      totalRunCount: 3,
+    });
+    expect(metric.last_run_at).not.toBeNull();
+    expect({
+      cancelledCount: Number(daily.cancelled_count),
+      completedCount: Number(daily.completed_count),
+      enteredCount: Number(daily.entered_count),
+      failedCount: Number(daily.failed_count),
+    }).toEqual({
+      cancelledCount: 1,
+      completedCount: 1,
+      enteredCount: 3,
+      failedCount: 1,
+    });
+    expect(cancelled.run.status).toBe("queued");
+  });
+
   it("reconciles a drifted tenant capacity counter from active Runs", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);

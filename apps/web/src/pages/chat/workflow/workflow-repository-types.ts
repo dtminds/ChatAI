@@ -19,6 +19,7 @@ export type WorkflowListItem = {
   canOperate: boolean;
   description: string;
   id: string;
+  lastRunAt: string | null;
   managedAccountCount: number;
   managedAccounts: WorkflowManagedAccountSummary[];
   name: string;
@@ -26,6 +27,7 @@ export type WorkflowListItem = {
   runtimeStatus: "active" | "inactive" | "paused" | "stopped";
   status: WorkflowDocumentStatus;
   trigger: string;
+  totalRunCount: number;
   updatedAt: string;
   workflowType: WorkflowType;
   hasUnpublishedChanges: boolean;

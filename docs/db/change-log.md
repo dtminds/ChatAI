@@ -2,9 +2,7 @@
 
 ## 2026-08-24 Workflow 租户活跃 Run 容量
 
-- 新增租户级活跃 Run 计数，通过单行条件更新完成容量准入；不同租户互不阻塞。
-- Run 进入终态时释放计数，低频校准负责修复异常漂移。
-- 容量概览只返回使用百分比和状态，不暴露内部计数或限额。
+- 新增租户级活跃 Run 容量计数表。
 
 ```sql
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
@@ -14,13 +12,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (uid)
 ) COMMENT='营销Workflow租户活跃Run容量计数表';
-
-INSERT INTO xy_wap_embed_workflow_capacity_guard (uid, active_run_count)
-SELECT uid, COUNT(*)
-FROM xy_wap_embed_workflow_run
-WHERE status IN ('queued', 'running', 'waiting')
-GROUP BY uid
-ON DUPLICATE KEY UPDATE active_run_count = VALUES(active_run_count);
 ```
 
 ## 2026-08-24 Workflow Wait Event 首事件锁存

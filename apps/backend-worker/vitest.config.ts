@@ -12,6 +12,10 @@ export default defineConfig({
         import.meta.dirname,
         "../../packages/insights/src/index.ts",
       ),
+      "@chatai/llm": path.resolve(
+        import.meta.dirname,
+        "../../packages/llm/src/index.ts",
+      ),
       "@chatai/user-memory": path.resolve(
         import.meta.dirname,
         "../../packages/user-memory/src/index.ts",

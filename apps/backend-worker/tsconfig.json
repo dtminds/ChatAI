@@ -11,6 +11,7 @@
       "@chatai/contracts": ["../../packages/contracts/src/index.ts"],
       "@chatai/database": ["../../packages/database/src/index.ts"],
       "@chatai/insights": ["../../packages/insights/src/index.ts"],
+      "@chatai/llm": ["../../packages/llm/src/index.ts"],
       "@chatai/tickets": ["../../packages/tickets/src/index.ts"],
       "@chatai/user-memory": ["../../packages/user-memory/src/index.ts"]
     }
@@ -20,6 +21,7 @@
     { "path": "../../packages/contracts" },
     { "path": "../../packages/database" },
     { "path": "../../packages/insights" },
+    { "path": "../../packages/llm" },
     { "path": "../../packages/tickets" },
     { "path": "../../packages/user-memory" }
   ]

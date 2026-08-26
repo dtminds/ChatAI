@@ -16,6 +16,10 @@ export default defineConfig({
         import.meta.dirname,
         "../../packages/insights/src/index.ts",
       ),
+      "@chatai/llm": path.resolve(
+        import.meta.dirname,
+        "../../packages/llm/src/index.ts",
+      ),
       "@chatai/tickets": path.resolve(
         import.meta.dirname,
         "../../packages/tickets/src/index.ts",

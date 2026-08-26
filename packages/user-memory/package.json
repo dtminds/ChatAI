@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/database build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/database build && pnpm --filter @chatai/llm build && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -24,6 +24,7 @@
   "dependencies": {
     "@chatai/contracts": "workspace:*",
     "@chatai/database": "workspace:*",
+    "@chatai/llm": "workspace:*",
     "@sinclair/typebox": "^0.34.41",
     "kysely": "^0.29.0"
   },

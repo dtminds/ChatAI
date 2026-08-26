@@ -91,9 +91,9 @@ async function runMultiStepAnalysis(input: {
     apiKey: "secret",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     liteMaxTokens: 1024,
-    liteModel: "ep-lite",
+    classificationModel: "ep-lite",
     maxTokens: 4096,
-    model: "ep-main",
+    analysisModel: "ep-main",
     providerCode: "volcengine_ark",
     protocol: "openai-compatible",
     responseFormat: "json_object",
@@ -130,9 +130,9 @@ async function runMultiStepAnalysis(input: {
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
     const config = createVolcengineArkProviderConfig({
+      analysisModel: "ep-20260601000000-test",
       apiKey: "secret",
-      liteModel: "ep-20260601000000-lite",
-      model: "ep-20260601000000-test",
+      classificationModel: "ep-20260601000000-lite",
     });
 
     expect(config).toEqual({
@@ -140,9 +140,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 4096,
-      liteModel: "ep-20260601000000-lite",
+      classificationModel: "ep-20260601000000-lite",
       maxTokens: 4096,
-      model: "ep-20260601000000-test",
+      analysisModel: "ep-20260601000000-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       requestTimeoutMs: 60_000,
@@ -150,17 +150,16 @@ describe("LLM provider config", () => {
     });
   });
 
-  it("uses the main model as the lite fallback when no lite model is configured", () => {
+  it("uses the shared Insights scenario models by default", () => {
     const config = createVolcengineArkProviderConfig({
       apiKey: "secret",
-      model: "ep-main",
     });
 
     expect(config).toMatchObject({
+      analysisModel: "ep-20260227145914-nxcmn",
+      classificationModel: "ep-20260724141445-7d6qm",
       liteMaxTokens: 4096,
-      liteModel: "ep-main",
       maxTokens: 4096,
-      model: "ep-main",
     });
   });
 
@@ -236,9 +235,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       retry: {
@@ -277,9 +276,9 @@ describe("LLM provider config", () => {
     });
   });
 
-  it("validates required Volcengine Ark model values", () => {
+  it("validates the required Volcengine Ark API key", () => {
     expect(() => createVolcengineArkProviderConfig({})).toThrow(
-      "apiKey, model",
+      "apiKey",
     );
   });
 
@@ -289,7 +288,7 @@ describe("LLM provider config", () => {
         apiKey: "secret",
         baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
         maxTokens: 4096,
-        model: "ep-test",
+        analysisModel: "ep-test",
         providerCode: "volcengine_ark",
         protocol: "openai-compatible",
         responseFormat: "json_object",
@@ -298,7 +297,7 @@ describe("LLM provider config", () => {
       apiKey: "[redacted]",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -361,7 +360,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -472,9 +471,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -627,7 +626,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -684,9 +683,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 512,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -797,9 +796,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 512,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -908,9 +907,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1154,9 +1153,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1257,9 +1256,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1424,9 +1423,9 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       liteMaxTokens: 1024,
-      liteModel: "ep-lite",
+      classificationModel: "ep-lite",
       maxTokens: 4096,
-      model: "ep-main",
+      analysisModel: "ep-main",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1541,7 +1540,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1622,7 +1621,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       retry: {
@@ -1759,7 +1758,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
@@ -1827,7 +1826,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       requestTimeoutMs: 2_000,
@@ -1880,7 +1879,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       requestTimeoutMs: 2_000,
@@ -1988,7 +1987,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       requestTimeoutMs: 2_000,
@@ -2085,7 +2084,7 @@ describe("LLM provider config", () => {
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       maxTokens: 4096,
-      model: "ep-test",
+      analysisModel: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",

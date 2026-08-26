@@ -12,6 +12,7 @@
     "paths": {
       "@chatai/contracts": ["../contracts/src/index.ts"],
       "@chatai/database": ["../database/src/index.ts"],
+      "@chatai/llm": ["../llm/src/index.ts"],
       "@chatai/tickets": ["../tickets/src/index.ts"]
     }
   },
@@ -19,6 +20,7 @@
   "references": [
     { "path": "../contracts" },
     { "path": "../database" },
+    { "path": "../llm" },
     { "path": "../tickets" }
   ]
 }

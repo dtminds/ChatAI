@@ -50,6 +50,7 @@ jobs:
               - "packages/contracts/**"
               - "packages/database/**"
               - "packages/insights/**"
+              - "packages/llm/**"
               - "packages/tickets/**"
               - "packages/user-memory/**"
               - "packages/workflow-engine/**"
@@ -98,6 +99,9 @@ jobs:
 
       - name: Build database
         run: pnpm --filter @chatai/database exec tsc -p tsconfig.json
+
+      - name: Build LLM policy
+        run: pnpm --filter @chatai/llm exec tsc -p tsconfig.json
 
       - name: Build tickets
         run: pnpm --filter @chatai/tickets exec tsc -p tsconfig.json

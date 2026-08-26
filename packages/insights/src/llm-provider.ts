@@ -1,4 +1,8 @@
 import { InsightsConfigError } from "./errors.js";
+import {
+  VOLCENGINE_ARK_INSIGHTS_ANALYSIS_MODEL,
+  VOLCENGINE_ARK_INSIGHTS_CLASSIFICATION_MODEL,
+} from "@chatai/llm";
 import type {
   InsightAnalyzerOutput,
   InsightAnalysisOutput,
@@ -21,13 +25,13 @@ import {
 } from "./insights-worker-observability.js";
 
 export type OpenAiCompatibleProviderConfig = {
+  analysisModel: string;
   analysisMode?: "multi_step" | "single";
   apiKey: string;
   baseUrl: string;
+  classificationModel: string;
   liteMaxTokens: number;
-  liteModel: string;
   maxTokens: number;
-  model: string;
   providerCode: "volcengine_ark";
   protocol: "openai-compatible";
   requestTimeoutMs?: number;
@@ -39,9 +43,9 @@ export type OpenAiCompatibleProviderConfig = {
 };
 
 export type VolcengineArkProviderInput = {
+  analysisModel?: string;
   apiKey?: string;
-  liteModel?: string;
-  model?: string;
+  classificationModel?: string;
 };
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
@@ -61,11 +65,12 @@ export function createVolcengineArkProviderConfig(
   input: VolcengineArkProviderInput = {},
 ): OpenAiCompatibleProviderConfig {
   const apiKey = input.apiKey?.trim();
-  const model = input.model?.trim();
-  const liteModel = input.liteModel?.trim() || model;
+  const analysisModel = input.analysisModel?.trim() ||
+    VOLCENGINE_ARK_INSIGHTS_ANALYSIS_MODEL;
+  const classificationModel = input.classificationModel?.trim() ||
+    VOLCENGINE_ARK_INSIGHTS_CLASSIFICATION_MODEL;
   const missing = [
     ["apiKey", apiKey],
-    ["model", model],
   ]
     .filter(([, value]) => !value)
     .map(([key]) => key);
@@ -78,13 +83,13 @@ export function createVolcengineArkProviderConfig(
   }
 
   return {
+    analysisModel,
     analysisMode: "multi_step",
     apiKey: requireString(apiKey),
     baseUrl: VOLCENGINE_ARK_BASE_URL,
+    classificationModel,
     liteMaxTokens: MAX_COMPLETION_TOKENS,
-    liteModel: requireString(liteModel),
     maxTokens: MAX_COMPLETION_TOKENS,
-    model: requireString(model),
     providerCode: "volcengine_ark",
     protocol: "openai-compatible",
     requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
@@ -136,7 +141,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
         await this.completeJsonWithResponseFormatFallback({
           maxTokens: this.config.liteMaxTokens,
           messages: buildInsightLiveGatePromptMessages(input),
-          model: this.config.liteModel,
+          model: this.config.classificationModel,
           onTokenUsage: input.onTokenUsage,
           step: "live_gate",
           uid: input.job?.uid ?? 0,
@@ -198,7 +203,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             messages: input.messages,
             previousSessionContexts: input.previousSessionContexts,
           }),
-          model: this.config.model,
+          model: this.config.analysisModel,
           onTokenUsage: input.onTokenUsage,
           step: "single",
           uid: input.job?.uid ?? 0,
@@ -224,7 +229,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           previousSessionContexts: input.previousSessionContexts,
           priorConclusions,
         }),
-        model: this.config.model,
+        model: this.config.analysisModel,
         onTokenUsage: input.onTokenUsage,
         uid: input.job?.uid ?? 0,
       });
@@ -240,7 +245,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           previousSessionContexts: input.previousSessionContexts,
           priorConclusions,
         }),
-        model: this.config.liteModel,
+        model: this.config.classificationModel,
         onTokenUsage: input.onTokenUsage,
         uid: input.job?.uid ?? 0,
       });
@@ -257,7 +262,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
         messages: input.messages,
         previousSessionContexts: input.previousSessionContexts,
       }),
-      model: this.config.model,
+      model: this.config.analysisModel,
       onTokenUsage: input.onTokenUsage,
       step: "summary",
       uid: input.job?.uid ?? 0,
@@ -278,7 +283,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             previousSessionContexts: input.previousSessionContexts,
             priorConclusions,
           }),
-          model: this.config.model,
+          model: this.config.analysisModel,
           onTokenUsage: input.onTokenUsage,
           uid: input.job?.uid ?? 0,
         })
@@ -292,7 +297,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
               previousSessionContexts: input.previousSessionContexts,
               priorConclusions,
             }),
-            model: this.config.liteModel,
+            model: this.config.classificationModel,
             onTokenUsage: input.onTokenUsage,
             uid: input.job?.uid ?? 0,
           })

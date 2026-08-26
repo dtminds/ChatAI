@@ -10,7 +10,6 @@ import {
   OpenAiCompatibleInsightAnalyzer,
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
-  type VolcengineArkProviderInput,
 } from "./llm-provider.js";
 import { parseInsightsWorkerTraceUids } from "./insights-worker-observer-access.js";
 import {
@@ -49,7 +48,7 @@ export function createInsightsWorkerRuntime(input: {
   db: Kysely<Database>;
   env?: WorkerRuntimeEnv;
   logger: WorkerLogger;
-  model?: VolcengineArkProviderInput;
+  volcengineArkApiKey?: string;
 }) {
   const config = parseInsightsWorkerRuntimeConfig(input.env);
 
@@ -69,7 +68,7 @@ export function createInsightsWorkerRuntime(input: {
     traceUids: config.traceUids,
   });
   const model = config.modelEnabled
-    ? createInsightAnalyzer(input.model, input.logger, observability)
+    ? createInsightAnalyzer(input.volcengineArkApiKey, input.logger, observability)
     : undefined;
   const service = new InsightsWorkerService(repository, {
     logger: input.logger,
@@ -88,11 +87,11 @@ export function createInsightsWorkerRuntime(input: {
 }
 
 function createInsightAnalyzer(
-  input: VolcengineArkProviderInput | undefined,
+  apiKey: string | undefined,
   logger: WorkerLogger,
   observability: InsightsWorkerObservability,
 ): InsightSessionAnalyzer {
-  const providerConfig = createVolcengineArkProviderConfig(input);
+  const providerConfig = createVolcengineArkProviderConfig({ apiKey });
 
   logger.info(
     { provider: maskProviderConfigForLog(providerConfig) },

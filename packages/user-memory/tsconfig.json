@@ -11,12 +11,14 @@
     "types": ["node"],
     "paths": {
       "@chatai/contracts": ["../contracts/src/index.ts"],
-      "@chatai/database": ["../database/src/index.ts"]
+      "@chatai/database": ["../database/src/index.ts"],
+      "@chatai/llm": ["../llm/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../contracts" },
-    { "path": "../database" }
+    { "path": "../database" },
+    { "path": "../llm" }
   ]
 }

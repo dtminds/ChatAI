@@ -12,6 +12,10 @@ export default defineConfig({
         import.meta.dirname,
         "../database/src/index.ts",
       ),
+      "@chatai/llm": path.resolve(
+        import.meta.dirname,
+        "../llm/src/index.ts",
+      ),
     },
   },
   test: {

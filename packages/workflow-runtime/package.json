@@ -16,14 +16,15 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/llm build && pnpm --filter @chatai/workflow-engine build && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:repository:mysql": "vitest run --config vitest.mysql.config.ts",
     "test:watch": "vitest",
-    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && tsc --noEmit"
+    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/llm build && pnpm --filter @chatai/workflow-engine build && tsc --noEmit"
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",
+    "@chatai/llm": "workspace:*",
     "@chatai/workflow-engine": "workspace:*",
     "@sinclair/typebox": "^0.34.41",
     "kysely": "^0.29.0"

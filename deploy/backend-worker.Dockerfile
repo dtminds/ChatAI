@@ -9,6 +9,7 @@ COPY apps/backend-worker/package.json ./apps/backend-worker/
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/database/package.json ./packages/database/
 COPY packages/insights/package.json ./packages/insights/
+COPY packages/llm/package.json ./packages/llm/
 COPY packages/tickets/package.json ./packages/tickets/
 COPY packages/user-memory/package.json ./packages/user-memory/
 
@@ -19,11 +20,13 @@ COPY apps/backend-worker ./apps/backend-worker
 COPY packages/contracts ./packages/contracts
 COPY packages/database ./packages/database
 COPY packages/insights ./packages/insights
+COPY packages/llm ./packages/llm
 COPY packages/tickets ./packages/tickets
 COPY packages/user-memory ./packages/user-memory
 
 RUN pnpm --filter @chatai/contracts exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/database exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/llm exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/tickets exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/insights exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/user-memory exec tsc -p tsconfig.json \
@@ -40,6 +43,7 @@ COPY apps/backend-worker/package.json ./apps/backend-worker/
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/database/package.json ./packages/database/
 COPY packages/insights/package.json ./packages/insights/
+COPY packages/llm/package.json ./packages/llm/
 COPY packages/tickets/package.json ./packages/tickets/
 COPY packages/user-memory/package.json ./packages/user-memory/
 
@@ -49,6 +53,7 @@ COPY --from=builder /app/apps/backend-worker/dist ./apps/backend-worker/dist
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/insights/dist ./packages/insights/dist
+COPY --from=builder /app/packages/llm/dist ./packages/llm/dist
 COPY --from=builder /app/packages/tickets/dist ./packages/tickets/dist
 COPY --from=builder /app/packages/user-memory/dist ./packages/user-memory/dist
 

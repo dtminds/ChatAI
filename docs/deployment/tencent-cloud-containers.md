@@ -98,9 +98,9 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 当前构建文件的职责：
 
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
-- `deploy/backend.Dockerfile`：构建 `apps/backend` 及其 contracts、database、tickets、insights、user-memory、workflow-engine、workflow-runtime 依赖，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
-- `deploy/backend-worker.Dockerfile`：只构建 `apps/backend-worker` 及 database、tickets、insights、user-memory 共享包，运行阶段用 `node apps/backend-worker/dist/index.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
-- `deploy/workflow-worker.Dockerfile`：使用 Debian glibc 镜像构建并运行独立 Workflow Worker，以兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
+- `deploy/backend.Dockerfile`：构建 `apps/backend` 及其 contracts、database、tickets、llm、insights、user-memory、workflow-engine、workflow-runtime 依赖，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/backend-worker.Dockerfile`：只构建 `apps/backend-worker` 及 database、tickets、llm、insights、user-memory 共享包，运行阶段用 `node apps/backend-worker/dist/index.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
+- `deploy/workflow-worker.Dockerfile`：构建 `apps/workflow-worker` 及 contracts、llm、workflow-engine、workflow-runtime 共享包，并使用 Debian glibc 镜像兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：
@@ -190,7 +190,7 @@ INSIGHTS_WORKER_MODEL_ENABLED=false
 INSIGHTS_WORKER_TRACE_UID_ALLOWLIST=
 ```
 
-启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。主模型和轻量模型的固定 endpoint 由 `apps/backend-worker/src/model-policy.ts` 统一提供给两个运行场景，不通过环境变量配置。
+启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。各业务场景使用的固定 endpoint 由 `packages/llm/src/model-policy.ts` 统一提供，不通过环境变量配置；底层默认和轻量模型不对业务 package 暴露。
 
 ## Marketing Workflow Worker 容器要求
 

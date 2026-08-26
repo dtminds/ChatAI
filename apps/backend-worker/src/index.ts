@@ -6,10 +6,6 @@ import { createInsightsWorkerRuntime } from "@chatai/insights";
 import { createUserMemoryWorkerRuntime } from "@chatai/user-memory";
 import pino from "pino";
 import { parseBackendWorkerConfig } from "./config.js";
-import {
-  BACKEND_WORKER_LITE_MODEL,
-  BACKEND_WORKER_MAIN_MODEL,
-} from "./model-policy.js";
 
 const config = parseBackendWorkerConfig();
 const logger = pino({ level: config.logLevel });
@@ -25,19 +21,12 @@ try {
 const insightsRuntime = createInsightsWorkerRuntime({
   db,
   logger,
-  model: {
-    apiKey: config.volcengineArkApiKey,
-    liteModel: BACKEND_WORKER_LITE_MODEL,
-    model: BACKEND_WORKER_MAIN_MODEL,
-  },
+  volcengineArkApiKey: config.volcengineArkApiKey,
 });
 const userMemoryRuntime = createUserMemoryWorkerRuntime({
   db,
   logger,
-  model: {
-    apiKey: config.volcengineArkApiKey,
-    model: BACKEND_WORKER_MAIN_MODEL,
-  },
+  volcengineArkApiKey: config.volcengineArkApiKey,
 });
 let shutdownPromise: Promise<void> | undefined;
 

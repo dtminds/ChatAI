@@ -26,6 +26,7 @@ import {
 import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import { formatWorkflowMetricDate } from "./workflow-date.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
@@ -68,6 +69,7 @@ import type {
 const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
 const CAPACITY_GUARD_TABLE = "xy_wap_embed_workflow_capacity_guard" as const;
+const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
@@ -365,13 +367,19 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async recordProcessedInboxMessage(input: {
+    capacityRejectedCount: number;
     consumer: string;
     expiresAt: Date;
     messageId: string;
     processedAt: Date;
     uid: number;
   }) {
-    const insertResult = await this.db.insertInto(INBOX_TABLE).values({
+    assertNonNegativeSafeInteger(
+      input.capacityRejectedCount,
+      "Workflow capacity rejected count",
+    );
+    return this.db.transaction().execute(async (trx) => {
+      const insertResult = await trx.insertInto(INBOX_TABLE).values({
         consumer: input.consumer,
         expires_at: input.expiresAt,
         message_id: input.messageId,
@@ -380,7 +388,18 @@ export class MysqlWorkflowRuntimeRepository implements
       }).onDuplicateKeyUpdate({
         message_id: sql<string>`message_id`,
       }).executeTakeFirst();
-    return (insertResult.insertId ?? 0n) !== 0n;
+      if ((insertResult.insertId ?? 0n) === 0n) return false;
+      if (input.capacityRejectedCount > 0) {
+        await trx.insertInto(CAPACITY_DAILY_METRIC_TABLE).values({
+          capacity_rejected_count: input.capacityRejectedCount,
+          metric_date: formatWorkflowMetricDate(input.processedAt),
+          uid: input.uid,
+        }).onDuplicateKeyUpdate({
+          capacity_rejected_count: sql<number>`capacity_rejected_count + ${input.capacityRejectedCount}`,
+        }).executeTakeFirstOrThrow();
+      }
+      return true;
+    });
   }
 
   beginEventWait(input: WorkflowBeginEventWaitInput) {

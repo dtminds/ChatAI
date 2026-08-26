@@ -9,12 +9,14 @@ import { WorkflowPage } from "@/pages/chat/workflow/workflow-list-page";
 describe("Workflow tenant capacity", () => {
   it("keeps capacity in loading state until its independent request completes", async () => {
     let resolveCapacity: ((value: {
+      capacityRejectedCountToday: number;
       status: "normal" | "warning" | "full";
       usagePercent: number;
     }) => void) | undefined;
     const repository = {
       ...createInMemoryWorkflowDraftRepository(),
       getCapacityOverview: () => new Promise<{
+        capacityRejectedCountToday: number;
         status: "normal" | "warning" | "full";
         usagePercent: number;
       }>(resolve => { resolveCapacity = resolve; }),
@@ -32,6 +34,7 @@ describe("Workflow tenant capacity", () => {
 
     await act(async () => {
       resolveCapacity?.({
+        capacityRejectedCountToday: 0,
         status: "normal",
         usagePercent: 25,
       });
@@ -43,6 +46,7 @@ describe("Workflow tenant capacity", () => {
     const repository = {
       ...createInMemoryWorkflowDraftRepository(),
       getCapacityOverview: () => ({
+        capacityRejectedCountToday: 12,
         status: "full" as const,
         usagePercent: 100,
       }),
@@ -59,6 +63,7 @@ describe("Workflow tenant capacity", () => {
       .toHaveAttribute("aria-valuenow", "100");
     expect(within(capacity).getByText("容量已用完")).toBeInTheDocument();
     expect(within(capacity).getByText("100%")).toBeInTheDocument();
+    expect(within(capacity).getByText("12")).toBeInTheDocument();
     expect(within(capacity).queryByText("10,000")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("新人转化旅程")).toBeInTheDocument());
   });
@@ -67,6 +72,7 @@ describe("Workflow tenant capacity", () => {
     const repository = {
       ...createInMemoryWorkflowDraftRepository(),
       getCapacityOverview: () => ({
+        capacityRejectedCountToday: 0,
         status: "warning" as const,
         usagePercent: 80,
       }),

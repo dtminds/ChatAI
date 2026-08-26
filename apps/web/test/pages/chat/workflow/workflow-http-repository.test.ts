@@ -13,12 +13,14 @@ describe("HTTP workflow repository", () => {
   it("loads the tenant capacity from its dedicated endpoint", async () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     client.get.mockResolvedValueOnce(envelope({
+      capacityRejectedCountToday: 9,
       status: "warning",
       usagePercent: 87,
     }));
     const repository = createHttpWorkflowDraftRepository(client);
 
     await expect(repository.getCapacityOverview()).resolves.toEqual({
+      capacityRejectedCountToday: 9,
       status: "warning",
       usagePercent: 87,
     });

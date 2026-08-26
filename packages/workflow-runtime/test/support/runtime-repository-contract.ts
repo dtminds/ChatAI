@@ -80,6 +80,7 @@ export function runWorkflowRuntimeRepositoryContract(
 
   it("records one stable Entry Inbox message across concurrent deliveries", async () => {
     const input = {
+      capacityRejectedCount: 0,
       consumer: "workflow-entry",
       expiresAt: new Date("2099-02-01T00:00:00.000Z"),
       messageId: "9:event-1",

@@ -206,6 +206,29 @@ describe("MySQL workflow runtime repository contract", () => {
       .resolves.toEqual({ active_run_count: 1 });
   });
 
+  it("increments the daily capacity rejection metric once per Entry Inbox message", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const input = {
+      capacityRejectedCount: 3,
+      consumer: "workflow-entry",
+      expiresAt: new Date("2099-02-01T00:00:00+08:00"),
+      messageId: "9:capacity-event-1",
+      processedAt: new Date("2099-01-01T00:30:00+08:00"),
+      uid: 9,
+    };
+
+    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(true);
+    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(false);
+    const metric = await database.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
+      .select(["capacity_rejected_count", "metric_date"])
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow();
+
+    expect(Number(metric.capacity_rejected_count)).toBe(3);
+    expect(metric.metric_date).toEqual(new Date("2099-01-01T00:00:00+08:00"));
+  });
+
   describe("LLM test Attempt repository", () => {
     runWorkflowLlmTestAttemptRepositoryContract(() => {
       if (!database) throw new Error("MySQL contract database is not initialized");

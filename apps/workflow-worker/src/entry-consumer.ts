@@ -253,6 +253,7 @@ export function createEntryConsumerHandler(input: {
       const processedAt = observedAt;
       failureStage = "inbox_record";
       await input.inboxRepository.recordProcessedInboxMessage({
+        capacityRejectedCount: capacityRejected,
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         expiresAt: new Date(
           processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
@@ -342,7 +343,13 @@ async function consumeDirectEntry(
     }
 
     failureStage = "inbox_record";
-    await recordEntryInbox(input.inboxRepository, event, observedAt, inboxMessageId);
+    await recordEntryInbox(
+      input.inboxRepository,
+      event,
+      observedAt,
+      inboxMessageId,
+      code === "capacity_rejected" ? 1 : 0,
+    );
     failureStage = "ack";
     await message.ack();
     return code === "capacity_rejected"
@@ -359,8 +366,10 @@ async function recordEntryInbox(
   event: Pick<WorkflowEntryEvent, "uid">,
   processedAt: Date,
   messageId: string,
+  capacityRejectedCount: number,
 ) {
   await inboxRepository.recordProcessedInboxMessage({
+    capacityRejectedCount,
     consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
     expiresAt: new Date(
       processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,

@@ -108,10 +108,11 @@ describe("workflow entry consumer", () => {
   });
 
   it("ACKs direct entry rejected by tenant capacity", async () => {
+    const inboxRepository = createInboxRepository();
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn() },
       eventCatalog,
-      inboxRepository: createInboxRepository(),
+      inboxRepository,
       runtimeService: {
         startDirectRun: vi.fn(async () => ({ kind: "capacity-rejected" as const })),
         startRun: vi.fn(),
@@ -124,6 +125,9 @@ describe("workflow entry consumer", () => {
       code: "capacity_rejected",
       disposition: "ack",
     });
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
   });
 
   it("records a consumed direct Runtime rejection before ACKing redelivery", async () => {
@@ -481,8 +485,9 @@ describe("workflow entry consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
     expect(publishToDeadLetter).not.toHaveBeenCalled();
-    expect(inboxRepository.recordProcessedInboxMessage.mock.calls[0]?.[0])
-      .not.toHaveProperty("capacityRejectedCount");
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
   });
 
   it("still wakes an existing Wait Event when a new Run is rejected by capacity", async () => {
@@ -528,8 +533,9 @@ describe("workflow entry consumer", () => {
       code: "admitted",
       disposition: "ack",
     });
-    expect(inboxRepository.recordProcessedInboxMessage.mock.calls[0]?.[0])
-      .not.toHaveProperty("capacityRejectedCount");
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
   });
 
   it("continues fan-out after one matched workflow becomes paused", async () => {

@@ -103,6 +103,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     },
     enableDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
     getCapacityOverview: () => ({
+      capacityRejectedCountToday: 0,
       status: "normal",
       usagePercent: 37,
     }),

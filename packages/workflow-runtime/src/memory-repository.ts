@@ -24,6 +24,7 @@ import {
 import { createNodeMetricDeltas } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import { formatWorkflowMetricDate } from "./workflow-date.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -58,6 +59,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
+  private readonly capacityDailyMetrics = new Map<string, number>();
   private readonly totalEntries = new Map<string, number>();
   private readonly runUpdatedAt = new Map<string, Date>();
   private nextId = 1n;
@@ -306,12 +308,14 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async recordProcessedInboxMessage(input: {
+    capacityRejectedCount: number;
     consumer: string;
     expiresAt: Date;
     messageId: string;
     processedAt: Date;
     uid: number;
   }) {
+    assertNonNegativeInteger(input.capacityRejectedCount, "Workflow capacity rejected count");
     if (this.inbox.some(item => item.consumer === input.consumer
       && item.messageId === input.messageId)) return false;
     this.inbox.push({
@@ -320,6 +324,13 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       messageId: input.messageId,
       uid: input.uid,
     });
+    if (input.capacityRejectedCount > 0) {
+      const metricKey = `${input.uid}:${formatWorkflowMetricDate(input.processedAt)}`;
+      this.capacityDailyMetrics.set(
+        metricKey,
+        (this.capacityDailyMetrics.get(metricKey) ?? 0) + input.capacityRejectedCount,
+      );
+    }
     return true;
   }
 
@@ -1703,6 +1714,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
+      capacityDailyMetrics: [...this.capacityDailyMetrics.entries()],
       eventSubscriptions: this.eventSubscriptions,
       inferenceJobs: this.inferenceJobs,
       inbox: this.inbox,

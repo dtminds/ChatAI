@@ -428,7 +428,7 @@ function WorkflowCapacitySummary({
   return (
     <section
       aria-label="SOP 客户容量"
-      className="grid min-h-20 gap-4 border-y py-4 sm:grid-cols-[minmax(10rem,0.8fr)_minmax(16rem,1.4fr)] sm:items-center"
+      className="grid min-h-20 gap-4 border-y py-4 sm:grid-cols-[minmax(10rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] sm:items-center"
     >
       <div className="flex items-center gap-2">
         <HugeiconsIcon className="text-muted-foreground" icon={UserMultiple02Icon} size={18} strokeWidth={1.8} />
@@ -447,8 +447,14 @@ function WorkflowCapacitySummary({
         </div>
         <Progress aria-label="SOP 客户容量使用进度" className="h-1.5" value={overview.usagePercent} />
       </div>
+      <div className="space-y-1 text-sm text-muted-foreground sm:text-right">
+        <p>今日因容量不足未进入 <span className="font-medium tabular-nums text-foreground">{overview.capacityRejectedCountToday.toLocaleString()}</span> 次</p>
+        {overview.capacityRejectedCountToday > 0 ? (
+          <p className="text-xs text-amber-700">如需扩容，请联系客服</p>
+        ) : null}
+      </div>
       {full ? (
-        <p className="text-xs text-amber-700 sm:col-span-2">新客户暂时无法进入 SOP，已进入的客户会继续运行</p>
+        <p className="text-xs text-amber-700 sm:col-span-3">新客户暂时无法进入 SOP，已进入的客户会继续运行</p>
       ) : null}
     </section>
   );

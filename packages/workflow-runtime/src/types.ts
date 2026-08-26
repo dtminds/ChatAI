@@ -529,6 +529,7 @@ export type WorkflowBeginFixedWaitInput = {
 };
 
 export type WorkflowInboxMessageInput = {
+  capacityRejectedCount: number;
   consumer: string;
   expiresAt: Date;
   messageId: string;

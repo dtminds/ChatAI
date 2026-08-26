@@ -51,6 +51,7 @@ describe("workflow data routes", () => {
   it("serves one tenant-level capacity overview independently from the Workflow list", async () => {
     const dataService = {
       getCapacityOverview: vi.fn(async () => ({
+        capacityRejectedCountToday: 12,
         status: "warning",
         usagePercent: 87,
       })),
@@ -61,6 +62,7 @@ describe("workflow data routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toEqual({
+      capacityRejectedCountToday: 12,
       status: "warning",
       usagePercent: 87,
     });
@@ -71,6 +73,7 @@ describe("workflow data routes", () => {
     const reader = {
       getCapacityUsage: vi.fn(async () => ({
         activeRunCount: 25,
+        capacityRejectedCountToday: 3,
       })),
     };
     const capacityPort = {
@@ -80,14 +83,17 @@ describe("workflow data routes", () => {
     };
     const service = new WorkflowDataService(reader as never, {
       capacityPort,
+      clock: () => new Date("2026-08-24T16:30:00.000Z"),
     });
 
     await expect(service.getCapacityOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
       .resolves.toEqual({
+        capacityRejectedCountToday: 3,
         status: "normal",
         usagePercent: 25,
     });
     expect(reader.getCapacityUsage).toHaveBeenCalledTimes(1);
+    expect(reader.getCapacityUsage).toHaveBeenCalledWith({ date: "2026-08-25", uid: 9 });
     expect(capacityPort.getTenantCapacity).toHaveBeenCalledTimes(1);
     expect(capacityPort.getTenantCapacity).toHaveBeenCalledWith({ uid: 9 });
   });
@@ -96,6 +102,7 @@ describe("workflow data routes", () => {
     const service = new WorkflowDataService({
       getCapacityUsage: vi.fn(async () => ({
         activeRunCount: 25,
+        capacityRejectedCountToday: 3,
       })),
     } as never, {
       capacityPort: {
@@ -109,15 +116,31 @@ describe("workflow data routes", () => {
       .rejects.toMatchObject({ code: "WORKFLOW_CAPACITY_UNAVAILABLE", statusCode: 503 });
   });
 
-  it("returns the persisted tenant capacity counter without scanning Runs", async () => {
+  it("returns the persisted capacity counter and today's rejection metric without scanning Runs", async () => {
     const db = createCapacityUsageDbMock();
     const reader = new MysqlWorkflowDataReader(db as never);
 
-    await expect(reader.getCapacityUsage({ uid: 9 })).resolves.toEqual({
+    await expect(reader.getCapacityUsage({ date: "2026-08-24", uid: 9 })).resolves.toEqual({
       activeRunCount: 0,
+      capacityRejectedCountToday: 0,
     });
-    expect(db.selectedTables).toEqual(["xy_wap_embed_workflow_capacity_guard"]);
+    expect(db.selectedTables).toEqual([
+      "xy_wap_embed_workflow_capacity_guard",
+      "xy_wap_embed_workflow_capacity_daily_metric",
+    ]);
     expect(db.wheres).toContainEqual(["xy_wap_embed_workflow_capacity_guard", "uid", "=", 9]);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_capacity_daily_metric",
+      "uid",
+      "=",
+      9,
+    ]);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_capacity_daily_metric",
+      "metric_date",
+      "=",
+      new Date("2026-08-23T16:00:00.000Z"),
+    ]);
   });
 
   it("shows a waiting node once as the waiting trajectory step", async () => {
@@ -348,7 +371,11 @@ function createCapacityUsageDbMock() {
           db.wheres.push([table, ...args]);
           return builder;
         },
-        async executeTakeFirst() { return { active_run_count: 0 }; },
+        async executeTakeFirst() {
+          return table === "xy_wap_embed_workflow_capacity_guard"
+            ? { active_run_count: 0 }
+            : undefined;
+        },
       };
       return builder;
     },

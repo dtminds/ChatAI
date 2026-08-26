@@ -29,13 +29,21 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     this.db = db as unknown as Kysely<DataDatabase>;
   }
 
-  async getCapacityUsage(input: { uid: number }) {
-    const row = await this.db.selectFrom("xy_wap_embed_workflow_capacity_guard")
-      .select("active_run_count")
-      .where("uid", "=", input.uid)
-      .executeTakeFirst();
+  async getCapacityUsage(input: { date: string; uid: number }) {
+    const [guard, dailyMetric] = await Promise.all([
+      this.db.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count")
+        .where("uid", "=", input.uid)
+        .executeTakeFirst(),
+      this.db.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
+        .select("capacity_rejected_count")
+        .where("uid", "=", input.uid)
+        .where("metric_date", "=", new Date(`${input.date}T00:00:00+08:00`))
+        .executeTakeFirst(),
+    ]);
     return {
-      activeRunCount: Number(row?.active_run_count ?? 0),
+      activeRunCount: Number(guard?.active_run_count ?? 0),
+      capacityRejectedCountToday: Number(dailyMetric?.capacity_rejected_count ?? 0),
     };
   }
 

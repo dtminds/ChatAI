@@ -266,6 +266,7 @@ export const WorkflowDataOverviewSchema = Type.Object({
 });
 
 export const WorkflowCapacityOverviewSchema = Type.Object({
+  capacityRejectedCountToday: Type.Integer({ minimum: 0 }),
   status: Type.Union([
     Type.Literal("normal"),
     Type.Literal("warning"),

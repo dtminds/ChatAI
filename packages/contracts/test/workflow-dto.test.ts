@@ -29,10 +29,12 @@ import {
 describe("workflow contracts", () => {
   it("validates the tenant Workflow capacity overview", () => {
     expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      capacityRejectedCountToday: 12,
       status: "warning",
       usagePercent: 80,
     })).toBe(true);
     expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      capacityRejectedCountToday: 12,
       status: "warning",
       usagePercent: 101,
     })).toBe(false);

@@ -127,6 +127,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_outbox",
       "xy_wap_embed_workflow_inbox",
       "xy_wap_embed_workflow_daily_metric",
+      "xy_wap_embed_workflow_capacity_daily_metric",
     ];
 
     for (const tableName of tableNames) {
@@ -159,6 +160,21 @@ describe("database schema document", () => {
     expect(capacityGuardTable).toContain(
       "active_run_count INT UNSIGNED NOT NULL DEFAULT 0",
     );
+  });
+
+  it("stores one capacity rejection metric per tenant and Shanghai date", () => {
+    const dailyMetricTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_capacity_daily_metric",
+    );
+
+    expect(dailyMetricTable).toContain(
+      "capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0",
+    );
+    expect(dailyMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)",
+    );
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_capacity_daily_metric");
   });
 
   it("keeps only workflow run indexes required by current query paths", () => {

@@ -5,6 +5,7 @@ import type {
   WorkflowEntryRecordPage,
 } from "@chatai/contracts";
 import {
+  formatWorkflowMetricDate,
   UnavailableWorkflowEntitlementPort,
   type WorkflowTenantCapacityPort,
 } from "@chatai/workflow-runtime";
@@ -15,8 +16,9 @@ import {
 import type { WorkflowOperatorScope } from "./workflow.service.js";
 
 export type WorkflowDataReader = {
-  getCapacityUsage(input: { uid: number }): Promise<{
+  getCapacityUsage(input: { date: string; uid: number }): Promise<{
     activeRunCount: number;
+    capacityRejectedCountToday: number;
   }>;
   getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
   getRecord(input: { recordId: string; uid: number; workflowId: string }): Promise<WorkflowEntryRecordDetail>;
@@ -32,21 +34,25 @@ export type WorkflowDataReader = {
 
 export class WorkflowDataService {
   private readonly capacityPort: WorkflowTenantCapacityPort;
+  private readonly clock: () => Date;
 
   constructor(
     private readonly reader: WorkflowDataReader,
     options: {
       capacityPort?: WorkflowTenantCapacityPort;
+      clock?: () => Date;
     } = {},
   ) {
     this.capacityPort = options.capacityPort ?? new UnavailableWorkflowEntitlementPort();
+    this.clock = options.clock ?? (() => new Date());
   }
 
   async getCapacityOverview(scope: WorkflowOperatorScope): Promise<WorkflowCapacityOverview> {
     assertAccess(scope);
+    const date = formatWorkflowMetricDate(this.clock());
     try {
       const [usage, capacity] = await Promise.all([
-        this.reader.getCapacityUsage({ uid: scope.uid }),
+        this.reader.getCapacityUsage({ date, uid: scope.uid }),
         this.capacityPort.getTenantCapacity({ uid: scope.uid }),
       ]);
       const full = capacity.activeRunLimit === 0
@@ -55,6 +61,7 @@ export class WorkflowDataService {
         ? 100
         : Math.floor(usage.activeRunCount / capacity.activeRunLimit * 100);
       return {
+        capacityRejectedCountToday: usage.capacityRejectedCountToday,
         status: full ? "full" as const : usagePercent >= 80 ? "warning" as const : "normal" as const,
         usagePercent,
       };

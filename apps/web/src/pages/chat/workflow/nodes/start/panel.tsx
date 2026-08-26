@@ -8,9 +8,10 @@ import {
   type WorkflowStartEntryMode,
   type WorkflowStartTrigger,
 } from "@chatai/contracts";
-import { HelpCircleIcon } from "@hugeicons/core-free-icons";
+import { Copy01Icon, HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -44,6 +46,7 @@ import {
   type FriendAddWaySelectionValue,
 } from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
+import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 
 export function StartConfig({
@@ -52,6 +55,7 @@ export function StartConfig({
   onNodeChange,
   resources,
   seats,
+  workflowId,
   workUsers = getWorkflowStartFixtureWorkUsers(),
 }: NodeSettingsProps<"start"> & {
   seats?: ReturnType<typeof getWorkflowStartFixtureSeats>;
@@ -83,11 +87,11 @@ export function StartConfig({
     const nextEntryMode = patch.entryMode ?? entryMode;
     const nextTriggers = patch.triggers ?? triggers;
     const configured = nextSourceIds.length > 0
-      && (nextEntryMode === "audience-import" || nextTriggers.length > 0);
+      && (nextEntryMode !== "event" || nextTriggers.length > 0);
     onNodeChange({
       ...patch,
       metric: configured
-        ? `${nextSourceIds.length} 个${sourceLabel} · ${nextEntryMode === "audience-import" ? "导入人群" : `${nextTriggers.length} 个触发条件`}`
+        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length)}`
         : "待配置进入方式",
       status: configured ? "ready" : "warning",
     } as WorkflowNodeConfigPatch<"start">);
@@ -137,9 +141,9 @@ export function StartConfig({
           <h3 className="py-3 text-[15px] font-semibold text-foreground">进入方式</h3>
           <RadioGroup
             aria-label="进入方式"
-            className="flex items-center gap-6"
+            className="grid grid-cols-3 gap-3"
             onValueChange={(mode) => {
-              if (mode === "event" || mode === "audience-import") {
+              if (mode === "event" || mode === "audience-import" || mode === "direct-push") {
                 updateStartConfig({ entryMode: mode, triggers: [] });
               }
             }}
@@ -152,6 +156,10 @@ export function StartConfig({
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem value="audience-import" />
               <span>导入人群</span>
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <RadioGroupItem value="direct-push" />
+              <span>外部推送</span>
             </label>
           </RadioGroup>
         </section>
@@ -229,10 +237,12 @@ export function StartConfig({
             ) : null}
             </div>
           </section>
-        ) : (
+        ) : entryMode === "audience-import" ? (
           <p className="pb-3 text-[13px] leading-5 text-muted-foreground" role="note">
             发布后可在右上角点击“人群导入”按钮进行导入
           </p>
+        ) : (
+          <DirectEntryEndpoint workflowId={workflowId} />
         )}
       </div>
 
@@ -324,6 +334,83 @@ export function StartConfig({
       ) : null}
     </div>
   );
+}
+
+function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
+  const [requestVersion, setRequestVersion] = useState(0);
+  const [state, setState] = useState<
+    | { kind: "error" }
+    | { kind: "loading" }
+    | { endpointUrl: string; kind: "ready" }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    if (!workflowId) return;
+    let active = true;
+    setState({ kind: "loading" });
+    void getWorkflowDirectEntryEndpoint(workflowId).then(({ endpointKey }) => {
+      if (!active) return;
+      const path = `/workflow/endpoint/${encodeURIComponent(endpointKey)}`;
+      setState({ endpointUrl: new URL(path, window.location.origin).toString(), kind: "ready" });
+    }).catch(() => {
+      if (active) setState({ kind: "error" });
+    });
+    return () => {
+      active = false;
+    };
+  }, [requestVersion, workflowId]);
+
+  if (!workflowId) return null;
+  return (
+    <section className="pb-3">
+      <div className="space-y-2.5 rounded-[8px] border bg-card p-3">
+        <p className="text-[13px] font-medium text-foreground">推送地址</p>
+        {state.kind === "loading" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在加载</span>
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="flex h-9 items-center justify-between gap-3">
+            <span className="text-[13px] text-destructive">加载失败</span>
+            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
+              重试
+            </Button>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2">
+            <Input aria-label="推送地址" className="min-w-0 flex-1" readOnly value={state.endpointUrl} />
+            <Button
+              aria-label="复制推送地址"
+              className="shrink-0"
+              onClick={() => void copyDirectEntryEndpoint(state.endpointUrl)}
+              size="icon"
+              title="复制推送地址"
+              type="button"
+              variant="outline"
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={16} strokeWidth={1.8} />
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+async function copyDirectEntryEndpoint(endpointUrl: string) {
+  try {
+    await navigator.clipboard.writeText(endpointUrl);
+    toast.success("已复制推送地址");
+  } catch {
+    toast.error("操作失败，请稍后重试");
+  }
+}
+
+function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
+  if (mode === "audience-import") return "导入人群";
+  if (mode === "direct-push") return "外部推送";
+  return `${triggerCount} 个触发条件`;
 }
 
 function CheckboxRow({ checked, disabled = false, label, onCheckedChange }: {

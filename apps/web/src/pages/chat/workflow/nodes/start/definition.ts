@@ -161,7 +161,7 @@ function sanitizePositiveIds(ids: number[]) {
 }
 
 function sanitizeStartTriggers(data: StartNodeData): StartNodeData {
-  if (data.entryMode === "audience-import") {
+  if (data.entryMode !== "event") {
     return { ...data, triggers: [] } as StartNodeData;
   }
   const triggers = data.triggers.slice(0, 1).map((trigger) => {

@@ -21,7 +21,7 @@ export type WorkflowTriggerBindingSpec = {
 
 export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): WorkflowStartConfig {
   const entryMode = config.entryMode ?? "event";
-  const triggers = entryMode === "audience-import" ? [] : normalizeTriggers(config.triggers);
+  const triggers = entryMode === "event" ? normalizeTriggers(config.triggers) : [];
   return "seatIds" in config
     ? {
         entryMode,
@@ -46,7 +46,7 @@ export function getWorkflowTriggerBindings(
 ): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   assertStartConfigMatchesSubjectType(normalized, subjectType);
-  if (normalized.entryMode === "audience-import") return [];
+  if (normalized.entryMode !== "event") return [];
   return normalized.triggers.map(trigger => ({
     eventType: trigger.type,
     filter: createBindingFilter(normalized, trigger, options.resolvedWorkUserIds),

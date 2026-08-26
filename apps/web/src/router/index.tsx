@@ -19,6 +19,11 @@ const NotFoundPage = lazy(() =>
     default: NotFoundPage,
   })),
 );
+const WorkflowDirectEntryPage = lazy(() =>
+  import("@/pages/workflow-direct-entry-page").then(({ WorkflowDirectEntryPage }) => ({
+    default: WorkflowDirectEntryPage,
+  })),
+);
 const ChatWorkbenchRoutePage = lazy(() =>
   import("@/pages/chat/chat-workbench-page").then(({ ChatWorkbenchRoutePage }) => ({
     default: ChatWorkbenchRoutePage,
@@ -213,6 +218,10 @@ export const routerConfig = [
       {
         path: "login",
         element: withRouteSuspense(<LoginPage />),
+      },
+      {
+        path: "workflow/endpoint/:endpointKey",
+        element: withRouteSuspense(<WorkflowDirectEntryPage />),
       },
       {
         path: "chat",

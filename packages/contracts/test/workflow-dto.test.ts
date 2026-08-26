@@ -243,6 +243,24 @@ describe("workflow contracts", () => {
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [],
+      workUserIds: [201],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: ["价格"], type: "message.received" }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
       entryMode: "event",
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],

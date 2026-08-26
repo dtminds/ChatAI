@@ -352,6 +352,36 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(result).toMatchObject({ deduplicated: true, kind: "success" });
     expect(db.runReadCount).toBe(2);
     expect(db.guardWriteLocked).toBe(true);
+    expect(db.runShareLockCount).toBe(1);
+    expect(db.taskReadLocked).toBe(true);
+    expect(db.runInsertCount).toBe(0);
+  });
+
+  it("rejects another active Run after locking the subject admission guard", async () => {
+    const db = createConcurrentDuplicateRunDbMock({ duplicateAfterGuard: false });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.createRunWithInitialTask({
+      context: {},
+      entryEventId: "event-2",
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2020-01-01T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(result).toEqual({ kind: "active-run-rejected" });
+    expect(db.runReadCount).toBe(3);
+    expect(db.guardWriteLocked).toBe(true);
+    expect(db.runShareLockCount).toBe(2);
+    expect(db.taskReadLocked).toBe(false);
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -995,7 +1025,10 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   return db;
 }
 
-function createConcurrentDuplicateRunDbMock() {
+function createConcurrentDuplicateRunDbMock(
+  options: { duplicateAfterGuard?: boolean } = {},
+) {
+  const duplicateAfterGuard = options.duplicateAfterGuard ?? true;
   const admittedAt = new Date("2026-07-10T00:00:00.000Z");
   const run = {
     completed_at: null,
@@ -1043,6 +1076,8 @@ function createConcurrentDuplicateRunDbMock() {
     guardWriteLocked: false,
     runInsertCount: 0,
     runReadCount: 0,
+    runShareLockCount: 0,
+    taskReadLocked: false,
     insertInto(table: string) {
       if (table === "xy_wap_embed_workflow_run") db.runInsertCount += 1;
       const builder = {
@@ -1054,7 +1089,16 @@ function createConcurrentDuplicateRunDbMock() {
     },
     selectFrom(table: string) {
       const builder = {
-        forShare() { return builder; },
+        forShare() {
+          if (table === "xy_wap_embed_workflow_run") {
+            if (!db.guardWriteLocked) throw new Error("Run locking read must follow the guard lock");
+            db.runShareLockCount += 1;
+          }
+          if (table === "xy_wap_embed_workflow_task") {
+            db.taskReadLocked = db.guardWriteLocked;
+          }
+          return builder;
+        },
         forUpdate() {
           if (table === "xy_wap_embed_workflow_entry_guard") db.guardWriteLocked = true;
           return builder;
@@ -1075,7 +1119,9 @@ function createConcurrentDuplicateRunDbMock() {
           }
           if (table === "xy_wap_embed_workflow_run") {
             db.runReadCount += 1;
-            return db.runReadCount === 1 ? undefined : run;
+            if (db.runReadCount === 1) return undefined;
+            if (db.runReadCount === 2) return duplicateAfterGuard ? run : undefined;
+            return run;
           }
           if (table === "xy_wap_embed_workflow_task") return task;
           return undefined;

@@ -670,6 +670,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
         run: WorkflowRunRecord;
         task: WorkflowTaskRecord;
       }
+    | { kind: "active-run-rejected" }
     | WorkflowRuntimeFailure
   >;
   deferTask(input: {

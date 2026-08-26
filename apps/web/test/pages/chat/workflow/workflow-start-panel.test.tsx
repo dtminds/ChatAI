@@ -1,10 +1,16 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
+
+const directEntryApiMock = vi.hoisted(() => ({
+  getWorkflowDirectEntryEndpoint: vi.fn(),
+}));
+
+vi.mock("@/pages/chat/workflow/nodes/start/direct-entry-api", () => directEntryApiMock);
 
 function createStartNode(): WorkflowNode<"start"> {
   return {
@@ -24,6 +30,11 @@ function createStartNodeWithoutTagTrigger(): WorkflowNode<"start"> {
 }
 
 describe("StartConfig", () => {
+  beforeEach(() => {
+    directEntryApiMock.getWorkflowDirectEntryEndpoint.mockReset();
+    directEntryApiMock.getWorkflowDirectEntryEndpoint.mockResolvedValue({ endpointKey: "java.key-1" });
+  });
+
   it("renders the formal start node settings sections", async () => {
     const user = userEvent.setup();
     render(
@@ -101,6 +112,79 @@ describe("StartConfig", () => {
       entryMode: "event",
       triggers: [],
     }));
+  });
+
+  it("switches to direct push and builds the public endpoint from the returned key", async () => {
+    const user = userEvent.setup();
+    const node = createStartNode();
+    const onNodeChange = vi.fn();
+    const { rerender } = render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+        workflowId="31"
+      />,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "外部推送" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entryMode: "direct-push",
+      triggers: [],
+    }));
+
+    const directNode = {
+      ...node,
+      data: { ...node.data, entryMode: "direct-push" as const, triggers: [] },
+    };
+    rerender(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={directNode}
+        nodes={[directNode]}
+        onNodeChange={onNodeChange}
+        workflowId="31"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "推送地址" })).toHaveValue(
+        `${window.location.origin}/workflow/endpoint/java.key-1`,
+      );
+    });
+    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledWith("31");
+    expect(screen.getByRole("button", { name: "复制推送地址" })).toBeEnabled();
+  });
+
+  it("allows retrying a failed direct-entry key request", async () => {
+    directEntryApiMock.getWorkflowDirectEntryEndpoint
+      .mockRejectedValueOnce(new Error("unavailable"))
+      .mockResolvedValueOnce({ endpointKey: "java.key-2" });
+    const user = userEvent.setup();
+    const node = createStartNode();
+    const directNode = {
+      ...node,
+      data: { ...node.data, entryMode: "direct-push" as const, triggers: [] },
+    };
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={directNode}
+        nodes={[directNode]}
+        onNodeChange={vi.fn()}
+        workflowId="31"
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "重试" }));
+    expect(await screen.findByRole("textbox", { name: "推送地址" })).toHaveValue(
+      `${window.location.origin}/workflow/endpoint/java.key-2`,
+    );
+    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledTimes(2);
   });
 
   it("allows selecting the tag event before its remote tags are loaded", async () => {

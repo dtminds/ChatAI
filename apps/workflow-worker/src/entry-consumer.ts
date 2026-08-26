@@ -1,10 +1,13 @@
 import {
   WORKFLOW_INBOX_RETENTION_DAYS,
+  WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+  WorkflowDirectEntryPayloadSchema,
   WorkflowEntryEventTypeSchema,
   WorkflowMessageReceivedPayloadSchema,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
   type WorkflowEntryEventType,
+  type WorkflowDirectEntryPayload,
   type WorkflowMessage,
   type WorkflowSubjectType,
   validateWorkflowEntryEvent,
@@ -68,6 +71,19 @@ type WorkflowEntryRuntimeService = {
     workflowId: string;
   }): Promise<
     | { deduplicated: boolean; kind: "success" }
+    | { kind: "active-run-rejected" }
+    | { kind: "entry-policy-rejected" }
+  >;
+  startDirectRun(input: {
+    entryEventId: string;
+    occurredAt: string;
+    payload: import("@chatai/contracts").WorkflowDirectEntryPayload;
+    payloadVersion: number;
+    source: string;
+    uid: number;
+  }): Promise<
+    | { deduplicated: boolean; kind: "success" }
+    | { kind: "active-run-rejected" }
     | { kind: "entry-policy-rejected" }
   >;
 };
@@ -76,6 +92,7 @@ export type WorkflowEntryConsumeResultCode =
   | WorkflowEntryEnvelopeValidationCode
   | WorkflowEventCatalogErrorCode
   | "admitted"
+  | "active_run_exists"
   | "deduplicated"
   | "entry_policy_rejected"
   | "invalid_json"
@@ -117,6 +134,18 @@ export function createEntryConsumerHandler(input: {
     const parsed = parseEntryEvent(message.data);
     if (parsed.kind === "rejected") {
       return rejectPermanentEntry(message, parsed.code, input.publishToDeadLetter);
+    }
+    if (parsed.event.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE) {
+      if (parsed.event.payloadVersion !== 1) {
+        return rejectPermanentEntry(message, "unsupported_payload_version", input.publishToDeadLetter);
+      }
+      if (!Value.Check(WorkflowDirectEntryPayloadSchema, parsed.event.payload)) {
+        return rejectPermanentEntry(message, "payload_invalid", input.publishToDeadLetter);
+      }
+      return consumeDirectEntry(message, {
+        ...parsed.event,
+        payload: parsed.event.payload as WorkflowDirectEntryPayload,
+      }, input);
     }
     const catalogResult = input.eventCatalog.project(parsed.event);
     if (catalogResult.kind === "rejected") {
@@ -165,6 +194,7 @@ export function createEntryConsumerHandler(input: {
         subscriptions,
       });
       let admitted = 0;
+      let activeRunRejected = 0;
       let deduplicated = 0;
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
@@ -181,7 +211,8 @@ export function createEntryConsumerHandler(input: {
             projection,
             subject,
           );
-          if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
+          if (result.kind === "active-run-rejected") activeRunRejected += 1;
+          else if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
           else if (result.deduplicated) deduplicated += 1;
           else admitted += 1;
         } catch (error) {
@@ -228,6 +259,7 @@ export function createEntryConsumerHandler(input: {
       await message.ack();
       if (admitted > 0) return { code: "admitted", disposition: "ack" };
       if (deduplicated > 0) return { code: "deduplicated", disposition: "ack" };
+      if (activeRunRejected > 0) return { code: "active_run_exists", disposition: "ack" };
       if (entryPolicyRejected > 0) {
         return { code: "entry_policy_rejected", disposition: "ack" };
       }
@@ -238,6 +270,81 @@ export function createEntryConsumerHandler(input: {
       return createTemporaryFailure(error, failureStage);
     }
   };
+}
+
+async function consumeDirectEntry(
+  message: WorkflowBrokerMessage,
+  event: WorkflowEntryEvent & {
+    payload: WorkflowDirectEntryPayload;
+  },
+  input: {
+    inboxRepository: WorkflowInboxRepository;
+    now?: () => Date;
+    runtimeService: WorkflowEntryRuntimeService;
+  },
+): Promise<WorkflowEntryConsumeResult> {
+  let failureStage: WorkflowEntryFailureStage = "inbox_check";
+  try {
+    const observedAt = input.now?.() ?? new Date();
+    const inboxMessageId = createEntryInboxMessageId(event);
+    if (await input.inboxRepository.hasProcessedInboxMessage({
+      consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+      messageId: inboxMessageId,
+    })) {
+      failureStage = "ack";
+      await message.ack();
+      return { code: "deduplicated", disposition: "ack" };
+    }
+
+    let code: WorkflowEntryConsumeResultCode;
+    failureStage = "runtime_admission";
+    try {
+      const result = await input.runtimeService.startDirectRun({
+        entryEventId: event.eventId,
+        occurredAt: event.occurredAt,
+        payload: event.payload,
+        payloadVersion: event.payloadVersion,
+        source: event.source,
+        uid: event.uid,
+      });
+      code = result.kind === "active-run-rejected"
+        ? "active_run_exists"
+        : result.kind === "entry-policy-rejected"
+        ? "entry_policy_rejected"
+        : result.deduplicated
+          ? "deduplicated"
+          : "admitted";
+    } catch (error) {
+      if (classifyEntryError(error) === "nack") throw error;
+      code = "runtime_rejected";
+    }
+
+    failureStage = "inbox_record";
+    await recordEntryInbox(input.inboxRepository, event, observedAt, inboxMessageId);
+    failureStage = "ack";
+    await message.ack();
+    return { code, disposition: "ack" };
+  } catch (error) {
+    message.negativeAck();
+    return createTemporaryFailure(error, failureStage);
+  }
+}
+
+async function recordEntryInbox(
+  inboxRepository: WorkflowInboxRepository,
+  event: Pick<WorkflowEntryEvent, "uid">,
+  processedAt: Date,
+  messageId: string,
+) {
+  await inboxRepository.recordProcessedInboxMessage({
+    consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+    expiresAt: new Date(
+      processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
+    ),
+    messageId,
+    processedAt,
+    uid: event.uid,
+  });
 }
 
 export async function startEntryConsumer(input: {

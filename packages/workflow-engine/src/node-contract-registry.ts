@@ -44,7 +44,7 @@ export function projectWorkflowNodeExecutionConfig({
       ? "chatai_sop"
       : "wecom_sop");
     const entryMode = draftConfig.entryMode ?? "event";
-    const triggers = entryMode === "audience-import" ? [] : draftConfig.triggers;
+    const triggers = entryMode === "event" ? draftConfig.triggers : [];
     return cloneJsonRecord(resolvedWorkflowType === "chatai_sop"
       ? {
           entryMode,

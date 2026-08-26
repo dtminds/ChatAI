@@ -2,11 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createWorkflowEntryPartitionKey,
+  WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
   WORKFLOW_ENTRY_EVENT_MAX_BYTES,
+  WorkflowDirectEntryPayloadSchema,
   validateWorkflowEntryEvent,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
 } from "../src/workflow/entry-event.js";
+import { Value } from "@sinclair/typebox/value";
 
 type FixtureManifest = {
   fixtures: Array<{
@@ -42,6 +45,45 @@ describe("workflow entry event envelope", () => {
       },
       source: "chatai",
     }))).toBe("9:chatai_contact:chatai-contact-1");
+    expect(createWorkflowEntryPartitionKey(event({
+      eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+      payload: {
+        externalUserId: 3267,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+      source: "chatai",
+    }))).toBe("9:chatai_contact:chatai-contact-1");
+    expect(createWorkflowEntryPartitionKey(event({
+      eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+      payload: { externalUserId: 3267, workUserId: 201, workflowId: "31" },
+    }))).toBe("9:wecom_contact:3267");
+  });
+
+  it("validates direct-entry payloads with concrete ChatAI or WeCom identity", () => {
+    expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
+      externalUserId: 3267,
+      seatId: 101,
+      thirdExternalUserId: "chatai-contact-1",
+      workUserId: 201,
+      workflowId: "31",
+    })).toBe(true);
+    expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
+      externalUserId: 3267,
+      workUserId: 201,
+      workflowId: "31",
+    })).toBe(true);
+    expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
+      seatId: 101,
+      thirdExternalUserId: "chatai-contact-1",
+      workUserId: 201,
+    })).toBe(false);
+    expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
+      subjectId: "chatai-contact-1",
+      workflowId: "31",
+    })).toBe(false);
   });
 
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "envelope"))(

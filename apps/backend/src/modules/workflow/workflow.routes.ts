@@ -146,6 +146,18 @@ export async function registerWorkflowRoutes(
     async (request) => apiSuccess(await service.get(getWorkflowScope(request), request.params.workflowId)),
   );
 
+  app.get<{ Params: WorkflowParams }>(
+    "/api/server/workflows/:workflowId/direct-entry-endpoint",
+    {
+      ...authenticated,
+      schema: { params: WorkflowParamsSchema },
+    },
+    async request => apiSuccess(await service.getDirectEntryEndpoint(
+      getWorkflowScope(request),
+      request.params.workflowId,
+    )),
+  );
+
   app.post<{
     Body: WorkflowLlmTestAttemptCreateRequest;
     Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;

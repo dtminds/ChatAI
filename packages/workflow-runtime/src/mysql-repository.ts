@@ -251,10 +251,22 @@ export class MysqlWorkflowRuntimeRepository implements
           input.uid,
           input.workflowId,
           input.entryEventId,
+          { lockForShare: true },
         );
         if (concurrentDuplicate) {
           return { deduplicated: true, kind: "success" as const, ...concurrentDuplicate };
         }
+        const activeRun = await trx.selectFrom(RUN_TABLE)
+          .select("id")
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", input.workflowId)
+          .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+          .where("subject_id", "=", input.subjectId)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .limit(1)
+          .forShare()
+          .executeTakeFirst();
+        if (activeRun) return { kind: "active-run-rejected" as const };
         if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
           return { kind: "entry-policy-rejected" as const };
         }
@@ -3725,20 +3737,21 @@ async function findRunAndInitialTaskByEntryEvent(
   uid: number,
   workflowId: string,
   entryEventId: string,
+  options: { lockForShare?: boolean } = {},
 ) {
-  const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+  const runQuery = trx.selectFrom(RUN_TABLE).selectAll()
     .where("uid", "=", uid)
     .where("workflow_id", "=", workflowId)
-    .where("entry_event_id", "=", entryEventId)
-    .executeTakeFirst();
+    .where("entry_event_id", "=", entryEventId);
+  const runRow = await (options.lockForShare ? runQuery.forShare() : runQuery).executeTakeFirst();
   if (!runRow) return null;
   const run = mapRun(runRow);
-  const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+  const taskQuery = trx.selectFrom(TASK_TABLE).selectAll()
     .where("uid", "=", uid)
     .where("run_id", "=", run.id)
     .orderBy("sequence", "asc")
-    .limit(1)
-    .executeTakeFirst();
+    .limit(1);
+  const taskRow = await (options.lockForShare ? taskQuery.forShare() : taskQuery).executeTakeFirst();
   if (!taskRow) throw new Error("Deduplicated workflow run has no initial task");
   return { run, task: mapTask(taskRow) };
 }

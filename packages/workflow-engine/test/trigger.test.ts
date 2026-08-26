@@ -129,20 +129,23 @@ describe("workflow trigger matching", () => {
     }));
   });
 
-  it("does not create trigger bindings for audience imports", () => {
+  it.each(["audience-import", "direct-push"] as const)(
+    "does not create trigger bindings for %s entries",
+    (entryMode) => {
     const config: WorkflowStartConfig = {
-      entryMode: "audience-import",
+      entryMode,
       entryPolicy,
       seatIds: [101],
       triggers: [],
     };
 
     expect(normalizeWorkflowStartConfig(config)).toEqual(expect.objectContaining({
-      entryMode: "audience-import",
+      entryMode,
       triggers: [],
     }));
     expect(getWorkflowTriggerBindings(config, "chatai_contact")).toEqual([]);
-  });
+    },
+  );
 
   it("projects each trigger independently when future contracts allow multiple events", () => {
     const malformed = {

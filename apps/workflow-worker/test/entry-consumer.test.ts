@@ -20,6 +20,126 @@ const workflowFixtureRoot = new URL(
 );
 
 describe("workflow entry consumer", () => {
+  it("admits direct entries before catalog, binding, and wait-subscription scans", async () => {
+    const processed = new Set<string>();
+    const bindingReader = { listActiveTriggerBindings: vi.fn() };
+    const subscriptionReader = { listMatchingEventSubscriptions: vi.fn() };
+    const catalogProject = vi.fn(() => {
+      throw new Error("direct entry must bypass the catalog");
+    });
+    const startDirectRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader,
+      eventCatalog: { project: catalogProject, supports: eventCatalog.supports },
+      inboxRepository: createInboxRepository({
+        hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
+        recordProcessedInboxMessage: vi.fn(async ({ messageId }) => {
+          processed.add(messageId);
+          return true;
+        }),
+      }),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader,
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+
+    expect(startDirectRun).toHaveBeenCalledTimes(1);
+    expect(startDirectRun).toHaveBeenCalledWith({
+      entryEventId: "direct-event-1",
+      occurredAt: "2026-08-24T08:30:15.123Z",
+      payload: {
+        externalUserId: 3267,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+      payloadVersion: 1,
+      source: "chatai",
+      uid: 9,
+    });
+    expect(catalogProject).not.toHaveBeenCalled();
+    expect(bindingReader.listActiveTriggerBindings).not.toHaveBeenCalled();
+    expect(subscriptionReader.listMatchingEventSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("ACKs active-Run rejection and DLQs an unsupported direct payload version", async () => {
+    const processed = new Set<string>();
+    const startDirectRun = vi.fn(async () => ({ kind: "active-run-rejected" as const }));
+    const publishToDeadLetter = vi.fn(async () => undefined);
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository: createInboxRepository({
+        hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
+        recordProcessedInboxMessage: vi.fn(async ({ messageId }) => {
+          processed.add(messageId);
+          return true;
+        }),
+      }),
+      publishToDeadLetter,
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "active_run_exists",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent({
+      eventId: "direct-event-2",
+      payloadVersion: 2,
+    }))))
+      .resolves.toEqual({ code: "unsupported_payload_version", disposition: "ack" });
+    expect(startDirectRun).toHaveBeenCalledTimes(1);
+    expect(publishToDeadLetter).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a consumed direct Runtime rejection before ACKing redelivery", async () => {
+    const processed = new Set<string>();
+    const startDirectRun = vi.fn(async () => {
+      throw new WorkflowRuntimeError(
+        "WORKFLOW_DIRECT_ENTRY_UNAVAILABLE",
+        "Workflow does not accept direct entry",
+      );
+    });
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository: createInboxRepository({
+        hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
+        recordProcessedInboxMessage: vi.fn(async ({ messageId }) => {
+          processed.add(messageId);
+          return true;
+        }),
+      }),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "runtime_rejected",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+    expect(startDirectRun).toHaveBeenCalledTimes(1);
+  });
+
   it("fans one event out to every matching active workflow and ACKs after admission", async () => {
     const bindings = [binding("31"), binding("32", [201], "wecom_contact")];
     const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
@@ -604,6 +724,23 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     uid: 9,
     ...overrides,
   };
+}
+
+function directEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {
+  return event({
+    eventId: "direct-event-1",
+    eventType: "workflow.direct_entry.requested",
+    occurredAt: "2026-08-24T08:30:15.123Z",
+    payload: {
+      externalUserId: 3267,
+      seatId: 101,
+      thirdExternalUserId: "chatai-contact-1",
+      workUserId: 201,
+      workflowId: "31",
+    },
+    source: "chatai",
+    ...overrides,
+  });
 }
 
 function binding(

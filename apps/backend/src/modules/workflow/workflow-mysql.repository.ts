@@ -18,6 +18,7 @@ import {
 import { normalizeWorkflowExecutionSpec } from "@chatai/workflow-engine";
 import { sql, type Kysely, type Transaction } from "kysely";
 import type {
+  WorkflowDefinitionListRecord,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowPublishReviewRecord,
@@ -175,7 +176,18 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     input: Parameters<WorkflowRepository["listDefinitions"]>[1],
   ) {
     let query = this.db.selectFrom(DEFINITION_TABLE)
-      .selectAll()
+      .select([
+        "description",
+        "draft_json",
+        "draft_semantic_hash",
+        "id",
+        "name",
+        "published_revision",
+        "published_semantic_hash",
+        "runtime_status",
+        "update_time",
+        "workflow_type",
+      ])
       .where("uid", "=", uid)
       .where("biz_status", "=", 1);
     if (input.status === "active") {
@@ -214,7 +226,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       .orderBy("id", "desc")
       .limit(input.limit + 1)
       .execute();
-    const items = rows.slice(0, input.limit).map(mapDefinition);
+    const items = rows.slice(0, input.limit).map(mapDefinitionListRecord);
     const lastItem = items.at(-1);
     return {
       items,
@@ -733,6 +745,21 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
     runtimeStatus: parseRuntimeStatus(row.runtime_status),
     statusReason: parseStatusReason(row.status_reason),
     uid: Number(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowType: decodeWorkflowType(row.workflow_type),
+  };
+}
+
+function mapDefinitionListRecord(row: Record<string, unknown>): WorkflowDefinitionListRecord {
+  return {
+    description: String(row.description ?? ""),
+    draft: parseJson<WorkflowDraft>(row.draft_json),
+    draftSemanticHash: String(row.draft_semantic_hash),
+    id: normalizeId(row.id),
+    name: String(row.name),
+    publishedRevision: row.published_revision == null ? null : Number(row.published_revision),
+    publishedSemanticHash: row.published_semantic_hash == null ? null : String(row.published_semantic_hash),
+    runtimeStatus: parseRuntimeStatus(row.runtime_status),
     updatedAt: toDate(row.update_time),
     workflowType: decodeWorkflowType(row.workflow_type),
   };

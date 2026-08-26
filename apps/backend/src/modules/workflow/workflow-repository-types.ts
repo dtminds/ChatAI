@@ -31,6 +31,19 @@ export type WorkflowDefinitionRecord = {
   workflowType: WorkflowType;
 };
 
+export type WorkflowDefinitionListRecord = Pick<WorkflowDefinitionRecord,
+  | "description"
+  | "draft"
+  | "draftSemanticHash"
+  | "id"
+  | "name"
+  | "publishedRevision"
+  | "publishedSemanticHash"
+  | "runtimeStatus"
+  | "updatedAt"
+  | "workflowType"
+>;
+
 export type WorkflowRevisionRecord = {
   createdAt: Date;
   draft: WorkflowDraft;
@@ -111,7 +124,7 @@ export type WorkflowDefinitionListInput = {
 };
 
 export type WorkflowDefinitionRecordPage = {
-  items: WorkflowDefinitionRecord[];
+  items: WorkflowDefinitionListRecord[];
   nextCursor: WorkflowDefinitionListCursor | null;
 };
 

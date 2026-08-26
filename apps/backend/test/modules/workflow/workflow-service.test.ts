@@ -475,6 +475,29 @@ describe("WorkflowService", () => {
     }
   });
 
+  it("loads only the first three managed accounts for each workflow list row", async () => {
+    const findByIds = vi.fn(async (_uid: number, seatIds: number[]) => new Map(
+      seatIds.map(id => [id, { avatarUrl: `https://example.com/${id}.png`, id, name: `托管账号 ${id}` }]),
+    ));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      managedAccountReader: { findByIds },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101, 102, 103, 104, 105],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(findByIds).toHaveBeenCalledWith(operator.uid, [101, 102, 103]);
+    expect(page.items[0]?.managedAccounts.map(account => account.id)).toEqual([101, 102, 103]);
+  });
+
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 

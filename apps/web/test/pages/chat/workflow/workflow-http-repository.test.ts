@@ -112,6 +112,9 @@ describe("HTTP workflow repository", () => {
       versionHistory: [{ publishedAt: "07-11 15:12:06" }],
     });
     expect(listItem?.updatedAt).toBe("07-11 19:21:55");
+    expect(listItem?.managedAccounts).toEqual([
+      { avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" },
+    ]);
   });
 
   it("does not invent a revision for an unpublished workflow", async () => {
@@ -410,6 +413,8 @@ function toListDefinition(definition: WorkflowDefinition) {
     description: definition.description,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
     id: definition.id,
+    managedAccountCount: 1,
+    managedAccounts: [{ avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" }],
     name: definition.name,
     publishedRevision: definition.publishedRevision,
     runtimeStatus: definition.runtimeStatus,

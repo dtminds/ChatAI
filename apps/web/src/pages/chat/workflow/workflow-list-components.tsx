@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,87 +38,176 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableCellContent,
+  TableHead,
+  TableHeader,
+  TablePinnedCell,
+  TablePinnedHead,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
 
 export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 
-export function WorkflowListCard({
+export function WorkflowListTable({
+  loading,
   onDelete,
   onLifecycleAction,
   onRename,
-  operationPending = false,
+  operationPendingId,
+  workflows,
+}: {
+  loading: boolean;
+  onDelete: (workflow: WorkflowListItem) => void;
+  onLifecycleAction: (workflow: WorkflowListItem, action: WorkflowLifecycleAction) => void;
+  onRename: (workflow: WorkflowListItem) => void;
+  operationPendingId: string | null;
+  workflows: WorkflowListItem[];
+}) {
+  return (
+    <Table aria-label="工作流列表" className="min-w-[1200px] table-fixed">
+      <colgroup>
+        <col className="w-[240px]" />
+        <col className="w-[250px]" />
+        <col className="w-[190px]" />
+        <col className="w-[120px]" />
+        <col className="w-[170px]" />
+        <col className="w-[130px]" />
+        <col className="w-[100px]" />
+      </colgroup>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="h-11 px-4">工作流名称</TableHead>
+          <TableHead className="h-11 px-4">触发条件</TableHead>
+          <TableHead className="h-11 whitespace-nowrap px-4">托管账号</TableHead>
+          <TableHead className="h-11 whitespace-nowrap px-4">总运行数</TableHead>
+          <TableHead className="h-11 whitespace-nowrap px-4">最近一次运行</TableHead>
+          <TableHead className="h-11 px-4">状态</TableHead>
+          <TablePinnedHead className="h-11 whitespace-nowrap px-4 text-right">操作</TablePinnedHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {loading ? (
+          <TableRow>
+            <TableCell className="py-10 text-center" colSpan={7}>
+              <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                <Spinner aria-hidden="true" size={14} />
+                <span>正在加载</span>
+              </div>
+            </TableCell>
+          </TableRow>
+        ) : workflows.length === 0 ? (
+          <TableRow>
+            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={7}>暂无数据</TableCell>
+          </TableRow>
+        ) : workflows.map(workflow => (
+          <WorkflowListRow
+            key={workflow.id}
+            onDelete={() => onDelete(workflow)}
+            onLifecycleAction={action => onLifecycleAction(workflow, action)}
+            onRename={() => onRename(workflow)}
+            operationPending={operationPendingId === workflow.id}
+            workflow={workflow}
+          />
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function WorkflowListRow({
+  onDelete,
+  onLifecycleAction,
+  onRename,
+  operationPending,
   workflow,
 }: {
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
-  operationPending?: boolean;
+  operationPending: boolean;
   workflow: WorkflowListItem;
 }) {
   const status = getWorkflowStatus(workflow);
-  const titleId = `workflow-card-title-${workflow.id}`;
 
   return (
-    <article
-      aria-labelledby={titleId}
-      className="relative flex flex-col rounded-[14px] border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_10px_24px_var(--shadow-soft)]"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <Badge className="w-fit rounded-md px-1.5 py-0.5" variant="outline">
-          {getWorkflowTypeLabel(workflow.workflowType)}
-        </Badge>
+    <TableRow>
+      <TableCell className="px-4 py-4 font-medium text-foreground">
+        <Link
+          aria-label={`打开 ${workflow.name}`}
+          className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+          to={`/chat/workflows/${workflow.id}`}
+        >
+          <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
+        </Link>
+      </TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground" title={workflow.trigger}>
+        <TableCellContent>{workflow.trigger || "-"}</TableCellContent>
+      </TableCell>
+      <TableCell className="px-4 py-4">
+        <WorkflowManagedAccountsPreview workflow={workflow} />
+      </TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground">-</TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground">-</TableCell>
+      <TableCell className="px-4 py-4">
         <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
           <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
           {status.label}
         </Badge>
-      </div>
-
-      <div className="mt-2 min-w-0">
-        <Link
-          aria-label={`打开 ${workflow.name}`}
-          className="after:absolute after:inset-0 after:rounded-[14px] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
-          to={`/chat/workflows/${workflow.id}`}
-        >
-          <h2 className="truncate text-base font-semibold" id={titleId}>{workflow.name}</h2>
-        </Link>
-        <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">
-          {workflow.description || "暂无描述"}
-        </p>
-      </div>
-
-      <div className="mt-4 border-t border-dashed pt-3">
-        <div className="text-xs text-muted-foreground">触发条件</div>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {splitWorkflowTriggers(workflow.trigger).map(trigger => (
-            <span className="rounded-md bg-muted px-2 py-1 text-xs text-foreground" key={trigger}>
-              {trigger}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="relative z-10 mt-4 flex items-center gap-2">
-        <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
-          <Link to={`/chat/workflows/${workflow.id}`}>
-            <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
-            编辑
-          </Link>
-        </Button>
-        <WorkflowCardMenu
+      </TableCell>
+      <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
+        <WorkflowRowMenu
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
           onRename={onRename}
           operationPending={operationPending}
           workflow={workflow}
         />
-      </div>
-    </article>
+      </TablePinnedCell>
+    </TableRow>
   );
 }
 
-function WorkflowCardMenu({
+function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListItem }) {
+  if (workflow.managedAccountCount === 0) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  const visibleAccounts = workflow.managedAccounts.slice(0, 3);
+  const hiddenCount = Math.max(workflow.managedAccountCount - visibleAccounts.length, 0);
+
+  return (
+    <div className="flex items-center">
+      {visibleAccounts.map((account, index) => (
+        <Avatar
+          aria-label={`托管账号 ${account.name}`}
+          className={cn("size-8 rounded-full border-2 border-surface", index === 0 ? undefined : "-ml-2")}
+          key={account.id}
+          title={account.name}
+        >
+          {account.avatarUrl ? <AvatarImage alt={account.name} src={account.avatarUrl} /> : null}
+          <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
+            {account.name.trim().slice(0, 1) || "?"}
+          </AvatarFallback>
+        </Avatar>
+      ))}
+      {hiddenCount > 0 ? (
+        <span className="-ml-2 flex size-8 items-center justify-center rounded-full border-2 border-surface bg-muted text-xs font-semibold text-muted-foreground">
+          +{hiddenCount}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkflowRowMenu({
   onDelete,
   onLifecycleAction,
   onRename,
@@ -133,11 +223,24 @@ function WorkflowCardMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button aria-label={`操作 ${workflow.name}`} className="size-8" size="icon" variant="outline">
-          <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+        <Button
+          aria-label={`操作 ${workflow.name}`}
+          className="size-8 p-0 text-muted-foreground"
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon aria-hidden="true" icon={MoreHorizontalIcon} size={18} strokeWidth={1.8} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link to={`/chat/workflows/${workflow.id}`}>
+            <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
+            编辑工作流
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={workflow.runtimeStatus !== "active" || !workflow.canOperate || operationPending}
           onSelect={() => onLifecycleAction("pause")}
@@ -294,12 +397,6 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
   }
   return { className: "bg-muted text-muted-foreground", icon: PauseIcon, label: "未启用" };
-}
-
-function getWorkflowTypeLabel(workflowType: WorkflowListItem["workflowType"]) {
-  if (workflowType === "chatai_sop") return "ChatAI SOP";
-  if (workflowType === "wecom_sop") return "企微客户 SOP";
-  return "会员 SOP";
 }
 
 export function splitWorkflowTriggers(trigger: string) {

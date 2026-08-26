@@ -1,21 +1,25 @@
 import {
   Add01Icon,
   AlertCircleIcon,
+  DashboardSpeed02Icon,
+  HelpCircleIcon,
   RefreshIcon,
   Search01Icon,
-  UserMultiple02Icon,
-  WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   Pagination,
   PaginationContent,
@@ -43,7 +47,7 @@ import {
 } from "./workflow-resources";
 import {
   WorkflowDeleteDialog,
-  WorkflowListCard,
+  WorkflowListTable,
   type WorkflowLifecycleAction,
   WorkflowListState,
   WorkflowStopDialog,
@@ -69,6 +73,8 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
   { label: "已停止", value: "stopped" },
 ];
 
+const workflowListPageSize = 10;
+
 export function WorkflowListPage({
   repository = getWorkflowDraftRepository(),
 }: {
@@ -81,7 +87,7 @@ export function WorkflowListPage({
   const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
   const listInput = useMemo(() => ({
     cursor: pageCursors[page - 1],
-    limit: 20,
+    limit: workflowListPageSize,
     query: debouncedQuery || undefined,
     status: statusFilter,
   }), [debouncedQuery, page, pageCursors, statusFilter]);
@@ -216,25 +222,14 @@ export function WorkflowListPage({
       <section className="space-y-5">
         <AiHostingPageHeader
           actions={(
-            <Button
-              className="h-9 gap-1.5 rounded-lg px-3 text-sm"
-              onClick={() => {
-                setOperationError(null);
-                setCreateDialogOpen(true);
-              }}
-            >
-              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-              新建 Workflow
-            </Button>
+            <WorkflowCapacityIndicator
+              onRetry={() => void capacity.reload()}
+              overview={capacity.overview}
+              status={capacity.status}
+            />
           )}
           description="管理营销旅程"
           title="工作流"
-        />
-
-        <WorkflowCapacitySummary
-          onRetry={() => void capacity.reload()}
-          overview={capacity.overview}
-          status={capacity.status}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -255,29 +250,36 @@ export function WorkflowListPage({
               ))}
             </TabsList>
           </Tabs>
-          <div className="relative w-full max-w-sm sm:w-72">
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-[280px] max-w-full">
             <HugeiconsIcon
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               icon={Search01Icon}
-              size={15}
+              size={17}
               strokeWidth={1.8}
             />
             <Input
               aria-label="搜索 Workflow"
-              className="h-8 rounded-lg pl-8 text-sm"
+              className="h-10 rounded-[8px] pl-9"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索 Workflow"
               value={query}
             />
           </div>
+          <Button
+            className="h-10 px-4"
+            onClick={() => {
+              setOperationError(null);
+              setCreateDialogOpen(true);
+            }}
+            type="button"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
+            新建 Workflow
+          </Button>
         </div>
-
-        {status === "loading" && items.length === 0 ? (
-          <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
-            <Spinner />
-            <span>正在加载</span>
-          </div>
-        ) : null}
 
         {status === "error" ? (
           <WorkflowListState
@@ -286,42 +288,24 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        {status === "ready" && items.length === 0 ? (
-          <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-            <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
-              <HugeiconsIcon
-                aria-hidden="true"
-                icon={WorkflowSquare06Icon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            </IconStack>
-            <p className="text-sm leading-6 text-muted-foreground">暂无数据</p>
-          </div>
-        ) : null}
-
-        {items.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((workflow) => (
-              <WorkflowListCard
-                key={workflow.id}
-                onDelete={() => {
-                  setOperationError(null);
-                  setDeleteTarget(workflow);
-                }}
-                onLifecycleAction={(action) => {
-                  if (action === "stop") {
-                    setStopTarget(workflow);
-                    return;
-                  }
-                  void changeWorkflowLifecycle(workflow, action);
-                }}
-                onRename={() => openMetadataDialog(workflow)}
-                operationPending={lifecyclePendingId === workflow.id}
-                workflow={workflow}
-              />
-            ))}
-          </div>
+        {status !== "error" ? (
+          <WorkflowListTable
+            loading={status === "loading" && items.length === 0}
+            onDelete={(workflow) => {
+              setOperationError(null);
+              setDeleteTarget(workflow);
+            }}
+            onLifecycleAction={(workflow, action) => {
+              if (action === "stop") {
+                setStopTarget(workflow);
+                return;
+              }
+              void changeWorkflowLifecycle(workflow, action);
+            }}
+            onRename={openMetadataDialog}
+            operationPendingId={lifecyclePendingId}
+            workflows={items}
+          />
         ) : null}
 
         {status === "ready" && (page > 1 || nextCursor) ? (
@@ -431,7 +415,9 @@ export function WorkflowListPage({
   );
 }
 
-function WorkflowCapacitySummary({
+const workflowCapacitySegmentCount = 12;
+
+function WorkflowCapacityIndicator({
   onRetry,
   overview,
   status,
@@ -440,23 +426,31 @@ function WorkflowCapacitySummary({
   overview: ReturnType<typeof useWorkflowCapacityResource>["overview"];
   status: ReturnType<typeof useWorkflowCapacityResource>["status"];
 }) {
+  const shellClassName = "flex h-10 min-w-[304px] items-center gap-3 rounded-[8px] border border-border/50 bg-muted/30 px-3";
+
   if (status === "loading" && !overview) {
     return (
-      <div className="flex min-h-20 items-center gap-2 border-y py-4 text-sm text-muted-foreground" role="status">
-        <Spinner />
-        <span>正在加载</span>
-      </div>
+      <section aria-label="SOP 客户容量" className={shellClassName}>
+        <WorkflowCapacityLabel className="text-muted-foreground" />
+        <div className="flex min-w-[115px] shrink-0 items-center gap-[5px]" aria-hidden="true">
+          {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
+            <span className="h-5 w-[5px] shrink-0 rounded-full bg-muted-foreground/20" key={index} />
+          ))}
+        </div>
+        <span className="whitespace-nowrap text-xs text-muted-foreground" role="status">正在加载</span>
+      </section>
     );
   }
   if (status === "error" || !overview) {
     return (
-      <div className="flex min-h-20 items-center justify-between gap-3 border-y py-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <section aria-label="SOP 客户容量" className={shellClassName}>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <HugeiconsIcon icon={AlertCircleIcon} size={17} strokeWidth={1.8} />
-          <span>容量暂不可用</span>
+          <span className="whitespace-nowrap">容量暂不可用</span>
         </div>
         <Button
           aria-label="重新加载容量"
+          className="size-7"
           onClick={onRetry}
           size="icon"
           title="重新加载容量"
@@ -464,45 +458,99 @@ function WorkflowCapacitySummary({
         >
           <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
         </Button>
-      </div>
+      </section>
     );
   }
-  const full = overview.status === "full";
-  const nearFull = overview.status === "warning";
+
+  const usagePercent = Math.min(Math.max(overview.usagePercent, 0), 100);
+  const availablePercent = 100 - usagePercent;
+  const filledSegments = usagePercent === 0
+    ? 0
+    : Math.ceil(usagePercent / 100 * workflowCapacitySegmentCount);
+  const capacityTone = getWorkflowCapacityTone(usagePercent);
 
   return (
     <section
       aria-label="SOP 客户容量"
-      className="grid min-h-20 gap-4 border-y py-4 sm:grid-cols-[minmax(10rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] sm:items-center"
+      className={shellClassName}
     >
-      <div className="flex items-center gap-2">
-        <HugeiconsIcon className="text-muted-foreground" icon={UserMultiple02Icon} size={18} strokeWidth={1.8} />
-        <h2 className="text-sm font-medium">SOP 客户容量</h2>
+      <WorkflowCapacityLabel iconClassName={capacityTone.textClassName} />
+      <div
+        aria-label="SOP 客户容量使用进度"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={usagePercent}
+        className="flex min-w-[115px] shrink-0 items-center gap-[5px]"
+        role="progressbar"
+      >
+        {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "h-5 w-[5px] shrink-0 rounded-full",
+              index < filledSegments ? capacityTone.segmentClassName : "bg-muted-foreground/20",
+            )}
+            key={index}
+          />
+        ))}
       </div>
-      <div className="min-w-0 space-y-2">
-        <div className="flex items-baseline justify-between gap-3 text-sm">
-          <span className="font-medium tabular-nums">
-            {overview.usagePercent}%
-          </span>
-          {full || nearFull ? (
-            <span className="text-xs text-amber-700">
-              {full ? "容量已用完" : "容量即将用完"}
-            </span>
-          ) : null}
-        </div>
-        <Progress aria-label="SOP 客户容量使用进度" className="h-1.5" value={overview.usagePercent} />
-      </div>
-      <div className="space-y-1 text-sm text-muted-foreground sm:text-right">
-        <p>今日因容量不足未进入 <span className="font-medium tabular-nums text-foreground">{overview.capacityRejectedCountToday.toLocaleString()}</span> 次</p>
-        {overview.capacityRejectedCountToday > 0 ? (
-          <p className="text-xs text-amber-700">如需扩容，请联系客服</p>
-        ) : null}
-      </div>
-      {full ? (
-        <p className="text-xs text-amber-700 sm:col-span-3">新客户暂时无法进入 SOP，已进入的客户会继续运行</p>
-      ) : null}
+      <span className={cn("whitespace-nowrap text-xs font-medium", capacityTone.textClassName)}>
+        {availablePercent}%
+      </span>
     </section>
   );
+}
+
+function WorkflowCapacityLabel({
+  className,
+  iconClassName,
+}: {
+  className?: string;
+  iconClassName?: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-1.5 text-sm", className)}>
+      <HugeiconsIcon
+        className={iconClassName}
+        icon={DashboardSpeed02Icon}
+        size={17}
+        strokeWidth={1.8}
+      />
+      <h2 className="whitespace-nowrap font-medium">剩余用量</h2>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label="查看剩余用量说明"
+              className="size-5 shrink-0 rounded-full p-0 text-muted-foreground"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={HelpCircleIcon} size={14} strokeWidth={1.8} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-80" side="bottom" sideOffset={6}>
+            <strong>工作流并发运行容量：</strong>
+            包含所有正处于执行或等待节点的客户流程。容量耗尽期间，新触发的客户将无法进入流程，建议及时结束不必要的长周期流程或联系顾问扩容
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+function getWorkflowCapacityTone(usagePercent: number) {
+  if (usagePercent >= 100) {
+    return { segmentClassName: "bg-destructive", textClassName: "text-destructive" };
+  }
+  if (usagePercent >= 80) {
+    return { segmentClassName: "bg-destructive", textClassName: "text-destructive" };
+  }
+  if (usagePercent >= 50) {
+    return { segmentClassName: "bg-warning", textClassName: "text-warning" };
+  }
+  return { segmentClassName: "bg-success", textClassName: "text-success" };
 }
 
 function createWorkflowCreateRequestId() {

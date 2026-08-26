@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowCapacityOverviewSchema,
   WorkflowDefinitionSchema,
+  WorkflowDefinitionListItemSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
@@ -27,6 +28,29 @@ import {
 } from "../src/workflow/trigger.js";
 
 describe("workflow contracts", () => {
+  it("limits each workflow list item to three managed account summaries", () => {
+    const item = {
+      canOperate: true,
+      description: "",
+      hasUnpublishedChanges: false,
+      id: "42",
+      managedAccountCount: 4,
+      managedAccounts: [101, 102, 103].map(id => ({ avatarUrl: "", id, name: `托管账号 ${id}` })),
+      name: "新客欢迎旅程",
+      publishedRevision: 1,
+      runtimeStatus: "active",
+      trigger: "添加好友",
+      updatedAt: "2026-08-26T00:00:00.000Z",
+      workflowType: "chatai_sop",
+    };
+
+    expect(Value.Check(WorkflowDefinitionListItemSchema, item)).toBe(true);
+    expect(Value.Check(WorkflowDefinitionListItemSchema, {
+      ...item,
+      managedAccounts: [...item.managedAccounts, { avatarUrl: "", id: 104, name: "托管账号 104" }],
+    })).toBe(false);
+  });
+
   it("validates the tenant Workflow capacity overview", () => {
     expect(Value.Check(WorkflowCapacityOverviewSchema, {
       capacityRejectedCountToday: 12,

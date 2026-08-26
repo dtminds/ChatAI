@@ -9,10 +9,18 @@ import type { WorkflowDraft } from "./types";
 
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
 
+export type WorkflowManagedAccountSummary = {
+  avatarUrl: string;
+  id: number;
+  name: string;
+};
+
 export type WorkflowListItem = {
   canOperate: boolean;
   description: string;
   id: string;
+  managedAccountCount: number;
+  managedAccounts: WorkflowManagedAccountSummary[];
   name: string;
   publishedRevision: number | null;
   runtimeStatus: "active" | "inactive" | "paused" | "stopped";

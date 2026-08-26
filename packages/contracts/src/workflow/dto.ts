@@ -188,6 +188,12 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
   description: Type.String({ maxLength: 1000 }),
   hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
+  managedAccountCount: Type.Integer({ minimum: 0, maximum: 100 }),
+  managedAccounts: Type.Array(Type.Object({
+    avatarUrl: Type.String(),
+    id: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    name: Type.String(),
+  }, { additionalProperties: false }), { maxItems: 3 }),
   name: Type.String({ minLength: 1, maxLength: 100 }),
   publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   runtimeStatus: WorkflowRuntimeStatusSchema,

@@ -8,6 +8,19 @@ describe("MysqlWorkflowRepository", () => {
 
     await repository.listDefinitions(8, { limit: 20, status: "all" });
 
+    expect(db.selectBuilders[0].selectAll).toBe(false);
+    expect(db.selectBuilders[0].selects[0]?.[0]).toEqual([
+      "description",
+      "draft_json",
+      "draft_semantic_hash",
+      "id",
+      "name",
+      "published_revision",
+      "published_semantic_hash",
+      "runtime_status",
+      "update_time",
+      "workflow_type",
+    ]);
     expect(db.selectBuilders[0].orderBys).toEqual([
       ["update_time", "desc"],
       ["id", "desc"],
@@ -426,6 +439,8 @@ function createWorkflowDbMock(options: {
     selectBuilders: [] as Array<{
       forUpdate: boolean;
       orderBys: unknown[][];
+      selectAll: boolean;
+      selects: unknown[][];
       table: string;
       wheres: unknown[][];
     }>,
@@ -438,13 +453,15 @@ function createWorkflowDbMock(options: {
       const state = {
         forUpdate: false,
         orderBys: [] as unknown[][],
+        selectAll: false,
+        selects: [] as unknown[][],
         table,
         wheres: [] as unknown[][],
       };
       db.selectBuilders.push(state);
       const builder = {
-        select() { return builder; },
-        selectAll() { return builder; },
+        select(...args: unknown[]) { state.selects.push(args); return builder; },
+        selectAll() { state.selectAll = true; return builder; },
         limit() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },

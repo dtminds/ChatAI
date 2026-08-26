@@ -617,42 +617,30 @@ describe("Agent workflow page", () => {
     expect(createDocument.mock.calls[2]?.[0].clientRequestId).not.toBe(firstRequestId);
   });
 
-  it("renders workflows as cards with their descriptions and direct open links", async () => {
+  it("renders workflows in a table with navigation and row actions", async () => {
+    const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
 
-    const card = await screen.findByRole("article", { name: "新人转化旅程" });
+    const table = await screen.findByRole("table", { name: "工作流列表" });
+    const row = within(table).getByRole("row", { name: /新人转化旅程/ });
+    const activeRow = within(table).getByRole("row", { name: /会员复购唤醒/ });
+    const pausedRow = within(table).getByRole("row", { name: /直播后跟进/ });
 
-    expect(within(card).getByText("引导新客户完成首次购买")).toBeInTheDocument();
-    expect(within(card).getByText("草稿")).toBeInTheDocument();
-    expect(within(card).queryByText("8 节点")).not.toBeInTheDocument();
-    expect(within(card).queryByText("运营主管")).not.toBeInTheDocument();
-    expect(within(card).queryByText("今天 18:20")).not.toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: "编辑" })).toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
+    expect(within(row).getByText("草稿")).toBeInTheDocument();
+    expect(within(row).getAllByText("-")).toHaveLength(2);
+    expect(within(row).getAllByLabelText(/^托管账号 /)).toHaveLength(3);
+    expect(within(row).getByText("+1")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
       "href",
       "/chat/workflows/newcomer-conversion",
     );
+    expect(within(row).queryByRole("link", { name: "编辑" })).not.toBeInTheDocument();
+    expect(within(activeRow).getByRole("button", { name: "操作 会员复购唤醒" })).toBeInTheDocument();
+    expect(within(pausedRow).getByText("待启用")).toBeInTheDocument();
+    expect(within(pausedRow).getByRole("button", { name: "操作 直播后跟进" })).toBeInTheDocument();
 
-    const activeCard = screen.getByRole("article", { name: "会员复购唤醒" });
-    const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
-    expect(within(activeCard).getByRole("button", { name: "操作 会员复购唤醒" })).toBeInTheDocument();
-    expect(within(pausedCard).getByText("待启用")).toBeInTheDocument();
-    expect(within(pausedCard).queryByText(/已是最新版本/)).not.toBeInTheDocument();
-    expect(within(pausedCard).getByRole("button", { name: "操作 直播后跟进" })).toBeInTheDocument();
-  });
-
-  it("shows each workflow type on its card", async () => {
-    await getWorkflowDraftRepository().createDocument({
-      name: "企微客户旅程",
-      workflowType: "wecom_sop",
-    });
-
-    renderWorkflowPage("/chat/workflows");
-
-    const chataiCard = await screen.findByRole("article", { name: "新人转化旅程" });
-    const wecomCard = screen.getByRole("article", { name: "企微客户旅程" });
-    expect(within(chataiCard).getByText("ChatAI SOP")).toBeInTheDocument();
-    expect(within(wecomCard).getByText("企微客户 SOP")).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "操作 新人转化旅程" }));
+    expect(screen.getByRole("menuitem", { name: "编辑工作流" })).toBeInTheDocument();
   });
 
   it("finds workflows by description", async () => {
@@ -731,23 +719,10 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("待发布流程")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "待启用" }));
-    const card = await screen.findByRole("article", { name: "待发布流程" });
-    expect(within(card).getByText("未启用")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "操作 待发布流程" }));
+    const row = await screen.findByRole("row", { name: /待发布流程/ });
+    expect(within(row).getByText("未启用")).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "操作 待发布流程" }));
     expect(screen.getByRole("menuitem", { name: "启用" })).toBeInTheDocument();
-  });
-
-  it("shows an explicit placeholder when a workflow has no description", async () => {
-    await getWorkflowDraftRepository().createDocument({
-      clientRequestId: "empty-description-workflow",
-      name: "未填写描述的流程",
-      workflowType: "chatai_sop",
-    });
-
-    renderWorkflowPage("/chat/workflows");
-
-    const card = await screen.findByRole("article", { name: "未填写描述的流程" });
-    expect(within(card).getByText("暂无描述")).toBeInTheDocument();
   });
 
   it("requires an explicit workflow type before the direct create route creates a document", async () => {
@@ -877,7 +852,7 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("button", { name: "刷新数据" })).toBeInTheDocument();
   });
 
-  it("opens workflow cards in the current tab", async () => {
+  it("opens workflow rows in the current tab", async () => {
     renderWorkflowPage("/chat/workflows");
 
     const editLink = await screen.findByRole("link", { name: "打开 新人转化旅程" });
@@ -931,8 +906,8 @@ describe("Agent workflow page", () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
 
-    const card = await screen.findByRole("article", { name: "直播后跟进" });
-    await user.click(within(card).getByRole("button", { name: "操作 直播后跟进" }));
+    const row = await screen.findByRole("row", { name: /直播后跟进/ });
+    await user.click(within(row).getByRole("button", { name: "操作 直播后跟进" }));
     await user.click(screen.getByRole("menuitem", { name: "启用" }));
 
     await waitFor(() => {
@@ -962,8 +937,8 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("menuitem", { name: "启用" }));
     await waitFor(() => expect(toastError).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow"));
 
-    const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
-    await user.click(within(pausedCard).getByRole("button", { name: "操作 直播后跟进" }));
+    const pausedRow = screen.getByRole("row", { name: /直播后跟进/ });
+    await user.click(within(pausedRow).getByRole("button", { name: "操作 直播后跟进" }));
     await user.click(screen.getByRole("menuitem", { name: "启用" }));
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
     expect(toastError).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
@@ -991,7 +966,7 @@ describe("Agent workflow page", () => {
     });
   });
 
-  it("filters workflow cards and edits metadata from the card menu", async () => {
+  it("filters workflow rows and edits metadata from the row menu", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
 
@@ -1020,7 +995,6 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText("新客首购旅程")).toBeInTheDocument();
-    expect(screen.getByText("帮助新客户完成第一次购买")).toBeInTheDocument();
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
     expect(getWorkflowDocument("newcomer-conversion").description).toBe("帮助新客户完成第一次购买");
   });

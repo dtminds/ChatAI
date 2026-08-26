@@ -20,6 +20,7 @@ import type {
   WorkflowRevision,
   WorkflowSaveDraftRequest,
   WorkflowStartConfig,
+  WorkflowStartDraftConfig,
   WorkflowType,
   WorkflowTypeEntitlementResult,
   WorkflowLlmTestAttempt,
@@ -42,6 +43,7 @@ import {
   isWorkflowNodeDraftConfig,
   WorkflowMessageSchema,
   WorkflowStartConfigSchema,
+  WorkflowStartDraftConfigSchema,
   WorkflowMessagesV1Schema,
   WorkflowDirectEntryEndpointKeySchema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
@@ -81,12 +83,18 @@ import {
 } from "../../shared/errors.js";
 import type {
   WorkflowDefinitionListCursor,
+  WorkflowDefinitionListRecord,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowPublishReviewRecord,
   WorkflowRepository,
   WorkflowRevisionRecord,
 } from "./workflow-repository-types.js";
+import {
+  EmptyWorkflowManagedAccountReader,
+  type WorkflowManagedAccountReader,
+  type WorkflowManagedAccountSummary,
+} from "./workflow-managed-account-reader.js";
 import {
   UnavailableWorkflowSourceIdentityResolver,
   type WorkflowSourceIdentityResolver,
@@ -106,6 +114,7 @@ export type WorkflowServiceOptions = {
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   llmTestTimeoutMs?: number;
   llmTestTtlMs?: number;
+  managedAccountReader?: WorkflowManagedAccountReader;
 };
 
 export class WorkflowService {
@@ -116,6 +125,7 @@ export class WorkflowService {
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   private readonly llmTestTimeoutMs: number;
   private readonly llmTestTtlMs: number;
+  private readonly managedAccountReader: WorkflowManagedAccountReader;
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -131,6 +141,8 @@ export class WorkflowService {
     this.llmTestAttemptRepository = options.llmTestAttemptRepository;
     this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
+    this.managedAccountReader = options.managedAccountReader
+      ?? new EmptyWorkflowManagedAccountReader();
   }
 
   async getDirectEntryEndpoint(
@@ -373,8 +385,24 @@ export class WorkflowService {
       query: input.query?.trim() || undefined,
       status: input.status,
     });
+    const managedAccountIdsByWorkflowId = new Map(page.items.map(record => [
+      record.id,
+      getWorkflowListManagedAccountIds(record.draft),
+    ]));
+    const visibleManagedAccountIds = [...new Set(
+      [...managedAccountIdsByWorkflowId.values()].flatMap(ids => ids.slice(0, 3)),
+    )];
+    const managedAccountsById = await this.managedAccountReader.findByIds(
+      scope.uid,
+      visibleManagedAccountIds,
+    );
+
     return {
-      items: page.items.map(toDefinitionListItem),
+      items: page.items.map(record => toDefinitionListItem(
+        record,
+        managedAccountIdsByWorkflowId.get(record.id) ?? [],
+        managedAccountsById,
+      )),
       nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
     };
   }
@@ -982,12 +1010,19 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
   }
 }
 
-function toDefinitionListItem(record: WorkflowDefinitionRecord): WorkflowDefinitionListItem {
+function toDefinitionListItem(
+  record: WorkflowDefinitionListRecord,
+  managedAccountIds: number[],
+  managedAccountsById: Map<number, WorkflowManagedAccountSummary>,
+): WorkflowDefinitionListItem {
   return {
     canOperate: true,
     description: record.description,
     hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
     id: record.id,
+    managedAccountCount: managedAccountIds.length,
+    managedAccounts: managedAccountIds.slice(0, 3)
+      .flatMap(id => managedAccountsById.get(id) ?? []),
     name: record.name,
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
@@ -995,6 +1030,14 @@ function toDefinitionListItem(record: WorkflowDefinitionRecord): WorkflowDefinit
     updatedAt: record.updatedAt.toISOString(),
     workflowType: record.workflowType,
   };
+}
+
+function getWorkflowListManagedAccountIds(draft: WorkflowDraft) {
+  const entryNode = draft.nodes.find(node => node.data.kind === "start");
+  if (!entryNode) return [];
+  const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
+  if (!Value.Check(WorkflowStartDraftConfigSchema, config) || !("seatIds" in config)) return [];
+  return (config as WorkflowStartDraftConfig & { seatIds: number[] }).seatIds;
 }
 
 function getWorkflowListTrigger(draft: WorkflowDraft) {

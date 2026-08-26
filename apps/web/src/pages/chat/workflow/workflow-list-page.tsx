@@ -75,6 +75,12 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
 
 const workflowListPageSize = 10;
 
+type WorkflowListPaginationState = {
+  cursors: Array<string | undefined>;
+  filterKey: string;
+  page: number;
+};
+
 export function WorkflowListPage({
   repository = getWorkflowDraftRepository(),
 }: {
@@ -83,14 +89,21 @@ export function WorkflowListPage({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const [page, setPage] = useState(1);
-  const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
+  const listFilterKey = JSON.stringify([debouncedQuery, statusFilter]);
+  const [pagination, setPagination] = useState<WorkflowListPaginationState>({
+    cursors: [undefined],
+    filterKey: listFilterKey,
+    page: 1,
+  });
+  const paginationMatchesFilter = pagination.filterKey === listFilterKey;
+  const page = paginationMatchesFilter ? pagination.page : 1;
+  const cursor = paginationMatchesFilter ? pagination.cursors[page - 1] : undefined;
   const listInput = useMemo(() => ({
-    cursor: pageCursors[page - 1],
+    cursor,
     limit: workflowListPageSize,
     query: debouncedQuery || undefined,
     status: statusFilter,
-  }), [debouncedQuery, page, pageCursors, statusFilter]);
+  }), [cursor, debouncedQuery, statusFilter]);
   const { items, nextCursor, reload, status } = useWorkflowListResource(repository, listInput);
   const capacity = useWorkflowCapacityResource(repository);
   const navigate = useNavigate();
@@ -103,9 +116,10 @@ export function WorkflowListPage({
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   useEffect(() => {
-    setPage(1);
-    setPageCursors([undefined]);
-  }, [debouncedQuery, statusFilter]);
+    setPagination(current => current.filterKey === listFilterKey
+      ? current
+      : { cursors: [undefined], filterKey: listFilterKey, page: 1 });
+  }, [listFilterKey]);
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
@@ -170,7 +184,15 @@ export function WorkflowListPage({
     try {
       await Promise.resolve(repository.deleteDocument(deleteTarget.id));
       setDeleteTarget(null);
-      await reload();
+      if (page > 1 && items.length === 1) {
+        setPagination(current => ({
+          cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
+          filterKey: listFilterKey,
+          page: page - 1,
+        }));
+      } else {
+        await reload();
+      }
     }
     catch (error) {
       setOperationError(getWorkflowOperationErrorMessage(error));
@@ -318,7 +340,12 @@ export function WorkflowListPage({
                   href="#"
                   onClick={(event) => {
                     event.preventDefault();
-                    if (page > 1) setPage(current => current - 1);
+                    if (page <= 1) return;
+                    setPagination(current => ({
+                      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
+                      filterKey: listFilterKey,
+                      page: page - 1,
+                    }));
                   }}
                 />
               </PaginationItem>
@@ -335,12 +362,17 @@ export function WorkflowListPage({
                   onClick={(event) => {
                     event.preventDefault();
                     if (!nextCursor) return;
-                    setPageCursors(current => {
-                      const next = [...current];
-                      next[page] = nextCursor;
-                      return next;
+                    setPagination(current => {
+                      const cursors = current.filterKey === listFilterKey
+                        ? [...current.cursors]
+                        : [undefined];
+                      cursors[page] = nextCursor;
+                      return {
+                        cursors,
+                        filterKey: listFilterKey,
+                        page: page + 1,
+                      };
                     });
-                    setPage(current => current + 1);
                   }}
                 />
               </PaginationItem>

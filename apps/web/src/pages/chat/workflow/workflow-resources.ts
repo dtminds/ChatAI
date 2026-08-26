@@ -83,18 +83,34 @@ export function useWorkflowListResource(
   input: WorkflowListInput = {},
 ) {
   const loadRequestRef = useRef(0);
-  const [state, setState] = useState<WorkflowResourceState<WorkflowListPage>>({
+  const inputKey = JSON.stringify([
+    input.cursor ?? null,
+    input.limit ?? null,
+    input.query ?? null,
+    input.status ?? null,
+  ]);
+  const [state, setState] = useState<WorkflowResourceState<WorkflowListPage> & {
+    inputKey: string;
+    repository: WorkflowDraftRepository;
+  }>({
     data: null,
     error: null,
+    inputKey,
+    repository,
     status: "loading",
   });
+  const stateMatchesInput = state.inputKey === inputKey && state.repository === repository;
 
   const reload = useCallback(async () => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
     setState((currentState) => ({
-      data: currentState.data,
+      data: currentState.inputKey === inputKey && currentState.repository === repository
+        ? currentState.data
+        : null,
       error: null,
+      inputKey,
+      repository,
       status: "loading",
     }));
 
@@ -102,7 +118,7 @@ export function useWorkflowListResource(
       const documents = await Promise.resolve(repository.listDocuments(input));
 
       if (loadRequestRef.current === requestId) {
-        setState({ data: documents, error: null, status: "ready" });
+        setState({ data: documents, error: null, inputKey, repository, status: "ready" });
       }
     }
     catch (error) {
@@ -110,11 +126,13 @@ export function useWorkflowListResource(
         setState({
           data: null,
           error: normalizeWorkflowRepositoryError(error),
+          inputKey,
+          repository,
           status: "error",
         });
       }
     }
-  }, [input.cursor, input.limit, input.query, input.status, repository]);
+  }, [input.cursor, input.limit, input.query, input.status, inputKey, repository]);
 
   useEffect(() => {
     void reload();
@@ -125,11 +143,11 @@ export function useWorkflowListResource(
   }, [reload]);
 
   return {
-    error: state.error,
-    items: state.data?.items ?? [],
-    nextCursor: state.data?.nextCursor ?? null,
+    error: stateMatchesInput ? state.error : null,
+    items: stateMatchesInput ? state.data?.items ?? [] : [],
+    nextCursor: stateMatchesInput ? state.data?.nextCursor ?? null : null,
     reload,
-    status: state.status,
+    status: stateMatchesInput ? state.status : "loading",
   };
 }
 

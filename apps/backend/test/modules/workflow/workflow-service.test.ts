@@ -498,6 +498,23 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.managedAccounts.map(account => account.id)).toEqual([101, 102, 103]);
   });
 
+  it("shows a selected trigger for an incomplete Start draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [],
+        triggers: [{ keywords: [], type: "message.received" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]?.trigger).toBe("用户消息");
+  });
+
   it("loads persisted Run totals for only the current Workflow page", async () => {
     const repository = new InMemoryWorkflowRepository();
     const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });

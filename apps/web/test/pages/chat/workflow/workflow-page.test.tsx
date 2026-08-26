@@ -31,6 +31,8 @@ import {
   getWorkflowDraftRepository,
   importWorkflowDraft,
   resetWorkflowDocumentsForTest,
+  type WorkflowListInput,
+  type WorkflowListPage,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
 import {
@@ -707,6 +709,52 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument());
   });
 
+  it("starts a changed filter from the first page without retaining old rows", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const newcomer = await baseRepository.getDocument("newcomer-conversion");
+    const vip = await baseRepository.getDocument("vip-reactivation");
+    let resolveActiveList: ((page: WorkflowListPage) => void) | undefined;
+    const listDocuments = vi.fn((input: WorkflowListInput = {}): WorkflowListPage | Promise<WorkflowListPage> => {
+      if (input.status === "active") {
+        return new Promise<WorkflowListPage>((resolve) => {
+          resolveActiveList = resolve;
+        });
+      }
+      return input.cursor
+        ? { items: [newcomer], nextCursor: null }
+        : { items: [vip], nextCursor: "page-2" };
+    });
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
+
+    await screen.findByText("会员复购唤醒");
+    await user.click(screen.getByRole("link", { name: "下一页" }));
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("tab", { name: "运行中" }));
+
+    await waitFor(() => expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({
+      cursor: undefined,
+      status: "active",
+    })));
+    expect(within(screen.getByRole("table", { name: "工作流列表" })).getByRole("status"))
+      .toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveActiveList?.({
+        items: [vip],
+        nextCursor: null,
+      });
+    });
+    expect(await screen.findByText("会员复购唤醒")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "全部" }));
+    await waitFor(() => expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({
+      cursor: undefined,
+      status: "all",
+    })));
+  });
+
   it("moves an inactive workflow from draft to ready after publishing", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
@@ -1012,6 +1060,28 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
     });
+  });
+
+  it("returns to the previous page after deleting its only workflow", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const newcomer = await baseRepository.getDocument("newcomer-conversion");
+    const vip = await baseRepository.getDocument("vip-reactivation");
+    const listDocuments = vi.fn((input: WorkflowListInput = {}) => input.cursor
+      ? { items: [newcomer], nextCursor: null }
+      : { items: [vip], nextCursor: "page-2" });
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
+
+    await screen.findByText("会员复购唤醒");
+    await user.click(screen.getByRole("link", { name: "下一页" }));
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    expect(await screen.findByText("会员复购唤醒")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("aria-disabled", "true");
+    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: undefined }));
   });
 
   it("renders a named workflow editor route with the dedicated canvas header", async () => {

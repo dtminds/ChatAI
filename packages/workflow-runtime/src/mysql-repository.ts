@@ -2277,11 +2277,14 @@ export class MysqlWorkflowRuntimeRepository implements
         .execute();
       if (candidateRows.length === 0) return { dead: 0, recovered: 0 };
       const runIds = [...new Set(candidateRows.map(row => row.run_id))];
-      await trx.selectFrom(RUN_TABLE).select("id")
+      const lockedRuns = await trx.selectFrom(RUN_TABLE).select(["id", "status"])
         .where("id", "in", runIds)
         .orderBy("id", "asc")
         .forUpdate()
         .execute();
+      const activeRunIdSet = new Set(lockedRuns
+        .filter(run => ACTIVE_RUN_STATUSES.includes(parseRunStatus(run.status) as typeof ACTIVE_RUN_STATUSES[number]))
+        .map(run => normalizeId(run.id)));
       const rows = await trx.selectFrom(TASK_TABLE).select([
         "attempt", "id", "node_id", "node_kind", "revision", "run_id", "sequence", "shard_id", "uid", "workflow_id",
       ])
@@ -2338,7 +2341,13 @@ export class MysqlWorkflowRuntimeRepository implements
           task_version: sql<number>`task_version + 1`,
         }).where("id", "in", deadIds).where("status", "=", "running")
           .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
-        const deadRunIds = [...new Set(deadRows.map(row => row.run_id))];
+        const runsToFail = [...new Map(deadRows
+          .filter(row => activeRunIdSet.has(normalizeId(row.run_id)))
+          .map(row => [normalizeId(row.run_id), row])).values()];
+        const deadRunIds = runsToFail.map(row => row.run_id);
+        if (deadRunIds.length === 0) {
+          return { dead: deadIds.length, recovered: recoverableIds.length };
+        }
         const runUpdate = await trx.updateTable(RUN_TABLE).set({
           completed_at: input.now,
           lock_version: sql<number>`lock_version + 1`,
@@ -2348,19 +2357,16 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("id", "in", deadRunIds)
           .where("status", "in", ["queued", "running", "waiting"])
           .executeTakeFirstOrThrow();
-        if (Number(runUpdate.numUpdatedRows) === deadRunIds.length) {
-          const deadRunIdSet = new Set(deadRunIds.map(normalizeId));
-          await releaseTenantCapacityForRuns(trx, deadRows
-            .filter(row => deadRunIdSet.has(normalizeId(row.run_id)))
-            .map(row => ({ uid: normalizeTenantId(row.uid) })));
-          await recordWorkflowRunMetrics(trx, [...new Map(deadRows
-            .filter(row => deadRunIdSet.has(normalizeId(row.run_id)))
-            .map(row => [normalizeId(row.run_id), {
-              kind: "failed" as const,
-              occurredAt: input.now,
-              uid: normalizeTenantId(row.uid),
-              workflowId: row.workflow_id,
-            }])).values()]);
+        if (Number(runUpdate.numUpdatedRows) === runsToFail.length) {
+          await releaseTenantCapacityForRuns(trx, runsToFail.map(row => ({
+            uid: normalizeTenantId(row.uid),
+          })));
+          await recordWorkflowRunMetrics(trx, runsToFail.map(row => ({
+            kind: "failed" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(row.uid),
+            workflowId: row.workflow_id,
+          })));
         }
       }
       return { dead: deadIds.length, recovered: recoverableIds.length };

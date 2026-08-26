@@ -508,6 +508,30 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task"]);
   });
 
+  it("releases expired-lease capacity once for each active Run", async () => {
+    const db = createLeaseRecoveryDbMock({
+      lockedRuns: [
+        { id: "5", status: "running" },
+        { id: "6", status: "completed" },
+      ],
+      runUpdateCount: 1,
+      tasks: [
+        leaseRecoveryTask({ id: "7", run_id: "5", sequence: 1 }),
+        leaseRecoveryTask({ id: "8", run_id: "5", sequence: 2 }),
+        leaseRecoveryTask({ id: "9", run_id: "6", sequence: 1 }),
+      ],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 3,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    })).resolves.toEqual({ dead: 3, recovered: 0 });
+
+    expect(db.capacityReleaseCounts).toEqual([1]);
+  });
+
   it("does not expire an Inference Job whose lease was renewed after recovery scanning", async () => {
     const now = new Date("2026-07-10T00:02:00.000Z");
     const db = createInferenceRecoveryRaceDbMock({
@@ -1426,20 +1450,42 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
   return db;
 }
 
-function createLeaseRecoveryDbMock() {
-  const task = {
-    attempt: 1,
+function leaseRecoveryTask(overrides: Partial<ReturnType<typeof leaseRecoveryTaskFixture>> = {}) {
+  return { ...leaseRecoveryTaskFixture(), ...overrides };
+}
+
+function leaseRecoveryTaskFixture() {
+  return {
+    attempt: 3,
     id: "7",
     node_id: "wait-1",
     node_kind: "wait",
     revision: 1,
     run_id: "5",
+    sequence: 1,
     shard_id: 1,
     uid: 8,
     workflow_id: "42",
   };
+}
+
+function createLeaseRecoveryDbMock(options: {
+  lockedRuns?: Array<{ id: string; status: string }>;
+  runUpdateCount?: number;
+  tasks?: ReturnType<typeof leaseRecoveryTask>[];
+} = {}) {
+  const tasks = options.tasks ?? [leaseRecoveryTask({ attempt: 1 })];
   const db = {
+    capacityReleaseCounts: [] as number[],
     lockOrder: [] as string[],
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       let locked = false;
       const builder = {
@@ -1454,8 +1500,10 @@ function createLeaseRecoveryDbMock() {
         skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
-          if (table === "xy_wap_embed_workflow_run") return [{ id: "5" }];
-          return locked || table === "xy_wap_embed_workflow_task" ? [task] : [];
+          if (table === "xy_wap_embed_workflow_run") {
+            return options.lockedRuns ?? [{ id: "5", status: "running" }];
+          }
+          return locked || table === "xy_wap_embed_workflow_task" ? tasks : [];
         },
       };
       return builder;
@@ -1465,11 +1513,26 @@ function createLeaseRecoveryDbMock() {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
       };
     },
-    updateTable() {
+    updateTable(table: string) {
       const builder = {
         set() { return builder; },
-        where() { return builder; },
-        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_capacity_guard"
+            && args[0] === "active_run_count" && args[1] === ">=") {
+            db.capacityReleaseCounts.push(args[2] as number);
+          }
+          return builder;
+        },
+        async executeTakeFirst() {
+          return { numUpdatedRows: BigInt(table === "xy_wap_embed_workflow_run"
+            ? (options.runUpdateCount ?? 1)
+            : 1) };
+        },
+        async executeTakeFirstOrThrow() {
+          return { numUpdatedRows: BigInt(table === "xy_wap_embed_workflow_run"
+            ? (options.runUpdateCount ?? 1)
+            : 1) };
+        },
       };
       return builder;
     },

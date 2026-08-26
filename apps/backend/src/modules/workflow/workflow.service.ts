@@ -1056,8 +1056,8 @@ function getWorkflowListTrigger(draft: WorkflowDraft) {
   const entryNode = draft.nodes.find(node => node.data.kind === "start");
   if (!entryNode) return "未配置";
   const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
-  if (!Value.Check(WorkflowStartConfigSchema, config)) return "未配置";
-  const labels = (config as WorkflowStartConfig).triggers.map((trigger) => {
+  if (!Value.Check(WorkflowStartDraftConfigSchema, config)) return "未配置";
+  const labels = (config as WorkflowStartDraftConfig).triggers.map((trigger) => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";
     return "用户消息";

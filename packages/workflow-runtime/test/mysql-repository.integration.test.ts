@@ -324,6 +324,79 @@ describe("MySQL workflow runtime repository contract", () => {
       .resolves.toEqual({ active_run_count: 1 });
   });
 
+  it("releases expired-lease capacity once per active Run", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const createRun = async (suffix: string) => {
+      const result = await repository.createRunWithInitialTask({
+        activeRunLimit: 10_000,
+        context: {},
+        entryEventId: `lease-capacity-event-${suffix}`,
+        entryPolicy: { mode: "never" },
+        initialNodeId: "start",
+        initialNodeKind: "start",
+        occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+        revision: 1,
+        shardId: 0,
+        subjectId: `lease-capacity-subject-${suffix}`,
+        subjectType: "chatai_contact",
+        uid: 9,
+        workflowId: "31",
+        workflowType: "chatai_sop",
+      });
+      if (result.kind !== "success") throw new Error(`Run creation failed: ${result.kind}`);
+      return result;
+    };
+    const expiring = await createRun("expiring");
+    await createRun("surviving");
+    const alreadyTerminal = await createRun("terminal");
+    const expiredAt = new Date("2099-01-01T00:01:00+08:00");
+
+    await database.updateTable("xy_wap_embed_workflow_task").set({
+      attempt: 3,
+      lease_expires_at: expiredAt,
+      lease_owner: "worker-1",
+      status: "running",
+    }).where("id", "in", [expiring.task.id, alreadyTerminal.task.id]).executeTakeFirstOrThrow();
+    const expiringTask = await database.selectFrom("xy_wap_embed_workflow_task")
+      .selectAll()
+      .where("id", "=", expiring.task.id)
+      .executeTakeFirstOrThrow();
+    const { create_time: _createTime, id: _id, update_time: _updateTime, ...duplicateTask } = expiringTask;
+    await database.insertInto("xy_wap_embed_workflow_task").values({
+      ...duplicateTask,
+      sequence: 2,
+    }).executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_run")
+      .set({ status: "completed" })
+      .where("id", "=", alreadyTerminal.run.id)
+      .executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_capacity_guard")
+      .set({ active_run_count: 2 })
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow();
+
+    await expect(repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 3,
+      now: new Date("2099-01-01T00:02:00+08:00"),
+    })).resolves.toEqual({ dead: 3, recovered: 0 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+      .select("active_run_count")
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ active_run_count: 1 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_run")
+      .select(["id", "status"])
+      .where("id", "in", [expiring.run.id, alreadyTerminal.run.id])
+      .orderBy("id", "asc")
+      .execute())
+      .resolves.toEqual([
+        { id: expiring.run.id, status: "failed" },
+        { id: alreadyTerminal.run.id, status: "completed" },
+      ]);
+  });
+
   it("increments the daily capacity rejection metric once per Entry Inbox message", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);

@@ -5,6 +5,7 @@ import {
   WorkflowRepositoryError,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraftRepository } from "@/pages/chat/workflow/workflow-draft-service";
+import type { WorkflowListInput } from "@/pages/chat/workflow/workflow-draft-service";
 import {
   useWorkflowCapacityResource,
   useWorkflowDocumentResource,
@@ -54,6 +55,34 @@ describe("workflow resources", () => {
 
     expect(result.current.status).toBe("ready");
     expect(result.current.items.map((workflow) => workflow.id)).toContain("newcomer-conversion");
+  });
+
+  it("does not retain list rows when the request input changes", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    let resolveFilteredList: ((items: ReturnType<typeof baseRepository.listDocuments>) => void) | undefined;
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      listDocuments: (input = {}) => input.status === "draft"
+        ? new Promise((resolve) => {
+            resolveFilteredList = resolve;
+          })
+        : baseRepository.listDocuments(input),
+    };
+    const { rerender, result } = renderHook(
+      ({ input }: { input: WorkflowListInput }) => useWorkflowListResource(repository, input),
+      { initialProps: { input: { status: "all" } as WorkflowListInput } },
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.items.length).toBeGreaterThan(0);
+
+    rerender({ input: { status: "draft" } });
+
+    expect(result.current.status).toBe("loading");
+    expect(result.current.items).toEqual([]);
+    await act(async () => {
+      resolveFilteredList?.(baseRepository.listDocuments({ status: "draft" }));
+    });
+    expect(result.current.status).toBe("ready");
   });
 
   it("distinguishes missing documents from retryable read failures", async () => {

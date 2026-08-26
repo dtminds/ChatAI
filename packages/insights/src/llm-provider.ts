@@ -40,14 +40,12 @@ export type OpenAiCompatibleProviderConfig = {
 
 type ProviderEnv = {
   VOLCENGINE_ARK_API_KEY?: string;
-  VOLCENGINE_ARK_BASE_URL?: string;
-  VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
   VOLCENGINE_ARK_LITE_MODEL?: string;
-  VOLCENGINE_ARK_MAX_TOKENS?: string;
   VOLCENGINE_ARK_MODEL?: string;
 };
 
-const DEFAULT_MAX_TOKENS = 4096;
+const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+const MAX_COMPLETION_TOKENS = 4_096;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
@@ -63,14 +61,10 @@ export function createVolcengineArkProviderConfig(
   env: ProviderEnv = process.env,
 ): OpenAiCompatibleProviderConfig {
   const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
-  const baseUrl = env.VOLCENGINE_ARK_BASE_URL?.trim();
   const model = env.VOLCENGINE_ARK_MODEL?.trim();
-  const maxTokens = parsePositiveInteger(env.VOLCENGINE_ARK_MAX_TOKENS) ?? DEFAULT_MAX_TOKENS;
   const liteModel = env.VOLCENGINE_ARK_LITE_MODEL?.trim() || model;
-  const liteMaxTokens = parsePositiveInteger(env.VOLCENGINE_ARK_LITE_MAX_TOKENS) ?? maxTokens;
   const missing = [
     ["VOLCENGINE_ARK_API_KEY", apiKey],
-    ["VOLCENGINE_ARK_BASE_URL", baseUrl],
     ["VOLCENGINE_ARK_MODEL", model],
   ]
     .filter(([, value]) => !value)
@@ -83,20 +77,13 @@ export function createVolcengineArkProviderConfig(
     );
   }
 
-  if (!isHttpsUrl(baseUrl)) {
-    throw new InsightsConfigError(
-      "LLM_PROVIDER_BASE_URL_INVALID",
-      "VOLCENGINE_ARK_BASE_URL must be an HTTPS URL",
-    );
-  }
-
   return {
     analysisMode: "multi_step",
     apiKey: requireString(apiKey),
-    baseUrl,
-    liteMaxTokens,
+    baseUrl: VOLCENGINE_ARK_BASE_URL,
+    liteMaxTokens: MAX_COMPLETION_TOKENS,
     liteModel: requireString(liteModel),
-    maxTokens,
+    maxTokens: MAX_COMPLETION_TOKENS,
     model: requireString(model),
     providerCode: "volcengine_ark",
     protocol: "openai-compatible",
@@ -686,24 +673,6 @@ async function readResponseText(response: Response) {
   const text = await response.text();
 
   return text.slice(0, 1_000);
-}
-
-function isHttpsUrl(value: string | undefined): value is string {
-  if (!value) {
-    return false;
-  }
-
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function parsePositiveInteger(value: string | undefined) {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {

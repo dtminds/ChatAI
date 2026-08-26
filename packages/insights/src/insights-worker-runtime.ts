@@ -1,4 +1,3 @@
-import { InsightsConfigError } from "./errors.js";
 import type { Kysely } from "kysely";
 import type { Database } from "@chatai/database";
 import {
@@ -20,28 +19,17 @@ import {
 import os from "node:os";
 
 export type InsightsWorkerRuntimeConfig = {
-  batchSize: number;
-  discoveryBatchSize: number;
-  discoveryMaxBatchesPerTick: number;
   enabled: boolean;
-  intervalMs: number;
   modelEnabled: boolean;
   traceUids: ReadonlySet<number>;
 };
 
 type WorkerRuntimeEnv = {
-  INSIGHTS_WORKER_BATCH_SIZE?: string;
-  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE?: string;
-  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK?: string;
   INSIGHTS_WORKER_ENABLED?: string;
-  INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
   INSIGHTS_WORKER_TRACE_UID_ALLOWLIST?: string;
   VOLCENGINE_ARK_API_KEY?: string;
-  VOLCENGINE_ARK_BASE_URL?: string;
-  VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
   VOLCENGINE_ARK_LITE_MODEL?: string;
-  VOLCENGINE_ARK_MAX_TOKENS?: string;
   VOLCENGINE_ARK_MODEL?: string;
 };
 
@@ -51,28 +39,7 @@ export function parseInsightsWorkerRuntimeConfig(
   env: WorkerRuntimeEnv = process.env,
 ): InsightsWorkerRuntimeConfig {
   return {
-    batchSize: parsePositiveInteger(
-      env.INSIGHTS_WORKER_BATCH_SIZE,
-      "INSIGHTS_WORKER_BATCH_SIZE",
-      200,
-    ),
-    discoveryBatchSize: parsePositiveInteger(
-      env.INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE,
-      "INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE",
-      1_000,
-    ),
-    discoveryMaxBatchesPerTick: parsePositiveInteger(
-      env.INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK,
-      "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK",
-      20,
-    ),
     enabled: parseBoolean(env.INSIGHTS_WORKER_ENABLED),
-    intervalMs: parseMinimumInteger(
-      env.INSIGHTS_WORKER_INTERVAL_MS,
-      "INSIGHTS_WORKER_INTERVAL_MS",
-      3_000,
-      1_000,
-    ),
     modelEnabled: parseBoolean(env.INSIGHTS_WORKER_MODEL_ENABLED),
     traceUids: parseInsightsWorkerTraceUids(
       env.INSIGHTS_WORKER_TRACE_UID_ALLOWLIST,
@@ -106,9 +73,6 @@ export function createInsightsWorkerRuntime(input: {
     ? createInsightAnalyzer(input.env, input.logger, observability)
     : undefined;
   const service = new InsightsWorkerService(repository, {
-    batchSize: config.batchSize,
-    discoveryBatchSize: config.discoveryBatchSize,
-    discoveryMaxBatchesPerTick: config.discoveryMaxBatchesPerTick,
     logger: input.logger,
     model,
     observability,
@@ -118,7 +82,6 @@ export function createInsightsWorkerRuntime(input: {
   return startInsightsWorkerPipelines({
     analysis: () => service.runAnalysisOnce(),
     discovery: () => service.runDiscoveryOnce().then(() => undefined),
-    intervalMs: config.intervalMs,
     logger: input.logger,
     observability,
     sessionization: () => service.runSessionizationOnce(),
@@ -142,33 +105,4 @@ function createInsightAnalyzer(
 
 function parseBoolean(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
-}
-
-function parsePositiveInteger(value: string | undefined, name: string, fallback: number) {
-  if (!value?.trim()) {
-    return fallback;
-  }
-
-  const parsed = Number(value);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new InsightsConfigError("INSIGHTS_WORKER_CONFIG_INVALID", `${name} must be a positive integer`);
-  }
-
-  return parsed;
-}
-
-function parseMinimumInteger(
-  value: string | undefined,
-  name: string,
-  fallback: number,
-  minimum: number,
-) {
-  const parsed = parsePositiveInteger(value, name, fallback);
-
-  if (parsed < minimum) {
-    throw new InsightsConfigError("INSIGHTS_WORKER_CONFIG_INVALID", `${name} must be at least ${minimum}`);
-  }
-
-  return parsed;
 }

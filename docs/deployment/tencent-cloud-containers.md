@@ -182,18 +182,15 @@ worker 不接收线上流量，通常不需要配置 readiness probe。后续如
 worker 必要环境变量：
 
 ```text
-NODE_ENV=production
 DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
 LOG_LEVEL=info
+AGENT_USER_MEMORY_WORKER_ENABLED=false
 INSIGHTS_WORKER_ENABLED=true
 INSIGHTS_WORKER_MODEL_ENABLED=false
-INSIGHTS_WORKER_INTERVAL_MS=3000
-INSIGHTS_WORKER_BATCH_SIZE=200
-INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE=1000
-INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK=20
+INSIGHTS_WORKER_TRACE_UID_ALLOWLIST=
 ```
 
-如需启用模型分析，再配置火山方舟相关变量并将 `INSIGHTS_WORKER_MODEL_ENABLED` 改为 `true`。
+启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY` 和 `VOLCENGINE_ARK_MODEL`。Insights 可选配置 `VOLCENGINE_ARK_LITE_MODEL` 使用独立的轻量模型；未配置时复用主模型。
 
 ## Marketing Workflow Worker 容器要求
 

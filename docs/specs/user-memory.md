@@ -941,12 +941,9 @@ packages/contracts/src/ai-hosting/user-memory.ts
 
 ```env
 AGENT_USER_MEMORY_WORKER_ENABLED=false
-AGENT_USER_MEMORY_DAILY_TIME=02:00
-AGENT_USER_MEMORY_TIMEZONE=Asia/Shanghai
-AGENT_USER_MEMORY_EXECUTION_MODE=sync
 ```
 
-候选会话基数 200、额度倍数 2、最少 5 条、每会话 50 条和默认客户额度 100 先作为集中策略常量/套餐 resolver，不增加环境变量或页面设置。
+每日调度时间 `02:00`、时区 `Asia/Shanghai` 和执行模式 `sync` 与候选会话基数 200、额度倍数 2、最少 5 条、每会话 50 条、默认客户额度 100 一样，作为集中策略常量/套餐 resolver，不增加环境变量或页面设置。
 
 Worker 由独立的 `apps/backend-worker/src/index.ts` 启动，使用独立 runtime、模块内持久化代码、错误码和观测，不得并入 Insights service；本期不为仅代理 Kysely 的空壳 Repository 增加层级。
 

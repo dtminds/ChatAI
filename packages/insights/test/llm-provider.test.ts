@@ -131,9 +131,6 @@ describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
     const config = createVolcengineArkProviderConfig({
       VOLCENGINE_ARK_API_KEY: "secret",
-      VOLCENGINE_ARK_BASE_URL: "https://ark.cn-beijing.volces.com/api/v3",
-      VOLCENGINE_ARK_MAX_TOKENS: "2048",
-      VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
       VOLCENGINE_ARK_LITE_MODEL: "ep-20260601000000-lite",
       VOLCENGINE_ARK_MODEL: "ep-20260601000000-test",
     });
@@ -142,9 +139,9 @@ describe("LLM provider config", () => {
       analysisMode: "multi_step",
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      liteMaxTokens: 1024,
+      liteMaxTokens: 4096,
       liteModel: "ep-20260601000000-lite",
-      maxTokens: 2048,
+      maxTokens: 4096,
       model: "ep-20260601000000-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
@@ -156,15 +153,13 @@ describe("LLM provider config", () => {
   it("uses the main model as the lite fallback when lite env is not configured", () => {
     const config = createVolcengineArkProviderConfig({
       VOLCENGINE_ARK_API_KEY: "secret",
-      VOLCENGINE_ARK_BASE_URL: "https://ark.cn-beijing.volces.com/api/v3",
-      VOLCENGINE_ARK_MAX_TOKENS: "2048",
       VOLCENGINE_ARK_MODEL: "ep-main",
     });
 
     expect(config).toMatchObject({
-      liteMaxTokens: 2048,
+      liteMaxTokens: 4096,
       liteModel: "ep-main",
-      maxTokens: 2048,
+      maxTokens: 4096,
       model: "ep-main",
     });
   });
@@ -284,15 +279,8 @@ describe("LLM provider config", () => {
 
   it("validates required Volcengine Ark env values", () => {
     expect(() => createVolcengineArkProviderConfig({})).toThrow(
-      "VOLCENGINE_ARK_API_KEY, VOLCENGINE_ARK_BASE_URL, VOLCENGINE_ARK_MODEL",
+      "VOLCENGINE_ARK_API_KEY, VOLCENGINE_ARK_MODEL",
     );
-    expect(() =>
-      createVolcengineArkProviderConfig({
-        VOLCENGINE_ARK_API_KEY: "secret",
-        VOLCENGINE_ARK_BASE_URL: "not-a-url",
-        VOLCENGINE_ARK_MODEL: "ep-test",
-      }),
-    ).toThrow("VOLCENGINE_ARK_BASE_URL must be an HTTPS URL");
   });
 
   it("masks provider secrets for diagnostics", () => {

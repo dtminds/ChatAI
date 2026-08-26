@@ -7,9 +7,7 @@ import {
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowReviewApproveRequestSchema,
-  WorkflowPublishReviewPageSchema,
   WorkflowReviewRejectRequestSchema,
-  WorkflowRevisionPageSchema,
   WorkflowRuntimeStatusSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
@@ -51,12 +49,15 @@ describe("workflow contracts", () => {
       "handoff",
       "agent",
       "llm",
+      "order-bind",
       "order-query",
+      "order-conversion",
       "tag-query",
       "tag",
       "customer-update",
       "coupon",
       "ai-collect",
+      "audience-filter",
       "ai-intent",
       "end",
     ];
@@ -171,17 +172,6 @@ describe("workflow contracts", () => {
     })).toBe(false);
   });
 
-  it("bounds workflow history response pages", () => {
-    expect(Value.Check(WorkflowRevisionPageSchema, {
-      items: [],
-      nextCursor: "20",
-    })).toBe(true);
-    expect(Value.Check(WorkflowPublishReviewPageSchema, {
-      items: [],
-      nextCursor: null,
-    })).toBe(true);
-  });
-
   it("accepts workflow metadata when creating a workflow", () => {
     expect(Value.Check(WorkflowCreateRequestSchema, {
       clientRequestId: "create-workflow-1",
@@ -238,20 +228,46 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowRuntimeStatusSchema, "paused")).toBe(true);
     expect(Value.Check(WorkflowRuntimeStatusSchema, "stopped")).toBe(true);
   });
-
   it("validates production start and wait configurations", () => {
-    expect(Value.Check(WorkflowStartConfigSchema, {
+    const incompleteFriendSourceConfig = {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-    })).toBe(true);
+    };
+    expect(Value.Check(WorkflowStartDraftConfigSchema, incompleteFriendSourceConfig)).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, incompleteFriendSourceConfig)).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
     })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [{
+        addWayKey: "scan",
+        sourceIds: ["activity-1"],
+        sourceMatchMode: "any",
+        type: "contact.friend_added",
+      }],
+      workUserIds: [201],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [{
+        sourceIds: ["a", "b", "c", "d", "e"],
+        type: "contact.friend_added",
+      }],
+      workUserIds: [201],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [{
+        sourceIds: ["a", "b", "c", "d", "e", "f"],
+        type: "contact.friend_added",
+      }],
+      workUserIds: [201],
+    })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryMode: "audience-import",
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
@@ -263,6 +279,24 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [],
+      workUserIds: [201],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      entryMode: "direct-push",
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{ keywords: ["价格"], type: "message.received" }],
     })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryMode: "event",
@@ -302,14 +336,6 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       messageSendingWindow: { endTime: "20:00", startTime: "25:00" },
-      pushAccountStrategy: "earliest-added",
-      seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
-    })).toBe(false);
-    expect(Value.Check(WorkflowStartConfigSchema, {
-      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
-      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "random",
       seatIds: [101],
       triggers: [{ sourceIds: [], type: "contact.friend_added" }],
     })).toBe(false);
@@ -385,7 +411,7 @@ describe("workflow contracts", () => {
     const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
       entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
@@ -401,7 +427,7 @@ describe("workflow contracts", () => {
     ) => ({
       entryPolicy,
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(Value.Check(WorkflowStartConfigSchema, createConfig({

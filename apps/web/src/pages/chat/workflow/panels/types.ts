@@ -8,9 +8,11 @@ import type {
   WorkflowNode,
   WorkflowNodeKind,
 } from "../types";
+import type { WorkflowFriendAddWayResource } from "../workflow-friend-add-way-resource";
 import type { WorkflowManagedAccountResource } from "../workflow-managed-account-resource";
 
 export type WorkflowNodeSettingsResources = {
+  friendAddWays?: WorkflowFriendAddWayResource;
   managedAccounts?: WorkflowManagedAccountResource;
 };
 
@@ -22,6 +24,7 @@ export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind>
   onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
   resources?: WorkflowNodeSettingsResources;
   testContext?: WorkflowNodeTestContext;
+  workflowId?: string;
 };
 
 export type WorkflowNodeTestContext = {

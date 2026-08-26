@@ -692,7 +692,7 @@ GET /api/server/insights/sessions/:sessionId/messages
 `apps/backend/src/modules/insights/insights-worker-runtime.ts`
 
 - 启动三个独立 ticker。
-- discovery 使用独立的 `INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE=1000` 和 `INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK=20`，每个 tick 有界 drain；UID claim 数、UID 单次预算和 analysis concurrency 继续使用各自默认值。
+- discovery 使用固定的 1000 条批次和每 tick 最多 20 批有界 drain；这些吞吐策略与 UID claim 数、UID 单次预算和 analysis concurrency 一样集中在 Worker 代码中，不暴露为环境变量。
 - `INSIGHTS_WORKER_UID_ALLOWLIST` 不进入发现或切片判断。
 
 ### 11.2 Backend API

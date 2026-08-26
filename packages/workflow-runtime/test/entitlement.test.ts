@@ -5,8 +5,21 @@ import {
 } from "../src/entitlement.js";
 
 describe("workflow entitlement port", () => {
-  it("allows workflow operations when the explicit test mode is enabled", async () => {
-    const port = createWorkflowEntitlementPort({ mode: "allow" });
+  it.each(["chatai_sop", "wecom_sop"] as const)(
+    "allows workflow operations in test mode for %s",
+    async (workflowType) => {
+      const port = createWorkflowEntitlementPort({ mode: "allow" });
+
+      await expect(port.check({ uid: 9, workflowType })).resolves.toEqual({
+        activeRunLimit: Number.MAX_SAFE_INTEGER,
+        entitled: true,
+        unentitledSince: null,
+      });
+    },
+  );
+
+  it("allows workflow operations by default when entitlement mode is unset", async () => {
+    const port = createWorkflowEntitlementPort({});
 
     await expect(port.check({ uid: 9, workflowType: "chatai_sop" })).resolves.toEqual({
       activeRunLimit: Number.MAX_SAFE_INTEGER,
@@ -23,8 +36,8 @@ describe("workflow entitlement port", () => {
     });
   });
 
-  it("fails closed by default when the Java endpoint is not configured", async () => {
-    const port = createWorkflowEntitlementPort({});
+  it("fails closed in enforce mode when the Java endpoint is not configured", async () => {
+    const port = createWorkflowEntitlementPort({ mode: "enforce" });
 
     await expect(port.check({ uid: 9, workflowType: "chatai_sop" }))
       .rejects.toBeInstanceOf(WorkflowEntitlementUnavailableError);
@@ -42,6 +55,7 @@ describe("workflow entitlement port", () => {
     const port = createWorkflowEntitlementPort({
       endpoint: "https://java.example.com/internal/workflow/entitlement",
       fetch,
+      mode: "enforce",
     });
 
     await expect(port.getTenantCapacity({ uid: 9 })).resolves.toEqual({
@@ -64,6 +78,7 @@ describe("workflow entitlement port", () => {
         headers: { "Content-Type": "application/json" },
         status: 200,
       }),
+      mode: "enforce",
     });
 
     await expect(port.getTenantCapacity({ uid: 9 }))
@@ -81,6 +96,7 @@ describe("workflow entitlement port", () => {
         headers: { "Content-Type": "application/json" },
         status: 200,
       }),
+      mode: "enforce",
     });
 
     await expect(port.check({ uid: 9, workflowType: "chatai_sop" }))

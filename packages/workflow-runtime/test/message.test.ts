@@ -50,23 +50,19 @@ const context = {
 };
 
 describe("Workflow Message capability", () => {
-  it("freezes the Start action context for the lifetime of a Run", () => {
+  it("freezes the Start message context for the lifetime of a Run", () => {
     const startConfig = {
       entryPolicy: { mode: "never" as const },
-      pushAccountStrategy: "latest-added" as const,
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       seatIds: [101, 102],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" as const }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" as const }],
     };
 
     const runContext = createWorkflowChatAiRunContext(startConfig);
-    startConfig.seatIds.push(103);
+    startConfig.messageSendingWindow.startTime = "10:00";
 
     expect(runContext).toEqual({
       message: {
-        accountSelection: {
-          seatIds: [101, 102],
-          strategy: "latest-added",
-        },
         sendingWindow: { endTime: "20:00", startTime: "09:00" },
       },
     });
@@ -77,7 +73,7 @@ describe("Workflow Message capability", () => {
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(getNextWorkflowMessageExecutionAt(

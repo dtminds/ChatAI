@@ -663,8 +663,8 @@ function AgentCard({
       className="rounded-[14px] border border-border/80 bg-card p-5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]"
       role="listitem"
     >
-      <div className="flex items-center gap-3">
-        <AgentAvatar agentId={agent.id} agentName={agent.name} />
+      <div className="flex items-center gap-1.5">
+        <AgentAvatar agentId={agent.id} interaction="live" size={36} />
         <Link
           className="min-w-0 flex-1 truncate text-base font-semibold text-foreground no-underline outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
           to={`/chat/ai-hosting/agents/${agent.id}`}

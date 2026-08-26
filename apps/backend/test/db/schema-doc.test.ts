@@ -122,7 +122,6 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_run",
       "xy_wap_embed_workflow_task",
       "xy_wap_embed_workflow_event_subscription",
-      "xy_wap_embed_workflow_event_subscription_event",
       "xy_wap_embed_workflow_inference_job",
       "xy_wap_embed_workflow_node_execution",
       "xy_wap_embed_workflow_outbox",
@@ -192,25 +191,18 @@ describe("database schema document", () => {
     );
   });
 
-  it("indexes active Wait Event interest and deduplicates collected Entry events", () => {
+  it("indexes only active Wait Event interest and stores the first trigger fact", () => {
     const subscriptionTable = extractCreateTable(
       schemaSql,
       "xy_wap_embed_workflow_event_subscription",
     );
-    const eventTable = extractCreateTable(
-      schemaSql,
-      "xy_wap_embed_workflow_event_subscription_event",
-    );
-
     expect(subscriptionTable).toContain(
       "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
     );
-    expect(subscriptionTable).toContain(
-      "(uid, subject_type, event_type, subject_id, status, collect_until, id)",
-    );
-    expect(eventTable).toContain(
-      "UNIQUE KEY uk_workflow_event_subscription_event (uid, subscription_id, event_id)",
-    );
+    expect(subscriptionTable).toContain("resume_at DATETIME NULL");
+    expect(subscriptionTable).toContain("trigger_occurred_at DATETIME NULL");
+    expect(subscriptionTable).toContain("trigger_projection_json JSON NULL");
+    expect(schemaSql).not.toContain("xy_wap_embed_workflow_event_subscription_event");
   });
 });
 

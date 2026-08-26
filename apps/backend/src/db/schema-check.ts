@@ -1,5 +1,5 @@
-import { assertDatabaseUtc8Timezone } from "@chatai/workflow-runtime";
 import type { Kysely } from "kysely";
+import { assertDatabaseUtc8Timezone } from "./database-timezone.js";
 import type { Database } from "./schema.js";
 
 export type SchemaCheckResult = {

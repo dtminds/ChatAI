@@ -1166,8 +1166,6 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("tab", { name: "应用范围" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "护肤小助理" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "售后小助理" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "护肤小助理头像" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "售后小助理头像" })).toBeInTheDocument();
     const doubaoIcons = screen.getAllByTitle("模型图标：Doubao-2.0-lite");
 
     expect(doubaoIcons).toHaveLength(2);
@@ -4306,8 +4304,6 @@ describe("AI hosting pages", () => {
       expect(name).toHaveAttribute("title", "护肤小助理");
     });
     expect(screen.getAllByText("未发布小助理")).toHaveLength(2);
-    expect(screen.getAllByRole("img", { name: "护肤小助理头像" })).toHaveLength(2);
-    expect(screen.getAllByRole("img", { name: "未发布小助理头像" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: /打开 .* 托管设置菜单/ })).toHaveLength(3);
   });
 

@@ -154,7 +154,7 @@ export function createWorkflowEntitlementPort(options: {
   timeoutMs?: number;
   token?: string | null;
 }): WorkflowEntitlementPort & WorkflowTenantCapacityPort {
-  const mode = options.mode?.trim() || "enforce";
+  const mode = options.mode?.trim() || "allow";
   if (mode === "allow") return new AllowAllWorkflowEntitlementPort();
   if (mode !== "enforce") {
     throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");

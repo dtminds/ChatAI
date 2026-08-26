@@ -14,13 +14,15 @@ const entryPolicy = {
 };
 
 describe("workflow trigger matching", () => {
-  it("matches friend-added events by member and optional exact source", () => {
+  it("fails closed when a friend-added binding has no source", () => {
     const anySource = friendBinding([]);
     expect(matchWorkflowTrigger(anySource.filter, projection({
       eventType: "contact.friend_added",
       match: { workUserId: 201 },
-    }))).toBe(true);
+    }))).toBe(false);
+  });
 
+  it("matches friend-added events by member and exact source", () => {
     const selectedSources = friendBinding(["qr-code-1", "store-2"]);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
@@ -98,8 +100,6 @@ describe("workflow trigger matching", () => {
     expect(normalized.entryMode).toBe("event");
     expect("messageSendingWindow" in normalized ? normalized.messageSendingWindow : undefined)
       .toEqual({ endTime: "20:00", startTime: "09:00" });
-    expect("pushAccountStrategy" in normalized ? normalized.pushAccountStrategy : undefined)
-      .toBe("earliest-added");
     expect(normalized.triggers).toEqual([{
       keywords: ["价格", "优惠"],
       type: "message.received",
@@ -116,42 +116,43 @@ describe("workflow trigger matching", () => {
     }]);
   });
 
-  it("preserves configured ChatAI delivery settings during normalization", () => {
+  it("preserves the configured ChatAI sending window during normalization", () => {
     const normalized = normalizeWorkflowStartConfig({
       entryPolicy,
       messageSendingWindow: { endTime: "22:30", startTime: "10:15" },
-      pushAccountStrategy: "latest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
     expect(normalized).toEqual(expect.objectContaining({
       messageSendingWindow: { endTime: "22:30", startTime: "10:15" },
-      pushAccountStrategy: "latest-added",
     }));
   });
 
-  it("does not create trigger bindings for audience imports", () => {
+  it.each(["audience-import", "direct-push"] as const)(
+    "does not create trigger bindings for %s entries",
+    (entryMode) => {
     const config: WorkflowStartConfig = {
-      entryMode: "audience-import",
+      entryMode,
       entryPolicy,
       seatIds: [101],
       triggers: [],
     };
 
     expect(normalizeWorkflowStartConfig(config)).toEqual(expect.objectContaining({
-      entryMode: "audience-import",
+      entryMode,
       triggers: [],
     }));
     expect(getWorkflowTriggerBindings(config, "chatai_contact")).toEqual([]);
-  });
+    },
+  );
 
   it("projects each trigger independently when future contracts allow multiple events", () => {
     const malformed = {
       entryPolicy,
       seatIds: [101],
       triggers: [
-        { sourceIds: [], type: "contact.friend_added" },
+        { sourceIds: ["qr-code-1"], type: "contact.friend_added" },
         { keywords: ["价格"], type: "message.received" },
       ],
     } as unknown as WorkflowStartConfig;

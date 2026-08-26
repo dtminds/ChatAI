@@ -371,7 +371,7 @@ async function createWaitingJob(
     occurredAt: now,
     revision: 1,
     shardId: 1,
-    subjectId: "customer-1",
+    subjectId: entryEventId,
     subjectType: "chatai_contact",
     uid: 9,
     workflowId: "31",
@@ -468,7 +468,7 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
         config: {
           entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
           seatIds: [101],
-          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+          triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
         },
         id: "start",
         kind: "start",

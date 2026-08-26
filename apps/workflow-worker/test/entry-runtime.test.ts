@@ -50,6 +50,7 @@ describe("Workflow Entry runtime composition", () => {
       eventCatalog: createFakeWorkflowEventCatalog(),
       inboxRepository: repository,
       maxInFlight: 10,
+      messageReader: { findById: vi.fn(async () => null) },
       now: () => now,
       runtimeService: service,
       subscriptionReader: repository,
@@ -91,13 +92,13 @@ function executionSpec(workflowId: string): WorkflowExecutionSpec {
         config: workflowId === "32"
           ? {
               entryPolicy: { mode: "never" },
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
               workUserIds: [201],
             }
           : {
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
             },
         id: "start",
         kind: "start",
@@ -122,6 +123,7 @@ function event(): WorkflowEntryEvent {
     payload: {
       externalUserId: 3267,
       seatId: 101,
+      sourceId: "qr-code-1",
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
     },
@@ -142,7 +144,7 @@ function binding(
     filter: {
       entryPolicy: { mode: "never" },
       eventType: "contact.friend_added",
-      sourceIds: [],
+      sourceIds: ["qr-code-1"],
       workUserIds: [201],
     },
     id: workflowId,

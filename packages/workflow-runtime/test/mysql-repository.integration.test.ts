@@ -213,6 +213,39 @@ describe("MySQL workflow runtime repository contract", () => {
     });
   });
 
+  it("admits only one active Run for concurrent distinct events on the same Subject", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const input = {
+      context: { trigger: { eventType: "workflow.direct_entry.requested" } },
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
+      initialNodeId: "start",
+      initialNodeKind: "start" as const,
+      occurredAt: new Date("2026-08-24T08:30:15.123Z"),
+      revision: 1,
+      shardId: 7,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact" as const,
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop" as const,
+    };
+
+    const results = await Promise.all([
+      repository.createRunWithInitialTask({ ...input, entryEventId: "event-1" }),
+      repository.createRunWithInitialTask({ ...input, entryEventId: "event-2" }),
+    ]);
+
+    expect(results.filter(result => result.kind === "success")).toHaveLength(1);
+    expect(results.filter(result => result.kind === "active-run-rejected")).toHaveLength(1);
+    await expect(database.selectFrom("xy_wap_embed_workflow_run")
+      .select("id")
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .execute())
+      .resolves.toHaveLength(1);
+  });
+
   it("keeps a MySQL outbox write chunk below one sixteenth of max_allowed_packet", async () => {
     if (!workflowPool) throw new Error("MySQL contract database is not initialized");
     const [rows] = await workflowPool.promise().query(

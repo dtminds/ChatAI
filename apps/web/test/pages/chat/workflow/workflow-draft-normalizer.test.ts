@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  extractWorkflowNodeDraftConfig,
+  getUnknownWorkflowNodeDraftDataKeys,
+  isWorkflowNodeDraftConfig,
+} from "@chatai/contracts";
+import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/workflow/constants";
@@ -92,6 +97,34 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
 }
 
 describe("workflow draft normalizer", () => {
+  it("drops retired Start fields before saving an unrestricted friend source", () => {
+    const startData = createDefaultNodeData("start");
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          ...startData,
+          retiredConfigField: true,
+          seatIds: [101],
+          triggers: [{
+            addWayKey: "scan.channel_code",
+            sourceIds: ["scan.channel_code"],
+            sourceMatchMode: "all",
+            type: "contact.friend_added",
+          }],
+        },
+        id: "start",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+    const data = draft.nodes[0]!.data;
+    const draftConfig = extractWorkflowNodeDraftConfig("start", data);
+
+    expect(getUnknownWorkflowNodeDraftDataKeys("start", data)).toEqual([]);
+    expect(isWorkflowNodeDraftConfig("start", draftConfig)).toBe(true);
+  });
+
   it("clamps legacy rolling entry windows to 90 days during hydration", () => {
     const startData = createDefaultNodeData("start");
     const draft = hydrateWorkflowDraft({
@@ -145,7 +178,7 @@ describe("workflow draft normalizer", () => {
     expect(draft.nodes[0]?.data).not.toHaveProperty("seatIds");
   });
 
-  it("removes runtime-only node and edge state from persistable drafts", () => {
+  it("removes runtime-only and undeclared node and edge state from persistable drafts", () => {
     const sanitizedDraft = sanitizeDraft(createRuntimeDraft());
 
     expect(sanitizedDraft.nodes[0].selected).toBe(false);
@@ -158,14 +191,8 @@ describe("workflow draft normalizer", () => {
     expect(sanitizedDraft.nodes[0].data.onRuntimeInspect).toBeUndefined();
     expect(sanitizedDraft.nodes[0].data._connectedSourceHandleIds).toBeUndefined();
     expect(sanitizedDraft.nodes[0].data._runtimeStatus).toBeUndefined();
-    expect(sanitizedDraft.nodes[0].data.deliveryOptions).toEqual({
-      quietHours: ["22:00", "08:00"],
-    });
-    expect(sanitizedDraft.nodes[0].data.segments).toEqual([
-      {
-        name: "高意向",
-      },
-    ]);
+    expect(sanitizedDraft.nodes[0].data.deliveryOptions).toBeUndefined();
+    expect(sanitizedDraft.nodes[0].data.segments).toBeUndefined();
     expect(sanitizedDraft.edges[0].selected).toBe(false);
     expect(sanitizedDraft.edges[0].data?.highlightState).toBeUndefined();
     expect(sanitizedDraft.edges[0].data?.insertMenuOpen).toBeUndefined();
@@ -413,11 +440,12 @@ describe("workflow draft normalizer", () => {
     }));
   });
 
-  it("normalizes wait event type and timeout without persisting invalid values", () => {
+  it("normalizes wait event type, delay and timeout without persisting invalid values", () => {
     const draft = hydrateWorkflowDraft({
       edges: [],
       nodes: [{
         data: {
+          delay: { duration: 999, unit: "day" },
           event: { type: "unknown-event" },
           kind: "wait-event",
           timeout: { duration: 999, unit: "day" },
@@ -430,9 +458,10 @@ describe("workflow draft normalizer", () => {
     });
 
     expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      delay: { duration: 45, unit: "day" },
       event: { type: "message.received" },
       kind: "wait-event",
-      metric: "等待新消息 · 最长 15 天",
+      metric: "等待新消息 · 达到后等待 45 天 · 最长 15 天",
       timeout: { duration: 15, unit: "day" },
     }));
   });

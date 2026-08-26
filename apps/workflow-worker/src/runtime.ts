@@ -13,6 +13,7 @@ import {
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "./broker/types.js";
 import type { WorkflowWorkerConfig } from "./config.js";
 import type { startEntryConsumer } from "./entry-consumer.js";
+import type { WorkflowEntryMessageReader } from "./message-query-port.js";
 import type { WorkflowReadiness } from "./health.js";
 import {
   logWorkflowReadinessTransition,
@@ -89,6 +90,7 @@ export async function startWorkflowWorkerRuntime(input: {
   llmTestAdapter?: WorkflowLlmTestAdapter;
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   llmTestAttemptWorker?: typeof processWorkflowLlmTestAttemptBatch;
+  messageReader: WorkflowEntryMessageReader;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
@@ -128,6 +130,7 @@ export async function startWorkflowWorkerRuntime(input: {
         logger: input.logger,
         maxInFlight: input.config.consumerConcurrency.entry,
         maxRedeliverCount: input.config.maxRedeliverCount,
+        messageReader: input.messageReader,
         now,
         runtimeService: input.runtimeService,
         subscriptionReader: input.eventSubscriptionReader,

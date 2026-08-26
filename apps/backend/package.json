@@ -8,18 +8,19 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc -p tsconfig.json",
-    "db:codegen": "node scripts/codegen-db-schema.mjs",
-    "dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && NODE_ENV=development tsx watch src/server.ts",
+    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/database build && pnpm --filter @chatai/tickets build && pnpm --filter @chatai/insights build && pnpm --filter @chatai/user-memory build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc -p tsconfig.json",
+    "dev": "pnpm build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "worker": "node dist/worker.js",
-    "worker:dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && NODE_ENV=development tsx watch src/worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",
+    "@chatai/database": "workspace:*",
+    "@chatai/insights": "workspace:*",
+    "@chatai/tickets": "workspace:*",
+    "@chatai/user-memory": "workspace:*",
     "@chatai/workflow-engine": "workspace:*",
     "@chatai/workflow-runtime": "workspace:*",
     "@fastify/cookie": "^11.0.2",
@@ -31,13 +32,10 @@
     "fastify": "^5.6.2",
     "fastify-plugin": "^6.0.0",
     "ioredis": "^5.11.1",
-    "kysely": "^0.29.0",
-    "mysql2": "^3.15.3"
+    "kysely": "^0.29.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "dotenv": "^17.4.2",
-    "kysely-codegen": "^0.20.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.5"

@@ -4,7 +4,6 @@ import type {
   WorkflowBeginFixedWaitInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
-  WorkflowEventSubscriptionEventRecord,
   WorkflowEventSubscriptionRecord,
   WorkflowInferenceJobRecord,
   WorkflowNodeExecutionRecord,
@@ -55,7 +54,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   readonly revisionCleanups: WorkflowRevisionCleanupRecord[] = [];
   readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
-  readonly eventSubscriptionEvents: WorkflowEventSubscriptionEventRecord[] = [];
   readonly inferenceJobs: WorkflowInferenceJobRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
@@ -247,6 +245,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && run.subjectType === input.subjectType
       && run.subjectId === input.subjectId,
     );
+    if (previousRuns.some(run =>
+      run.status === "queued" || run.status === "running" || run.status === "waiting")) {
+      return { kind: "active-run-rejected" as const };
+    }
     const entryGuardKey = `${input.uid}:${input.workflowId}:${input.subjectType}:${input.subjectId}`;
     const totalEntries = this.totalEntries.get(entryGuardKey) ?? 0;
     if (!canEnterWorkflow(input.entryPolicy, previousRuns, totalEntries, admittedAt)) {
@@ -351,7 +353,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && item.eventType === input.eventType)) return conflict();
 
     const subscription: WorkflowEventSubscriptionRecord = {
-      collectUntil: null,
       createdAt: clone(input.now),
       effectiveFrom: clone(input.effectiveFrom),
       eventType: input.eventType,
@@ -359,6 +360,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       id: this.createId(),
       nodeId: task.nodeId,
       revision: task.revision,
+      resumeAt: null,
       runId: run.id,
       seatId: input.seatId,
       status: "waiting",
@@ -366,6 +368,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       subjectType: run.subjectType,
       taskId: task.id,
       triggerEventId: null,
+      triggerOccurredAt: null,
+      triggerProjection: null,
       uid: input.uid,
       updatedAt: clone(input.now),
       workflowId: run.workflowId,
@@ -434,7 +438,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     subjectId: string,
     seatId: number | null,
     eventOccurredAt: Date,
-    observedAt: Date,
   ) {
     const matches: WorkflowEventSubscriptionRecord[] = [];
     for (const subscription of this.eventSubscriptions) {
@@ -443,12 +446,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || subscription.eventType !== eventType
         || subscription.subjectId !== subjectId
         || (subscription.seatId !== null && subscription.seatId !== seatId)
-        || (subscription.status === "waiting"
-          ? eventOccurredAt < subscription.effectiveFrom
-            || eventOccurredAt >= subscription.expiresAt
-          : subscription.status === "triggered"
-            ? !subscription.collectUntil || observedAt >= subscription.collectUntil
-            : true)) continue;
+        || subscription.status !== "waiting"
+        || eventOccurredAt < subscription.effectiveFrom
+        || eventOccurredAt >= subscription.expiresAt) continue;
       const boundary = this.resolveWorkflowBoundary
         ? await this.resolveWorkflowBoundary({ uid, workflowId: subscription.workflowId })
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
@@ -463,20 +463,13 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return subscription ? clone(subscription) : null;
   }
 
-  async listEventSubscriptionEvents(uid: number, subscriptionId: string) {
-    return clone(this.eventSubscriptionEvents
-      .filter(item => item.uid === uid && item.subscriptionId === subscriptionId)
-      .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime()
-        || compareById(left, right)));
-  }
-
-  async recordEventSubscriptionEvent(
-    input: Parameters<WorkflowRuntimeRepository["recordEventSubscriptionEvent"]>[0],
+  async triggerEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["triggerEventSubscription"]>[0],
   ) {
     const subscription = this.eventSubscriptions.find(item => item.uid === input.uid
       && item.id === input.subscriptionId);
     if (!subscription) return notFound();
-    if (subscription.status !== "waiting" && subscription.status !== "triggered") return conflict();
+    if (subscription.status !== "waiting") return conflict();
     const run = this.runs.find(item => item.uid === input.uid && item.id === subscription.runId);
     const task = this.tasks.find(item => item.uid === input.uid && item.id === subscription.taskId);
     if (!run || !task || task.runId !== run.id) return notFound();
@@ -489,9 +482,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       subscription.updatedAt = clone(input.recordedAt);
       return { action: "cancel" as const, kind: "workflow-unavailable" as const };
     }
-    if (this.eventSubscriptionEvents.some(item => item.uid === input.uid
-      && item.subscriptionId === subscription.id
-      && item.eventId === input.eventId)) return alreadyProcessed();
+    if (subscription.status !== "waiting") return conflict();
     if ((task.status !== "pending"
         && task.status !== "leased"
         && task.status !== "dispatched"
@@ -502,55 +493,27 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.nodeKind !== "wait-event"
       || task.taskType !== "wait-event") return conflict();
 
-    const firstEvent = subscription.status === "waiting";
-    const expectedDueAt = firstEvent ? subscription.expiresAt : subscription.collectUntil;
-    if (!expectedDueAt
-      || task.dueAt.getTime() !== expectedDueAt.getTime()
-      || (firstEvent && (
-        input.eventOccurredAt.getTime() < subscription.effectiveFrom.getTime()
-        || input.eventOccurredAt.getTime() >= subscription.expiresAt.getTime()
-        || input.collectUntil.getTime() <= input.recordedAt.getTime()
-      ))
-      || (!firstEvent && (
-        input.recordedAt.getTime() >= expectedDueAt.getTime()
-        || input.collectUntil.getTime() !== expectedDueAt.getTime()
-      ))) return conflict();
+    if (task.dueAt.getTime() !== subscription.expiresAt.getTime()
+      || input.eventOccurredAt.getTime() < subscription.effectiveFrom.getTime()
+      || input.eventOccurredAt.getTime() >= subscription.expiresAt.getTime()
+      || input.resumeAt.getTime() < input.recordedAt.getTime()) return conflict();
 
-    this.eventSubscriptionEvents.push({
-      collectedAt: clone(input.recordedAt),
-      eventId: input.eventId,
-      id: this.createId(),
-      occurredAt: clone(input.eventOccurredAt),
-      projection: clone(input.projection),
-      subscriptionId: subscription.id,
-      uid: input.uid,
-    });
-
-    if (!firstEvent) {
-      return {
-        firstEvent,
-        kind: "success" as const,
-        run: clone(run),
-        subscription: clone(subscription),
-        task: clone(task),
-      };
-    }
-
-    subscription.collectUntil = clone(input.collectUntil);
+    subscription.resumeAt = clone(input.resumeAt);
     subscription.status = "triggered";
     subscription.triggerEventId = input.eventId;
+    subscription.triggerOccurredAt = clone(input.eventOccurredAt);
+    subscription.triggerProjection = clone(input.projection);
     subscription.updatedAt = clone(input.recordedAt);
-    task.dueAt = clone(input.collectUntil);
+    task.dueAt = clone(input.resumeAt);
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
     if (task.status !== "pending") task.status = transitionTask(task.status, "pending");
     task.taskVersion += 1;
     run.lockVersion += 1;
-    run.nextExecuteAt = clone(input.collectUntil);
+    run.nextExecuteAt = clone(input.resumeAt);
     if (run.status === "running") run.status = transitionRun(run.status, "waiting");
     this.touchRun(run);
     return {
-      firstEvent,
       kind: "success" as const,
       run: clone(run),
       subscription: clone(subscription),
@@ -1432,7 +1395,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           || task.status === "dispatched"
           || task.status === "running")
         && task.dueAt.getTime() === (subscription.status === "triggered"
-          ? subscription.collectUntil?.getTime()
+          ? subscription.resumeAt?.getTime()
           : subscription.expiresAt.getTime());
       if (consistent) continue;
       subscription.status = "cancelled";
@@ -1514,17 +1477,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       .map(task => task.id));
     const outboxDeleted = this.outbox.filter(item => taskIds.has(item.payload.taskId)).length;
     const tasksDeleted = this.tasks.filter(task => technicalRunIds.has(task.runId)).length;
-    const subscriptionIds = new Set(this.eventSubscriptions
-      .filter(item => technicalRunIds.has(item.runId))
-      .map(item => item.id));
     this.outbox = this.outbox.filter(item => !taskIds.has(item.payload.taskId));
     for (let index = this.inferenceJobs.length - 1; index >= 0; index -= 1) {
       if (technicalRunIds.has(this.inferenceJobs[index]!.runId)) this.inferenceJobs.splice(index, 1);
-    }
-    for (let index = this.eventSubscriptionEvents.length - 1; index >= 0; index -= 1) {
-      if (subscriptionIds.has(this.eventSubscriptionEvents[index]!.subscriptionId)) {
-        this.eventSubscriptionEvents.splice(index, 1);
-      }
     }
     for (let index = this.eventSubscriptions.length - 1; index >= 0; index -= 1) {
       if (technicalRunIds.has(this.eventSubscriptions[index]!.runId)) {
@@ -1748,7 +1703,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
-      eventSubscriptionEvents: this.eventSubscriptionEvents,
       eventSubscriptions: this.eventSubscriptions,
       inferenceJobs: this.inferenceJobs,
       inbox: this.inbox,

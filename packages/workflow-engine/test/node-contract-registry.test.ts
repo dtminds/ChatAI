@@ -45,10 +45,23 @@ describe("workflow node projection registry", () => {
       entryMode: "event",
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
-      pushAccountStrategy: "earliest-added",
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
+  });
+
+  it("drops draft triggers when projecting a direct-push Start", () => {
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...projectableDraftData.start,
+        entryMode: "direct-push",
+      },
+      kind: "start",
+      workflowType: "chatai_sop",
+    })).toEqual(expect.objectContaining({
+      entryMode: "direct-push",
+      triggers: [],
+    }));
   });
 
   it("projects AI Collect follow-up-specific execution data", () => {
@@ -92,6 +105,10 @@ const projectableDraftData = {
     maxFollowUpCount: 3,
     openingMessage: " 请提供订单号 ",
     timeout: { duration: 24, unit: "hour" },
+  },
+  "audience-filter": {
+    groups: [{ id: 301, name: "高价值客户" }],
+    matchMode: "any",
   },
   "ai-intent": {
     advancedEnabled: false,
@@ -154,15 +171,22 @@ const projectableDraftData = {
       start: ["trigger", "occurredAt"],
     },
   },
+  "order-conversion": {
+    orderNumberSelector: ["node", "llm", "orderNo"],
+  },
+  "order-bind": {
+    orderNumberSelector: ["node", "llm", "orderNo"],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
-    triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+    triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
   },
   tag: { operation: "add", tagIds: [101, 102] },
   "tag-query": { matchMode: "all", tagIds: [101, 102] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
+    delay: { duration: 30, unit: "second" },
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },

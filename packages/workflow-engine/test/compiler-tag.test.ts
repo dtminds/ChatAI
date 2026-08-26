@@ -51,7 +51,7 @@ function createTagDraft(config: Record<string, unknown>): WorkflowDraft {
       node("start", "start", {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       node("tag", "tag", config),
       node("end", "end"),

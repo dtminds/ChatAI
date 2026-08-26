@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowUtcInstantSchema } from "./utc-instant.js";
-import { WorkflowMessageSchema } from "./messages.js";
+import { WorkflowIdSchema } from "./dto.js";
 
 export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
@@ -36,6 +36,21 @@ const WorkflowChatAiContactIdentitySchema = {
   thirdExternalUserId: WorkflowThirdExternalUserIdSchema,
 } as const;
 
+export const WORKFLOW_DIRECT_ENTRY_EVENT_TYPE = "workflow.direct_entry.requested" as const;
+
+export const WorkflowDirectEntryPayloadSchema = Type.Union([
+  Type.Object({
+    ...WorkflowWeComContactIdentitySchema,
+    workflowId: WorkflowIdSchema,
+  }, { additionalProperties: false }),
+  Type.Object({
+    externalUserId: Type.Optional(WorkflowPositiveSafeIntegerSchema),
+    ...WorkflowChatAiContactIdentitySchema,
+    workUserId: WorkflowPositiveSafeIntegerSchema,
+    workflowId: WorkflowIdSchema,
+  }, { additionalProperties: false }),
+]);
+
 export const WorkflowContactFriendAddedPayloadSchema = Type.Union([
   Type.Object({
     ...WorkflowWeComContactIdentitySchema,
@@ -62,7 +77,7 @@ export const WorkflowContactTagAddedPayloadSchema = Type.Union([
 
 export const WorkflowMessageReceivedPayloadSchema = Type.Object({
   externalUserId: Type.Optional(WorkflowPositiveSafeIntegerSchema),
-  message: WorkflowMessageSchema,
+  messageId: WorkflowPositiveSafeIntegerSchema,
   ...WorkflowChatAiContactIdentitySchema,
   workUserId: WorkflowPositiveSafeIntegerSchema,
 }, { additionalProperties: false });
@@ -98,8 +113,15 @@ export type WorkflowContactFriendAddedPayload = Static<
 >;
 export type WorkflowContactTagAddedPayload = Static<typeof WorkflowContactTagAddedPayloadSchema>;
 export type WorkflowMessageReceivedPayload = Static<typeof WorkflowMessageReceivedPayloadSchema>;
+export type WorkflowDirectEntryPayload = Static<typeof WorkflowDirectEntryPayloadSchema>;
 
 export function createWorkflowEntryPartitionKey(event: WorkflowEntryEvent) {
+  if (event.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE
+    && Value.Check(WorkflowDirectEntryPayloadSchema, event.payload)) {
+    return "thirdExternalUserId" in event.payload
+      ? `${event.uid}:chatai_contact:${event.payload.thirdExternalUserId}`
+      : `${event.uid}:wecom_contact:${event.payload.externalUserId}`;
+  }
   if (event.eventType === "contact.friend_added"
     && Value.Check(WorkflowContactFriendAddedPayloadSchema, event.payload)) {
     return `${event.uid}:wecom_contact:${event.payload.externalUserId}`;

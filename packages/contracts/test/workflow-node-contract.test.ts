@@ -24,6 +24,7 @@ import {
   WorkflowTagQueryCommandSchema,
   WorkflowTagQueryResultSchema,
   WorkflowTagResultSchema,
+  WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT,
   workflowNodeContractRegistry,
   type WorkflowNodeKind,
 } from "../src/index.js";
@@ -49,6 +50,7 @@ const draftConfigs = {
     intents: [{ description: "接受邀请", id: "intent-1" }],
     prompt: "",
   },
+  "audience-filter": { groups: [], matchMode: "any" },
   branch: {
     branchPaths: [
       {
@@ -99,7 +101,9 @@ const draftConfigs = {
       start: ["trigger", "occurredAt"],
     },
   },
+  "order-bind": {},
   "order-query": {},
+  "order-conversion": {},
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
@@ -109,6 +113,7 @@ const draftConfigs = {
   "tag-query": { matchMode: "any", tagIds: [] },
   wait: { duration: 1, mode: "duration", unit: "day" },
   "wait-event": {
+    delay: { duration: 30, unit: "second" },
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },
@@ -163,7 +168,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(18);
+    expect(entries).toHaveLength(21);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -177,11 +182,27 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual(["ai-collect"]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "coupon", "order-query"]);
+  });
+
+  it("enforces Wait Event post-trigger delay boundaries for every supported unit", () => {
+    for (const [unit, maximum] of Object.entries(WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT)) {
+      const minimum = unit === "second" ? 0 : 1;
+      const config = (duration: number) => ({
+        delay: { duration, unit },
+        event: { type: "message.received" },
+        timeout: { duration: 24, unit: "hour" },
+      });
+
+      expect(isWorkflowNodeDraftConfig("wait-event", config(minimum))).toBe(true);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(maximum))).toBe(true);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(minimum - 1))).toBe(false);
+      expect(isWorkflowNodeDraftConfig("wait-event", config(maximum + 1))).toBe(false);
+    }
   });
 
   it("keeps Ratio Split drafts editable while enforcing the published allocation contract", () => {
@@ -370,11 +391,11 @@ describe("workflow node contracts", () => {
       source: "workflow",
     })).toBe(false);
     expect(Value.Check(WorkflowHandoffCommandSchema, {
-      accountSelection: { seatIds: [101], strategy: "earliest-added" },
       customerMessage: "请稍等",
       operatorMessage: "需要人工处理",
       recipient: { thirdExternalUserId: "customer-1" },
       source: "workflow",
+      unexpected: true,
     })).toBe(false);
     expect(Value.Check(WorkflowHandoffResultSchema, {})).toBe(true);
     expect(Value.Check(WorkflowHandoffResultSchema, { unexpected: true })).toBe(false);
@@ -457,6 +478,26 @@ describe("workflow node contracts", () => {
     ]);
   });
 
+  it("keeps incomplete Order Bind drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("order-bind")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: ["externalUserId"],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("order-bind", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-bind", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-bind", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-bind", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("order-bind", {})).toEqual([
+      { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
+    ]);
+  });
+
   it("assigns every node kind one stable execution class", () => {
     expectTypeOf(getWorkflowNodeContract("message").executionClass).toEqualTypeOf<"action">();
     expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
@@ -470,6 +511,7 @@ describe("workflow node contracts", () => {
       agent: "action",
       "ai-collect": "composite",
       "ai-intent": "inference",
+      "audience-filter": "query",
       branch: "core",
       coupon: "action",
       "customer-update": "action",
@@ -478,7 +520,9 @@ describe("workflow node contracts", () => {
       llm: "inference",
       message: "action",
       "message-query": "query",
+      "order-bind": "action",
       "order-query": "query",
+      "order-conversion": "action",
       "ratio-split": "core",
       start: "core",
       tag: "action",
@@ -496,6 +540,7 @@ describe("workflow node contracts", () => {
       agent: [],
       "ai-collect": [],
       "ai-intent": [],
+      "audience-filter": ["externalUserId"],
       branch: [],
       coupon: ["externalUserId"],
       "customer-update": ["externalUserId"],
@@ -504,7 +549,9 @@ describe("workflow node contracts", () => {
       llm: [],
       message: ["thirdExternalUserId"],
       "message-query": ["thirdExternalUserId"],
+      "order-bind": ["externalUserId"],
       "order-query": ["externalUserId"],
+      "order-conversion": ["mallUserId"],
       "ratio-split": [],
       start: [],
       tag: ["externalUserId"],
@@ -549,7 +596,6 @@ describe("workflow node contracts", () => {
       "entryMode",
       "entryPolicy",
       "messageSendingWindow",
-      "pushAccountStrategy",
       "seatIds",
       "triggers",
       "workUserIds",
@@ -560,6 +606,61 @@ describe("workflow node contracts", () => {
       "mode",
       "time",
       "unit",
+    ]);
+  });
+
+  it("keeps incomplete Audience Filter drafts editable while requiring groups to publish", () => {
+    expect(getWorkflowNodeContract("audience-filter")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "query",
+      identityInputs: ["externalUserId"],
+      maturity: "runtime-ready",
+      recordSourceOutlet: false,
+    });
+    expect(isWorkflowNodeDraftConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", { groups: [], matchMode: "any" })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "all",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 301, name: "重复" },
+      ],
+      matchMode: "any",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [{ id: 0, name: "高价值客户" }],
+      matchMode: "any",
+    })).toBe(false);
+    expect(isWorkflowNodeDraftConfig("audience-filter", {
+      groups: [
+        { id: 301, name: "高价值客户" },
+        { id: 302, name: "沉默客户" },
+        { id: 303, name: "活跃客户" },
+        { id: 304, name: "超限" },
+      ],
+      matchMode: "all",
+    })).toBe(false);
+    expect(getWorkflowNodeOutputContracts("audience-filter", {
+      groups: [{ id: 301, name: "高价值客户" }],
+      matchMode: "any",
+    })).toEqual([
+      { key: "matched", usages: ["variable"], valueType: { kind: "boolean" } },
+      {
+        key: "matchedGroupNames",
+        usages: ["variable", "message-content"],
+        valueType: { kind: "string" },
+      },
+      { key: "matchedGroupCount", usages: ["variable"], valueType: { kind: "number" } },
     ]);
   });
 
@@ -621,6 +722,26 @@ describe("workflow node contracts", () => {
       ],
     })).toBe(false);
     expect(getWorkflowNodeOutputContracts("customer-update", { fields: [] })).toBeNull();
+  });
+
+  it("keeps incomplete Order Conversion drafts editable and requires an order number selector to execute", () => {
+    expect(getWorkflowNodeContract("order-conversion")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: ["mallUserId"],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("order-conversion", {})).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-conversion", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {})).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-conversion", {
+      orderNumberSelector: ["node", "llm", "orderNo"],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("order-conversion", {})).toEqual([
+      { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
+    ]);
   });
 
   it("keeps the Customer Update Java command batched and bounded", () => {
@@ -890,9 +1011,9 @@ describe("workflow node contracts", () => {
     expect(getWorkflowNodeOutputContracts("wait-event", {}))
       .toContainEqual(expect.objectContaining({
         availableOnSourceOutlets: ["triggered"],
-        key: "messages",
+        key: "message",
         usages: ["intent-input", "variable"],
-        valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
+        valueType: { kind: "object", schemaRef: "workflow.message.v1" },
       }));
     expect(isWorkflowOutputValueTypeEqual(
       { itemType: "bigint", kind: "array", semantic: "message" },

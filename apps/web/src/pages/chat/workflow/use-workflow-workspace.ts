@@ -10,6 +10,7 @@ import type {
   Viewport,
 } from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
+import type { WorkflowValidationResources } from "./validation/workflow-validation-summary";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
@@ -63,6 +64,7 @@ export function useWorkflowWorkspace(
   workflowId: string,
   repository?: WorkflowDraftRepository,
   initialDocument?: WorkflowDocument,
+  validationResources?: WorkflowValidationResources,
 ) {
   const {
     document,
@@ -133,6 +135,7 @@ export function useWorkflowWorkspace(
   const publishChecks = useWorkflowPublishChecks(controller.nodes, controller.edges, {
     allowedEntryEventTypes: capabilityProfile.allowedEntryEventTypes,
     allowedNodeKinds: capabilityProfile.allowedNodeKinds,
+    resources: validationResources,
     runtimeSupportedNodeKinds: document.capabilitySummary.runtimeSupportedNodeKinds,
   });
 

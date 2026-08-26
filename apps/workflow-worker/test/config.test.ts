@@ -114,7 +114,7 @@ describe("workflow worker config", () => {
 
     expect(config.entitlement).toEqual({
       apiUrl: "https://java.example.com/internal/workflow/entitlement",
-      mode: "enforce",
+      mode: "allow",
       token: "internal-token",
     });
   });
@@ -138,24 +138,26 @@ describe("workflow worker config", () => {
       .toThrow("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
   });
 
-  it("loads the explicit entitlement bypass for development and test environments", () => {
-    const config = loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "development",
-      WORKFLOW_ENTITLEMENT_MODE: "allow",
-    }));
-
-    expect(config.entitlement.mode).toBe("allow");
-  });
-
-  it.each(["allow", " allow "])(
-    "rejects the entitlement bypass in production: %j",
+  it.each(["allow", " allow ", undefined])(
+    "defaults entitlement checks to allow in production: %j",
     (mode) => {
-      expect(() => loadWorkflowWorkerConfig(baseEnv({
+      const config = loadWorkflowWorkerConfig(baseEnv({
         NODE_ENV: "production",
         WORKFLOW_ENTITLEMENT_MODE: mode,
-      }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+      }));
+
+      expect(config.entitlement.mode).toBe("allow");
     },
   );
+
+  it("loads an explicit enforce entitlement mode", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "production",
+      WORKFLOW_ENTITLEMENT_MODE: "enforce",
+    }));
+
+    expect(config.entitlement.mode).toBe("enforce");
+  });
 
   it("rejects unknown entitlement modes", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
@@ -210,10 +212,13 @@ describe("workflow worker config", () => {
   it("requires explicit Entry and Task concurrency in production", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       NODE_ENV: "production",
+      WORKFLOW_ENTRY_CONCURRENCY: undefined,
+      WORKFLOW_TASK_CONCURRENCY: undefined,
     }))).toThrow("Missing required environment variable: WORKFLOW_ENTRY_CONCURRENCY");
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       NODE_ENV: "production",
       WORKFLOW_ENTRY_CONCURRENCY: "20",
+      WORKFLOW_TASK_CONCURRENCY: undefined,
     }))).toThrow("Missing required environment variable: WORKFLOW_TASK_CONCURRENCY");
     expect(loadWorkflowWorkerConfig(baseEnv({
       NODE_ENV: "production",
@@ -313,10 +318,12 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     JAVA_INTERNAL_API_BASE_URL: "https://java.example.com",
     WORKFLOW_BROKER: "pulsar",
     WORKFLOW_ENVIRONMENT: "dev",
+    WORKFLOW_ENTRY_CONCURRENCY: "10",
     WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
     WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
     WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
     WORKFLOW_PULSAR_TOKEN: "secret-token",
+    WORKFLOW_TASK_CONCURRENCY: "10",
     ...overrides,
   };
 }

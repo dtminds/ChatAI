@@ -60,6 +60,10 @@ _Avoid_: Node group, maturity, runtime support
 The closed category of a typed external Capability invocation: `action`, `query`, or `inference`. An Action causes an externally visible side effect and carries an idempotency key. A Query is read-only. Inference is non-deterministic model execution. Query and Inference carry no additional call key; their execution metadata provides correlation.
 _Avoid_: Arbitrary operation type, node kind
 
+**Order Conversion**:
+The business operation that converts an eligible mall order into customer points. It is a conversion of an order, not a transfer of points between accounts.
+_Avoid_: Points Transfer, point transfer
+
 **Workflow Production Availability**:
 The effective permission to publish or enable a Workflow after intersecting its Workflow Capability Profile, Workflow Runtime Support, Event Catalog support, Product Entitlement, and required business resources. Runtime dependency failures are handled by the node's normal retry, deadline, and recovery semantics rather than a separate deployment switch.
 _Avoid_: Runtime whitelist, node visibility

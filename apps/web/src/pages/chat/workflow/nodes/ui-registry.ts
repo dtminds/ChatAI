@@ -2,6 +2,7 @@ import type { WorkflowNodeKind } from "../types";
 import { agentNodeUi } from "./agent/ui";
 import { aiCollectNodeUi } from "./ai-collect/ui";
 import { aiIntentNodeUi } from "./ai-intent/ui";
+import { audienceFilterNodeUi } from "./audience-filter/ui";
 import { branchNodeUi } from "./branch/ui";
 import { couponNodeUi } from "./coupon/ui";
 import { customerUpdateNodeUi } from "./customer-update/ui";
@@ -10,7 +11,9 @@ import { handoffNodeUi } from "./handoff/ui";
 import { llmNodeUi } from "./llm/ui";
 import { messageNodeUi } from "./message/ui";
 import { messageQueryNodeUi } from "./message-query/ui";
+import { orderBindNodeUi } from "./order-bind/ui";
 import { orderQueryNodeUi } from "./order-query/ui";
+import { orderConversionNodeUi } from "./order-conversion/ui";
 import { ratioSplitNodeUi } from "./ratio-split/ui";
 import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
@@ -23,6 +26,7 @@ export const workflowNodeUiRegistry = {
   agent: agentNodeUi,
   "ai-collect": aiCollectNodeUi,
   "ai-intent": aiIntentNodeUi,
+  "audience-filter": audienceFilterNodeUi,
   branch: branchNodeUi,
   coupon: couponNodeUi,
   "customer-update": customerUpdateNodeUi,
@@ -31,7 +35,9 @@ export const workflowNodeUiRegistry = {
   llm: llmNodeUi,
   message: messageNodeUi,
   "message-query": messageQueryNodeUi,
+  "order-bind": orderBindNodeUi,
   "order-query": orderQueryNodeUi,
+  "order-conversion": orderConversionNodeUi,
   "ratio-split": ratioSplitNodeUi,
   start: startNodeUi,
   tag: tagNodeUi,

@@ -1,13 +1,11 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   extractWorkflowNodeDraftConfig,
   getWorkflowNodeContract,
   isWorkflowBranchConfigComplete,
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
   normalizeWorkflowEntryPolicy,
-  WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
   type WorkflowNodeKind,
   type WorkflowType,
 } from "@chatai/contracts";
@@ -46,15 +44,13 @@ export function projectWorkflowNodeExecutionConfig({
       ? "chatai_sop"
       : "wecom_sop");
     const entryMode = draftConfig.entryMode ?? "event";
-    const triggers = entryMode === "audience-import" ? [] : draftConfig.triggers;
+    const triggers = entryMode === "event" ? draftConfig.triggers : [];
     return cloneJsonRecord(resolvedWorkflowType === "chatai_sop"
       ? {
           entryMode,
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
           messageSendingWindow:
             draftConfig.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-          pushAccountStrategy:
-            draftConfig.pushAccountStrategy ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
           seatIds: draftConfig.seatIds,
           triggers,
         }
@@ -83,8 +79,8 @@ export function projectWorkflowNodeExecutionConfig({
   if (kind === "wait-event") {
     const event = isRecord(draftConfig.event) ? draftConfig.event : {};
     return cloneJsonRecord({
+      delay: draftConfig.delay,
       event: {
-        collectWindowSeconds: WORKFLOW_WAIT_EVENT_COLLECT_WINDOW_SECONDS,
         type: event.type,
       },
       timeout: draftConfig.timeout,
@@ -157,6 +153,18 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
+  if (kind === "order-conversion") {
+    return cloneJsonRecord(compactUndefined({
+      orderNumberSelector: draftConfig.orderNumberSelector,
+    }));
+  }
+
+  if (kind === "order-bind") {
+    return cloneJsonRecord(compactUndefined({
+      orderNumberSelector: draftConfig.orderNumberSelector,
+    }));
+  }
+
   if (kind === "ai-collect") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
     const openingMessage = typeof draftConfig.openingMessage === "string"
@@ -216,7 +224,7 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
     case "wait":
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":
-      return "Wait Event node requires a supported event and timeout";
+      return "Wait Event node requires a supported event, delay, and timeout";
     case "message-query":
       return "Message Query node requires a valid time range";
     case "branch":
@@ -229,8 +237,14 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Tag node requires an operation and at least one valid tag";
     case "tag-query":
       return "Tag Query node requires a match mode and at least one valid tag";
+    case "audience-filter":
+      return "Audience Filter node requires a match mode and 1 to 3 unique audience groups";
     case "customer-update":
       return "Customer Update node requires complete unique fields and values";
+    case "order-conversion":
+      return "Order Conversion node requires an order number variable";
+    case "order-bind":
+      return "Order Bind node requires an order number variable";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

@@ -4,6 +4,7 @@ import type {
   WorkflowAiCollectField as SharedWorkflowAiCollectField,
   WorkflowAiCollectFieldType as SharedWorkflowAiCollectFieldType,
   WorkflowAiCollectTimeout as SharedWorkflowAiCollectTimeout,
+  WorkflowAudienceFilterDraftConfig,
   WorkflowAiIntentDraftConfig,
   WorkflowBranchCondition as SharedWorkflowBranchCondition,
   WorkflowBranchConfig,
@@ -22,6 +23,8 @@ import type {
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
   WorkflowMessageQueryConfig,
+  WorkflowOrderBindDraftConfig,
+  WorkflowOrderConversionDraftConfig,
   WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
@@ -130,6 +133,7 @@ export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegmen
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
 export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
+export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
@@ -142,7 +146,10 @@ export type WorkflowLlmOutputFieldType = SharedWorkflowLlmOutputFieldType;
 export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
+export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
+export type OrderConversionNodeData = WorkflowNodeDataBase<"order-conversion">
+  & WorkflowOrderConversionDraftConfig;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">
   & WorkflowCustomerUpdateDraftConfig;
@@ -150,6 +157,8 @@ export type WorkflowAiCollectField = SharedWorkflowAiCollectField;
 export type WorkflowAiCollectFieldType = SharedWorkflowAiCollectFieldType;
 export type WorkflowAiCollectTimeout = SharedWorkflowAiCollectTimeout;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect"> & WorkflowAiCollectDraftConfig;
+export type AudienceFilterNodeData = WorkflowNodeDataBase<"audience-filter">
+  & WorkflowAudienceFilterDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
@@ -158,6 +167,7 @@ export type WorkflowNodeDataMap = {
   agent: AgentNodeData;
   "ai-collect": AiCollectNodeData;
   "ai-intent": AiIntentNodeData;
+  "audience-filter": AudienceFilterNodeData;
   branch: BranchNodeData;
   coupon: CouponNodeData;
   "customer-update": CustomerUpdateNodeData;
@@ -166,7 +176,9 @@ export type WorkflowNodeDataMap = {
   llm: LlmNodeData;
   message: MessageNodeData;
   "message-query": MessageQueryNodeData;
+  "order-bind": OrderBindNodeData;
   "order-query": OrderQueryNodeData;
+  "order-conversion": OrderConversionNodeData;
   "ratio-split": RatioSplitNodeData;
   start: StartNodeData;
   tag: TagNodeData;

@@ -36,16 +36,24 @@ See [LICENSE](LICENSE) for the full terms.
 │   │   │   ├── store/       # Zustand 状态管理
 │   │   │   └── styles/      # Tailwind v4 全局样式
 │   │   └── test/            # Web 测试
-│   └── backend/             # Node 后端服务
-│       ├── src/
-│       │   ├── config/      # env 加载和配置解析
-│       │   ├── db/          # Kysely / MySQL 接入点
-│       │   ├── modules/     # auth、chat 等业务模块
-│       │   ├── plugins/     # Fastify 插件
-│       │   └── shared/      # 后端共享错误和工具
-│       └── test/            # Backend 测试
+│   ├── backend/             # HTTP API 服务
+│   │   ├── src/
+│   │   │   ├── config/      # env 加载和配置解析
+│   │   │   ├── db/          # Kysely / MySQL 接入点
+│   │   │   ├── modules/     # auth、chat 等业务模块
+│   │   │   ├── plugins/     # Fastify 插件
+│   │   │   └── shared/      # 后端共享错误和工具
+│   │   └── test/            # Backend 测试
+│   ├── backend-worker/      # Insights 和 User Memory 异步任务
+│   └── workflow-worker/     # Marketing Workflow 执行进程
 ├── packages/
-│   └── contracts/           # 前后端共享 DTO、响应结构和契约类型
+│   ├── contracts/           # 跨层 DTO、响应结构和契约类型
+│   ├── database/            # 共享 MySQL 连接和 Kysely schema
+│   ├── insights/            # Insights Worker 运行逻辑
+│   ├── tickets/             # 工单持久化能力
+│   ├── user-memory/         # User Memory Worker 运行逻辑
+│   ├── workflow-engine/     # Workflow 编译和纯执行逻辑
+│   └── workflow-runtime/    # Workflow 运行时和持久化接口
 ├── docs/
 │   ├── db/                  # 数据库相关文档
 │   └── superpowers/specs/   # 设计和架构文档
@@ -102,7 +110,8 @@ pnpm dev:test-api
 pnpm dev                  # 启动 web，本地前端 -> 本地 backend
 pnpm dev:test-api         # 启动 web，本地前端 -> 测试环境 API
 pnpm backend:dev          # 启动 backend
-pnpm backend:db:codegen   # 按 apps/backend/scripts/codegen-db.config.json 生成 Kysely 类型
+pnpm backend-worker:dev   # 启动 backend worker
+pnpm database:codegen     # 按 packages/database/scripts/codegen-db.config.json 生成 Kysely 类型
 pnpm typecheck            # 全仓类型检查
 pnpm test                 # 全仓测试
 pnpm build                # 构建 web
@@ -136,9 +145,12 @@ apps/backend/.env.local
 apps/backend/.env.example
 ```
 
+本地运行 Backend Worker 时，新建 `apps/backend-worker/.env.local`，并参考
+`apps/backend-worker/.env.example` 配置数据库、Insights 和 User Memory Worker。
+
 ## 数据库类型生成
 
-Backend 使用 `kysely-codegen` 从 `apps/backend/.env.local` 的 `DATABASE_URL` 连接数据库，并且只生成 `apps/backend/scripts/codegen-db.config.json` 中配置的表：
+Database package 使用 `kysely-codegen` 从 `packages/database/.env.local` 的 `DATABASE_URL` 连接数据库；迁移期间仍兼容读取 `apps/backend/.env.local`。只生成 `packages/database/scripts/codegen-db.config.json` 中配置的表：
 
 ```json
 {
@@ -157,13 +169,13 @@ apps/backend/src/db/schema.ts
 日常直接运行：
 
 ```bash
-pnpm backend:db:codegen
+pnpm database:codegen
 ```
 
 如果临时验证某张表，也可以用命令行参数覆盖配置：
 
 ```bash
-pnpm backend:db:codegen -- table_name
+pnpm database:codegen -- table_name
 ```
 
 ## API 约定

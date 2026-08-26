@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { scheduleWorkflowTasks } from "../src/scheduler.js";
 
 describe("workflow scheduler", () => {
-  it("dispatches database tasks without publishing to the broker", async () => {
+  it("forwards shardIds to the repository without publishing to the broker", async () => {
     const repository = {
       dispatchDueTasks: vi.fn(async () => ({ cancelled: 1, deferred: 2, dispatched: 3 })),
     };

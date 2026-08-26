@@ -58,7 +58,6 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_workflow_definition",
   "xy_wap_embed_workflow_entry_guard",
   "xy_wap_embed_workflow_event_subscription",
-  "xy_wap_embed_workflow_event_subscription_event",
   "xy_wap_embed_workflow_inbox",
   "xy_wap_embed_workflow_inference_job",
   "xy_wap_embed_workflow_llm_test_attempt",

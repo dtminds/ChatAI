@@ -46,8 +46,8 @@ describe("workflow production availability", () => {
     const spec = executionSpec();
     spec.nodes.splice(1, 0, {
       config: {
+        delay: { duration: 30, unit: "second" },
         event: {
-          collectWindowSeconds: 10,
           type: "message.received",
         },
         timeout: { duration: 15, unit: "minute" },
@@ -110,7 +110,7 @@ function executionSpec(): WorkflowExecutionSpec {
         config: {
           entryPolicy: { mode: "never" },
           seatIds: [1],
-          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+          triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
         },
         id: "start",
         kind: "start",

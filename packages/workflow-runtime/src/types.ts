@@ -81,7 +81,6 @@ export type WorkflowEventSubscriptionStatus =
   | "cancelled";
 
 export type WorkflowEventSubscriptionRecord = {
-  collectUntil: Date | null;
   createdAt: Date;
   effectiveFrom: Date;
   eventType: WorkflowEntryEventType;
@@ -89,6 +88,7 @@ export type WorkflowEventSubscriptionRecord = {
   id: string;
   nodeId: string;
   revision: number;
+  resumeAt: Date | null;
   runId: string;
   seatId: number | null;
   status: WorkflowEventSubscriptionStatus;
@@ -96,19 +96,11 @@ export type WorkflowEventSubscriptionRecord = {
   subjectType: WorkflowSubjectType;
   taskId: string;
   triggerEventId: string | null;
+  triggerOccurredAt: Date | null;
+  triggerProjection: WorkflowJsonObject | null;
   uid: number;
   updatedAt: Date;
   workflowId: string;
-};
-
-export type WorkflowEventSubscriptionEventRecord = {
-  collectedAt: Date;
-  eventId: string;
-  id: string;
-  occurredAt: Date;
-  projection: WorkflowJsonObject;
-  subscriptionId: string;
-  uid: number;
 };
 
 export type WorkflowEventSubscriptionReader = {
@@ -119,7 +111,6 @@ export type WorkflowEventSubscriptionReader = {
     subjectId: string,
     seatId: number | null,
     eventOccurredAt: Date,
-    observedAt: Date,
   ): Promise<WorkflowEventSubscriptionRecord[]>;
 };
 
@@ -493,12 +484,12 @@ export type WorkflowBeginEventWaitInput = {
   uid: number;
 };
 
-export type WorkflowRecordEventSubscriptionInput = {
-  collectUntil: Date;
+export type WorkflowTriggerEventSubscriptionInput = {
   eventId: string;
   eventOccurredAt: Date;
   projection: WorkflowJsonObject;
   recordedAt: Date;
+  resumeAt: Date;
   subscriptionId: string;
   uid: number;
 };
@@ -681,6 +672,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
         task: WorkflowTaskRecord;
       }
     | { kind: "capacity-rejected" }
+    | { kind: "active-run-rejected" }
     | WorkflowRuntimeFailure
   >;
   deferTask(input: {
@@ -695,10 +687,6 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     uid: number,
     taskId: string,
   ): Promise<WorkflowEventSubscriptionRecord | null>;
-  listEventSubscriptionEvents(
-    uid: number,
-    subscriptionId: string,
-  ): Promise<WorkflowEventSubscriptionEventRecord[]>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
   listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;
   recoverExpiredLeases(input: {
@@ -754,9 +742,8 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     | { kind: "success"; subscription: WorkflowEventSubscriptionRecord }
     | WorkflowRuntimeFailure
   >;
-  recordEventSubscriptionEvent(input: WorkflowRecordEventSubscriptionInput): Promise<
+  triggerEventSubscription(input: WorkflowTriggerEventSubscriptionInput): Promise<
     | {
-        firstEvent: boolean;
         kind: "success";
         run: WorkflowRunRecord;
         subscription: WorkflowEventSubscriptionRecord;

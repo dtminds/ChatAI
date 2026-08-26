@@ -105,7 +105,7 @@ function executeWaitEvent(
   context: WorkflowNodeExecutionContext,
 ): WorkflowNodeExecutionResult {
   if (!Value.Check(WorkflowWaitEventConfigSchema, node.config)) {
-    throw new WorkflowNodeExecutionError("Wait Event node requires a supported event and timeout");
+    throw new WorkflowNodeExecutionError("Wait Event node requires a supported event, delay, and timeout");
   }
   const unitMilliseconds = node.config.timeout.unit === "minute"
     ? 60_000

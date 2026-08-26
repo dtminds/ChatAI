@@ -5,9 +5,14 @@ import type {
 import type {
   WorkflowEdge,
   WorkflowNode,
+  WorkflowNodeValidationIssue,
   WorkflowPublishCheck,
   WorkflowPublishCheckSummaryItem,
 } from "../types";
+import {
+  isFriendAddWaySelectionInvalid,
+  type WorkflowFriendAddWayResource,
+} from "../workflow-friend-add-way-resource";
 import {
   validateWorkflowDraft,
 } from "./workflow-validation";
@@ -34,7 +39,12 @@ export type WorkflowValidationSummary = {
 export type WorkflowValidationPolicy = {
   allowedEntryEventTypes: readonly WorkflowEntryEventType[];
   allowedNodeKinds: readonly WorkflowNodeKind[];
+  resources?: WorkflowValidationResources;
   runtimeSupportedNodeKinds: readonly WorkflowNodeKind[];
+};
+
+export type WorkflowValidationResources = {
+  friendAddWays?: Pick<WorkflowFriendAddWayResource, "groups" | "status">;
 };
 
 export function buildWorkflowValidationSummary(
@@ -51,18 +61,19 @@ export function buildWorkflowValidationSummaryFromResult(
   validation: WorkflowValidationResult,
   policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
+  const effectiveValidation = appendFriendAddWayResourceIssue(validation, policy.resources);
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const startIssue = validation.nodeIssues.find(
-    (item) => item.node.id === validation.startNode?.id,
+  const startIssue = effectiveValidation.nodeIssues.find(
+    (item) => item.node.id === effectiveValidation.startNode?.id,
   );
-  const disconnectedIssues = validation.nodeIssues
+  const disconnectedIssues = effectiveValidation.nodeIssues
     .map(({ issues, node }) => ({
       issues: issues.filter((issue) => issue.source === "graph"),
       node,
     }))
     .filter((item) => item.issues.length > 0);
-  const nodeConfigIssues = validation.nodeIssues
-    .filter((item) => item.node.id !== validation.startNode?.id)
+  const nodeConfigIssues = effectiveValidation.nodeIssues
+    .filter((item) => item.node.id !== effectiveValidation.startNode?.id)
     .map(({ issues, node }) => ({
       issues: issues.filter((issue) => issue.source !== "graph"),
       node,
@@ -98,8 +109,8 @@ export function buildWorkflowValidationSummaryFromResult(
     unsupportedRuntimeNodeIssues,
   );
   const allowedEntryEventTypes = new Set(policy.allowedEntryEventTypes);
-  const unsupportedEntryEventIssues = validation.startNode?.data.kind === "start"
-    ? validation.startNode.data.triggers
+  const unsupportedEntryEventIssues = effectiveValidation.startNode?.data.kind === "start"
+    ? effectiveValidation.startNode.data.triggers
         .filter((trigger) => !allowedEntryEventTypes.has(trigger.type))
         .map(() => ({
           code: "workflow-type-entry-event-unsupported",
@@ -112,8 +123,8 @@ export function buildWorkflowValidationSummaryFromResult(
     ...startIssue?.issues.filter((issue) => issue.source !== "graph") ?? [],
     ...unsupportedEntryEventIssues,
   ];
-  const hasDisconnectedNode = validation.disconnectedNodes.length > 0 || disconnectedIssues.length > 0;
-  const hasGraphStructureIssue = validation.graphIssues.some((issue) =>
+  const hasDisconnectedNode = effectiveValidation.disconnectedNodes.length > 0 || disconnectedIssues.length > 0;
+  const hasGraphStructureIssue = effectiveValidation.graphIssues.some((issue) =>
     issue.code !== "node-disconnected" && issue.code !== "end-unreachable",
   ) || disconnectedIssues.some(({ issues }) =>
     issues.some((issue) => issue.code !== "node-disconnected"),
@@ -121,14 +132,16 @@ export function buildWorkflowValidationSummaryFromResult(
   const summary: WorkflowPublishCheckSummaryItem[] = [
     {
       ...getBlockingScope(),
-      description: validation.startNode && !startConfigIssues.length
-        ? validation.startNode.data.kind === "start"
-          && validation.startNode.data.entryMode === "audience-import"
-          ? "通过导入人群进入"
-          : `已配置 ${validation.startNode.data.kind === "start" ? validation.startNode.data.triggers.length : 0} 个触发条件`
+      description: effectiveValidation.startNode && !startConfigIssues.length
+        ? effectiveValidation.startNode.data.kind === "start"
+          && effectiveValidation.startNode.data.entryMode !== "event"
+          ? effectiveValidation.startNode.data.entryMode === "audience-import"
+            ? "通过导入人群进入"
+            : "通过外部推送进入"
+          : `已配置 ${effectiveValidation.startNode.data.kind === "start" ? effectiveValidation.startNode.data.triggers.length : 0} 个触发条件`
         : startConfigIssues[0]?.message ?? "缺少开始节点",
       id: "start",
-      status: validation.startNode && !startConfigIssues.length ? "ready" : "warning",
+      status: effectiveValidation.startNode && !startConfigIssues.length ? "ready" : "warning",
       title: "进入方式",
     },
     {
@@ -153,9 +166,9 @@ export function buildWorkflowValidationSummaryFromResult(
     },
     {
       ...getBlockingScope(),
-      description: validation.endNode ? "已配置结束节点" : "缺少结束节点",
+      description: effectiveValidation.endNode ? "已配置结束节点" : "缺少结束节点",
       id: "end",
-      status: validation.endNode ? "ready" : "warning",
+      status: effectiveValidation.endNode ? "ready" : "warning",
       title: "旅程结束",
     },
   ];
@@ -172,7 +185,7 @@ export function buildWorkflowValidationSummaryFromResult(
       status: "warning",
       title: item.title,
     }));
-  const graphIssueChecks: WorkflowPublishCheck[] = validation.graphIssues
+  const graphIssueChecks: WorkflowPublishCheck[] = effectiveValidation.graphIssues
     .filter((issue) => shouldExposeGraphIssueAsPublishCheck(issue.code))
     .map((issue) => {
       const node = issue.nodeId ? nodeById.get(issue.nodeId) : undefined;
@@ -205,7 +218,7 @@ export function buildWorkflowValidationSummaryFromResult(
     ...graphIssueChecks,
     ...nodeIssueChecks,
   ];
-  const displayChecks = buildWorkflowDisplayChecks(nodes, validation, checks);
+  const displayChecks = buildWorkflowDisplayChecks(nodes, effectiveValidation, checks);
   const publishBlockers = checks.filter((check) => check.blocksPublish);
 
   return {
@@ -216,7 +229,67 @@ export function buildWorkflowValidationSummaryFromResult(
     readyChecks: summary.filter((check) => check.status === "ready").length,
     summary,
     totalSummaryChecks: summary.length,
-    validation,
+    validation: effectiveValidation,
+  };
+}
+
+function appendFriendAddWayResourceIssue(
+  validation: WorkflowValidationResult,
+  resources: WorkflowValidationResources | undefined,
+): WorkflowValidationResult {
+  const startNode = validation.startNode;
+  const friendAddWays = resources?.friendAddWays;
+  if (!friendAddWays || startNode?.data.kind !== "start" || startNode.data.entryMode !== "event") {
+    return validation;
+  }
+
+  const trigger = startNode.data.triggers.find(item => item.type === "contact.friend_added");
+  if (!trigger || trigger.type !== "contact.friend_added" || trigger.sourceIds.length === 0) {
+    return validation;
+  }
+
+  let issue: WorkflowNodeValidationIssue | undefined;
+  if (friendAddWays.status === "error") {
+    issue = createFriendAddWayResourceIssue(
+      "start-friend-source-unavailable",
+      "添加好友来源加载失败",
+    );
+  } else if (friendAddWays.status !== "ready") {
+    issue = createFriendAddWayResourceIssue(
+      "start-friend-source-loading",
+      "正在校验添加好友来源",
+    );
+  } else if (isFriendAddWaySelectionInvalid(friendAddWays.groups, trigger)) {
+    issue = createFriendAddWayResourceIssue(
+      "start-friend-source-invalid",
+      "添加好友来源已失效",
+    );
+  }
+
+  if (!issue) {
+    return validation;
+  }
+
+  const existingStartIssue = validation.nodeIssues.find(item => item.node.id === startNode.id);
+  return {
+    ...validation,
+    nodeIssues: existingStartIssue
+      ? validation.nodeIssues.map(item => item.node.id === startNode.id
+          ? { ...item, issues: [...item.issues, issue] }
+          : item)
+      : [...validation.nodeIssues, { issues: [issue], node: startNode }],
+  };
+}
+
+function createFriendAddWayResourceIssue(
+  code: string,
+  message: string,
+): WorkflowNodeValidationIssue {
+  return {
+    code,
+    message,
+    severity: "warning",
+    source: "catalog",
   };
 }
 

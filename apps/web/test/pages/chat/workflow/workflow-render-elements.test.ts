@@ -72,6 +72,7 @@ describe("createWorkflowRenderElements", () => {
       "wait",
       "wait-event",
       "branch",
+      "audience-filter",
       "ratio-split",
       "ai-intent",
       "llm",
@@ -80,11 +81,13 @@ describe("createWorkflowRenderElements", () => {
       "tag-query",
       "tag",
       "customer-update",
+      "order-bind",
       "message",
       "message-query",
       "handoff",
       "agent",
       "coupon",
+      "order-conversion",
     ]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
   });

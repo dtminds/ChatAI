@@ -8,7 +8,8 @@ import {
 
 const ENTERED_AT = new Date("2026-08-10T00:00:00.000Z");
 const EXPIRES_AT = new Date("2026-08-10T00:01:00.000Z");
-const COLLECT_UNTIL = new Date("2026-08-10T00:00:15.000Z");
+const EVENT_OCCURRED_AT = new Date("2026-08-10T00:00:05.000Z");
+const RESUME_AT = new Date("2026-08-10T00:00:35.000Z");
 
 describe("Wait Event runtime", () => {
   it("records the actual completion time when a Wait Event finishes", async () => {
@@ -38,11 +39,13 @@ describe("Wait Event runtime", () => {
     expect(result).toMatchObject({
       kind: "waiting",
       subscription: {
-        collectUntil: null,
         effectiveFrom: ENTERED_AT,
         eventType: "message.received",
         expiresAt: EXPIRES_AT,
+        resumeAt: null,
         status: "waiting",
+        triggerOccurredAt: null,
+        triggerProjection: null,
       },
       task: { dueAt: EXPIRES_AT, status: "pending", taskType: "wait-event" },
     });
@@ -53,26 +56,36 @@ describe("Wait Event runtime", () => {
     });
   });
 
-  it("collects messages for ten seconds and routes the triggered output", async () => {
+  it("latches the first message, waits from event time and routes only that trigger fact", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
     const first = await recordMessage(harness, waiting.subscription, {
       eventId: "message-event-1",
       messageId: 101,
-      occurredAt: new Date("2026-08-10T00:00:05.000Z"),
-      recordedAt: new Date("2026-08-10T00:00:05.000Z"),
+      occurredAt: EVENT_OCCURRED_AT,
+      recordedAt: new Date("2026-08-10T00:00:08.000Z"),
       text: "第一条消息",
     });
     if (first.kind !== "success") throw new Error(`Expected first message, received ${first.kind}`);
-    await recordMessage(harness, first.subscription, {
+    await expect(harness.repository.timeoutEventSubscription({
+      subscriptionId: waiting.subscription.id,
+      timedOutAt: EXPIRES_AT,
+      uid: 9,
+    })).resolves.toEqual({ kind: "conflict" });
+    await expect(recordMessage(harness, waiting.subscription, {
       eventId: "message-event-2",
       messageId: 102,
-      occurredAt: new Date("2026-08-10T00:00:04.000Z"),
+      occurredAt: new Date("2026-08-10T00:00:09.000Z"),
       recordedAt: new Date("2026-08-10T00:00:09.000Z"),
       text: "第二条消息",
-    });
+    })).resolves.toEqual({ kind: "conflict" });
 
-    const completed = await dispatchAndExecute(harness, COLLECT_UNTIL);
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2026-08-10T00:00:34.999Z"),
+    })).resolves.toMatchObject({ dispatched: 0 });
+
+    const completed = await dispatchAndExecute(harness, RESUME_AT);
 
     expect(completed).toMatchObject({
       kind: "success",
@@ -81,20 +94,12 @@ describe("Wait Event runtime", () => {
         context: {
           outputs: {
             "wait-event": {
-              lastMessageAt: "2026-08-10T00:00:05.000Z",
-              messageCount: 2,
-              messages: [
-                {
-                  id: 102,
-                  parts: [{ text: "第二条消息", type: "text" }],
-                  role: "customer",
-                },
-                {
-                  id: 101,
-                  parts: [{ text: "第一条消息", type: "text" }],
-                  role: "customer",
-                },
-              ],
+              message: {
+                id: 101,
+                parts: [{ text: "第一条消息", type: "text" }],
+                role: "customer",
+              },
+              triggeredAt: EVENT_OCCURRED_AT.toISOString(),
             },
           },
         },
@@ -104,8 +109,16 @@ describe("Wait Event runtime", () => {
       9,
       waiting.task.id,
     )).resolves.toMatchObject({
-      collectUntil: COLLECT_UNTIL,
+      resumeAt: RESUME_AT,
       status: "triggered",
+      triggerOccurredAt: EVENT_OCCURRED_AT,
+      triggerProjection: {
+        message: {
+          id: 101,
+          parts: [{ text: "第一条消息", type: "text" }],
+          role: "customer",
+        },
+      },
     });
   });
 
@@ -127,25 +140,45 @@ describe("Wait Event runtime", () => {
     });
   });
 
-  it("fails instead of treating an oversized single message as empty input", async () => {
+  it("silently truncates the tail of an oversized trigger message", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
     await recordMessage(harness, waiting.subscription, {
       eventId: "message-event-large",
       messageId: 101,
-      occurredAt: new Date("2026-08-10T00:00:05.000Z"),
-      recordedAt: new Date("2026-08-10T00:00:05.000Z"),
-      text: "x".repeat(9_000),
+      occurredAt: EVENT_OCCURRED_AT,
+      recordedAt: EVENT_OCCURRED_AT,
+      text: "你".repeat(12_000),
     });
 
-    const completed = await dispatchAndExecute(harness, COLLECT_UNTIL);
+    const completed = await dispatchAndExecute(harness, RESUME_AT);
 
-    expect(completed).toMatchObject({
-      errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
-      kind: "node-failed",
-      nodeId: "wait-event",
-      nodeKind: "wait-event",
-      run: { status: "failed" },
+    expect(completed).toMatchObject({ kind: "success", run: { status: "running" } });
+    const run = await harness.repository.findRun(9, harness.created.run.id);
+    const output = (run?.context.outputs as Record<string, Record<string, unknown>>)["wait-event"]!;
+    const message = output.message as { parts: Array<{ text: string; type: string }> };
+    expect(Object.keys(output).sort()).toEqual(["message", "triggeredAt"]);
+    expect(message.parts[0]!.text.length).toBeGreaterThan(0);
+    expect(message.parts[0]!.text.length).toBeLessThan(12_000);
+    expect("你".repeat(12_000).startsWith(message.parts[0]!.text)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(output), "utf8")).toBeLessThanOrEqual(8 * 1_024);
+  });
+
+  it("resumes immediately when the fixed delay has already elapsed before recording", async () => {
+    const harness = await createHarness();
+    const waiting = await enterWaitEvent(harness);
+    const recordedAt = new Date("2026-08-10T00:00:40.000Z");
+
+    await expect(recordMessage(harness, waiting.subscription, {
+      eventId: "message-event-delayed-delivery",
+      messageId: 101,
+      occurredAt: EVENT_OCCURRED_AT,
+      recordedAt,
+      text: "延迟投递消息",
+    })).resolves.toMatchObject({
+      kind: "success",
+      subscription: { resumeAt: recordedAt },
+      task: { dueAt: recordedAt },
     });
   });
 
@@ -300,8 +333,8 @@ function executionSpec(): WorkflowExecutionSpec {
     nodes: [
       {
         config: {
+          delay: { duration: 30, unit: "second" },
           event: {
-            collectWindowSeconds: 10,
             type: "message.received",
           },
           timeout: { duration: 1, unit: "minute" },

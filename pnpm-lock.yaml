@@ -13,6 +13,18 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@chatai/insights':
+        specifier: workspace:*
+        version: link:../../packages/insights
+      '@chatai/tickets':
+        specifier: workspace:*
+        version: link:../../packages/tickets
+      '@chatai/user-memory':
+        specifier: workspace:*
+        version: link:../../packages/user-memory
       '@chatai/workflow-engine':
         specifier: workspace:*
         version: link:../../packages/workflow-engine
@@ -49,19 +61,38 @@ importers:
       kysely:
         specifier: ^0.29.0
         version: 0.29.4
-      mysql2:
-        specifier: ^3.15.3
-        version: 3.23.2(@types/node@24.13.3)
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
-      kysely-codegen:
-        specifier: ^0.20.0
-        version: 0.20.0(kysely@0.29.4)(mysql2@3.23.2(@types/node@24.13.3))(typescript@5.9.3)
+      tsx:
+        specifier: ^4.21.0
+        version: 4.23.11
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
+
+  apps/backend-worker:
+    dependencies:
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@chatai/insights':
+        specifier: workspace:*
+        version: link:../../packages/insights
+      '@chatai/user-memory':
+        specifier: workspace:*
+        version: link:../../packages/user-memory
+      pino:
+        specifier: ^9.9.4
+        version: 9.14.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
       tsx:
         specifier: ^4.21.0
         version: 4.23.11
@@ -99,6 +130,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@blobatar/react':
+        specifier: 2.5.0
+        version: 2.5.0(blobatar@2.5.0(react@19.2.8))(react@19.2.8)
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -132,9 +166,6 @@ importers:
       '@lexical/utils':
         specifier: ^0.49.0
         version: 0.49.0(typescript@5.9.3)
-      '@oreo-design/avatar':
-        specifier: 0.1.0
-        version: 0.1.0(react@19.2.8)
       '@paddleocr/paddleocr-js':
         specifier: ^0.4.2
         version: 0.4.2
@@ -216,6 +247,9 @@ importers:
       axios:
         specifier: ^1.9.0
         version: 1.19.0
+      blobatar:
+        specifier: 2.5.0
+        version: 2.5.0(react@19.2.8)
       border-beam:
         specifier: 1.3.0
         version: 1.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -382,6 +416,118 @@ importers:
         specifier: ^4.1.5
         version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
 
+  packages/database:
+    dependencies:
+      kysely:
+        specifier: ^0.29.0
+        version: 0.29.4
+      mysql2:
+        specifier: ^3.15.3
+        version: 3.23.2(@types/node@24.13.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      kysely-codegen:
+        specifier: ^0.20.0
+        version: 0.20.0(kysely@0.29.4)(mysql2@3.23.2(@types/node@24.13.3))(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
+
+  packages/insights:
+    dependencies:
+      '@chatai/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../database
+      '@chatai/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@chatai/tickets':
+        specifier: workspace:*
+        version: link:../tickets
+      '@sinclair/typebox':
+        specifier: ^0.34.41
+        version: 0.34.52
+      kysely:
+        specifier: ^0.29.0
+        version: 0.29.4
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
+
+  packages/llm:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/tickets:
+    dependencies:
+      '@chatai/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../database
+      kysely:
+        specifier: ^0.29.0
+        version: 0.29.4
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
+
+  packages/user-memory:
+    dependencies:
+      '@chatai/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../database
+      '@chatai/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@sinclair/typebox':
+        specifier: ^0.34.41
+        version: 0.34.52
+      kysely:
+        specifier: ^0.29.0
+        version: 0.29.4
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11))
+
   packages/workflow-engine:
     dependencies:
       '@chatai/contracts':
@@ -406,6 +552,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@chatai/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@chatai/workflow-engine':
         specifier: workspace:*
         version: link:../workflow-engine
@@ -594,6 +743,12 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
+
+  '@blobatar/react@2.5.0':
+    resolution: {integrity: sha512-O+gA8Xq3/jEO5kTWzH1UniJ9Y5DbIERB+pf4uzExws6eynKXplIn3LBpWQDnhlvZLYswHmPc+tOequ/Cq1beLA==}
+    peerDependencies:
+      blobatar: 2.x
+      react: '>=18'
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
@@ -1116,16 +1271,6 @@ packages:
     resolution: {integrity: sha512-uwPAhccfFJlsfCxMYTwOdVfOz3xqyj8xYL3zJj8f0pb30tLohnnFPhLuqp4/qoEz8sNxe4SESZedcBojRefIzg==}
     engines: {node: '>=18'}
     hasBin: true
-
-  '@oreo-design/avatar@0.1.0':
-    resolution: {integrity: sha512-+CF6a5r7C0tuDu2+dFlwj/txrrVvmZbKD9BiBzGGIjrwJxHV/qs3Y/6q2jpgo8on1GVOpv9HvTg/g6Fk/zEUSw==}
-    engines: {node: '>=20'}
-    hasBin: true
-    peerDependencies:
-      react: '>=18'
-    peerDependenciesMeta:
-      react:
-        optional: true
 
   '@oxc-project/types@0.143.0':
     resolution: {integrity: sha512-u6JZdLBTLotrNC9Vd6vPssINdzcCzleKAH6EJKImQb7GtYvX5keN2dxkoK44stCc4tffE6QQRtZTXVSzsLUlWA==}
@@ -2343,6 +2488,17 @@ packages:
 
   bindings@1.5.0:
     resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
+
+  blobatar@2.5.0:
+    resolution: {integrity: sha512-fVFzNgElUbqiLt8NLWYPRg7ljbOPP2/L+8hW6wdVntULNaTnQjlsy1FPr2JTux/Sckpfmc1misXWt+6CL3xXqg==}
+    peerDependencies:
+      react: '>=18'
+      vue: '>=3'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      vue:
+        optional: true
 
   bn.js@4.12.5:
     resolution: {integrity: sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==}
@@ -4577,6 +4733,11 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
+  '@blobatar/react@2.5.0(blobatar@2.5.0(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      blobatar: 2.5.0(react@19.2.8)
+      react: 19.2.8
+
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
@@ -5064,10 +5225,6 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
-
-  '@oreo-design/avatar@0.1.0(react@19.2.8)':
-    optionalDependencies:
-      react: 19.2.8
 
   '@oxc-project/types@0.143.0': {}
 
@@ -6238,6 +6395,10 @@ snapshots:
   bindings@1.5.0:
     dependencies:
       file-uri-to-path: 1.0.0
+
+  blobatar@2.5.0(react@19.2.8):
+    optionalDependencies:
+      react: 19.2.8
 
   bn.js@4.12.5: {}
 
@@ -7629,7 +7790,7 @@ snapshots:
 
   parse-json@5.2.0:
     dependencies:
-      '@babel/code-frame': 7.29.0
+      '@babel/code-frame': 7.29.7
       error-ex: 1.3.4
       json-parse-even-better-errors: 2.3.1
       lines-and-columns: 1.2.4

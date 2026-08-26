@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
+  WorkflowDirectEntryEndpointResponse,
   WorkflowDraft,
   WorkflowMetadataUpdateRequest,
   WorkflowPublishRequest,
@@ -36,8 +37,10 @@ import {
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowNodeDraftConfig,
+  WorkflowMessageSchema,
   WorkflowStartConfigSchema,
   WorkflowMessagesV1Schema,
+  WorkflowDirectEntryEndpointKeySchema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
 } from "@chatai/contracts";
 import {
@@ -66,7 +69,13 @@ import {
   type WorkflowLlmTestAttemptRepository,
   type WorkflowEntitlementPort,
 } from "@chatai/workflow-runtime";
-import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
+import {
+  AppError,
+  BadGatewayError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../shared/errors.js";
 import type {
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
@@ -78,11 +87,16 @@ import {
   UnavailableWorkflowSourceIdentityResolver,
   type WorkflowSourceIdentityResolver,
 } from "./workflow-source-identity.js";
+import {
+  MockWorkflowDirectEntryEndpointPort,
+  type WorkflowDirectEntryEndpointPort,
+} from "./direct-entry-endpoint-port.js";
 
 export type WorkflowOperatorScope = { roles: string[]; subUserId: string; uid: number };
 
 export type WorkflowServiceOptions = {
   clock?: () => Date;
+  directEntryEndpointPort?: WorkflowDirectEntryEndpointPort;
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
@@ -92,6 +106,7 @@ export type WorkflowServiceOptions = {
 
 export class WorkflowService {
   private readonly clock: () => Date;
+  private readonly directEntryEndpointPort: WorkflowDirectEntryEndpointPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
@@ -103,6 +118,8 @@ export class WorkflowService {
     options: WorkflowServiceOptions = {},
   ) {
     this.clock = options.clock ?? (() => new Date());
+    this.directEntryEndpointPort = options.directEntryEndpointPort
+      ?? new MockWorkflowDirectEntryEndpointPort();
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver
@@ -110,6 +127,27 @@ export class WorkflowService {
     this.llmTestAttemptRepository = options.llmTestAttemptRepository;
     this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
+  }
+
+  async getDirectEntryEndpoint(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+  ): Promise<WorkflowDirectEntryEndpointResponse> {
+    assertWorkflowAccess(scope);
+    await this.requireDefinition(scope.uid, workflowId);
+    const endpointKey = await this.directEntryEndpointPort.getEndpointKey({
+      uid: scope.uid,
+      workflowId,
+    });
+    if (!Value.Check(WorkflowDirectEntryEndpointKeySchema, endpointKey)) {
+      throw new BadGatewayError(
+        "WORKFLOW_DIRECT_ENTRY_ENDPOINT_INVALID",
+        "外部推送地址生成失败",
+      );
+    }
+    return {
+      endpointKey,
+    };
   }
 
   async createLlmTestAttempt(
@@ -782,7 +820,7 @@ export class WorkflowService {
       throw new Error("Compiled Workflow has an invalid Start configuration");
     }
     const config = entryNode.config as WorkflowStartConfig;
-    if (config.entryMode === "audience-import") return [];
+    if (config.entryMode !== "event") return [];
     if (subjectType !== "chatai_contact" || !("seatIds" in config)) {
       return getWorkflowTriggerBindings(config, subjectType);
     }
@@ -1270,8 +1308,11 @@ function resolveAiIntentTestInputType(
 
 function isAiIntentTestValueCompatible(value: unknown, valueType: WorkflowOutputValueType) {
   if (valueType.kind === "string") return typeof value === "string";
-  return valueType.kind === "object"
-    && valueType.schemaRef === "workflow.messages.v1"
+  if (valueType.kind !== "object") return false;
+  if (valueType.schemaRef === "workflow.message.v1") {
+    return Value.Check(WorkflowMessageSchema, value);
+  }
+  return valueType.schemaRef === "workflow.messages.v1"
     && Value.Check(WorkflowMessagesV1Schema, value);
 }
 

@@ -191,15 +191,18 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
 }
 
 describe("workflow node catalog", () => {
-  it("filters every capability profile through the catalog without route errors", () => {
-    for (const workflowType of ["chatai_sop", "wecom_sop"] as const) {
+  it.each(["chatai_sop", "wecom_sop"] as const)(
+    "filters the %s capability profile through the catalog without route errors",
+    (workflowType) => {
       const allowedInsertableNodeKinds = getWorkflowCapabilityProfile(workflowType)
         .allowedNodeKinds
         .filter(canInsertNodeKind);
 
       expect(allowedInsertableNodeKinds).toContain("ratio-split");
-    }
-  });
+      expect(allowedInsertableNodeKinds).toContain("audience-filter");
+    },
+  );
+
 
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
@@ -208,6 +211,7 @@ describe("workflow node catalog", () => {
       "agent",
       "ai-collect",
       "ai-intent",
+      "audience-filter",
       "branch",
       "coupon",
       "customer-update",
@@ -216,7 +220,9 @@ describe("workflow node catalog", () => {
       "llm",
       "message",
       "message-query",
+      "order-bind",
       "order-query",
+      "order-conversion",
       "ratio-split",
       "start",
       "tag",
@@ -250,7 +256,7 @@ describe("workflow node catalog", () => {
       "coupon",
       "order-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "branch", "customer-update", "handoff", "llm", "message", "message-query", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -354,13 +360,16 @@ describe("workflow node catalog", () => {
   it("supports field, custom, and empty node body bindings", () => {
     const fieldNodeKinds: WorkflowNodeKind[] = [
       "agent",
+      "audience-filter",
       "coupon",
       "customer-update",
       "handoff",
       "llm",
       "message",
       "message-query",
+      "order-bind",
       "order-query",
+      "order-conversion",
       "start",
       "tag",
       "tag-query",
@@ -461,16 +470,19 @@ describe("workflow node catalog", () => {
       "flow",
       "flow",
       "flow",
+      "flow",
       "data",
       "data",
       "data",
       "data",
       "operate",
       "operate",
+      "operate",
       "message",
       "data",
       "message",
       "message",
+      "operate",
       "operate",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
@@ -489,10 +501,10 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
@@ -500,10 +512,10 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "wait-event", "branch", "ratio-split", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
       { id: "message", items: ["message", "handoff", "agent"] },
-      { id: "operate", items: ["tag", "customer-update", "coupon"] },
+      { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);
   });
 

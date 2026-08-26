@@ -1,5 +1,6 @@
 export * from "./db.js";
 export * from "./database-timezone.js";
+export * from "./audience-filter.js";
 export * from "./capability-port.js";
 export * from "./chatai-action-context.js";
 export * from "./customer-update.js";
@@ -16,7 +17,9 @@ export * from "./workflow-messages.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";
 export * from "./node-metrics.js";
+export * from "./order-bind.js";
 export * from "./persistence-codecs.js";
+export * from "./order-conversion.js";
 export * from "./reconciler.js";
 export * from "./runtime-value-limits.js";
 export * from "./service.js";

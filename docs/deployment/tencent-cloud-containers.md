@@ -75,7 +75,7 @@ deploy/workflow-worker.Dockerfile
 deploy/nginx.conf
 ```
 
-两个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
+四个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
 
 ```bash
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
@@ -98,14 +98,14 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 当前构建文件的职责：
 
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
-- `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
-- `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
-- `deploy/workflow-worker.Dockerfile`：使用 Debian glibc 镜像构建并运行独立 Workflow Worker，以兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
+- `deploy/backend.Dockerfile`：构建 `apps/backend` 及其 contracts、database、tickets、llm、insights、user-memory、workflow-engine、workflow-runtime 依赖，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/backend-worker.Dockerfile`：只构建 `apps/backend-worker` 及 database、tickets、llm、insights、user-memory 共享包，运行阶段用 `node apps/backend-worker/dist/index.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
+- `deploy/workflow-worker.Dockerfile`：构建 `apps/workflow-worker` 及 contracts、llm、workflow-engine、workflow-runtime 共享包，并使用 Debian glibc 镜像兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：
 
-- Web 和 backend 镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml`、根 `package.json`、`apps/*` 和 `packages/contracts`，不要在子目录内单独执行上述 `docker build`。
+- 所有镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml` 和根 `package.json`，并按各自 Dockerfile 复制所需的 `apps/*`、`packages/*`；不要在子目录内单独执行上述 `docker build`。
 - 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
 - `deploy/web.Dockerfile` 不复制根目录 `.env.*` 文件。Workflow 临时账号/标签 fixture 仅通过 `VITE_WORKFLOW_FIXTURES_ENABLED` build arg 控制；其它自定义 `VITE_*` 变量仍需按需增加 `ARG`。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
 
@@ -170,7 +170,7 @@ livenessProbe:
     command:
       - sh
       - -c
-      - "test -r /proc/1/cmdline && grep -q 'worker.js' /proc/1/cmdline"
+      - "test -r /proc/1/cmdline && grep -q 'apps/backend-worker/dist/index.js' /proc/1/cmdline"
   initialDelaySeconds: 30
   periodSeconds: 30
   timeoutSeconds: 2
@@ -182,18 +182,15 @@ worker 不接收线上流量，通常不需要配置 readiness probe。后续如
 worker 必要环境变量：
 
 ```text
-NODE_ENV=production
 DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
 LOG_LEVEL=info
+AGENT_USER_MEMORY_WORKER_ENABLED=false
 INSIGHTS_WORKER_ENABLED=true
 INSIGHTS_WORKER_MODEL_ENABLED=false
-INSIGHTS_WORKER_INTERVAL_MS=3000
-INSIGHTS_WORKER_BATCH_SIZE=200
-INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE=1000
-INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK=20
+INSIGHTS_WORKER_TRACE_UID_ALLOWLIST=
 ```
 
-如需启用模型分析，再配置火山方舟相关变量并将 `INSIGHTS_WORKER_MODEL_ENABLED` 改为 `true`。
+启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。各业务场景使用的固定 endpoint 由 `packages/llm/src/model-policy.ts` 统一提供，不通过环境变量配置；底层默认和轻量模型不对业务 package 暴露。
 
 ## Marketing Workflow Worker 容器要求
 

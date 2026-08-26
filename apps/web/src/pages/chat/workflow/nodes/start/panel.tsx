@@ -1,18 +1,17 @@
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-  DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY,
   WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
   WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
   type WorkflowEntryPolicy,
   type WorkflowMessageSendingWindow,
-  type WorkflowPushAccountStrategy,
   type WorkflowStartEntryMode,
   type WorkflowStartTrigger,
 } from "@chatai/contracts";
-import { HelpCircleIcon } from "@hugeicons/core-free-icons";
+import { Copy01Icon, HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -41,7 +41,12 @@ import {
   getWorkflowStartFixtureSeats,
   getWorkflowStartFixtureWorkUsers,
 } from "./fixture-options";
+import {
+  FriendAddWaySelection,
+  type FriendAddWaySelectionValue,
+} from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
+import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 
 export function StartConfig({
@@ -50,6 +55,7 @@ export function StartConfig({
   onNodeChange,
   resources,
   seats,
+  workflowId,
   workUsers = getWorkflowStartFixtureWorkUsers(),
 }: NodeSettingsProps<"start"> & {
   seats?: ReturnType<typeof getWorkflowStartFixtureSeats>;
@@ -64,8 +70,6 @@ export function StartConfig({
   const managedAccounts = resources?.managedAccounts;
   const messageSendingWindow = chatAiStartData?.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
-  const pushAccountStrategy = chatAiStartData?.pushAccountStrategy
-    ?? DEFAULT_WORKFLOW_PUSH_ACCOUNT_STRATEGY;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
     : workUsers;
@@ -75,7 +79,6 @@ export function StartConfig({
     entryMode?: WorkflowStartEntryMode;
     entryPolicy?: WorkflowEntryPolicy;
     messageSendingWindow?: WorkflowMessageSendingWindow;
-    pushAccountStrategy?: WorkflowPushAccountStrategy;
     seatIds?: number[];
     triggers?: WorkflowStartTrigger[];
     workUserIds?: number[];
@@ -84,11 +87,11 @@ export function StartConfig({
     const nextEntryMode = patch.entryMode ?? entryMode;
     const nextTriggers = patch.triggers ?? triggers;
     const configured = nextSourceIds.length > 0
-      && (nextEntryMode === "audience-import" || nextTriggers.length > 0);
+      && (nextEntryMode !== "event" || nextTriggers.length > 0);
     onNodeChange({
       ...patch,
       metric: configured
-        ? `${nextSourceIds.length} 个${sourceLabel} · ${nextEntryMode === "audience-import" ? "导入人群" : `${nextTriggers.length} 个触发条件`}`
+        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length)}`
         : "待配置进入方式",
       status: configured ? "ready" : "warning",
     } as WorkflowNodeConfigPatch<"start">);
@@ -138,9 +141,9 @@ export function StartConfig({
           <h3 className="py-3 text-[15px] font-semibold text-foreground">进入方式</h3>
           <RadioGroup
             aria-label="进入方式"
-            className="flex items-center gap-6"
+            className="grid grid-cols-3 gap-3"
             onValueChange={(mode) => {
-              if (mode === "event" || mode === "audience-import") {
+              if (mode === "event" || mode === "audience-import" || mode === "direct-push") {
                 updateStartConfig({ entryMode: mode, triggers: [] });
               }
             }}
@@ -153,6 +156,10 @@ export function StartConfig({
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem value="audience-import" />
               <span>导入人群</span>
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <RadioGroupItem value="direct-push" />
+              <span>外部推送</span>
             </label>
           </RadioGroup>
         </section>
@@ -192,13 +199,14 @@ export function StartConfig({
 
             {hasTrigger(triggers, "contact.friend_added") ? (
               <TriggerParameter label="添加好友来源">
-                <CommaSeparatedTriggerInput
-                  ariaLabel="添加好友来源 ID"
-                  onCommit={(sourceIds) => updateStartConfig({
-                    triggers: [{ sourceIds, type: "contact.friend_added" }],
+                <FriendAddWaySelection
+                  groups={resources?.friendAddWays?.groups ?? []}
+                  onChange={(next) => updateStartConfig({
+                    triggers: [toFriendAddedTrigger(next)],
                   })}
-                  placeholder="输入来源 ID，多个用英文逗号分隔"
-                  values={getFriendSourceIds(triggers)}
+                  onRetry={resources?.friendAddWays?.reload}
+                  status={resources?.friendAddWays?.status ?? "ready"}
+                  value={getFriendAddWayValue(triggers)}
                 />
               </TriggerParameter>
             ) : null}
@@ -229,10 +237,12 @@ export function StartConfig({
             ) : null}
             </div>
           </section>
-        ) : (
+        ) : entryMode === "audience-import" ? (
           <p className="pb-3 text-[13px] leading-5 text-muted-foreground" role="note">
             发布后可在右上角点击“人群导入”按钮进行导入
           </p>
+        ) : (
+          <DirectEntryEndpoint workflowId={workflowId} />
         )}
       </div>
 
@@ -320,51 +330,87 @@ export function StartConfig({
             </div>
           </section>
 
-          <section>
-            <div className="flex items-center gap-1.5 px-1 py-3">
-              <h3 className="text-[15px] font-semibold text-foreground">推送账号</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="查看推送账号说明"
-                      className="size-5 rounded-full p-0 text-muted-foreground"
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-80" side="top" sideOffset={6}>
-                    若 SOP 中包含发送消息、转人工等节点，会优先由客户的专属服务官执行。若所选托管账号均不是客户的专属服务官，则按以下优先级选择
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="px-1 pb-3">
-              <RadioGroup
-                className="flex items-center gap-6"
-                onValueChange={(strategy) => updateStartConfig({
-                  pushAccountStrategy: strategy as WorkflowPushAccountStrategy,
-                })}
-                value={pushAccountStrategy}
-              >
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="earliest-added" />
-                  <span>优先最早添加的账号</span>
-                </label>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <RadioGroupItem value="latest-added" />
-                  <span>优先最新添加的账号</span>
-                </label>
-              </RadioGroup>
-            </div>
-          </section>
         </>
       ) : null}
     </div>
   );
+}
+
+function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
+  const [requestVersion, setRequestVersion] = useState(0);
+  const [state, setState] = useState<
+    | { kind: "error" }
+    | { kind: "loading" }
+    | { endpointUrl: string; kind: "ready" }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    if (!workflowId) return;
+    let active = true;
+    setState({ kind: "loading" });
+    void getWorkflowDirectEntryEndpoint(workflowId).then(({ endpointKey }) => {
+      if (!active) return;
+      const path = `/workflow/endpoint/${encodeURIComponent(endpointKey)}`;
+      setState({ endpointUrl: new URL(path, window.location.origin).toString(), kind: "ready" });
+    }).catch(() => {
+      if (active) setState({ kind: "error" });
+    });
+    return () => {
+      active = false;
+    };
+  }, [requestVersion, workflowId]);
+
+  if (!workflowId) return null;
+  return (
+    <section className="pb-3">
+      <div className="space-y-2.5 rounded-[8px] border bg-card p-3">
+        <p className="text-[13px] font-medium text-foreground">推送地址</p>
+        {state.kind === "loading" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在加载</span>
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="flex h-9 items-center justify-between gap-3">
+            <span className="text-[13px] text-destructive">加载失败</span>
+            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
+              重试
+            </Button>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2">
+            <Input aria-label="推送地址" className="min-w-0 flex-1" readOnly value={state.endpointUrl} />
+            <Button
+              aria-label="复制推送地址"
+              className="shrink-0"
+              onClick={() => void copyDirectEntryEndpoint(state.endpointUrl)}
+              size="icon"
+              title="复制推送地址"
+              type="button"
+              variant="outline"
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={16} strokeWidth={1.8} />
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+async function copyDirectEntryEndpoint(endpointUrl: string) {
+  try {
+    await navigator.clipboard.writeText(endpointUrl);
+    toast.success("已复制推送地址");
+  } catch {
+    toast.error("操作失败，请稍后重试");
+  }
+}
+
+function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
+  if (mode === "audience-import") return "导入人群";
+  if (mode === "direct-push") return "外部推送";
+  return `${triggerCount} 个触发条件`;
 }
 
 function CheckboxRow({ checked, disabled = false, label, onCheckedChange }: {
@@ -565,8 +611,28 @@ function createTrigger(type: WorkflowStartTrigger["type"]): WorkflowStartTrigger
   return { keywords: [], type };
 }
 
-function getFriendSourceIds(triggers: WorkflowStartTrigger[]) {
-  return triggers.find(trigger => trigger.type === "contact.friend_added")?.sourceIds ?? [];
+function getFriendAddWayValue(triggers: WorkflowStartTrigger[]): FriendAddWaySelectionValue {
+  const trigger = triggers.find(item => item.type === "contact.friend_added");
+  if (!trigger || trigger.type !== "contact.friend_added") {
+    return { addWayKey: null, sourceIds: [], sourceMatchMode: "all" };
+  }
+
+  return {
+    addWayKey: trigger.addWayKey ?? null,
+    sourceIds: trigger.sourceIds,
+    sourceMatchMode: trigger.sourceMatchMode ?? "all",
+  };
+}
+
+function toFriendAddedTrigger(value: FriendAddWaySelectionValue): WorkflowStartTrigger {
+  return {
+    type: "contact.friend_added",
+    sourceIds: value.sourceIds,
+    ...(value.addWayKey ? { addWayKey: value.addWayKey } : {}),
+    ...(value.addWayKey && value.sourceMatchMode === "any"
+      ? { sourceMatchMode: "any" }
+      : {}),
+  };
 }
 
 function getTagIds(triggers: WorkflowStartTrigger[]) {

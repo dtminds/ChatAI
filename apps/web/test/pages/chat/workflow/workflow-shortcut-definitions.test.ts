@@ -23,27 +23,16 @@ describe("workflow shortcut definitions", () => {
     expect(getWorkflowShortcutDisplayHotkey("workflow.redo")).toBe("Mod+Y");
   });
 
-  it("matches modifier-aware workflow hotkeys", () => {
-    expect(matchesWorkflowShortcut(
-      createKeyEvent("z", { ctrlKey: true }),
-      "workflow.undo",
-    )).toBe(true);
-    expect(matchesWorkflowShortcut(createKeyEvent("z"), "workflow.undo")).toBe(false);
-  });
-
-  it("matches delete and redo shortcut variants strictly", () => {
-    expect(matchesWorkflowShortcut(createKeyEvent("Delete"), "workflow.delete")).toBe(true);
-    expect(matchesWorkflowShortcut(createKeyEvent("Backspace"), "workflow.delete")).toBe(true);
-    expect(matchesWorkflowShortcut(
-      createKeyEvent("Backspace", { ctrlKey: true }),
-      "workflow.delete",
-    )).toBe(false);
-
-    expect(matchesWorkflowShortcut(createKeyEvent("y", { ctrlKey: true }), "workflow.redo")).toBe(true);
-    expect(matchesWorkflowShortcut(
-      createKeyEvent("z", { ctrlKey: true, shiftKey: true }),
-      "workflow.redo",
-    )).toBe(true);
-    expect(matchesWorkflowShortcut(createKeyEvent("z", { ctrlKey: true }), "workflow.redo")).toBe(false);
+  it.each([
+    { id: "workflow.undo" as const, init: { ctrlKey: true }, key: "z", matches: true },
+    { id: "workflow.undo" as const, init: {}, key: "z", matches: false },
+    { id: "workflow.delete" as const, init: {}, key: "Delete", matches: true },
+    { id: "workflow.delete" as const, init: {}, key: "Backspace", matches: true },
+    { id: "workflow.delete" as const, init: { ctrlKey: true }, key: "Backspace", matches: false },
+    { id: "workflow.redo" as const, init: { ctrlKey: true }, key: "y", matches: true },
+    { id: "workflow.redo" as const, init: { ctrlKey: true, shiftKey: true }, key: "z", matches: true },
+    { id: "workflow.redo" as const, init: { ctrlKey: true }, key: "z", matches: false },
+  ])("matches $id for $key", ({ id, init, key, matches }) => {
+    expect(matchesWorkflowShortcut(createKeyEvent(key, init), id)).toBe(matches);
   });
 });

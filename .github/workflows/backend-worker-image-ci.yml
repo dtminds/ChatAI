@@ -1,0 +1,72 @@
+name: Backend Worker Image CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "integration/**"
+    paths:
+      - ".github/workflows/backend-worker-image-ci.yml"
+      - "deploy/backend-worker.Dockerfile"
+      - "apps/backend-worker/package.json"
+      - "package.json"
+      - "packages/contracts/package.json"
+      - "packages/database/package.json"
+      - "packages/insights/package.json"
+      - "packages/llm/package.json"
+      - "packages/tickets/package.json"
+      - "packages/user-memory/package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  pull_request:
+    branches:
+      - main
+      - dev
+      - "codex/**"
+      - "feat/**"
+      - "feature/**"
+      - "integration/**"
+    paths:
+      - ".github/workflows/backend-worker-image-ci.yml"
+      - "deploy/backend-worker.Dockerfile"
+      - "apps/backend-worker/package.json"
+      - "package.json"
+      - "packages/contracts/package.json"
+      - "packages/database/package.json"
+      - "packages/insights/package.json"
+      - "packages/llm/package.json"
+      - "packages/tickets/package.json"
+      - "packages/user-memory/package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-worker-image-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-worker-image:
+    name: Backend Worker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build Backend Worker image
+        run: docker build -f deploy/backend-worker.Dockerfile -t chatai-backend-worker:ci .
+
+      - name: Verify Backend Worker entrypoint
+        run: |
+          set +e
+          output=$(docker run --rm chatai-backend-worker:ci 2>&1)
+          status=$?
+          set -e
+
+          printf '%s\n' "$output"
+          test "$status" -ne 0
+          grep --fixed-strings "DATABASE_URL must be configured" <<<"$output"

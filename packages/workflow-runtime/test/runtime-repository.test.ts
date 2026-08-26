@@ -121,6 +121,7 @@ describe("workflow runtime repository", () => {
     ["current node kind changes", flowChangedSpec("node-kind-changed"), "flow_changed_node_kind_changed"],
     ["selected outlet is deleted", flowChangedSpec("outlet-deleted"), "flow_changed_outlet_deleted"],
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
+    ["new Order Conversion target needs unavailable context", flowChangedSpec("order-conversion-context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Handoff target lacks its frozen seat", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
@@ -826,7 +827,11 @@ describe("workflow runtime repository", () => {
   it("cancels stopped workflow runs in cursor-based batches", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     await repository.createRunWithInitialTask(createRunInput());
-    await repository.createRunWithInitialTask({ ...createRunInput(), entryEventId: "event-2" });
+    await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    });
     const reconciler = new WorkflowRuntimeReconciler(repository);
 
     const first = await reconciler.cancelStoppedWorkflow({ limit: 1, uid: 9, workflowId: "31" });
@@ -897,6 +902,7 @@ function flowChangedSpec(
     | "handoff-context-incompatible"
     | "message-context-incompatible"
     | "node-kind-changed"
+    | "order-conversion-context-incompatible"
     | "outlet-deleted",
 ): WorkflowExecutionSpec {
   const spec = publishedSpec();
@@ -955,6 +961,27 @@ function flowChangedSpec(
           id: "message-1",
           kind: "message",
           nodeSchemaVersion: 2,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
+  if (scenario === "order-conversion-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-order-conversion", source: "start", sourceOutletId: "default", target: "order-conversion-1" },
+        { id: "order-conversion-end", source: "order-conversion-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            orderNumberSelector: ["node", "llm-1", "result"],
+          },
+          id: "order-conversion-1",
+          kind: "order-conversion",
+          nodeSchemaVersion: 1,
         },
         spec.nodes[1]!,
       ],
@@ -1061,7 +1088,7 @@ function publishedSpec(): WorkflowExecutionSpec {
         config: {
           entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
           eventType: "contact.friend_added",
-          filter: { sourceIds: [] },
+          filter: { sourceIds: ["qr-code-1"] },
           seatIds: [101],
         },
         id: "start",
@@ -1170,6 +1197,7 @@ async function createWaitingRun(
     entryEventId,
     initialNodeId: "wait-1",
     initialNodeKind: "wait",
+    subjectId: entryEventId,
   });
   if (created.kind !== "success") throw new Error("create failed");
   const claimed = await repository.claimTask({

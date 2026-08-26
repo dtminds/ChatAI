@@ -199,7 +199,7 @@ function compileRatioSplitGroups(
         node("start", "start", {
           entryPolicy: { mode: "never" },
           seatIds: [101],
-          triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+          triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
         }),
         node("split", "ratio-split", { groups }),
         ...groups.map(group => node(
@@ -230,7 +230,7 @@ function ratioSplitDraft(aBasisPoints: number): WorkflowDraft {
       node("start", "start", {
         entryPolicy: { mode: "never" },
         seatIds: [101],
-        triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       node("split", "ratio-split", {
         groups: [

@@ -7,9 +7,12 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
+  WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
@@ -466,9 +469,12 @@ function createHarness(options: {
       ...(hasCapabilityPort
         ? {
             capabilityBindings: options.capabilityBindings ?? [
+              WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
               WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+              WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
+              WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
               WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
             ],
@@ -515,13 +521,13 @@ function createExecutionSpec(workflowId: string): WorkflowExecutionSpec {
         config: workflowId === "wecom-workflow"
           ? {
               entryPolicy: { mode: "never" },
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
               workUserIds: [201],
             }
           : {
               entryPolicy: { mode: "never" },
               seatIds: [101],
-              triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+              triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
             },
         id: "start",
         kind: "start",

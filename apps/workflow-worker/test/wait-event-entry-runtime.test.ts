@@ -16,7 +16,7 @@ import { createFakeWorkflowEventCatalog } from "./support/fake-workflow-event-ca
 import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 
 describe("Wait Event Entry runtime composition", () => {
-  it("collects Entry messages for ten seconds and reaches the triggered terminal path", async () => {
+  it("latches the first Entry message and resumes after its fixed delay", async () => {
     const harness = await createHarness();
     await harness.publishOutbox();
     await expect(harness.repository.findEventSubscriptionByTask(
@@ -32,21 +32,27 @@ describe("Wait Event Entry runtime composition", () => {
       eventId: "message-event-1",
       messageId: 101,
       occurredAt: "2026-08-10T00:00:04.000Z",
-      text: "第一条消息",
     }));
     harness.setNow(new Date("2026-08-10T00:00:09.000Z"));
     await publishEntry(harness.broker, messageEvent({
       eventId: "message-event-2",
       messageId: 102,
       occurredAt: "2026-08-10T00:00:08.000Z",
-      text: "第二条消息",
     }));
 
-    const collectUntil = new Date("2026-08-10T00:00:15.000Z");
-    harness.setNow(collectUntil);
+    const beforeResume = new Date("2026-08-10T00:00:33.999Z");
+    harness.setNow(beforeResume);
     await expect(scheduleWorkflowTasks({
       limit: 10,
-      now: collectUntil,
+      now: beforeResume,
+      repository: harness.repository,
+    })).resolves.toMatchObject({ dispatched: 0 });
+
+    const resumeAt = new Date("2026-08-10T00:00:34.000Z");
+    harness.setNow(resumeAt);
+    await expect(scheduleWorkflowTasks({
+      limit: 10,
+      now: resumeAt,
       repository: harness.repository,
     })).resolves.toMatchObject({
       dispatched: 1,
@@ -58,20 +64,12 @@ describe("Wait Event Entry runtime composition", () => {
       context: {
         outputs: {
           "wait-event": {
-            lastMessageAt: "2026-08-10T00:00:08.000Z",
-            messageCount: 2,
-            messages: [
-              {
-                id: 101,
-                parts: [{ text: "第一条消息", type: "text" }],
-                role: "customer",
-              },
-              {
-                id: 102,
-                parts: [{ text: "第二条消息", type: "text" }],
-                role: "customer",
-              },
-            ],
+            message: {
+              id: 101,
+              parts: [{ text: "第一条消息", type: "text" }],
+              role: "customer",
+            },
+            triggeredAt: "2026-08-10T00:00:04.000Z",
           },
         },
       },
@@ -81,8 +79,9 @@ describe("Wait Event Entry runtime composition", () => {
       9,
       harness.created.task.id,
     )).resolves.toMatchObject({
-      collectUntil: new Date("2026-08-10T00:00:15.000Z"),
+      resumeAt,
       status: "triggered",
+      triggerEventId: "message-event-1",
     });
     expect(harness.broker.getPublished("entry-dlq")).toEqual([]);
     await harness.broker.close();
@@ -173,6 +172,13 @@ async function createHarness() {
     eventCatalog: createFakeWorkflowEventCatalog(),
     inboxRepository: repository,
     maxInFlight: 10,
+    messageReader: {
+      findById: vi.fn(async ({ messageId }) => ({
+        id: messageId,
+        parts: [{ text: messageId === 101 ? "第一条消息" : "第二条消息", type: "text" as const }],
+        role: "customer" as const,
+      })),
+    },
     now: () => now,
     runtimeService: service,
     subscription: "entry-sub",
@@ -222,7 +228,6 @@ function messageEvent(input: {
   eventId: string;
   messageId: number;
   occurredAt: string;
-  text: string;
 }): WorkflowEntryEvent {
   return {
     eventId: input.eventId,
@@ -230,11 +235,7 @@ function messageEvent(input: {
     occurredAt: input.occurredAt,
     payload: {
       externalUserId: 3267,
-      message: {
-        id: input.messageId,
-        parts: [{ text: input.text, type: "text" }],
-        role: "customer",
-      },
+      messageId: input.messageId,
       seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
@@ -266,8 +267,8 @@ function executionSpec(): WorkflowExecutionSpec {
     nodes: [
       {
         config: {
+          delay: { duration: 30, unit: "second" },
           event: {
-            collectWindowSeconds: 10,
             type: "message.received",
           },
           timeout: { duration: 1, unit: "minute" },

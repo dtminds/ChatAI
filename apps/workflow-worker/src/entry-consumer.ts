@@ -1,9 +1,14 @@
 import {
   WORKFLOW_INBOX_RETENTION_DAYS,
+  WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+  WorkflowDirectEntryPayloadSchema,
   WorkflowEntryEventTypeSchema,
+  WorkflowMessageReceivedPayloadSchema,
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
   type WorkflowEntryEventType,
+  type WorkflowDirectEntryPayload,
+  type WorkflowMessage,
   type WorkflowSubjectType,
   validateWorkflowEntryEvent,
 } from "@chatai/contracts";
@@ -21,13 +26,14 @@ import type {
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
-import { WorkflowRuntimeError } from "@chatai/workflow-runtime";
+import { fitWorkflowMessageOutput, WorkflowRuntimeError } from "@chatai/workflow-runtime";
 import type {
   WorkflowBroker,
   WorkflowBrokerMessage,
   WorkflowBrokerSubscription,
 } from "./broker/types.js";
 import { classifyEntryError } from "./error-policy.js";
+import type { WorkflowEntryMessageReader } from "./message-query-port.js";
 import {
   createWorkflowEntryConsumeObserver,
   type WorkflowWorkerLogger,
@@ -46,7 +52,7 @@ type WorkflowEntryRuntimeService = {
     subjectType: WorkflowSubjectType;
     uid: number;
   }): Promise<
-    | { firstEvent: boolean; kind: "success" }
+    | { kind: "success" }
     | {
         kind:
           | "already-processed"
@@ -66,6 +72,20 @@ type WorkflowEntryRuntimeService = {
   }): Promise<
     | { deduplicated: boolean; kind: "success" }
     | { kind: "capacity-rejected" }
+    | { kind: "active-run-rejected" }
+    | { kind: "entry-policy-rejected" }
+  >;
+  startDirectRun(input: {
+    entryEventId: string;
+    occurredAt: string;
+    payload: import("@chatai/contracts").WorkflowDirectEntryPayload;
+    payloadVersion: number;
+    source: string;
+    uid: number;
+  }): Promise<
+    | { deduplicated: boolean; kind: "success" }
+    | { kind: "capacity-rejected" }
+    | { kind: "active-run-rejected" }
     | { kind: "entry-policy-rejected" }
   >;
 };
@@ -75,6 +95,7 @@ export type WorkflowEntryConsumeResultCode =
   | WorkflowEventCatalogErrorCode
   | "admitted"
   | "capacity_rejected"
+  | "active_run_exists"
   | "deduplicated"
   | "entry_policy_rejected"
   | "invalid_json"
@@ -96,6 +117,7 @@ export type WorkflowEntryFailureStage =
   | "dlq_publish"
   | "inbox_check"
   | "inbox_record"
+  | "message_hydration"
   | "routing_read"
   | "runtime_admission";
 
@@ -103,6 +125,7 @@ export function createEntryConsumerHandler(input: {
   bindingReader: WorkflowTriggerBindingReader;
   eventCatalog: WorkflowEventCatalog;
   inboxRepository: WorkflowInboxRepository;
+  messageReader?: WorkflowEntryMessageReader;
   now?: () => Date;
   publishToDeadLetter?: (
     message: WorkflowBrokerMessage,
@@ -115,6 +138,18 @@ export function createEntryConsumerHandler(input: {
     const parsed = parseEntryEvent(message.data);
     if (parsed.kind === "rejected") {
       return rejectPermanentEntry(message, parsed.code, input.publishToDeadLetter);
+    }
+    if (parsed.event.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE) {
+      if (parsed.event.payloadVersion !== 1) {
+        return rejectPermanentEntry(message, "unsupported_payload_version", input.publishToDeadLetter);
+      }
+      if (!Value.Check(WorkflowDirectEntryPayloadSchema, parsed.event.payload)) {
+        return rejectPermanentEntry(message, "payload_invalid", input.publishToDeadLetter);
+      }
+      return consumeDirectEntry(message, {
+        ...parsed.event,
+        payload: parsed.event.payload as WorkflowDirectEntryPayload,
+      }, input);
     }
     const catalogResult = input.eventCatalog.project(parsed.event);
     if (catalogResult.kind === "rejected") {
@@ -152,28 +187,37 @@ export function createEntryConsumerHandler(input: {
             subject.subjectId,
             subject.seatId,
             new Date(parsed.event.occurredAt),
-            observedAt,
           ))).then(results => results.flat()),
       ]);
+      failureStage = "message_hydration";
+      const projection = await hydrateMessageReceivedProjection({
+        bindings,
+        event: parsed.event,
+        messageReader: input.messageReader,
+        projection: catalogResult.projection,
+        subscriptions,
+      });
       let admitted = 0;
       let capacityRejected = 0;
+      let activeRunRejected = 0;
       let deduplicated = 0;
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
       failureStage = "runtime_admission";
       for (const binding of bindings) {
-        if (!matchWorkflowTrigger(binding.filter, catalogResult.projection)) continue;
-        const subject = getProjectedSubject(catalogResult.projection, binding.subjectType);
+        if (!matchWorkflowTrigger(binding.filter, projection)) continue;
+        const subject = getProjectedSubject(projection, binding.subjectType);
         if (!subject) continue;
         try {
           const result = await admitWorkflow(
             input.runtimeService,
             binding,
             parsed.event,
-            catalogResult.projection,
+            projection,
             subject,
           );
           if (result.kind === "capacity-rejected") capacityRejected += 1;
+          else if (result.kind === "active-run-rejected") activeRunRejected += 1;
           else if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
           else if (result.deduplicated) deduplicated += 1;
           else admitted += 1;
@@ -188,8 +232,8 @@ export function createEntryConsumerHandler(input: {
             eventId: parsed.event.eventId,
             eventOccurredAt: new Date(parsed.event.occurredAt),
             eventType: entryEventType,
-            match: catalogResult.projection.match,
-            projection: catalogResult.projection.variables,
+            match: projection.match,
+            projection: projection.variables,
             recordedAt: observedAt,
             subscription,
             subjectId: subscription.subjectId,
@@ -224,6 +268,9 @@ export function createEntryConsumerHandler(input: {
         : {};
       if (admitted > 0) return { code: "admitted", disposition: "ack", ...capacityResult };
       if (deduplicated > 0) return { code: "deduplicated", disposition: "ack", ...capacityResult };
+      if (activeRunRejected > 0) {
+        return { code: "active_run_exists", disposition: "ack", ...capacityResult };
+      }
       if (entryPolicyRejected > 0) {
         return { code: "entry_policy_rejected", disposition: "ack", ...capacityResult };
       }
@@ -245,12 +292,92 @@ export function createEntryConsumerHandler(input: {
   };
 }
 
+async function consumeDirectEntry(
+  message: WorkflowBrokerMessage,
+  event: WorkflowEntryEvent & {
+    payload: WorkflowDirectEntryPayload;
+  },
+  input: {
+    inboxRepository: WorkflowInboxRepository;
+    now?: () => Date;
+    runtimeService: WorkflowEntryRuntimeService;
+  },
+): Promise<WorkflowEntryConsumeResult> {
+  let failureStage: WorkflowEntryFailureStage = "inbox_check";
+  try {
+    const observedAt = input.now?.() ?? new Date();
+    const inboxMessageId = createEntryInboxMessageId(event);
+    if (await input.inboxRepository.hasProcessedInboxMessage({
+      consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+      messageId: inboxMessageId,
+    })) {
+      failureStage = "ack";
+      await message.ack();
+      return { code: "deduplicated", disposition: "ack" };
+    }
+
+    let code: WorkflowEntryConsumeResultCode;
+    failureStage = "runtime_admission";
+    try {
+      const result = await input.runtimeService.startDirectRun({
+        entryEventId: event.eventId,
+        occurredAt: event.occurredAt,
+        payload: event.payload,
+        payloadVersion: event.payloadVersion,
+        source: event.source,
+        uid: event.uid,
+      });
+      code = result.kind === "capacity-rejected"
+        ? "capacity_rejected"
+        : result.kind === "active-run-rejected"
+        ? "active_run_exists"
+        : result.kind === "entry-policy-rejected"
+        ? "entry_policy_rejected"
+        : result.deduplicated
+          ? "deduplicated"
+          : "admitted";
+    } catch (error) {
+      if (classifyEntryError(error) === "nack") throw error;
+      code = "runtime_rejected";
+    }
+
+    failureStage = "inbox_record";
+    await recordEntryInbox(input.inboxRepository, event, observedAt, inboxMessageId);
+    failureStage = "ack";
+    await message.ack();
+    return code === "capacity_rejected"
+      ? { capacityRejectedCount: 1, code, disposition: "ack" }
+      : { code, disposition: "ack" };
+  } catch (error) {
+    message.negativeAck();
+    return createTemporaryFailure(error, failureStage);
+  }
+}
+
+async function recordEntryInbox(
+  inboxRepository: WorkflowInboxRepository,
+  event: Pick<WorkflowEntryEvent, "uid">,
+  processedAt: Date,
+  messageId: string,
+) {
+  await inboxRepository.recordProcessedInboxMessage({
+    consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
+    expiresAt: new Date(
+      processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
+    ),
+    messageId,
+    processedAt,
+    uid: event.uid,
+  });
+}
+
 export async function startEntryConsumer(input: {
   bindingReader: WorkflowTriggerBindingReader;
   broker: WorkflowBroker;
   deadLetterTopic?: string;
   eventCatalog: WorkflowEventCatalog;
   inboxRepository: WorkflowInboxRepository;
+  messageReader: WorkflowEntryMessageReader;
   logger?: WorkflowWorkerLogger;
   maxInFlight: number;
   maxRedeliverCount?: number;
@@ -268,6 +395,7 @@ export async function startEntryConsumer(input: {
     bindingReader: input.bindingReader,
     eventCatalog: input.eventCatalog,
     inboxRepository: input.inboxRepository,
+    messageReader: input.messageReader,
     now: input.now,
     publishToDeadLetter: deadLetterTopic
       ? async (message, code) => {
@@ -317,6 +445,79 @@ export async function startEntryConsumer(input: {
 }
 
 const WORKFLOW_ENTRY_INBOX_CONSUMER = "workflow-entry";
+
+async function hydrateMessageReceivedProjection(input: {
+  bindings: WorkflowTriggerBindingRecord[];
+  event: WorkflowEntryEvent;
+  messageReader?: WorkflowEntryMessageReader;
+  projection: WorkflowTriggerProjection;
+  subscriptions: WorkflowEventSubscriptionRecord[];
+}): Promise<WorkflowTriggerProjection> {
+  if (input.event.eventType !== "message.received") return input.projection;
+  if (!Value.Check(WorkflowMessageReceivedPayloadSchema, input.event.payload)) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_PAYLOAD_INVALID",
+      "Workflow Entry 消息标识无效",
+      500,
+    );
+  }
+  if (!hasMessageHydrationCandidate(input.bindings, input.projection, input.subscriptions)) {
+    return input.projection;
+  }
+  if (!input.messageReader) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_READER_UNAVAILABLE",
+      "Workflow Entry 消息读取器不可用",
+      503,
+    );
+  }
+  const message = await input.messageReader.findById({
+    messageId: input.event.payload.messageId,
+    thirdExternalUserId: input.event.payload.thirdExternalUserId,
+    uid: input.event.uid,
+    workUserId: input.event.payload.workUserId,
+  });
+  if (!message || message.id !== input.event.payload.messageId) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_ENTRY_MESSAGE_UNAVAILABLE",
+      "Workflow Entry 消息暂不可用",
+      503,
+    );
+  }
+  const visibleMessage = fitWorkflowMessageOutput(message, candidate => ({ message: candidate })).message;
+  return {
+    ...input.projection,
+    match: {
+      ...input.projection.match,
+      text: renderMessageText(message),
+    },
+    variables: {
+      ...input.projection.variables,
+      message: visibleMessage,
+    },
+  };
+}
+
+function hasMessageHydrationCandidate(
+  bindings: WorkflowTriggerBindingRecord[],
+  projection: WorkflowTriggerProjection,
+  subscriptions: WorkflowEventSubscriptionRecord[],
+) {
+  if (subscriptions.length > 0) return true;
+  const seatId = projection.match.seatId;
+  return typeof seatId === "number" && bindings.some(binding =>
+    binding.subjectType === "chatai_contact"
+    && binding.filter.eventType === "message.received"
+    && binding.filter.seatIds.includes(seatId));
+}
+
+function renderMessageText(message: WorkflowMessage) {
+  return message.parts
+    .filter((part): part is Extract<WorkflowMessage["parts"][number], { type: "text" }> =>
+      part.type === "text")
+    .map(part => part.text)
+    .join("");
+}
 
 function createEntryInboxMessageId(event: Pick<WorkflowEntryEvent, "eventId" | "uid">) {
   return `${event.uid}:${event.eventId}`;

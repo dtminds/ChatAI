@@ -1,5 +1,6 @@
 import type {
   WorkflowEntryEventType,
+  WorkflowDirectEntryPayload,
   WorkflowExecutionNode,
   WorkflowExecutionSpec,
   WorkflowJsonObject,
@@ -17,7 +18,6 @@ import {
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowMessageSchema,
-  type WorkflowMessage,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -30,7 +30,7 @@ import {
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
 import {
-  executeWorkflowCapability,
+  executeWorkflowCapabilityStep,
   type WorkflowCapabilityExecutionBinding,
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
@@ -70,11 +70,12 @@ import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
-import { fitWorkflowMessagesOutput } from "./workflow-messages.js";
+import { fitWorkflowMessageOutput } from "./workflow-messages.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowEventSubscriptionRecord,
   WorkflowRuntimeControlReader,
+  WorkflowRuntimeRevisionRecord,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
@@ -206,10 +207,74 @@ export class WorkflowRuntimeService {
       || revision.subjectType !== input.subjectType) {
       throw staleDefinitionError();
     }
+    const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
+    const startConfig = requireStartConfig(entryNode);
+    return this.createInitialRun({
+      ...input,
+      revision,
+      startConfig,
+    });
+  }
+
+  async startDirectRun(input: {
+    entryEventId: string;
+    occurredAt: string;
+    payload: WorkflowDirectEntryPayload;
+    payloadVersion: number;
+    source: string;
+    uid: number;
+  }) {
+    const definition = await this.controlRepository.findDefinition(input.uid, input.payload.workflowId);
+    if (!definition) throw workflowUnavailable();
+    if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
+      throw runtimeStatusError(definition.runtimeStatus);
+    }
+    const revision = await this.controlRepository.findRevision(
+      input.uid,
+      input.payload.workflowId,
+      definition.publishedRevision,
+    );
+    if (!revision || revision.workflowType !== definition.workflowType) {
+      throw staleDefinitionError();
+    }
+    const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
+    const startConfig = requireStartConfig(entryNode);
+    if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
+    const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
+    const { workflowId, ...projection } = input.payload;
+    return this.createInitialRun({
+      entryEventId: input.entryEventId,
+      revision,
+      startConfig,
+      subjectId: subject.subjectId,
+      subjectType: revision.subjectType,
+      trigger: {
+        eventId: input.entryEventId,
+        eventType: "workflow.direct_entry.requested",
+        occurredAt: input.occurredAt,
+        payloadVersion: input.payloadVersion,
+        projection: structuredClone(projection),
+        source: input.source,
+      },
+      uid: input.uid,
+      workflowId,
+    });
+  }
+
+  private async createInitialRun(input: {
+    entryEventId: string;
+    revision: WorkflowRuntimeRevisionRecord;
+    startConfig: WorkflowStartConfig;
+    subjectId: string;
+    subjectType: WorkflowSubjectType;
+    trigger: Record<string, unknown>;
+    uid: number;
+    workflowId: string;
+  }) {
+    const { revision, startConfig } = input;
     const entitlement = await this.requireEntitlement(input.uid, revision.workflowType);
     this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
 
     let context: Record<string, unknown>;
     try {
@@ -249,7 +314,9 @@ export class WorkflowRuntimeService {
         ? runtimeStatusError("paused")
         : workflowUnavailable();
     }
-    if (created.kind === "capacity-rejected" || created.kind === "entry-policy-rejected") {
+    if (created.kind === "capacity-rejected"
+      || created.kind === "entry-policy-rejected"
+      || created.kind === "active-run-rejected") {
       return created;
     }
     if (created.kind !== "success") throw staleDefinitionError();
@@ -297,16 +364,18 @@ export class WorkflowRuntimeService {
         && input.match.seatId !== input.subscription.seatId)) {
       return { kind: "not-matched" as const };
     }
-    const collectUntil = input.subscription.status === "waiting"
-      ? new Date(input.recordedAt.getTime() + config.event.collectWindowSeconds * 1_000)
-      : input.subscription.collectUntil;
-    if (!collectUntil) throw staleTaskError();
-    const recorded = await this.runtimeRepository.recordEventSubscriptionEvent({
-      collectUntil,
+    const message = input.projection.message;
+    if (!Value.Check(WorkflowMessageSchema, message)) throw staleDefinitionError();
+    const delayedUntil = new Date(
+      input.eventOccurredAt.getTime() + getWaitEventDelayMilliseconds(config),
+    );
+    const resumeAt = delayedUntil > input.recordedAt ? delayedUntil : input.recordedAt;
+    const recorded = await this.runtimeRepository.triggerEventSubscription({
       eventId: input.eventId,
       eventOccurredAt: input.eventOccurredAt,
-      projection: input.projection,
+      projection: { message: structuredClone(message) },
       recordedAt: input.recordedAt,
+      resumeAt,
       subscriptionId: input.subscription.id,
       uid: input.uid,
     });
@@ -726,9 +795,6 @@ export class WorkflowRuntimeService {
       };
     }
 
-    let collectedEvents: Awaited<ReturnType<WorkflowRuntimeRepository[
-      "listEventSubscriptionEvents"
-    ]>> | null = null;
     let sourceOutletId: "timeout" | "triggered";
     if (input.existingSubscription.status === "waiting") {
       const timedOut = await this.runtimeRepository.timeoutEventSubscription({
@@ -743,10 +809,6 @@ export class WorkflowRuntimeService {
     } else if (input.existingSubscription.status === "timed_out") {
       sourceOutletId = "timeout";
     } else if (input.existingSubscription.status === "triggered") {
-      collectedEvents = await this.runtimeRepository.listEventSubscriptionEvents(
-        input.input.uid,
-        input.existingSubscription.id,
-      );
       sourceOutletId = "triggered";
     } else {
       throw staleTaskError();
@@ -755,11 +817,13 @@ export class WorkflowRuntimeService {
     let output: Record<string, unknown>;
     let nextContext: Record<string, unknown>;
     try {
-      output = collectedEvents ? aggregateWaitEventOutput(collectedEvents) : {};
+      output = sourceOutletId === "triggered"
+        ? createTriggeredWaitEventOutput(input.existingSubscription)
+        : {};
       assertWorkflowRuntimeValue(output, "node-output", WORKFLOW_NODE_OUTPUT_MAX_BYTES);
       const completedAt = this.clock();
       nextContext = appendNodeOutput(input.run.context, input.node.id, output, {
-        enteredAt: input.claimedTask.dueAt,
+        enteredAt: input.existingSubscription.effectiveFrom,
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
@@ -985,7 +1049,7 @@ async function executeWithCapabilityTimeout(input: {
   });
   try {
     return await Promise.race([
-      executeWorkflowCapability({
+      executeWorkflowCapabilityStep({
         binding: input.binding,
         commandContext: {
           currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
@@ -1018,7 +1082,11 @@ async function executeWithCapabilityTimeout(input: {
         subjectId: input.run.subjectId,
         subjectType: input.run.subjectType,
         uid: input.run.uid,
-      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+      }).then(step => ({
+        output: step.output,
+        sourceOutletId: step.sourceOutletId,
+        type: "advance" as const,
+      })),
       timeout,
     ]);
   } finally {
@@ -1250,23 +1318,26 @@ function requireWaitEventConfig(node: WorkflowExecutionNode): WorkflowWaitEventC
   return structuredClone(node.config) as WorkflowWaitEventConfig;
 }
 
-function aggregateWaitEventOutput(
-  events: Awaited<ReturnType<WorkflowRuntimeRepository["listEventSubscriptionEvents"]>>,
-) {
-  if (events.length === 0) throw invalidWaitEventOutput();
-  const messages: WorkflowMessage[] = [];
-  let lastMessageAt = events[0]!.occurredAt;
-  for (const event of events) {
-    const message = event.projection.message;
-    if (!Value.Check(WorkflowMessageSchema, message)) throw invalidWaitEventOutput();
-    messages.push(structuredClone(message));
-    if (event.occurredAt > lastMessageAt) lastMessageAt = event.occurredAt;
+function createTriggeredWaitEventOutput(subscription: WorkflowEventSubscriptionRecord) {
+  const message = subscription.triggerProjection?.message;
+  if (!subscription.triggerOccurredAt || !Value.Check(WorkflowMessageSchema, message)) {
+    throw invalidWaitEventOutput();
   }
-  return fitWorkflowMessagesOutput(messages, "latest", visibleMessages => ({
-    lastMessageAt: lastMessageAt.toISOString(),
-    messageCount: events.length,
-    messages: visibleMessages,
+  return fitWorkflowMessageOutput(message, visibleMessage => ({
+    message: visibleMessage,
+    triggeredAt: subscription.triggerOccurredAt!.toISOString(),
   }));
+}
+
+function getWaitEventDelayMilliseconds(config: WorkflowWaitEventConfig) {
+  const unitMilliseconds = config.delay.unit === "second"
+    ? 1_000
+    : config.delay.unit === "minute"
+      ? 60_000
+      : config.delay.unit === "hour"
+        ? 3_600_000
+        : 86_400_000;
+  return config.delay.duration * unitMilliseconds;
 }
 
 function invalidWaitEventOutput() {
@@ -1282,6 +1353,30 @@ function parseOccurredAt(trigger: Record<string, unknown>) {
   const value = trigger.occurredAt;
   const parsed = typeof value === "string" ? new Date(value) : new Date();
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function resolveDirectEntrySubject(
+  subjectType: WorkflowSubjectType,
+  startConfig: WorkflowStartConfig,
+  payload: WorkflowDirectEntryPayload,
+) {
+  if (subjectType === "chatai_contact") {
+    if (!("seatIds" in startConfig)
+      || !("thirdExternalUserId" in payload)
+      || !startConfig.seatIds.includes(payload.seatId)) {
+      throw directEntryIdentityError();
+    }
+    return { subjectId: payload.thirdExternalUserId };
+  }
+  if (subjectType === "wecom_contact") {
+    if (!("workUserIds" in startConfig)
+      || !("externalUserId" in payload)
+      || !startConfig.workUserIds.includes(payload.workUserId)) {
+      throw directEntryIdentityError();
+    }
+    return { subjectId: String(payload.externalUserId) };
+  }
+  throw directEntryIdentityError();
 }
 
 function getWorkflowShardId(
@@ -1310,6 +1405,21 @@ function runtimeStatusError(status: "active" | "inactive" | "paused" | "stopped"
 
 function workflowUnavailable() {
   return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
+}
+
+function directEntryUnavailableError() {
+  return new WorkflowRuntimeError(
+    "WORKFLOW_DIRECT_ENTRY_UNAVAILABLE",
+    "Workflow 不允许外部推送进入",
+  );
+}
+
+function directEntryIdentityError() {
+  return new WorkflowRuntimeError(
+    "WORKFLOW_DIRECT_ENTRY_IDENTITY_INVALID",
+    "Workflow 外部推送身份无效",
+    400,
+  );
 }
 
 function runtimeNodeUnsupportedError() {

@@ -217,6 +217,7 @@ describe("MySQL workflow runtime repository contract", () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);
     const input = {
+      activeRunLimit: 10_000,
       context: { trigger: { eventType: "workflow.direct_entry.requested" } },
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
       initialNodeId: "start",

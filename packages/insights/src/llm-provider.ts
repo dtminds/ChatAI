@@ -38,10 +38,10 @@ export type OpenAiCompatibleProviderConfig = {
   };
 };
 
-type ProviderEnv = {
-  VOLCENGINE_ARK_API_KEY?: string;
-  VOLCENGINE_ARK_LITE_MODEL?: string;
-  VOLCENGINE_ARK_MODEL?: string;
+export type VolcengineArkProviderInput = {
+  apiKey?: string;
+  liteModel?: string;
+  model?: string;
 };
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
@@ -58,14 +58,14 @@ const liveGateChangeTypes = new Set<InsightLiveAnalysisGateDecision["changeType"
 ]);
 
 export function createVolcengineArkProviderConfig(
-  env: ProviderEnv = process.env,
+  input: VolcengineArkProviderInput = {},
 ): OpenAiCompatibleProviderConfig {
-  const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
-  const model = env.VOLCENGINE_ARK_MODEL?.trim();
-  const liteModel = env.VOLCENGINE_ARK_LITE_MODEL?.trim() || model;
+  const apiKey = input.apiKey?.trim();
+  const model = input.model?.trim();
+  const liteModel = input.liteModel?.trim() || model;
   const missing = [
-    ["VOLCENGINE_ARK_API_KEY", apiKey],
-    ["VOLCENGINE_ARK_MODEL", model],
+    ["apiKey", apiKey],
+    ["model", model],
   ]
     .filter(([, value]) => !value)
     .map(([key]) => key);

@@ -190,7 +190,7 @@ INSIGHTS_WORKER_MODEL_ENABLED=false
 INSIGHTS_WORKER_TRACE_UID_ALLOWLIST=
 ```
 
-启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY` 和 `VOLCENGINE_ARK_MODEL`。Insights 可选配置 `VOLCENGINE_ARK_LITE_MODEL` 使用独立的轻量模型；未配置时复用主模型。
+启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。主模型和轻量模型的固定 endpoint 由 `apps/backend-worker/src/model-policy.ts` 统一提供给两个运行场景，不通过环境变量配置。
 
 ## Marketing Workflow Worker 容器要求
 

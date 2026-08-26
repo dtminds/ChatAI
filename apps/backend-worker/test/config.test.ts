@@ -6,10 +6,14 @@ describe("parseBackendWorkerConfig", () => {
     expect(() => parseBackendWorkerConfig({})).toThrow(
       "DATABASE_URL must be configured",
     );
-    expect(parseBackendWorkerConfig({ DATABASE_URL: " mysql://db/chatai " }))
+    expect(parseBackendWorkerConfig({
+      DATABASE_URL: " mysql://db/chatai ",
+      VOLCENGINE_ARK_API_KEY: " secret ",
+    }))
       .toEqual({
         databaseUrl: "mysql://db/chatai",
         logLevel: "info",
+        volcengineArkApiKey: "secret",
       });
   });
 });

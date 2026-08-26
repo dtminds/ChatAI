@@ -130,9 +130,9 @@ async function runMultiStepAnalysis(input: {
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
     const config = createVolcengineArkProviderConfig({
-      VOLCENGINE_ARK_API_KEY: "secret",
-      VOLCENGINE_ARK_LITE_MODEL: "ep-20260601000000-lite",
-      VOLCENGINE_ARK_MODEL: "ep-20260601000000-test",
+      apiKey: "secret",
+      liteModel: "ep-20260601000000-lite",
+      model: "ep-20260601000000-test",
     });
 
     expect(config).toEqual({
@@ -150,10 +150,10 @@ describe("LLM provider config", () => {
     });
   });
 
-  it("uses the main model as the lite fallback when lite env is not configured", () => {
+  it("uses the main model as the lite fallback when no lite model is configured", () => {
     const config = createVolcengineArkProviderConfig({
-      VOLCENGINE_ARK_API_KEY: "secret",
-      VOLCENGINE_ARK_MODEL: "ep-main",
+      apiKey: "secret",
+      model: "ep-main",
     });
 
     expect(config).toMatchObject({
@@ -277,9 +277,9 @@ describe("LLM provider config", () => {
     });
   });
 
-  it("validates required Volcengine Ark env values", () => {
+  it("validates required Volcengine Ark model values", () => {
     expect(() => createVolcengineArkProviderConfig({})).toThrow(
-      "VOLCENGINE_ARK_API_KEY, VOLCENGINE_ARK_MODEL",
+      "apiKey, model",
     );
   });
 

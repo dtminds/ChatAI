@@ -10,8 +10,11 @@ import { UserMemoryWorkerObservability } from "./user-memory-worker-observabilit
 export type UserMemoryWorkerRuntimeConfig = { enabled: boolean };
 type RuntimeEnv = {
   AGENT_USER_MEMORY_WORKER_ENABLED?: string;
-  VOLCENGINE_ARK_API_KEY?: string;
-  VOLCENGINE_ARK_MODEL?: string;
+};
+
+type UserMemoryModelConfig = {
+  apiKey?: string;
+  model?: string;
 };
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
@@ -21,16 +24,16 @@ export function parseUserMemoryWorkerRuntimeConfig(env: RuntimeEnv = process.env
   return { enabled };
 }
 
-export function createUserMemoryWorkerRuntime(input: { db: Kysely<Database>; env?: RuntimeEnv; logger: UserMemoryWorkerLogger }) {
+export function createUserMemoryWorkerRuntime(input: { db: Kysely<Database>; env?: RuntimeEnv; logger: UserMemoryWorkerLogger; model?: UserMemoryModelConfig }) {
   const env = input.env ?? process.env;
   const config = parseUserMemoryWorkerRuntimeConfig(env);
   if (!config.enabled) {
     input.logger.info({ component: "agent-user-memory-worker", eventCode: "agent_user_memory_worker.disabled" }, "Agent 用户记忆 worker 未启用");
     return undefined;
   }
-  const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
-  const model = env.VOLCENGINE_ARK_MODEL?.trim();
-  if (!apiKey || !model) throw new Error("VOLCENGINE_ARK_API_KEY and VOLCENGINE_ARK_MODEL are required for Agent user memory");
+  const apiKey = input.model?.apiKey?.trim();
+  const model = input.model?.model?.trim();
+  if (!apiKey || !model) throw new Error("Volcengine Ark apiKey and model are required for Agent user memory");
   const workerId = `${os.hostname()}:${process.pid}`;
   const worker = new UserMemoryWorker({
     db: input.db, logger: input.logger, customerLimitResolver: DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER, workerId,

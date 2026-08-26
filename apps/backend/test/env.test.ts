@@ -151,20 +151,27 @@ describe("backend env config", () => {
     ).toThrow("Missing required environment variables for test: DATABASE_URL");
   });
 
-  it("rejects the entitlement bypass in production", () => {
-    expect(() =>
-      validateBackendEnv({
-        DATABASE_URL: "mysql://prod",
-        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
-        JWT_PRIVATE_KEY: "private",
-        JWT_PUBLIC_KEY: "public",
-        NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: "allow",
-      }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+  it("accepts the entitlement bypass in production when unset or allow", () => {
+    const productionEnv = {
+      DATABASE_URL: "mysql://prod",
+      JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
+      JWT_PRIVATE_KEY: "private",
+      JWT_PUBLIC_KEY: "public",
+      NODE_ENV: "production",
+    };
+
+    expect(() => validateBackendEnv(productionEnv)).not.toThrow();
+    expect(() => validateBackendEnv({
+      ...productionEnv,
+      WORKFLOW_ENTITLEMENT_MODE: "allow",
+    })).not.toThrow();
+    expect(() => validateBackendEnv({
+      ...productionEnv,
+      WORKFLOW_ENTITLEMENT_MODE: " allow ",
+    })).not.toThrow();
   });
 
-  it("rejects a whitespace-padded entitlement bypass in production", () => {
+  it("rejects unknown entitlement modes", () => {
     expect(() =>
       validateBackendEnv({
         DATABASE_URL: "mysql://prod",
@@ -172,9 +179,9 @@ describe("backend env config", () => {
         JWT_PRIVATE_KEY: "private",
         JWT_PUBLIC_KEY: "public",
         NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: " allow ",
+        WORKFLOW_ENTITLEMENT_MODE: "disabled",
       }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be enforce in production");
+    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
   });
 
   it("validates worker observer subjects before backend startup", () => {

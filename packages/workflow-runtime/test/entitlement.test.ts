@@ -17,9 +17,17 @@ describe("workflow entitlement port", () => {
     },
   );
 
-
-  it("fails closed by default when the Java endpoint is not configured", async () => {
+  it("allows workflow operations by default when entitlement mode is unset", async () => {
     const port = createWorkflowEntitlementPort({});
+
+    await expect(port.check({ uid: 9, workflowType: "chatai_sop" })).resolves.toEqual({
+      entitled: true,
+      unentitledSince: null,
+    });
+  });
+
+  it("fails closed in enforce mode when the Java endpoint is not configured", async () => {
+    const port = createWorkflowEntitlementPort({ mode: "enforce" });
 
     await expect(port.check({ uid: 9, workflowType: "chatai_sop" }))
       .rejects.toBeInstanceOf(WorkflowEntitlementUnavailableError);

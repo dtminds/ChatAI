@@ -3,6 +3,9 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
+  WorkflowDefinitionListItem,
+  WorkflowDefinitionListPage,
+  WorkflowDefinitionListStatus,
   WorkflowDirectEntryEndpointResponse,
   WorkflowDraft,
   WorkflowMetadataUpdateRequest,
@@ -77,6 +80,7 @@ import {
   NotFoundError,
 } from "../../shared/errors.js";
 import type {
+  WorkflowDefinitionListCursor,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowPublishReviewRecord,
@@ -356,9 +360,23 @@ export class WorkflowService {
     return toLlmTestAttempt(current);
   }
 
-  async list(scope: WorkflowOperatorScope) {
+  async list(scope: WorkflowOperatorScope, input: {
+    cursor?: string;
+    limit: number;
+    query?: string;
+    status: WorkflowDefinitionListStatus;
+  }): Promise<WorkflowDefinitionListPage> {
     assertWorkflowAccess(scope);
-    return Promise.all((await this.repository.listDefinitions(scope.uid)).map(record => this.toDefinition(record)));
+    const page = await this.repository.listDefinitions(scope.uid, {
+      cursor: input.cursor ? decodeWorkflowDefinitionListCursor(input.cursor) : undefined,
+      limit: input.limit,
+      query: input.query?.trim() || undefined,
+      status: input.status,
+    });
+    return {
+      items: page.items.map(toDefinitionListItem),
+      nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
+    };
   }
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {
@@ -961,6 +979,56 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
         `Workflow 节点配置不符合当前契约: ${node.id}`,
       );
     }
+  }
+}
+
+function toDefinitionListItem(record: WorkflowDefinitionRecord): WorkflowDefinitionListItem {
+  return {
+    canOperate: true,
+    description: record.description,
+    hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
+    id: record.id,
+    name: record.name,
+    publishedRevision: record.publishedRevision,
+    runtimeStatus: record.runtimeStatus,
+    trigger: getWorkflowListTrigger(record.draft),
+    updatedAt: record.updatedAt.toISOString(),
+    workflowType: record.workflowType,
+  };
+}
+
+function getWorkflowListTrigger(draft: WorkflowDraft) {
+  const entryNode = draft.nodes.find(node => node.data.kind === "start");
+  if (!entryNode) return "未配置";
+  const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
+  if (!Value.Check(WorkflowStartConfigSchema, config)) return "未配置";
+  const labels = (config as WorkflowStartConfig).triggers.map((trigger) => {
+    if (trigger.type === "contact.friend_added") return "添加好友";
+    if (trigger.type === "contact.tag_added") return "添加标签";
+    return "用户消息";
+  });
+  return [...new Set(labels)].join("、") || "未配置";
+}
+
+function encodeWorkflowDefinitionListCursor(cursor: WorkflowDefinitionListCursor) {
+  return Buffer.from(JSON.stringify({
+    id: cursor.id,
+    updatedAt: cursor.updatedAt.toISOString(),
+  }), "utf8").toString("base64url");
+}
+
+function decodeWorkflowDefinitionListCursor(value: string): WorkflowDefinitionListCursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (typeof parsed.id !== "string" || !/^[1-9][0-9]*$/.test(parsed.id)
+      || typeof parsed.updatedAt !== "string") {
+      throw new Error("invalid cursor");
+    }
+    const updatedAt = new Date(parsed.updatedAt);
+    if (Number.isNaN(updatedAt.getTime())) throw new Error("invalid cursor");
+    return { id: parsed.id, updatedAt };
+  } catch {
+    throw new BadRequestError("WORKFLOW_LIST_CURSOR_INVALID", "分页游标无效");
   }
 }
 

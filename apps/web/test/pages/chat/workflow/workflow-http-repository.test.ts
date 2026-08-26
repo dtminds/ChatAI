@@ -103,7 +103,7 @@ describe("HTTP workflow repository", () => {
     const repository = createHttpWorkflowDraftRepository(client);
 
     const document = await repository.getDocument("42");
-    const [listItem] = await repository.listDocuments();
+    const { items: [listItem] } = await repository.listDocuments();
 
     expect(document).toMatchObject({
       publishedAt: "07-11 15:12:06",
@@ -393,12 +393,29 @@ function createClient({
     delete: vi.fn(async (_url: string): Promise<unknown> => envelope<unknown>({})),
     get: vi.fn(async (url: string): Promise<unknown> => {
       if (url.includes("/revisions?")) return envelope({ items: revisions, nextCursor: null });
-      if (url === "/server/workflows") return envelope<WorkflowDefinition[]>([definition]);
+      if (url === "/server/workflows" || url.startsWith("/server/workflows?")) {
+        return envelope({ items: [toListDefinition(definition)], nextCursor: null });
+      }
       return envelope<WorkflowDefinition>(definition);
     }),
     patch: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
     post: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
     put: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
+  };
+}
+
+function toListDefinition(definition: WorkflowDefinition) {
+  return {
+    canOperate: definition.permissions.canOperate,
+    description: definition.description,
+    hasUnpublishedChanges: definition.hasUnpublishedChanges,
+    id: definition.id,
+    name: definition.name,
+    publishedRevision: definition.publishedRevision,
+    runtimeStatus: definition.runtimeStatus,
+    trigger: "用户消息",
+    updatedAt: definition.updatedAt,
+    workflowType: definition.workflowType,
   };
 }
 

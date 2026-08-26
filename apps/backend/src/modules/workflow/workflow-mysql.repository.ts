@@ -170,15 +170,58 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     return row?.status === "withdrawn" ? null : row ? mapReview(row) : null;
   }
 
-  async listDefinitions(uid: number) {
-    const rows = await this.db.selectFrom(DEFINITION_TABLE)
+  async listDefinitions(
+    uid: number,
+    input: Parameters<WorkflowRepository["listDefinitions"]>[1],
+  ) {
+    let query = this.db.selectFrom(DEFINITION_TABLE)
       .selectAll()
       .where("uid", "=", uid)
-      .where("biz_status", "=", 1)
-      .orderBy("create_time", "desc")
+      .where("biz_status", "=", 1);
+    if (input.status === "active") {
+      query = query.where("runtime_status", "=", "active");
+    } else if (input.status === "ready") {
+      query = query.where(eb => eb.or([
+        eb("runtime_status", "=", "paused"),
+        eb.and([
+          eb("runtime_status", "=", "inactive"),
+          eb("published_revision", "is not", null),
+        ]),
+      ]));
+    } else if (input.status === "draft") {
+      query = query.where("published_revision", "is", null);
+    } else if (input.status === "stopped") {
+      query = query.where("runtime_status", "=", "stopped");
+    }
+    if (input.query) {
+      const pattern = `%${escapeLikePattern(input.query)}%`;
+      query = query.where(eb => eb.or([
+        eb("name", "like", pattern),
+        eb("description", "like", pattern),
+      ]));
+    }
+    if (input.cursor) {
+      query = query.where(eb => eb.or([
+        eb("update_time", "<", input.cursor!.updatedAt),
+        eb.and([
+          eb("update_time", "=", input.cursor!.updatedAt),
+          eb("id", "<", input.cursor!.id),
+        ]),
+      ]));
+    }
+    const rows = await query
+      .orderBy("update_time", "desc")
       .orderBy("id", "desc")
+      .limit(input.limit + 1)
       .execute();
-    return rows.map(mapDefinition);
+    const items = rows.slice(0, input.limit).map(mapDefinition);
+    const lastItem = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > items.length && lastItem
+        ? { id: lastItem.id, updatedAt: lastItem.updatedAt }
+        : null,
+    };
   }
 
   async listRevisions(
@@ -693,6 +736,10 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
     updatedAt: toDate(row.update_time),
     workflowType: decodeWorkflowType(row.workflow_type),
   };
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, character => `\\${character}`);
 }
 
 function mapRevision(row: Record<string, unknown>): WorkflowRevisionRecord {

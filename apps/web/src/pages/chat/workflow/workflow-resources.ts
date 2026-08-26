@@ -8,7 +8,8 @@ import {
 import type {
   WorkflowDocument,
   WorkflowDraftRepository,
-  WorkflowListItem,
+  WorkflowListInput,
+  WorkflowListPage,
 } from "./workflow-draft-service";
 
 export type WorkflowResourceStatus = "error" | "loading" | "not-found" | "ready";
@@ -79,9 +80,10 @@ export function useWorkflowDocumentResource(
 
 export function useWorkflowListResource(
   repository: WorkflowDraftRepository = getWorkflowDraftRepository(),
+  input: WorkflowListInput = {},
 ) {
   const loadRequestRef = useRef(0);
-  const [state, setState] = useState<WorkflowResourceState<WorkflowListItem[]>>({
+  const [state, setState] = useState<WorkflowResourceState<WorkflowListPage>>({
     data: null,
     error: null,
     status: "loading",
@@ -97,7 +99,7 @@ export function useWorkflowListResource(
     }));
 
     try {
-      const documents = await Promise.resolve(repository.listDocuments());
+      const documents = await Promise.resolve(repository.listDocuments(input));
 
       if (loadRequestRef.current === requestId) {
         setState({ data: documents, error: null, status: "ready" });
@@ -112,7 +114,7 @@ export function useWorkflowListResource(
         });
       }
     }
-  }, [repository]);
+  }, [input.cursor, input.limit, input.query, input.status, repository]);
 
   useEffect(() => {
     void reload();
@@ -124,7 +126,8 @@ export function useWorkflowListResource(
 
   return {
     error: state.error,
-    items: state.data ?? [],
+    items: state.data?.items ?? [],
+    nextCursor: state.data?.nextCursor ?? null,
     reload,
     status: state.status,
   };

@@ -10,6 +10,7 @@ import {
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
   WorkflowEntryRecordStatusSchema,
+  WorkflowDefinitionListStatusSchema,
   WorkflowLlmTestAttemptCreateRequestSchema,
   WorkflowAiIntentTestAttemptCreateRequestSchema,
   type WorkflowCreateRequest,
@@ -65,6 +66,12 @@ const WorkflowRecordsQuerySchema = Type.Object({
 const WorkflowHistoryQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ pattern: "^[1-9][0-9]*$" })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+});
+const WorkflowDefinitionListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String({ maxLength: 512, minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ maximum: 50, minimum: 1 })),
+  query: Type.Optional(Type.String({ maxLength: 100 })),
+  status: Type.Optional(WorkflowDefinitionListStatusSchema),
 });
 const WorkflowRecordParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
@@ -138,8 +145,15 @@ export async function registerWorkflowRoutes(
     )),
   );
 
-  app.get("/api/server/workflows", authenticated, async (request) =>
-    apiSuccess(await service.list(getWorkflowScope(request))),
+  app.get<{ Querystring: Static<typeof WorkflowDefinitionListQuerySchema> }>(
+    "/api/server/workflows",
+    { ...authenticated, schema: { querystring: WorkflowDefinitionListQuerySchema } },
+    async request => apiSuccess(await service.list(getWorkflowScope(request), {
+      cursor: request.query.cursor,
+      limit: request.query.limit ?? 20,
+      query: request.query.query,
+      status: request.query.status ?? "all",
+    })),
   );
 
   app.post<{ Body: WorkflowCreateRequest }>(

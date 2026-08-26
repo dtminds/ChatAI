@@ -175,6 +175,32 @@ export const WorkflowDefinitionSchema = Type.Object({
 
 export const WorkflowDefinitionSummarySchema = Type.Omit(WorkflowDefinitionSchema, ["draft"]);
 
+export const WorkflowDefinitionListStatusSchema = Type.Union([
+  Type.Literal("all"),
+  Type.Literal("active"),
+  Type.Literal("ready"),
+  Type.Literal("draft"),
+  Type.Literal("stopped"),
+]);
+
+export const WorkflowDefinitionListItemSchema = Type.Object({
+  canOperate: Type.Boolean(),
+  description: Type.String({ maxLength: 1000 }),
+  hasUnpublishedChanges: Type.Boolean(),
+  id: WorkflowIdSchema,
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+  publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  runtimeStatus: WorkflowRuntimeStatusSchema,
+  trigger: Type.String(),
+  updatedAt: Type.String(),
+  workflowType: WorkflowTypeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowDefinitionListPageSchema = Type.Object({
+  items: Type.Array(WorkflowDefinitionListItemSchema, { maxItems: 50 }),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+}, { additionalProperties: false });
+
 export const WorkflowRevisionSchema = Type.Object({
   draft: WorkflowDraftSchema,
   id: WorkflowIdSchema,
@@ -361,6 +387,9 @@ export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
 export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
 export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
 export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
+export type WorkflowDefinitionListStatus = Static<typeof WorkflowDefinitionListStatusSchema>;
+export type WorkflowDefinitionListItem = Static<typeof WorkflowDefinitionListItemSchema>;
+export type WorkflowDefinitionListPage = Static<typeof WorkflowDefinitionListPageSchema>;
 export type WorkflowDirectEntryEndpointResponse = Static<
   typeof WorkflowDirectEntryEndpointResponseSchema
 >;

@@ -133,7 +133,7 @@ describe("workflow draft service", () => {
       clientRequestId: "create-request-1",
       workflowType: "wecom_sop",
     })).toThrow(expect.objectContaining({ code: "conflict" }));
-    expect(repository.listDocuments().map((workflow) => workflow.id)).toEqual([
+    expect(repository.listDocuments().items.map((workflow) => workflow.id)).toEqual([
       "workflow-1",
       "newcomer-conversion",
       "vip-reactivation",
@@ -173,7 +173,7 @@ describe("workflow draft service", () => {
     })).toMatchObject({ description: "召回沉默客户", name: "活动召回" });
     repository.deleteDocument(createdDocument.id);
 
-    expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
+    expect(repository.listDocuments().items.map((workflow) => workflow.id)).not.toContain(createdDocument.id);
     expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
   });
 

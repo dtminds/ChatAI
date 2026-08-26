@@ -87,11 +87,6 @@ export function WorkflowListCard({
         </p>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-6">
-        <WorkflowMetric label="进入人数" value={workflow.entered} />
-        <WorkflowMetric label="转化率" value={workflow.conversion} />
-      </div>
-
       <div className="mt-4 border-t border-dashed pt-3">
         <div className="text-xs text-muted-foreground">触发条件</div>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -104,11 +99,12 @@ export function WorkflowListCard({
       </div>
 
       <div className="relative z-10 mt-4 flex items-center gap-2">
-        <WorkflowPrimaryAction
-          onLifecycleAction={onLifecycleAction}
-          operationPending={operationPending}
-          workflow={workflow}
-        />
+        <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
+          <Link to={`/chat/workflows/${workflow.id}`}>
+            <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+            编辑
+          </Link>
+        </Button>
         <WorkflowCardMenu
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
@@ -118,97 +114,6 @@ export function WorkflowListCard({
         />
       </div>
     </article>
-  );
-}
-
-function WorkflowPrimaryAction({
-  onLifecycleAction,
-  operationPending,
-  workflow,
-}: {
-  onLifecycleAction: (action: WorkflowLifecycleAction) => void;
-  operationPending: boolean;
-  workflow: WorkflowListItem;
-}) {
-  if (workflow.currentReview?.status === "pending") {
-    return (
-      <Button asChild className="h-8 flex-1 gap-1.5" size="sm">
-        <Link to={`/chat/workflows/${workflow.id}?panel=review`}>审核</Link>
-      </Button>
-    );
-  }
-
-  if (workflow.currentReview?.status === "approved") {
-    return (
-      <Button asChild className="h-8 flex-1 gap-1.5" size="sm">
-        <Link to={`/chat/workflows/${workflow.id}`}>去发布</Link>
-      </Button>
-    );
-  }
-
-  if (workflow.currentReview?.status === "rejected") {
-    return (
-      <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
-        <Link to={`/chat/workflows/${workflow.id}`}>
-          <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
-          编辑
-        </Link>
-      </Button>
-    );
-  }
-
-  if (workflow.runtimeStatus === "active") {
-    return (
-      <Button
-        className="h-8 flex-1 gap-1.5"
-        disabled={!workflow.canOperate || operationPending}
-        onClick={() => onLifecycleAction("pause")}
-        size="sm"
-        variant="outline"
-      >
-        <HugeiconsIcon icon={PauseIcon} size={15} strokeWidth={1.8} />
-        暂停
-      </Button>
-    );
-  }
-
-  if (workflow.runtimeStatus === "paused") {
-    return (
-      <Button
-        className="h-8 flex-1 gap-1.5"
-        disabled={!workflow.canOperate || operationPending}
-        onClick={() => onLifecycleAction("resume")}
-        size="sm"
-        variant="secondary"
-      >
-        <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-        {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
-      </Button>
-    );
-  }
-
-  if (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null) {
-    return (
-      <Button
-        className="h-8 flex-1 gap-1.5"
-        disabled={!workflow.canOperate || operationPending}
-        onClick={() => onLifecycleAction("enable")}
-        size="sm"
-        variant="secondary"
-      >
-        <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-        {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
-      </Button>
-    );
-  }
-
-  return (
-    <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
-      <Link to={`/chat/workflows/${workflow.id}`}>
-        <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
-        编辑
-      </Link>
-    </Button>
   );
 }
 
@@ -225,10 +130,6 @@ function WorkflowCardMenu({
   operationPending: boolean;
   workflow: WorkflowListItem;
 }) {
-  const reviewOccupiesPrimaryAction = workflow.currentReview?.status === "pending"
-    || workflow.currentReview?.status === "approved"
-    || workflow.currentReview?.status === "rejected";
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -237,51 +138,37 @@ function WorkflowCardMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {reviewOccupiesPrimaryAction && workflow.runtimeStatus === "active" ? (
-          <DropdownMenuItem
-            disabled={!workflow.canOperate || operationPending}
-            onSelect={() => onLifecycleAction("pause")}
-          >
+        <DropdownMenuItem
+          disabled={workflow.runtimeStatus !== "active" || !workflow.canOperate || operationPending}
+          onSelect={() => onLifecycleAction("pause")}
+        >
             <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
             暂停
-          </DropdownMenuItem>
-        ) : null}
-        {reviewOccupiesPrimaryAction && workflow.runtimeStatus === "paused" ? (
-          <DropdownMenuItem
-            disabled={!workflow.canOperate || operationPending}
-            onSelect={() => onLifecycleAction("resume")}
-          >
-            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-            启用已发布版本
-          </DropdownMenuItem>
-        ) : null}
-        {workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null ? (
-          <DropdownMenuItem
-            disabled={!workflow.canOperate || operationPending}
-            onSelect={() => onLifecycleAction("enable")}
-          >
-            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-            {workflow.hasUnpublishedChanges ? "启用已发布版本" : "启用"}
-          </DropdownMenuItem>
-        ) : null}
+        </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={workflow.currentReview?.status === "pending"}
+          disabled={!(["paused", "inactive"].includes(workflow.runtimeStatus))
+            || workflow.publishedRevision === null || !workflow.canOperate || operationPending}
+          onSelect={() => onLifecycleAction(workflow.runtimeStatus === "paused" ? "resume" : "enable")}
+        >
+            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+            启用
+        </DropdownMenuItem>
+        <DropdownMenuItem
           onSelect={onRename}
         >
           <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
           编辑信息
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            disabled={!workflow.canOperate || operationPending}
-            onSelect={() => onLifecycleAction("stop")}
-          >
-            <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
-            停止
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          disabled={!(["active", "paused"].includes(workflow.runtimeStatus))
+            || !workflow.canOperate || operationPending}
+          onSelect={() => onLifecycleAction("stop")}
+        >
+          <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
+          停止
+        </DropdownMenuItem>
         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
           <HugeiconsIcon icon={Delete01Icon} size={16} strokeWidth={1.8} />
           删除
@@ -390,15 +277,6 @@ export function WorkflowListState({
         </EmptyContent>
       ) : null}
     </Empty>
-  );
-}
-
-function WorkflowMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-sm font-semibold text-foreground">{value}</div>
-      <div className="mt-1 truncate text-xs text-muted-foreground">{label}</div>
-    </div>
   );
 }
 

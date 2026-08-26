@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
-  it("lists definitions by creation time without moving edited workflows", async () => {
+  it("lists definitions by update time for cursor pagination", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
 
-    await repository.listDefinitions(8);
+    await repository.listDefinitions(8, { limit: 20, status: "all" });
 
     expect(db.selectBuilders[0].orderBys).toEqual([
-      ["create_time", "desc"],
+      ["update_time", "desc"],
       ["id", "desc"],
     ]);
   });

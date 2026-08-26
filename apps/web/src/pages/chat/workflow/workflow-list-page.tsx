@@ -7,7 +7,7 @@ import {
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
@@ -65,12 +74,21 @@ export function WorkflowListPage({
 }: {
   repository?: WorkflowDraftRepository;
 }) {
-  const { items, reload, status } = useWorkflowListResource(repository);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
+  const [page, setPage] = useState(1);
+  const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
+  const listInput = useMemo(() => ({
+    cursor: pageCursors[page - 1],
+    limit: 20,
+    query: debouncedQuery || undefined,
+    status: statusFilter,
+  }), [debouncedQuery, page, pageCursors, statusFilter]);
+  const { items, nextCursor, reload, status } = useWorkflowListResource(repository, listInput);
   const capacity = useWorkflowCapacityResource(repository);
   const navigate = useNavigate();
   const createRequestIdRef = useRef<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
@@ -78,25 +96,12 @@ export function WorkflowListPage({
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredItems = useMemo(() => items.filter((workflow) => {
-    const matchesStatus = statusFilter === "all"
-      || (statusFilter === "draft" && workflow.publishedRevision === null)
-      || (statusFilter === "ready" && (
-        workflow.runtimeStatus === "paused"
-        || (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null)
-      ))
-      || workflow.runtimeStatus === statusFilter;
-    const matchesQuery = !normalizedQuery
-      || [workflow.name, workflow.description, workflow.trigger, workflow.owner]
-        .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
-    return matchesStatus && matchesQuery;
-  }), [items, normalizedQuery, statusFilter]);
+  useEffect(() => {
+    setPage(1);
+    setPageCursors([undefined]);
+  }, [debouncedQuery, statusFilter]);
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
-    if (workflow.currentReview?.status === "pending") {
-      return;
-    }
     setOperationError(null);
     setMetadataTarget(workflow);
   };
@@ -281,7 +286,7 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        {status === "ready" && filteredItems.length === 0 ? (
+        {status === "ready" && items.length === 0 ? (
           <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
             <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
               <HugeiconsIcon
@@ -295,9 +300,9 @@ export function WorkflowListPage({
           </div>
         ) : null}
 
-        {filteredItems.length > 0 ? (
+        {items.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredItems.map((workflow) => (
+            {items.map((workflow) => (
               <WorkflowListCard
                 key={workflow.id}
                 onDelete={() => {
@@ -317,6 +322,46 @@ export function WorkflowListPage({
               />
             ))}
           </div>
+        ) : null}
+
+        {status === "ready" && (page > 1 || nextCursor) ? (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  aria-disabled={page === 1}
+                  className={page === 1 ? "pointer-events-none opacity-50" : undefined}
+                  href="#"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (page > 1) setPage(current => current - 1);
+                  }}
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationLink href="#" isActive onClick={event => event.preventDefault()}>
+                  {page}
+                </PaginationLink>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  aria-disabled={!nextCursor}
+                  className={!nextCursor ? "pointer-events-none opacity-50" : undefined}
+                  href="#"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (!nextCursor) return;
+                    setPageCursors(current => {
+                      const next = [...current];
+                      next[page] = nextCursor;
+                      return next;
+                    });
+                    setPage(current => current + 1);
+                  }}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         ) : null}
       </section>
 

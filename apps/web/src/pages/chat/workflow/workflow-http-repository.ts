@@ -2,6 +2,8 @@ import type {
   ApiSuccessEnvelope,
   WorkflowCapacityOverview,
   WorkflowDefinition as ApiWorkflowDefinition,
+  WorkflowDefinitionListItem as ApiWorkflowDefinitionListItem,
+  WorkflowDefinitionListPage as ApiWorkflowDefinitionListPage,
   WorkflowPublishReviewPage,
   WorkflowPublishResult as ApiWorkflowPublishResult,
   WorkflowRevision as ApiWorkflowRevision,
@@ -24,6 +26,7 @@ import {
   type WorkflowDraftRestoreResult,
   type WorkflowDraftSaveResult,
   type WorkflowListItem,
+  type WorkflowListInput,
   type WorkflowVersionHistoryItem,
 } from "./workflow-repository-types";
 import type { WorkflowDraft } from "./types";
@@ -55,11 +58,21 @@ export function createHttpWorkflowDraftRepository(
       }
     },
 
-    async listDocuments() {
+    async listDocuments(input?: WorkflowListInput) {
       try {
-        const items = unwrap<ApiWorkflowDefinition[]>(await client.get("/server/workflows"));
-        items.forEach((definition) => definitions.set(definition.id, definition));
-        return items.map(toListItem);
+        const requestInput = input ?? {};
+        const query = new URLSearchParams();
+        if (requestInput.cursor) query.set("cursor", requestInput.cursor);
+        if (requestInput.limit) query.set("limit", String(requestInput.limit));
+        if (requestInput.query) query.set("query", requestInput.query);
+        if (requestInput.status && requestInput.status !== "all") query.set("status", requestInput.status);
+        const page = unwrap<ApiWorkflowDefinitionListPage>(await client.get(
+          `/server/workflows${query.size > 0 ? `?${query.toString()}` : ""}`,
+        ));
+        return {
+          items: page.items.map(toListItem),
+          nextCursor: page.nextCursor,
+        };
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -435,7 +448,6 @@ function toDocument(
   revisionRecords: ApiWorkflowRevision[],
   versionHistoryNextCursor: string | null,
 ): WorkflowDocument {
-  const listItem = toListItem(definition);
   const draft = toDraft(definition.draft);
   const versionHistory = revisionRecords.map(toVersionHistoryItem);
   const currentVersion = definition.publishedRevision === null
@@ -443,11 +455,19 @@ function toDocument(
     : versionHistory.find((version) => version.revision === definition.publishedRevision) ?? null;
   const publishedDraft = currentVersion ? cloneWorkflowDraft(currentVersion.draft) : null;
   return {
-    ...listItem,
+    canOperate: definition.permissions.canOperate,
+    capabilitySummary: definition.capabilitySummary,
+    conversion: getWorkflowConversion(draft) ?? "-",
     currentVersion,
+    description: definition.description,
     draft,
     draftHash: createWorkflowDraftHash(draft),
     draftVersion: definition.draftVersion,
+    entered: "-",
+    id: definition.id,
+    name: definition.name,
+    nodes: draft.nodes.length,
+    owner: "当前账号",
     permissions: {
       canEdit: definition.permissions.canEdit,
       canOperate: definition.permissions.canOperate,
@@ -458,28 +478,7 @@ function toDocument(
     publishedRevision: definition.publishedRevision,
     revision: definition.draftVersion,
     runtimeStatus: definition.runtimeStatus,
-    savedAt: listItem.updatedAt,
-    currentReview: definition.currentReview,
-    hasUnpublishedChanges: definition.hasUnpublishedChanges,
-    versionHistory,
-    versionHistoryNextCursor,
-  };
-}
-
-function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
-  const draft = toDraft(definition.draft);
-  return {
-    canOperate: definition.permissions.canOperate,
-    capabilitySummary: definition.capabilitySummary,
-    conversion: getWorkflowConversion(draft) ?? "-",
-    description: definition.description,
-    entered: "-",
-    id: definition.id,
-    name: definition.name,
-    nodes: draft.nodes.length,
-    owner: "当前账号",
-    publishedRevision: definition.publishedRevision,
-    runtimeStatus: definition.runtimeStatus,
+    savedAt: formatWorkflowDisplayTime(definition.updatedAt),
     status: definition.runtimeStatus === "active"
       ? "Published"
       : definition.runtimeStatus === "paused"
@@ -491,6 +490,30 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
     workflowType: definition.workflowType,
     currentReview: definition.currentReview,
+    hasUnpublishedChanges: definition.hasUnpublishedChanges,
+    versionHistory,
+    versionHistoryNextCursor,
+  };
+}
+
+function toListItem(definition: ApiWorkflowDefinitionListItem): WorkflowListItem {
+  return {
+    canOperate: definition.canOperate,
+    description: definition.description,
+    id: definition.id,
+    name: definition.name,
+    publishedRevision: definition.publishedRevision,
+    runtimeStatus: definition.runtimeStatus,
+    status: definition.runtimeStatus === "active"
+      ? "Published"
+      : definition.runtimeStatus === "paused"
+        ? "Paused"
+        : definition.runtimeStatus === "stopped"
+          ? "Stopped"
+          : definition.publishedRevision !== null ? "Published" : "Draft",
+    trigger: definition.trigger,
+    updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
+    workflowType: definition.workflowType,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
   };
 }

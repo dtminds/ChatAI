@@ -27,6 +27,8 @@ import type {
   SyncWorkflowDraftRepository,
   WorkflowDocument,
   WorkflowDocumentPermissions,
+  WorkflowListInput,
+  WorkflowListPage,
 } from "./workflow-repository-types";
 import type { WorkflowDraft, WorkflowNode } from "./types";
 
@@ -37,6 +39,23 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   const reviewHistory = new Map<string, WorkflowPublishReview[]>();
   const reviewDrafts = new Map<string, WorkflowDraft>();
   const createdDocumentIdsByRequest = new Map<string, string>();
+
+  function listDocuments(input: WorkflowListInput = {}): WorkflowListPage {
+    const normalizedQuery = input?.query?.toLocaleLowerCase();
+    const candidates = workflowDocuments
+      .filter(item => matchesListStatus(item, input?.status ?? "all"))
+      .filter(item => !normalizedQuery
+        || item.name.toLocaleLowerCase().includes(normalizedQuery)
+        || item.description.toLocaleLowerCase().includes(normalizedQuery)
+        || item.trigger.toLocaleLowerCase().includes(normalizedQuery))
+      .filter(item => !input?.cursor || item.id.localeCompare(input.cursor, undefined, { numeric: true }) < 0)
+      .slice(0, (input?.limit ?? 20) + 1);
+    const items = candidates.slice(0, input?.limit ?? 20).map(cloneWorkflowDocument);
+    return {
+      items,
+      nextCursor: candidates.length > items.length ? items.at(-1)?.id ?? null : null,
+    };
+  }
 
   function getWorkflowDocumentIndex(workflowId: string) {
     const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === workflowId);
@@ -149,7 +168,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt: importedAt,
       };
     },
-    listDocuments: () => workflowDocuments.map(cloneWorkflowDocument),
+    listDocuments,
     pauseDocument: (workflowId) => updateRuntimeStatus(workflowId, "paused"),
     submitReview: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
@@ -721,6 +740,20 @@ function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
       "end",
     ],
   };
+}
+
+function matchesListStatus(
+  workflow: WorkflowDocument,
+  status: NonNullable<WorkflowListInput["status"]>,
+) {
+  if (status === "all") return true;
+  if (status === "active") return workflow.runtimeStatus === "active";
+  if (status === "ready") {
+    return workflow.runtimeStatus === "paused"
+      || (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null);
+  }
+  if (status === "draft") return workflow.publishedRevision === null;
+  return workflow.runtimeStatus === "stopped";
 }
 
 function createDefaultWorkflowPermissions(): WorkflowDocumentPermissions {

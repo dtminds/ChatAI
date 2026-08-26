@@ -442,7 +442,7 @@ describe("WorkflowService", () => {
     expect(updated.draft).toEqual(created.draft);
   });
 
-  it("keeps workflows ordered by creation time after an older workflow is edited", async () => {
+  it("orders the first page by update time after an older workflow is edited", async () => {
     vi.useFakeTimers();
     try {
       const service = createService();
@@ -463,10 +463,13 @@ describe("WorkflowService", () => {
         name: first.name,
       });
 
-      await expect(service.list(operator)).resolves.toEqual([
-        expect.objectContaining({ id: second.id }),
-        expect.objectContaining({ id: first.id }),
-      ]);
+      await expect(service.list(operator, { limit: 20, status: "all" })).resolves.toMatchObject({
+        items: [
+          expect.objectContaining({ id: first.id }),
+          expect.objectContaining({ id: second.id }),
+        ],
+        nextCursor: null,
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -475,7 +478,7 @@ describe("WorkflowService", () => {
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 
-    await expect(service.list({ roles: ["operator"], subUserId: "18", uid: 9 }))
+    await expect(service.list({ roles: ["operator"], subUserId: "18", uid: 9 }, { limit: 20, status: "all" }))
       .rejects.toMatchObject({ code: "WORKFLOW_FORBIDDEN", statusCode: 403 });
     await expect(service.create(
       { roles: ["admin"], subUserId: "19", uid: 9 },
@@ -494,7 +497,10 @@ describe("WorkflowService", () => {
     await expect(service.create(operator, { workflowType: "member_sop" }))
       .rejects.toMatchObject({ code: "WORKFLOW_TYPE_UNAVAILABLE", statusCode: 400 });
     expect(entitlementCheck).not.toHaveBeenCalled();
-    await expect(repository.listDefinitions(operator.uid)).resolves.toEqual([]);
+    await expect(repository.listDefinitions(operator.uid, { limit: 20, status: "all" })).resolves.toMatchObject({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it("rejects node kinds outside the selected Workflow type policy", async () => {
@@ -1477,7 +1483,10 @@ describe("WorkflowService", () => {
       code: "WORKFLOW_NOT_FOUND",
       statusCode: 404,
     });
-    expect(await service.list(operator)).toEqual([]);
+    expect(await service.list(operator, { limit: 20, status: "all" })).toMatchObject({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it("allows a deleted create request id to create a new definition", async () => {

@@ -9,8 +9,12 @@ import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
+function isDirectEndpointPath(pathname: string) {
+  return /^\/workflow\/endpoint\/[^/]+$/.test(pathname);
+}
+
 function isPublicPath(pathname: string) {
-  return pathname === "/login" || /^\/workflow\/endpoint\/[^/]+$/.test(pathname);
+  return pathname === "/login" || isDirectEndpointPath(pathname);
 }
 
 export function RootLayout() {
@@ -41,12 +45,13 @@ export function RootLayout() {
   useEffect(() => {
     let isActive = true;
 
-    if (isPublicPath(location.pathname)) {
+    if (location.pathname === "/login") {
       resetWorkbenchSession();
       lastSubUserIdRef.current = null;
       clearSession();
       return undefined;
     }
+    if (isDirectEndpointPath(location.pathname)) return undefined;
 
     const syncAuthSessionState = async (options: { force?: boolean } = {}) => {
       if (!options.force && authStatusRef.current === "authenticated") {

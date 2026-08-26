@@ -263,6 +263,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("subject_id", "=", input.subjectId)
           .where("status", "in", ["queued", "running", "waiting"])
           .limit(1)
+          .forShare()
           .executeTakeFirst();
         if (activeRun) return { kind: "active-run-rejected" as const };
         if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {

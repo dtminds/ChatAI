@@ -72,12 +72,19 @@ describe("workflow entry consumer", () => {
   });
 
   it("ACKs active-Run rejection and DLQs an unsupported direct payload version", async () => {
+    const processed = new Set<string>();
     const startDirectRun = vi.fn(async () => ({ kind: "active-run-rejected" as const }));
     const publishToDeadLetter = vi.fn(async () => undefined);
     const handler = createEntryConsumerHandler({
       bindingReader: { listActiveTriggerBindings: vi.fn() },
       eventCatalog,
-      inboxRepository: createInboxRepository(),
+      inboxRepository: createInboxRepository({
+        hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
+        recordProcessedInboxMessage: vi.fn(async ({ messageId }) => {
+          processed.add(messageId);
+          return true;
+        }),
+      }),
       publishToDeadLetter,
       runtimeService: { startDirectRun, startRun: vi.fn() },
       subscriptionReader: createSubscriptionReader(),
@@ -87,10 +94,50 @@ describe("workflow entry consumer", () => {
       code: "active_run_exists",
       disposition: "ack",
     });
-    await expect(handler(createBrokerMessage(directEvent({ payloadVersion: 2 }))))
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent({
+      eventId: "direct-event-2",
+      payloadVersion: 2,
+    }))))
       .resolves.toEqual({ code: "unsupported_payload_version", disposition: "ack" });
     expect(startDirectRun).toHaveBeenCalledTimes(1);
     expect(publishToDeadLetter).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a consumed direct Runtime rejection before ACKing redelivery", async () => {
+    const processed = new Set<string>();
+    const startDirectRun = vi.fn(async () => {
+      throw new WorkflowRuntimeError(
+        "WORKFLOW_DIRECT_ENTRY_UNAVAILABLE",
+        "Workflow does not accept direct entry",
+      );
+    });
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository: createInboxRepository({
+        hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
+        recordProcessedInboxMessage: vi.fn(async ({ messageId }) => {
+          processed.add(messageId);
+          return true;
+        }),
+      }),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "runtime_rejected",
+      disposition: "ack",
+    });
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "deduplicated",
+      disposition: "ack",
+    });
+    expect(startDirectRun).toHaveBeenCalledTimes(1);
   });
 
   it("fans one event out to every matching active workflow and ACKs after admission", async () => {

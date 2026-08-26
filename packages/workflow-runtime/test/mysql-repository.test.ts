@@ -378,6 +378,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(result).toEqual({ kind: "active-run-rejected" });
     expect(db.runReadCount).toBe(3);
     expect(db.guardWriteLocked).toBe(true);
+    expect(db.activeRunReadLocked).toBe(true);
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -1069,6 +1070,7 @@ function createConcurrentDuplicateRunDbMock(
     workflow_id: "42",
   };
   const db = {
+    activeRunReadLocked: false,
     guardWriteLocked: false,
     runInsertCount: 0,
     runReadCount: 0,
@@ -1083,7 +1085,12 @@ function createConcurrentDuplicateRunDbMock(
     },
     selectFrom(table: string) {
       const builder = {
-        forShare() { return builder; },
+        forShare() {
+          if (table === "xy_wap_embed_workflow_run") {
+            db.activeRunReadLocked = db.guardWriteLocked;
+          }
+          return builder;
+        },
         forUpdate() {
           if (table === "xy_wap_embed_workflow_entry_guard") db.guardWriteLocked = true;
           return builder;

@@ -31,16 +31,12 @@ import {
 describe("workflow contracts", () => {
   it("validates the tenant Workflow capacity overview", () => {
     expect(Value.Check(WorkflowCapacityOverviewSchema, {
-      activeRunCount: 8_721,
-      activeRunLimit: 10_000,
-      capacityRejectedCountToday: 12,
-      date: "2026-08-24",
+      status: "warning",
+      usagePercent: 80,
     })).toBe(true);
     expect(Value.Check(WorkflowCapacityOverviewSchema, {
-      activeRunCount: 8_721,
-      activeRunLimit: -1,
-      capacityRejectedCountToday: 12,
-      date: "2026-08-24",
+      status: "warning",
+      usagePercent: 101,
     })).toBe(false);
   });
 

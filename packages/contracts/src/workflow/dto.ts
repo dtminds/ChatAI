@@ -253,10 +253,12 @@ export const WorkflowDataOverviewSchema = Type.Object({
 });
 
 export const WorkflowCapacityOverviewSchema = Type.Object({
-  activeRunCount: Type.Integer({ minimum: 0 }),
-  activeRunLimit: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
-  capacityRejectedCountToday: Type.Integer({ minimum: 0 }),
-  date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+  status: Type.Union([
+    Type.Literal("normal"),
+    Type.Literal("warning"),
+    Type.Literal("full"),
+  ]),
+  usagePercent: Type.Integer({ maximum: 100, minimum: 0 }),
 });
 
 export const WorkflowEntryRecordStatusSchema = Type.Union([

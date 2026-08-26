@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   handlePulsarReceivedMessage,
-  startConcurrentReceiveLoops,
+  startBoundedReceiveLoop,
 } from "../src/broker/pulsar.js";
 
 describe("Pulsar consumer concurrency", () => {
@@ -18,7 +18,7 @@ describe("Pulsar consumer concurrency", () => {
       await new Promise<void>(resolve => releases.push(resolve));
       active -= 1;
     });
-    const loops = startConcurrentReceiveLoops({
+    const loop = startBoundedReceiveLoop({
       handle,
       isClosing: () => closing,
       maxInFlight: 2,
@@ -33,13 +33,13 @@ describe("Pulsar consumer concurrency", () => {
 
     closing = true;
     releases.splice(0).forEach(release => release());
-    await Promise.all(loops);
+    await loop;
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid maxInFlight %s",
     (maxInFlight) => {
-      expect(() => startConcurrentReceiveLoops({
+      expect(() => startBoundedReceiveLoop({
         handle: async () => undefined,
         isClosing: () => true,
         maxInFlight,
@@ -72,7 +72,7 @@ describe("Pulsar consumer concurrency", () => {
     const receive = vi.fn(() => new Promise<number>((_resolve, reject) => {
       rejectReceive = reject;
     }));
-    const loops = startConcurrentReceiveLoops({
+    const loop = startBoundedReceiveLoop({
       handle,
       isClosing: () => closing,
       maxInFlight: 1,
@@ -83,7 +83,7 @@ describe("Pulsar consumer concurrency", () => {
     closing = true;
     rejectReceive?.(new Error("consumer closed"));
 
-    await expect(Promise.all(loops)).resolves.toEqual([undefined]);
+    await expect(loop).resolves.toBeUndefined();
     expect(handle).not.toHaveBeenCalled();
   });
 });

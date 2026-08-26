@@ -54,14 +54,14 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
       topic: input.topic,
     });
     const state = { closing: false, loops: [] as Promise<void>[] };
-    state.loops = startConcurrentReceiveLoops({
+    state.loops = [startBoundedReceiveLoop({
       handle: async message => {
         await handlePulsarReceivedMessage(message, consumer, input.handler);
       },
       isClosing: () => state.closing,
       maxInFlight: input.maxInFlight,
       receive: () => consumer.receive(),
-    });
+    })];
     this.consumers.set(consumer, state);
     return {
       close: () => this.closeConsumer(consumer),
@@ -124,7 +124,7 @@ export async function handlePulsarReceivedMessage(
   }
 }
 
-export function startConcurrentReceiveLoops<T>(input: {
+export function startBoundedReceiveLoop<T>(input: {
   handle(value: T): Promise<void>;
   isClosing(): boolean;
   maxInFlight: number;
@@ -133,17 +133,33 @@ export function startConcurrentReceiveLoops<T>(input: {
   if (!Number.isSafeInteger(input.maxInFlight) || input.maxInFlight <= 0) {
     throw new Error("Workflow broker maxInFlight must be a positive safe integer");
   }
-  return Array.from({ length: input.maxInFlight }, async () => {
-    while (!input.isClosing()) {
-      let value: T;
-      try {
-        value = await input.receive();
-      } catch {
-        if (input.isClosing()) return;
-        await new Promise(resolve => setTimeout(resolve, 100));
-        continue;
-      }
-      await input.handle(value);
+  return runBoundedReceiveLoop(input);
+}
+
+async function runBoundedReceiveLoop<T>(input: {
+  handle(value: T): Promise<void>;
+  isClosing(): boolean;
+  maxInFlight: number;
+  receive(): Promise<T>;
+}) {
+  const inFlight = new Set<Promise<void>>();
+  while (!input.isClosing()) {
+    if (inFlight.size >= input.maxInFlight) {
+      await Promise.race(inFlight);
+      continue;
     }
-  });
+    let value: T;
+    try {
+      value = await input.receive();
+    } catch {
+      if (input.isClosing()) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      continue;
+    }
+    const handling = input.handle(value)
+      .catch(() => undefined)
+      .finally(() => inFlight.delete(handling));
+    inFlight.add(handling);
+  }
+  await Promise.all(inFlight);
 }

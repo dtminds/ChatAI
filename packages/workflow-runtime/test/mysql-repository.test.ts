@@ -114,6 +114,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       status: "failed",
       terminal_reason: "DOWNSTREAM_REJECTED",
     });
+    expect(db.updates.xy_wap_embed_workflow_capacity_guard).toBeDefined();
   });
 
   it("atomically fails a core node without persisting its rejected context", async () => {
@@ -357,6 +358,28 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.guardWriteLocked).toBe(true);
     expect(db.isolationLevel).toBe("read committed");
     expect(db.runInsertCount).toBe(0);
+  });
+
+  it("rejects admission when the tenant guard has no remaining capacity", async () => {
+    const db = createFullCapacityGuardDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.createRunWithInitialTask({
+      activeRunLimit: 1,
+      context: {},
+      entryEventId: "capacity-event-1",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2026-07-10T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ kind: "capacity-rejected" });
   });
 
   it("uses a shared definition lock when claiming an execution task", async () => {
@@ -962,6 +985,7 @@ function createCapabilityExecutionDbMock(options: {
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;
@@ -1000,6 +1024,72 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
           db.isolationLevel = level;
           return builder;
         },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createFullCapacityGuardDbMock() {
+  const admittedAt = new Date("2026-07-10T00:00:00.000Z");
+  const db = {
+    insertInto(table: string) {
+      if (table === "xy_wap_embed_workflow_run") {
+        throw new Error("Run insert must not occur when tenant capacity is full");
+      }
+      const builder = {
+        onDuplicateKeyUpdate() { return builder; },
+        values() { return builder; },
+        async executeTakeFirstOrThrow() { return { insertId: "1" }; },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      const builder = {
+        forShare() { return builder; },
+        forUpdate() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_definition") {
+            return {
+              biz_status: 1,
+              published_revision: 1,
+              runtime_status: "active",
+              workflow_type: 1,
+            };
+          }
+          if (table === "xy_wap_embed_workflow_run") return undefined;
+          return undefined;
+        },
+        async executeTakeFirstOrThrow() {
+          if (table === "xy_wap_embed_workflow_entry_guard") {
+            return { id: "3", total_entries: 0 };
+          }
+          throw new Error(`Unexpected required read from ${table}`);
+        },
+      };
+      return builder;
+    },
+    selectNoFrom() {
+      return {
+        async executeTakeFirstOrThrow() { return { now: admittedAt }; },
+      };
+    },
+    transaction() {
+      const builder = {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel() { return builder; },
+      };
+      return builder;
+    },
+    updateTable() {
+      const builder = {
+        set() { return builder; },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 0n }; },
       };
       return builder;
     },
@@ -1816,6 +1906,7 @@ function createOutboxDeadDbMock() {
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;

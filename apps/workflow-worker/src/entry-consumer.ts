@@ -209,7 +209,6 @@ export function createEntryConsumerHandler(input: {
       const processedAt = observedAt;
       failureStage = "inbox_record";
       await input.inboxRepository.recordProcessedInboxMessage({
-        capacityRejectedCount: capacityRejected,
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         expiresAt: new Date(
           processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,

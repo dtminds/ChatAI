@@ -1,5 +1,4 @@
 import {
-  WORKFLOW_ACTIVE_RUN_STATUSES,
   WORKFLOW_RUN_RETENTION_DAYS,
   WorkflowFlowChangedReasonSchema,
   type WorkflowDataOverview,
@@ -30,22 +29,13 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     this.db = db as unknown as Kysely<DataDatabase>;
   }
 
-  async getCapacityUsage(input: { date: string; uid: number }) {
-    const [activeRunRow, dailyMetric] = await Promise.all([
-      this.db.selectFrom("xy_wap_embed_workflow_run")
-        .select(({ fn }) => fn.countAll<number>().as("active_run_count"))
-        .where("uid", "=", input.uid)
-        .where("status", "in", WORKFLOW_ACTIVE_RUN_STATUSES)
-        .executeTakeFirstOrThrow(),
-      this.db.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
-        .select("capacity_rejected_count")
-        .where("uid", "=", input.uid)
-        .where("metric_date", "=", new Date(`${input.date}T00:00:00+08:00`))
-        .executeTakeFirst(),
-    ]);
+  async getCapacityUsage(input: { uid: number }) {
+    const row = await this.db.selectFrom("xy_wap_embed_workflow_capacity_guard")
+      .select("active_run_count")
+      .where("uid", "=", input.uid)
+      .executeTakeFirst();
     return {
-      activeRunCount: Number(activeRunRow.active_run_count),
-      capacityRejectedCountToday: Number(dailyMetric?.capacity_rejected_count ?? 0),
+      activeRunCount: Number(row?.active_run_count ?? 0),
     };
   }
 

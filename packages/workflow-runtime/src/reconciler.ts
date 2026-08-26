@@ -31,6 +31,12 @@ export class WorkflowRuntimeReconciler {
     return this.repository.reconcileRunTaskConsistency(input);
   }
 
+  reconcileTenantCapacityCounts(
+    input: Parameters<WorkflowRuntimeRepository["reconcileTenantCapacityCounts"]>[0],
+  ) {
+    return this.repository.reconcileTenantCapacityCounts(input);
+  }
+
   reconcileEventSubscriptions(
     input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
   ) {

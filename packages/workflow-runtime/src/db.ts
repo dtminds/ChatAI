@@ -119,16 +119,8 @@ export interface WorkflowEntryGuardTable {
 }
 
 export interface WorkflowCapacityGuardTable {
+  active_run_count: number;
   create_time: GeneratedDate;
-  uid: number;
-  update_time: GeneratedDate;
-}
-
-export interface WorkflowCapacityDailyMetricTable {
-  capacity_rejected_count: number;
-  create_time: GeneratedDate;
-  id: Generated<DatabaseId>;
-  metric_date: DatabaseDate;
   uid: number;
   update_time: GeneratedDate;
 }
@@ -348,7 +340,6 @@ export interface WorkflowNodeMetricTable {
 }
 
 export interface WorkflowDatabase {
-  xy_wap_embed_workflow_capacity_daily_metric: WorkflowCapacityDailyMetricTable;
   xy_wap_embed_workflow_capacity_guard: WorkflowCapacityGuardTable;
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;

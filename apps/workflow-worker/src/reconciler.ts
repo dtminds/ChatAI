@@ -44,6 +44,15 @@ type WorkflowReconciler = {
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;
+  reconcileTenantCapacityCounts(input: {
+    afterUid?: number;
+    limit: number;
+  }): Promise<{
+    checked: number;
+    corrected: number;
+    hasMore: boolean;
+    lastUid: number | null;
+  }>;
   republishStalledDispatchedTasks(input: {
     dispatchedBefore: Date;
     limit: number;
@@ -61,6 +70,7 @@ type WorkflowReconciler = {
 };
 
 export async function reconcileWorkflowRuntime(input: {
+  afterCapacityUid?: number;
   afterEventSubscriptionId?: string;
   afterRunId?: string;
   afterConsistencyRunId?: string;
@@ -111,6 +121,10 @@ export async function reconcileWorkflowRuntime(input: {
     limit: input.limit,
     now: input.now,
   });
+  const capacityCounts = await input.reconciler.reconcileTenantCapacityCounts({
+    afterUid: input.afterCapacityUid,
+    limit: input.limit,
+  });
   const taskLeaseRecovery = await input.reconciler.recoverExpiredLeases({
     limit: input.limit,
     maxAttempts: input.maxTaskAttempts,
@@ -143,6 +157,8 @@ export async function reconcileWorkflowRuntime(input: {
       };
   return {
     cancelled: cancellation.cancelled,
+    capacityCountsChecked: capacityCounts.checked,
+    capacityCountsCorrected: capacityCounts.corrected,
     revisionCleanupCancelled: revisionCleanup.cancelled,
     revisionCleanupClaimed: revisionCleanup.claimed,
     revisionCleanupFailed: revisionCleanup.failed,
@@ -152,6 +168,7 @@ export async function reconcileWorkflowRuntime(input: {
     inconsistentRunsFailed: consistency.inconsistentRunsFailed,
     nextConsistencyRunCursor: consistency.hasMoreRuns ? consistency.lastRunId : null,
     nextConsistencyTaskCursor: consistency.hasMoreTasks ? consistency.lastTaskId : null,
+    nextCapacityCursor: capacityCounts.hasMore ? capacityCounts.lastUid : null,
     nextCursor: cancellation.done ? null : cancellation.nextCursor,
     nextEventSubscriptionCursor: eventSubscriptions.hasMore
       ? eventSubscriptions.lastSubscriptionId

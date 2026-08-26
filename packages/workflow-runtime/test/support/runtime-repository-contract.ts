@@ -80,7 +80,6 @@ export function runWorkflowRuntimeRepositoryContract(
 
   it("records one stable Entry Inbox message across concurrent deliveries", async () => {
     const input = {
-      capacityRejectedCount: 0,
       consumer: "workflow-entry",
       expiresAt: new Date("2099-02-01T00:00:00.000Z"),
       messageId: "9:event-1",
@@ -1068,6 +1067,11 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.commitNodeResult(commitInput)).resolves.toEqual({
       kind: "already-processed",
     });
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-after-completion",
+      subjectId: "customer-after-completion",
+    }))).resolves.toMatchObject({ deduplicated: false, kind: "success" });
   });
 }
 

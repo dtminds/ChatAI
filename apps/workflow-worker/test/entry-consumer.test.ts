@@ -273,9 +273,8 @@ describe("workflow entry consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
     expect(publishToDeadLetter).not.toHaveBeenCalled();
-    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ capacityRejectedCount: 1 }),
-    );
+    expect(inboxRepository.recordProcessedInboxMessage.mock.calls[0]?.[0])
+      .not.toHaveProperty("capacityRejectedCount");
   });
 
   it("still wakes an existing Wait Event when a new Run is rejected by capacity", async () => {
@@ -320,9 +319,8 @@ describe("workflow entry consumer", () => {
       code: "admitted",
       disposition: "ack",
     });
-    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ capacityRejectedCount: 1 }),
-    );
+    expect(inboxRepository.recordProcessedInboxMessage.mock.calls[0]?.[0])
+      .not.toHaveProperty("capacityRejectedCount");
   });
 
   it("continues fan-out after one matched workflow becomes paused", async () => {

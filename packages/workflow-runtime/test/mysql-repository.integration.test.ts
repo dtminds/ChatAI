@@ -112,11 +112,22 @@ describe("MySQL workflow runtime repository contract", () => {
     return {
       repository,
       async setRunStatus(runId, status) {
-        await contractDatabase.updateTable("xy_wap_embed_workflow_run")
-          .set({ status })
-          .where("uid", "=", 9)
-          .where("id", "=", runId)
-          .executeTakeFirstOrThrow();
+        await contractDatabase.transaction().execute(async transaction => {
+          await transaction.updateTable("xy_wap_embed_workflow_run")
+            .set({ status })
+            .where("uid", "=", 9)
+            .where("id", "=", runId)
+            .executeTakeFirstOrThrow();
+          const activeRuns = await transaction.selectFrom("xy_wap_embed_workflow_run")
+            .select(({ fn }) => fn.countAll<number>().as("count"))
+            .where("uid", "=", 9)
+            .where("status", "in", ["queued", "running", "waiting"])
+            .executeTakeFirstOrThrow();
+          await transaction.updateTable("xy_wap_embed_workflow_capacity_guard")
+            .set({ active_run_count: Number(activeRuns.count) })
+            .where("uid", "=", 9)
+            .executeTakeFirstOrThrow();
+        });
       },
       async setWorkflowRuntimeStatus(status, transitionedAt = new Date("2099-01-01T00:00:00.000Z")) {
         await contractDatabase.transaction().execute(async transaction => {
@@ -136,27 +147,63 @@ describe("MySQL workflow runtime repository contract", () => {
     };
   });
 
-  it("increments the daily capacity rejection metric once per Entry Inbox message", async () => {
+  it("uses the tenant guard counter as the Run admission authority", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    await database.insertInto("xy_wap_embed_workflow_capacity_guard").values({
+      active_run_count: 1,
+      uid: 9,
+    }).executeTakeFirstOrThrow();
+
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await expect(repository.createRunWithInitialTask({
+      activeRunLimit: 1,
+      context: {},
+      entryEventId: "capacity-guard-event",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "capacity-guard-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ kind: "capacity-rejected" });
+  });
+
+  it("reconciles a drifted tenant capacity counter from active Runs", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);
-    const input = {
-      capacityRejectedCount: 3,
-      consumer: "workflow-entry",
-      expiresAt: new Date("2099-02-01T00:00:00+08:00"),
-      messageId: "9:capacity-event-1",
-      processedAt: new Date("2099-01-01T00:30:00+08:00"),
+    await repository.createRunWithInitialTask({
+      activeRunLimit: 2,
+      context: {},
+      entryEventId: "capacity-reconcile-event",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "capacity-reconcile-subject",
+      subjectType: "chatai_contact",
       uid: 9,
-    };
-
-    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(true);
-    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(false);
-    const metric = await database.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
-      .select(["capacity_rejected_count", "metric_date"])
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+    await database.updateTable("xy_wap_embed_workflow_capacity_guard")
+      .set({ active_run_count: 2 })
       .where("uid", "=", 9)
       .executeTakeFirstOrThrow();
 
-    expect(Number(metric.capacity_rejected_count)).toBe(3);
-    expect(metric.metric_date).toEqual(new Date("2099-01-01T00:00:00+08:00"));
+    await expect(repository.reconcileTenantCapacityCounts({ limit: 100 }))
+      .resolves.toEqual({ checked: 1, corrected: 1, hasMore: false, lastUid: 9 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+      .select("active_run_count")
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ active_run_count: 1 });
   });
 
   describe("LLM test Attempt repository", () => {

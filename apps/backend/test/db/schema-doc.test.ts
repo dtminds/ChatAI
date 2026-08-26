@@ -151,11 +151,21 @@ describe("database schema document", () => {
     );
   });
 
+  it("stores the tenant active Run counter on the capacity guard", () => {
+    const capacityGuardTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_capacity_guard",
+    );
+
+    expect(capacityGuardTable).toContain(
+      "active_run_count INT UNSIGNED NOT NULL DEFAULT 0",
+    );
+  });
+
   it("keeps only workflow run indexes required by current query paths", () => {
     const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
 
     expect(runTable.match(/^  KEY .+$/gm)).toEqual([
-      "  KEY idx_workflow_run_tenant_status (uid, status, id),",
       "  KEY idx_workflow_run_records (uid, workflow_id, id),",
       "  KEY idx_workflow_run_status_records (uid, workflow_id, status, id),",
       "  KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),",

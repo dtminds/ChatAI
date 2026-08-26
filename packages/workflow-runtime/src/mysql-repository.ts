@@ -26,7 +26,6 @@ import {
 import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
-import { formatWorkflowMetricDate } from "./workflow-date.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
@@ -71,7 +70,6 @@ import type {
 const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
 const CAPACITY_GUARD_TABLE = "xy_wap_embed_workflow_capacity_guard" as const;
-const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
@@ -267,16 +265,18 @@ export class MysqlWorkflowRuntimeRepository implements
           return { kind: "entry-policy-rejected" as const };
         }
         await trx.insertInto(CAPACITY_GUARD_TABLE).values({
+          active_run_count: 0,
           uid: input.uid,
         }).onDuplicateKeyUpdate({
           uid: sql<number>`uid`,
         }).executeTakeFirstOrThrow();
-        await trx.selectFrom(CAPACITY_GUARD_TABLE)
-          .select("uid")
+        const capacityUpdate = await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+          active_run_count: sql<number>`active_run_count + 1`,
+        })
           .where("uid", "=", input.uid)
-          .forUpdate()
+          .where("active_run_count", "<", input.activeRunLimit)
           .executeTakeFirstOrThrow();
-        if (await hasReachedActiveRunLimit(trx, input.uid, input.activeRunLimit)) {
+        if (Number(capacityUpdate.numUpdatedRows) !== 1) {
           return { kind: "capacity-rejected" as const };
         }
 
@@ -356,19 +356,13 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async recordProcessedInboxMessage(input: {
-    capacityRejectedCount: number;
     consumer: string;
     expiresAt: Date;
     messageId: string;
     processedAt: Date;
     uid: number;
   }) {
-    assertNonNegativeSafeInteger(
-      input.capacityRejectedCount,
-      "Workflow capacity rejected count",
-    );
-    return this.db.transaction().execute(async (trx) => {
-      const insertResult = await trx.insertInto(INBOX_TABLE).values({
+    const insertResult = await this.db.insertInto(INBOX_TABLE).values({
         consumer: input.consumer,
         expires_at: input.expiresAt,
         message_id: input.messageId,
@@ -377,18 +371,7 @@ export class MysqlWorkflowRuntimeRepository implements
       }).onDuplicateKeyUpdate({
         message_id: sql<string>`message_id`,
       }).executeTakeFirst();
-      if ((insertResult.insertId ?? 0n) === 0n) return false;
-      if (input.capacityRejectedCount > 0) {
-        await trx.insertInto(CAPACITY_DAILY_METRIC_TABLE).values({
-          capacity_rejected_count: input.capacityRejectedCount,
-          metric_date: formatWorkflowMetricDate(input.processedAt),
-          uid: input.uid,
-        }).onDuplicateKeyUpdate({
-          capacity_rejected_count: sql<number>`capacity_rejected_count + ${input.capacityRejectedCount}`,
-        }).executeTakeFirstOrThrow();
-      }
-      return true;
-    });
+    return (insertResult.insertId ?? 0n) !== 0n;
   }
 
   beginEventWait(input: WorkflowBeginEventWaitInput) {
@@ -1827,6 +1810,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("lock_version", "=", input.expectedRunLockVersion)
         .where("status", "=", "running")
         .executeTakeFirstOrThrow();
+      await releaseTenantCapacity(trx, input.uid, 1);
       return {
         kind: "success" as const,
         run: nextRun,
@@ -1970,7 +1954,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("status", "=", "dispatched")
           .where("task_version", "=", taskRow.task_version)
           .executeTakeFirstOrThrow();
-        await trx.updateTable(RUN_TABLE).set({
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
           completed_at: input.failedAt,
           lock_version: sql<number>`lock_version + 1`,
           next_execute_at: null,
@@ -1980,6 +1964,9 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("id", "=", taskRow.run_id)
           .where("status", "in", ["queued", "running", "waiting"])
           .executeTakeFirstOrThrow();
+        if (Number(runUpdate.numUpdatedRows) === 1) {
+          await releaseTenantCapacity(trx, outboxRow.uid, 1);
+        }
       }
       return true;
     });
@@ -2196,6 +2183,9 @@ export class MysqlWorkflowRuntimeRepository implements
         terminal_reason: nextRun.terminalReason,
       }).where("uid", "=", input.uid).where("id", "=", run.id)
         .where("lock_version", "=", run.lockVersion).executeTakeFirstOrThrow();
+      if (TERMINAL_RUN_STATUSES.includes(nextRun.status as typeof TERMINAL_RUN_STATUSES[number])) {
+        await releaseTenantCapacity(trx, input.uid, 1);
+      }
       if (failed) {
         await insertNodeMetricEvents(trx, {
           eventKey: `${run.id}:${task.sequence}:failed`,
@@ -2338,7 +2328,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("id", "in", deadIds).where("status", "=", "running")
           .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
         const deadRunIds = [...new Set(deadRows.map(row => row.run_id))];
-        await trx.updateTable(RUN_TABLE).set({
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
           completed_at: input.now,
           lock_version: sql<number>`lock_version + 1`,
           next_execute_at: null,
@@ -2347,6 +2337,12 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("id", "in", deadRunIds)
           .where("status", "in", ["queued", "running", "waiting"])
           .executeTakeFirstOrThrow();
+        if (Number(runUpdate.numUpdatedRows) === deadRunIds.length) {
+          const deadRunIdSet = new Set(deadRunIds.map(normalizeId));
+          await releaseTenantCapacityForRuns(trx, deadRows
+            .filter(row => deadRunIdSet.has(normalizeId(row.run_id)))
+            .map(row => ({ uid: normalizeTenantId(row.uid) })));
+        }
       }
       return { dead: deadIds.length, recovered: recoverableIds.length };
     });
@@ -2499,6 +2495,11 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("update_time", "<=", input.inconsistentBefore)
           .executeTakeFirst();
         inconsistentRunsFailed = Number(update.numUpdatedRows);
+        if (inconsistentRunsFailed === runsToFail.length) {
+          await releaseTenantCapacityForRuns(trx, runsToFail.map(run => ({
+            uid: normalizeTenantId(run.uid),
+          })));
+        }
       }
 
       return {
@@ -2563,6 +2564,60 @@ export class MysqlWorkflowRuntimeRepository implements
       tasksChecked: selectedTaskCandidates.length,
       ...taskResult,
     };
+  }
+
+  async reconcileTenantCapacityCounts(
+    input: Parameters<WorkflowRuntimeRepository["reconcileTenantCapacityCounts"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit === 0) {
+      return { checked: 0, corrected: 0, hasMore: false, lastUid: null };
+    }
+    return this.db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
+      let guardQuery = trx.selectFrom(CAPACITY_GUARD_TABLE)
+        .select(["active_run_count", "uid"])
+        .orderBy("uid", "asc")
+        .limit(limit + 1)
+        .forUpdate();
+      if (input.afterUid !== undefined) {
+        guardQuery = guardQuery.where("uid", ">", input.afterUid);
+      }
+      const candidateGuards = await guardQuery.execute();
+      const guards = candidateGuards.slice(0, limit);
+      const uids = guards.map(guard => normalizeTenantId(guard.uid));
+      const activeCounts = uids.length === 0
+        ? []
+        : await trx.selectFrom(RUN_TABLE)
+            .select(({ fn }) => [
+              "uid",
+              fn.countAll<number>().as("active_run_count"),
+            ])
+            .where("uid", "in", uids)
+            .where("status", "in", ACTIVE_RUN_STATUSES)
+            .groupBy("uid")
+            .execute();
+      const activeCountByUid = new Map(activeCounts.map(row => [
+        normalizeTenantId(row.uid),
+        Number(row.active_run_count),
+      ]));
+      let corrected = 0;
+      for (const guard of guards) {
+        const uid = normalizeTenantId(guard.uid);
+        const activeRunCount = activeCountByUid.get(uid) ?? 0;
+        if (Number(guard.active_run_count) === activeRunCount) continue;
+        await trx.updateTable(CAPACITY_GUARD_TABLE)
+          .set({ active_run_count: activeRunCount })
+          .where("uid", "=", uid)
+          .executeTakeFirstOrThrow();
+        corrected += 1;
+      }
+      return {
+        checked: guards.length,
+        corrected,
+        hasMore: candidateGuards.length > guards.length,
+        lastUid: guards.length > 0 ? normalizeTenantId(guards.at(-1)!.uid) : null,
+      };
+    });
   }
 
   async reconcileEventSubscriptions(
@@ -2866,7 +2921,7 @@ export class MysqlWorkflowRuntimeRepository implements
             }),
           };
         }));
-        await trx.updateTable(RUN_TABLE).set({
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
           completed_at: input.now,
           lock_version: sql<number>`lock_version + 1`,
           next_execute_at: null,
@@ -2875,6 +2930,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("id", "in", cancelledRunIds)
           .where("status", "in", ACTIVE_RUN_STATUSES)
           .executeTakeFirstOrThrow();
+        await releaseTenantCapacity(trx, normalizeTenantId(request.uid), Number(runUpdate.numUpdatedRows));
       }
 
       const hasMore = candidateRuns.length > selectedRuns.length;
@@ -3224,6 +3280,7 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("uid", "=", input.uid).where("id", "in", runIds)
         .where("status", "in", ["queued", "running", "waiting"])
         .executeTakeFirst();
+      await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
       await recordCancellationMetrics(trx, selectedRows.map(run => ({
         currentNodeId: run.current_node_id,
         id: run.id,
@@ -3288,6 +3345,11 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("id", "in", runIds)
         .where("status", "in", ["queued", "running", "waiting"])
         .executeTakeFirst();
+      if (Number(runUpdate.numUpdatedRows) === selected.length) {
+        await releaseTenantCapacityForRuns(trx, selected.map(run => ({
+          uid: normalizeTenantId(run.uid),
+        })));
+      }
       await recordCancellationMetrics(trx, selected.map(run => ({
         currentNodeId: run.current_node_id,
         id: run.id,
@@ -3363,7 +3425,7 @@ export async function cancelMysqlEntitlementRuns(
         .execute();
       const runIds = runs.map(run => run.id);
       if (runIds.length === 0) return 0;
-      await trx.updateTable(RUN_TABLE).set({
+      const runUpdate = await trx.updateTable(RUN_TABLE).set({
         completed_at: input.now,
         lock_version: sql<number>`lock_version + 1`,
         next_execute_at: null,
@@ -3372,6 +3434,7 @@ export async function cancelMysqlEntitlementRuns(
       }).where("id", "in", runIds)
         .where("status", "in", ACTIVE_RUN_STATUSES)
         .executeTakeFirstOrThrow();
+      await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
       await trx.updateTable(TASK_TABLE).set({
         lease_expires_at: null,
         lease_owner: null,
@@ -3781,22 +3844,33 @@ async function getDatabaseNow(trx: RuntimeTransaction) {
   return row.now instanceof Date ? row.now : new Date(row.now);
 }
 
-async function hasReachedActiveRunLimit(
-  trx: RuntimeTransaction,
-  uid: number,
-  activeRunLimit: number,
-) {
-  const row = await trx.selectFrom(RUN_TABLE)
-    .select(({ fn }) => fn.countAll<number>().as("active_run_count"))
-    .where("uid", "=", uid)
-    .where("status", "in", ACTIVE_RUN_STATUSES)
-    .executeTakeFirstOrThrow();
-  return Number(row.active_run_count) >= activeRunLimit;
-}
-
 function assertNonNegativeSafeInteger(value: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${name} must be a non-negative safe integer`);
+  }
+}
+
+async function releaseTenantCapacity(
+  trx: RuntimeTransaction,
+  uid: number,
+  count: number,
+) {
+  if (count <= 0) return;
+  await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+    active_run_count: sql<number>`active_run_count - ${count}`,
+  }).where("uid", "=", uid)
+    .where("active_run_count", ">=", count)
+    .executeTakeFirst();
+}
+
+async function releaseTenantCapacityForRuns(
+  trx: RuntimeTransaction,
+  runs: Array<{ uid: number }>,
+) {
+  const counts = new Map<number, number>();
+  for (const run of runs) counts.set(run.uid, (counts.get(run.uid) ?? 0) + 1);
+  for (const [uid, count] of [...counts].sort(([left], [right]) => left - right)) {
+    await releaseTenantCapacity(trx, uid, count);
   }
 }
 

@@ -538,7 +538,6 @@ export type WorkflowBeginFixedWaitInput = {
 };
 
 export type WorkflowInboxMessageInput = {
-  capacityRejectedCount: number;
   consumer: string;
   expiresAt: Date;
   messageId: string;
@@ -723,6 +722,15 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     staleTasksCancelled: number;
     tasksChecked: number;
     terminalRunTasksCancelled: number;
+  }>;
+  reconcileTenantCapacityCounts(input: {
+    afterUid?: number;
+    limit: number;
+  }): Promise<{
+    checked: number;
+    corrected: number;
+    hasMore: boolean;
+    lastUid: number | null;
   }>;
   reconcileEventSubscriptions(input: {
     afterSubscriptionId?: string;

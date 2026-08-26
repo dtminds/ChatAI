@@ -49,6 +49,7 @@ describe("AgentAvatar", () => {
 
   it("temporarily uses an always animation for a click reaction", () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     render(<AgentAvatar agentId="301" interaction="reaction" />);
 
     const avatar = screen.getByTestId("blobatar");

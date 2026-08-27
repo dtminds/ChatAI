@@ -176,6 +176,11 @@ describe("workflow draft normalizer", () => {
       workUserIds: [201],
     }));
     expect(draft.nodes[0]?.data).not.toHaveProperty("seatIds");
+    expect(draft.nodes[0]?.data).not.toHaveProperty("messageSendingWindow");
+    expect(isWorkflowNodeDraftConfig(
+      "start",
+      extractWorkflowNodeDraftConfig("start", draft.nodes[0]!.data),
+    )).toBe(true);
   });
 
   it("removes runtime-only and undeclared node and edge state from persistable drafts", () => {

@@ -50,6 +50,7 @@ import {
   WorkflowCustomFieldResourceProvider,
   useWorkflowCustomFieldResource,
 } from "./workflow-custom-field-resource";
+import { useWorkflowWeComMemberResource } from "./workflow-wecom-member-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
   WorkflowCreateDialog,
@@ -226,6 +227,10 @@ function WorkflowWorkspaceContent({
     && inspector.node?.data.kind === "start"
     && "seatIds" in inspector.node.data;
   const managedAccountResource = useWorkflowManagedAccountResource(shouldLoadManagedAccounts);
+  const shouldLoadWecomMembers = inspector.isOpen
+    && inspector.node?.data.kind === "start"
+    && "workUserIds" in inspector.node.data;
+  const wecomMemberResource = useWorkflowWeComMemberResource(shouldLoadWecomMembers);
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const canRestoreVersion = currentDocument.permissions.canEdit
@@ -472,6 +477,12 @@ function WorkflowWorkspaceContent({
                     options: managedAccountResource.options,
                     reload: () => void managedAccountResource.reload(),
                     status: managedAccountResource.status,
+                  },
+                  wecomMembers: {
+                    memberLimit: wecomMemberResource.memberLimit,
+                    reload: () => void wecomMemberResource.reload(),
+                    roots: wecomMemberResource.roots,
+                    status: wecomMemberResource.status,
                   },
                 }}
                 testContext={inspector.testContext}

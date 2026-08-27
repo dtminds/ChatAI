@@ -542,8 +542,14 @@ export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   const normalized = structuredClone(draft);
   for (const node of normalized.nodes) {
     if (node.data.kind !== "start") continue;
-    const data = node.data as typeof node.data & { entryPolicy?: unknown };
+    const data = node.data as Record<string, unknown>;
     data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);
+    if (Array.isArray(data.workUserIds)) {
+      delete data.messageSendingWindow;
+      delete data.seatIds;
+    } else if (Array.isArray(data.seatIds)) {
+      delete data.workUserIds;
+    }
   }
   return normalized;
 }

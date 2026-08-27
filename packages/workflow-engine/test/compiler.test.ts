@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractWorkflowNodeDraftConfig,
+  isWorkflowNodeDraftConfig,
+} from "@chatai/contracts";
+import {
   compileWorkflowDraft,
   normalizeWorkflowDraft,
   WorkflowCompilationError,
@@ -46,6 +50,24 @@ describe("compileWorkflowDraft", () => {
     });
     expect(spec.schemaVersion).toBe(3);
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
+  });
+
+  it("strips ChatAI start fields from WeCom drafts before contract checks", () => {
+    const draft = createDraft();
+    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+      workUserIds: [201],
+    });
+
+    const normalized = normalizeWorkflowDraft(draft);
+    const startData = normalized.nodes.find((item) => item.id === "start")!.data;
+
+    expect(startData).not.toHaveProperty("messageSendingWindow");
+    expect(startData).not.toHaveProperty("seatIds");
+    expect(startData).toEqual(expect.objectContaining({ workUserIds: [201] }));
+    expect(isWorkflowNodeDraftConfig(
+      "start",
+      extractWorkflowNodeDraftConfig("start", startData),
+    )).toBe(true);
   });
 
   it("compiles direct push without entry events", () => {

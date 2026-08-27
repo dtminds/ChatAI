@@ -9,7 +9,6 @@ export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
 export const WorkflowDirectEntryEndpointKeySchema = Type.String({
   maxLength: 512,
   minLength: 1,
-  pattern: "^[A-Za-z0-9._~-]+$",
 });
 
 export const WorkflowDirectEntryEndpointResponseSchema = Type.Object({

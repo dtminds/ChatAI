@@ -6,3 +6,4 @@ export * from "./workflow-repository-types.js";
 export * from "./workflow.routes.js";
 export * from "./workflow.service.js";
 export * from "./workflow-source-identity.js";
+export * from "./direct-entry-endpoint-port.js";

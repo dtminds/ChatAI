@@ -105,7 +105,7 @@ import {
   type WorkflowSourceIdentityResolver,
 } from "./workflow-source-identity.js";
 import {
-  MockWorkflowDirectEntryEndpointPort,
+  UnavailableWorkflowDirectEntryEndpointPort,
   type WorkflowDirectEntryEndpointPort,
 } from "./direct-entry-endpoint-port.js";
 
@@ -140,7 +140,7 @@ export class WorkflowService {
   ) {
     this.clock = options.clock ?? (() => new Date());
     this.directEntryEndpointPort = options.directEntryEndpointPort
-      ?? new MockWorkflowDirectEntryEndpointPort();
+      ?? new UnavailableWorkflowDirectEntryEndpointPort();
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver

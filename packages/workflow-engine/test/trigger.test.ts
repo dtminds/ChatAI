@@ -129,9 +129,8 @@ describe("workflow trigger matching", () => {
     }));
   });
 
-  it.each(["audience-import", "direct-push"] as const)(
-    "does not create trigger bindings for %s entries",
-    (entryMode) => {
+  it("does not create trigger bindings for direct-push entries", () => {
+    const entryMode = "direct-push" as const;
     const config: WorkflowStartConfig = {
       entryMode,
       entryPolicy,
@@ -144,8 +143,7 @@ describe("workflow trigger matching", () => {
       triggers: [],
     }));
     expect(getWorkflowTriggerBindings(config, "chatai_contact")).toEqual([]);
-    },
-  );
+  });
 
   it("projects each trigger independently when future contracts allow multiple events", () => {
     const malformed = {

@@ -6,23 +6,20 @@ import {
   InMemoryWorkflowRepository,
   WorkflowService,
 } from "../../../src/modules/workflow/index.js";
-import {
-  MockWorkflowDirectEntryEndpointPort,
-} from "../../../src/modules/workflow/direct-entry-endpoint-port.js";
 
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
   it("loads a direct-entry key with the authoritative tenant and Workflow identity", async () => {
     const repository = new InMemoryWorkflowRepository();
-    const getEndpointKey = vi.fn(async () => "java.endpoint-key");
+    const getEndpointKey = vi.fn(async () => "java+/endpoint-key=");
     const service = createService(repository, {
       directEntryEndpointPort: { getEndpointKey },
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
 
     await expect(service.getDirectEntryEndpoint(operator, created.id)).resolves.toEqual({
-      endpointKey: "java.endpoint-key",
+      endpointKey: "java+/endpoint-key=",
     });
     expect(getEndpointKey).toHaveBeenCalledWith({ uid: 9, workflowId: created.id });
     await expect(service.getDirectEntryEndpoint(
@@ -34,7 +31,7 @@ describe("WorkflowService", () => {
 
   it("rejects invalid direct-entry keys returned by the Java port", async () => {
     const service = createService(new InMemoryWorkflowRepository(), {
-      directEntryEndpointPort: { getEndpointKey: async () => "invalid/key" },
+      directEntryEndpointPort: { getEndpointKey: async () => "x".repeat(513) },
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
 
@@ -42,15 +39,6 @@ describe("WorkflowService", () => {
       code: "WORKFLOW_DIRECT_ENTRY_ENDPOINT_INVALID",
       statusCode: 502,
     });
-  });
-
-  it("keeps the temporary direct-entry Mock key stable per tenant and Workflow", async () => {
-    const port = new MockWorkflowDirectEntryEndpointPort();
-    const first = await port.getEndpointKey({ uid: 9, workflowId: "31" });
-
-    await expect(port.getEndpointKey({ uid: 9, workflowId: "31" })).resolves.toBe(first);
-    await expect(port.getEndpointKey({ uid: 9, workflowId: "32" })).resolves.not.toBe(first);
-    expect(first).toMatch(/^mock\.[A-Za-z0-9_-]+$/);
   });
 
   it("creates isolated LLM test Attempts from the current draft snapshot", async () => {
@@ -1366,7 +1354,7 @@ describe("WorkflowService", () => {
       }]);
   });
 
-  it("publishes audience imports without resolving or creating trigger bindings", async () => {
+  it("publishes direct-push entries without resolving or creating trigger bindings", async () => {
     const repository = new InMemoryWorkflowRepository();
     const resolveActiveSeatWorkUserIds = vi.fn(async () => new Map<number, number>());
     const service = createService(repository, {
@@ -1375,7 +1363,7 @@ describe("WorkflowService", () => {
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
       draft: withStartConfig(created.draft, {
-        entryMode: "audience-import",
+        entryMode: "direct-push",
         entryPolicy: { mode: "never" },
         seatIds: [101],
         triggers: [],

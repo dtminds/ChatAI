@@ -33,10 +33,10 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
-  it("compiles audience import without entry events", () => {
+  it("compiles direct push without entry events", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
-      entryMode: "audience-import",
+      entryMode: "direct-push",
       triggers: [],
     });
 
@@ -48,7 +48,7 @@ describe("compileWorkflowDraft", () => {
     });
 
     expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual(expect.objectContaining({
-      entryMode: "audience-import",
+      entryMode: "direct-push",
       triggers: [],
     }));
   });

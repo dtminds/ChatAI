@@ -53,7 +53,8 @@ describe("StartConfig", () => {
       "aria-checked",
       "true",
     );
-    expect(screen.getByRole("radio", { name: "导入人群" })).toBeEnabled();
+    expect(screen.queryByRole("radio", { name: "导入人群" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "外部推送" })).toBeEnabled();
     await user.click(screen.getByRole("combobox", { name: "选择事件" }));
     expect(screen.getByRole("option", { name: "添加好友" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "添加标签" })).toBeInTheDocument();
@@ -68,50 +69,6 @@ describe("StartConfig", () => {
     expect(screen.getByRole("combobox", { name: "时间单位" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "时间范围内最多进入次数" }))
       .toBeDisabled();
-  });
-
-  it("switches between event and audience import entry settings", async () => {
-    const user = userEvent.setup();
-    const node = createStartNode();
-    const onNodeChange = vi.fn();
-    const { rerender } = render(
-      <StartConfig
-        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
-        edges={[]}
-        node={node}
-        nodes={[node]}
-        onNodeChange={onNodeChange}
-      />,
-    );
-
-    await user.click(screen.getByRole("radio", { name: "导入人群" }));
-    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      entryMode: "audience-import",
-      triggers: [],
-    }));
-
-    const audienceNode = {
-      ...node,
-      data: { ...node.data, entryMode: "audience-import" as const, triggers: [] },
-    };
-    rerender(
-      <StartConfig
-        allowedEntryEventTypes={["contact.friend_added", "contact.tag_added", "message.received"]}
-        edges={[]}
-        node={audienceNode}
-        nodes={[audienceNode]}
-        onNodeChange={onNodeChange}
-      />,
-    );
-
-    expect(screen.getByRole("note")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "选择事件" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("radio", { name: "事件触发" }));
-    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      entryMode: "event",
-      triggers: [],
-    }));
   });
 
   it("switches to direct push and builds the public endpoint from the returned key", async () => {

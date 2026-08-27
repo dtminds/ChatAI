@@ -141,9 +141,9 @@ export function StartConfig({
           <h3 className="py-3 text-[15px] font-semibold text-foreground">进入方式</h3>
           <RadioGroup
             aria-label="进入方式"
-            className="grid grid-cols-3 gap-3"
+            className="flex items-center gap-6"
             onValueChange={(mode) => {
-              if (mode === "event" || mode === "audience-import" || mode === "direct-push") {
+              if (mode === "event" || mode === "direct-push") {
                 updateStartConfig({ entryMode: mode, triggers: [] });
               }
             }}
@@ -152,10 +152,6 @@ export function StartConfig({
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem value="event" />
               <span>事件触发</span>
-            </label>
-            <label className="flex items-center gap-2 text-[13px] text-foreground">
-              <RadioGroupItem value="audience-import" />
-              <span>导入人群</span>
             </label>
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem value="direct-push" />
@@ -237,10 +233,6 @@ export function StartConfig({
             ) : null}
             </div>
           </section>
-        ) : entryMode === "audience-import" ? (
-          <p className="pb-3 text-[13px] leading-5 text-muted-foreground" role="note">
-            发布后可在右上角点击“人群导入”按钮进行导入
-          </p>
         ) : (
           <DirectEntryEndpoint workflowId={workflowId} />
         )}
@@ -408,7 +400,6 @@ async function copyDirectEntryEndpoint(endpointUrl: string) {
 }
 
 function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
-  if (mode === "audience-import") return "导入人群";
   if (mode === "direct-push") return "外部推送";
   return `${triggerCount} 个触发条件`;
 }

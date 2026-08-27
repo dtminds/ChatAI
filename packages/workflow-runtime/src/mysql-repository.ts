@@ -3185,8 +3185,9 @@ export class MysqlWorkflowRuntimeRepository implements
         current.passed += Number(event.passed_delta);
         aggregated.set(key, current);
       }
-      for (const metric of aggregated.values()) {
-        await trx.insertInto(NODE_METRIC_TABLE).values({
+      const orderedMetrics = [...aggregated.values()].sort(compareNodeMetricKeys);
+      for (const chunk of writeChunks(orderedMetrics)) {
+        await trx.insertInto(NODE_METRIC_TABLE).values(chunk.map(metric => ({
           completed_count: metric.completed,
           current_count: Math.max(0, metric.current),
           entered_count: metric.entered,
@@ -3197,12 +3198,20 @@ export class MysqlWorkflowRuntimeRepository implements
           shard_id: metric.shardId,
           uid: metric.uid,
           workflow_id: metric.workflowId,
-        }).onDuplicateKeyUpdate({
-          completed_count: sql<number>`completed_count + ${metric.completed}`,
-          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + ${metric.current})`,
-          entered_count: sql<number>`entered_count + ${metric.entered}`,
-          incomplete_count: sql<number>`incomplete_count + ${metric.incomplete}`,
-          passed_count: sql<number>`passed_count + ${metric.passed}`,
+        }))).onDuplicateKeyUpdate({
+          completed_count: sql<number>`completed_count + VALUES(completed_count)`,
+          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + CASE
+            ${sql.join(chunk.map(metric => sql`WHEN VALUES(uid) = ${metric.uid}
+              AND VALUES(workflow_id) = ${metric.workflowId}
+              AND VALUES(revision) = ${metric.revision}
+              AND BINARY VALUES(node_id) = BINARY ${metric.nodeId}
+              AND VALUES(shard_id) = ${metric.shardId}
+              THEN ${metric.current}`), sql` `)}
+            ELSE 0
+          END)`,
+          entered_count: sql<number>`entered_count + VALUES(entered_count)`,
+          incomplete_count: sql<number>`incomplete_count + VALUES(incomplete_count)`,
+          passed_count: sql<number>`passed_count + VALUES(passed_count)`,
         }).executeTakeFirstOrThrow();
       }
       const processedAt = new Date();
@@ -4021,6 +4030,16 @@ function compareWorkflowMetricKeys(
   const leftWorkflowId = normalizeId(left.workflowId);
   const rightWorkflowId = normalizeId(right.workflowId);
   return leftWorkflowId < rightWorkflowId ? -1 : leftWorkflowId > rightWorkflowId ? 1 : 0;
+}
+
+function compareNodeMetricKeys(
+  left: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+  right: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+) {
+  return compareWorkflowMetricKeys(left, right)
+    || left.revision - right.revision
+    || (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0)
+    || left.shardId - right.shardId;
 }
 
 async function releaseTenantCapacity(

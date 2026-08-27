@@ -500,6 +500,113 @@ describe("MySQL workflow runtime repository contract", () => {
       ), 0);
     expect(sqlBytes).toBeLessThan(maxAllowedPacket / 16);
   });
+
+  it("aggregates node metrics in chunks without changing counter semantics", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const eventCount = WORKFLOW_MYSQL_WRITE_CHUNK_SIZE * 2 + 1;
+    await database.insertInto("xy_wap_embed_workflow_node_metric").values([
+      {
+        completed_count: 0,
+        current_count: 0,
+        entered_count: 0,
+        incomplete_count: 0,
+        node_id: "node-0",
+        passed_count: 0,
+        revision: 1,
+        shard_id: 0,
+        uid: 9,
+        workflow_id: "31",
+      },
+      {
+        completed_count: 0,
+        current_count: 5,
+        entered_count: 0,
+        incomplete_count: 0,
+        node_id: "node-1",
+        passed_count: 0,
+        revision: 1,
+        shard_id: 1,
+        uid: 9,
+        workflow_id: "31",
+      },
+      {
+        completed_count: 10,
+        current_count: 5,
+        entered_count: 10,
+        incomplete_count: 0,
+        node_id: "node-200",
+        passed_count: 2,
+        revision: 1,
+        shard_id: 8,
+        uid: 9,
+        workflow_id: "31",
+      },
+    ]).executeTakeFirstOrThrow();
+    for (let start = 0; start < eventCount; start += WORKFLOW_MYSQL_WRITE_CHUNK_SIZE) {
+      const end = Math.min(start + WORKFLOW_MYSQL_WRITE_CHUNK_SIZE, eventCount);
+      await database.insertInto("xy_wap_embed_workflow_node_metric_event").values(
+        Array.from({ length: end - start }, (_, offset) => {
+          const index = start + offset;
+          return {
+            completed_delta: index,
+            current_delta: index <= 1 ? -1 : 1,
+            entered_delta: 1,
+            event_key: `metric-batch-${index}`,
+            incomplete_delta: 0,
+            node_id: `node-${index}`,
+            passed_delta: index % 2,
+            processed_at: null,
+            revision: 1,
+            run_id: String(1_000 + index),
+            shard_id: index % 16,
+            uid: 9,
+            workflow_id: "31",
+          };
+        }),
+      ).executeTakeFirstOrThrow();
+    }
+
+    await expect(repository.aggregateNodeMetricEvents({ limit: eventCount })).resolves.toBe(eventCount);
+    await expect(repository.aggregateNodeMetricEvents({ limit: eventCount })).resolves.toBe(0);
+    const [metrics, processedCount] = await Promise.all([
+      database.selectFrom("xy_wap_embed_workflow_node_metric")
+        .select(["completed_count", "current_count", "entered_count", "node_id", "passed_count"])
+        .where("uid", "=", 9).where("workflow_id", "=", "31")
+        .where("revision", "=", 1)
+        .orderBy("node_id", "asc")
+        .execute(),
+      database.selectFrom("xy_wap_embed_workflow_node_metric_event")
+        .select(({ fn }) => fn.countAll<number>().as("count"))
+        .where("processed_at", "is not", null)
+        .executeTakeFirstOrThrow(),
+    ]);
+    const metricByNodeId = new Map(metrics.map(metric => [metric.node_id, metric]));
+
+    expect(metricByNodeId.get("node-0")).toEqual({
+      completed_count: "0",
+      current_count: "0",
+      entered_count: "1",
+      node_id: "node-0",
+      passed_count: "0",
+    });
+    expect(metricByNodeId.get("node-1")).toEqual({
+      completed_count: "1",
+      current_count: "4",
+      entered_count: "1",
+      node_id: "node-1",
+      passed_count: "1",
+    });
+    expect(metricByNodeId.get("node-200")).toEqual({
+      completed_count: "210",
+      current_count: "6",
+      entered_count: "11",
+      node_id: "node-200",
+      passed_count: "2",
+    });
+    expect(metrics).toHaveLength(eventCount);
+    expect(Number(processedCount.count)).toBe(eventCount);
+  });
 });
 
 function readMysqlTestConnectionOptions() {

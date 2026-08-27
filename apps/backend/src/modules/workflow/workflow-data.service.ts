@@ -3,6 +3,7 @@ import type {
   WorkflowDataOverview,
   WorkflowEntryRecordDetail,
   WorkflowEntryRecordPage,
+  WorkflowTenantOverview,
 } from "@chatai/contracts";
 import {
   formatWorkflowMetricDate,
@@ -21,6 +22,19 @@ export type WorkflowDataReader = {
     capacityRejectedCountToday: number;
   }>;
   getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
+  getTenantOverview(input: {
+    today: string;
+    uid: number;
+    windowStart: string;
+    yesterday: string;
+  }): Promise<{
+    activeWorkflowCount: number;
+    recentCompletedRunCount: number;
+    recentFailedRunCount: number;
+    todayRunCount: number;
+    totalWorkflowCount: number;
+    yesterdayRunCount: number;
+  }>;
   getRecord(input: { recordId: string; uid: number; workflowId: string }): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
     cursor?: string;
@@ -77,6 +91,29 @@ export class WorkflowDataService {
   getOverview(scope: WorkflowOperatorScope, workflowId: string) {
     assertAccess(scope);
     return this.reader.getOverview({ uid: scope.uid, workflowId });
+  }
+
+  async getTenantOverview(scope: WorkflowOperatorScope): Promise<WorkflowTenantOverview> {
+    assertAccess(scope);
+    const now = this.clock();
+    const today = formatWorkflowMetricDate(now);
+    const yesterday = formatWorkflowMetricDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+    const windowStart = formatWorkflowMetricDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+    const overview = await this.reader.getTenantOverview({ today, uid: scope.uid, windowStart, yesterday });
+    const resultCount = overview.recentCompletedRunCount + overview.recentFailedRunCount;
+    return {
+      activeWorkflowCount: overview.activeWorkflowCount,
+      recentFailedRunCount: overview.recentFailedRunCount,
+      recentSuccessRatePercent: resultCount === 0
+        ? null
+        : Math.round(overview.recentCompletedRunCount * 1000 / resultCount) / 10,
+      todayRunCount: overview.todayRunCount,
+      todayRunCountChangePercent: overview.yesterdayRunCount === 0
+        ? overview.todayRunCount === 0 ? 0 : null
+        : Math.round((overview.todayRunCount - overview.yesterdayRunCount) * 100
+          / overview.yesterdayRunCount),
+      totalWorkflowCount: overview.totalWorkflowCount,
+    };
   }
 
   listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid">) {

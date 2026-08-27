@@ -69,6 +69,33 @@ describe("workflow data routes", () => {
     expect(dataService.getCapacityOverview).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }));
   });
 
+  it("serves one tenant-level operating overview independently from the paged Workflow list", async () => {
+    const dataService = {
+      getTenantOverview: vi.fn(async () => ({
+        activeWorkflowCount: 23,
+        recentFailedRunCount: 231,
+        recentSuccessRatePercent: 98.2,
+        todayRunCount: 12_847,
+        todayRunCountChangePercent: 12,
+        totalWorkflowCount: 38,
+      })),
+    };
+    const app = await createApp(dataService);
+
+    const response = await app.inject({ method: "GET", url: "/api/server/workflows/overview" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    });
+    expect(dataService.getTenantOverview).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }));
+  });
+
   it("combines tenant Run usage with one tenant-scoped capacity lookup", async () => {
     const reader = {
       getCapacityUsage: vi.fn(async () => ({
@@ -96,6 +123,38 @@ describe("workflow data routes", () => {
     expect(reader.getCapacityUsage).toHaveBeenCalledWith({ date: "2026-08-25", uid: 9 });
     expect(capacityPort.getTenantCapacity).toHaveBeenCalledTimes(1);
     expect(capacityPort.getTenantCapacity).toHaveBeenCalledWith({ uid: 9 });
+  });
+
+  it("derives the tenant operating overview from the current Shanghai day and recent seven days", async () => {
+    const reader = {
+      getTenantOverview: vi.fn(async () => ({
+        activeWorkflowCount: 23,
+        recentCompletedRunCount: 982,
+        recentFailedRunCount: 18,
+        todayRunCount: 125,
+        totalWorkflowCount: 38,
+        yesterdayRunCount: 100,
+      })),
+    };
+    const service = new WorkflowDataService(reader as never, {
+      clock: () => new Date("2026-08-24T16:30:00.000Z"),
+    });
+
+    await expect(service.getTenantOverview({ roles: ["owner"], subUserId: "17", uid: 9 }))
+      .resolves.toEqual({
+        activeWorkflowCount: 23,
+        recentFailedRunCount: 18,
+        recentSuccessRatePercent: 98.2,
+        todayRunCount: 125,
+        todayRunCountChangePercent: 25,
+        totalWorkflowCount: 38,
+      });
+    expect(reader.getTenantOverview).toHaveBeenCalledWith({
+      today: "2026-08-25",
+      uid: 9,
+      windowStart: "2026-08-19",
+      yesterday: "2026-08-24",
+    });
   });
 
   it("fails the capacity overview when the tenant capacity authority is unavailable", async () => {
@@ -140,6 +199,36 @@ describe("workflow data routes", () => {
       "metric_date",
       "=",
       new Date("2026-08-23T16:00:00.000Z"),
+    ]);
+  });
+
+  it("aggregates the tenant overview from two summary tables without scanning Runs", async () => {
+    const db = createTenantOverviewDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
+
+    await expect(reader.getTenantOverview({
+      today: "2026-08-25",
+      uid: 9,
+      windowStart: "2026-08-19",
+      yesterday: "2026-08-24",
+    })).resolves.toEqual({
+      activeWorkflowCount: 23,
+      recentCompletedRunCount: 9_800,
+      recentFailedRunCount: 200,
+      todayRunCount: 125,
+      totalWorkflowCount: 38,
+      yesterdayRunCount: 100,
+    });
+    expect(db.selectedTables).toEqual([
+      "xy_wap_embed_workflow_daily_metric",
+      "xy_wap_embed_workflow_definition",
+    ]);
+    expect(db.selectedTables).not.toContain("xy_wap_embed_workflow_run");
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_daily_metric",
+      "metric_date",
+      ">=",
+      new Date("2026-08-18T16:00:00.000Z"),
     ]);
   });
 
@@ -325,23 +414,27 @@ describe("workflow data routes", () => {
     const reader = {
       getCapacityUsage: vi.fn(),
       getOverview: vi.fn(),
+      getTenantOverview: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };
     const app = await createApp(new WorkflowDataService(reader as never), ["viewer"]);
 
-    const [dataResponse, capacityResponse] = await Promise.all([
+    const [dataResponse, capacityResponse, overviewResponse] = await Promise.all([
       app.inject({ method: "GET", url: "/api/server/workflows/12/data" }),
       app.inject({ method: "GET", url: "/api/server/workflows/capacity" }),
+      app.inject({ method: "GET", url: "/api/server/workflows/overview" }),
     ]);
 
     expect(dataResponse.statusCode).toBe(403);
     expect(capacityResponse.statusCode).toBe(403);
+    expect(overviewResponse.statusCode).toBe(403);
     expect(capacityResponse.json()).toMatchObject({
       error: { code: "WORKFLOW_ACCESS_FORBIDDEN" },
     });
     expect(reader.getCapacityUsage).not.toHaveBeenCalled();
     expect(reader.getOverview).not.toHaveBeenCalled();
+    expect(reader.getTenantOverview).not.toHaveBeenCalled();
   });
 
   async function createApp(dataService: object, roles = ["owner"]) {
@@ -375,6 +468,39 @@ function createCapacityUsageDbMock() {
           return table === "xy_wap_embed_workflow_capacity_guard"
             ? { active_run_count: 0 }
             : undefined;
+        },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createTenantOverviewDbMock() {
+  const db = {
+    selectedTables: [] as string[],
+    wheres: [] as unknown[][],
+    selectFrom(table: string) {
+      db.selectedTables.push(table);
+      const builder = {
+        select() { return builder; },
+        where(...args: unknown[]) {
+          db.wheres.push([table, ...args]);
+          return builder;
+        },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_daily_metric") {
+            return {
+              recent_completed_run_count: "9800",
+              recent_failed_run_count: "200",
+              today_run_count: "125",
+              yesterday_run_count: "100",
+            };
+          }
+          return {
+            active_workflow_count: "23",
+            total_workflow_count: "38",
+          };
         },
       };
       return builder;

@@ -6,7 +6,7 @@ import {
   PauseIcon,
   PlayIcon,
   StopCircleIcon,
-  WorkflowSquare01Icon,
+  WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { IconStack } from "@/components/ui/icon-stack";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,7 +72,7 @@ export function WorkflowListTable({
   workflows: WorkflowListItem[];
 }) {
   return (
-    <div className="overflow-hidden rounded-[12px] border border-border/50 bg-muted/50 px-1 pb-1.5">
+    <div className="overflow-hidden rounded-[10px] border border-border/40 bg-muted px-1 pb-1">
       <Table aria-label="工作流列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
         <colgroup>
           <col className="w-[300px]" />
@@ -103,7 +104,19 @@ export function WorkflowListTable({
             </TableRow>
           ) : workflows.length === 0 ? (
             <TableRow className="border-0 hover:bg-transparent">
-              <TableCell className="rounded-[8px] border border-border/70 bg-surface py-10 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+              <TableCell className="rounded-[8px] border border-border/70 bg-surface text-center" colSpan={6}>
+                <div className="flex flex-col items-center justify-center py-5">
+                  <IconStack aria-hidden="true" className="mb-4 h-20 w-18">
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={WorkflowSquare06Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </IconStack>
+                  <span className="text-sm text-muted-foreground">暂无数据</span>
+                </div>
+              </TableCell>
             </TableRow>
           ) : workflows.map(workflow => (
             <WorkflowListRow
@@ -414,7 +427,7 @@ export function WorkflowListState({
     <Empty className="min-h-56">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <HugeiconsIcon icon={onRetry ? AlertCircleIcon : WorkflowSquare01Icon} size={20} strokeWidth={1.8} />
+          <HugeiconsIcon icon={onRetry ? AlertCircleIcon : WorkflowSquare06Icon} size={20} strokeWidth={1.8} />
         </EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
         {description ? <EmptyDescription>{description}</EmptyDescription> : null}

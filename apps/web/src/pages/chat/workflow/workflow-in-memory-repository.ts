@@ -124,6 +124,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       status: "normal",
       usagePercent: 37,
     }),
+    getTenantOverview: () => ({
+      activeWorkflowCount: workflowDocuments.filter(document => document.runtimeStatus === "active").length,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: workflowDocuments.length,
+    }),
     getDocument: (workflowId) => cloneWorkflowDocument(
       workflowDocuments[getWorkflowDocumentIndex(workflowId)],
     ),

@@ -8,6 +8,7 @@ import type {
   WorkflowPublishResult as ApiWorkflowPublishResult,
   WorkflowRevision as ApiWorkflowRevision,
   WorkflowRevisionPage,
+  WorkflowTenantOverview,
 } from "@chatai/contracts";
 import { http, RequestNormalizedError } from "@/lib/request";
 import { hydrateWorkflowDraft } from "./workflow-draft-normalizer";
@@ -53,6 +54,14 @@ export function createHttpWorkflowDraftRepository(
     async getCapacityOverview() {
       try {
         return unwrap<WorkflowCapacityOverview>(await client.get("/server/workflows/capacity"));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async getTenantOverview() {
+      try {
+        return unwrap<WorkflowTenantOverview>(await client.get("/server/workflows/overview"));
       } catch (error) {
         throw normalizeHttpError(error);
       }

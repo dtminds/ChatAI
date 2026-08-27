@@ -311,6 +311,18 @@ export const WorkflowCapacityOverviewSchema = Type.Object({
   usagePercent: Type.Integer({ maximum: 100, minimum: 0 }),
 });
 
+export const WorkflowTenantOverviewSchema = Type.Object({
+  activeWorkflowCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  recentFailedRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  recentSuccessRatePercent: Type.Union([Type.Number({ maximum: 100, minimum: 0 }), Type.Null()]),
+  todayRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  todayRunCountChangePercent: Type.Union([
+    Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: -100 }),
+    Type.Null(),
+  ]),
+  totalWorkflowCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+}, { additionalProperties: false });
+
 export const WorkflowEntryRecordStatusSchema = Type.Union([
   Type.Literal("queued"),
   Type.Literal("running"),
@@ -419,6 +431,7 @@ export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;
 export type WorkflowNodeMetric = Static<typeof WorkflowNodeMetricSchema>;
 export type WorkflowDataOverview = Static<typeof WorkflowDataOverviewSchema>;
 export type WorkflowCapacityOverview = Static<typeof WorkflowCapacityOverviewSchema>;
+export type WorkflowTenantOverview = Static<typeof WorkflowTenantOverviewSchema>;
 export type WorkflowEntryRecordStatus = Static<typeof WorkflowEntryRecordStatusSchema>;
 export type WorkflowEntryRecord = Static<typeof WorkflowEntryRecordSchema>;
 export type WorkflowEntryRecordPage = Static<typeof WorkflowEntryRecordPageSchema>;

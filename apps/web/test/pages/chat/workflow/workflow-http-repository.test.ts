@@ -27,6 +27,29 @@ describe("HTTP workflow repository", () => {
     expect(client.get).toHaveBeenCalledWith("/server/workflows/capacity");
   });
 
+  it("loads the tenant operating overview from its dedicated endpoint", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    client.get.mockResolvedValueOnce(envelope({
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    }));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await expect(repository.getTenantOverview!()).resolves.toEqual({
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    });
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/overview");
+  });
+
   it("updates workflow metadata through the metadata endpoint", async () => {
     const definition = createDefinition({ description: "引导新客完成首购" });
     const client = createClient({ definition, revisions: [] });

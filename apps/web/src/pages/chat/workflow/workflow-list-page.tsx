@@ -1,17 +1,23 @@
 import {
   Add01Icon,
   AlertCircleIcon,
+  ChartAreaIcon,
   DashboardSpeed02Icon,
   HelpCircleIcon,
+  PlayCircle02Icon,
   RefreshIcon,
   Search01Icon,
+  SecurityCheckIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { WorkflowTenantOverview } from "@chatai/contracts";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -44,6 +50,7 @@ import {
   normalizeWorkflowRepositoryError,
   useWorkflowCapacityResource,
   useWorkflowListResource,
+  useWorkflowTenantOverviewResource,
 } from "./workflow-resources";
 import {
   WorkflowDeleteDialog,
@@ -106,6 +113,7 @@ export function WorkflowListPage({
   }), [cursor, debouncedQuery, statusFilter]);
   const { items, nextCursor, reload, status } = useWorkflowListResource(repository, listInput);
   const capacity = useWorkflowCapacityResource(repository);
+  const tenantOverview = useWorkflowTenantOverviewResource(repository);
   const navigate = useNavigate();
   const createRequestIdRef = useRef<string | null>(null);
   const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
@@ -193,6 +201,7 @@ export function WorkflowListPage({
       } else {
         await reload();
       }
+      await tenantOverview.reload();
     }
     catch (error) {
       setOperationError(getWorkflowOperationErrorMessage(error));
@@ -226,7 +235,7 @@ export function WorkflowListPage({
     setLifecyclePendingId(workflow.id);
     try {
       await Promise.resolve(operation(workflow.id));
-      await reload();
+      await Promise.all([reload(), tenantOverview.reload()]);
       toast.success(getWorkflowLifecycleSuccessMessage(action));
       return true;
     }
@@ -243,15 +252,15 @@ export function WorkflowListPage({
     <AiHostingLayout title="Workflow">
       <section className="space-y-5">
         <AiHostingPageHeader
-          actions={(
-            <WorkflowCapacityIndicator
-              onRetry={() => void capacity.reload()}
-              overview={capacity.overview}
-              status={capacity.status}
-            />
-          )}
           description="管理营销旅程"
           title="工作流"
+        />
+
+        <WorkflowTenantDataSection
+          capacity={capacity}
+          overview={tenantOverview.overview}
+          overviewStatus={tenantOverview.status}
+          onOverviewRetry={() => void tenantOverview.reload()}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -449,6 +458,107 @@ export function WorkflowListPage({
 
 const workflowCapacitySegmentCount = 12;
 
+function WorkflowTenantDataSection({
+  capacity,
+  onOverviewRetry,
+  overview,
+  overviewStatus,
+}: {
+  capacity: ReturnType<typeof useWorkflowCapacityResource>;
+  onOverviewRetry(): void;
+  overview: WorkflowTenantOverview | null;
+  overviewStatus: ReturnType<typeof useWorkflowTenantOverviewResource>["status"];
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <section
+        aria-label="Workflow 数据概览"
+        className="grid min-w-[960px] grid-cols-4 gap-3"
+      >
+        {overviewStatus === "error" || (!overview && overviewStatus !== "loading") ? (
+          <div className="col-span-3 flex min-h-[132px] items-center justify-center gap-3 rounded-[10px] border border-border/70 bg-surface text-sm text-muted-foreground">
+            <span>数据暂不可用</span>
+            <Button onClick={onOverviewRetry} size="sm" type="button" variant="outline">重试</Button>
+          </div>
+        ) : (
+          <>
+            <WorkflowOverviewMetricCard
+              icon={ChartAreaIcon}
+              iconClassName="text-foreground"
+              loading={overviewStatus === "loading" && !overview}
+              secondary={overview ? formatTodayRunComparison(overview.todayRunCountChangePercent) : null}
+              title="今日运行数"
+              value={overview ? overview.todayRunCount.toLocaleString("zh-CN") : null}
+            />
+            <WorkflowOverviewMetricCard
+              icon={PlayCircle02Icon}
+              iconClassName="text-foreground"
+              loading={overviewStatus === "loading" && !overview}
+              secondary={overview ? `共 ${overview.totalWorkflowCount.toLocaleString("zh-CN")} 个` : null}
+              title="已启用工作流"
+              value={overview ? overview.activeWorkflowCount.toLocaleString("zh-CN") : null}
+            />
+            <WorkflowOverviewMetricCard
+              icon={SecurityCheckIcon}
+              iconClassName="text-foreground"
+              loading={overviewStatus === "loading" && !overview}
+              secondary={overview ? `失败 ${overview.recentFailedRunCount.toLocaleString("zh-CN")} 次` : null}
+              title="近 7 日成功率"
+              value={overview
+                ? overview.recentSuccessRatePercent === null ? "-" : `${overview.recentSuccessRatePercent}%`
+                : null}
+            />
+          </>
+        )}
+        <WorkflowCapacityIndicator
+          onRetry={() => void capacity.reload()}
+          overview={capacity.overview}
+          status={capacity.status}
+        />
+      </section>
+    </div>
+  );
+}
+
+function WorkflowOverviewMetricCard({
+  icon,
+  iconClassName,
+  loading,
+  secondary,
+  title,
+  value,
+}: {
+  icon: typeof ChartAreaIcon;
+  iconClassName: string;
+  loading: boolean;
+  secondary: ReactNode;
+  title: string;
+  value: string | null;
+}) {
+  return (
+    <article className="flex min-h-[132px] flex-col rounded-[10px] border border-border/70 bg-surface p-4">
+      <WorkflowOverviewLabel icon={icon} iconClassName={iconClassName} title={title} />
+      {loading ? (
+        <div className="mt-4 flex items-center gap-2 text-muted-foreground" role="status">
+          <Spinner size={16} />
+          <span className="text-sm">正在加载</span>
+        </div>
+      ) : (
+        <div className="mt-3 text-2xl font-semibold tabular-nums text-foreground">{value ?? "-"}</div>
+      )}
+      {!loading && secondary ? (
+        <div className="mt-auto pt-3 text-xs text-muted-foreground">{secondary}</div>
+      ) : null}
+    </article>
+  );
+}
+
+function formatTodayRunComparison(changePercent: number | null) {
+  if (changePercent === null) return "昨日暂无可比数据";
+  if (changePercent === 0) return "与昨日持平";
+  return `${changePercent > 0 ? "↑" : "↓"} ${Math.abs(changePercent)}% 较昨日`;
+}
+
 function WorkflowCapacityIndicator({
   onRetry,
   overview,
@@ -458,38 +568,42 @@ function WorkflowCapacityIndicator({
   overview: ReturnType<typeof useWorkflowCapacityResource>["overview"];
   status: ReturnType<typeof useWorkflowCapacityResource>["status"];
 }) {
-  const shellClassName = "flex h-10 min-w-[304px] items-center gap-3 rounded-[8px] border border-border/50 bg-muted/30 px-3";
+  const shellClassName = "flex min-h-[132px] flex-col rounded-[10px] border border-border/70 bg-surface p-4";
 
   if (status === "loading" && !overview) {
     return (
       <section aria-label="SOP 客户容量" className={shellClassName}>
-        <WorkflowCapacityLabel className="text-muted-foreground" />
-        <div className="flex min-w-[115px] shrink-0 items-center gap-[5px]" aria-hidden="true">
-          {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
-            <span className="h-5 w-[5px] shrink-0 rounded-full bg-muted-foreground/20" key={index} />
-          ))}
+        <WorkflowCapacityLabel className="text-muted-foreground" iconClassName="text-foreground" />
+        <div className="mt-5 flex items-center gap-3">
+          <div className="flex min-w-[115px] shrink-0 items-center gap-[5px]" aria-hidden="true">
+            {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
+              <span className="h-5 w-[5px] shrink-0 rounded-full bg-muted-foreground/20" key={index} />
+            ))}
+          </div>
+          <span className="whitespace-nowrap text-xs text-muted-foreground" role="status">正在加载</span>
         </div>
-        <span className="whitespace-nowrap text-xs text-muted-foreground" role="status">正在加载</span>
       </section>
     );
   }
   if (status === "error" || !overview) {
     return (
       <section aria-label="SOP 客户容量" className={shellClassName}>
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <HugeiconsIcon icon={AlertCircleIcon} size={17} strokeWidth={1.8} />
-          <span className="whitespace-nowrap">容量暂不可用</span>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <HugeiconsIcon icon={AlertCircleIcon} size={17} strokeWidth={1.8} />
+            <span className="whitespace-nowrap">容量暂不可用</span>
+          </div>
+          <Button
+            aria-label="重新加载容量"
+            className="size-7"
+            onClick={onRetry}
+            size="icon"
+            title="重新加载容量"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
+          </Button>
         </div>
-        <Button
-          aria-label="重新加载容量"
-          className="size-7"
-          onClick={onRetry}
-          size="icon"
-          title="重新加载容量"
-          variant="ghost"
-        >
-          <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
-        </Button>
       </section>
     );
   }
@@ -506,29 +620,34 @@ function WorkflowCapacityIndicator({
       aria-label="SOP 客户容量"
       className={shellClassName}
     >
-      <WorkflowCapacityLabel iconClassName={capacityTone.textClassName} />
-      <div
-        aria-label="SOP 客户容量使用进度"
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={usagePercent}
-        className="flex min-w-[115px] shrink-0 items-center gap-[5px]"
-        role="progressbar"
-      >
-        {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "h-5 w-[5px] shrink-0 rounded-full",
-              index < filledSegments ? capacityTone.segmentClassName : "bg-muted-foreground/20",
-            )}
-            key={index}
-          />
-        ))}
+      <WorkflowCapacityLabel iconClassName="text-foreground" />
+      <div className="mt-5 flex items-center gap-3">
+        <div
+          aria-label="SOP 客户容量使用进度"
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={usagePercent}
+          className="flex min-w-[115px] shrink-0 items-center gap-[5px]"
+          role="progressbar"
+        >
+          {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "h-5 w-[5px] shrink-0 rounded-full",
+                index < filledSegments ? capacityTone.segmentClassName : "bg-muted-foreground/20",
+              )}
+              key={index}
+            />
+          ))}
+        </div>
+        <span className={cn("whitespace-nowrap text-xs font-medium", capacityTone.textClassName)}>
+          {availablePercent}%
+        </span>
       </div>
-      <span className={cn("whitespace-nowrap text-xs font-medium", capacityTone.textClassName)}>
-        {availablePercent}%
-      </span>
+      <p className="mt-auto pt-3 text-xs text-muted-foreground">
+        今日因容量不足未进入 {overview.capacityRejectedCountToday.toLocaleString("zh-CN")} 次
+      </p>
     </section>
   );
 }
@@ -541,14 +660,12 @@ function WorkflowCapacityLabel({
   iconClassName?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-1.5 text-sm", className)}>
-      <HugeiconsIcon
-        className={iconClassName}
-        icon={DashboardSpeed02Icon}
-        size={17}
-        strokeWidth={1.8}
-      />
-      <h2 className="whitespace-nowrap font-medium">剩余用量</h2>
+    <WorkflowOverviewLabel
+      className={className}
+      icon={DashboardSpeed02Icon}
+      iconClassName={iconClassName}
+      title="剩余用量"
+    >
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -568,6 +685,34 @@ function WorkflowCapacityLabel({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+    </WorkflowOverviewLabel>
+  );
+}
+
+function WorkflowOverviewLabel({
+  children,
+  className,
+  icon,
+  iconClassName,
+  title,
+}: {
+  children?: ReactNode;
+  className?: string;
+  icon: typeof ChartAreaIcon;
+  iconClassName?: string;
+  title: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-1.5 text-sm", className)}>
+      <HugeiconsIcon
+        aria-hidden="true"
+        className={iconClassName}
+        icon={icon}
+        size={17}
+        strokeWidth={1.8}
+      />
+      <h2 className="truncate font-medium">{title}</h2>
+      {children}
     </div>
   );
 }

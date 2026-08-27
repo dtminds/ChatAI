@@ -10,6 +10,7 @@ import {
   WorkflowReviewApproveRequestSchema,
   WorkflowReviewRejectRequestSchema,
   WorkflowRuntimeStatusSchema,
+  WorkflowTenantOverviewSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
@@ -65,6 +66,25 @@ describe("workflow contracts", () => {
       capacityRejectedCountToday: 12,
       status: "warning",
       usagePercent: 101,
+    })).toBe(false);
+  });
+
+  it("validates the tenant Workflow operating overview", () => {
+    expect(Value.Check(WorkflowTenantOverviewSchema, {
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    })).toBe(true);
+    expect(Value.Check(WorkflowTenantOverviewSchema, {
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 101,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
     })).toBe(false);
   });
 

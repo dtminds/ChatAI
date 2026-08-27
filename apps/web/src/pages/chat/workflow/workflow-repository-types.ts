@@ -3,6 +3,7 @@ import type {
   WorkflowCapabilitySummary,
   WorkflowDefinitionListStatus,
   WorkflowPublishReview,
+  WorkflowTenantOverview,
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowDraft } from "./types";
@@ -158,6 +159,7 @@ export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
 export type WorkflowDraftReader = {
   getCapacityOverview: () => Promise<WorkflowCapacityOverview> | WorkflowCapacityOverview;
   getDocument: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  getTenantOverview?: () => Promise<WorkflowTenantOverview> | WorkflowTenantOverview;
   getVersion: (
     workflowId: string,
     revision: number,
@@ -241,6 +243,7 @@ export type SyncWorkflowDraftRepository = {
   deleteDocument: (workflowId: string) => void;
   getCapacityOverview: () => WorkflowCapacityOverview;
   getDocument: (workflowId: string) => WorkflowDocument;
+  getTenantOverview?: () => WorkflowTenantOverview;
   getVersion: (workflowId: string, revision: number) => WorkflowVersionHistoryItem;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;
   listDocuments: (input?: WorkflowListInput) => WorkflowListPage;

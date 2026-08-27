@@ -69,12 +69,38 @@ describe("Workflow tenant capacity", () => {
       expect(within(capacity).getByRole("progressbar", { name: "SOP 客户容量使用进度" }))
         .toHaveAttribute("aria-valuenow", "100");
       expect(within(capacity).getByText("0%")).toBeInTheDocument();
-      expect(within(capacity).queryByText("12")).not.toBeInTheDocument();
+      expect(within(capacity).getByText(/12 次/)).toBeInTheDocument();
       expect(within(capacity).queryByText("10,000")).not.toBeInTheDocument();
     }
     await user.hover(screen.getAllByRole("button", { name: "查看剩余用量说明" })[0]);
     expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("新人转化旅程")).toBeInTheDocument());
+  });
+
+  it("shows the tenant operating metrics without deriving them from the paged list", async () => {
+    const repository = {
+      ...createInMemoryWorkflowDraftRepository(),
+      getTenantOverview: () => ({
+        activeWorkflowCount: 23,
+        recentFailedRunCount: 231,
+        recentSuccessRatePercent: 98.2,
+        todayRunCount: 12_847,
+        todayRunCountChangePercent: 12,
+        totalWorkflowCount: 38,
+      }),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkflowPage repository={repository} />
+      </MemoryRouter>,
+    );
+
+    const overview = await screen.findByRole("region", { name: "Workflow 数据概览" });
+    expect(within(overview).getByText("12,847")).toBeInTheDocument();
+    expect(within(overview).getByText("23")).toBeInTheDocument();
+    expect(within(overview).getByText("98.2%")).toBeInTheDocument();
+    expect(within(overview).getByText(/231 次/)).toBeInTheDocument();
   });
 
   it("shows the near-full state before capacity is exhausted", async () => {

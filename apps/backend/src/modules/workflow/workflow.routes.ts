@@ -121,6 +121,12 @@ export async function registerWorkflowRoutes(
     async request => apiSuccess(await dataService.getCapacityOverview(getWorkflowScope(request))),
   );
 
+  app.get(
+    "/api/server/workflows/overview",
+    authenticated,
+    async request => apiSuccess(await dataService.getTenantOverview(getWorkflowScope(request))),
+  );
+
   app.get<{ Params: WorkflowParams }>(
     "/api/server/workflows/:workflowId/data",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },

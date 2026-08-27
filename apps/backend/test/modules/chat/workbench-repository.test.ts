@@ -603,6 +603,19 @@ function expectUnicodeCollationLikeExpressions(
   });
 }
 
+function createSeatListRow(index: number) {
+  return {
+    avatar: `https://example.com/seat-${index}.png`,
+    host_sub_id: 0,
+    id: 100 + index,
+    is_online: 1,
+    platform: 5,
+    third_user_name: `席位${index}`,
+    third_userid: `seat-user-${String(index).padStart(3, "0")}`,
+    uid: 9001,
+  };
+}
+
 function createFilteredRowsQueryBuilder<T extends Record<string, unknown>>(
   rows: T[],
   columnAliases: Record<string, keyof T & string>,
@@ -2794,6 +2807,149 @@ describe("WorkbenchRepository", () => {
       "third_userid",
       "chat_type",
     ]);
+  });
+
+  it("splits seat conversation aggregation into batches of eight third user ids", async () => {
+    const seatCount = 9;
+    const seats = Array.from({ length: seatCount }, (_, index) =>
+      createSeatListRow(index + 1),
+    );
+    const aggregateRows = seats.map((seat, index) => ({
+      chat_type: 1,
+      last_msgtime: 1_778_839_950_000 + index,
+      platform: 5,
+      third_userid: seat.third_userid,
+      uid: 9001,
+      unread_cnt: index + 1,
+    }));
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder(seats);
+            queries.push({ query, table });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createFilteredRowsQueryBuilder(aggregateRows, {
+              third_userid: "third_userid",
+            });
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const listedSeats = await repository.listSeats({
+      platform: 5,
+      subUserId: "11",
+      uid: 9001,
+    } as never);
+
+    const conversationQueries = queries.filter(
+      (item) => item.table === "xy_wap_embed_conversation",
+    );
+    const inLists = conversationQueries.map((item) => {
+      const inWhere = item.query.wheres.find(
+        (where) => where[0] === "third_userid" && where[1] === "in",
+      );
+
+      return Array.isArray(inWhere?.[2]) ? inWhere[2] : [];
+    });
+
+    expect(conversationQueries).toHaveLength(2);
+    expect(inLists.map((ids) => ids.length).sort((left, right) => left - right)).toEqual([
+      1, 8,
+    ]);
+    expect(inLists.flat().sort()).toEqual(
+      seats.map((seat) => seat.third_userid).sort(),
+    );
+    expect(listedSeats).toHaveLength(seatCount);
+    expect(
+      Object.fromEntries(listedSeats.map((seat) => [seat.seatId, seat.unreadCount])),
+    ).toEqual(
+      Object.fromEntries(seats.map((seat, index) => [String(seat.id), index + 1])),
+    );
+  });
+
+  it("runs at most three seat conversation aggregate queries at a time", async () => {
+    const seatCount = 25;
+    const seats = Array.from({ length: seatCount }, (_, index) =>
+      createSeatListRow(index + 1),
+    );
+    const aggregateRows = seats.map((seat) => ({
+      chat_type: 1,
+      last_msgtime: 1_778_839_950_000,
+      platform: 5,
+      third_userid: seat.third_userid,
+      uid: 9001,
+      unread_cnt: 1,
+    }));
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let releaseHold: (() => void) | undefined;
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    let notifyReachedConcurrency: (() => void) | undefined;
+    const reachedConcurrency = new Promise<void>((resolve) => {
+      notifyReachedConcurrency = resolve;
+    });
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder(seats);
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createFilteredRowsQueryBuilder(aggregateRows, {
+              third_userid: "third_userid",
+            });
+            const execute = query.execute.bind(query);
+
+            query.execute = async () => {
+              inFlight += 1;
+              maxInFlight = Math.max(maxInFlight, inFlight);
+
+              if (inFlight === 3) {
+                notifyReachedConcurrency?.();
+              }
+
+              try {
+                await hold;
+                return execute();
+              } finally {
+                inFlight -= 1;
+              }
+            };
+
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const listPromise = repository.listSeats({
+      platform: 5,
+      subUserId: "11",
+      uid: 9001,
+    } as never);
+
+    await reachedConcurrency;
+    expect(maxInFlight).toBe(3);
+    expect(inFlight).toBe(3);
+    releaseHold?.();
+
+    await expect(listPromise).resolves.toHaveLength(seatCount);
+    expect(maxInFlight).toBe(3);
   });
 
   it("loads seat details without joining conversations", async () => {

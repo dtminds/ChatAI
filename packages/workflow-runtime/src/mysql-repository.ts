@@ -2413,6 +2413,12 @@ export class MysqlWorkflowRuntimeRepository implements
             .forUpdate()
             .execute();
       const tasks = taskRows.map(mapTask);
+      const tasksByRunId = new Map<string, (typeof tasks)[number][]>();
+      for (const task of tasks) {
+        const runTasks = tasksByRunId.get(task.runId) ?? [];
+        runTasks.push(task);
+        tasksByRunId.set(task.runId, runTasks);
+      }
       const taskIdsToCancel = new Set<string>();
       const runsToFail: typeof runs = [];
       const definitionKeys = new Map<string, { uid: number; workflowIds: Array<string | number | bigint> }>();
@@ -2451,7 +2457,7 @@ export class MysqlWorkflowRuntimeRepository implements
         if (boundaryDecision === "cancel") continue;
 
         const runId = normalizeId(run.id);
-        const runTasks = tasks.filter(task => task.runId === runId);
+        const runTasks = tasksByRunId.get(runId) ?? [];
         const authoritativeTask = runTasks.find(task => task.sequence === run.sequence);
         for (const task of runTasks) {
           if (task !== authoritativeTask) taskIdsToCancel.add(task.id);
@@ -2476,7 +2482,7 @@ export class MysqlWorkflowRuntimeRepository implements
 
       for (const run of runsToFail) {
         const runId = normalizeId(run.id);
-        const runTasks = tasks.filter(task => task.runId === runId);
+        const runTasks = tasksByRunId.get(runId) ?? [];
         const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
         if (!activeMetricTask) continue;
         await insertNodeMetricEvents(trx, {
@@ -2896,10 +2902,16 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
       const expectedTaskType = nodeKind === "wait" ? "wait" : "wait-event";
+      const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
+      for (const task of taskRows) {
+        const runId = normalizeId(task.run_id);
+        const runTasks = taskRowsByRunId.get(runId) ?? [];
+        runTasks.push(task);
+        taskRowsByRunId.set(runId, runTasks);
+      }
       const taskByRunId = new Map(selectedRuns.flatMap(run => {
         const runId = normalizeId(run.id);
-        const task = taskRows.find(candidate => normalizeId(candidate.run_id) === runId
-          && candidate.sequence === run.sequence
+        const task = taskRowsByRunId.get(runId)?.find(candidate => candidate.sequence === run.sequence
           && candidate.node_id === request.node_id
           && candidate.node_kind === nodeKind
           && (candidate.task_type === "execute" || candidate.task_type === expectedTaskType));

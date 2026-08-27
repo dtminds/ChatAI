@@ -107,51 +107,56 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .executeTakeFirst();
     if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
     const currentNodeIds = readNodeIds(revision.draft_json);
-    const rows = await this.db.selectFrom("xy_wap_embed_workflow_node_metric")
-      .select([
-        "completed_count",
-        "current_count",
-        "entered_count",
-        "incomplete_count",
-        "node_id",
-        "passed_count",
-        "update_time",
-      ])
+    const metricScope = () => this.db.selectFrom("xy_wap_embed_workflow_node_metric")
       .where("uid", "=", input.uid)
-      .where("workflow_id", "=", input.workflowId)
-      .execute();
-    const nodes = new Map<string, WorkflowDataOverview["nodes"][number]>();
-    const summary = { completed: 0, current: 0, entered: 0, incomplete: 0 };
-    let calculatedAt = new Date(0);
-    for (const row of rows) {
-      summary.completed += Number(row.completed_count);
-      summary.current += Number(row.current_count);
-      summary.entered += Number(row.entered_count);
-      summary.incomplete += Number(row.incomplete_count);
-      if (currentNodeIds.has(row.node_id)) {
-        const metric = nodes.get(row.node_id) ?? {
-          completed: 0,
-          current: 0,
-          entered: 0,
-          incomplete: 0,
-          nodeId: row.node_id,
-          passed: 0,
-        };
-        metric.completed += Number(row.completed_count);
-        metric.current += Number(row.current_count);
-        metric.entered += Number(row.entered_count);
-        metric.incomplete += Number(row.incomplete_count);
-        metric.passed += Number(row.passed_count);
-        nodes.set(row.node_id, metric);
-      }
-      const updatedAt = toDate(row.update_time);
-      if (updatedAt > calculatedAt) calculatedAt = updatedAt;
-    }
+      .where("workflow_id", "=", input.workflowId);
+    const summaryQuery = metricScope().select([
+      sql<number | null>`SUM(completed_count)`.as("completed_count"),
+      sql<number | null>`SUM(current_count)`.as("current_count"),
+      sql<number | null>`SUM(entered_count)`.as("entered_count"),
+      sql<number | null>`SUM(incomplete_count)`.as("incomplete_count"),
+      sql<string | null>`NULL`.as("node_id"),
+      sql<number>`0`.as("passed_count"),
+      sql<"summary" | "node">`'summary'`.as("row_kind"),
+      sql<Date | null>`MAX(update_time)`.as("update_time"),
+    ]);
+    const rows = currentNodeIds.size === 0
+      ? await summaryQuery.execute()
+      : await summaryQuery.unionAll(metricScope().select([
+          sql<number>`SUM(completed_count)`.as("completed_count"),
+          sql<number>`SUM(current_count)`.as("current_count"),
+          sql<number>`SUM(entered_count)`.as("entered_count"),
+          sql<number>`SUM(incomplete_count)`.as("incomplete_count"),
+          "node_id",
+          sql<number>`SUM(passed_count)`.as("passed_count"),
+          sql<"summary" | "node">`'node'`.as("row_kind"),
+          sql<Date | null>`NULL`.as("update_time"),
+        ])
+          .where("node_id", "in", [...currentNodeIds])
+          .groupBy("node_id"))
+        .execute();
+    const summaryRow = rows.find(row => row.row_kind === "summary");
+    const nodeRows = rows.filter((row): row is typeof row & { node_id: string } => (
+      row.row_kind === "node" && row.node_id !== null
+    ));
+    const calculatedAt = summaryRow?.update_time ? toDate(summaryRow.update_time) : new Date();
     return {
-      calculatedAt: (calculatedAt.getTime() === 0 ? new Date() : calculatedAt).toISOString(),
-      nodes: [...nodes.values()],
+      calculatedAt: calculatedAt.toISOString(),
+      nodes: nodeRows.map(row => ({
+        completed: Number(row.completed_count),
+        current: Number(row.current_count),
+        entered: Number(row.entered_count),
+        incomplete: Number(row.incomplete_count),
+        nodeId: row.node_id,
+        passed: Number(row.passed_count),
+      })),
       publishedRevision: definition.published_revision,
-      summary,
+      summary: {
+        completed: Number(summaryRow?.completed_count ?? 0),
+        current: Number(summaryRow?.current_count ?? 0),
+        entered: Number(summaryRow?.entered_count ?? 0),
+        incomplete: Number(summaryRow?.incomplete_count ?? 0),
+      },
     };
   }
 

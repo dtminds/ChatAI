@@ -113,6 +113,26 @@ export function runWorkflowLlmTestAttemptRepositoryContract(
       .resolves.toBeNull();
   });
 
+  it("cleans the earliest-expiring LLM test Attempt first", async () => {
+    const repository = createRepository();
+    const later = await repository.createLlmTestAttempt(createInput("cleanup-later", {
+      expiresAt: new Date("2099-01-03T00:00:00.000Z"),
+    }));
+    const earlier = await repository.createLlmTestAttempt(createInput("cleanup-earlier", {
+      expiresAt: new Date("2099-01-02T00:00:00.000Z"),
+    }));
+
+    await expect(repository.cleanupExpiredLlmTestAttempts({
+      limit: 1,
+      now: new Date("2099-01-04T00:00:00.000Z"),
+    })).resolves.toBe(1);
+
+    await expect(repository.findLlmTestAttempt({ attemptId: earlier.id, uid: 9, workflowId: "31" }))
+      .resolves.toBeNull();
+    await expect(repository.findLlmTestAttempt({ attemptId: later.id, uid: 9, workflowId: "31" }))
+      .resolves.toMatchObject({ id: later.id });
+  });
+
   it("expires one identified LLM test Attempt without touching another running Attempt", async () => {
     const repository = createRepository();
     const first = await repository.createLlmTestAttempt(createInput("execution-1"));

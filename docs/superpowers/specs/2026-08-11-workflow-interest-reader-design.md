@@ -45,6 +45,10 @@ message.received
 
 公共 JSON payload、Java DTO 和 TypeScript 类型使用 camelCase；只有 MySQL 物理列使用 snake_case。
 
+为兼容 Java 统一 DTO，Node 在事件类型专属 payload 校验前将顶层
+`externalUserId: 0` 归一为字段缺失。该规则适用于所有 Entry Event；如果某个事件的
+`externalUserId` 为必填字段，归一后仍按缺少必填字段拒绝。
+
 已确认关系：
 
 ```text

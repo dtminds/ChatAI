@@ -309,6 +309,39 @@ describe("workflow entry consumer", () => {
     });
   });
 
+  it("admits Java message events after normalizing externalUserId zero to absent", async () => {
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { recordWaitEvent: vi.fn(), startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+    const input = messageEvent({
+      payload: {
+        externalUserId: 0,
+        messageId: 1001,
+        seatId: 101,
+        thirdExternalUserId: "chatai_external_456",
+        workUserId: 201,
+      },
+    });
+
+    await expect(handler(createBrokerMessage(input))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startRun).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: expect.objectContaining({
+        projection: expect.not.objectContaining({ externalUserId: expect.anything() }),
+      }),
+    }));
+  });
+
   it("does not hydrate a message when no Start binding or Wait Event subscription can consume it", async () => {
     const messageReader = createMessageReader();
     const handler = createEntryConsumerHandler({

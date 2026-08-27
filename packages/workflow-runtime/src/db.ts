@@ -140,6 +140,7 @@ export interface WorkflowDailyMetricTable {
   create_time: GeneratedDate;
   entered_count: number;
   failed_count: number;
+  id: Generated<DatabaseId>;
   metric_date: DatabaseDate;
   uid: number;
   update_time: GeneratedDate;

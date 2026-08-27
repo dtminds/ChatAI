@@ -34,10 +34,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_metric (
 TRUNCATE TABLE xy_wap_embed_workflow_daily_metric;
 
 ALTER TABLE xy_wap_embed_workflow_daily_metric
-  DROP PRIMARY KEY,
   DROP KEY uk_workflow_daily_metric_dimension,
   DROP KEY idx_workflow_daily_metric_query,
-  DROP COLUMN id,
   DROP COLUMN revision,
   DROP COLUMN node_id,
   ADD COLUMN cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入cancelled终态的Run数量' AFTER failed_count,
@@ -45,7 +43,7 @@ ALTER TABLE xy_wap_embed_workflow_daily_metric
   MODIFY COLUMN entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功创建Run数量',
   MODIFY COLUMN completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入completed终态的Run数量',
   MODIFY COLUMN failed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入failed终态的Run数量',
-  ADD PRIMARY KEY (uid, workflow_id, metric_date),
+  ADD UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date),
   ADD KEY idx_workflow_daily_metric_tenant_date (uid, metric_date, workflow_id);
 
 INSERT INTO xy_wap_embed_workflow_metric (

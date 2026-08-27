@@ -934,6 +934,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inbox (
 ) COMMENT='营销Workflow消费Inbox表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
@@ -943,7 +944,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
   cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入cancelled终态的Run数量',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (uid, workflow_id, metric_date),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date),
   KEY idx_workflow_daily_metric_tenant_date (uid, metric_date, workflow_id)
 ) COMMENT='营销Workflow每日指标表';
 

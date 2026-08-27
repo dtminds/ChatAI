@@ -126,6 +126,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_node_execution",
       "xy_wap_embed_workflow_outbox",
       "xy_wap_embed_workflow_inbox",
+      "xy_wap_embed_workflow_daily_metric",
       "xy_wap_embed_workflow_capacity_daily_metric",
     ];
 
@@ -183,8 +184,10 @@ describe("database schema document", () => {
     expect(metricTable).toContain("PRIMARY KEY (uid, workflow_id)");
     expect(metricTable).toContain("total_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0");
     expect(metricTable).toContain("last_run_at DATETIME NULL");
-    expect(dailyMetricTable).toContain("PRIMARY KEY (uid, workflow_id, metric_date)");
-    expect(dailyMetricTable).not.toContain("AUTO_INCREMENT");
+    expect(dailyMetricTable).toContain("PRIMARY KEY (id)");
+    expect(dailyMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date)",
+    );
     expect(dailyMetricTable).toContain("cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0");
     expect(dailyMetricTable).not.toContain("revision INT");
     expect(dailyMetricTable).not.toContain("node_id");

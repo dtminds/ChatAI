@@ -601,7 +601,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_definition_uid_request (uid, client_request_id),
-  KEY idx_workflow_definition_uid_status_update (uid, biz_status, update_time, id),
+  KEY idx_workflow_definition_uid_status_create (uid, biz_status, create_time, id),
   KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id)
 ) COMMENT='营销Workflow定义表';
 

@@ -177,6 +177,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   ) {
     let query = this.db.selectFrom(DEFINITION_TABLE)
       .select([
+        "create_time",
         "description",
         "draft_json",
         "draft_semantic_hash",
@@ -207,22 +208,19 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     }
     if (input.query) {
       const pattern = `%${escapeLikePattern(input.query)}%`;
-      query = query.where(eb => eb.or([
-        eb("name", "like", pattern),
-        eb("description", "like", pattern),
-      ]));
+      query = query.where("name", "like", pattern);
     }
     if (input.cursor) {
       query = query.where(eb => eb.or([
-        eb("update_time", "<", input.cursor!.updatedAt),
+        eb("create_time", "<", input.cursor!.createdAt),
         eb.and([
-          eb("update_time", "=", input.cursor!.updatedAt),
+          eb("create_time", "=", input.cursor!.createdAt),
           eb("id", "<", input.cursor!.id),
         ]),
       ]));
     }
     const rows = await query
-      .orderBy("update_time", "desc")
+      .orderBy("create_time", "desc")
       .orderBy("id", "desc")
       .limit(input.limit + 1)
       .execute();
@@ -231,7 +229,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     return {
       items,
       nextCursor: rows.length > items.length && lastItem
-        ? { id: lastItem.id, updatedAt: lastItem.updatedAt }
+        ? { createdAt: lastItem.createdAt, id: lastItem.id }
         : null,
     };
   }
@@ -752,6 +750,7 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
 
 function mapDefinitionListRecord(row: Record<string, unknown>): WorkflowDefinitionListRecord {
   return {
+    createdAt: toDate(row.create_time),
     description: String(row.description ?? ""),
     draft: parseJson<WorkflowDraft>(row.draft_json),
     draftSemanticHash: String(row.draft_semantic_hash),

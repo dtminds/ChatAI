@@ -45,9 +45,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
     const candidates = workflowDocuments
       .filter(item => matchesListStatus(item, input?.status ?? "all"))
       .filter(item => !normalizedQuery
-        || item.name.toLocaleLowerCase().includes(normalizedQuery)
-        || item.description.toLocaleLowerCase().includes(normalizedQuery)
-        || item.trigger.toLocaleLowerCase().includes(normalizedQuery))
+        || item.name.toLocaleLowerCase().includes(normalizedQuery))
       .filter(item => !input?.cursor || item.id.localeCompare(input.cursor, undefined, { numeric: true }) < 0)
       .slice(0, (input?.limit ?? 20) + 1);
     const items = candidates.slice(0, input?.limit ?? 20).map(cloneWorkflowDocument);

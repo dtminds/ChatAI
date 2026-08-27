@@ -442,7 +442,7 @@ describe("WorkflowService", () => {
     expect(updated.draft).toEqual(created.draft);
   });
 
-  it("orders the first page by update time after an older workflow is edited", async () => {
+  it("keeps creation order after an older workflow is edited", async () => {
     vi.useFakeTimers();
     try {
       const service = createService();
@@ -465,14 +465,36 @@ describe("WorkflowService", () => {
 
       await expect(service.list(operator, { limit: 20, status: "all" })).resolves.toMatchObject({
         items: [
-          expect.objectContaining({ id: first.id }),
           expect.objectContaining({ id: second.id }),
+          expect.objectContaining({ id: first.id }),
         ],
         nextCursor: null,
       });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("searches workflow names without matching descriptions", async () => {
+    const service = createService();
+    await service.create(operator, {
+      description: "长期未复购",
+      name: "会员唤醒",
+      workflowType: "chatai_sop",
+    });
+
+    await expect(service.list(operator, {
+      limit: 20,
+      query: "长期未复购",
+      status: "all",
+    })).resolves.toMatchObject({ items: [] });
+    await expect(service.list(operator, {
+      limit: 20,
+      query: "会员",
+      status: "all",
+    })).resolves.toMatchObject({
+      items: [expect.objectContaining({ name: "会员唤醒" })],
+    });
   });
 
   it("loads only the first three managed accounts for each workflow list row", async () => {

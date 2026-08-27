@@ -32,6 +32,7 @@ export type WorkflowDefinitionRecord = {
 };
 
 export type WorkflowDefinitionListRecord = Pick<WorkflowDefinitionRecord,
+  | "createdAt"
   | "description"
   | "draft"
   | "draftSemanticHash"
@@ -112,8 +113,8 @@ export type WorkflowHistoryPageInput = {
 };
 
 export type WorkflowDefinitionListCursor = {
+  createdAt: Date;
   id: string;
-  updatedAt: Date;
 };
 
 export type WorkflowDefinitionListInput = {

@@ -646,7 +646,7 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("menuitem", { name: "编辑工作流" })).toBeInTheDocument();
   });
 
-  it("finds workflows by description", async () => {
+  it("does not find workflows by description", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
 
@@ -654,7 +654,7 @@ describe("Agent workflow page", () => {
     await user.type(screen.getByRole("textbox", { name: "搜索 Workflow" }), "长期未复购");
 
     await waitFor(() => {
-      expect(screen.getByText("会员复购唤醒")).toBeInTheDocument();
+      expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
       expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
     });
   });

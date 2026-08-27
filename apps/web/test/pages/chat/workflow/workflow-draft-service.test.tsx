@@ -147,6 +147,15 @@ describe("workflow draft service", () => {
     expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBeNull();
   });
 
+  it("searches workflow names only", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+
+    expect(repository.listDocuments({ query: "会员" }).items.map(item => item.id))
+      .toEqual(["vip-reactivation"]);
+    expect(repository.listDocuments({ query: "长期未复购" }).items).toEqual([]);
+    expect(repository.listDocuments({ query: "添加好友" }).items).toEqual([]);
+  });
+
   it("validates workflow metadata when creating in-memory documents", () => {
     const repository = createInMemoryWorkflowDraftRepository();
 

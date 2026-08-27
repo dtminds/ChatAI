@@ -131,15 +131,14 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       .filter((item) => item.uid === uid && item.bizStatus === 1)
       .filter(item => matchesDefinitionListStatus(item, input.status))
       .filter(item => !normalizedQuery
-        || item.name.toLocaleLowerCase().includes(normalizedQuery)
-        || item.description.toLocaleLowerCase().includes(normalizedQuery))
+        || item.name.toLocaleLowerCase().includes(normalizedQuery))
       .sort((first, second) => {
-        const updatedAtDifference = second.updatedAt.getTime() - first.updatedAt.getTime();
-        return updatedAtDifference || Number(second.id) - Number(first.id);
+        const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
+        return createdAtDifference || Number(second.id) - Number(first.id);
       })
       .filter(item => !input.cursor
-        || item.updatedAt < input.cursor.updatedAt
-        || (item.updatedAt.getTime() === input.cursor.updatedAt.getTime()
+        || item.createdAt < input.cursor.createdAt
+        || (item.createdAt.getTime() === input.cursor.createdAt.getTime()
           && Number(item.id) < Number(input.cursor.id)))
       .slice(0, input.limit + 1);
     const items = candidates.slice(0, input.limit).map(clone);
@@ -147,7 +146,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     return {
       items,
       nextCursor: candidates.length > items.length && lastItem
-        ? { id: lastItem.id, updatedAt: lastItem.updatedAt }
+        ? { createdAt: lastItem.createdAt, id: lastItem.id }
         : null,
     };
   }

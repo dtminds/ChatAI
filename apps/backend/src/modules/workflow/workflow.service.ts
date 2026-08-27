@@ -1067,8 +1067,8 @@ function getWorkflowListTrigger(draft: WorkflowDraft) {
 
 function encodeWorkflowDefinitionListCursor(cursor: WorkflowDefinitionListCursor) {
   return Buffer.from(JSON.stringify({
+    createdAt: cursor.createdAt.toISOString(),
     id: cursor.id,
-    updatedAt: cursor.updatedAt.toISOString(),
   }), "utf8").toString("base64url");
 }
 
@@ -1076,12 +1076,12 @@ function decodeWorkflowDefinitionListCursor(value: string): WorkflowDefinitionLi
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
     if (typeof parsed.id !== "string" || !/^[1-9][0-9]*$/.test(parsed.id)
-      || typeof parsed.updatedAt !== "string") {
+      || typeof parsed.createdAt !== "string") {
       throw new Error("invalid cursor");
     }
-    const updatedAt = new Date(parsed.updatedAt);
-    if (Number.isNaN(updatedAt.getTime())) throw new Error("invalid cursor");
-    return { id: parsed.id, updatedAt };
+    const createdAt = new Date(parsed.createdAt);
+    if (Number.isNaN(createdAt.getTime())) throw new Error("invalid cursor");
+    return { createdAt, id: parsed.id };
   } catch {
     throw new BadRequestError("WORKFLOW_LIST_CURSOR_INVALID", "分页游标无效");
   }

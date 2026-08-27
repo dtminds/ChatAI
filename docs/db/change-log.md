@@ -1,5 +1,15 @@
 # Database Change Log
 
+## 2026-08-27 Workflow 列表创建时间排序
+
+- Workflow 列表固定按创建时间倒序分页，名称和状态变更不改变列表顺序。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  DROP KEY idx_workflow_definition_uid_status_update,
+  ADD KEY idx_workflow_definition_uid_status_create (uid, biz_status, create_time, id);
+```
+
 ## 2026-08-26 Workflow 运行汇总与每日指标
 
 - 新增每个 Workflow 一行的累计运行指标表，供列表直接读取。

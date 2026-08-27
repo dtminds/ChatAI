@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
-  it("lists definitions by update time for cursor pagination", async () => {
+  it("lists definitions by creation time for cursor pagination", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
 
@@ -10,6 +10,7 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(db.selectBuilders[0].selectAll).toBe(false);
     expect(db.selectBuilders[0].selects[0]?.[0]).toEqual([
+      "create_time",
       "description",
       "draft_json",
       "draft_semantic_hash",
@@ -22,9 +23,23 @@ describe("MysqlWorkflowRepository", () => {
       "workflow_type",
     ]);
     expect(db.selectBuilders[0].orderBys).toEqual([
-      ["update_time", "desc"],
+      ["create_time", "desc"],
       ["id", "desc"],
     ]);
+  });
+
+  it("searches definition names only", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.listDefinitions(8, {
+      limit: 20,
+      query: "会员",
+      status: "all",
+    });
+
+    expect(db.selectBuilders[0].wheres).toContainEqual(["name", "like", "%会员%"]);
+    expect(db.selectBuilders[0].wheres.some(where => where[0] === "description")).toBe(false);
   });
 
   it("derives current review state from the latest review attempt", async () => {

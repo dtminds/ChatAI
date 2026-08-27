@@ -71,6 +71,39 @@ describe("workflow entry consumer", () => {
     expect(subscriptionReader.listMatchingEventSubscriptions).not.toHaveBeenCalled();
   });
 
+  it("admits ChatAI direct entries after normalizing externalUserId zero to absent", async () => {
+    const startDirectRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: { listMatchingEventSubscriptions: vi.fn() },
+    });
+    const input = directEvent({
+      payload: {
+        externalUserId: 0,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+    });
+
+    await expect(handler(createBrokerMessage(input))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startDirectRun).toHaveBeenCalledWith(expect.objectContaining({
+      payload: {
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+    }));
+  });
+
   it("ACKs active-Run rejection and DLQs an unsupported direct payload version", async () => {
     const processed = new Set<string>();
     const startDirectRun = vi.fn(async () => ({ kind: "active-run-rejected" as const }));

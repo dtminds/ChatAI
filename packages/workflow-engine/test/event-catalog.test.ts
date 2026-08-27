@@ -100,6 +100,33 @@ describe("workflow event catalog", () => {
     }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
   });
 
+  it.each([
+    {
+      eventType: "contact.friend_added",
+      payload: { externalUserId: 0, workUserId: 35954 },
+    },
+    {
+      eventType: "contact.tag_added",
+      payload: { externalUserId: 0, tagId: 21311, workUserId: 35954 },
+    },
+  ] as const)("rejects $eventType after normalizing a required zero externalUserId to absent", (input) => {
+    const envelope = validateWorkflowEntryEvent(event({
+      eventType: input.eventType,
+      payload: structuredClone(input.payload),
+      source: "wecom",
+    }));
+    expect(envelope).toMatchObject({
+      event: { payload: expect.not.objectContaining({ externalUserId: expect.anything() }) },
+      kind: "accepted",
+    });
+    if (envelope.kind !== "accepted") throw new Error("Expected a valid Entry envelope");
+
+    expect(WORKFLOW_EVENT_CATALOG.project(envelope.event)).toMatchObject({
+      code: "payload_invalid",
+      kind: "rejected",
+    });
+  });
+
   it("retains the Java v1 message identity for worker-side hydration", () => {
     const result = WORKFLOW_EVENT_CATALOG.project(readEvent(
       "entry/v1/valid/message-received.json",

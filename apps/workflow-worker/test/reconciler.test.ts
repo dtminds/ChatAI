@@ -39,12 +39,19 @@ describe("workflow reconciler", () => {
         tasksChecked: 11,
         terminalRunTasksCancelled: 3,
       })),
+      reconcileTenantCapacityCounts: vi.fn(async () => ({
+        checked: 100,
+        corrected: 2,
+        hasMore: true,
+        lastUid: 109,
+      })),
       republishStalledDispatchedTasks: vi.fn(async () => 6),
       recoverExpiredOutboxLeases: vi.fn(async () => 3),
     };
 
     await expect(reconcileWorkflowRuntime({
       afterEventSubscriptionId: "70",
+      afterCapacityUid: 9,
       afterRunId: "50",
       afterConsistencyRunId: "80",
       afterConsistencyTaskId: "100",
@@ -65,6 +72,8 @@ describe("workflow reconciler", () => {
       retryDelayMs: 5_000,
     })).resolves.toEqual({
       cancelled: 4,
+      capacityCountsChecked: 100,
+      capacityCountsCorrected: 2,
       historyCleanupHasMore: false,
       inboxDeleted: 5,
       eventSubscriptionsCancelled: 2,
@@ -74,6 +83,7 @@ describe("workflow reconciler", () => {
       nextEventSubscriptionCursor: "77",
       nextConsistencyRunCursor: "91",
       nextConsistencyTaskCursor: null,
+      nextCapacityCursor: 109,
       nodeMetricEventsAggregated: 7,
       nodeMetricEventsDeleted: 8,
       stalledTasksRepublished: 6,
@@ -107,6 +117,10 @@ describe("workflow reconciler", () => {
     });
     expect(reconciler.reconcileEventSubscriptions).toHaveBeenCalledWith({
       afterSubscriptionId: "70",
+      limit: 100,
+    });
+    expect(reconciler.reconcileTenantCapacityCounts).toHaveBeenCalledWith({
+      afterUid: 9,
       limit: 100,
     });
     expect(reconciler.processRevisionCleanups).toHaveBeenCalledWith({

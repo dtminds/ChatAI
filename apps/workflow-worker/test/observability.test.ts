@@ -17,6 +17,16 @@ describe("workflow worker observability", () => {
     const message = { id: "message-1", redeliveryCount: 2, topic: "entry-topic" };
 
     observer.record(message, { code: "admitted", disposition: "ack" });
+    observer.record(message, {
+      capacityRejectedCount: 2,
+      code: "admitted",
+      disposition: "ack",
+    });
+    observer.record(message, {
+      capacityRejectedCount: 3,
+      code: "capacity_rejected",
+      disposition: "ack",
+    });
     observer.record(message, { code: "invalid_json", disposition: "ack" });
     observer.record(message, { code: "payload_invalid", disposition: "ack" });
     observer.record(message, {
@@ -49,13 +59,14 @@ describe("workflow worker observability", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
     expect(logger.info).toHaveBeenCalledWith({
       activeRunRejected: 0,
-      admitted: 1,
+      admitted: 2,
+      capacityRejected: 5,
       deduplicated: 0,
       entryPolicyRejected: 0,
       event: "workflow.entry.consume.summary",
       nacked: 1,
       noMatch: 0,
-      received: 4,
+      received: 6,
       rejected: 2,
       role: "entry-consumer",
       runtimeRejected: 0,

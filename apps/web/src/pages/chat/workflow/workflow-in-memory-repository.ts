@@ -27,6 +27,8 @@ import type {
   SyncWorkflowDraftRepository,
   WorkflowDocument,
   WorkflowDocumentPermissions,
+  WorkflowListInput,
+  WorkflowListPage,
 } from "./workflow-repository-types";
 import type { WorkflowDraft, WorkflowNode } from "./types";
 
@@ -37,6 +39,21 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   const reviewHistory = new Map<string, WorkflowPublishReview[]>();
   const reviewDrafts = new Map<string, WorkflowDraft>();
   const createdDocumentIdsByRequest = new Map<string, string>();
+
+  function listDocuments(input: WorkflowListInput = {}): WorkflowListPage {
+    const normalizedQuery = input?.query?.toLocaleLowerCase();
+    const candidates = workflowDocuments
+      .filter(item => matchesListStatus(item, input?.status ?? "all"))
+      .filter(item => !normalizedQuery
+        || item.name.toLocaleLowerCase().includes(normalizedQuery))
+      .filter(item => !input?.cursor || item.id.localeCompare(input.cursor, undefined, { numeric: true }) < 0)
+      .slice(0, (input?.limit ?? 20) + 1);
+    const items = candidates.slice(0, input?.limit ?? 20).map(cloneWorkflowDocument);
+    return {
+      items,
+      nextCursor: candidates.length > items.length ? items.at(-1)?.id ?? null : null,
+    };
+  }
 
   function getWorkflowDocumentIndex(workflowId: string) {
     const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === workflowId);
@@ -102,6 +119,19 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       reviewHistory.delete(workflowId);
     },
     enableDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
+    getCapacityOverview: () => ({
+      capacityRejectedCountToday: 0,
+      status: "normal",
+      usagePercent: 37,
+    }),
+    getTenantOverview: () => ({
+      activeWorkflowCount: workflowDocuments.filter(document => document.runtimeStatus === "active").length,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: workflowDocuments.length,
+    }),
     getDocument: (workflowId) => cloneWorkflowDocument(
       workflowDocuments[getWorkflowDocumentIndex(workflowId)],
     ),
@@ -144,7 +174,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt: importedAt,
       };
     },
-    listDocuments: () => workflowDocuments.map(cloneWorkflowDocument),
+    listDocuments,
     pauseDocument: (workflowId) => updateRuntimeStatus(workflowId, "paused"),
     submitReview: (workflowId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
@@ -580,6 +610,14 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "124.8万",
       hasUnpublishedChanges: true,
       id: "newcomer-conversion",
+      inProgressRunCount: 248,
+      lastRunAt: "今天 18:20",
+      managedAccountCount: 4,
+      managedAccounts: [
+        { avatarUrl: "", id: 101, name: "销售一组" },
+        { avatarUrl: "", id: 102, name: "销售二组" },
+        { avatarUrl: "", id: 103, name: "客户服务" },
+      ],
       name: "新人转化旅程",
       nodes: 8,
       owner: "运营主管",
@@ -587,11 +625,13 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedAt: null,
       publishedDraft: null,
       publishedRevision: null,
+      successRatePercent: 96,
       revision: 1,
       runtimeStatus: "inactive",
       savedAt: "18:20",
       status: "Draft",
       trigger: "近 30 天新入会且未首购客户",
+      totalRunCount: 1_248_000,
       updatedAt: "今天 18:20",
       versionHistory: [],
       versionHistoryNextCursor: null,
@@ -609,6 +649,13 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "86.3万",
       hasUnpublishedChanges: false,
       id: "vip-reactivation",
+      inProgressRunCount: 120,
+      lastRunAt: "昨天 21:04",
+      managedAccountCount: 2,
+      managedAccounts: [
+        { avatarUrl: "", id: 101, name: "销售一组" },
+        { avatarUrl: "", id: 102, name: "销售二组" },
+      ],
       name: "会员复购唤醒",
       nodes: 12,
       owner: "增长运营",
@@ -616,11 +663,13 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedAt: "昨天 21:04",
       publishedDraft: vipReactivationDraft,
       publishedRevision: 1,
+      successRatePercent: 91,
       revision: 1,
       runtimeStatus: "active",
       savedAt: "昨天 21:04",
       status: "Published",
       trigger: "90 天未复购会员",
+      totalRunCount: 863_000,
       updatedAt: "昨天 21:04",
       versionHistory: [
         createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
@@ -640,6 +689,10 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       entered: "42.6万",
       hasUnpublishedChanges: false,
       id: "live-follow-up",
+      inProgressRunCount: 86,
+      lastRunAt: "7月4日 16:12",
+      managedAccountCount: 1,
+      managedAccounts: [{ avatarUrl: "", id: 103, name: "客户服务" }],
       name: "直播后跟进",
       nodes: 6,
       owner: "直播运营",
@@ -647,11 +700,13 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedAt: "7月4日 16:12",
       publishedDraft: liveFollowUpDraft,
       publishedRevision: 1,
+      successRatePercent: 88,
       revision: 1,
       runtimeStatus: "paused",
       savedAt: "7月4日 16:12",
       status: "Paused",
       trigger: "直播间互动但未下单客户",
+      totalRunCount: 426_000,
       updatedAt: "7月4日 16:12",
       versionHistory: [
         createWorkflowVersionHistoryItem("live-follow-up", 1, "7月4日 16:12", liveFollowUpDraft),
@@ -685,6 +740,10 @@ function createNewWorkflowDocument(
     entered: "0",
     hasUnpublishedChanges: true,
     id,
+    inProgressRunCount: 0,
+    lastRunAt: null,
+    managedAccountCount: 0,
+    managedAccounts: [],
     name: name?.trim() || "未命名 Workflow",
     nodes: draft.nodes.length,
     owner: "运营主管",
@@ -692,11 +751,13 @@ function createNewWorkflowDocument(
     publishedAt: null,
     publishedDraft: null,
     publishedRevision: null,
+    successRatePercent: null,
     revision: 1,
     runtimeStatus: "inactive",
     savedAt: "刚刚",
     status: "Draft",
     trigger: "待配置进入条件",
+    totalRunCount: 0,
     updatedAt: "刚刚",
     versionHistory: [],
     versionHistoryNextCursor: null,
@@ -716,6 +777,20 @@ function createInMemoryCapabilitySummary(): WorkflowCapabilitySummary {
       "end",
     ],
   };
+}
+
+function matchesListStatus(
+  workflow: WorkflowDocument,
+  status: NonNullable<WorkflowListInput["status"]>,
+) {
+  if (status === "all") return true;
+  if (status === "active") return workflow.runtimeStatus === "active";
+  if (status === "ready") {
+    return workflow.runtimeStatus === "paused"
+      || (workflow.runtimeStatus === "inactive" && workflow.publishedRevision !== null);
+  }
+  if (status === "draft") return workflow.publishedRevision === null;
+  return workflow.runtimeStatus === "stopped";
 }
 
 function createDefaultWorkflowPermissions(): WorkflowDocumentPermissions {

@@ -58,7 +58,7 @@ describe("workflow production availability", () => {
     });
 
     expect(evaluateWorkflowProductionAvailability({
-      entitlement: { entitled: true, unentitledSince: null },
+      entitlement: { activeRunLimit: 10_000, entitled: true, unentitledSince: null },
       spec,
       subjectType: "wecom_contact",
     })).toEqual({
@@ -75,7 +75,7 @@ describe("workflow production availability", () => {
 
   it("accepts events implemented by the default Catalog", () => {
     expect(evaluateWorkflowProductionAvailability({
-      entitlement: { entitled: true, unentitledSince: null },
+      entitlement: { activeRunLimit: 10_000, entitled: true, unentitledSince: null },
       spec: executionSpec(),
       subjectType: "chatai_contact",
     })).toEqual({ available: true, blockers: [] });

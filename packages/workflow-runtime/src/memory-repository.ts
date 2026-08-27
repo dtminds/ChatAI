@@ -15,6 +15,7 @@ import type {
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
 } from "./types.js";
+import { WORKFLOW_ACTIVE_RUN_STATUSES } from "@chatai/contracts";
 import {
   getWorkflowExecutionBoundaryDecision,
   transitionRun,
@@ -23,6 +24,7 @@ import {
 import { createNodeMetricDeltas } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import { formatWorkflowMetricDate } from "./workflow-date.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -57,6 +59,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
+  private readonly capacityDailyMetrics = new Map<string, number>();
   private readonly totalEntries = new Map<string, number>();
   private readonly runUpdatedAt = new Map<string, Date>();
   private nextId = 1n;
@@ -216,6 +219,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
+    assertActiveRunLimit(input.activeRunLimit);
     if (this.resolveWorkflowBoundary) {
       const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: input.workflowId });
       const decision = boundary
@@ -251,6 +255,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const totalEntries = this.totalEntries.get(entryGuardKey) ?? 0;
     if (!canEnterWorkflow(input.entryPolicy, previousRuns, totalEntries, admittedAt)) {
       return { kind: "entry-policy-rejected" as const };
+    }
+    const activeRunCount = this.runs.filter(run => run.uid === input.uid
+      && WORKFLOW_ACTIVE_RUN_STATUSES.includes(run.status as typeof WORKFLOW_ACTIVE_RUN_STATUSES[number]))
+      .length;
+    if (activeRunCount >= input.activeRunLimit) {
+      return { kind: "capacity-rejected" as const };
     }
 
     const run: WorkflowRunRecord = {
@@ -298,12 +308,14 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async recordProcessedInboxMessage(input: {
+    capacityRejectedCount: number;
     consumer: string;
     expiresAt: Date;
     messageId: string;
     processedAt: Date;
     uid: number;
   }) {
+    assertNonNegativeInteger(input.capacityRejectedCount, "Workflow capacity rejected count");
     if (this.inbox.some(item => item.consumer === input.consumer
       && item.messageId === input.messageId)) return false;
     this.inbox.push({
@@ -312,6 +324,13 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       messageId: input.messageId,
       uid: input.uid,
     });
+    if (input.capacityRejectedCount > 0) {
+      const metricKey = `${input.uid}:${formatWorkflowMetricDate(input.processedAt)}`;
+      this.capacityDailyMetrics.set(
+        metricKey,
+        (this.capacityDailyMetrics.get(metricKey) ?? 0) + input.capacityRejectedCount,
+      );
+    }
     return true;
   }
 
@@ -1344,6 +1363,23 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     };
   }
 
+  async reconcileTenantCapacityCounts(
+    input: Parameters<WorkflowRuntimeRepository["reconcileTenantCapacityCounts"]>[0],
+  ) {
+    const limit = Math.max(0, Math.trunc(input.limit));
+    const candidateUids = [...new Set(this.runs.map(run => run.uid))]
+      .filter(uid => input.afterUid === undefined || uid > input.afterUid)
+      .sort((left, right) => left - right)
+      .slice(0, limit + 1);
+    const selectedUids = candidateUids.slice(0, limit);
+    return {
+      checked: selectedUids.length,
+      corrected: 0,
+      hasMore: candidateUids.length > selectedUids.length,
+      lastUid: selectedUids.at(-1) ?? null,
+    };
+  }
+
   async reconcileEventSubscriptions(
     input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
   ) {
@@ -1678,6 +1714,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
+      capacityDailyMetrics: [...this.capacityDailyMetrics.entries()],
       eventSubscriptions: this.eventSubscriptions,
       inferenceJobs: this.inferenceJobs,
       inbox: this.inbox,
@@ -1833,6 +1870,16 @@ function canEnterWorkflow(
     * (policy.windowUnit === "hour" ? 3_600_000 : 86_400_000);
   const cutoff = now.getTime() - windowMilliseconds;
   return runs.filter(run => run.createdAt.getTime() >= cutoff).length < policy.maxEntries;
+}
+
+function assertActiveRunLimit(value: number) {
+  assertNonNegativeInteger(value, "Workflow active Run limit");
+}
+
+function assertNonNegativeInteger(value: number, name: string) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
 }
 
 function createTask(

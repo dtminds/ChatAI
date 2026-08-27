@@ -80,9 +80,23 @@ describe("workflow direct entry", () => {
       run: { subjectId: "3267", subjectType: "wecom_contact" },
     });
   });
+
+  it("applies tenant capacity to direct entry", async () => {
+    const { service } = createHarness(directStart({
+      entryPolicy: { mode: "never" },
+      seatIds: [101],
+    }), "chatai_sop", 0);
+
+    await expect(service.startDirectRun(directInput()))
+      .resolves.toEqual({ kind: "capacity-rejected" });
+  });
 });
 
-function createHarness(startConfig: WorkflowStartConfig, workflowType: "chatai_sop" | "wecom_sop" = "chatai_sop") {
+function createHarness(
+  startConfig: WorkflowStartConfig,
+  workflowType: "chatai_sop" | "wecom_sop" = "chatai_sop",
+  activeRunLimit = 10_000,
+) {
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
   const executionSpec = createExecutionSpec(startConfig);
   const service = new WorkflowRuntimeService({
@@ -105,7 +119,9 @@ function createHarness(startConfig: WorkflowStartConfig, workflowType: "chatai_s
     })),
   }, repository, undefined, {
     clock: () => now,
-    entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+    entitlementPort: {
+      check: async () => ({ activeRunLimit, entitled: true, unentitledSince: null }),
+    },
   });
   return { repository, service };
 }

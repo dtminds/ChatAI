@@ -11,6 +11,10 @@ export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "re
 
 export type WorkflowWorkerConfig = {
   broker: "pulsar";
+  consumerConcurrency: {
+    entry: number;
+    task: number;
+  };
   databaseUrl: string;
   entitlement: {
     apiUrl: string | null;
@@ -140,8 +144,22 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       "WORKFLOW_INFERENCE_HEARTBEAT_INTERVAL_MS must be less than WORKFLOW_INFERENCE_LEASE_DURATION_MS",
     );
   }
+  const entryConsumerConcurrency = parseConsumerConcurrency(
+    env.WORKFLOW_ENTRY_CONCURRENCY,
+    env.NODE_ENV,
+    "WORKFLOW_ENTRY_CONCURRENCY",
+  );
+  const taskConsumerConcurrency = parseConsumerConcurrency(
+    env.WORKFLOW_TASK_CONCURRENCY,
+    env.NODE_ENV,
+    "WORKFLOW_TASK_CONCURRENCY",
+  );
   return {
     broker,
+    consumerConcurrency: {
+      entry: entryConsumerConcurrency,
+      task: taskConsumerConcurrency,
+    },
     databaseUrl,
     entitlement: {
       apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
@@ -340,6 +358,17 @@ function parseDurationMs(value: string | undefined, fallback: number, name: stri
 
 function parseCount(value: string | undefined, fallback: number, name: string) {
   return parseInteger(value, fallback, name, 1_000_000);
+}
+
+function parseConsumerConcurrency(
+  value: string | undefined,
+  nodeEnvironment: string | undefined,
+  name: string,
+) {
+  if (nodeEnvironment === "production" && !optionalValue(value)) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return parseInteger(value, 10, name, 1_000);
 }
 
 function parseShardIds(value: string | undefined) {

@@ -36,7 +36,7 @@ describe("Workflow Entry runtime composition", () => {
     }, repository, undefined, {
       clock: () => now,
       entitlementPort: {
-        check: vi.fn(async () => ({ entitled: true, unentitledSince: null })),
+        check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
       },
     });
     const bindings = [binding("31", "chatai_contact"), binding("32", "wecom_contact")];
@@ -49,6 +49,7 @@ describe("Workflow Entry runtime composition", () => {
       deadLetterTopic: "entry-dlq",
       eventCatalog: createFakeWorkflowEventCatalog(),
       inboxRepository: repository,
+      maxInFlight: 10,
       messageReader: { findById: vi.fn(async () => null) },
       now: () => now,
       runtimeService: service,

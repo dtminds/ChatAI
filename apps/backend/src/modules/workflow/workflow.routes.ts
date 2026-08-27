@@ -10,6 +10,7 @@ import {
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
   WorkflowEntryRecordStatusSchema,
+  WorkflowDefinitionListStatusSchema,
   WorkflowLlmTestAttemptCreateRequestSchema,
   WorkflowAiIntentTestAttemptCreateRequestSchema,
   type WorkflowCreateRequest,
@@ -35,6 +36,8 @@ import {
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
 import { MysqlWorkflowSourceIdentityResolver } from "./workflow-source-identity.js";
+import { MysqlWorkflowManagedAccountReader } from "./workflow-managed-account-reader.js";
+import { MysqlWorkflowMetricReader } from "./workflow-metric-reader.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
@@ -66,6 +69,12 @@ const WorkflowHistoryQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ pattern: "^[1-9][0-9]*$" })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 });
+const WorkflowDefinitionListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String({ maxLength: 512, minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ maximum: 50, minimum: 1 })),
+  query: Type.Optional(Type.String({ maxLength: 100 })),
+  status: Type.Optional(WorkflowDefinitionListStatusSchema),
+});
 const WorkflowRecordParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ recordId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
@@ -84,14 +93,17 @@ export async function registerWorkflowRoutes(
   options: { dataService?: WorkflowDataService; service?: WorkflowService } = {},
 ) {
   const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
+  const entitlementPort = createWorkflowEntitlementPort({
+    endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
+    mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
+    token: process.env.JAVA_INTERNAL_API_TOKEN,
+  });
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
-      entitlementPort: createWorkflowEntitlementPort({
-        endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
-        mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
-        token: process.env.JAVA_INTERNAL_API_TOKEN,
-      }),
+      entitlementPort,
+      managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),
+      metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
     },
@@ -100,6 +112,19 @@ export async function registerWorkflowRoutes(
   await registerAudienceGroupRoutes(app);
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db),
+    { capacityPort: entitlementPort },
+  );
+
+  app.get(
+    "/api/server/workflows/capacity",
+    authenticated,
+    async request => apiSuccess(await dataService.getCapacityOverview(getWorkflowScope(request))),
+  );
+
+  app.get(
+    "/api/server/workflows/overview",
+    authenticated,
+    async request => apiSuccess(await dataService.getTenantOverview(getWorkflowScope(request))),
   );
 
   app.get<{ Params: WorkflowParams }>(
@@ -130,8 +155,15 @@ export async function registerWorkflowRoutes(
     )),
   );
 
-  app.get("/api/server/workflows", authenticated, async (request) =>
-    apiSuccess(await service.list(getWorkflowScope(request))),
+  app.get<{ Querystring: Static<typeof WorkflowDefinitionListQuerySchema> }>(
+    "/api/server/workflows",
+    { ...authenticated, schema: { querystring: WorkflowDefinitionListQuerySchema } },
+    async request => apiSuccess(await service.list(getWorkflowScope(request), {
+      cursor: request.query.cursor,
+      limit: request.query.limit ?? 20,
+      query: request.query.query,
+      status: request.query.status ?? "all",
+    })),
   );
 
   app.post<{ Body: WorkflowCreateRequest }>(

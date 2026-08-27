@@ -18,6 +18,7 @@ export const WorkflowSubjectTypeSchema = Type.Union([
 
 export const WorkflowTypeEntitlementResultSchema = Type.Union([
   Type.Object({
+    activeRunLimit: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
     entitled: Type.Literal(true),
     unentitledSince: Type.Null(),
   }, { additionalProperties: false }),
@@ -29,8 +30,13 @@ export const WorkflowTypeEntitlementResultSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+export const WorkflowTenantCapacityResultSchema = Type.Object({
+  activeRunLimit: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+}, { additionalProperties: false });
+
 export type WorkflowType = Static<typeof WorkflowTypeSchema>;
 export type WorkflowSubjectType = Static<typeof WorkflowSubjectTypeSchema>;
+export type WorkflowTenantCapacityResult = Static<typeof WorkflowTenantCapacityResultSchema>;
 export type WorkflowTypeEntitlementResult = Static<typeof WorkflowTypeEntitlementResultSchema>;
 
 export type WorkflowCapabilityProfile = {

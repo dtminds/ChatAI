@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WorkflowCapacityOverview, WorkflowTenantOverview } from "@chatai/contracts";
 import {
   getWorkflowDraftRepository,
   normalizeWorkflowRepositoryError,
@@ -7,7 +8,8 @@ import {
 import type {
   WorkflowDocument,
   WorkflowDraftRepository,
-  WorkflowListItem,
+  WorkflowListInput,
+  WorkflowListPage,
 } from "./workflow-draft-service";
 
 export type WorkflowResourceStatus = "error" | "loading" | "not-found" | "ready";
@@ -78,9 +80,82 @@ export function useWorkflowDocumentResource(
 
 export function useWorkflowListResource(
   repository: WorkflowDraftRepository = getWorkflowDraftRepository(),
+  input: WorkflowListInput = {},
 ) {
   const loadRequestRef = useRef(0);
-  const [state, setState] = useState<WorkflowResourceState<WorkflowListItem[]>>({
+  const inputKey = JSON.stringify([
+    input.cursor ?? null,
+    input.limit ?? null,
+    input.query ?? null,
+    input.status ?? null,
+  ]);
+  const [state, setState] = useState<WorkflowResourceState<WorkflowListPage> & {
+    inputKey: string;
+    repository: WorkflowDraftRepository;
+  }>({
+    data: null,
+    error: null,
+    inputKey,
+    repository,
+    status: "loading",
+  });
+  const stateMatchesInput = state.inputKey === inputKey && state.repository === repository;
+
+  const reload = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+    setState((currentState) => ({
+      data: currentState.inputKey === inputKey && currentState.repository === repository
+        ? currentState.data
+        : null,
+      error: null,
+      inputKey,
+      repository,
+      status: "loading",
+    }));
+
+    try {
+      const documents = await Promise.resolve(repository.listDocuments(input));
+
+      if (loadRequestRef.current === requestId) {
+        setState({ data: documents, error: null, inputKey, repository, status: "ready" });
+      }
+    }
+    catch (error) {
+      if (loadRequestRef.current === requestId) {
+        setState({
+          data: null,
+          error: normalizeWorkflowRepositoryError(error),
+          inputKey,
+          repository,
+          status: "error",
+        });
+      }
+    }
+  }, [input.cursor, input.limit, input.query, input.status, inputKey, repository]);
+
+  useEffect(() => {
+    void reload();
+
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [reload]);
+
+  return {
+    error: stateMatchesInput ? state.error : null,
+    items: stateMatchesInput ? state.data?.items ?? [] : [],
+    nextCursor: stateMatchesInput ? state.data?.nextCursor ?? null : null,
+    reload,
+    status: stateMatchesInput ? state.status : "loading",
+  };
+}
+
+export function useWorkflowCapacityResource(
+  repository: WorkflowDraftRepository = getWorkflowDraftRepository(),
+) {
+  const loadRequestRef = useRef(0);
+  const [state, setState] = useState<WorkflowResourceState<WorkflowCapacityOverview>>({
     data: null,
     error: null,
     status: "loading",
@@ -89,20 +164,13 @@ export function useWorkflowListResource(
   const reload = useCallback(async () => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    setState((currentState) => ({
-      data: currentState.data,
-      error: null,
-      status: "loading",
-    }));
-
+    setState(current => ({ ...current, error: null, status: "loading" }));
     try {
-      const documents = await Promise.resolve(repository.listDocuments());
-
+      const data = await Promise.resolve(repository.getCapacityOverview());
       if (loadRequestRef.current === requestId) {
-        setState({ data: documents, error: null, status: "ready" });
+        setState({ data, error: null, status: "ready" });
       }
-    }
-    catch (error) {
+    } catch (error) {
       if (loadRequestRef.current === requestId) {
         setState({
           data: null,
@@ -115,15 +183,60 @@ export function useWorkflowListResource(
 
   useEffect(() => {
     void reload();
-
     return () => {
       loadRequestRef.current += 1;
     };
   }, [reload]);
 
   return {
-    error: state.error,
-    items: state.data ?? [],
+    overview: state.data,
+    reload,
+    status: state.status,
+  };
+}
+
+export function useWorkflowTenantOverviewResource(
+  repository: WorkflowDraftRepository = getWorkflowDraftRepository(),
+) {
+  const loadRequestRef = useRef(0);
+  const [state, setState] = useState<WorkflowResourceState<WorkflowTenantOverview>>({
+    data: null,
+    error: null,
+    status: "loading",
+  });
+
+  const reload = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+    setState(current => ({ ...current, error: null, status: "loading" }));
+    try {
+      if (!repository.getTenantOverview) {
+        throw new WorkflowRepositoryError("server", "Workflow 概览不可用");
+      }
+      const data = await Promise.resolve(repository.getTenantOverview());
+      if (loadRequestRef.current === requestId) {
+        setState({ data, error: null, status: "ready" });
+      }
+    } catch (error) {
+      if (loadRequestRef.current === requestId) {
+        setState({
+          data: null,
+          error: normalizeWorkflowRepositoryError(error),
+          status: "error",
+        });
+      }
+    }
+  }, [repository]);
+
+  useEffect(() => {
+    void reload();
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [reload]);
+
+  return {
+    overview: state.data,
     reload,
     status: state.status,
   };

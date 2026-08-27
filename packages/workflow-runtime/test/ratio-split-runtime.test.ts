@@ -140,7 +140,7 @@ function createService(
     }),
   }, runtime, undefined, {
     clock: () => now,
-    entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
   });
 }
 

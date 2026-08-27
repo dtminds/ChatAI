@@ -1,8 +1,11 @@
 import {
+  WorkflowTenantCapacityResultSchema,
   WorkflowTypeEntitlementResultSchema,
+  type WorkflowTenantCapacityResult,
   type WorkflowType,
   type WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
+import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 const WORKFLOW_ENTITLEMENT_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -15,6 +18,15 @@ export type WorkflowEntitlementCheckInput = {
 
 export interface WorkflowEntitlementPort {
   check(input: WorkflowEntitlementCheckInput): Promise<WorkflowTypeEntitlementResult>;
+}
+
+export type WorkflowTenantCapacityInput = {
+  signal?: AbortSignal;
+  uid: number;
+};
+
+export interface WorkflowTenantCapacityPort {
+  getTenantCapacity(input: WorkflowTenantCapacityInput): Promise<WorkflowTenantCapacityResult>;
 }
 
 export type WorkflowEntitlementMode = "allow" | "enforce";
@@ -34,7 +46,9 @@ export class WorkflowEntitlementUnavailableError extends Error {
   }
 }
 
-export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort {
+export class HttpWorkflowEntitlementPort implements
+  WorkflowEntitlementPort,
+  WorkflowTenantCapacityPort {
   constructor(private readonly options: {
     endpoint: string;
     fetch?: typeof fetch;
@@ -47,6 +61,26 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort {
   }
 
   async check(input: WorkflowEntitlementCheckInput) {
+    return this.request<WorkflowTypeEntitlementResult>(
+      input,
+      { uid: input.uid, workflowType: input.workflowType },
+      WorkflowTypeEntitlementResultSchema,
+    );
+  }
+
+  async getTenantCapacity(input: WorkflowTenantCapacityInput) {
+    return this.request<WorkflowTenantCapacityResult>(
+      input,
+      { uid: input.uid },
+      WorkflowTenantCapacityResultSchema,
+    );
+  }
+
+  private async request<TResult>(
+    input: { signal?: AbortSignal },
+    body: Record<string, unknown>,
+    schema: TSchema,
+  ): Promise<TResult> {
     const timeoutMs = this.options.timeoutMs ?? 3_000;
     const timeoutController = new AbortController();
     const forwardAbort = () => timeoutController.abort(input.signal?.reason);
@@ -55,7 +89,7 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort {
 
     try {
       const response = await (this.options.fetch ?? fetch)(this.options.endpoint, {
-        body: JSON.stringify({ uid: input.uid, workflowType: input.workflowType }),
+        body: JSON.stringify(body),
         headers: {
           "Content-Type": "application/json",
           ...(this.options.token ? { Authorization: `Bearer ${this.options.token}` } : {}),
@@ -68,13 +102,13 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort {
           `Workflow entitlement endpoint returned HTTP ${response.status}`,
         );
       }
-      const body: unknown = await response.json();
-      if (!Value.Check(WorkflowTypeEntitlementResultSchema, body)) {
+      const responseBody: unknown = await response.json();
+      if (!Value.Check(schema, responseBody)) {
         throw new WorkflowEntitlementUnavailableError(
           "Workflow entitlement endpoint returned an invalid response",
         );
       }
-      return structuredClone(body) as WorkflowTypeEntitlementResult;
+      return structuredClone(responseBody) as TResult;
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) throw error;
       throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
@@ -85,15 +119,31 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort {
   }
 }
 
-export class UnavailableWorkflowEntitlementPort implements WorkflowEntitlementPort {
+export class UnavailableWorkflowEntitlementPort implements
+  WorkflowEntitlementPort,
+  WorkflowTenantCapacityPort {
   async check(): Promise<never> {
+    throw new WorkflowEntitlementUnavailableError();
+  }
+
+  async getTenantCapacity(): Promise<never> {
     throw new WorkflowEntitlementUnavailableError();
   }
 }
 
-export class AllowAllWorkflowEntitlementPort implements WorkflowEntitlementPort {
+export class AllowAllWorkflowEntitlementPort implements
+  WorkflowEntitlementPort,
+  WorkflowTenantCapacityPort {
   async check(): Promise<WorkflowTypeEntitlementResult> {
-    return { entitled: true, unentitledSince: null };
+    return {
+      activeRunLimit: Number.MAX_SAFE_INTEGER,
+      entitled: true,
+      unentitledSince: null,
+    };
+  }
+
+  async getTenantCapacity(): Promise<WorkflowTenantCapacityResult> {
+    return { activeRunLimit: Number.MAX_SAFE_INTEGER };
   }
 }
 
@@ -103,7 +153,7 @@ export function createWorkflowEntitlementPort(options: {
   mode?: string | null;
   timeoutMs?: number;
   token?: string | null;
-}): WorkflowEntitlementPort {
+}): WorkflowEntitlementPort & WorkflowTenantCapacityPort {
   const mode = options.mode?.trim() || "allow";
   if (mode === "allow") return new AllowAllWorkflowEntitlementPort();
   if (mode !== "enforce") {

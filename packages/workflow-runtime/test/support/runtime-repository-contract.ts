@@ -1,4 +1,8 @@
-import type { WorkflowRunStatus, WorkflowRuntimeStatus } from "@chatai/contracts";
+import {
+  WORKFLOW_ACTIVE_RUN_STATUSES,
+  type WorkflowRunStatus,
+  type WorkflowRuntimeStatus,
+} from "@chatai/contracts";
 import { beforeEach, expect, it } from "vitest";
 import type {
   WorkflowCreateRunInput,
@@ -76,6 +80,7 @@ export function runWorkflowRuntimeRepositoryContract(
 
   it("records one stable Entry Inbox message across concurrent deliveries", async () => {
     const input = {
+      capacityRejectedCount: 0,
       consumer: "workflow-entry",
       expiresAt: new Date("2099-02-01T00:00:00.000Z"),
       messageId: "9:event-1",
@@ -458,6 +463,155 @@ export function runWorkflowRuntimeRepositoryContract(
         taskVersion: 1,
       }),
     ]);
+  });
+
+  it("atomically admits only one Run for the tenant's final capacity slot", async () => {
+    const results = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+      harness.repository.createRunWithInitialTask(createRunInput({
+        activeRunLimit: 1,
+        entryEventId: `capacity-event-${index}`,
+        subjectId: `capacity-subject-${index}`,
+      }))));
+
+    expect(results.filter(result => result.kind === "success")).toHaveLength(1);
+    expect(results.filter(result => result.kind === "capacity-rejected")).toHaveLength(7);
+    const outbox = await harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    });
+    expect(outbox).toHaveLength(1);
+  });
+
+  it("isolates active Run capacity between tenants", async () => {
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+    }))).resolves.toMatchObject({ kind: "success" });
+
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      subjectId: "tenant-10-customer",
+      uid: 10,
+      workflowId: "33",
+    }))).resolves.toMatchObject({ kind: "success" });
+  });
+
+  it("shares one tenant capacity across Workflows and Workflow Types", async () => {
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+    }))).resolves.toMatchObject({ kind: "success" });
+
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "wecom-event-1",
+      subjectId: "wecom-customer-1",
+      subjectType: "wecom_contact",
+      workflowId: "32",
+      workflowType: "wecom_sop",
+    }))).resolves.toEqual({ kind: "capacity-rejected" });
+  });
+
+  it("counts active Runs from different Subjects as separate capacity slots", async () => {
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 2,
+    }))).resolves.toMatchObject({ kind: "success" });
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 2,
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    }))).resolves.toMatchObject({ kind: "success" });
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 2,
+      entryEventId: "event-3",
+      subjectId: "customer-3",
+    }))).resolves.toEqual({ kind: "capacity-rejected" });
+  });
+
+  it.each(WORKFLOW_ACTIVE_RUN_STATUSES)(
+    "counts a %s Run toward tenant capacity",
+    async (status) => {
+      const first = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+        activeRunLimit: 1,
+      })));
+      await harness.setRunStatus(first.run.id, status);
+
+      await expect(harness.repository.createRunWithInitialTask(createRunInput({
+        activeRunLimit: 1,
+        entryEventId: `event-after-${status}`,
+        subjectId: `customer-after-${status}`,
+      }))).resolves.toEqual({ kind: "capacity-rejected" });
+    },
+  );
+
+  it("deduplicates an admitted Entry before applying a full capacity limit", async () => {
+    const input = createRunInput({ activeRunLimit: 1 });
+    const first = requireCreatedRun(await harness.repository.createRunWithInitialTask(input));
+
+    await expect(harness.repository.createRunWithInitialTask(input)).resolves.toMatchObject({
+      deduplicated: true,
+      kind: "success",
+      run: { id: first.run.id },
+    });
+  });
+
+  it("releases capacity only after a Run becomes terminal", async () => {
+    const first = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+    })));
+    await harness.setRunStatus(first.run.id, "waiting");
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    }))).resolves.toEqual({ kind: "capacity-rejected" });
+
+    await harness.setWorkflowRuntimeStatus("paused");
+    await harness.setWorkflowRuntimeStatus("active");
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-3",
+      subjectId: "customer-3",
+    }))).resolves.toEqual({ kind: "capacity-rejected" });
+
+    await harness.setRunStatus(first.run.id, "completed");
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-4",
+      subjectId: "customer-4",
+    }))).resolves.toMatchObject({ deduplicated: false, kind: "success" });
+  });
+
+  it("applies limit changes to later admissions without changing existing Runs", async () => {
+    const first = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 2,
+    })));
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    }))).resolves.toEqual({ kind: "capacity-rejected" });
+    await expect(harness.repository.findRun(9, first.run.id)).resolves.toMatchObject({
+      status: "queued",
+    });
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 2,
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    }))).resolves.toMatchObject({ deduplicated: false, kind: "success" });
+  });
+
+  it("applies Entry Policy before tenant capacity", async () => {
+    const first = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryPolicy: { mode: "never" },
+    })));
+    await harness.setRunStatus(first.run.id, "completed");
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 0,
+      entryEventId: "event-2",
+      entryPolicy: { mode: "never" },
+    }))).resolves.toEqual({ kind: "entry-policy-rejected" });
   });
 
   it("isolates lifetime entry guards by subject type", async () => {
@@ -913,6 +1067,11 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.commitNodeResult(commitInput)).resolves.toEqual({
       kind: "already-processed",
     });
+    await expect(harness.repository.createRunWithInitialTask(createRunInput({
+      activeRunLimit: 1,
+      entryEventId: "event-after-completion",
+      subjectId: "customer-after-completion",
+    }))).resolves.toMatchObject({ deduplicated: false, kind: "success" });
   });
 }
 
@@ -920,6 +1079,7 @@ export function createRunInput(
   overrides: Partial<WorkflowCreateRunInput> = {},
 ): WorkflowCreateRunInput {
   return {
+    activeRunLimit: 10_000,
     context: { trigger: { eventType: "message.received" } },
     entryEventId: "event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },

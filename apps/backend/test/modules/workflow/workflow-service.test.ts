@@ -442,7 +442,7 @@ describe("WorkflowService", () => {
     expect(updated.draft).toEqual(created.draft);
   });
 
-  it("keeps workflows ordered by creation time after an older workflow is edited", async () => {
+  it("keeps creation order after an older workflow is edited", async () => {
     vi.useFakeTimers();
     try {
       const service = createService();
@@ -463,19 +463,109 @@ describe("WorkflowService", () => {
         name: first.name,
       });
 
-      await expect(service.list(operator)).resolves.toEqual([
-        expect.objectContaining({ id: second.id }),
-        expect.objectContaining({ id: first.id }),
-      ]);
+      await expect(service.list(operator, { limit: 20, status: "all" })).resolves.toMatchObject({
+        items: [
+          expect.objectContaining({ id: second.id }),
+          expect.objectContaining({ id: first.id }),
+        ],
+        nextCursor: null,
+      });
     } finally {
       vi.useRealTimers();
     }
   });
 
+  it("searches workflow names without matching descriptions", async () => {
+    const service = createService();
+    await service.create(operator, {
+      description: "长期未复购",
+      name: "会员唤醒",
+      workflowType: "chatai_sop",
+    });
+
+    await expect(service.list(operator, {
+      limit: 20,
+      query: "长期未复购",
+      status: "all",
+    })).resolves.toMatchObject({ items: [] });
+    await expect(service.list(operator, {
+      limit: 20,
+      query: "会员",
+      status: "all",
+    })).resolves.toMatchObject({
+      items: [expect.objectContaining({ name: "会员唤醒" })],
+    });
+  });
+
+  it("loads only the first three managed accounts for each workflow list row", async () => {
+    const findByIds = vi.fn(async (_uid: number, seatIds: number[]) => new Map(
+      seatIds.map(id => [id, { avatarUrl: `https://example.com/${id}.png`, id, name: `托管账号 ${id}` }]),
+    ));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      managedAccountReader: { findByIds },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [101, 102, 103, 104, 105],
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(findByIds).toHaveBeenCalledWith(operator.uid, [101, 102, 103]);
+    expect(page.items[0]?.managedAccounts.map(account => account.id)).toEqual([101, 102, 103]);
+  });
+
+  it("shows a selected trigger for an incomplete Start draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [],
+        triggers: [{ keywords: [], type: "message.received" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]?.trigger).toBe("用户消息");
+  });
+
+  it("loads persisted Run metrics for only the current Workflow page", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });
+    const lastRunAt = new Date("2026-08-26T10:20:00.000Z");
+    const findByWorkflowIds = vi.fn(async () => new Map([[created.id, {
+      inProgressRunCount: 86,
+      lastRunAt,
+      successRatePercent: 96,
+      totalRunCount: 12_345,
+    }]]));
+    const service = createService(repository, {
+      metricReader: { findByWorkflowIds },
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(findByWorkflowIds).toHaveBeenCalledWith(operator.uid, [created.id]);
+    expect(page.items[0]).toMatchObject({
+      inProgressRunCount: 86,
+      lastRunAt: lastRunAt.toISOString(),
+      successRatePercent: 96,
+      totalRunCount: 12_345,
+    });
+  });
+
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 
-    await expect(service.list({ roles: ["operator"], subUserId: "18", uid: 9 }))
+    await expect(service.list({ roles: ["operator"], subUserId: "18", uid: 9 }, { limit: 20, status: "all" }))
       .rejects.toMatchObject({ code: "WORKFLOW_FORBIDDEN", statusCode: 403 });
     await expect(service.create(
       { roles: ["admin"], subUserId: "19", uid: 9 },
@@ -486,7 +576,7 @@ describe("WorkflowService", () => {
 
   it("rejects the reserved Member SOP type before checking entitlement", async () => {
     const repository = new InMemoryWorkflowRepository();
-    const entitlementCheck = vi.fn(async () => ({ entitled: true as const, unentitledSince: null }));
+    const entitlementCheck = vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true as const, unentitledSince: null }));
     const service = createService(repository, {
       entitlementPort: { check: entitlementCheck },
     });
@@ -494,7 +584,10 @@ describe("WorkflowService", () => {
     await expect(service.create(operator, { workflowType: "member_sop" }))
       .rejects.toMatchObject({ code: "WORKFLOW_TYPE_UNAVAILABLE", statusCode: 400 });
     expect(entitlementCheck).not.toHaveBeenCalled();
-    await expect(repository.listDefinitions(operator.uid)).resolves.toEqual([]);
+    await expect(repository.listDefinitions(operator.uid, { limit: 20, status: "all" })).resolves.toMatchObject({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it("rejects node kinds outside the selected Workflow type policy", async () => {
@@ -1477,7 +1570,10 @@ describe("WorkflowService", () => {
       code: "WORKFLOW_NOT_FOUND",
       statusCode: 404,
     });
-    expect(await service.list(operator)).toEqual([]);
+    expect(await service.list(operator, { limit: 20, status: "all" })).toMatchObject({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it("allows a deleted create request id to create a new definition", async () => {
@@ -1534,7 +1630,7 @@ function createService(
 ) {
   return new WorkflowService(repository, {
     entitlementPort: {
-      check: async () => ({ entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
     },
     sourceIdentityResolver: {
       async resolveActiveSeatWorkUserIds(_uid, seatIds) {

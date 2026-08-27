@@ -15,6 +15,38 @@ describe("workflow routes", () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
 
+  it("paginates the Workflow list and returns list-only fields", async () => {
+    const app = await createApp("owner");
+    for (const name of ["第一个 Workflow", "第二个 Workflow"]) {
+      await app.inject({
+        method: "POST",
+        payload: { name, workflowType: "chatai_sop" },
+        url: "/api/server/workflows",
+      });
+    }
+
+    const firstPage = await app.inject({
+      method: "GET",
+      url: "/api/server/workflows?limit=1",
+    });
+    expect(firstPage.statusCode).toBe(200);
+    expect(firstPage.json().data).toMatchObject({
+      items: [expect.objectContaining({ name: "第二个 Workflow" })],
+      nextCursor: expect.any(String),
+    });
+    expect(firstPage.json().data.items[0]).not.toHaveProperty("draft");
+    expect(firstPage.json().data.items[0]).not.toHaveProperty("currentReview");
+
+    const secondPage = await app.inject({
+      method: "GET",
+      url: `/api/server/workflows?limit=1&cursor=${encodeURIComponent(firstPage.json().data.nextCursor)}`,
+    });
+    expect(secondPage.json().data).toMatchObject({
+      items: [expect.objectContaining({ name: "第一个 Workflow" })],
+      nextCursor: null,
+    });
+  });
+
   it("returns only the direct-entry endpoint key for an accessible Workflow", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({
@@ -463,7 +495,7 @@ describe("workflow routes", () => {
     await registerWorkflowRoutes(app, {
       service: new WorkflowService(new InMemoryWorkflowRepository(), {
         entitlementPort: {
-          check: async () => ({ entitled: true, unentitledSince: null }),
+          check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
         },
         sourceIdentityResolver: {
           async resolveActiveSeatWorkUserIds(_uid, seatIds) {

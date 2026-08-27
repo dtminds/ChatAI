@@ -1,12 +1,16 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  WorkflowCapacityOverviewSchema,
   WorkflowDefinitionSchema,
+  WorkflowDefinitionListItemSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowReviewApproveRequestSchema,
   WorkflowReviewRejectRequestSchema,
+  WorkflowRuntimeStatusSchema,
+  WorkflowTenantOverviewSchema,
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
@@ -14,6 +18,7 @@ import {
 import {
   getEnabledWorkflowTypes,
   getWorkflowCapabilityProfile,
+  WorkflowTenantCapacityResultSchema,
   WorkflowTypeEntitlementResultSchema,
 } from "../src/workflow/policy.js";
 import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
@@ -24,6 +29,65 @@ import {
 } from "../src/workflow/trigger.js";
 
 describe("workflow contracts", () => {
+  it("limits each workflow list item to three managed account summaries", () => {
+    const item = {
+      canOperate: true,
+      description: "",
+      hasUnpublishedChanges: false,
+      id: "42",
+      inProgressRunCount: 86,
+      lastRunAt: "2026-08-26T00:00:00.000Z",
+      managedAccountCount: 4,
+      managedAccounts: [101, 102, 103].map(id => ({ avatarUrl: "", id, name: `托管账号 ${id}` })),
+      name: "新客欢迎旅程",
+      publishedRevision: 1,
+      successRatePercent: 96,
+      runtimeStatus: "active",
+      trigger: "添加好友",
+      totalRunCount: 12_345,
+      updatedAt: "2026-08-26T00:00:00.000Z",
+      workflowType: "chatai_sop",
+    };
+
+    expect(Value.Check(WorkflowDefinitionListItemSchema, item)).toBe(true);
+    expect(Value.Check(WorkflowDefinitionListItemSchema, {
+      ...item,
+      managedAccounts: [...item.managedAccounts, { avatarUrl: "", id: 104, name: "托管账号 104" }],
+    })).toBe(false);
+  });
+
+  it("validates the tenant Workflow capacity overview", () => {
+    expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      capacityRejectedCountToday: 12,
+      status: "warning",
+      usagePercent: 80,
+    })).toBe(true);
+    expect(Value.Check(WorkflowCapacityOverviewSchema, {
+      capacityRejectedCountToday: 12,
+      status: "warning",
+      usagePercent: 101,
+    })).toBe(false);
+  });
+
+  it("validates the tenant Workflow operating overview", () => {
+    expect(Value.Check(WorkflowTenantOverviewSchema, {
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    })).toBe(true);
+    expect(Value.Check(WorkflowTenantOverviewSchema, {
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 101,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    })).toBe(false);
+  });
+
   it("accepts the production node kinds and rejects legacy kinds", () => {
     const nodeKinds = [
       "start",
@@ -177,9 +241,14 @@ describe("workflow contracts", () => {
 
   it("requires coherent entitlement results", () => {
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      activeRunLimit: 10_000,
       entitled: true,
       unentitledSince: null,
     })).toBe(true);
+    expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      entitled: true,
+      unentitledSince: null,
+    })).toBe(false);
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
       entitled: false,
       unentitledSince: "2026-08-01T00:00:00+08:00",
@@ -190,6 +259,25 @@ describe("workflow contracts", () => {
     })).toBe(false);
   });
 
+  it("validates tenant capacity results independently from Workflow Type entitlement", () => {
+    expect(Value.Check(WorkflowTenantCapacityResultSchema, {
+      activeRunLimit: 10_000,
+    })).toBe(true);
+    for (const result of [
+      {},
+      { activeRunLimit: -1 },
+      { activeRunLimit: 1.5 },
+      { activeRunLimit: Number.MAX_SAFE_INTEGER + 1 },
+      { activeRunLimit: 10_000, workflowType: "chatai_sop" },
+    ]) {
+      expect(Value.Check(WorkflowTenantCapacityResultSchema, result)).toBe(false);
+    }
+  });
+
+  it("models paused and stopped as distinct runtime states", () => {
+    expect(Value.Check(WorkflowRuntimeStatusSchema, "paused")).toBe(true);
+    expect(Value.Check(WorkflowRuntimeStatusSchema, "stopped")).toBe(true);
+  });
   it("validates production start and wait configurations", () => {
     const incompleteFriendSourceConfig = {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },

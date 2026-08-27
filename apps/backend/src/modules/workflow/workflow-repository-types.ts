@@ -3,6 +3,7 @@ import type {
   WorkflowExecutionSpec,
   WorkflowPublishReviewChangeSummary,
   WorkflowPublishReviewStatus,
+  WorkflowDefinitionListStatus,
   WorkflowRuntimeStatus,
   WorkflowStatusReason,
   WorkflowSubjectType,
@@ -29,6 +30,20 @@ export type WorkflowDefinitionRecord = {
   updatedAt: Date;
   workflowType: WorkflowType;
 };
+
+export type WorkflowDefinitionListRecord = Pick<WorkflowDefinitionRecord,
+  | "createdAt"
+  | "description"
+  | "draft"
+  | "draftSemanticHash"
+  | "id"
+  | "name"
+  | "publishedRevision"
+  | "publishedSemanticHash"
+  | "runtimeStatus"
+  | "updatedAt"
+  | "workflowType"
+>;
 
 export type WorkflowRevisionRecord = {
   createdAt: Date;
@@ -97,6 +112,23 @@ export type WorkflowHistoryPageInput = {
   limit: number;
 };
 
+export type WorkflowDefinitionListCursor = {
+  createdAt: Date;
+  id: string;
+};
+
+export type WorkflowDefinitionListInput = {
+  cursor?: WorkflowDefinitionListCursor;
+  limit: number;
+  query?: string;
+  status: WorkflowDefinitionListStatus;
+};
+
+export type WorkflowDefinitionRecordPage = {
+  items: WorkflowDefinitionListRecord[];
+  nextCursor: WorkflowDefinitionListCursor | null;
+};
+
 export type WorkflowRepository = {
   applyEntitlementLoss(input: {
     opSubUserId: string;
@@ -119,7 +151,7 @@ export type WorkflowRepository = {
   findReview(uid: number, workflowId: string, reviewId: string): Promise<WorkflowPublishReviewRecord | null>;
   findCurrentReview(uid: number, workflowId: string): Promise<WorkflowPublishReviewRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRevisionRecord | null>;
-  listDefinitions(uid: number): Promise<WorkflowDefinitionRecord[]>;
+  listDefinitions(uid: number, input: WorkflowDefinitionListInput): Promise<WorkflowDefinitionRecordPage>;
   listReviews(
     uid: number,
     workflowId: string,

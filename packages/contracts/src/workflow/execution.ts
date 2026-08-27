@@ -36,6 +36,12 @@ export const WorkflowRunStatusSchema = Type.Union([
   Type.Literal("cancelled"),
 ]);
 
+export const WORKFLOW_ACTIVE_RUN_STATUSES = [
+  "queued",
+  "running",
+  "waiting",
+] as const satisfies readonly Static<typeof WorkflowRunStatusSchema>[];
+
 export const WorkflowTaskStatusSchema = Type.Union([
   Type.Literal("pending"),
   Type.Literal("leased"),

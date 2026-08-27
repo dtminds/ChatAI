@@ -601,7 +601,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_definition_uid_request (uid, client_request_id),
-  KEY idx_workflow_definition_uid_status_update (uid, biz_status, update_time, id),
+  KEY idx_workflow_definition_uid_status_create (uid, biz_status, create_time, id),
   KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id)
 ) COMMENT='营销Workflow定义表';
 
@@ -692,6 +692,25 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id)
 ) COMMENT='营销Workflow客户进入串行化守卫表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  active_run_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前活跃Run计数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid)
+) COMMENT='营销Workflow租户活跃Run容量计数表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '因租户容量不足拒绝的Run准入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)
+) COMMENT='营销Workflow租户容量每日指标表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -918,18 +937,30 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
-  revision INT UNSIGNED NOT NULL COMMENT 'Revision',
-  node_id VARCHAR(128) NOT NULL COMMENT '节点ID，空字符串表示Workflow级',
-  metric_date DATE NOT NULL COMMENT '统计日期',
-  entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入数量',
-  completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '完成数量',
-  failed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败数量',
+  metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功创建Run数量',
+  completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入completed终态的Run数量',
+  failed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入failed终态的Run数量',
+  cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入cancelled终态的Run数量',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, revision, node_id, metric_date),
-  KEY idx_workflow_daily_metric_query (uid, metric_date, workflow_id, revision)
+  UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date),
+  KEY idx_workflow_daily_metric_tenant_date (uid, metric_date, workflow_id)
 ) COMMENT='营销Workflow每日指标表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_metric (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  total_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计成功创建Run数量',
+  completed_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入completed终态的Run数量',
+  failed_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入failed终态的Run数量',
+  cancelled_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入cancelled终态的Run数量',
+  last_run_at DATETIME NULL COMMENT '最近一次成功创建Run的时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid, workflow_id)
+) COMMENT='营销Workflow累计指标表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

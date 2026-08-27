@@ -454,6 +454,7 @@ export type WorkflowOutboxRepository = {
 };
 
 export type WorkflowCreateRunInput = {
+  activeRunLimit: number;
   context: Record<string, unknown>;
   entryEventId: string;
   entryPolicy: WorkflowEntryPolicy;
@@ -528,6 +529,7 @@ export type WorkflowBeginFixedWaitInput = {
 };
 
 export type WorkflowInboxMessageInput = {
+  capacityRejectedCount: number;
   consumer: string;
   expiresAt: Date;
   messageId: string;
@@ -670,6 +672,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
         run: WorkflowRunRecord;
         task: WorkflowTaskRecord;
       }
+    | { kind: "capacity-rejected" }
     | { kind: "active-run-rejected" }
     | WorkflowRuntimeFailure
   >;
@@ -708,6 +711,15 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     staleTasksCancelled: number;
     tasksChecked: number;
     terminalRunTasksCancelled: number;
+  }>;
+  reconcileTenantCapacityCounts(input: {
+    afterUid?: number;
+    limit: number;
+  }): Promise<{
+    checked: number;
+    corrected: number;
+    hasMore: boolean;
+    lastUid: number | null;
   }>;
   reconcileEventSubscriptions(input: {
     afterSubscriptionId?: string;

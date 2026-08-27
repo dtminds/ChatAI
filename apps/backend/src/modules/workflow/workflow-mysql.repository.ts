@@ -18,6 +18,7 @@ import {
 import { normalizeWorkflowExecutionSpec } from "@chatai/workflow-engine";
 import { sql, type Kysely, type Transaction } from "kysely";
 import type {
+  WorkflowDefinitionListRecord,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowPublishReviewRecord,
@@ -170,15 +171,67 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     return row?.status === "withdrawn" ? null : row ? mapReview(row) : null;
   }
 
-  async listDefinitions(uid: number) {
-    const rows = await this.db.selectFrom(DEFINITION_TABLE)
-      .selectAll()
+  async listDefinitions(
+    uid: number,
+    input: Parameters<WorkflowRepository["listDefinitions"]>[1],
+  ) {
+    let query = this.db.selectFrom(DEFINITION_TABLE)
+      .select([
+        "create_time",
+        "description",
+        "draft_json",
+        "draft_semantic_hash",
+        "id",
+        "name",
+        "published_revision",
+        "published_semantic_hash",
+        "runtime_status",
+        "update_time",
+        "workflow_type",
+      ])
       .where("uid", "=", uid)
-      .where("biz_status", "=", 1)
+      .where("biz_status", "=", 1);
+    if (input.status === "active") {
+      query = query.where("runtime_status", "=", "active");
+    } else if (input.status === "ready") {
+      query = query.where(eb => eb.or([
+        eb("runtime_status", "=", "paused"),
+        eb.and([
+          eb("runtime_status", "=", "inactive"),
+          eb("published_revision", "is not", null),
+        ]),
+      ]));
+    } else if (input.status === "draft") {
+      query = query.where("published_revision", "is", null);
+    } else if (input.status === "stopped") {
+      query = query.where("runtime_status", "=", "stopped");
+    }
+    if (input.query) {
+      const pattern = `%${escapeLikePattern(input.query)}%`;
+      query = query.where("name", "like", pattern);
+    }
+    if (input.cursor) {
+      query = query.where(eb => eb.or([
+        eb("create_time", "<", input.cursor!.createdAt),
+        eb.and([
+          eb("create_time", "=", input.cursor!.createdAt),
+          eb("id", "<", input.cursor!.id),
+        ]),
+      ]));
+    }
+    const rows = await query
       .orderBy("create_time", "desc")
       .orderBy("id", "desc")
+      .limit(input.limit + 1)
       .execute();
-    return rows.map(mapDefinition);
+    const items = rows.slice(0, input.limit).map(mapDefinitionListRecord);
+    const lastItem = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > items.length && lastItem
+        ? { createdAt: lastItem.createdAt, id: lastItem.id }
+        : null,
+    };
   }
 
   async listRevisions(
@@ -693,6 +746,26 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
     updatedAt: toDate(row.update_time),
     workflowType: decodeWorkflowType(row.workflow_type),
   };
+}
+
+function mapDefinitionListRecord(row: Record<string, unknown>): WorkflowDefinitionListRecord {
+  return {
+    createdAt: toDate(row.create_time),
+    description: String(row.description ?? ""),
+    draft: parseJson<WorkflowDraft>(row.draft_json),
+    draftSemanticHash: String(row.draft_semantic_hash),
+    id: normalizeId(row.id),
+    name: String(row.name),
+    publishedRevision: row.published_revision == null ? null : Number(row.published_revision),
+    publishedSemanticHash: row.published_semantic_hash == null ? null : String(row.published_semantic_hash),
+    runtimeStatus: parseRuntimeStatus(row.runtime_status),
+    updatedAt: toDate(row.update_time),
+    workflowType: decodeWorkflowType(row.workflow_type),
+  };
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, character => `\\${character}`);
 }
 
 function mapRevision(row: Record<string, unknown>): WorkflowRevisionRecord {

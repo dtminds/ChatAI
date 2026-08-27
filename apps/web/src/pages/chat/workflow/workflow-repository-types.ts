@@ -1,30 +1,51 @@
 import type {
+  WorkflowCapacityOverview,
   WorkflowCapabilitySummary,
+  WorkflowDefinitionListStatus,
   WorkflowPublishReview,
+  WorkflowTenantOverview,
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowDraft } from "./types";
 
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
 
+export type WorkflowManagedAccountSummary = {
+  avatarUrl: string;
+  id: number;
+  name: string;
+};
+
 export type WorkflowListItem = {
   canOperate: boolean;
-  capabilitySummary: WorkflowCapabilitySummary;
-  conversion: string;
   description: string;
-  entered: string;
   id: string;
+  inProgressRunCount: number;
+  lastRunAt: string | null;
+  managedAccountCount: number;
+  managedAccounts: WorkflowManagedAccountSummary[];
   name: string;
-  nodes: number;
-  owner: string;
   publishedRevision: number | null;
   runtimeStatus: "active" | "inactive" | "paused" | "stopped";
   status: WorkflowDocumentStatus;
+  successRatePercent: number | null;
   trigger: string;
+  totalRunCount: number;
   updatedAt: string;
   workflowType: WorkflowType;
-  currentReview: WorkflowPublishReview | null;
   hasUnpublishedChanges: boolean;
+};
+
+export type WorkflowListPage = {
+  items: WorkflowListItem[];
+  nextCursor: string | null;
+};
+
+export type WorkflowListInput = {
+  cursor?: string;
+  limit?: number;
+  query?: string;
+  status?: WorkflowDefinitionListStatus;
 };
 
 export type WorkflowPublishedVersion = {
@@ -51,6 +72,8 @@ export type WorkflowDocumentPermissions = {
 };
 
 export type WorkflowDocument = WorkflowListItem & {
+  capabilitySummary: WorkflowCapabilitySummary;
+  conversion: string;
   currentVersion: WorkflowPublishedVersion | null;
   draft: WorkflowDraft;
   draftHash: string;
@@ -63,6 +86,9 @@ export type WorkflowDocument = WorkflowListItem & {
   versionHistory: WorkflowVersionHistoryItem[];
   versionHistoryNextCursor: string | null;
   draftVersion?: number;
+  entered: string;
+  nodes: number;
+  owner: string;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
   currentReview: WorkflowPublishReview | null;
   hasUnpublishedChanges: boolean;
@@ -131,12 +157,14 @@ export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
 };
 
 export type WorkflowDraftReader = {
+  getCapacityOverview: () => Promise<WorkflowCapacityOverview> | WorkflowCapacityOverview;
   getDocument: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  getTenantOverview?: () => Promise<WorkflowTenantOverview> | WorkflowTenantOverview;
   getVersion: (
     workflowId: string,
     revision: number,
   ) => Promise<WorkflowVersionHistoryItem> | WorkflowVersionHistoryItem;
-  listDocuments: () => Promise<WorkflowListItem[]> | WorkflowListItem[];
+  listDocuments: (input?: WorkflowListInput) => Promise<WorkflowListPage> | WorkflowListPage;
 };
 
 export type WorkflowDraftWriter = {
@@ -213,10 +241,12 @@ export type SyncWorkflowDraftRepository = {
     workflowType: WorkflowType;
   }) => WorkflowDocument;
   deleteDocument: (workflowId: string) => void;
+  getCapacityOverview: () => WorkflowCapacityOverview;
   getDocument: (workflowId: string) => WorkflowDocument;
+  getTenantOverview?: () => WorkflowTenantOverview;
   getVersion: (workflowId: string, revision: number) => WorkflowVersionHistoryItem;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;
-  listDocuments: () => WorkflowListItem[];
+  listDocuments: (input?: WorkflowListInput) => WorkflowListPage;
   listReviews: (workflowId: string, cursor?: string) => WorkflowHistoryPage<WorkflowPublishReview>;
   listVersions: (workflowId: string, cursor?: string) => WorkflowHistoryPage<WorkflowVersionHistoryItem>;
   enableDocument: (workflowId: string) => WorkflowDocument;

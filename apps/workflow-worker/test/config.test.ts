@@ -176,6 +176,7 @@ describe("workflow worker config", () => {
       "scheduler",
       "task-consumer",
     ]);
+    expect(config.consumerConcurrency).toEqual({ entry: 10, task: 10 });
     expect(config.runtime).toMatchObject({
       capabilityMaxRetryDelayMs: 300_000,
       capabilityRetryDelayMs: 5_000,
@@ -207,6 +208,36 @@ describe("workflow worker config", () => {
     });
     expect(config.runtime.shardIds).toHaveLength(256);
   });
+
+  it("requires explicit Entry and Task concurrency in production", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "production",
+      WORKFLOW_ENTRY_CONCURRENCY: undefined,
+      WORKFLOW_TASK_CONCURRENCY: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_ENTRY_CONCURRENCY");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "production",
+      WORKFLOW_ENTRY_CONCURRENCY: "20",
+      WORKFLOW_TASK_CONCURRENCY: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_TASK_CONCURRENCY");
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      NODE_ENV: "production",
+      WORKFLOW_ENTRY_CONCURRENCY: "20",
+      WORKFLOW_TASK_CONCURRENCY: "30",
+    })).consumerConcurrency).toEqual({ entry: 20, task: 30 });
+  });
+
+  it.each(["0", "-1", "1.5", "1001"])(
+    "rejects invalid consumer concurrency %s",
+    (value) => {
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        WORKFLOW_ENTRY_CONCURRENCY: value,
+      }))).toThrow("WORKFLOW_ENTRY_CONCURRENCY must be an integer from 1 to 1000");
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        WORKFLOW_TASK_CONCURRENCY: value,
+      }))).toThrow("WORKFLOW_TASK_CONCURRENCY must be an integer from 1 to 1000");
+    },
+  );
 
   it("allows runtime durations above the TCP port range", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
@@ -287,10 +318,12 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     JAVA_INTERNAL_API_BASE_URL: "https://java.example.com",
     WORKFLOW_BROKER: "pulsar",
     WORKFLOW_ENVIRONMENT: "dev",
+    WORKFLOW_ENTRY_CONCURRENCY: "10",
     WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
     WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
     WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
     WORKFLOW_PULSAR_TOKEN: "secret-token",
+    WORKFLOW_TASK_CONCURRENCY: "10",
     ...overrides,
   };
 }

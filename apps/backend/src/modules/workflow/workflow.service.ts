@@ -3,6 +3,9 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
+  WorkflowDefinitionListItem,
+  WorkflowDefinitionListPage,
+  WorkflowDefinitionListStatus,
   WorkflowDirectEntryEndpointResponse,
   WorkflowDraft,
   WorkflowMetadataUpdateRequest,
@@ -17,6 +20,7 @@ import type {
   WorkflowRevision,
   WorkflowSaveDraftRequest,
   WorkflowStartConfig,
+  WorkflowStartDraftConfig,
   WorkflowType,
   WorkflowTypeEntitlementResult,
   WorkflowLlmTestAttempt,
@@ -39,6 +43,7 @@ import {
   isWorkflowNodeDraftConfig,
   WorkflowMessageSchema,
   WorkflowStartConfigSchema,
+  WorkflowStartDraftConfigSchema,
   WorkflowMessagesV1Schema,
   WorkflowDirectEntryEndpointKeySchema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
@@ -77,12 +82,24 @@ import {
   NotFoundError,
 } from "../../shared/errors.js";
 import type {
+  WorkflowDefinitionListCursor,
+  WorkflowDefinitionListRecord,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowPublishReviewRecord,
   WorkflowRepository,
   WorkflowRevisionRecord,
 } from "./workflow-repository-types.js";
+import {
+  EmptyWorkflowManagedAccountReader,
+  type WorkflowManagedAccountReader,
+  type WorkflowManagedAccountSummary,
+} from "./workflow-managed-account-reader.js";
+import {
+  EmptyWorkflowMetricReader,
+  type WorkflowMetricReader,
+  type WorkflowMetricSummary,
+} from "./workflow-metric-reader.js";
 import {
   UnavailableWorkflowSourceIdentityResolver,
   type WorkflowSourceIdentityResolver,
@@ -102,6 +119,8 @@ export type WorkflowServiceOptions = {
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   llmTestTimeoutMs?: number;
   llmTestTtlMs?: number;
+  managedAccountReader?: WorkflowManagedAccountReader;
+  metricReader?: WorkflowMetricReader;
 };
 
 export class WorkflowService {
@@ -112,6 +131,8 @@ export class WorkflowService {
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   private readonly llmTestTimeoutMs: number;
   private readonly llmTestTtlMs: number;
+  private readonly managedAccountReader: WorkflowManagedAccountReader;
+  private readonly metricReader: WorkflowMetricReader;
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -127,6 +148,9 @@ export class WorkflowService {
     this.llmTestAttemptRepository = options.llmTestAttemptRepository;
     this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
+    this.managedAccountReader = options.managedAccountReader
+      ?? new EmptyWorkflowManagedAccountReader();
+    this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
   }
 
   async getDirectEntryEndpoint(
@@ -356,9 +380,40 @@ export class WorkflowService {
     return toLlmTestAttempt(current);
   }
 
-  async list(scope: WorkflowOperatorScope) {
+  async list(scope: WorkflowOperatorScope, input: {
+    cursor?: string;
+    limit: number;
+    query?: string;
+    status: WorkflowDefinitionListStatus;
+  }): Promise<WorkflowDefinitionListPage> {
     assertWorkflowAccess(scope);
-    return Promise.all((await this.repository.listDefinitions(scope.uid)).map(record => this.toDefinition(record)));
+    const page = await this.repository.listDefinitions(scope.uid, {
+      cursor: input.cursor ? decodeWorkflowDefinitionListCursor(input.cursor) : undefined,
+      limit: input.limit,
+      query: input.query?.trim() || undefined,
+      status: input.status,
+    });
+    const managedAccountIdsByWorkflowId = new Map(page.items.map(record => [
+      record.id,
+      getWorkflowListManagedAccountIds(record.draft),
+    ]));
+    const visibleManagedAccountIds = [...new Set(
+      [...managedAccountIdsByWorkflowId.values()].flatMap(ids => ids.slice(0, 3)),
+    )];
+    const [managedAccountsById, metricsByWorkflowId] = await Promise.all([
+      this.managedAccountReader.findByIds(scope.uid, visibleManagedAccountIds),
+      this.metricReader.findByWorkflowIds(scope.uid, page.items.map(record => record.id)),
+    ]);
+
+    return {
+      items: page.items.map(record => toDefinitionListItem(
+        record,
+        managedAccountIdsByWorkflowId.get(record.id) ?? [],
+        managedAccountsById,
+        metricsByWorkflowId.get(record.id),
+      )),
+      nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
+    };
   }
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {
@@ -961,6 +1016,76 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
         `Workflow 节点配置不符合当前契约: ${node.id}`,
       );
     }
+  }
+}
+
+function toDefinitionListItem(
+  record: WorkflowDefinitionListRecord,
+  managedAccountIds: number[],
+  managedAccountsById: Map<number, WorkflowManagedAccountSummary>,
+  metric: WorkflowMetricSummary | undefined,
+): WorkflowDefinitionListItem {
+  return {
+    canOperate: true,
+    description: record.description,
+    hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
+    id: record.id,
+    inProgressRunCount: metric?.inProgressRunCount ?? 0,
+    lastRunAt: metric?.lastRunAt?.toISOString() ?? null,
+    managedAccountCount: managedAccountIds.length,
+    managedAccounts: managedAccountIds.slice(0, 3)
+      .flatMap(id => managedAccountsById.get(id) ?? []),
+    name: record.name,
+    publishedRevision: record.publishedRevision,
+    runtimeStatus: record.runtimeStatus,
+    successRatePercent: metric?.successRatePercent ?? null,
+    trigger: getWorkflowListTrigger(record.draft),
+    totalRunCount: metric?.totalRunCount ?? 0,
+    updatedAt: record.updatedAt.toISOString(),
+    workflowType: record.workflowType,
+  };
+}
+
+function getWorkflowListManagedAccountIds(draft: WorkflowDraft) {
+  const entryNode = draft.nodes.find(node => node.data.kind === "start");
+  if (!entryNode) return [];
+  const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
+  if (!Value.Check(WorkflowStartDraftConfigSchema, config) || !("seatIds" in config)) return [];
+  return (config as WorkflowStartDraftConfig & { seatIds: number[] }).seatIds;
+}
+
+function getWorkflowListTrigger(draft: WorkflowDraft) {
+  const entryNode = draft.nodes.find(node => node.data.kind === "start");
+  if (!entryNode) return "未配置";
+  const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
+  if (!Value.Check(WorkflowStartDraftConfigSchema, config)) return "未配置";
+  const labels = (config as WorkflowStartDraftConfig).triggers.map((trigger) => {
+    if (trigger.type === "contact.friend_added") return "添加好友";
+    if (trigger.type === "contact.tag_added") return "添加标签";
+    return "用户消息";
+  });
+  return [...new Set(labels)].join("、") || "未配置";
+}
+
+function encodeWorkflowDefinitionListCursor(cursor: WorkflowDefinitionListCursor) {
+  return Buffer.from(JSON.stringify({
+    createdAt: cursor.createdAt.toISOString(),
+    id: cursor.id,
+  }), "utf8").toString("base64url");
+}
+
+function decodeWorkflowDefinitionListCursor(value: string): WorkflowDefinitionListCursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (typeof parsed.id !== "string" || !/^[1-9][0-9]*$/.test(parsed.id)
+      || typeof parsed.createdAt !== "string") {
+      throw new Error("invalid cursor");
+    }
+    const createdAt = new Date(parsed.createdAt);
+    if (Number.isNaN(createdAt.getTime())) throw new Error("invalid cursor");
+    return { createdAt, id: parsed.id };
+  } catch {
+    throw new BadRequestError("WORKFLOW_LIST_CURSOR_INVALID", "分页游标无效");
   }
 }
 

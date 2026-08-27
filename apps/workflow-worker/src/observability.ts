@@ -43,7 +43,12 @@ export function createWorkflowEntryConsumeObserver(input: {
     record(message: MessageMetadata, result: WorkflowEntryConsumeResult) {
       counters.received += 1;
       const bucket = getEntryCounterBucket(result);
-      counters[bucket] += 1;
+      if (bucket === "capacityRejected") {
+        counters.capacityRejected += result.capacityRejectedCount ?? 1;
+      } else {
+        counters[bucket] += 1;
+        counters.capacityRejected += result.capacityRejectedCount ?? 0;
+      }
       if (result.disposition === "nack") {
         if (failedSamples < sampleLimit) {
           failedSamples += 1;
@@ -330,6 +335,7 @@ function createEntryCounters() {
   return {
     activeRunRejected: 0,
     admitted: 0,
+    capacityRejected: 0,
     deduplicated: 0,
     entryPolicyRejected: 0,
     nacked: 0,
@@ -344,6 +350,7 @@ function getEntryCounterBucket(result: WorkflowEntryConsumeResult):
   Exclude<keyof ReturnType<typeof createEntryCounters>, "received"> {
   if (result.disposition === "nack") return "nacked";
   if (result.code === "admitted") return "admitted";
+  if (result.code === "capacity_rejected") return "capacityRejected";
   if (result.code === "active_run_exists") return "activeRunRejected";
   if (result.code === "deduplicated") return "deduplicated";
   if (result.code === "entry_policy_rejected") return "entryPolicyRejected";

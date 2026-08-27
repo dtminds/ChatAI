@@ -91,6 +91,7 @@ function createInput(overrides: {
   entryPolicy: WorkflowEntryPolicy;
 }) {
   return {
+    activeRunLimit: 10_000,
     context: { trigger: { eventType: "contact.friend_added" } },
     entryEventId: overrides.entryEventId ?? "event-1",
     entryPolicy: overrides.entryPolicy,

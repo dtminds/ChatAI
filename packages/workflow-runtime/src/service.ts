@@ -272,7 +272,7 @@ export class WorkflowRuntimeService {
     workflowId: string;
   }) {
     const { revision, startConfig } = input;
-    await this.requireEntitlement(input.uid, revision.workflowType);
+    const entitlement = await this.requireEntitlement(input.uid, revision.workflowType);
     this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
 
@@ -294,6 +294,7 @@ export class WorkflowRuntimeService {
       );
     }
     const created = await this.runtimeRepository.createRunWithInitialTask({
+      activeRunLimit: entitlement.activeRunLimit,
       context,
       entryEventId: input.entryEventId,
       entryPolicy: startConfig.entryPolicy,
@@ -313,7 +314,9 @@ export class WorkflowRuntimeService {
         ? runtimeStatusError("paused")
         : workflowUnavailable();
     }
-    if (created.kind === "entry-policy-rejected" || created.kind === "active-run-rejected") {
+    if (created.kind === "capacity-rejected"
+      || created.kind === "entry-policy-rejected"
+      || created.kind === "active-run-rejected") {
       return created;
     }
     if (created.kind !== "success") throw staleDefinitionError();

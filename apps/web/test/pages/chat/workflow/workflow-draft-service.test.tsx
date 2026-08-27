@@ -133,7 +133,7 @@ describe("workflow draft service", () => {
       clientRequestId: "create-request-1",
       workflowType: "wecom_sop",
     })).toThrow(expect.objectContaining({ code: "conflict" }));
-    expect(repository.listDocuments().map((workflow) => workflow.id)).toEqual([
+    expect(repository.listDocuments().items.map((workflow) => workflow.id)).toEqual([
       "workflow-1",
       "newcomer-conversion",
       "vip-reactivation",
@@ -145,6 +145,15 @@ describe("workflow draft service", () => {
     expect(getStartSourceMarker(repository.getDocument(newDocument.id).draft))
       .toBe("新建 Workflow 人群");
     expect(getStartSourceMarker(repository.getDocument("newcomer-conversion").draft)).toBeNull();
+  });
+
+  it("searches workflow names only", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+
+    expect(repository.listDocuments({ query: "会员" }).items.map(item => item.id))
+      .toEqual(["vip-reactivation"]);
+    expect(repository.listDocuments({ query: "长期未复购" }).items).toEqual([]);
+    expect(repository.listDocuments({ query: "添加好友" }).items).toEqual([]);
   });
 
   it("validates workflow metadata when creating in-memory documents", () => {
@@ -173,7 +182,7 @@ describe("workflow draft service", () => {
     })).toMatchObject({ description: "召回沉默客户", name: "活动召回" });
     repository.deleteDocument(createdDocument.id);
 
-    expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
+    expect(repository.listDocuments().items.map((workflow) => workflow.id)).not.toContain(createdDocument.id);
     expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
   });
 

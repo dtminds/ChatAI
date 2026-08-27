@@ -114,6 +114,13 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       status: "failed",
       terminal_reason: "DOWNSTREAM_REJECTED",
     });
+    expect(db.updates.xy_wap_embed_workflow_capacity_guard).toBeDefined();
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ failed_run_count: 1, total_run_count: 0 }),
+    ]);
+    expect(db.inserts.xy_wap_embed_workflow_daily_metric).toEqual([
+      expect.objectContaining({ failed_count: 1, entered_count: 0 }),
+    ]);
   });
 
   it("atomically fails a core node without persisting its rejected context", async () => {
@@ -221,6 +228,45 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       source_outlet_id: "ratio-a",
       status: "completed",
     });
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ cancelled_run_count: 1, total_run_count: 0 }),
+    ]);
+  });
+
+  it("increments the completed Run metric when a Workflow reaches its terminal node", async () => {
+    const db = createCapabilityExecutionDbMock({
+      nodeId: "end",
+      nodeKind: "end",
+      sequence: 2,
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.commitNodeResult({
+      context: { outputs: { end: {} }, trigger: {} },
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-completed",
+      },
+      nodeExecution: {
+        executionKey: "9:5:end:2",
+        input: { subjectId: "customer-1" },
+        output: {},
+      },
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({ kind: "success", run: { status: "completed" } });
+    expect(db.inserts.xy_wap_embed_workflow_metric).toEqual([
+      expect.objectContaining({ completed_run_count: 1, total_run_count: 0 }),
+    ]);
+    expect(db.inserts.xy_wap_embed_workflow_daily_metric).toEqual([
+      expect.objectContaining({ completed_count: 1, entered_count: 0 }),
+    ]);
   });
 
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
@@ -309,6 +355,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
       context: {},
       entryEventId: "event-1",
       entryPolicy: { mode: "never" },
@@ -326,6 +373,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result).toEqual({ action: "cancel", kind: "workflow-unavailable" });
     expect(db.definitionReadShareLocked).toBe(true);
+    expect(db.isolationLevel).toBe("read committed");
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -334,6 +382,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
       context: {},
       entryEventId: "event-1",
       entryPolicy: { mode: "never" },
@@ -352,6 +401,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(result).toMatchObject({ deduplicated: true, kind: "success" });
     expect(db.runReadCount).toBe(2);
     expect(db.guardWriteLocked).toBe(true);
+    expect(db.isolationLevel).toBe("read committed");
     expect(db.runShareLockCount).toBe(1);
     expect(db.taskReadLocked).toBe(true);
     expect(db.runInsertCount).toBe(0);
@@ -362,6 +412,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
       context: {},
       entryEventId: "event-2",
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
@@ -383,6 +434,28 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.runShareLockCount).toBe(2);
     expect(db.taskReadLocked).toBe(false);
     expect(db.runInsertCount).toBe(0);
+  });
+
+  it("rejects admission when the tenant guard has no remaining capacity", async () => {
+    const db = createFullCapacityGuardDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.createRunWithInitialTask({
+      activeRunLimit: 1,
+      context: {},
+      entryEventId: "capacity-event-1",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2026-07-10T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ kind: "capacity-rejected" });
   });
 
   it("uses a shared definition lock when claiming an execution task", async () => {
@@ -433,6 +506,30 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result).toEqual({ dead: 0, recovered: 1 });
     expect(db.lockOrder).toEqual(["run", "task"]);
+  });
+
+  it("releases expired-lease capacity once for each active Run", async () => {
+    const db = createLeaseRecoveryDbMock({
+      lockedRuns: [
+        { id: "5", status: "running" },
+        { id: "6", status: "completed" },
+      ],
+      runUpdateCount: 1,
+      tasks: [
+        leaseRecoveryTask({ id: "7", run_id: "5", sequence: 1 }),
+        leaseRecoveryTask({ id: "8", run_id: "5", sequence: 2 }),
+        leaseRecoveryTask({ id: "9", run_id: "6", sequence: 1 }),
+      ],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 3,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    })).resolves.toEqual({ dead: 3, recovered: 0 });
+
+    expect(db.capacityReleaseCounts).toEqual([1]);
   });
 
   it("does not expire an Inference Job whose lease was renewed after recovery scanning", async () => {
@@ -986,6 +1083,7 @@ function createCapabilityExecutionDbMock(options: {
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;
@@ -997,6 +1095,7 @@ function createCapabilityExecutionDbMock(options: {
 function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   const db = {
     definitionReadShareLocked: false,
+    isolationLevel: null as string | null,
     runInsertCount: 0,
     insertInto(table: string) {
       if (table === "xy_wap_embed_workflow_run") db.runInsertCount += 1;
@@ -1017,9 +1116,81 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
       return builder;
     },
     transaction() {
-      return {
+      const builder = {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel(level: string) {
+          db.isolationLevel = level;
+          return builder;
+        },
       };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createFullCapacityGuardDbMock() {
+  const admittedAt = new Date("2026-07-10T00:00:00.000Z");
+  const db = {
+    insertInto(table: string) {
+      if (table === "xy_wap_embed_workflow_run") {
+        throw new Error("Run insert must not occur when tenant capacity is full");
+      }
+      const builder = {
+        onDuplicateKeyUpdate() { return builder; },
+        values() { return builder; },
+        async executeTakeFirstOrThrow() { return { insertId: "1" }; },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      const builder = {
+        forShare() { return builder; },
+        forUpdate() { return builder; },
+        limit() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_definition") {
+            return {
+              biz_status: 1,
+              published_revision: 1,
+              runtime_status: "active",
+              workflow_type: 1,
+            };
+          }
+          if (table === "xy_wap_embed_workflow_run") return undefined;
+          return undefined;
+        },
+        async executeTakeFirstOrThrow() {
+          if (table === "xy_wap_embed_workflow_entry_guard") {
+            return { id: "3", total_entries: 0 };
+          }
+          throw new Error(`Unexpected required read from ${table}`);
+        },
+      };
+      return builder;
+    },
+    selectNoFrom() {
+      return {
+        async executeTakeFirstOrThrow() { return { now: admittedAt }; },
+      };
+    },
+    transaction() {
+      const builder = {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel() { return builder; },
+      };
+      return builder;
+    },
+    updateTable() {
+      const builder = {
+        set() { return builder; },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 0n }; },
+      };
+      return builder;
     },
   };
   return db;
@@ -1074,6 +1245,7 @@ function createConcurrentDuplicateRunDbMock(
   };
   const db = {
     guardWriteLocked: false,
+    isolationLevel: null as string | null,
     runInsertCount: 0,
     runReadCount: 0,
     runShareLockCount: 0,
@@ -1141,9 +1313,14 @@ function createConcurrentDuplicateRunDbMock(
       };
     },
     transaction() {
-      return {
+      const builder = {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+        setIsolationLevel(level: string) {
+          db.isolationLevel = level;
+          return builder;
+        },
       };
+      return builder;
     },
   };
   return db;
@@ -1273,20 +1450,42 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
   return db;
 }
 
-function createLeaseRecoveryDbMock() {
-  const task = {
-    attempt: 1,
+function leaseRecoveryTask(overrides: Partial<ReturnType<typeof leaseRecoveryTaskFixture>> = {}) {
+  return { ...leaseRecoveryTaskFixture(), ...overrides };
+}
+
+function leaseRecoveryTaskFixture() {
+  return {
+    attempt: 3,
     id: "7",
     node_id: "wait-1",
     node_kind: "wait",
     revision: 1,
     run_id: "5",
+    sequence: 1,
     shard_id: 1,
     uid: 8,
     workflow_id: "42",
   };
+}
+
+function createLeaseRecoveryDbMock(options: {
+  lockedRuns?: Array<{ id: string; status: string }>;
+  runUpdateCount?: number;
+  tasks?: ReturnType<typeof leaseRecoveryTask>[];
+} = {}) {
+  const tasks = options.tasks ?? [leaseRecoveryTask({ attempt: 1 })];
   const db = {
+    capacityReleaseCounts: [] as number[],
     lockOrder: [] as string[],
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       let locked = false;
       const builder = {
@@ -1301,8 +1500,10 @@ function createLeaseRecoveryDbMock() {
         skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
-          if (table === "xy_wap_embed_workflow_run") return [{ id: "5" }];
-          return locked || table === "xy_wap_embed_workflow_task" ? [task] : [];
+          if (table === "xy_wap_embed_workflow_run") {
+            return options.lockedRuns ?? [{ id: "5", status: "running" }];
+          }
+          return locked || table === "xy_wap_embed_workflow_task" ? tasks : [];
         },
       };
       return builder;
@@ -1312,11 +1513,26 @@ function createLeaseRecoveryDbMock() {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
       };
     },
-    updateTable() {
+    updateTable(table: string) {
       const builder = {
         set() { return builder; },
-        where() { return builder; },
-        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_capacity_guard"
+            && args[0] === "active_run_count" && args[1] === ">=") {
+            db.capacityReleaseCounts.push(args[2] as number);
+          }
+          return builder;
+        },
+        async executeTakeFirst() {
+          return { numUpdatedRows: BigInt(table === "xy_wap_embed_workflow_run"
+            ? (options.runUpdateCount ?? 1)
+            : 1) };
+        },
+        async executeTakeFirstOrThrow() {
+          return { numUpdatedRows: BigInt(table === "xy_wap_embed_workflow_run"
+            ? (options.runUpdateCount ?? 1)
+            : 1) };
+        },
       };
       return builder;
     },
@@ -1580,6 +1796,14 @@ function createRunTaskConsistencyDbMock(options: {
     lockOrder: [] as string[],
     runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       const builder = {
         forShare() { return builder; },
@@ -1842,6 +2066,7 @@ function createOutboxDeadDbMock() {
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;

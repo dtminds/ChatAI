@@ -106,6 +106,7 @@ export async function startTaskConsumer(input: {
   broker: WorkflowBroker;
   deadLetterTopic?: string;
   logger?: WorkflowWorkerLogger;
+  maxInFlight: number;
   maxRedeliverCount?: number;
   runtimeService: WorkflowTaskRuntimeService;
   subscription: string;
@@ -126,6 +127,7 @@ export async function startTaskConsumer(input: {
         ...input,
         observe: (message, result) => observer?.record(message, result),
       }),
+      maxInFlight: input.maxInFlight,
       maxRedeliverCount: input.maxRedeliverCount,
       subscription: input.subscription,
       topic: input.topic,

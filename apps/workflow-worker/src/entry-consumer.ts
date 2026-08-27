@@ -71,6 +71,7 @@ type WorkflowEntryRuntimeService = {
     workflowId: string;
   }): Promise<
     | { deduplicated: boolean; kind: "success" }
+    | { kind: "capacity-rejected" }
     | { kind: "active-run-rejected" }
     | { kind: "entry-policy-rejected" }
   >;
@@ -83,6 +84,7 @@ type WorkflowEntryRuntimeService = {
     uid: number;
   }): Promise<
     | { deduplicated: boolean; kind: "success" }
+    | { kind: "capacity-rejected" }
     | { kind: "active-run-rejected" }
     | { kind: "entry-policy-rejected" }
   >;
@@ -92,6 +94,7 @@ export type WorkflowEntryConsumeResultCode =
   | WorkflowEntryEnvelopeValidationCode
   | WorkflowEventCatalogErrorCode
   | "admitted"
+  | "capacity_rejected"
   | "active_run_exists"
   | "deduplicated"
   | "entry_policy_rejected"
@@ -101,6 +104,7 @@ export type WorkflowEntryConsumeResultCode =
   | "temporary_failure";
 
 export type WorkflowEntryConsumeResult = {
+  capacityRejectedCount?: number;
   code: WorkflowEntryConsumeResultCode;
   disposition: "ack" | "nack";
   errorCode?: string;
@@ -194,6 +198,7 @@ export function createEntryConsumerHandler(input: {
         subscriptions,
       });
       let admitted = 0;
+      let capacityRejected = 0;
       let activeRunRejected = 0;
       let deduplicated = 0;
       let entryPolicyRejected = 0;
@@ -211,7 +216,8 @@ export function createEntryConsumerHandler(input: {
             projection,
             subject,
           );
-          if (result.kind === "active-run-rejected") activeRunRejected += 1;
+          if (result.kind === "capacity-rejected") capacityRejected += 1;
+          else if (result.kind === "active-run-rejected") activeRunRejected += 1;
           else if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
           else if (result.deduplicated) deduplicated += 1;
           else admitted += 1;
@@ -247,6 +253,7 @@ export function createEntryConsumerHandler(input: {
       const processedAt = observedAt;
       failureStage = "inbox_record";
       await input.inboxRepository.recordProcessedInboxMessage({
+        capacityRejectedCount: capacityRejected,
         consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
         expiresAt: new Date(
           processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
@@ -257,13 +264,27 @@ export function createEntryConsumerHandler(input: {
       });
       failureStage = "ack";
       await message.ack();
-      if (admitted > 0) return { code: "admitted", disposition: "ack" };
-      if (deduplicated > 0) return { code: "deduplicated", disposition: "ack" };
-      if (activeRunRejected > 0) return { code: "active_run_exists", disposition: "ack" };
-      if (entryPolicyRejected > 0) {
-        return { code: "entry_policy_rejected", disposition: "ack" };
+      const capacityResult = capacityRejected > 0
+        ? { capacityRejectedCount: capacityRejected }
+        : {};
+      if (admitted > 0) return { code: "admitted", disposition: "ack", ...capacityResult };
+      if (deduplicated > 0) return { code: "deduplicated", disposition: "ack", ...capacityResult };
+      if (activeRunRejected > 0) {
+        return { code: "active_run_exists", disposition: "ack", ...capacityResult };
       }
-      if (runtimeRejected > 0) return { code: "runtime_rejected", disposition: "ack" };
+      if (entryPolicyRejected > 0) {
+        return { code: "entry_policy_rejected", disposition: "ack", ...capacityResult };
+      }
+      if (capacityRejected > 0) {
+        return {
+          capacityRejectedCount: capacityRejected,
+          code: "capacity_rejected",
+          disposition: "ack",
+        };
+      }
+      if (runtimeRejected > 0) {
+        return { code: "runtime_rejected", disposition: "ack", ...capacityResult };
+      }
       return { code: "no_match", disposition: "ack" };
     } catch (error) {
       message.negativeAck();
@@ -307,7 +328,9 @@ async function consumeDirectEntry(
         source: event.source,
         uid: event.uid,
       });
-      code = result.kind === "active-run-rejected"
+      code = result.kind === "capacity-rejected"
+        ? "capacity_rejected"
+        : result.kind === "active-run-rejected"
         ? "active_run_exists"
         : result.kind === "entry-policy-rejected"
         ? "entry_policy_rejected"
@@ -320,10 +343,18 @@ async function consumeDirectEntry(
     }
 
     failureStage = "inbox_record";
-    await recordEntryInbox(input.inboxRepository, event, observedAt, inboxMessageId);
+    await recordEntryInbox(
+      input.inboxRepository,
+      event,
+      observedAt,
+      inboxMessageId,
+      code === "capacity_rejected" ? 1 : 0,
+    );
     failureStage = "ack";
     await message.ack();
-    return { code, disposition: "ack" };
+    return code === "capacity_rejected"
+      ? { capacityRejectedCount: 1, code, disposition: "ack" }
+      : { code, disposition: "ack" };
   } catch (error) {
     message.negativeAck();
     return createTemporaryFailure(error, failureStage);
@@ -335,8 +366,10 @@ async function recordEntryInbox(
   event: Pick<WorkflowEntryEvent, "uid">,
   processedAt: Date,
   messageId: string,
+  capacityRejectedCount: number,
 ) {
   await inboxRepository.recordProcessedInboxMessage({
+    capacityRejectedCount,
     consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
     expiresAt: new Date(
       processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
@@ -355,6 +388,7 @@ export async function startEntryConsumer(input: {
   inboxRepository: WorkflowInboxRepository;
   messageReader: WorkflowEntryMessageReader;
   logger?: WorkflowWorkerLogger;
+  maxInFlight: number;
   maxRedeliverCount?: number;
   now?: () => Date;
   runtimeService: WorkflowEntryRuntimeService;
@@ -397,6 +431,7 @@ export async function startEntryConsumer(input: {
         const result = await handler(message);
         observer?.record(message, result);
       },
+      maxInFlight: input.maxInFlight,
       maxRedeliverCount: input.maxRedeliverCount,
       subscription: input.subscription,
       topic: input.topic,

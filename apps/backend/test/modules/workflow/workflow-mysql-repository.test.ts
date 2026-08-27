@@ -2,16 +2,44 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
-  it("lists definitions by creation time without moving edited workflows", async () => {
+  it("lists definitions by creation time for cursor pagination", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
 
-    await repository.listDefinitions(8);
+    await repository.listDefinitions(8, { limit: 20, status: "all" });
 
+    expect(db.selectBuilders[0].selectAll).toBe(false);
+    expect(db.selectBuilders[0].selects[0]?.[0]).toEqual([
+      "create_time",
+      "description",
+      "draft_json",
+      "draft_semantic_hash",
+      "id",
+      "name",
+      "published_revision",
+      "published_semantic_hash",
+      "runtime_status",
+      "update_time",
+      "workflow_type",
+    ]);
     expect(db.selectBuilders[0].orderBys).toEqual([
       ["create_time", "desc"],
       ["id", "desc"],
     ]);
+  });
+
+  it("searches definition names only", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.listDefinitions(8, {
+      limit: 20,
+      query: "会员",
+      status: "all",
+    });
+
+    expect(db.selectBuilders[0].wheres).toContainEqual(["name", "like", "%会员%"]);
+    expect(db.selectBuilders[0].wheres.some(where => where[0] === "description")).toBe(false);
   });
 
   it("derives current review state from the latest review attempt", async () => {
@@ -426,6 +454,8 @@ function createWorkflowDbMock(options: {
     selectBuilders: [] as Array<{
       forUpdate: boolean;
       orderBys: unknown[][];
+      selectAll: boolean;
+      selects: unknown[][];
       table: string;
       wheres: unknown[][];
     }>,
@@ -438,13 +468,15 @@ function createWorkflowDbMock(options: {
       const state = {
         forUpdate: false,
         orderBys: [] as unknown[][],
+        selectAll: false,
+        selects: [] as unknown[][],
         table,
         wheres: [] as unknown[][],
       };
       db.selectBuilders.push(state);
       const builder = {
-        select() { return builder; },
-        selectAll() { return builder; },
+        select(...args: unknown[]) { state.selects.push(args); return builder; },
+        selectAll() { state.selectAll = true; return builder; },
         limit() { return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
@@ -510,6 +542,14 @@ function createEntitlementLossDbMock() {
   let runExecuteCount = 0;
   const db = {
     updates,
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
     selectFrom(table: string) {
       const builder = {
         distinct() { return builder; },
@@ -523,7 +563,7 @@ function createEntitlementLossDbMock() {
           if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
           if (table === "xy_wap_embed_workflow_run") {
             runExecuteCount += 1;
-            return runExecuteCount === 1 ? [{ id: "101" }] : [];
+            return runExecuteCount === 1 ? [{ id: "101", workflow_id: "42" }] : [];
           }
           return [];
         },

@@ -1,13 +1,40 @@
 import type {
+  WorkflowCapacityOverview,
   WorkflowDataOverview,
   WorkflowEntryRecordDetail,
   WorkflowEntryRecordPage,
+  WorkflowTenantOverview,
 } from "@chatai/contracts";
-import { ForbiddenError } from "../../shared/errors.js";
+import {
+  formatWorkflowMetricDate,
+  UnavailableWorkflowEntitlementPort,
+  type WorkflowTenantCapacityPort,
+} from "@chatai/workflow-runtime";
+import {
+  ForbiddenError,
+  ServiceUnavailableError,
+} from "../../shared/errors.js";
 import type { WorkflowOperatorScope } from "./workflow.service.js";
 
 export type WorkflowDataReader = {
+  getCapacityUsage(input: { date: string; uid: number }): Promise<{
+    activeRunCount: number;
+    capacityRejectedCountToday: number;
+  }>;
   getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
+  getTenantOverview(input: {
+    today: string;
+    uid: number;
+    windowStart: string;
+    yesterday: string;
+  }): Promise<{
+    activeWorkflowCount: number;
+    recentCompletedRunCount: number;
+    recentFailedRunCount: number;
+    todayRunCount: number;
+    totalWorkflowCount: number;
+    yesterdayRunCount: number;
+  }>;
   getRecord(input: { recordId: string; uid: number; workflowId: string }): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
     cursor?: string;
@@ -20,11 +47,73 @@ export type WorkflowDataReader = {
 };
 
 export class WorkflowDataService {
-  constructor(private readonly reader: WorkflowDataReader) {}
+  private readonly capacityPort: WorkflowTenantCapacityPort;
+  private readonly clock: () => Date;
+
+  constructor(
+    private readonly reader: WorkflowDataReader,
+    options: {
+      capacityPort?: WorkflowTenantCapacityPort;
+      clock?: () => Date;
+    } = {},
+  ) {
+    this.capacityPort = options.capacityPort ?? new UnavailableWorkflowEntitlementPort();
+    this.clock = options.clock ?? (() => new Date());
+  }
+
+  async getCapacityOverview(scope: WorkflowOperatorScope): Promise<WorkflowCapacityOverview> {
+    assertAccess(scope);
+    const date = formatWorkflowMetricDate(this.clock());
+    try {
+      const [usage, capacity] = await Promise.all([
+        this.reader.getCapacityUsage({ date, uid: scope.uid }),
+        this.capacityPort.getTenantCapacity({ uid: scope.uid }),
+      ]);
+      const full = capacity.activeRunLimit === 0
+        || usage.activeRunCount >= capacity.activeRunLimit;
+      const usagePercent = full
+        ? 100
+        : Math.floor(usage.activeRunCount / capacity.activeRunLimit * 100);
+      return {
+        capacityRejectedCountToday: usage.capacityRejectedCountToday,
+        status: full ? "full" as const : usagePercent >= 80 ? "warning" as const : "normal" as const,
+        usagePercent,
+      };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableError) throw error;
+      throw new ServiceUnavailableError(
+        "WORKFLOW_CAPACITY_UNAVAILABLE",
+        "暂时无法获取 SOP 客户容量",
+      );
+    }
+  }
 
   getOverview(scope: WorkflowOperatorScope, workflowId: string) {
     assertAccess(scope);
     return this.reader.getOverview({ uid: scope.uid, workflowId });
+  }
+
+  async getTenantOverview(scope: WorkflowOperatorScope): Promise<WorkflowTenantOverview> {
+    assertAccess(scope);
+    const now = this.clock();
+    const today = formatWorkflowMetricDate(now);
+    const yesterday = formatWorkflowMetricDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+    const windowStart = formatWorkflowMetricDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+    const overview = await this.reader.getTenantOverview({ today, uid: scope.uid, windowStart, yesterday });
+    const resultCount = overview.recentCompletedRunCount + overview.recentFailedRunCount;
+    return {
+      activeWorkflowCount: overview.activeWorkflowCount,
+      recentFailedRunCount: overview.recentFailedRunCount,
+      recentSuccessRatePercent: resultCount === 0
+        ? null
+        : Math.round(overview.recentCompletedRunCount * 1000 / resultCount) / 10,
+      todayRunCount: overview.todayRunCount,
+      todayRunCountChangePercent: overview.yesterdayRunCount === 0
+        ? overview.todayRunCount === 0 ? 0 : null
+        : Math.round((overview.todayRunCount - overview.yesterdayRunCount) * 100
+          / overview.yesterdayRunCount),
+      totalWorkflowCount: overview.totalWorkflowCount,
+    };
   }
 
   listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid">) {

@@ -107,6 +107,29 @@ describe("workflow entry consumer", () => {
     expect(publishToDeadLetter).toHaveBeenCalledTimes(1);
   });
 
+  it("ACKs direct entry rejected by tenant capacity", async () => {
+    const inboxRepository = createInboxRepository();
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository,
+      runtimeService: {
+        startDirectRun: vi.fn(async () => ({ kind: "capacity-rejected" as const })),
+        startRun: vi.fn(),
+      },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      capacityRejectedCount: 1,
+      code: "capacity_rejected",
+      disposition: "ack",
+    });
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
+  });
+
   it("records a consumed direct Runtime rejection before ACKing redelivery", async () => {
     const processed = new Set<string>();
     const startDirectRun = vi.fn(async () => {
@@ -438,6 +461,83 @@ describe("workflow entry consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
   });
 
+  it("ACKs capacity rejection and records its count with the Entry Inbox", async () => {
+    const inboxRepository = createInboxRepository();
+    const publishToDeadLetter = vi.fn(async () => undefined);
+    const startRun = vi.fn(async () => ({ kind: "capacity-rejected" as const }));
+    const message = createBrokerMessage(event());
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [binding("31")]),
+      },
+      eventCatalog,
+      inboxRepository,
+      publishToDeadLetter,
+      runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      capacityRejectedCount: 1,
+      code: "capacity_rejected",
+      disposition: "ack",
+    });
+    expect(message.ack).toHaveBeenCalledTimes(1);
+    expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(publishToDeadLetter).not.toHaveBeenCalled();
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
+  });
+
+  it("still wakes an existing Wait Event when a new Run is rejected by capacity", async () => {
+    const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
+    const startRun = vi.fn(async () => ({ kind: "capacity-rejected" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([subscription("subscription-1")]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent()))).resolves.toEqual({
+      capacityRejectedCount: 1,
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(recordWaitEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps capacity rejection metrics when another Workflow is admitted", async () => {
+    const inboxRepository = createInboxRepository();
+    const startRun = vi.fn()
+      .mockResolvedValueOnce({ deduplicated: false, kind: "success" as const })
+      .mockResolvedValueOnce({ kind: "capacity-rejected" as const });
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [binding("31"), binding("32")]),
+      },
+      eventCatalog,
+      inboxRepository,
+      runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(event()))).resolves.toEqual({
+      capacityRejectedCount: 1,
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(inboxRepository.recordProcessedInboxMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ capacityRejectedCount: 1 }),
+    );
+  });
+
   it("continues fan-out after one matched workflow becomes paused", async () => {
     const startRun = vi.fn()
       .mockRejectedValueOnce(new WorkflowRuntimeError("WORKFLOW_RUNTIME_PAUSED", "paused"))
@@ -499,6 +599,7 @@ describe("workflow entry consumer", () => {
       eventCatalog,
       inboxRepository: createInboxRepository(),
       logger,
+      maxInFlight: 10,
       maxRedeliverCount: 2,
       messageReader: createMessageReader(),
       runtimeService: { startRun: vi.fn() },

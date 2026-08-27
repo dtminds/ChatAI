@@ -44,7 +44,7 @@ export function createWorkflowDraftRepository(): WorkflowDraftRepository {
 }
 
 export function listWorkflowDocuments(): WorkflowListItem[] {
-  return workflowDraftTestRepository.listDocuments();
+  return workflowDraftTestRepository.listDocuments().items;
 }
 
 export function getWorkflowDocument(workflowId: string): WorkflowDocument {

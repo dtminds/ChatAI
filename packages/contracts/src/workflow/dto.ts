@@ -175,6 +175,42 @@ export const WorkflowDefinitionSchema = Type.Object({
 
 export const WorkflowDefinitionSummarySchema = Type.Omit(WorkflowDefinitionSchema, ["draft"]);
 
+export const WorkflowDefinitionListStatusSchema = Type.Union([
+  Type.Literal("all"),
+  Type.Literal("active"),
+  Type.Literal("ready"),
+  Type.Literal("draft"),
+  Type.Literal("stopped"),
+]);
+
+export const WorkflowDefinitionListItemSchema = Type.Object({
+  canOperate: Type.Boolean(),
+  description: Type.String({ maxLength: 1000 }),
+  hasUnpublishedChanges: Type.Boolean(),
+  id: WorkflowIdSchema,
+  inProgressRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  lastRunAt: Type.Union([Type.String(), Type.Null()]),
+  managedAccountCount: Type.Integer({ minimum: 0, maximum: 100 }),
+  managedAccounts: Type.Array(Type.Object({
+    avatarUrl: Type.String(),
+    id: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    name: Type.String(),
+  }, { additionalProperties: false }), { maxItems: 3 }),
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+  publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  runtimeStatus: WorkflowRuntimeStatusSchema,
+  successRatePercent: Type.Union([Type.Integer({ minimum: 0, maximum: 100 }), Type.Null()]),
+  trigger: Type.String(),
+  totalRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  updatedAt: Type.String(),
+  workflowType: WorkflowTypeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowDefinitionListPageSchema = Type.Object({
+  items: Type.Array(WorkflowDefinitionListItemSchema, { maxItems: 50 }),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+}, { additionalProperties: false });
+
 export const WorkflowRevisionSchema = Type.Object({
   draft: WorkflowDraftSchema,
   id: WorkflowIdSchema,
@@ -265,6 +301,28 @@ export const WorkflowDataOverviewSchema = Type.Object({
   }),
 });
 
+export const WorkflowCapacityOverviewSchema = Type.Object({
+  capacityRejectedCountToday: Type.Integer({ minimum: 0 }),
+  status: Type.Union([
+    Type.Literal("normal"),
+    Type.Literal("warning"),
+    Type.Literal("full"),
+  ]),
+  usagePercent: Type.Integer({ maximum: 100, minimum: 0 }),
+});
+
+export const WorkflowTenantOverviewSchema = Type.Object({
+  activeWorkflowCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  recentFailedRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  recentSuccessRatePercent: Type.Union([Type.Number({ maximum: 100, minimum: 0 }), Type.Null()]),
+  todayRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  todayRunCountChangePercent: Type.Union([
+    Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: -100 }),
+    Type.Null(),
+  ]),
+  totalWorkflowCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+}, { additionalProperties: false });
+
 export const WorkflowEntryRecordStatusSchema = Type.Union([
   Type.Literal("queued"),
   Type.Literal("running"),
@@ -351,6 +409,9 @@ export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
 export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
 export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
 export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
+export type WorkflowDefinitionListStatus = Static<typeof WorkflowDefinitionListStatusSchema>;
+export type WorkflowDefinitionListItem = Static<typeof WorkflowDefinitionListItemSchema>;
+export type WorkflowDefinitionListPage = Static<typeof WorkflowDefinitionListPageSchema>;
 export type WorkflowDirectEntryEndpointResponse = Static<
   typeof WorkflowDirectEntryEndpointResponseSchema
 >;
@@ -369,6 +430,8 @@ export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>
 export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;
 export type WorkflowNodeMetric = Static<typeof WorkflowNodeMetricSchema>;
 export type WorkflowDataOverview = Static<typeof WorkflowDataOverviewSchema>;
+export type WorkflowCapacityOverview = Static<typeof WorkflowCapacityOverviewSchema>;
+export type WorkflowTenantOverview = Static<typeof WorkflowTenantOverviewSchema>;
 export type WorkflowEntryRecordStatus = Static<typeof WorkflowEntryRecordStatusSchema>;
 export type WorkflowEntryRecord = Static<typeof WorkflowEntryRecordSchema>;
 export type WorkflowEntryRecordPage = Static<typeof WorkflowEntryRecordPageSchema>;

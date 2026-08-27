@@ -64,7 +64,7 @@ describe("MySQL workflow runtime repository contract", () => {
     for (const tableName of [...workflowTableNames].reverse()) {
       await workflowPool.promise().query(`TRUNCATE TABLE \`${tableName}\``);
     }
-    await database.insertInto("xy_wap_embed_workflow_definition").values({
+    const definition = {
       biz_status: 1,
       client_request_id: null,
       description: "",
@@ -81,7 +81,22 @@ describe("MySQL workflow runtime repository contract", () => {
       status_reason: null,
       uid: 9,
       workflow_type: 1,
-    }).executeTakeFirstOrThrow();
+    } as const;
+    await database.insertInto("xy_wap_embed_workflow_definition").values([
+      definition,
+      {
+        ...definition,
+        id: "32",
+        name: "WeCom repository contract",
+        workflow_type: 2,
+      },
+      {
+        ...definition,
+        id: "33",
+        name: "Tenant 10 repository contract",
+        uid: 10,
+      },
+    ]).executeTakeFirstOrThrow();
   });
 
   afterAll(async () => {
@@ -97,11 +112,22 @@ describe("MySQL workflow runtime repository contract", () => {
     return {
       repository,
       async setRunStatus(runId, status) {
-        await contractDatabase.updateTable("xy_wap_embed_workflow_run")
-          .set({ status })
-          .where("uid", "=", 9)
-          .where("id", "=", runId)
-          .executeTakeFirstOrThrow();
+        await contractDatabase.transaction().execute(async transaction => {
+          await transaction.updateTable("xy_wap_embed_workflow_run")
+            .set({ status })
+            .where("uid", "=", 9)
+            .where("id", "=", runId)
+            .executeTakeFirstOrThrow();
+          const activeRuns = await transaction.selectFrom("xy_wap_embed_workflow_run")
+            .select(({ fn }) => fn.countAll<number>().as("count"))
+            .where("uid", "=", 9)
+            .where("status", "in", ["queued", "running", "waiting"])
+            .executeTakeFirstOrThrow();
+          await transaction.updateTable("xy_wap_embed_workflow_capacity_guard")
+            .set({ active_run_count: Number(activeRuns.count) })
+            .where("uid", "=", 9)
+            .executeTakeFirstOrThrow();
+        });
       },
       async setWorkflowRuntimeStatus(status, transitionedAt = new Date("2099-01-01T00:00:00.000Z")) {
         await contractDatabase.transaction().execute(async transaction => {
@@ -121,6 +147,279 @@ describe("MySQL workflow runtime repository contract", () => {
     };
   });
 
+  it("uses the tenant guard counter as the Run admission authority", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    await database.insertInto("xy_wap_embed_workflow_capacity_guard").values({
+      active_run_count: 1,
+      uid: 9,
+    }).executeTakeFirstOrThrow();
+
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await expect(repository.createRunWithInitialTask({
+      activeRunLimit: 1,
+      context: {},
+      entryEventId: "capacity-guard-event",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "capacity-guard-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ kind: "capacity-rejected" });
+  });
+
+  it("maintains Workflow totals and daily terminal outcomes without double-counting", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const createRun = async (suffix: string) => {
+      const result = await repository.createRunWithInitialTask({
+        activeRunLimit: 10_000,
+        context: {},
+        entryEventId: `metric-event-${suffix}`,
+        entryPolicy: { mode: "never" },
+        initialNodeId: "start",
+        initialNodeKind: "start",
+        occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+        revision: 1,
+        shardId: 0,
+        subjectId: `metric-subject-${suffix}`,
+        subjectType: "chatai_contact",
+        uid: 9,
+        workflowId: "31",
+        workflowType: "chatai_sop",
+      });
+      if (result.kind !== "success") throw new Error(`Run creation failed: ${result.kind}`);
+      return result;
+    };
+    const completeRun = async (
+      created: Awaited<ReturnType<typeof createRun>>,
+      outcome: "completed" | "failed",
+    ) => {
+      await database!.updateTable("xy_wap_embed_workflow_run")
+        .set({ status: "running" })
+        .where("id", "=", created.run.id)
+        .executeTakeFirstOrThrow();
+      await database!.updateTable("xy_wap_embed_workflow_task")
+        .set({ status: "running" })
+        .where("id", "=", created.task.id)
+        .executeTakeFirstOrThrow();
+      await repository.commitNodeResult({
+        context: {},
+        expectedRunLockVersion: created.run.lockVersion,
+        expectedTaskVersion: created.task.taskVersion,
+        inbox: {
+          consumer: "workflow-task",
+          expiresAt: new Date("2099-02-01T00:00:00+08:00"),
+          messageId: `metric-result-${created.run.id}`,
+        },
+        nodeExecution: {
+          ...(outcome === "failed"
+            ? { errorCode: "METRIC_TEST_FAILURE", errorMessage: "metric test failure" }
+            : {}),
+          executionKey: `metric-execution-${created.run.id}`,
+          input: {},
+          output: {},
+        },
+        runId: created.run.id,
+        taskId: created.task.id,
+        uid: 9,
+      });
+    };
+
+    const completed = await createRun("completed");
+    const failed = await createRun("failed");
+    const cancelled = await createRun("cancelled");
+    await completeRun(completed, "completed");
+    await completeRun(failed, "failed");
+    await repository.cancelWorkflowBatch({ limit: 10, uid: 9, workflowId: "31" });
+    await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "metric-event-completed",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "metric-subject-completed",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+
+    const metric = await database.selectFrom("xy_wap_embed_workflow_metric")
+      .selectAll()
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow();
+    const daily = await database.selectFrom("xy_wap_embed_workflow_daily_metric")
+      .selectAll()
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow();
+
+    expect({
+      cancelledRunCount: Number(metric.cancelled_run_count),
+      completedRunCount: Number(metric.completed_run_count),
+      failedRunCount: Number(metric.failed_run_count),
+      totalRunCount: Number(metric.total_run_count),
+    }).toEqual({
+      cancelledRunCount: 1,
+      completedRunCount: 1,
+      failedRunCount: 1,
+      totalRunCount: 3,
+    });
+    expect(metric.last_run_at).not.toBeNull();
+    expect({
+      cancelledCount: Number(daily.cancelled_count),
+      completedCount: Number(daily.completed_count),
+      enteredCount: Number(daily.entered_count),
+      failedCount: Number(daily.failed_count),
+    }).toEqual({
+      cancelledCount: 1,
+      completedCount: 1,
+      enteredCount: 3,
+      failedCount: 1,
+    });
+    expect(cancelled.run.status).toBe("queued");
+  });
+
+  it("reconciles a drifted tenant capacity counter from active Runs", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await repository.createRunWithInitialTask({
+      activeRunLimit: 2,
+      context: {},
+      entryEventId: "capacity-reconcile-event",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "capacity-reconcile-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+    await database.updateTable("xy_wap_embed_workflow_capacity_guard")
+      .set({ active_run_count: 2 })
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow();
+
+    await expect(repository.reconcileTenantCapacityCounts({ limit: 100 }))
+      .resolves.toEqual({ checked: 1, corrected: 1, hasMore: false, lastUid: 9 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+      .select("active_run_count")
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ active_run_count: 1 });
+  });
+
+  it("releases expired-lease capacity once per active Run", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const createRun = async (suffix: string) => {
+      const result = await repository.createRunWithInitialTask({
+        activeRunLimit: 10_000,
+        context: {},
+        entryEventId: `lease-capacity-event-${suffix}`,
+        entryPolicy: { mode: "never" },
+        initialNodeId: "start",
+        initialNodeKind: "start",
+        occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+        revision: 1,
+        shardId: 0,
+        subjectId: `lease-capacity-subject-${suffix}`,
+        subjectType: "chatai_contact",
+        uid: 9,
+        workflowId: "31",
+        workflowType: "chatai_sop",
+      });
+      if (result.kind !== "success") throw new Error(`Run creation failed: ${result.kind}`);
+      return result;
+    };
+    const expiring = await createRun("expiring");
+    await createRun("surviving");
+    const alreadyTerminal = await createRun("terminal");
+    const expiredAt = new Date("2099-01-01T00:01:00+08:00");
+
+    await database.updateTable("xy_wap_embed_workflow_task").set({
+      attempt: 3,
+      lease_expires_at: expiredAt,
+      lease_owner: "worker-1",
+      status: "running",
+    }).where("id", "in", [expiring.task.id, alreadyTerminal.task.id]).executeTakeFirstOrThrow();
+    const expiringTask = await database.selectFrom("xy_wap_embed_workflow_task")
+      .selectAll()
+      .where("id", "=", expiring.task.id)
+      .executeTakeFirstOrThrow();
+    const { create_time: _createTime, id: _id, update_time: _updateTime, ...duplicateTask } = expiringTask;
+    await database.insertInto("xy_wap_embed_workflow_task").values({
+      ...duplicateTask,
+      sequence: 2,
+    }).executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_run")
+      .set({ status: "completed" })
+      .where("id", "=", alreadyTerminal.run.id)
+      .executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_capacity_guard")
+      .set({ active_run_count: 2 })
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow();
+
+    await expect(repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 3,
+      now: new Date("2099-01-01T00:02:00+08:00"),
+    })).resolves.toEqual({ dead: 3, recovered: 0 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+      .select("active_run_count")
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ active_run_count: 1 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_run")
+      .select(["id", "status"])
+      .where("id", "in", [expiring.run.id, alreadyTerminal.run.id])
+      .orderBy("id", "asc")
+      .execute())
+      .resolves.toEqual([
+        { id: expiring.run.id, status: "failed" },
+        { id: alreadyTerminal.run.id, status: "completed" },
+      ]);
+  });
+
+  it("increments the daily capacity rejection metric once per Entry Inbox message", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const input = {
+      capacityRejectedCount: 3,
+      consumer: "workflow-entry",
+      expiresAt: new Date("2099-02-01T00:00:00+08:00"),
+      messageId: "9:capacity-event-1",
+      processedAt: new Date("2099-01-01T00:30:00+08:00"),
+      uid: 9,
+    };
+
+    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(true);
+    await expect(repository.recordProcessedInboxMessage(input)).resolves.toBe(false);
+    const metric = await database.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
+      .select(["capacity_rejected_count", "metric_date"])
+      .where("uid", "=", 9)
+      .executeTakeFirstOrThrow();
+
+    expect(Number(metric.capacity_rejected_count)).toBe(3);
+    expect(metric.metric_date).toEqual(new Date("2099-01-01T00:00:00+08:00"));
+  });
+
   describe("LLM test Attempt repository", () => {
     runWorkflowLlmTestAttemptRepositoryContract(() => {
       if (!database) throw new Error("MySQL contract database is not initialized");
@@ -132,6 +431,7 @@ describe("MySQL workflow runtime repository contract", () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);
     const input = {
+      activeRunLimit: 10_000,
       context: { trigger: { eventType: "workflow.direct_entry.requested" } },
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
       initialNodeId: "start",

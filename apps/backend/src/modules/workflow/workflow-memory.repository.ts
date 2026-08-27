@@ -122,14 +122,33 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     return review?.status === "withdrawn" ? null : review ? clone(review) : null;
   }
 
-  async listDefinitions(uid: number) {
-    return this.definitions
+  async listDefinitions(
+    uid: number,
+    input: Parameters<WorkflowRepository["listDefinitions"]>[1],
+  ) {
+    const normalizedQuery = input.query?.toLocaleLowerCase();
+    const candidates = this.definitions
       .filter((item) => item.uid === uid && item.bizStatus === 1)
+      .filter(item => matchesDefinitionListStatus(item, input.status))
+      .filter(item => !normalizedQuery
+        || item.name.toLocaleLowerCase().includes(normalizedQuery))
       .sort((first, second) => {
         const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
         return createdAtDifference || Number(second.id) - Number(first.id);
       })
-      .map(clone);
+      .filter(item => !input.cursor
+        || item.createdAt < input.cursor.createdAt
+        || (item.createdAt.getTime() === input.cursor.createdAt.getTime()
+          && Number(item.id) < Number(input.cursor.id)))
+      .slice(0, input.limit + 1);
+    const items = candidates.slice(0, input.limit).map(clone);
+    const lastItem = items.at(-1);
+    return {
+      items,
+      nextCursor: candidates.length > items.length && lastItem
+        ? { createdAt: lastItem.createdAt, id: lastItem.id }
+        : null,
+    };
   }
 
   async listRevisions(
@@ -484,6 +503,20 @@ function touch(definition: WorkflowDefinitionRecord, opSubUserId: string) {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function matchesDefinitionListStatus(
+  definition: WorkflowDefinitionRecord,
+  status: Parameters<WorkflowRepository["listDefinitions"]>[1]["status"],
+) {
+  if (status === "all") return true;
+  if (status === "active") return definition.runtimeStatus === "active";
+  if (status === "ready") {
+    return definition.runtimeStatus === "paused"
+      || (definition.runtimeStatus === "inactive" && definition.publishedRevision !== null);
+  }
+  if (status === "draft") return definition.publishedRevision === null;
+  return definition.runtimeStatus === "stopped";
 }
 
 function success<T>(value: T): WorkflowMutationResult<T> {

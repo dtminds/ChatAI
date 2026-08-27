@@ -128,6 +128,7 @@ export async function startWorkflowWorkerRuntime(input: {
         eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
         inboxRepository: input.inboxRepository,
         logger: input.logger,
+        maxInFlight: input.config.consumerConcurrency.entry,
         maxRedeliverCount: input.config.maxRedeliverCount,
         messageReader: input.messageReader,
         now,
@@ -142,6 +143,7 @@ export async function startWorkflowWorkerRuntime(input: {
       subscriptions.push(await input.taskConsumer({
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
+        maxInFlight: input.config.consumerConcurrency.task,
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,
         runtimeService: input.runtimeService,
@@ -212,6 +214,7 @@ export async function startWorkflowWorkerRuntime(input: {
         })));
     }
     if (input.config.roles.has("reconciler")) {
+      let afterCapacityUid: number | undefined;
       let afterEventSubscriptionId: string | undefined;
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
@@ -230,6 +233,7 @@ export async function startWorkflowWorkerRuntime(input: {
             }
           : undefined;
         const result = await input.reconciler({
+          afterCapacityUid,
           afterEventSubscriptionId,
           afterRunId,
           afterConsistencyRunId,
@@ -248,6 +252,7 @@ export async function startWorkflowWorkerRuntime(input: {
           retryDelayMs: input.config.runtime.retryDelayMs,
         });
         afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
+        afterCapacityUid = result.nextCapacityCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
         afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;

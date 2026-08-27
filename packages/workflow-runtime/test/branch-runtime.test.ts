@@ -91,7 +91,7 @@ describe("Branch runtime", () => {
     let runtimeNow = enteredAt;
     const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
       clock: () => runtimeNow,
-      entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
     });
     const started = await service.startRun({
       entryEventId: "event-1",
@@ -240,7 +240,7 @@ async function executeBranch(
   let runtimeNow = enteredAt;
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
     clock: () => runtimeNow,
-    entitlementPort: { check: async () => ({ entitled: true, unentitledSince: null }) },
+    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
   });
   const started = await service.startRun({
     entryEventId: "event-1",

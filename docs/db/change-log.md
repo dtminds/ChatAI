@@ -1,5 +1,154 @@
 # Database Change Log
 
+## 2026-08-27 Workflow 列表创建时间排序
+
+- Workflow 列表固定按创建时间倒序分页，名称和状态变更不改变列表顺序。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  DROP KEY idx_workflow_definition_uid_status_update,
+  ADD KEY idx_workflow_definition_uid_status_create (uid, biz_status, create_time, id);
+```
+
+## 2026-08-26 Workflow 运行汇总与每日指标
+
+- 新增每个 Workflow 一行的累计运行指标表，供列表直接读取。
+- 每日指标收敛为租户、Workflow、Asia/Shanghai 自然日三个维度，不按 Revision 或节点拆分。
+- 当前每日指标尚未写入业务数据，变更前清空该空置指标表。
+- 停止 Backend 与 Workflow Worker 后执行结构变更和一次性 Run 历史回填，再发布新代码恢复增量维护。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_metric (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  total_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计成功创建Run数量',
+  completed_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入completed终态的Run数量',
+  failed_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入failed终态的Run数量',
+  cancelled_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入cancelled终态的Run数量',
+  last_run_at DATETIME NULL COMMENT '最近一次成功创建Run的时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid, workflow_id)
+) COMMENT='营销Workflow累计指标表';
+
+TRUNCATE TABLE xy_wap_embed_workflow_daily_metric;
+
+ALTER TABLE xy_wap_embed_workflow_daily_metric
+  DROP KEY uk_workflow_daily_metric_dimension,
+  DROP KEY idx_workflow_daily_metric_query,
+  DROP COLUMN revision,
+  DROP COLUMN node_id,
+  ADD COLUMN cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入cancelled终态的Run数量' AFTER failed_count,
+  MODIFY COLUMN metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  MODIFY COLUMN entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功创建Run数量',
+  MODIFY COLUMN completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入completed终态的Run数量',
+  MODIFY COLUMN failed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入failed终态的Run数量',
+  ADD UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date),
+  ADD KEY idx_workflow_daily_metric_tenant_date (uid, metric_date, workflow_id);
+
+INSERT INTO xy_wap_embed_workflow_metric (
+  uid,
+  workflow_id,
+  total_run_count,
+  completed_run_count,
+  failed_run_count,
+  cancelled_run_count,
+  last_run_at
+)
+SELECT
+  uid,
+  workflow_id,
+  COUNT(*) AS total_run_count,
+  SUM(status = 'completed') AS completed_run_count,
+  SUM(status = 'failed') AS failed_run_count,
+  SUM(status = 'cancelled') AS cancelled_run_count,
+  MAX(create_time) AS last_run_at
+FROM xy_wap_embed_workflow_run
+WHERE id > 0
+GROUP BY uid, workflow_id
+ON DUPLICATE KEY UPDATE
+  total_run_count = VALUES(total_run_count),
+  completed_run_count = VALUES(completed_run_count),
+  failed_run_count = VALUES(failed_run_count),
+  cancelled_run_count = VALUES(cancelled_run_count),
+  last_run_at = VALUES(last_run_at);
+
+INSERT INTO xy_wap_embed_workflow_daily_metric (
+  uid,
+  workflow_id,
+  metric_date,
+  entered_count,
+  completed_count,
+  failed_count,
+  cancelled_count
+)
+SELECT
+  uid,
+  workflow_id,
+  DATE(create_time) AS metric_date,
+  COUNT(*) AS entered_count,
+  0,
+  0,
+  0
+FROM xy_wap_embed_workflow_run
+WHERE id > 0
+GROUP BY uid, workflow_id, DATE(create_time)
+ON DUPLICATE KEY UPDATE
+  entered_count = VALUES(entered_count);
+
+INSERT INTO xy_wap_embed_workflow_daily_metric (
+  uid,
+  workflow_id,
+  metric_date,
+  entered_count,
+  completed_count,
+  failed_count,
+  cancelled_count
+)
+SELECT
+  uid,
+  workflow_id,
+  DATE(completed_at) AS metric_date,
+  0,
+  SUM(status = 'completed') AS completed_count,
+  SUM(status = 'failed') AS failed_count,
+  SUM(status = 'cancelled') AS cancelled_count
+FROM xy_wap_embed_workflow_run
+WHERE id > 0
+  AND status IN ('completed', 'failed', 'cancelled')
+  AND completed_at IS NOT NULL
+GROUP BY uid, workflow_id, DATE(completed_at)
+ON DUPLICATE KEY UPDATE
+  completed_count = VALUES(completed_count),
+  failed_count = VALUES(failed_count),
+  cancelled_count = VALUES(cancelled_count);
+```
+
+## 2026-08-24 Workflow 租户活跃 Run 容量
+
+- 新增租户级活跃 Run 容量计数表和每日容量拒绝指标表。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  active_run_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前活跃Run计数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (uid)
+) COMMENT='营销Workflow租户活跃Run容量计数表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  metric_date DATE NOT NULL COMMENT '统计日期，Asia/Shanghai',
+  capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '因租户容量不足拒绝的Run准入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)
+) COMMENT='营销Workflow租户容量每日指标表';
+```
+
 ## 2026-08-24 Workflow Wait Event 首事件锁存
 
 - Wait Event 只锁存第一个命中事件，不再收集后续事件。

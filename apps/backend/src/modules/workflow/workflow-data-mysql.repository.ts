@@ -29,6 +29,66 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     this.db = db as unknown as Kysely<DataDatabase>;
   }
 
+  async getCapacityUsage(input: { date: string; uid: number }) {
+    const [guard, dailyMetric] = await Promise.all([
+      this.db.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count")
+        .where("uid", "=", input.uid)
+        .executeTakeFirst(),
+      this.db.selectFrom("xy_wap_embed_workflow_capacity_daily_metric")
+        .select("capacity_rejected_count")
+        .where("uid", "=", input.uid)
+        .where("metric_date", "=", new Date(`${input.date}T00:00:00+08:00`))
+        .executeTakeFirst(),
+    ]);
+    return {
+      activeRunCount: Number(guard?.active_run_count ?? 0),
+      capacityRejectedCountToday: Number(dailyMetric?.capacity_rejected_count ?? 0),
+    };
+  }
+
+  async getTenantOverview(input: {
+    today: string;
+    uid: number;
+    windowStart: string;
+    yesterday: string;
+  }) {
+    const today = toWorkflowMetricDate(input.today);
+    const windowStart = toWorkflowMetricDate(input.windowStart);
+    const yesterday = toWorkflowMetricDate(input.yesterday);
+    const [dailyMetric, definitionMetric] = await Promise.all([
+      this.db.selectFrom("xy_wap_embed_workflow_daily_metric")
+        .select([
+          sql<number>`COALESCE(SUM(completed_count), 0)`.as("recent_completed_run_count"),
+          sql<number>`COALESCE(SUM(failed_count), 0)`.as("recent_failed_run_count"),
+          sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${today} THEN entered_count ELSE 0 END), 0)`
+            .as("today_run_count"),
+          sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`
+            .as("yesterday_run_count"),
+        ])
+        .where("uid", "=", input.uid)
+        .where("metric_date", ">=", windowStart)
+        .where("metric_date", "<=", today)
+        .executeTakeFirst(),
+      this.db.selectFrom("xy_wap_embed_workflow_definition")
+        .select([
+          sql<number>`COALESCE(SUM(runtime_status = 'active'), 0)`.as("active_workflow_count"),
+          sql<number>`COUNT(*)`.as("total_workflow_count"),
+        ])
+        .where("uid", "=", input.uid)
+        .where("biz_status", "=", 1)
+        .executeTakeFirst(),
+    ]);
+    return {
+      activeWorkflowCount: Number(definitionMetric?.active_workflow_count ?? 0),
+      recentCompletedRunCount: Number(dailyMetric?.recent_completed_run_count ?? 0),
+      recentFailedRunCount: Number(dailyMetric?.recent_failed_run_count ?? 0),
+      todayRunCount: Number(dailyMetric?.today_run_count ?? 0),
+      totalWorkflowCount: Number(definitionMetric?.total_workflow_count ?? 0),
+      yesterdayRunCount: Number(dailyMetric?.yesterday_run_count ?? 0),
+    };
+  }
+
   async getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview> {
     const definition = await this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("published_revision")
@@ -264,6 +324,10 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       name: row.real_name?.trim() || row.name?.trim() || "未知客户",
     }]));
   }
+}
+
+function toWorkflowMetricDate(value: string) {
+  return new Date(`${value}T00:00:00+08:00`);
 }
 
 function subjectKey(subjectType: ReturnType<typeof decodeWorkflowSubjectType>, subjectId: string) {

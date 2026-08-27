@@ -10,6 +10,46 @@ import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
 describe("HTTP workflow repository", () => {
+  it("loads the tenant capacity from its dedicated endpoint", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    client.get.mockResolvedValueOnce(envelope({
+      capacityRejectedCountToday: 9,
+      status: "warning",
+      usagePercent: 87,
+    }));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await expect(repository.getCapacityOverview()).resolves.toEqual({
+      capacityRejectedCountToday: 9,
+      status: "warning",
+      usagePercent: 87,
+    });
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/capacity");
+  });
+
+  it("loads the tenant operating overview from its dedicated endpoint", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    client.get.mockResolvedValueOnce(envelope({
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    }));
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await expect(repository.getTenantOverview!()).resolves.toEqual({
+      activeWorkflowCount: 23,
+      recentFailedRunCount: 231,
+      recentSuccessRatePercent: 98.2,
+      todayRunCount: 12_847,
+      todayRunCountChangePercent: 12,
+      totalWorkflowCount: 38,
+    });
+    expect(client.get).toHaveBeenCalledWith("/server/workflows/overview");
+  });
+
   it("updates workflow metadata through the metadata endpoint", async () => {
     const definition = createDefinition({ description: "引导新客完成首购" });
     const client = createClient({ definition, revisions: [] });
@@ -86,7 +126,7 @@ describe("HTTP workflow repository", () => {
     const repository = createHttpWorkflowDraftRepository(client);
 
     const document = await repository.getDocument("42");
-    const [listItem] = await repository.listDocuments();
+    const { items: [listItem] } = await repository.listDocuments();
 
     expect(document).toMatchObject({
       publishedAt: "07-11 15:12:06",
@@ -95,6 +135,15 @@ describe("HTTP workflow repository", () => {
       versionHistory: [{ publishedAt: "07-11 15:12:06" }],
     });
     expect(listItem?.updatedAt).toBe("07-11 19:21:55");
+    expect(listItem).toMatchObject({
+      inProgressRunCount: 86,
+      lastRunAt: "08-26 18:20:00",
+      successRatePercent: 96,
+      totalRunCount: 12_345,
+    });
+    expect(listItem?.managedAccounts).toEqual([
+      { avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" },
+    ]);
   });
 
   it("does not invent a revision for an unpublished workflow", async () => {
@@ -376,12 +425,35 @@ function createClient({
     delete: vi.fn(async (_url: string): Promise<unknown> => envelope<unknown>({})),
     get: vi.fn(async (url: string): Promise<unknown> => {
       if (url.includes("/revisions?")) return envelope({ items: revisions, nextCursor: null });
-      if (url === "/server/workflows") return envelope<WorkflowDefinition[]>([definition]);
+      if (url === "/server/workflows" || url.startsWith("/server/workflows?")) {
+        return envelope({ items: [toListDefinition(definition)], nextCursor: null });
+      }
       return envelope<WorkflowDefinition>(definition);
     }),
     patch: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
     post: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
     put: vi.fn(async (_url: string, _body?: unknown): Promise<unknown> => envelope<WorkflowDefinition>(definition)),
+  };
+}
+
+function toListDefinition(definition: WorkflowDefinition) {
+  return {
+    canOperate: definition.permissions.canOperate,
+    description: definition.description,
+    hasUnpublishedChanges: definition.hasUnpublishedChanges,
+    id: definition.id,
+    inProgressRunCount: 86,
+    lastRunAt: "2026-08-26T10:20:00.000Z",
+    managedAccountCount: 1,
+    managedAccounts: [{ avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" }],
+    name: definition.name,
+    publishedRevision: definition.publishedRevision,
+    successRatePercent: 96,
+    runtimeStatus: definition.runtimeStatus,
+    trigger: "用户消息",
+    totalRunCount: 12_345,
+    updatedAt: definition.updatedAt,
+    workflowType: definition.workflowType,
   };
 }
 

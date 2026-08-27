@@ -368,6 +368,7 @@ async function createWaitingTask(
 
 function createRunInput() {
   return {
+    activeRunLimit: 10_000,
     context: { trigger: { eventType: "contact.friend_added" } },
     entryEventId: "event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },

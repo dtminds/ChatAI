@@ -6,7 +6,6 @@ import {
   PauseIcon,
   PlayIcon,
   StopCircleIcon,
-  Tick02Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -20,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +51,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
+import { WorkflowStatusBadge } from "./workflow-status-badge";
 
 export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 
@@ -72,57 +71,53 @@ export function WorkflowListTable({
   workflows: WorkflowListItem[];
 }) {
   return (
-    <Table aria-label="工作流列表" className="min-w-[1370px] table-fixed">
-      <colgroup>
-        <col className="w-[220px]" />
-        <col className="w-[230px]" />
-        <col className="w-[180px]" />
-        <col className="w-[110px]" />
-        <col className="w-[100px]" />
-        <col className="w-[140px]" />
-        <col className="w-[170px]" />
-        <col className="w-[120px]" />
-        <col className="w-[100px]" />
-      </colgroup>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="h-11 px-4">工作流名称</TableHead>
-          <TableHead className="h-11 px-4">触发条件</TableHead>
-          <TableHead className="h-11 whitespace-nowrap px-4">托管账号</TableHead>
-          <TableHead className="h-11 whitespace-nowrap px-4">总运行数</TableHead>
-          <TableHead className="h-11 whitespace-nowrap px-4">流程中</TableHead>
-          <TableHead className="h-11 whitespace-nowrap px-4">成功率</TableHead>
-          <TableHead className="h-11 whitespace-nowrap px-4">最近一次运行</TableHead>
-          <TableHead className="h-11 px-4">状态</TableHead>
-          <TablePinnedHead className="h-11 whitespace-nowrap px-4 text-right">操作</TablePinnedHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {loading ? (
-          <TableRow>
-            <TableCell className="py-10 text-center" colSpan={9}>
-              <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                <Spinner aria-hidden="true" size={14} />
-                <span>正在加载</span>
-              </div>
-            </TableCell>
+    <div className="overflow-hidden rounded-[12px] border border-border/50 bg-muted/50 px-1 pb-1.5">
+      <Table aria-label="工作流列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
+        <colgroup>
+          <col className="w-[300px]" />
+          <col className="w-[120px]" />
+          <col className="w-[180px]" />
+          <col className="w-[350px]" />
+          <col className="w-[180px]" />
+          <col className="w-[90px]" />
+        </colgroup>
+        <TableHeader className="[&_tr]:border-b-0">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-8 px-3">名称</TableHead>
+            <TableHead className="h-8 px-3">状态</TableHead>
+            <TableHead className="h-8 whitespace-nowrap px-3">托管账号</TableHead>
+            <TableHead className="h-8 whitespace-nowrap px-3">执行概览</TableHead>
+            <TableHead className="h-8 whitespace-nowrap px-3">最近一次运行</TableHead>
+            <TablePinnedHead className="h-8 whitespace-nowrap bg-muted/50 px-3 text-right">操作</TablePinnedHead>
           </TableRow>
-        ) : workflows.length === 0 ? (
-          <TableRow>
-            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={9}>暂无数据</TableCell>
-          </TableRow>
-        ) : workflows.map(workflow => (
-          <WorkflowListRow
-            key={workflow.id}
-            onDelete={() => onDelete(workflow)}
-            onLifecycleAction={action => onLifecycleAction(workflow, action)}
-            onRename={() => onRename(workflow)}
-            operationPending={operationPendingId === workflow.id}
-            workflow={workflow}
-          />
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableCell className="rounded-[8px] border border-border/70 bg-surface py-10 text-center" colSpan={6}>
+                <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>正在加载</span>
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : workflows.length === 0 ? (
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableCell className="rounded-[8px] border border-border/70 bg-surface py-10 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+            </TableRow>
+          ) : workflows.map(workflow => (
+            <WorkflowListRow
+              key={workflow.id}
+              onDelete={() => onDelete(workflow)}
+              onLifecycleAction={action => onLifecycleAction(workflow, action)}
+              onRename={() => onRename(workflow)}
+              operationPending={operationPendingId === workflow.id}
+              workflow={workflow}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -142,8 +137,8 @@ function WorkflowListRow({
   const status = getWorkflowStatus(workflow);
 
   return (
-    <TableRow>
-      <TableCell className="px-4 py-4 font-medium text-foreground">
+    <TableRow className="border-0 hover:bg-transparent">
+      <TableCell className="rounded-l-[8px] border-y border-l border-border/70 bg-surface px-3 py-4">
         <Link
           aria-label={`打开 ${workflow.name}`}
           className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -151,32 +146,24 @@ function WorkflowListRow({
         >
           <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
         </Link>
+        <div className="mt-1 flex min-w-0 items-center text-xs text-muted-foreground" title={workflow.trigger}>
+          <span className="shrink-0">触发条件：</span>
+          <TableCellContent>{workflow.trigger || "-"}</TableCellContent>
+        </div>
       </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground" title={workflow.trigger}>
-        <TableCellContent>{workflow.trigger || "-"}</TableCellContent>
+      <TableCell className="border-y border-border/70 bg-surface px-3 py-4">
+        <WorkflowStatusBadge variant={status.variant}>{status.label}</WorkflowStatusBadge>
       </TableCell>
-      <TableCell className="px-4 py-4">
+      <TableCell className="border-y border-border/70 bg-surface px-3 py-4">
         <WorkflowManagedAccountsPreview workflow={workflow} />
       </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
-        {workflow.totalRunCount.toLocaleString("zh-CN")}
+      <TableCell className="border-y border-border/70 bg-surface px-3 py-4">
+        <WorkflowRunOverview workflow={workflow} />
       </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
-        {workflow.inProgressRunCount.toLocaleString("zh-CN")}
-      </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
-        {workflow.successRatePercent === null ? "-" : `${workflow.successRatePercent}%`}
-      </TableCell>
-      <TableCell className="px-4 py-4 text-muted-foreground">
+      <TableCell className="border-y border-border/70 bg-surface px-3 py-4 text-muted-foreground">
         {workflow.lastRunAt ?? "-"}
       </TableCell>
-      <TableCell className="px-4 py-4">
-        <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
-          <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
-          {status.label}
-        </Badge>
-      </TableCell>
-      <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
+      <TablePinnedCell className="whitespace-nowrap rounded-r-[8px] border-y border-r border-border/70 px-3 py-4 text-right">
         <WorkflowRowMenu
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
@@ -186,6 +173,50 @@ function WorkflowListRow({
         />
       </TablePinnedCell>
     </TableRow>
+  );
+}
+
+function WorkflowRunOverview({ workflow }: { workflow: WorkflowListItem }) {
+  const metrics = [
+    {
+      label: "总运行数",
+      value: workflow.totalRunCount.toLocaleString("zh-CN"),
+    },
+    {
+      label: "流程中",
+      value: workflow.inProgressRunCount.toLocaleString("zh-CN"),
+    },
+    {
+      label: "成功率",
+      tone: workflow.successRatePercent === null ? undefined : "text-success",
+      value: workflow.successRatePercent === null ? "-" : `${workflow.successRatePercent}%`,
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3">
+      {metrics.map((metric, index) => (
+        <div
+          className={cn(
+            "relative min-w-0",
+            index > 0 && "pl-4",
+            index < metrics.length - 1 && "pr-4",
+          )}
+          key={metric.label}
+        >
+          {index > 0 ? (
+            <span
+              aria-hidden="true"
+              className="absolute left-0 top-1/2 h-6 w-px -translate-y-1/2 bg-border/80"
+            />
+          ) : null}
+          <div className={cn("truncate font-medium tabular-nums text-foreground", metric.tone)}>
+            {metric.value}
+          </div>
+          <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">{metric.label}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -399,18 +430,15 @@ export function WorkflowListState({
 
 function getWorkflowStatus(workflow: WorkflowListItem) {
   if (workflow.runtimeStatus === "stopped") {
-    return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
+    return { label: "已停止", variant: "neutral" as const };
   }
   if (workflow.publishedRevision === null) {
-    return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
+    return { label: "草稿", variant: "neutral" as const };
   }
   if (workflow.runtimeStatus === "active") {
-    return { className: "bg-success-muted text-success", icon: Tick02Icon, label: "运行中" };
+    return { label: "运行中", variant: "success" as const };
   }
-  if (workflow.runtimeStatus === "paused") {
-    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
-  }
-  return { className: "bg-muted text-muted-foreground", icon: PauseIcon, label: "未启用" };
+  return { label: "未启用", variant: "warning" as const };
 }
 
 export function splitWorkflowTriggers(trigger: string) {

@@ -68,7 +68,7 @@ type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
 const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
   { label: "全部", value: "all" },
   { label: "运行中", value: "active" },
-  { label: "待启用", value: "ready" },
+  { label: "未启用", value: "ready" },
   { label: "草稿", value: "draft" },
   { label: "已停止", value: "stopped" },
 ];

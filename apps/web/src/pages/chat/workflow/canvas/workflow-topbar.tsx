@@ -20,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -42,6 +41,7 @@ import type {
   WorkflowDraftSaveStatus,
 } from "../workflow-draft-service";
 import { WorkflowMetadataDialog } from "../workflow-metadata-dialog";
+import { WorkflowStatusBadge } from "../workflow-status-badge";
 import {
   getWorkflowPrimaryReleaseAction,
   getWorkflowPublishAction,
@@ -200,12 +200,14 @@ export function WorkflowTopBar({
         ) : (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <Badge className={getRuntimeStatusClassName(runtimeStatus, publishedRevision ?? null)}>
+              <WorkflowStatusBadge
+                variant={getWorkflowStatusVariant(runtimeStatus, publishedRevision ?? null)}
+              >
                 {getWorkflowStatusLabel({
                   publishedRevision: publishedRevision ?? null,
                   runtimeStatus,
                 })}
-              </Badge>
+              </WorkflowStatusBadge>
               <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
               <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
               {stoppedReadOnly ? (
@@ -487,21 +489,16 @@ function getWorkflowStatusLabel({
   if (runtimeStatus === "stopped") return "已停止";
   if (publishedRevision === null) return "草稿";
   if (runtimeStatus === "active") return "运行中";
-  if (runtimeStatus === "paused") return "待启用";
   return "未启用";
 }
 
-function getRuntimeStatusClassName(
+function getWorkflowStatusVariant(
   status: "active" | "inactive" | "paused" | "stopped",
   publishedRevision: number | null,
 ) {
-  return cn(
-    "shrink-0 rounded-md px-1.5 py-0.5",
-    status === "active" && publishedRevision !== null && "bg-success-muted text-success",
-    status === "paused" && publishedRevision !== null && "bg-warning-muted text-warning",
-    (status === "inactive" || publishedRevision === null) && "bg-muted text-muted-foreground",
-    status === "stopped" && "bg-muted text-muted-foreground",
-  );
+  if (status === "stopped" || publishedRevision === null) return "neutral" as const;
+  if (status === "active") return "success" as const;
+  return "warning" as const;
 }
 
 function getSaveStateLabel(saveState: WorkflowDraftSaveStatus, lastSavedAt: string) {

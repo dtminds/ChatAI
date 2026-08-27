@@ -628,6 +628,8 @@ describe("Agent workflow page", () => {
     const activeRow = within(table).getByRole("row", { name: /会员复购唤醒/ });
     const pausedRow = within(table).getByRole("row", { name: /直播后跟进/ });
 
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(6);
+    expect(within(row).getAllByRole("cell")).toHaveLength(6);
     expect(within(row).getByText("草稿")).toBeInTheDocument();
     expect(within(row).getAllByLabelText(/^托管账号 /)).toHaveLength(3);
     expect(within(row).getByText("+1")).toBeInTheDocument();
@@ -641,7 +643,7 @@ describe("Agent workflow page", () => {
     );
     expect(within(row).queryByRole("link", { name: "编辑" })).not.toBeInTheDocument();
     expect(within(activeRow).getByRole("button", { name: "操作 会员复购唤醒" })).toBeInTheDocument();
-    expect(within(pausedRow).getByText("待启用")).toBeInTheDocument();
+    expect(within(pausedRow).getByText("未启用")).toBeInTheDocument();
     expect(within(pausedRow).getByRole("button", { name: "操作 直播后跟进" })).toBeInTheDocument();
 
     await user.click(within(row).getByRole("button", { name: "操作 新人转化旅程" }));
@@ -673,7 +675,7 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("tab", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "运行中" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "待处理" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "待启用" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "未启用" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已停止" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "已暂停" })).not.toBeInTheDocument();
@@ -687,7 +689,7 @@ describe("Agent workflow page", () => {
       expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: "待启用" }));
+    await user.click(screen.getByRole("tab", { name: "未启用" }));
     await waitFor(() => {
       expect(screen.getByText("直播后跟进")).toBeInTheDocument();
       expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
@@ -769,7 +771,7 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.queryByText("待发布流程")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "待启用" }));
+    await user.click(screen.getByRole("tab", { name: "未启用" }));
     const row = await screen.findByRole("row", { name: /待发布流程/ });
     expect(within(row).getByText("未启用")).toBeInTheDocument();
     await user.click(within(row).getByRole("button", { name: "操作 待发布流程" }));

@@ -465,6 +465,7 @@ function toDocument(
     draftVersion: definition.draftVersion,
     entered: "-",
     id: definition.id,
+    inProgressRunCount: 0,
     lastRunAt: null,
     managedAccountCount: 0,
     managedAccounts: [],
@@ -489,6 +490,7 @@ function toDocument(
         : definition.runtimeStatus === "stopped"
           ? "Stopped"
           : definition.publishedRevision !== null ? "Published" : "Draft",
+    successRatePercent: null,
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     totalRunCount: 0,
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
@@ -505,6 +507,7 @@ function toListItem(definition: ApiWorkflowDefinitionListItem): WorkflowListItem
     canOperate: definition.canOperate,
     description: definition.description,
     id: definition.id,
+    inProgressRunCount: definition.inProgressRunCount,
     lastRunAt: definition.lastRunAt ? formatWorkflowDisplayTime(definition.lastRunAt) : null,
     managedAccountCount: definition.managedAccountCount,
     managedAccounts: definition.managedAccounts,
@@ -518,6 +521,7 @@ function toListItem(definition: ApiWorkflowDefinitionListItem): WorkflowListItem
         : definition.runtimeStatus === "stopped"
           ? "Stopped"
           : definition.publishedRevision !== null ? "Published" : "Draft",
+    successRatePercent: definition.successRatePercent,
     trigger: definition.trigger,
     totalRunCount: definition.totalRunCount,
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),

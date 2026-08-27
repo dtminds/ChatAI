@@ -64,6 +64,7 @@ SELECT
   SUM(status = 'cancelled') AS cancelled_run_count,
   MAX(create_time) AS last_run_at
 FROM xy_wap_embed_workflow_run
+WHERE id > 0
 GROUP BY uid, workflow_id
 ON DUPLICATE KEY UPDATE
   total_run_count = VALUES(total_run_count),
@@ -90,6 +91,7 @@ SELECT
   0,
   0
 FROM xy_wap_embed_workflow_run
+WHERE id > 0
 GROUP BY uid, workflow_id, DATE(create_time)
 ON DUPLICATE KEY UPDATE
   entered_count = VALUES(entered_count);
@@ -112,7 +114,8 @@ SELECT
   SUM(status = 'failed') AS failed_count,
   SUM(status = 'cancelled') AS cancelled_count
 FROM xy_wap_embed_workflow_run
-WHERE status IN ('completed', 'failed', 'cancelled')
+WHERE id > 0
+  AND status IN ('completed', 'failed', 'cancelled')
   AND completed_at IS NOT NULL
 GROUP BY uid, workflow_id, DATE(completed_at)
 ON DUPLICATE KEY UPDATE

@@ -112,7 +112,12 @@ describe("HTTP workflow repository", () => {
       versionHistory: [{ publishedAt: "07-11 15:12:06" }],
     });
     expect(listItem?.updatedAt).toBe("07-11 19:21:55");
-    expect(listItem).toMatchObject({ lastRunAt: "08-26 18:20:00", totalRunCount: 12_345 });
+    expect(listItem).toMatchObject({
+      inProgressRunCount: 86,
+      lastRunAt: "08-26 18:20:00",
+      successRatePercent: 96,
+      totalRunCount: 12_345,
+    });
     expect(listItem?.managedAccounts).toEqual([
       { avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" },
     ]);
@@ -414,11 +419,13 @@ function toListDefinition(definition: WorkflowDefinition) {
     description: definition.description,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
     id: definition.id,
+    inProgressRunCount: 86,
     lastRunAt: "2026-08-26T10:20:00.000Z",
     managedAccountCount: 1,
     managedAccounts: [{ avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" }],
     name: definition.name,
     publishedRevision: definition.publishedRevision,
+    successRatePercent: 96,
     runtimeStatus: definition.runtimeStatus,
     trigger: "用户消息",
     totalRunCount: 12_345,

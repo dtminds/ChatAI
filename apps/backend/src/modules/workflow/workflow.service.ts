@@ -1030,6 +1030,7 @@ function toDefinitionListItem(
     description: record.description,
     hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
     id: record.id,
+    inProgressRunCount: metric?.inProgressRunCount ?? 0,
     lastRunAt: metric?.lastRunAt?.toISOString() ?? null,
     managedAccountCount: managedAccountIds.length,
     managedAccounts: managedAccountIds.slice(0, 3)
@@ -1037,6 +1038,7 @@ function toDefinitionListItem(
     name: record.name,
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
+    successRatePercent: metric?.successRatePercent ?? null,
     trigger: getWorkflowListTrigger(record.draft),
     totalRunCount: metric?.totalRunCount ?? 0,
     updatedAt: record.updatedAt.toISOString(),

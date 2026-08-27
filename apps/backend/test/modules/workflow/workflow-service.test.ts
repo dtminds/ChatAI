@@ -537,12 +537,14 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.trigger).toBe("用户消息");
   });
 
-  it("loads persisted Run totals for only the current Workflow page", async () => {
+  it("loads persisted Run metrics for only the current Workflow page", async () => {
     const repository = new InMemoryWorkflowRepository();
     const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });
     const lastRunAt = new Date("2026-08-26T10:20:00.000Z");
     const findByWorkflowIds = vi.fn(async () => new Map([[created.id, {
+      inProgressRunCount: 86,
       lastRunAt,
+      successRatePercent: 96,
       totalRunCount: 12_345,
     }]]));
     const service = createService(repository, {
@@ -553,7 +555,9 @@ describe("WorkflowService", () => {
 
     expect(findByWorkflowIds).toHaveBeenCalledWith(operator.uid, [created.id]);
     expect(page.items[0]).toMatchObject({
+      inProgressRunCount: 86,
       lastRunAt: lastRunAt.toISOString(),
+      successRatePercent: 96,
       totalRunCount: 12_345,
     });
   });

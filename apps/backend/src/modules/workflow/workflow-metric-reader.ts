@@ -2,7 +2,9 @@ import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Kysely } from "kysely";
 
 export type WorkflowMetricSummary = {
+  inProgressRunCount: number;
   lastRunAt: Date | null;
+  successRatePercent: number | null;
   totalRunCount: number;
 };
 
@@ -17,16 +19,35 @@ export class MysqlWorkflowMetricReader implements WorkflowMetricReader {
     const uniqueWorkflowIds = [...new Set(workflowIds)];
     if (uniqueWorkflowIds.length === 0) return new Map<string, WorkflowMetricSummary>();
 
-    const rows = await this.db.selectFrom("xy_wap_embed_workflow_metric")
-      .select(["last_run_at", "total_run_count", "workflow_id"])
+    const summaryRows = await this.db.selectFrom("xy_wap_embed_workflow_metric")
+      .select([
+        "cancelled_run_count",
+        "completed_run_count",
+        "failed_run_count",
+        "last_run_at",
+        "total_run_count",
+        "workflow_id",
+      ])
       .where("uid", "=", uid)
       .where("workflow_id", "in", uniqueWorkflowIds)
       .execute();
 
-    return new Map(rows.map(row => [String(row.workflow_id), {
-      lastRunAt: row.last_run_at,
-      totalRunCount: Number(row.total_run_count),
-    }]));
+    return new Map(summaryRows.map(row => {
+      const totalRunCount = Number(row.total_run_count);
+      const completedRunCount = Number(row.completed_run_count);
+      const failedRunCount = Number(row.failed_run_count);
+      const terminalRunCount = completedRunCount + failedRunCount + Number(row.cancelled_run_count);
+      const successRateDenominator = completedRunCount + failedRunCount;
+      const workflowId = String(row.workflow_id);
+      return [workflowId, {
+        inProgressRunCount: Math.max(totalRunCount - terminalRunCount, 0),
+        lastRunAt: row.last_run_at,
+        successRatePercent: successRateDenominator === 0
+          ? null
+          : Math.round(completedRunCount * 100 / successRateDenominator),
+        totalRunCount,
+      }] as const;
+    }));
   }
 }
 

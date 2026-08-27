@@ -72,14 +72,16 @@ export function WorkflowListTable({
   workflows: WorkflowListItem[];
 }) {
   return (
-    <Table aria-label="工作流列表" className="min-w-[1200px] table-fixed">
+    <Table aria-label="工作流列表" className="min-w-[1370px] table-fixed">
       <colgroup>
-        <col className="w-[240px]" />
-        <col className="w-[250px]" />
-        <col className="w-[190px]" />
-        <col className="w-[120px]" />
+        <col className="w-[220px]" />
+        <col className="w-[230px]" />
+        <col className="w-[180px]" />
+        <col className="w-[110px]" />
+        <col className="w-[100px]" />
+        <col className="w-[140px]" />
         <col className="w-[170px]" />
-        <col className="w-[130px]" />
+        <col className="w-[120px]" />
         <col className="w-[100px]" />
       </colgroup>
       <TableHeader>
@@ -88,6 +90,8 @@ export function WorkflowListTable({
           <TableHead className="h-11 px-4">触发条件</TableHead>
           <TableHead className="h-11 whitespace-nowrap px-4">托管账号</TableHead>
           <TableHead className="h-11 whitespace-nowrap px-4">总运行数</TableHead>
+          <TableHead className="h-11 whitespace-nowrap px-4">流程中</TableHead>
+          <TableHead className="h-11 whitespace-nowrap px-4">成功率</TableHead>
           <TableHead className="h-11 whitespace-nowrap px-4">最近一次运行</TableHead>
           <TableHead className="h-11 px-4">状态</TableHead>
           <TablePinnedHead className="h-11 whitespace-nowrap px-4 text-right">操作</TablePinnedHead>
@@ -96,7 +100,7 @@ export function WorkflowListTable({
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell className="py-10 text-center" colSpan={7}>
+            <TableCell className="py-10 text-center" colSpan={9}>
               <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
                 <Spinner aria-hidden="true" size={14} />
                 <span>正在加载</span>
@@ -105,7 +109,7 @@ export function WorkflowListTable({
           </TableRow>
         ) : workflows.length === 0 ? (
           <TableRow>
-            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={7}>暂无数据</TableCell>
+            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={9}>暂无数据</TableCell>
           </TableRow>
         ) : workflows.map(workflow => (
           <WorkflowListRow
@@ -156,6 +160,12 @@ function WorkflowListRow({
       </TableCell>
       <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
         {workflow.totalRunCount.toLocaleString("zh-CN")}
+      </TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
+        {workflow.inProgressRunCount.toLocaleString("zh-CN")}
+      </TableCell>
+      <TableCell className="px-4 py-4 text-muted-foreground tabular-nums">
+        {workflow.successRatePercent === null ? "-" : `${workflow.successRatePercent}%`}
       </TableCell>
       <TableCell className="px-4 py-4 text-muted-foreground">
         {workflow.lastRunAt ?? "-"}

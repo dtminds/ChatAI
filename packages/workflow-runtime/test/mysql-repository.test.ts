@@ -623,7 +623,20 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     const compiled = (db.currentCountExpression as { compile(provider: Kysely<unknown>): { parameters: readonly unknown[]; sql: string } })
       .compile(compiler);
     expect(compiled.sql).toContain("CAST(current_count AS SIGNED)");
-    expect(compiled.parameters).toEqual([-1]);
+    expect(compiled.parameters.at(-1)).toBe(-1);
+  });
+
+  it("upserts the maximum node metric batch in fixed write chunks", async () => {
+    const db = createMetricAggregationDbMock(WORKFLOW_RUNTIME_BATCH_LIMIT);
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.aggregateNodeMetricEvents({ limit: WORKFLOW_RUNTIME_BATCH_LIMIT }))
+      .resolves.toBe(WORKFLOW_RUNTIME_BATCH_LIMIT);
+
+    expect(db.metricInsertSizes).toEqual(Array.from(
+      { length: WORKFLOW_RUNTIME_BATCH_LIMIT / WORKFLOW_MYSQL_WRITE_CHUNK_SIZE },
+      () => WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+    ));
   });
 
   it("cleans terminal history in bounded batches without repeatedly selecting taskless runs", async () => {
@@ -1540,13 +1553,17 @@ function createLeaseRecoveryDbMock(options: {
   return db;
 }
 
-function createMetricAggregationDbMock() {
+function createMetricAggregationDbMock(eventCount = 1) {
   const now = new Date("2026-07-12T10:00:00.000Z");
   const db = {
     currentCountExpression: null as unknown,
+    metricInsertSizes: [] as number[],
     insertInto() {
       const builder = {
-        values() { return builder; },
+        values(values: unknown) {
+          db.metricInsertSizes.push(Array.isArray(values) ? values.length : 1);
+          return builder;
+        },
         onDuplicateKeyUpdate(values: Record<string, unknown>) {
           db.currentCountExpression = values.current_count;
           return builder;
@@ -1564,14 +1581,15 @@ function createMetricAggregationDbMock() {
         skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
-          return [{
+          return Array.from({ length: eventCount }, (_, index) => ({
             completed_delta: 0,
             create_time: now,
-            current_delta: -1,
+            current_delta: index === 0 ? -1 : 1,
             entered_delta: 0,
-            event_key: "5:cancelled:wait-1",
-            id: "1",
-            node_id: "wait-1",
+            event_key: `5:metric:${index}`,
+            id: String(index + 1),
+            incomplete_delta: 0,
+            node_id: `node-${index}`,
             passed_delta: 0,
             processed_at: null,
             revision: 1,
@@ -1580,7 +1598,7 @@ function createMetricAggregationDbMock() {
             uid: 8,
             update_time: now,
             workflow_id: "42",
-          }];
+          }));
         },
       };
       return builder;

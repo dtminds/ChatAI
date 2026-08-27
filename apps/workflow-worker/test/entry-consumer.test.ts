@@ -71,6 +71,39 @@ describe("workflow entry consumer", () => {
     expect(subscriptionReader.listMatchingEventSubscriptions).not.toHaveBeenCalled();
   });
 
+  it("admits ChatAI direct entries after normalizing externalUserId zero to absent", async () => {
+    const startDirectRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: { listMatchingEventSubscriptions: vi.fn() },
+    });
+    const input = directEvent({
+      payload: {
+        externalUserId: 0,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+    });
+
+    await expect(handler(createBrokerMessage(input))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startDirectRun).toHaveBeenCalledWith(expect.objectContaining({
+      payload: {
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+    }));
+  });
+
   it("ACKs active-Run rejection and DLQs an unsupported direct payload version", async () => {
     const processed = new Set<string>();
     const startDirectRun = vi.fn(async () => ({ kind: "active-run-rejected" as const }));
@@ -307,6 +340,39 @@ describe("workflow entry consumer", () => {
       uid: 9,
       workUserId: 201,
     });
+  });
+
+  it("admits Java message events after normalizing externalUserId zero to absent", async () => {
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { recordWaitEvent: vi.fn(), startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+    const input = messageEvent({
+      payload: {
+        externalUserId: 0,
+        messageId: 1001,
+        seatId: 101,
+        thirdExternalUserId: "chatai_external_456",
+        workUserId: 201,
+      },
+    });
+
+    await expect(handler(createBrokerMessage(input))).resolves.toEqual({
+      code: "admitted",
+      disposition: "ack",
+    });
+    expect(startRun).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: expect.objectContaining({
+        projection: expect.not.objectContaining({ externalUserId: expect.anything() }),
+      }),
+    }));
   });
 
   it("does not hydrate a message when no Start binding or Wait Event subscription can consume it", async () => {

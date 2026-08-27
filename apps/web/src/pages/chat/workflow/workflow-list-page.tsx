@@ -260,7 +260,6 @@ export function WorkflowListPage({
           capacity={capacity}
           overview={tenantOverview.overview}
           overviewStatus={tenantOverview.status}
-          onOverviewRetry={() => void tenantOverview.reload()}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -460,12 +459,10 @@ const workflowCapacitySegmentCount = 12;
 
 function WorkflowTenantDataSection({
   capacity,
-  onOverviewRetry,
   overview,
   overviewStatus,
 }: {
   capacity: ReturnType<typeof useWorkflowCapacityResource>;
-  onOverviewRetry(): void;
   overview: WorkflowTenantOverview | null;
   overviewStatus: ReturnType<typeof useWorkflowTenantOverviewResource>["status"];
 }) {
@@ -475,41 +472,32 @@ function WorkflowTenantDataSection({
         aria-label="Workflow 数据概览"
         className="grid min-w-[960px] grid-cols-4 gap-3"
       >
-        {overviewStatus === "error" || (!overview && overviewStatus !== "loading") ? (
-          <div className="col-span-3 flex min-h-[132px] items-center justify-center gap-3 rounded-[10px] border border-border/70 bg-surface text-sm text-muted-foreground">
-            <span>数据暂不可用</span>
-            <Button onClick={onOverviewRetry} size="sm" type="button" variant="outline">重试</Button>
-          </div>
-        ) : (
-          <>
-            <WorkflowOverviewMetricCard
-              icon={ChartAreaIcon}
-              iconClassName="text-foreground"
-              loading={overviewStatus === "loading" && !overview}
-              secondary={overview ? formatTodayRunComparison(overview.todayRunCountChangePercent) : null}
-              title="今日运行数"
-              value={overview ? overview.todayRunCount.toLocaleString("zh-CN") : null}
-            />
-            <WorkflowOverviewMetricCard
-              icon={PlayCircle02Icon}
-              iconClassName="text-foreground"
-              loading={overviewStatus === "loading" && !overview}
-              secondary={overview ? `共 ${overview.totalWorkflowCount.toLocaleString("zh-CN")} 个` : null}
-              title="已启用工作流"
-              value={overview ? overview.activeWorkflowCount.toLocaleString("zh-CN") : null}
-            />
-            <WorkflowOverviewMetricCard
-              icon={SecurityCheckIcon}
-              iconClassName="text-foreground"
-              loading={overviewStatus === "loading" && !overview}
-              secondary={overview ? `失败 ${overview.recentFailedRunCount.toLocaleString("zh-CN")} 次` : null}
-              title="近 7 日成功率"
-              value={overview
-                ? overview.recentSuccessRatePercent === null ? "-" : `${overview.recentSuccessRatePercent}%`
-                : null}
-            />
-          </>
-        )}
+        <WorkflowOverviewMetricCard
+          icon={ChartAreaIcon}
+          iconClassName="text-foreground"
+          loading={overviewStatus === "loading" && !overview}
+          secondary={overview ? formatTodayRunComparison(overview.todayRunCountChangePercent) : null}
+          title="今日运行数"
+          value={overview ? overview.todayRunCount.toLocaleString("zh-CN") : null}
+        />
+        <WorkflowOverviewMetricCard
+          icon={PlayCircle02Icon}
+          iconClassName="text-foreground"
+          loading={overviewStatus === "loading" && !overview}
+          secondary={overview ? `共 ${overview.totalWorkflowCount.toLocaleString("zh-CN")} 个` : null}
+          title="已启用工作流"
+          value={overview ? overview.activeWorkflowCount.toLocaleString("zh-CN") : null}
+        />
+        <WorkflowOverviewMetricCard
+          icon={SecurityCheckIcon}
+          iconClassName="text-foreground"
+          loading={overviewStatus === "loading" && !overview}
+          secondary={overview ? `失败 ${overview.recentFailedRunCount.toLocaleString("zh-CN")} 次` : null}
+          title="近 7 日成功率"
+          value={overview
+            ? overview.recentSuccessRatePercent === null ? "-" : `${overview.recentSuccessRatePercent}%`
+            : null}
+        />
         <WorkflowCapacityIndicator
           onRetry={() => void capacity.reload()}
           overview={capacity.overview}

@@ -130,6 +130,48 @@ describe("workflow entry event envelope", () => {
     });
   });
 
+  it.each([
+    {
+      eventType: "message.received",
+      payload: {
+        externalUserId: 0,
+        messageId: 938271,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+      },
+      source: "chatai",
+    },
+    {
+      eventType: "contact.friend_added",
+      payload: { externalUserId: 0, workUserId: 201 },
+      source: "wecom",
+    },
+    {
+      eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+      payload: {
+        externalUserId: 0,
+        seatId: 101,
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 201,
+        workflowId: "31",
+      },
+      source: "chatai",
+    },
+  ] as const)("normalizes Java's zero externalUserId before $eventType validation", (input) => {
+    const rawEvent = event({
+      eventType: input.eventType,
+      payload: structuredClone(input.payload),
+      source: input.source,
+    });
+
+    expect(validateWorkflowEntryEvent(rawEvent)).toMatchObject({
+      event: { payload: expect.not.objectContaining({ externalUserId: expect.anything() }) },
+      kind: "accepted",
+    });
+    expect(rawEvent.payload).toHaveProperty("externalUserId", 0);
+  });
+
   it("keeps shared idempotent event pairs byte-for-byte equivalent", () => {
     const groups = new Map<string, typeof manifest.fixtures>();
     for (const fixture of manifest.fixtures) {

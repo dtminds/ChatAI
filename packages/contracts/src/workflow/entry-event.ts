@@ -182,7 +182,14 @@ export function validateWorkflowEntryEvent(
   if (Math.max(options.encodedByteLength ?? 0, envelopeBytes) > WORKFLOW_ENTRY_EVENT_MAX_BYTES) {
     return { code: "envelope_too_large", kind: "rejected" };
   }
-  return { event, kind: "accepted" };
+  return { event: normalizeWorkflowEntryEvent(event), kind: "accepted" };
+}
+
+function normalizeWorkflowEntryEvent(event: WorkflowEntryEvent): WorkflowEntryEvent {
+  if (event.payload.externalUserId !== 0) return event;
+  const payload = structuredClone(event.payload);
+  delete payload.externalUserId;
+  return { ...event, payload };
 }
 
 export function getWorkflowJsonEncodedByteLength(value: unknown): number | null {

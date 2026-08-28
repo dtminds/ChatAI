@@ -80,7 +80,7 @@ These DLQ operations are required before a real Entry Source enters production g
 ## Health Checks
 
 - `GET /healthz` proves that the Worker process and health server are alive.
-- `GET /readyz` requires the database, Broker, and every enabled role to be ready.
+- `GET /readyz` requires the database, every enabled role, and lookup access to the source and DLQ topics used by those roles to be ready. Topic lookup does not prove Producer write permission.
 - TKE liveness uses `/healthz`; readiness uses `/readyz`.
 - A readiness transition to `not-ready` is operationally significant even when the process remains live.
 

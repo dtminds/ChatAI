@@ -278,9 +278,15 @@ export async function startWorkflowWorkerRuntime(input: {
       role: "readiness",
       run: async () => {
         const healthTopics = new Set<string>();
-        if (input.config.roles.has("entry-consumer")) healthTopics.add(input.config.topics.entry);
+        if (input.config.roles.has("entry-consumer")) {
+          healthTopics.add(input.config.topics.entry);
+          healthTopics.add(input.config.deadLetterTopics.entry);
+        }
         if (input.config.roles.has("task-consumer") || input.config.roles.has("outbox")) {
           healthTopics.add(input.config.topics.task);
+        }
+        if (input.config.roles.has("task-consumer")) {
+          healthTopics.add(input.config.deadLetterTopics.task);
         }
         const [database, broker] = await Promise.allSettled([
           input.pingDatabase(),

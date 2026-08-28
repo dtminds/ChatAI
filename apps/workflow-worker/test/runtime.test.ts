@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import pino from "pino";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "../src/broker/types.js";
+import type { WorkflowWorkerConfig } from "../src/config.js";
 import type { startRoleLoop } from "../src/role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "../src/runtime.js";
 
@@ -366,16 +367,36 @@ describe("workflow worker runtime", () => {
     await runtime.close();
   });
 
-  it("checks only the topics used by the enabled roles", async () => {
+  it.each<{
+    roles: WorkflowWorkerConfig["roles"];
+    topics: string[];
+  }>([
+    {
+      roles: new Set(["entry-consumer"]),
+      topics: ["entry-topic", "entry-dlq"],
+    },
+    {
+      roles: new Set(["task-consumer"]),
+      topics: ["task-topic", "task-dlq"],
+    },
+    {
+      roles: new Set(["outbox"]),
+      topics: ["task-topic"],
+    },
+    {
+      roles: new Set(["task-consumer", "outbox"]),
+      topics: ["task-topic", "task-dlq"],
+    },
+  ])("checks only the source and dead-letter topics used by $roles", async ({ roles, topics }) => {
     const resources = createResources();
     const runtime = await startWorkflowWorkerRuntime({
       ...resources.dependencies,
-      config: config(new Set(["entry-consumer"] as const)),
+      config: config(roles),
     });
 
     await resources.runReadinessProbe();
 
-    expect(resources.broker.checkHealth).toHaveBeenLastCalledWith(["entry-topic"]);
+    expect(resources.broker.checkHealth).toHaveBeenLastCalledWith(topics);
     await runtime.close();
   });
 
@@ -589,7 +610,9 @@ function reconcilerResult(overrides: {
   };
 }
 
-function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
+function config(
+  roles: WorkflowWorkerConfig["roles"] = new Set(["entry-consumer", "task-consumer"]),
+) {
   return {
     broker: "pulsar" as const,
     consumerConcurrency: { entry: 10, task: 10 },

@@ -209,7 +209,7 @@ GET :3002/healthz
 GET :3002/readyz
 ```
 
-`/healthz` 只表示进程存活。`/readyz` 会周期检查数据库、Broker Topic lookup 和 Consumer 连接状态，并要求所有已启用角色均就绪。TKE 建议使用：
+`/healthz` 只表示进程存活。`/readyz` 会周期检查数据库、启用角色使用的源 Topic 和 DLQ Topic lookup，以及 Consumer 连接状态，并要求所有已启用角色均就绪。DLQ lookup 只能验证 Topic 可发现性，不能替代真实死信发布对 Producer 写权限的验证。TKE 建议使用：
 
 ```yaml
 livenessProbe:

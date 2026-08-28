@@ -496,6 +496,7 @@ async function hydrateMessageReceivedProjection(input: {
   }
   const message = await input.messageReader.findById({
     messageId: input.event.payload.messageId,
+    seatId: input.event.payload.seatId,
     thirdExternalUserId: input.event.payload.thirdExternalUserId,
     uid: input.event.uid,
     workUserId: input.event.payload.workUserId,

@@ -4,8 +4,8 @@
 
 - Workflow Start supports `entryMode: "direct-push"` with an empty `triggers` array.
 - Java owns endpoint-key generation, decryption, and validation.
-- Node requests only an opaque `endpointKey` through `WorkflowDirectEntryEndpointPort`.
-- Until the Java API is available, Backend uses `MockWorkflowDirectEntryEndpointPort`. A real Adapter replaces the Port implementation without changing the Web or Runtime contracts.
+- Backend sends the globally unique plain `workflowId` as `{ "content": workflowId }` to `POST /third-internal/smp-encrypt/aes-encrypt` and accepts `data` only when the Java envelope has `success === true`.
+- Node requests only the returned opaque `endpointKey` through `WorkflowDirectEntryEndpointPort`; tenant `uid` remains part of Backend access control and is not included in the encrypted content.
 - Web builds the user-facing URL as `/workflow/endpoint/{endpointKey}` on the current origin.
 - The public route does not require login. It only renders `请按照协议推送数据`; it does not decrypt the key or start a Workflow.
 

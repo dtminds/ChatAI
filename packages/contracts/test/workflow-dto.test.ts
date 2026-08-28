@@ -323,12 +323,12 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
       triggers: [],
-    })).toBe(true);
-    expect(Value.Check(WorkflowStartConfigSchema, {
+    })).toBe(false);
+    expect(Value.Check(WorkflowStartDraftConfigSchema, {
       entryMode: "audience-import",
       entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       seatIds: [101],
-      triggers: [{ sourceIds: [], type: "contact.friend_added" }],
+      triggers: [],
     })).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, {
       entryMode: "direct-push",

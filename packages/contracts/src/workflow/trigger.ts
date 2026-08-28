@@ -16,7 +16,6 @@ export const WorkflowEntryEventTypeSchema = Type.Union([
 
 export const WorkflowStartEntryModeSchema = Type.Union([
   Type.Literal("event"),
-  Type.Literal("audience-import"),
   Type.Literal("direct-push"),
 ]);
 
@@ -199,11 +198,6 @@ export const WorkflowChatAiStartConfigSchema = Type.Union([
     triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 1, minItems: 1 }),
   }, { additionalProperties: false }),
   Type.Object({
-    entryMode: Type.Literal("audience-import"),
-    ...WorkflowChatAiStartExecutionFields,
-    triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 0 }),
-  }, { additionalProperties: false }),
-  Type.Object({
     entryMode: Type.Literal("direct-push"),
     ...WorkflowChatAiStartExecutionFields,
     triggers: Type.Array(WorkflowChatAiStartTriggerSchema, { maxItems: 0 }),
@@ -224,11 +218,6 @@ export const WorkflowWeComStartConfigSchema = Type.Union([
     entryMode: Type.Optional(Type.Literal("event")),
     ...WorkflowWeComStartExecutionFields,
     triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 1, minItems: 1 }),
-  }, { additionalProperties: false }),
-  Type.Object({
-    entryMode: Type.Literal("audience-import"),
-    ...WorkflowWeComStartExecutionFields,
-    triggers: Type.Array(WorkflowWeComStartTriggerSchema, { maxItems: 0 }),
   }, { additionalProperties: false }),
   Type.Object({
     entryMode: Type.Literal("direct-push"),

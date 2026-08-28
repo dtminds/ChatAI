@@ -129,21 +129,6 @@ describe("workflow trigger matching", () => {
     }));
   });
 
-  it("does not create trigger bindings for audience imports", () => {
-    const config: WorkflowStartConfig = {
-      entryMode: "audience-import",
-      entryPolicy,
-      seatIds: [101],
-      triggers: [],
-    };
-
-    expect(normalizeWorkflowStartConfig(config)).toEqual(expect.objectContaining({
-      entryMode: "audience-import",
-      triggers: [],
-    }));
-    expect(getWorkflowTriggerBindings(config, "chatai_contact")).toEqual([]);
-  });
-
   it("creates a direct-entry binding from resolved ChatAI work users", () => {
     const config: WorkflowStartConfig = {
       entryMode: "direct-push",

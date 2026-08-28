@@ -62,7 +62,7 @@ describe("workflow routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      data: { endpointKey: expect.stringMatching(/^mock\./) },
+      data: { endpointKey: "test.endpoint-key" },
       success: true,
     });
   });
@@ -494,6 +494,9 @@ describe("workflow routes", () => {
     });
     await registerWorkflowRoutes(app, {
       service: new WorkflowService(new InMemoryWorkflowRepository(), {
+        directEntryEndpointPort: {
+          getEndpointKey: async () => "test.endpoint-key",
+        },
         entitlementPort: {
           check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
         },

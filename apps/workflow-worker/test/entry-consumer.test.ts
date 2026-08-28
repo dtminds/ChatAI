@@ -384,6 +384,7 @@ describe("workflow entry consumer", () => {
     expect(messageReader.findById).toHaveBeenCalledTimes(1);
     expect(messageReader.findById).toHaveBeenCalledWith({
       messageId: 1001,
+      seatId: 101,
       thirdExternalUserId: "chatai_external_456",
       uid: 9,
       workUserId: 201,

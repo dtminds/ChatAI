@@ -41,6 +41,7 @@ import { MysqlWorkflowMetricReader } from "./workflow-metric-reader.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
+import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -101,6 +102,7 @@ export async function registerWorkflowRoutes(
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
+      directEntryEndpointPort: createJavaWorkflowDirectEntryEndpointPort(app.log),
       entitlementPort,
       managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),

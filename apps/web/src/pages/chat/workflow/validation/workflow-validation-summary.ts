@@ -135,9 +135,7 @@ export function buildWorkflowValidationSummaryFromResult(
       description: effectiveValidation.startNode && !startConfigIssues.length
         ? effectiveValidation.startNode.data.kind === "start"
           && effectiveValidation.startNode.data.entryMode !== "event"
-          ? effectiveValidation.startNode.data.entryMode === "audience-import"
-            ? "通过导入人群进入"
-            : "通过外部推送进入"
+          ? "通过外部推送进入"
           : `已配置 ${effectiveValidation.startNode.data.kind === "start" ? effectiveValidation.startNode.data.triggers.length : 0} 个触发条件`
         : startConfigIssues[0]?.message ?? "缺少开始节点",
       id: "start",

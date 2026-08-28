@@ -25,9 +25,7 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
       {
         id: "triggers",
         label: "进入方式",
-        value: data.entryMode === "audience-import"
-          ? { kind: "text", text: "导入人群" }
-          : data.entryMode === "direct-push"
+        value: data.entryMode === "direct-push"
           ? { kind: "text", text: "外部推送" }
           : data.triggers.length
           ? {

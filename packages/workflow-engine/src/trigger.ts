@@ -47,7 +47,6 @@ export function getWorkflowTriggerBindings(
 ): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   assertStartConfigMatchesSubjectType(normalized, subjectType);
-  if (normalized.entryMode === "audience-import") return [];
   if (normalized.entryMode === "direct-push") {
     const workUserIds = getBindingWorkUserIds(normalized, options.resolvedWorkUserIds);
     if (workUserIds.length === 0) {

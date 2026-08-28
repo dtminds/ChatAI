@@ -52,11 +52,11 @@ describe("workflow start configuration", () => {
     });
   });
 
-  it("accepts audience import without an entry event", () => {
+  it("accepts direct push without an entry event", () => {
     const definition = getNodeDefinition("start");
     const node = createStartNode({
       ...createStartNodeData("chatai_sop"),
-      entryMode: "audience-import",
+      entryMode: "direct-push",
       seatIds: [101],
       triggers: [],
     });

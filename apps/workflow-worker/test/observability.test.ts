@@ -251,6 +251,24 @@ describe("workflow worker observability", () => {
     }, "workflow worker role reported warning counters");
   });
 
+  it("reports Task status reconciliation at info level", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: { taskStatusesReconciled: 4 },
+    });
+
+    expect(logger.info).toHaveBeenCalledWith({
+      durationMs: 20,
+      event: "workflow.worker.role.completed",
+      role: "reconciler",
+      taskStatusesReconciled: 4,
+    }, "workflow worker role completed");
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("warns when a revision cleanup batch fails", () => {
     const logger = createLogger();
 

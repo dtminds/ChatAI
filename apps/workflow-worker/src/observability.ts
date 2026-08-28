@@ -313,7 +313,6 @@ function requiresRecoveryWarning(
       "inconsistentRunsFailed",
       "staleTasksCancelled",
       "stalledTasksRepublished",
-      "taskStatusesReconciled",
       "taskLeasesDead",
       "taskLeasesRecovered",
       "terminalRunTasksCancelled",

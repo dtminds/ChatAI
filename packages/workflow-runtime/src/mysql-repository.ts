@@ -1,6 +1,7 @@
 import {
   WORKFLOW_ACTIVE_RUN_STATUSES,
   WorkflowEntryEventType,
+  WorkflowEntryEventTypeSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceResultSchema,
   WorkflowJsonObjectSchema,
@@ -4545,9 +4546,7 @@ function parseStatusReason(value: string | null): WorkflowStatusReason {
 }
 
 function parseEntryEventType(value: unknown): WorkflowEntryEventType {
-  if (value === "contact.friend_added" || value === "contact.tag_added" || value === "message.received") {
-    return value;
-  }
+  if (Value.Check(WorkflowEntryEventTypeSchema, value)) return value;
   throw new Error(`Unknown workflow entry event type: ${String(value)}`);
 }
 

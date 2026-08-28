@@ -10,6 +10,7 @@ import type {
 import {
   DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
   normalizeWorkflowEntryPolicy,
+  WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
 } from "@chatai/contracts";
 import type { WorkflowTriggerProjection } from "./event-catalog.js";
 
@@ -46,7 +47,22 @@ export function getWorkflowTriggerBindings(
 ): WorkflowTriggerBindingSpec[] {
   const normalized = normalizeWorkflowStartConfig(config);
   assertStartConfigMatchesSubjectType(normalized, subjectType);
-  if (normalized.entryMode !== "event") return [];
+  if (normalized.entryMode === "audience-import") return [];
+  if (normalized.entryMode === "direct-push") {
+    const workUserIds = getBindingWorkUserIds(normalized, options.resolvedWorkUserIds);
+    if (workUserIds.length === 0) {
+      throw new Error("Direct entry requires resolved WeCom member identities");
+    }
+    return [{
+      eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+      filter: {
+        entryPolicy: structuredClone(normalized.entryPolicy),
+        eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+        workUserIds,
+      },
+      subjectType,
+    }];
+  }
   return normalized.triggers.map(trigger => ({
     eventType: trigger.type,
     filter: createBindingFilter(normalized, trigger, options.resolvedWorkUserIds),
@@ -59,6 +75,7 @@ export function matchWorkflowTrigger(
   projection: WorkflowTriggerProjection,
 ) {
   if (filter.eventType !== projection.eventType) return false;
+  if (filter.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE) return false;
   if (filter.eventType === "message.received") {
     const seatId = projection.match.seatId;
     if (typeof seatId !== "number" || !filter.seatIds.includes(seatId)) return false;
@@ -92,9 +109,7 @@ function createBindingFilter(
     };
   }
 
-  const workUserIds = "workUserIds" in config
-    ? config.workUserIds
-    : uniqueNumbers(resolvedWorkUserIds ?? []);
+  const workUserIds = getBindingWorkUserIds(config, resolvedWorkUserIds);
   if (workUserIds.length === 0) {
     throw new Error("Contact trigger requires resolved WeCom member identities");
   }
@@ -113,6 +128,15 @@ function createBindingFilter(
     tagIds: [...trigger.tagIds],
     workUserIds: [...workUserIds],
   };
+}
+
+function getBindingWorkUserIds(
+  config: WorkflowStartConfig,
+  resolvedWorkUserIds: number[] | undefined,
+) {
+  return "workUserIds" in config
+    ? [...config.workUserIds]
+    : uniqueNumbers(resolvedWorkUserIds ?? []);
 }
 
 function assertStartConfigMatchesSubjectType(

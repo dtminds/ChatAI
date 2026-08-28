@@ -22,7 +22,7 @@ describe("workflow direct entry", () => {
       run: {
         context: {
           trigger: {
-            eventType: "workflow.direct_entry.requested",
+            eventType: "workflow.direct_entry",
             projection: {
               externalUserId: 3267,
               seatId: 101,
@@ -79,6 +79,16 @@ describe("workflow direct entry", () => {
       kind: "success",
       run: { subjectId: "3267", subjectType: "wecom_contact" },
     });
+  });
+
+  it("rejects a direct entry matched against a stale binding revision", async () => {
+    const { service } = createHarness(directStart({
+      entryPolicy: { mode: "never" },
+      seatIds: [101],
+    }));
+
+    await expect(service.startDirectRun(directInput({ expectedRevision: 2 })))
+      .rejects.toMatchObject({ code: "WORKFLOW_DEFINITION_STALE" });
   });
 
   it("applies tenant capacity to direct entry", async () => {
@@ -152,6 +162,7 @@ function directInput(
 ): Parameters<WorkflowRuntimeService["startDirectRun"]>[0] {
   return {
     entryEventId: "event-1",
+    expectedRevision: 1,
     occurredAt: now.toISOString(),
     payload: {
       externalUserId: 3267,

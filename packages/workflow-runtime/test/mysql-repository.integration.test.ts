@@ -497,12 +497,43 @@ describe("MySQL workflow runtime repository contract", () => {
     });
   });
 
+  it("reads a current-revision direct-entry work-user binding", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    await database.insertInto("xy_wap_embed_workflow_trigger_binding").values({
+      event_type: "workflow.direct_entry",
+      filter_spec_json: JSON.stringify({
+        entryPolicy: { mode: "never" },
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      }),
+      revision: 1,
+      status: 1,
+      subject_type: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.listActiveTriggerBindings(9, "workflow.direct_entry"))
+      .resolves.toMatchObject([{
+        eventType: "workflow.direct_entry",
+        filter: {
+          entryPolicy: { mode: "never" },
+          eventType: "workflow.direct_entry",
+          workUserIds: [201, 202],
+        },
+        revision: 1,
+        subjectType: "chatai_contact",
+        workflowId: "31",
+      }]);
+  });
+
   it("admits only one active Run for concurrent distinct events on the same Subject", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);
     const input = {
       activeRunLimit: 10_000,
-      context: { trigger: { eventType: "workflow.direct_entry.requested" } },
+      context: { trigger: { eventType: "workflow.direct_entry" } },
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
       initialNodeId: "start",
       initialNodeKind: "start" as const,

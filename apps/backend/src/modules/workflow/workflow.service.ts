@@ -875,8 +875,10 @@ export class WorkflowService {
       throw new Error("Compiled Workflow has an invalid Start configuration");
     }
     const config = entryNode.config as WorkflowStartConfig;
-    if (config.entryMode !== "event") return [];
     if (subjectType !== "chatai_contact" || !("seatIds" in config)) {
+      return getWorkflowTriggerBindings(config, subjectType);
+    }
+    if (config.entryMode === "audience-import") {
       return getWorkflowTriggerBindings(config, subjectType);
     }
 
@@ -900,7 +902,8 @@ export class WorkflowService {
         "开始节点包含无效席位",
       );
     }
-    if (!config.triggers.some(trigger => trigger.type.startsWith("contact."))) {
+    if (config.entryMode !== "direct-push"
+      && !config.triggers.some(trigger => trigger.type.startsWith("contact."))) {
       return getWorkflowTriggerBindings(config, subjectType);
     }
     return getWorkflowTriggerBindings(config, subjectType, {

@@ -18,7 +18,7 @@ Java publishes to the existing Workflow Entry topic after resolving the endpoint
   "schemaVersion": 1,
   "payloadVersion": 1,
   "eventId": "producer-unique-event-id",
-  "eventType": "workflow.direct_entry.requested",
+  "eventType": "workflow.direct_entry",
   "uid": 9,
   "occurredAt": "2026-08-24T08:30:15.123Z",
   "source": "chatai",
@@ -38,7 +38,11 @@ For WeCom contact Workflows, payload requires `workflowId`, `externalUserId`, an
 
 ## Admission
 
-The Worker recognizes the fixed event type before Event Catalog projection. Direct Entry does not read Trigger Bindings or Wait Event Subscriptions, but it reuses Entry Inbox deduplication, Runtime admission, and atomic Run/Task/Outbox creation.
+Publishing a Direct Entry Revision creates one `workflow.direct_entry` Trigger Binding. Its Filter always stores `workUserIds`: WeCom Workflows copy the configured members, while ChatAI Workflows resolve the configured `seatIds` to authoritative active `workUserIds` during review and publication.
+
+After decoding the endpoint key, Java reuses the standard Interest Reader query for `uid + eventType`. It returns `INTERESTED` only when the same Binding row matches both the decoded `workflowId` and `payload.workUserId`. Reader failures remain fail-open so that Node can perform the final authoritative check.
+
+The Worker recognizes the fixed event type before Event Catalog projection. It reads the active Direct Entry Bindings, requires one row to match the same `workflowId + workUserId`, and does not read Wait Event Subscriptions. It passes the matched Binding Revision into Runtime; a concurrent publication makes admission retry against the new Binding instead of running a different Revision. The Worker then reuses Entry Inbox deduplication, Runtime admission, and atomic Run/Task/Outbox creation.
 
 Runtime reads the current published Revision and requires its Start mode to still be `direct-push`. It derives the subject from the Revision subject type and verifies that `seatId` or `workUserId` remains inside the published Start scope. `workflowId` is routing data and is removed before the trigger projection is stored.
 

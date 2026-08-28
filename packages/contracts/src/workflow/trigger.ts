@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { WORKFLOW_DIRECT_ENTRY_EVENT_TYPE } from "./entry-event.js";
 import {
   WORKFLOW_ENTRY_MAX_ENTRIES,
   WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
@@ -10,6 +11,7 @@ export const WorkflowEntryEventTypeSchema = Type.Union([
   Type.Literal("contact.friend_added"),
   Type.Literal("contact.tag_added"),
   Type.Literal("message.received"),
+  Type.Literal(WORKFLOW_DIRECT_ENTRY_EVENT_TYPE),
 ]);
 
 export const WorkflowStartEntryModeSchema = Type.Union([
@@ -270,6 +272,15 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
     eventType: Type.Literal("message.received"),
     keywords: WorkflowRequiredTriggerStringListSchema,
     seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
+      maxItems: 100,
+      minItems: 1,
+      uniqueItems: true,
+    }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    entryPolicy: WorkflowEntryPolicySchema,
+    eventType: Type.Literal(WORKFLOW_DIRECT_ENTRY_EVENT_TYPE),
+    workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,
       uniqueItems: true,

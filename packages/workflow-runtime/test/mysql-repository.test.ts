@@ -567,6 +567,32 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toEqual({ expired: 0, recovered: 0 });
     expect(db.inferenceUpdateCount).toBe(0);
     expect(db.lockOrder).toEqual(["run", "task", "definition", "job"]);
+    expect(db.candidateLimits).toEqual([100, 100, 100]);
+    expect(db.candidatePredicates).toEqual([
+      [["job.status", "in", ["pending", "retry_wait", "running"]], ["job.deadline_at", "<=", now]],
+      [["job.status", "in", ["pending", "retry_wait"]], ["job.attempt", ">=", 1]],
+      [["job.status", "=", "running"], ["job.lease_expires_at", "<=", now]],
+    ]);
+  });
+
+  it("deduplicates split Inference recovery candidates and applies one numeric ID limit", async () => {
+    const now = new Date("2026-07-10T00:02:00.000Z");
+    const db = createInferenceRecoveryRaceDbMock({
+      candidateIds: [["2", "10"], ["1", "2"], ["3"]],
+      lockedJobs: false,
+      renewedLeaseExpiresAt: new Date("2026-07-10T00:03:00.000Z"),
+      scannedLeaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.recoverInferenceJobs({
+      limit: 2,
+      maxAttempts: 1,
+      now,
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+
+    expect(db.candidateLimits).toEqual([2, 2, 2]);
+    expect(db.lockedJobIds).toEqual(["1", "2"]);
   });
 
   it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
@@ -895,6 +921,8 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 });
 
 function createInferenceRecoveryRaceDbMock(input: {
+  candidateIds?: string[][];
+  lockedJobs?: boolean;
   renewedLeaseExpiresAt: Date;
   scannedLeaseExpiresAt: Date;
 }) {
@@ -911,12 +939,21 @@ function createInferenceRecoveryRaceDbMock(input: {
     uid: 8,
     workflow_id: "42",
   };
+  let candidateSelectCount = 0;
   let inferenceSelectCount = 0;
   const db = {
+    candidateLimits: [] as number[],
+    candidatePredicates: [] as unknown[][],
     inferenceUpdateCount: 0,
     jobLocked: false,
+    lockedJobIds: [] as string[],
     lockOrder: [] as string[],
     selectFrom(table: string) {
+      const candidateIndex = table === "xy_wap_embed_workflow_inference_job as job"
+        ? candidateSelectCount++
+        : -1;
+      const predicates: unknown[] = [];
+      if (candidateIndex >= 0) db.candidatePredicates[candidateIndex] = predicates;
       const builder = {
         forShare() {
           if (table === "xy_wap_embed_workflow_definition") db.lockOrder.push("definition");
@@ -934,15 +971,36 @@ function createInferenceRecoveryRaceDbMock(input: {
           return builder;
         },
         innerJoin() { return builder; },
-        limit() { return builder; },
+        limit(value: number) {
+          if (candidateIndex >= 0) db.candidateLimits[candidateIndex] = value;
+          return builder;
+        },
         orderBy() { return builder; },
         select() { return builder; },
         selectAll() { return builder; },
         skipLocked() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) {
+          if (candidateIndex >= 0 && typeof args[0] === "string"
+            && (args[0] === "job.status" || args[0] === "job.deadline_at"
+              || args[0] === "job.attempt" || args[0] === "job.lease_expires_at")) {
+            predicates.push(args);
+          }
+          if (table === "xy_wap_embed_workflow_inference_job"
+            && args[0] === "id" && args[1] === "in") {
+            db.lockedJobIds = args[2] as string[];
+          }
+          return builder;
+        },
         async execute() {
+          if (candidateIndex >= 0) {
+            return (input.candidateIds?.[candidateIndex] ?? [baseJob.id]).map(id => ({
+              ...baseJob,
+              id,
+              lease_expires_at: input.scannedLeaseExpiresAt,
+            }));
+          }
           if (table.startsWith("xy_wap_embed_workflow_inference_job")) {
-            return [{
+            return input.lockedJobs === false ? [] : [{
               ...baseJob,
               lease_expires_at: db.jobLocked
                 ? input.renewedLeaseExpiresAt

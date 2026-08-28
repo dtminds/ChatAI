@@ -23,7 +23,7 @@ Entry and Task error details are sampled independently by failure category, with
 
 | `event` | Level | Important fields |
 | --- | --- | --- |
-| `workflow.worker.started` | `info` | `environment`, `roles` |
+| `workflow.worker.started` | `info` | `roles`, `topics`, `subscriptions`, `deadLetterTopics`, `workerId` |
 | `workflow.worker.stopped` | `info` | none |
 | `workflow.worker.role.idle` | `debug` | `role`, `durationMs`, role counters |
 | `workflow.worker.role.completed` | `info` | `role`, `durationMs`, role counters |
@@ -80,7 +80,7 @@ These DLQ operations are required before a real Entry Source enters production g
 ## Health Checks
 
 - `GET /healthz` proves that the Worker process and health server are alive.
-- `GET /readyz` requires the database, Broker, and every enabled role to be ready.
+- `GET /readyz` requires the database, every enabled role, and lookup access to the source and DLQ topics used by those roles to be ready. Topic lookup does not prove Producer write permission.
 - TKE liveness uses `/healthz`; readiness uses `/readyz`.
 - A readiness transition to `not-ready` is operationally significant even when the process remains live.
 

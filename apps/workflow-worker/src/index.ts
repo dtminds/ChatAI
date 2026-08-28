@@ -170,7 +170,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     await database.destroy();
     throw error;
   }
-  const workerId = `${config.environment}-${process.pid}-${randomUUID()}`;
+  const workerId = `${process.pid}-${randomUUID()}`;
   return startWorkflowWorker({
     config,
     logger,

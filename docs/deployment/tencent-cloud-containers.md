@@ -209,7 +209,7 @@ GET :3002/healthz
 GET :3002/readyz
 ```
 
-`/healthz` 只表示进程存活。`/readyz` 会周期检查数据库、Broker Topic lookup 和 Consumer 连接状态，并要求所有已启用角色均就绪。TKE 建议使用：
+`/healthz` 只表示进程存活。`/readyz` 会周期检查数据库、启用角色使用的源 Topic 和 DLQ Topic lookup，以及 Consumer 连接状态，并要求所有已启用角色均就绪。DLQ lookup 只能验证 Topic 可发现性，不能替代真实死信发布对 Producer 写权限的验证。TKE 建议使用：
 
 ```yaml
 livenessProbe:
@@ -227,17 +227,18 @@ readinessProbe:
 ```text
 NODE_ENV=production
 LOG_LEVEL=info
-WORKFLOW_ENVIRONMENT=dev
 WORKFLOW_BROKER=pulsar
 JAVA_INTERNAL_API_BASE_URL=https://<java-internal-host>
+WORKFLOW_ENTITLEMENT_MODE=allow
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement
 WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
 WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
-WORKFLOW_ENTRY_TOPIC=topic-workflow-entry-dev
-WORKFLOW_TASK_TOPIC=topic-workflow-task-dev
-WORKFLOW_SUBSCRIPTION=consumer-chatai-worker-env-dev
-WORKFLOW_ENTRY_DLQ_TOPIC=consumer-chatai-worker-env-dev-DLQ
-WORKFLOW_TASK_DLQ_TOPIC=consumer-chatai-worker-env-dev-DLQ
+WORKFLOW_ENTRY_TOPIC=<workflow-entry-topic>
+WORKFLOW_TASK_TOPIC=<workflow-task-topic>
+WORKFLOW_ENTRY_SUBSCRIPTION=<workflow-entry-subscription>
+WORKFLOW_TASK_SUBSCRIPTION=<workflow-task-subscription>
+WORKFLOW_ENTRY_DLQ_TOPIC=<workflow-entry-dlq-topic>
+WORKFLOW_TASK_DLQ_TOPIC=<workflow-task-dlq-topic>
 WORKFLOW_WORKER_ROLES=entry-consumer,task-consumer,inference,scheduler,outbox,reconciler
 WORKFLOW_HEALTH_PORT=3002
 WORKFLOW_MAX_REDELIVER_COUNT=5
@@ -260,7 +261,7 @@ WORKFLOW_OUTBOX_INTERVAL_MS=1000
 WORKFLOW_OUTBOX_RETRY_DELAY_MS=5000
 WORKFLOW_RECONCILE_INTERVAL_MS=30000
 WORKFLOW_READINESS_INTERVAL_MS=30000
-WORKFLOW_SHARD_IDS=
+WORKFLOW_SHARD_IDS=<comma-separated-shard-ids>
 ```
 
 敏感配置放入 Secret：
@@ -279,16 +280,9 @@ Workflow 不维护环境级 Capability 白名单。节点是否可发布由共�
 
 `WORKFLOW_ENTITLEMENT_API_URL` 指向 Java 提供的 Workflow Type 权益查询接口，Worker 在新 Entry 或已有 Task 推进前调用。`JAVA_INTERNAL_API_BASE_URL` 供 Message 等运行节点调用 Java 业务接口。接口不可用时本次推进失败关闭但不改写 Workflow 状态；确认失去权益后先暂停，持续 7 天后永久停止。测试和生产部署应配置这些接口及 `JAVA_INTERNAL_API_TOKEN`。
 
-环境映射：
+Worker 不根据环境名称推导消息资源。每个部署都必须显式配置 Entry、Task 的 Topic、Subscription 和 DLQ；缺少任一配置时拒绝启动。Entry 和 Task 必须位于不同 Topic。它们位于不同 Topic 时可以使用相同 Subscription 名称，但建议使用独立名称方便监控和归属。测试、开发和生产不得交叉使用 Topic、Subscription 或 DLQ。
 
-| 环境 | Entry Topic | Task Topic | Subscription |
-| --- | --- | --- | --- |
-| dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` | `consumer-chatai-worker-env-dev` |
-| test | `topic-workflow-entry-test` | `topic-workflow-task-test` | `consumer-chatai-worker-env-test` |
-
-Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称。TDMQ 会为每个环境消费组维护系统 `-RETRY` 和 `-DLQ` Topic，不需要在应用中创建额外业务 Topic。测试与开发不得交叉使用 Topic 或 Subscription。
-
-当前 Smoke Producer 阶段允许 Entry 和 Task 显式配置到同一个 DLQ Topic，不提供通用人工重放。接入真实 Entry Source 并进入生产灰度前，必须将 `WORKFLOW_ENTRY_DLQ_TOPIC` 和 `WORKFLOW_TASK_DLQ_TOPIC` 配置为可明确区分的 Topic，并完成以下运维能力：
+`NODE_ENV=production` 时 Entry 和 Task 必须使用不同的 DLQ Topic，Worker 角色和消费并发必须显式配置；启用 `scheduler` 时还必须显式配置该实例负责的 `WORKFLOW_SHARD_IDS`。生产部署不接受依靠代码默认值推导上述资源。进入生产灰度前还必须完成以下运维能力：
 
 - 使用 TDMQ 原生指标监控 Entry DLQ 积压和增长，并接入明确的告警渠道。
 - 提供仅供授权运维使用的 Entry 重新投递工具，保留原 `eventId` 并记录操作结果。
@@ -300,7 +294,7 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 
 - `entry-consumer`：消费标准化入口事件并执行触发匹配和重复进入控制。
 - `task-consumer`：消费已派发 Task，并在数据库事务完成后 ACK。
-- `scheduler`：扫描到期 Wait Task。多副本时必须用 `WORKFLOW_SHARD_IDS` 分配互不重叠的逻辑分片。
+- `scheduler`：扫描到期 Wait Task。生产必须显式设置 `WORKFLOW_SHARD_IDS`；多副本时为各实例分配互不重叠的逻辑分片。
 - `outbox`：认领并发布数据库 Outbox。
 - `reconciler`：恢复过期租约、收敛停止或删除的 Run，并低频分批清理超过保留期的运行历史。
 
@@ -486,7 +480,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。
 - `/healthz` 和 `/readyz` 正常。
 - Workflow Worker 的数据库、Broker 和已启用角色均通过 `/readyz`。
-- dev/test 使用各自的 Topic 和 Subscription，Pulsar Token 仅存在于 Secret。
+- 每个环境显式使用各自的 Entry/Task Topic、Subscription 和 DLQ，Pulsar Token 仅存在于 Secret。
 - Entry Smoke 仅在受控环境人工执行，CI 未连接真实 TDMQ。
 - `/chat` 刷新不 404。
 - 登录、刷新 token、退出登录可用。

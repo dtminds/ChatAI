@@ -138,6 +138,7 @@ function createService(
         workflowType: "chatai_sop" as const,
       } : null;
     }),
+    findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   }, runtime, undefined, {
     clock: () => now,
     entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },

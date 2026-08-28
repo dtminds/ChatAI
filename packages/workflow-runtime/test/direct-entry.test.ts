@@ -127,6 +127,7 @@ function createHarness(
       subjectType: workflowType === "chatai_sop" ? "chatai_contact" as const : "wecom_contact" as const,
       workflowType,
     })),
+    findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   }, repository, undefined, {
     clock: () => now,
     entitlementPort: {

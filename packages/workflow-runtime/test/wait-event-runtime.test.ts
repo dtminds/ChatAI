@@ -219,6 +219,7 @@ async function createHarness(clock: () => Date = () => ENTERED_AT) {
       subjectType: "chatai_contact" as const,
       workflowType: "chatai_sop" as const,
     })),
+    findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   }, repository, undefined, {
     clock,
     entitlementPort: {

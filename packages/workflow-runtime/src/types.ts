@@ -37,6 +37,23 @@ export type WorkflowRuntimeRevisionRecord = {
   workflowType: WorkflowType;
 };
 
+export type WorkflowRuntimeSnapshotKey = {
+  revision: number;
+  workflowId: string;
+};
+
+export type WorkflowRuntimeSnapshotRecord = {
+  definition: WorkflowRuntimeDefinitionRecord;
+  revision: WorkflowRuntimeRevisionRecord;
+  uid: number;
+  workflowId: string;
+};
+
+export type WorkflowRuntimeSnapshotReadResult = {
+  invalidKeys: WorkflowRuntimeSnapshotKey[];
+  snapshots: WorkflowRuntimeSnapshotRecord[];
+};
+
 export type WorkflowPublishedRevisionResolver = (input: {
   uid: number;
   workflowId: string;
@@ -52,6 +69,10 @@ export type WorkflowRuntimeControlReader = {
   }): Promise<{ affectedDefinitions: number }>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowRuntimeDefinitionRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRuntimeRevisionRecord | null>;
+  findRuntimeSnapshots(
+    uid: number,
+    keys: readonly WorkflowRuntimeSnapshotKey[],
+  ): Promise<WorkflowRuntimeSnapshotReadResult>;
 };
 
 export type WorkflowTriggerBindingRecord = {

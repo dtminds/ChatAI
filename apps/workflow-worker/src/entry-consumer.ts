@@ -23,10 +23,17 @@ import type {
   WorkflowEventSubscriptionReader,
   WorkflowEventSubscriptionRecord,
   WorkflowInboxRepository,
+  WorkflowRuntimeSnapshotKey,
+  WorkflowRuntimeSnapshotReadResult,
+  WorkflowRuntimeSnapshotRecord,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "@chatai/workflow-runtime";
-import { fitWorkflowMessageOutput, WorkflowRuntimeError } from "@chatai/workflow-runtime";
+import {
+  fitWorkflowMessageOutput,
+  WORKFLOW_RUNTIME_BATCH_LIMIT,
+  WorkflowRuntimeError,
+} from "@chatai/workflow-runtime";
 import type {
   WorkflowBroker,
   WorkflowBrokerMessage,
@@ -40,6 +47,10 @@ import {
 } from "./observability.js";
 
 type WorkflowEntryRuntimeService = {
+  loadRuntimeSnapshots?(input: {
+    keys: readonly WorkflowRuntimeSnapshotKey[];
+    uid: number;
+  }): Promise<WorkflowRuntimeSnapshotReadResult>;
   recordWaitEvent(input: {
     eventId: string;
     eventOccurredAt: Date;
@@ -51,6 +62,7 @@ type WorkflowEntryRuntimeService = {
     subjectId: string;
     subjectType: WorkflowSubjectType;
     uid: number;
+    runtimeSnapshot?: WorkflowRuntimeSnapshotRecord | null;
   }): Promise<
     | { kind: "success" }
     | {
@@ -69,6 +81,7 @@ type WorkflowEntryRuntimeService = {
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
+    runtimeSnapshot?: WorkflowRuntimeSnapshotRecord | null;
   }): Promise<
     | { deduplicated: boolean; kind: "success" }
     | { kind: "capacity-rejected" }
@@ -205,50 +218,78 @@ export function createEntryConsumerHandler(input: {
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
       failureStage = "runtime_admission";
-      for (const binding of bindings) {
-        if (!matchWorkflowTrigger(binding.filter, projection)) continue;
+      const matchedBindings = bindings.flatMap(binding => {
+        if (!matchWorkflowTrigger(binding.filter, projection)) return [];
         const subject = getProjectedSubject(projection, binding.subjectType);
-        if (!subject) continue;
-        try {
-          const result = await admitWorkflow(
-            input.runtimeService,
-            binding,
-            parsed.event,
-            projection,
-            subject,
-          );
-          if (result.kind === "capacity-rejected") capacityRejected += 1;
-          else if (result.kind === "active-run-rejected") activeRunRejected += 1;
-          else if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
-          else if (result.deduplicated) deduplicated += 1;
-          else admitted += 1;
-        } catch (error) {
-          if (classifyEntryError(error) === "nack") throw error;
-          runtimeRejected += 1;
-        }
-      }
-      for (const subscription of subscriptions) {
-        try {
-          const result = await input.runtimeService.recordWaitEvent({
-            eventId: parsed.event.eventId,
-            eventOccurredAt: new Date(parsed.event.occurredAt),
-            eventType: entryEventType,
-            match: projection.match,
-            projection: projection.variables,
-            recordedAt: observedAt,
-            subscription,
-            subjectId: subscription.subjectId,
-            subjectType: subscription.subjectType,
-            uid: parsed.event.uid,
-          });
-          if (result.kind === "success") admitted += 1;
-          else if (result.kind === "already-processed"
-            || result.kind === "conflict"
-            || result.kind === "not-found") deduplicated += 1;
-          else if (result.kind !== "not-matched") runtimeRejected += 1;
-        } catch (error) {
-          if (classifyEntryError(error) === "nack") throw error;
-          runtimeRejected += 1;
+        return subject ? [{ binding, subject }] : [];
+      });
+      const candidates = [
+        ...matchedBindings.map(candidate => ({ kind: "start" as const, ...candidate })),
+        ...subscriptions.map(subscription => ({ kind: "wait" as const, subscription })),
+      ];
+      for (const candidateBatch of chunksOf(candidates, WORKFLOW_RUNTIME_BATCH_LIMIT)) {
+        const runtimeSnapshotByKey = await loadRuntimeSnapshotMap(
+          input.runtimeService,
+          parsed.event.uid,
+          candidateBatch.map(candidate => candidate.kind === "start"
+            ? { revision: candidate.binding.revision, workflowId: candidate.binding.workflowId }
+            : {
+                revision: candidate.subscription.revision,
+                workflowId: candidate.subscription.workflowId,
+              }),
+        );
+        for (const candidate of candidateBatch) {
+          const candidateSnapshotKey = candidate.kind === "start"
+            ? runtimeSnapshotKey(candidate.binding.workflowId, candidate.binding.revision)
+            : runtimeSnapshotKey(candidate.subscription.workflowId, candidate.subscription.revision);
+          if (runtimeSnapshotByKey?.invalidKeys.has(candidateSnapshotKey)) {
+            runtimeRejected += 1;
+            continue;
+          }
+          try {
+            if (candidate.kind === "start") {
+              const { binding, subject } = candidate;
+              const result = await admitWorkflow(
+                input.runtimeService,
+                binding,
+                parsed.event,
+                projection,
+                subject,
+                runtimeSnapshotByKey?.snapshots.get(candidateSnapshotKey) ?? null,
+                runtimeSnapshotByKey !== null,
+              );
+              if (result.kind === "capacity-rejected") capacityRejected += 1;
+              else if (result.kind === "active-run-rejected") activeRunRejected += 1;
+              else if (result.kind === "entry-policy-rejected") entryPolicyRejected += 1;
+              else if (result.deduplicated) deduplicated += 1;
+              else admitted += 1;
+              continue;
+            }
+            const { subscription } = candidate;
+            const result = await input.runtimeService.recordWaitEvent({
+              eventId: parsed.event.eventId,
+              eventOccurredAt: new Date(parsed.event.occurredAt),
+              eventType: entryEventType,
+              match: projection.match,
+              projection: projection.variables,
+              recordedAt: observedAt,
+              subscription,
+              subjectId: subscription.subjectId,
+              subjectType: subscription.subjectType,
+              uid: parsed.event.uid,
+              ...(runtimeSnapshotByKey === null ? {} : {
+                runtimeSnapshot: runtimeSnapshotByKey.snapshots.get(candidateSnapshotKey) ?? null,
+              }),
+            });
+            if (result.kind === "success") admitted += 1;
+            else if (result.kind === "already-processed"
+              || result.kind === "conflict"
+              || result.kind === "not-found") deduplicated += 1;
+            else if (result.kind !== "not-matched") runtimeRejected += 1;
+          } catch (error) {
+            if (classifyEntryError(error) === "nack") throw error;
+            runtimeRejected += 1;
+          }
         }
       }
       const processedAt = observedAt;
@@ -559,6 +600,8 @@ async function admitWorkflow(
   event: WorkflowEntryEvent,
   projection: WorkflowTriggerProjection,
   subject: { subjectId: string; subjectType: WorkflowSubjectType },
+  runtimeSnapshot: WorkflowRuntimeSnapshotRecord | null,
+  hasRuntimeSnapshotBatch: boolean,
 ) {
   return runtimeService.startRun({
     entryEventId: event.eventId,
@@ -575,7 +618,40 @@ async function admitWorkflow(
     },
     uid: event.uid,
     workflowId: binding.workflowId,
+    ...(hasRuntimeSnapshotBatch ? { runtimeSnapshot } : {}),
   });
+}
+
+async function loadRuntimeSnapshotMap(
+  runtimeService: WorkflowEntryRuntimeService,
+  uid: number,
+  keys: readonly WorkflowRuntimeSnapshotKey[],
+) {
+  if (!runtimeService.loadRuntimeSnapshots || keys.length === 0) return null;
+  const uniqueKeys = [...new Map(keys.map(key => [
+    runtimeSnapshotKey(key.workflowId, key.revision),
+    key,
+  ])).values()];
+  const result = await runtimeService.loadRuntimeSnapshots({ keys: uniqueKeys, uid });
+  return {
+    invalidKeys: new Set(result.invalidKeys.map(key => runtimeSnapshotKey(key.workflowId, key.revision))),
+    snapshots: new Map(result.snapshots.map(snapshot => [
+      runtimeSnapshotKey(snapshot.workflowId, snapshot.revision.revision),
+      snapshot,
+    ])),
+  };
+}
+
+function runtimeSnapshotKey(workflowId: string, revision: number) {
+  return `${workflowId}:${revision}`;
+}
+
+function chunksOf<T>(items: readonly T[], size: number) {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size));
+  }
+  return chunks;
 }
 
 function listProjectedSubjects(projection: WorkflowTriggerProjection) {

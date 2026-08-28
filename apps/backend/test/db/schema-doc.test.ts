@@ -224,13 +224,19 @@ describe("database schema document", () => {
     );
   });
 
-  it("indexes only active Wait Event interest and stores the first trigger fact", () => {
+  it("indexes active Wait Event interest and Run lifecycle operations", () => {
     const subscriptionTable = extractCreateTable(
       schemaSql,
       "xy_wap_embed_workflow_event_subscription",
     );
     expect(subscriptionTable).toContain(
       "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
+    );
+    expect(subscriptionTable).toContain(
+      "KEY idx_workflow_event_subscription_run (run_id, status, id)",
+    );
+    expect(subscriptionTable).not.toContain(
+      "KEY idx_workflow_event_subscription_run (uid, run_id, status, id)",
     );
     expect(subscriptionTable).toContain("resume_at DATETIME NULL");
     expect(subscriptionTable).toContain("trigger_occurred_at DATETIME NULL");

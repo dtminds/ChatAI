@@ -148,6 +148,7 @@ export function useWorkflowListResource(
     nextCursor: stateMatchesInput ? state.data?.nextCursor ?? null : null,
     reload,
     status: stateMatchesInput ? state.status : "loading",
+    total: stateMatchesInput ? state.data?.total ?? 0 : 0,
   };
 }
 

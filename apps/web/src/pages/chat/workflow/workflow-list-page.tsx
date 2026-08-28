@@ -27,13 +27,9 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AiHostingLayout,
@@ -111,7 +107,16 @@ export function WorkflowListPage({
     query: debouncedQuery || undefined,
     status: statusFilter,
   }), [cursor, debouncedQuery, statusFilter]);
-  const { items, nextCursor, reload, status } = useWorkflowListResource(repository, listInput);
+  const { items, nextCursor, reload, status, total } = useWorkflowListResource(repository, listInput);
+  const { activePage, totalPages } = resolveTablePagination({
+    page,
+    pageSize: workflowListPageSize,
+    total,
+  });
+  const reachablePageCount = Math.min(
+    totalPages,
+    Math.max(pagination.cursors.length, nextCursor ? activePage + 1 : activePage),
+  );
   const capacity = useWorkflowCapacityResource(repository);
   const tenantOverview = useWorkflowTenantOverviewResource(repository);
   const navigate = useNavigate();
@@ -128,6 +133,39 @@ export function WorkflowListPage({
       ? current
       : { cursors: [undefined], filterKey: listFilterKey, page: 1 });
   }, [listFilterKey]);
+  useEffect(() => {
+    if (status !== "ready" || activePage === page) return;
+    setPagination(current => ({
+      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
+      filterKey: listFilterKey,
+      page: activePage,
+    }));
+  }, [activePage, listFilterKey, page, status]);
+
+  const changeWorkflowPage = (nextPage: number) => {
+    if (nextPage === activePage) return;
+    if (nextPage === activePage + 1) {
+      if (!nextCursor) return;
+      setPagination(current => {
+        const cursors = current.filterKey === listFilterKey
+          ? [...current.cursors]
+          : [undefined];
+        cursors[activePage] = nextCursor;
+        return {
+          cursors,
+          filterKey: listFilterKey,
+          page: nextPage,
+        };
+      });
+      return;
+    }
+    if (nextPage !== 1 && pagination.cursors[nextPage - 1] === undefined) return;
+    setPagination(current => ({
+      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
+      filterKey: listFilterKey,
+      page: nextPage,
+    }));
+  };
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
@@ -338,54 +376,15 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        {status === "ready" && (page > 1 || nextCursor) ? (
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : undefined}
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (page <= 1) return;
-                    setPagination(current => ({
-                      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-                      filterKey: listFilterKey,
-                      page: page - 1,
-                    }));
-                  }}
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationLink href="#" isActive onClick={event => event.preventDefault()}>
-                  {page}
-                </PaginationLink>
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  aria-disabled={!nextCursor}
-                  className={!nextCursor ? "pointer-events-none opacity-50" : undefined}
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (!nextCursor) return;
-                    setPagination(current => {
-                      const cursors = current.filterKey === listFilterKey
-                        ? [...current.cursors]
-                        : [undefined];
-                      cursors[page] = nextCursor;
-                      return {
-                        cursors,
-                        filterKey: listFilterKey,
-                        page: page + 1,
-                      };
-                    });
-                  }}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+        {status === "ready" ? (
+          <TablePagination
+            className="border-t-0"
+            maxPage={reachablePageCount}
+            onPageChange={changeWorkflowPage}
+            page={activePage}
+            total={total}
+            totalPages={totalPages}
+          />
         ) : null}
       </section>
 

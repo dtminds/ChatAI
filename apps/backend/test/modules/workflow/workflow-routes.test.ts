@@ -33,6 +33,7 @@ describe("workflow routes", () => {
     expect(firstPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第二个 Workflow" })],
       nextCursor: expect.any(String),
+      total: 2,
     });
     expect(firstPage.json().data.items[0]).not.toHaveProperty("draft");
     expect(firstPage.json().data.items[0]).not.toHaveProperty("currentReview");
@@ -44,6 +45,7 @@ describe("workflow routes", () => {
     expect(secondPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第一个 Workflow" })],
       nextCursor: null,
+      total: 2,
     });
   });
 

@@ -126,7 +126,7 @@ describe("HTTP workflow repository", () => {
     const repository = createHttpWorkflowDraftRepository(client);
 
     const document = await repository.getDocument("42");
-    const { items: [listItem] } = await repository.listDocuments();
+    const { items: [listItem], total } = await repository.listDocuments();
 
     expect(document).toMatchObject({
       publishedAt: "07-11 15:12:06",
@@ -144,6 +144,7 @@ describe("HTTP workflow repository", () => {
     expect(listItem?.managedAccounts).toEqual([
       { avatarUrl: "https://example.com/avatar.png", id: 101, name: "销售一组" },
     ]);
+    expect(total).toBe(1);
   });
 
   it("does not invent a revision for an unpublished workflow", async () => {
@@ -426,7 +427,7 @@ function createClient({
     get: vi.fn(async (url: string): Promise<unknown> => {
       if (url.includes("/revisions?")) return envelope({ items: revisions, nextCursor: null });
       if (url === "/server/workflows" || url.startsWith("/server/workflows?")) {
-        return envelope({ items: [toListDefinition(definition)], nextCursor: null });
+        return envelope({ items: [toListDefinition(definition)], nextCursor: null, total: 1 });
       }
       return envelope<WorkflowDefinition>(definition);
     }),

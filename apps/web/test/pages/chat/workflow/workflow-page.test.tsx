@@ -726,13 +726,14 @@ describe("Agent workflow page", () => {
         });
       }
       return input.cursor
-        ? { items: [newcomer], nextCursor: null }
-        : { items: [vip], nextCursor: "page-2" };
+        ? { items: [newcomer], nextCursor: null, total: 11 }
+        : { items: [vip], nextCursor: "page-2", total: 11 };
     });
     renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
 
     await screen.findByText("会员复购唤醒");
-    await user.click(screen.getByRole("link", { name: "下一页" }));
+    expect(screen.getByText("共 11 条")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
     await screen.findByText("新人转化旅程");
     await user.click(screen.getByRole("tab", { name: "运行中" }));
 
@@ -748,6 +749,7 @@ describe("Agent workflow page", () => {
       resolveActiveList?.({
         items: [vip],
         nextCursor: null,
+        total: 1,
       });
     });
     expect(await screen.findByText("会员复购唤醒")).toBeInTheDocument();
@@ -1072,19 +1074,19 @@ describe("Agent workflow page", () => {
     const newcomer = await baseRepository.getDocument("newcomer-conversion");
     const vip = await baseRepository.getDocument("vip-reactivation");
     const listDocuments = vi.fn((input: WorkflowListInput = {}) => input.cursor
-      ? { items: [newcomer], nextCursor: null }
-      : { items: [vip], nextCursor: "page-2" });
+      ? { items: [newcomer], nextCursor: null, total: 11 }
+      : { items: [vip], nextCursor: "page-2", total: 11 });
     renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
 
     await screen.findByText("会员复购唤醒");
-    await user.click(screen.getByRole("link", { name: "下一页" }));
+    await user.click(screen.getByRole("button", { name: "下一页" }));
     await screen.findByText("新人转化旅程");
     await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
     await user.click(screen.getByRole("button", { name: "删除" }));
 
     expect(await screen.findByText("会员复购唤醒")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
     expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: undefined }));
   });
 

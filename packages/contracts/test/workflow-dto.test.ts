@@ -4,6 +4,7 @@ import {
   WorkflowCapacityOverviewSchema,
   WorkflowDefinitionSchema,
   WorkflowDefinitionListItemSchema,
+  WorkflowDefinitionListPageSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
@@ -54,6 +55,11 @@ describe("workflow contracts", () => {
       ...item,
       managedAccounts: [...item.managedAccounts, { avatarUrl: "", id: 104, name: "托管账号 104" }],
     })).toBe(false);
+    expect(Value.Check(WorkflowDefinitionListPageSchema, {
+      items: [item],
+      nextCursor: null,
+      total: 1,
+    })).toBe(true);
   });
 
   it("validates the tenant Workflow capacity overview", () => {

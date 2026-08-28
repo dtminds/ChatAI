@@ -3,13 +3,13 @@ import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-
 
 describe("MysqlWorkflowRepository", () => {
   it("lists definitions by creation time for cursor pagination", async () => {
-    const db = createWorkflowDbMock();
+    const db = createWorkflowDbMock({ definitionTotal: 38 });
     const repository = new MysqlWorkflowRepository(db as never);
 
-    await repository.listDefinitions(8, { limit: 20, status: "all" });
+    const page = await repository.listDefinitions(8, { limit: 20, status: "all" });
 
     expect(db.selectBuilders[0].selectAll).toBe(false);
-    expect(db.selectBuilders[0].selects[0]?.[0]).toEqual([
+    expect(db.selectBuilders[0].selects.find(select => Array.isArray(select[0]))?.[0]).toEqual([
       "create_time",
       "description",
       "draft_json",
@@ -26,6 +26,7 @@ describe("MysqlWorkflowRepository", () => {
       ["create_time", "desc"],
       ["id", "desc"],
     ]);
+    expect(page.total).toBe(38);
   });
 
   it("searches definition names only", async () => {
@@ -432,6 +433,7 @@ describe("MysqlWorkflowRepository", () => {
 
 function createWorkflowDbMock(options: {
   activeDefinitionCount?: number;
+  definitionTotal?: number;
   numUpdatedRows?: bigint;
   reviewStatus?: "approved" | "pending";
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
@@ -497,6 +499,9 @@ function createWorkflowDbMock(options: {
           if (table === "xy_wap_embed_workflow_publish_review") {
             const requestedStatus = state.wheres.find(where => where[0] === "status")?.[2];
             return options.reviewStatus === requestedStatus ? { id: 7, status: options.reviewStatus } : undefined;
+          }
+          if (state.selects.some(select => typeof select[0] === "function")) {
+            return { total: options.definitionTotal ?? 1 };
           }
           return state.wheres.some(where => where[0] === "runtime_status" && where[2] === "active")
             ? { active_count: options.activeDefinitionCount ?? 0 }

@@ -20,9 +20,9 @@ const workflowFixtureRoot = new URL(
 );
 
 describe("workflow entry consumer", () => {
-  it("admits direct entries before catalog, binding, and wait-subscription scans", async () => {
+  it("admits direct entries after matching the target workflow and work user binding", async () => {
     const processed = new Set<string>();
-    const bindingReader = { listActiveTriggerBindings: vi.fn() };
+    const bindingReader = createDirectBindingReader();
     const subscriptionReader = { listMatchingEventSubscriptions: vi.fn() };
     const catalogProject = vi.fn(() => {
       throw new Error("direct entry must bypass the catalog");
@@ -54,6 +54,7 @@ describe("workflow entry consumer", () => {
     expect(startDirectRun).toHaveBeenCalledTimes(1);
     expect(startDirectRun).toHaveBeenCalledWith({
       entryEventId: "direct-event-1",
+      expectedRevision: 1,
       occurredAt: "2026-08-24T08:30:15.123Z",
       payload: {
         externalUserId: 3267,
@@ -67,14 +68,61 @@ describe("workflow entry consumer", () => {
       uid: 9,
     });
     expect(catalogProject).not.toHaveBeenCalled();
-    expect(bindingReader.listActiveTriggerBindings).not.toHaveBeenCalled();
+    expect(bindingReader.listActiveTriggerBindings).toHaveBeenCalledWith(
+      9,
+      "workflow.direct_entry",
+    );
     expect(subscriptionReader.listMatchingEventSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another workflow", [directBinding("32")]],
+    ["another work user", [directBinding("31", [202])]],
+    ["a workflow and work user split across bindings", [
+      directBinding("31", [202]),
+      directBinding("32", [201]),
+    ]],
+  ])("rejects direct entries bound to %s", async (_case, bindings) => {
+    const startDirectRun = vi.fn();
+    const handler = createEntryConsumerHandler({
+      bindingReader: createDirectBindingReader(bindings),
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { startDirectRun, startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toEqual({
+      code: "no_match",
+      disposition: "ack",
+    });
+    expect(startDirectRun).not.toHaveBeenCalled();
+  });
+
+  it("NACKs a direct entry when its binding lookup fails", async () => {
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => {
+          throw new Error("binding read failed");
+        }),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      runtimeService: { startDirectRun: vi.fn(), startRun: vi.fn() },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(directEvent()))).resolves.toMatchObject({
+      code: "temporary_failure",
+      disposition: "nack",
+      failureStage: "routing_read",
+    });
   });
 
   it("admits ChatAI direct entries after normalizing externalUserId zero to absent", async () => {
     const startDirectRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
     const handler = createEntryConsumerHandler({
-      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      bindingReader: createDirectBindingReader(),
       eventCatalog,
       inboxRepository: createInboxRepository(),
       runtimeService: { startDirectRun, startRun: vi.fn() },
@@ -109,7 +157,7 @@ describe("workflow entry consumer", () => {
     const startDirectRun = vi.fn(async () => ({ kind: "active-run-rejected" as const }));
     const publishToDeadLetter = vi.fn(async () => undefined);
     const handler = createEntryConsumerHandler({
-      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      bindingReader: createDirectBindingReader(),
       eventCatalog,
       inboxRepository: createInboxRepository({
         hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
@@ -143,7 +191,7 @@ describe("workflow entry consumer", () => {
   it("ACKs direct entry rejected by tenant capacity", async () => {
     const inboxRepository = createInboxRepository();
     const handler = createEntryConsumerHandler({
-      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      bindingReader: createDirectBindingReader(),
       eventCatalog,
       inboxRepository,
       runtimeService: {
@@ -172,7 +220,7 @@ describe("workflow entry consumer", () => {
       );
     });
     const handler = createEntryConsumerHandler({
-      bindingReader: { listActiveTriggerBindings: vi.fn() },
+      bindingReader: createDirectBindingReader(),
       eventCatalog,
       inboxRepository: createInboxRepository({
         hasProcessedInboxMessage: vi.fn(async ({ messageId }) => processed.has(messageId)),
@@ -896,7 +944,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
 function directEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent {
   return event({
     eventId: "direct-event-1",
-    eventType: "workflow.direct_entry.requested",
+    eventType: "workflow.direct_entry",
     occurredAt: "2026-08-24T08:30:15.123Z",
     payload: {
       externalUserId: 3267,
@@ -908,6 +956,35 @@ function directEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntry
     source: "chatai",
     ...overrides,
   });
+}
+
+function createDirectBindingReader(bindings: WorkflowTriggerBindingRecord[] = [directBinding("31")]) {
+  return {
+    listActiveTriggerBindings: vi.fn(async () => bindings),
+  };
+}
+
+function directBinding(
+  workflowId: string,
+  workUserIds: number[] = [201],
+): WorkflowTriggerBindingRecord {
+  const now = new Date("2026-08-24T00:00:00.000Z");
+  return {
+    createdAt: now,
+    eventType: "workflow.direct_entry",
+    filter: {
+      entryPolicy: { mode: "never" },
+      eventType: "workflow.direct_entry",
+      workUserIds,
+    },
+    id: `direct-${workflowId}`,
+    revision: 1,
+    status: 1,
+    subjectType: "chatai_contact",
+    uid: 9,
+    updatedAt: now,
+    workflowId,
+  };
 }
 
 function binding(

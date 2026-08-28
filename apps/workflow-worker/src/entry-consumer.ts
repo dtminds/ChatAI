@@ -77,6 +77,7 @@ type WorkflowEntryRuntimeService = {
   >;
   startDirectRun(input: {
     entryEventId: string;
+    expectedRevision: number;
     occurredAt: string;
     payload: import("@chatai/contracts").WorkflowDirectEntryPayload;
     payloadVersion: number;
@@ -299,6 +300,7 @@ async function consumeDirectEntry(
     payload: WorkflowDirectEntryPayload;
   },
   input: {
+    bindingReader: WorkflowTriggerBindingReader;
     inboxRepository: WorkflowInboxRepository;
     now?: () => Date;
     runtimeService: WorkflowEntryRuntimeService;
@@ -317,29 +319,41 @@ async function consumeDirectEntry(
       return { code: "deduplicated", disposition: "ack" };
     }
 
-    let code: WorkflowEntryConsumeResultCode;
-    failureStage = "runtime_admission";
-    try {
-      const result = await input.runtimeService.startDirectRun({
-        entryEventId: event.eventId,
-        occurredAt: event.occurredAt,
-        payload: event.payload,
-        payloadVersion: event.payloadVersion,
-        source: event.source,
-        uid: event.uid,
-      });
-      code = result.kind === "capacity-rejected"
-        ? "capacity_rejected"
-        : result.kind === "active-run-rejected"
-        ? "active_run_exists"
-        : result.kind === "entry-policy-rejected"
-        ? "entry_policy_rejected"
-        : result.deduplicated
-          ? "deduplicated"
-          : "admitted";
-    } catch (error) {
-      if (classifyEntryError(error) === "nack") throw error;
-      code = "runtime_rejected";
+    failureStage = "routing_read";
+    const bindings = await input.bindingReader.listActiveTriggerBindings(
+      event.uid,
+      WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+    );
+    const matchedBinding = bindings.find(binding => binding.workflowId === event.payload.workflowId
+      && binding.filter.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE
+      && binding.filter.workUserIds.includes(event.payload.workUserId));
+
+    let code: WorkflowEntryConsumeResultCode = "no_match";
+    if (matchedBinding) {
+      failureStage = "runtime_admission";
+      try {
+        const result = await input.runtimeService.startDirectRun({
+          entryEventId: event.eventId,
+          expectedRevision: matchedBinding.revision,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+          payloadVersion: event.payloadVersion,
+          source: event.source,
+          uid: event.uid,
+        });
+        code = result.kind === "capacity-rejected"
+          ? "capacity_rejected"
+          : result.kind === "active-run-rejected"
+          ? "active_run_exists"
+          : result.kind === "entry-policy-rejected"
+          ? "entry_policy_rejected"
+          : result.deduplicated
+            ? "deduplicated"
+            : "admitted";
+      } catch (error) {
+        if (classifyEntryError(error) === "nack") throw error;
+        code = "runtime_rejected";
+      }
     }
 
     failureStage = "inbox_record";

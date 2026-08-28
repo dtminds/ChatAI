@@ -16,6 +16,7 @@
 contact.friend_added
 contact.tag_added
 message.received
+workflow.direct_entry
 ```
 
 双方已确认：
@@ -27,7 +28,7 @@ message.received
 5. Java 不使用 JSON SQL 条件，不维护 Match 派生表，也不需要展开关键词或 ID 列表。
 6. `contact.friend_added`、`contact.tag_added` 是企微源事件，ChatAI SOP 与 WeCom SOP 订阅同一份业务事实。
 7. 一个业务事实即使命中多个 Workflow，也只写一条 Java Event Outbox，并只投递一条 Entry Event。
-8. Node 收到事件后仍按同一份 Binding Filter 执行最终权威匹配，并为每个命中的 Workflow 创建 Run。
+8. Node 收到事件后仍按同一份 Binding Filter 执行最终权威匹配；普通事件为每个命中的 Workflow 创建 Run，Direct Entry 只允许 payload 指定的 `workflowId`，且 Runtime 必须仍处于命中 Binding 的 Revision。
 9. `message.received` 的静态 Start 兴趣与动态 Wait Event 兴趣任一命中，就必须投递事件。
 10. 查询、JSON 解析或未知规则处理失败时必须 fail-open，继续投递事件。
 
@@ -35,7 +36,7 @@ message.received
 
 | 业务对象 | 公共 JSON / DTO 字段名 | 类型 | 用途 |
 | --- | --- | --- | --- |
-| 企微成员 | `workUserId` | positive safe integer | 添加好友、打标签的来源维度 |
+| 企微成员 | `workUserId` | positive safe integer | 添加好友、打标签和 Direct Entry 的来源维度 |
 | ChatAI 席位 | `seatId` | positive safe integer | 新消息来源维度 |
 | 企微好友 | `externalUserId` | JavaScript 安全整数范围内的正整数 | WeCom SOP Subject ID；Node 投影为 Runtime `subjectId` 时转成十进制字符串 |
 | ChatAI 席位好友 | `thirdExternalUserId` | non-empty string，最长 128 | ChatAI SOP Subject ID |
@@ -87,9 +88,9 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
 | 字段 | 约束 |
 | --- | --- |
 | `schemaVersion` | 当前固定为 `1` |
-| `payloadVersion` | 当前三个事件固定为 `1` |
+| `payloadVersion` | 当前四个事件固定为 `1` |
 | `eventId` | 1-128 字符，租户内稳定唯一 |
-| `eventType` | 只允许本文三个事件类型 |
+| `eventType` | 只允许本文四个事件类型 |
 | `uid` | positive safe integer |
 | `occurredAt` | 以 `Z` 结尾的 UTC RFC 3339 时间；小数秒可省略，存在时允许 1-9 位 |
 | `source` | `wecom` 或 `chatai` |
@@ -165,6 +166,29 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
 ```
 
 必填：`seatId`、`workUserId`、`thirdExternalUserId`、`messageId`，`externalUserId` 可选。Java payload 不携带消息正文或结构化消息内容；Node 仅在存在候选 Start Binding 或 Wait Event Subscription 时，按 `messageId` 查询一次消息并复用查询结果。
+
+### 3.5 Direct Entry
+
+```json
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "workflow.direct_entry:stable-delivery-id",
+  "eventType": "workflow.direct_entry",
+  "uid": 10001,
+  "occurredAt": "2026-08-24T08:30:15.123Z",
+  "source": "chatai",
+  "payload": {
+    "workflowId": "31",
+    "workUserId": 201,
+    "seatId": 101,
+    "thirdExternalUserId": "chatai_external_456",
+    "externalUserId": 3267
+  }
+}
+```
+
+WeCom contact Workflow 必填 `workflowId`、`workUserId`、`externalUserId`。ChatAI contact Workflow 必填 `workflowId`、`workUserId`、`seatId`、`thirdExternalUserId`，`externalUserId` 可选。Java 解密 endpoint key 得到 `workflowId`，且重试同一逻辑投递时必须复用 `eventId`。
 
 ## 4. Java 只读数据库契约
 
@@ -254,7 +278,7 @@ Java 数据库账号只授予上述三张表的 `SELECT`，不得获得 INSERT�
 
 ## 5. 静态 Start Binding 查询
 
-三个事件共用一条候选查询，只替换 `:eventType`：
+四个事件共用一条候选查询，只替换 `:eventType`：
 
 ```sql
 SELECT
@@ -280,7 +304,7 @@ LIMIT 50;
 
 Backend 在启用或恢复前通过普通 `COUNT(*)` 检查每租户最多 50 个 active Workflow。这是防止正常产品操作超限的轻量护栏，不为极端并发请求增加租户级锁；本期单事件约束下，正常状态最多返回 50 条 Binding。
 
-Java 不在 SQL 中拆解 JSON。查询返回后逐条解析 Filter 并在内存判断；任意一条匹配即得到静态 Start 兴趣。
+Java 不在 SQL 中拆解 JSON。查询返回后逐条解析 Filter 并在内存判断；普通事件任意一条匹配即得到静态 Start 兴趣。Direct Entry 必须由同一条 Binding 同时满足 `binding.workflow_id = payload.workflowId` 和 Direct Filter 的成员规则。
 
 ## 6. Filter JSON 与内存匹配
 
@@ -347,7 +371,28 @@ messageText(payload.messageId) contains any keyword
 
 `keywords` 必须至少包含一项。关键词只支持“包含任意一个”，不支持 `all`、正则、分词或大小写规则。Java Interest Reader 可以用消息域已有正文做预匹配，但投递的 Entry payload 仍只携带 `messageId`；Node Entry Consumer 在读取候选 Binding 和 Subscription 后按 ID 查询一次正文，完成最终权威匹配并为 Wait Event 生成结构化消息。没有候选消费者时不查询消息。
 
-### 6.4 未知 Filter
+### 6.4 Direct Entry
+
+```json
+{
+  "eventType": "workflow.direct_entry",
+  "workUserIds": [201, 202],
+  "entryPolicy": { "mode": "never" }
+}
+```
+
+WeCom Workflow 直接保存开始节点配置的 `workUserIds`。ChatAI Workflow 在审核和发布时将开始节点配置的 `seatIds` 通过权威关系解析为 active `workUserIds` 后保存；映射缺失时不得发布。
+
+匹配规则：
+
+```text
+binding.workflow_id equals payload.workflowId
+AND workUserIds contains payload.workUserId
+```
+
+两个条件必须由同一条 Binding 满足。不得使用一条 Binding 匹配 `workflowId`、另一条 Binding 匹配 `workUserId`。
+
+### 6.5 未知 Filter
 
 以下情况不能返回 `NOT_INTERESTED`：
 
@@ -461,6 +506,7 @@ Java 不应在业务事务内直接调用 Pulsar并依赖发送成功。
 contact.friend_added:<业务事件主键>
 contact.tag_added:<业务事件主键>
 message.received:<messageId>
+workflow.direct_entry:<稳定投递ID>
 ```
 
 Partition Key：
@@ -471,6 +517,10 @@ contact.friend_added / contact.tag_added
 
 message.received
   -> uid:chatai_contact:thirdExternalUserId
+
+workflow.direct_entry
+  -> ChatAI contact: uid:chatai_contact:thirdExternalUserId
+  -> WeCom contact: uid:wecom_contact:externalUserId
 ```
 
 ## 10. 数据库与时间契约
@@ -573,10 +623,14 @@ Java 只写一条 Outbox、投递一条消息。Node 负责按两个 Binding 创
 
 Reader 返回 `UNKNOWN`，`observe` 和 `enforce` 都继续写 Outbox。
 
+### 场景 H：Direct Entry 只命中目标 Workflow
+
+Java 查询 `uid + workflow.direct_entry` 的有效 Binding。只有同一条 Binding 的 `workflow_id` 等于 endpoint key 解密结果且 `workUserIds` 包含 payload 成员时返回 `INTERESTED`；其他 Workflow 的成员匹配不得放行当前请求。
+
 ## 14. 联合评审需确认的实施事实
 
 1. Java 业务域中 `workUserId`、`seatId`、`externalUserId`、`thirdExternalUserId`、`sourceId` 的权威来源。
-2. 三类业务事实各自生成稳定 `eventId` 的主键。
+2. 四类入口事件各自生成稳定 `eventId` 的主键。
 3. Java 当前可复用的 Transactional Outbox 实现及事务边界。
 4. Java 数据库账号、Schema 名称和三张表的只读授权。
 5. Java JDBC `+08:00` 与 `READ COMMITTED` 配置。

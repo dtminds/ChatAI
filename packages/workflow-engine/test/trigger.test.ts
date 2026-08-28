@@ -129,23 +129,60 @@ describe("workflow trigger matching", () => {
     }));
   });
 
-  it.each(["audience-import", "direct-push"] as const)(
-    "does not create trigger bindings for %s entries",
-    (entryMode) => {
+  it("does not create trigger bindings for audience imports", () => {
     const config: WorkflowStartConfig = {
-      entryMode,
+      entryMode: "audience-import",
       entryPolicy,
       seatIds: [101],
       triggers: [],
     };
 
     expect(normalizeWorkflowStartConfig(config)).toEqual(expect.objectContaining({
-      entryMode,
+      entryMode: "audience-import",
       triggers: [],
     }));
     expect(getWorkflowTriggerBindings(config, "chatai_contact")).toEqual([]);
-    },
-  );
+  });
+
+  it("creates a direct-entry binding from resolved ChatAI work users", () => {
+    const config: WorkflowStartConfig = {
+      entryMode: "direct-push",
+      entryPolicy,
+      seatIds: [101],
+      triggers: [],
+    };
+
+    expect(getWorkflowTriggerBindings(config, "chatai_contact", {
+      resolvedWorkUserIds: [201, 202, 201],
+    })).toEqual([{
+      eventType: "workflow.direct_entry",
+      filter: {
+        entryPolicy,
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      },
+      subjectType: "chatai_contact",
+    }]);
+  });
+
+  it("creates a direct-entry binding from configured WeCom work users", () => {
+    const config: WorkflowStartConfig = {
+      entryMode: "direct-push",
+      entryPolicy,
+      triggers: [],
+      workUserIds: [201, 202],
+    };
+
+    expect(getWorkflowTriggerBindings(config, "wecom_contact")).toEqual([{
+      eventType: "workflow.direct_entry",
+      filter: {
+        entryPolicy,
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      },
+      subjectType: "wecom_contact",
+    }]);
+  });
 
   it("projects each trigger independently when future contracts allow multiple events", () => {
     const malformed = {

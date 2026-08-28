@@ -54,6 +54,7 @@ interface WorkflowMessageQuerySeatTable {
   platform: number;
   third_userid: string;
   uid: number;
+  user_id: number;
 }
 
 type WorkflowMessageQueryDatabase = WorkflowDatabase & {
@@ -101,6 +102,7 @@ export class MysqlWorkflowMessageQueryPort implements WorkflowMessageQueryPort {
 export type WorkflowEntryMessageReader = {
   findById(input: {
     messageId: number;
+    seatId: number;
     thirdExternalUserId: string;
     uid: number;
     workUserId: number;
@@ -202,20 +204,31 @@ export function buildEntryMessageQuery(
   database: Kysely<WorkflowDatabase>,
   input: {
     messageId: number;
+    seatId: number;
     thirdExternalUserId: string;
     uid: number;
     workUserId: number;
   },
 ) {
   return asMessageQueryDatabase(database)
-    .selectFrom("xy_wap_embed_msg_audit_info")
-    .select(["content", "from_type", "id", "msgtype"])
-    .where("uid", "=", input.uid)
-    .where("id", "=", input.messageId)
-    .where("platform", "=", CHATAI_PLATFORM)
-    .where("third_external_id", "=", input.thirdExternalUserId)
-    .where("user_id", "=", input.workUserId)
-    .where("chat_type", "=", DIRECT_CHAT_TYPE)
+    .selectFrom("xy_wap_embed_msg_audit_info as message")
+    .innerJoin("xy_wap_embed_user_seat as seat", join => join
+      .onRef("seat.uid", "=", "message.uid")
+      .onRef("seat.platform", "=", "message.platform")
+      .onRef("seat.third_userid", "=", "message.third_user_id"))
+    .select([
+      "message.content as content",
+      "message.from_type as from_type",
+      "message.id as id",
+      "message.msgtype as msgtype",
+    ])
+    .where("message.uid", "=", input.uid)
+    .where("message.id", "=", input.messageId)
+    .where("message.platform", "=", CHATAI_PLATFORM)
+    .where("message.third_external_id", "=", input.thirdExternalUserId)
+    .where("message.chat_type", "=", DIRECT_CHAT_TYPE)
+    .where("seat.id", "=", input.seatId)
+    .where("seat.user_id", "=", input.workUserId)
     .limit(1);
 }
 

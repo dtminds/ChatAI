@@ -23,19 +23,21 @@ import {
 } from "../src/message-query-port.js";
 
 describe("Workflow Message Query port", () => {
-  it("hydrates one Entry message by its tenant, member, contact, and message identity", async () => {
+  it("hydrates one Entry message through its seat when message user_id is zero", async () => {
     const { database, queries } = createRecordingDatabase(() => ({
       rows: [{
         content: JSON.stringify({ text: "想了解价格" }),
         from_type: 2,
         id: "9001",
         msgtype: "text",
+        user_id: 0,
       }],
     }));
     const reader = new MysqlWorkflowEntryMessageReader(database);
 
     await expect(reader.findById({
       messageId: 9001,
+      seatId: 101,
       thirdExternalUserId: "third-external-1",
       uid: 9,
       workUserId: 201,
@@ -46,12 +48,15 @@ describe("Workflow Message Query port", () => {
     });
 
     expect(queries).toHaveLength(1);
-    expect(queries[0]?.sql).not.toContain(" join ");
+    expect(queries[0]?.sql).toContain("inner join `xy_wap_embed_user_seat` as `seat`");
+    expect(queries[0]?.sql).toContain("`seat`.`third_userid` = `message`.`third_user_id`");
+    expect(queries[0]?.sql).not.toContain("`message`.`user_id` = ?");
     expect(queries[0]?.parameters).toEqual(expect.arrayContaining([
       9,
       9001,
       5,
       "third-external-1",
+      101,
       201,
     ]));
   });
@@ -62,6 +67,7 @@ describe("Workflow Message Query port", () => {
 
     await expect(reader.findById({
       messageId: 9001,
+      seatId: 101,
       thirdExternalUserId: "third-external-1",
       uid: 9,
       workUserId: 201,
@@ -96,6 +102,7 @@ describe("Workflow Message Query port", () => {
     const database = createCompileOnlyDatabase();
     const entryMessageQuery = buildEntryMessageQuery(database, {
       messageId: 9001,
+      seatId: 101,
       thirdExternalUserId: "third-external-1",
       uid: 9,
       workUserId: 201,
@@ -113,14 +120,16 @@ describe("Workflow Message Query port", () => {
     }).compile();
 
     expect(seatQuery.sql).toContain("from `xy_wap_embed_user_seat`");
-    expect(entryMessageQuery.sql).toContain("from `xy_wap_embed_msg_audit_info`");
-    expect(entryMessageQuery.sql).not.toContain(" join ");
-    expect(entryMessageQuery.sql).toContain("`id` = ?");
-    expect(entryMessageQuery.sql).toContain("`third_external_id` = ?");
-    expect(entryMessageQuery.sql).toContain("`user_id` = ?");
-    expect(entryMessageQuery.sql).not.toContain("`biz_status` = ?");
-    expect(entryMessageQuery.sql).not.toContain("`revoke_status` = ?");
-    expect(entryMessageQuery.sql).not.toContain("`status` = ?");
+    expect(entryMessageQuery.sql).toContain("from `xy_wap_embed_msg_audit_info` as `message`");
+    expect(entryMessageQuery.sql).toContain("inner join `xy_wap_embed_user_seat` as `seat`");
+    expect(entryMessageQuery.sql).toContain("`message`.`id` = ?");
+    expect(entryMessageQuery.sql).toContain("`message`.`third_external_id` = ?");
+    expect(entryMessageQuery.sql).toContain("`seat`.`id` = ?");
+    expect(entryMessageQuery.sql).toContain("`seat`.`user_id` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`message`.`user_id` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`seat`.`biz_status` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`message`.`revoke_status` = ?");
+    expect(entryMessageQuery.sql).not.toContain("`message`.`status` = ?");
     expect(seatQuery.sql).toContain("`uid` = ?");
     expect(seatQuery.sql).toContain("`id` = ?");
     expect(messageQuery.sql).toContain("from `xy_wap_embed_msg_audit_info`");

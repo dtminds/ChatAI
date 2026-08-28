@@ -2794,22 +2794,37 @@ export class MysqlWorkflowRuntimeRepository implements
         lease_owner: null,
         status: "dead",
       }).where("attempt", ">=", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .executeTakeFirst();
-      const rows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      const pendingRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
         .where("attempt", "<", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .orderBy("id", "asc")
         .limit(limit)
         .forUpdate()
         .skipLocked()
         .execute();
+      const leasedRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const rows = mergeRowsByNumericId([...pendingRows, ...leasedRows], limit);
       if (rows.length === 0) return [];
       const ids = rows.map(row => row.id);
       await trx.updateTable(REVISION_CLEANUP_TABLE).set({

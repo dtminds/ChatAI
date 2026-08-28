@@ -147,6 +147,76 @@ describe("MySQL workflow runtime repository contract", () => {
     };
   });
 
+  it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:02:00+08:00");
+    const expiredAt = new Date("2099-01-01T00:01:00+08:00");
+    const nextAttemptAt = new Date("2099-01-01T00:00:00+08:00");
+    const cleanup = (input: {
+      attempt?: number;
+      id: string;
+      nodeId: string;
+      status: "leased" | "pending";
+    }) => ({
+      after_run_id: null,
+      attempt: input.attempt ?? 1,
+      id: input.id,
+      last_error_code: null,
+      lease_expires_at: input.status === "leased" ? expiredAt : null,
+      lease_owner: input.status === "leased" ? "expired-worker" : null,
+      next_attempt_at: nextAttemptAt,
+      node_id: input.nodeId,
+      node_kind: "wait",
+      revision: 2,
+      status: input.status,
+      uid: 9,
+      workflow_id: "31",
+    });
+    await database.insertInto("xy_wap_embed_workflow_revision_cleanup").values([
+      cleanup({ id: "2", nodeId: "wait-2", status: "pending" }),
+      cleanup({ id: "10", nodeId: "wait-10", status: "pending" }),
+      cleanup({ id: "1", nodeId: "wait-1", status: "leased" }),
+      cleanup({ id: "3", nodeId: "wait-3", status: "leased" }),
+      cleanup({ attempt: 3, id: "4", nodeId: "wait-4", status: "pending" }),
+      cleanup({ attempt: 3, id: "5", nodeId: "wait-5", status: "leased" }),
+    ]).executeTakeFirstOrThrow();
+
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await expect(repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "cleanup-worker",
+      limit: 2,
+      maxAttempts: 3,
+      now,
+    })).resolves.toEqual([
+      expect.objectContaining({ attempt: 2, id: "1", leaseOwner: "cleanup-worker", status: "leased" }),
+      expect.objectContaining({ attempt: 2, id: "2", leaseOwner: "cleanup-worker", status: "leased" }),
+    ]);
+
+    const rows = await database.selectFrom("xy_wap_embed_workflow_revision_cleanup")
+      .select(["id", "last_error_code", "lease_owner", "status"])
+      .orderBy("id", "asc")
+      .execute();
+    expect(rows).toEqual([
+      { id: "1", last_error_code: null, lease_owner: "cleanup-worker", status: "leased" },
+      { id: "2", last_error_code: null, lease_owner: "cleanup-worker", status: "leased" },
+      { id: "3", last_error_code: null, lease_owner: "expired-worker", status: "leased" },
+      {
+        id: "4",
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_owner: null,
+        status: "dead",
+      },
+      {
+        id: "5",
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_owner: null,
+        status: "dead",
+      },
+      { id: "10", last_error_code: null, lease_owner: null, status: "pending" },
+    ]);
+  });
+
   it("uses the tenant guard counter as the Run admission authority", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     await database.insertInto("xy_wap_embed_workflow_capacity_guard").values({

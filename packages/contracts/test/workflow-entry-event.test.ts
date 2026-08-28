@@ -9,6 +9,10 @@ import {
   type WorkflowEntryEnvelopeValidationCode,
   type WorkflowEntryEvent,
 } from "../src/workflow/entry-event.js";
+import {
+  WorkflowEntryEventTypeSchema,
+  WorkflowTriggerBindingFilterSchema,
+} from "../src/workflow/trigger.js";
 import { Value } from "@sinclair/typebox/value";
 
 type FixtureManifest = {
@@ -84,6 +88,15 @@ describe("workflow entry event envelope", () => {
       subjectId: "chatai-contact-1",
       workflowId: "31",
     })).toBe(false);
+  });
+
+  it("accepts the direct-entry event and its work-user binding filter", () => {
+    expect(Value.Check(WorkflowEntryEventTypeSchema, "workflow.direct_entry")).toBe(true);
+    expect(Value.Check(WorkflowTriggerBindingFilterSchema, {
+      entryPolicy: { mode: "never" },
+      eventType: "workflow.direct_entry",
+      workUserIds: [201, 202],
+    })).toBe(true);
   });
 
   it.each(manifest.fixtures.filter(fixture => fixture.stage === "envelope"))(

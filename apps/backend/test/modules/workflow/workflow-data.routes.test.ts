@@ -263,8 +263,9 @@ describe("workflow data routes", () => {
     })]);
   });
 
-  it("aggregates metrics across revisions while returning only current graph nodes", async () => {
-    const reader = new MysqlWorkflowDataReader(createOverviewDbMock() as never);
+  it("aggregates metrics by node in MySQL across revisions while returning only current graph nodes", async () => {
+    const db = createOverviewDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
 
     const overview = await reader.getOverview({ uid: 9, workflowId: "12" });
 
@@ -277,6 +278,21 @@ describe("workflow data routes", () => {
       expect.objectContaining({ current: 18, nodeId: "wait-1" }),
     ]));
     expect(overview.nodes.some(node => node.nodeId === "removed-wait")).toBe(false);
+    expect(overview.calculatedAt).toBe("2026-07-12T10:00:00.000Z");
+    expect(db.metricExecuteCount).toBe(1);
+    expect(db.metricGroupBy).toBe("node_id");
+    expect(db.metricNodeIds).toEqual(["start", "wait-1", "end"]);
+    expect(db.metricUnionAll).toBe(true);
+  });
+
+  it("returns zero metrics for a published Workflow before its first metric event", async () => {
+    const reader = new MysqlWorkflowDataReader(createOverviewDbMock({ emptyMetrics: true }) as never);
+
+    const overview = await reader.getOverview({ uid: 9, workflowId: "12" });
+
+    expect(overview.nodes).toEqual([]);
+    expect(overview.summary).toEqual({ completed: 0, current: 0, entered: 0, incomplete: 0 });
+    expect(Number.isNaN(Date.parse(overview.calculatedAt))).toBe(false);
   });
 
   it("returns a stable flow-change reason without exposing other terminal codes", async () => {
@@ -509,13 +525,32 @@ function createTenantOverviewDbMock() {
   return db;
 }
 
-function createOverviewDbMock() {
+function createOverviewDbMock(options: { emptyMetrics?: boolean } = {}) {
   const updatedAt = new Date("2026-07-12T10:00:00.000Z");
-  return {
+  const db = {
+    metricExecuteCount: 0,
+    metricGroupBy: null as string | null,
+    metricNodeIds: null as string[] | null,
+    metricUnionAll: false,
     selectFrom(table: string) {
       const builder = {
+        groupBy(column: string) {
+          if (table === "xy_wap_embed_workflow_node_metric") db.metricGroupBy = column;
+          return builder;
+        },
+        unionAll() {
+          if (table === "xy_wap_embed_workflow_node_metric") db.metricUnionAll = true;
+          return builder;
+        },
         select() { return builder; },
-        where() { return builder; },
+        where(column: string, operator: string, value: unknown) {
+          if (table === "xy_wap_embed_workflow_node_metric"
+            && column === "node_id"
+            && operator === "in") {
+            db.metricNodeIds = value as string[];
+          }
+          return builder;
+        },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_definition") return { published_revision: 3 };
           if (table === "xy_wap_embed_workflow_revision") {
@@ -529,19 +564,31 @@ function createOverviewDbMock() {
         },
         async execute() {
           if (table !== "xy_wap_embed_workflow_node_metric") return [];
+          db.metricExecuteCount += 1;
+          const summary = {
+            ...metricRow("summary", options.emptyMetrics ? {} : {
+              completed: 96,
+              current: 20,
+              entered: 120,
+              incomplete: 6,
+            }, updatedAt),
+            node_id: null,
+            row_kind: "summary",
+            update_time: options.emptyMetrics ? null : updatedAt,
+          };
+          if (options.emptyMetrics) return [summary];
           return [
-            metricRow("start", { entered: 70 }, updatedAt),
-            metricRow("start", { entered: 50 }, updatedAt),
-            metricRow("wait-1", { current: 10, passed: 40 }, updatedAt),
-            metricRow("wait-1", { current: 8, passed: 56 }, updatedAt),
-            metricRow("end", { completed: 96 }, updatedAt),
-            metricRow("removed-wait", { current: 2, incomplete: 6 }, updatedAt),
+            summary,
+            { ...metricRow("start", { entered: 120 }, updatedAt), row_kind: "node", update_time: null },
+            { ...metricRow("wait-1", { current: 18, passed: 96 }, updatedAt), row_kind: "node", update_time: null },
+            { ...metricRow("end", { completed: 96 }, updatedAt), row_kind: "node", update_time: null },
           ];
         },
       };
       return builder;
     },
   };
+  return db;
 }
 
 function metricRow(

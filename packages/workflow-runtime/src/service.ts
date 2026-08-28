@@ -18,6 +18,7 @@ import {
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
   WorkflowMessageSchema,
+  WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -218,6 +219,7 @@ export class WorkflowRuntimeService {
 
   async startDirectRun(input: {
     entryEventId: string;
+    expectedRevision: number;
     occurredAt: string;
     payload: WorkflowDirectEntryPayload;
     payloadVersion: number;
@@ -229,10 +231,11 @@ export class WorkflowRuntimeService {
     if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
       throw runtimeStatusError(definition.runtimeStatus);
     }
+    if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
     const revision = await this.controlRepository.findRevision(
       input.uid,
       input.payload.workflowId,
-      definition.publishedRevision,
+      input.expectedRevision,
     );
     if (!revision || revision.workflowType !== definition.workflowType) {
       throw staleDefinitionError();
@@ -250,7 +253,7 @@ export class WorkflowRuntimeService {
       subjectType: revision.subjectType,
       trigger: {
         eventId: input.entryEventId,
-        eventType: "workflow.direct_entry.requested",
+        eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
         occurredAt: input.occurredAt,
         payloadVersion: input.payloadVersion,
         projection: structuredClone(projection),

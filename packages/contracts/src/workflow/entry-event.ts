@@ -36,7 +36,7 @@ const WorkflowChatAiContactIdentitySchema = {
   thirdExternalUserId: WorkflowThirdExternalUserIdSchema,
 } as const;
 
-export const WORKFLOW_DIRECT_ENTRY_EVENT_TYPE = "workflow.direct_entry.requested" as const;
+export const WORKFLOW_DIRECT_ENTRY_EVENT_TYPE = "workflow.direct_entry" as const;
 
 export const WorkflowDirectEntryPayloadSchema = Type.Union([
   Type.Object({

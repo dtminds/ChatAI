@@ -147,6 +147,76 @@ describe("MySQL workflow runtime repository contract", () => {
     };
   });
 
+  it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:02:00+08:00");
+    const expiredAt = new Date("2099-01-01T00:01:00+08:00");
+    const nextAttemptAt = new Date("2099-01-01T00:00:00+08:00");
+    const cleanup = (input: {
+      attempt?: number;
+      id: string;
+      nodeId: string;
+      status: "leased" | "pending";
+    }) => ({
+      after_run_id: null,
+      attempt: input.attempt ?? 1,
+      id: input.id,
+      last_error_code: null,
+      lease_expires_at: input.status === "leased" ? expiredAt : null,
+      lease_owner: input.status === "leased" ? "expired-worker" : null,
+      next_attempt_at: nextAttemptAt,
+      node_id: input.nodeId,
+      node_kind: "wait",
+      revision: 2,
+      status: input.status,
+      uid: 9,
+      workflow_id: "31",
+    });
+    await database.insertInto("xy_wap_embed_workflow_revision_cleanup").values([
+      cleanup({ id: "2", nodeId: "wait-2", status: "pending" }),
+      cleanup({ id: "10", nodeId: "wait-10", status: "pending" }),
+      cleanup({ id: "1", nodeId: "wait-1", status: "leased" }),
+      cleanup({ id: "3", nodeId: "wait-3", status: "leased" }),
+      cleanup({ attempt: 3, id: "4", nodeId: "wait-4", status: "pending" }),
+      cleanup({ attempt: 3, id: "5", nodeId: "wait-5", status: "leased" }),
+    ]).executeTakeFirstOrThrow();
+
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await expect(repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "cleanup-worker",
+      limit: 2,
+      maxAttempts: 3,
+      now,
+    })).resolves.toEqual([
+      expect.objectContaining({ attempt: 2, id: "1", leaseOwner: "cleanup-worker", status: "leased" }),
+      expect.objectContaining({ attempt: 2, id: "2", leaseOwner: "cleanup-worker", status: "leased" }),
+    ]);
+
+    const rows = await database.selectFrom("xy_wap_embed_workflow_revision_cleanup")
+      .select(["id", "last_error_code", "lease_owner", "status"])
+      .orderBy("id", "asc")
+      .execute();
+    expect(rows).toEqual([
+      { id: "1", last_error_code: null, lease_owner: "cleanup-worker", status: "leased" },
+      { id: "2", last_error_code: null, lease_owner: "cleanup-worker", status: "leased" },
+      { id: "3", last_error_code: null, lease_owner: "expired-worker", status: "leased" },
+      {
+        id: "4",
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_owner: null,
+        status: "dead",
+      },
+      {
+        id: "5",
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_owner: null,
+        status: "dead",
+      },
+      { id: "10", last_error_code: null, lease_owner: null, status: "pending" },
+    ]);
+  });
+
   it("uses the tenant guard counter as the Run admission authority", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     await database.insertInto("xy_wap_embed_workflow_capacity_guard").values({
@@ -427,12 +497,43 @@ describe("MySQL workflow runtime repository contract", () => {
     });
   });
 
+  it("reads a current-revision direct-entry work-user binding", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    await database.insertInto("xy_wap_embed_workflow_trigger_binding").values({
+      event_type: "workflow.direct_entry",
+      filter_spec_json: JSON.stringify({
+        entryPolicy: { mode: "never" },
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      }),
+      revision: 1,
+      status: 1,
+      subject_type: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.listActiveTriggerBindings(9, "workflow.direct_entry"))
+      .resolves.toMatchObject([{
+        eventType: "workflow.direct_entry",
+        filter: {
+          entryPolicy: { mode: "never" },
+          eventType: "workflow.direct_entry",
+          workUserIds: [201, 202],
+        },
+        revision: 1,
+        subjectType: "chatai_contact",
+        workflowId: "31",
+      }]);
+  });
+
   it("admits only one active Run for concurrent distinct events on the same Subject", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);
     const input = {
       activeRunLimit: 10_000,
-      context: { trigger: { eventType: "workflow.direct_entry.requested" } },
+      context: { trigger: { eventType: "workflow.direct_entry" } },
       entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
       initialNodeId: "start",
       initialNodeKind: "start" as const,
@@ -499,6 +600,113 @@ describe("MySQL workflow runtime repository contract", () => {
         total + Buffer.byteLength(String(parameter ?? ""), "utf8")
       ), 0);
     expect(sqlBytes).toBeLessThan(maxAllowedPacket / 16);
+  });
+
+  it("aggregates node metrics in chunks without changing counter semantics", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const eventCount = WORKFLOW_MYSQL_WRITE_CHUNK_SIZE * 2 + 1;
+    await database.insertInto("xy_wap_embed_workflow_node_metric").values([
+      {
+        completed_count: 0,
+        current_count: 0,
+        entered_count: 0,
+        incomplete_count: 0,
+        node_id: "node-0",
+        passed_count: 0,
+        revision: 1,
+        shard_id: 0,
+        uid: 9,
+        workflow_id: "31",
+      },
+      {
+        completed_count: 0,
+        current_count: 5,
+        entered_count: 0,
+        incomplete_count: 0,
+        node_id: "node-1",
+        passed_count: 0,
+        revision: 1,
+        shard_id: 1,
+        uid: 9,
+        workflow_id: "31",
+      },
+      {
+        completed_count: 10,
+        current_count: 5,
+        entered_count: 10,
+        incomplete_count: 0,
+        node_id: "node-200",
+        passed_count: 2,
+        revision: 1,
+        shard_id: 8,
+        uid: 9,
+        workflow_id: "31",
+      },
+    ]).executeTakeFirstOrThrow();
+    for (let start = 0; start < eventCount; start += WORKFLOW_MYSQL_WRITE_CHUNK_SIZE) {
+      const end = Math.min(start + WORKFLOW_MYSQL_WRITE_CHUNK_SIZE, eventCount);
+      await database.insertInto("xy_wap_embed_workflow_node_metric_event").values(
+        Array.from({ length: end - start }, (_, offset) => {
+          const index = start + offset;
+          return {
+            completed_delta: index,
+            current_delta: index <= 1 ? -1 : 1,
+            entered_delta: 1,
+            event_key: `metric-batch-${index}`,
+            incomplete_delta: 0,
+            node_id: `node-${index}`,
+            passed_delta: index % 2,
+            processed_at: null,
+            revision: 1,
+            run_id: String(1_000 + index),
+            shard_id: index % 16,
+            uid: 9,
+            workflow_id: "31",
+          };
+        }),
+      ).executeTakeFirstOrThrow();
+    }
+
+    await expect(repository.aggregateNodeMetricEvents({ limit: eventCount })).resolves.toBe(eventCount);
+    await expect(repository.aggregateNodeMetricEvents({ limit: eventCount })).resolves.toBe(0);
+    const [metrics, processedCount] = await Promise.all([
+      database.selectFrom("xy_wap_embed_workflow_node_metric")
+        .select(["completed_count", "current_count", "entered_count", "node_id", "passed_count"])
+        .where("uid", "=", 9).where("workflow_id", "=", "31")
+        .where("revision", "=", 1)
+        .orderBy("node_id", "asc")
+        .execute(),
+      database.selectFrom("xy_wap_embed_workflow_node_metric_event")
+        .select(({ fn }) => fn.countAll<number>().as("count"))
+        .where("processed_at", "is not", null)
+        .executeTakeFirstOrThrow(),
+    ]);
+    const metricByNodeId = new Map(metrics.map(metric => [metric.node_id, metric]));
+
+    expect(metricByNodeId.get("node-0")).toEqual({
+      completed_count: "0",
+      current_count: "0",
+      entered_count: "1",
+      node_id: "node-0",
+      passed_count: "0",
+    });
+    expect(metricByNodeId.get("node-1")).toEqual({
+      completed_count: "1",
+      current_count: "4",
+      entered_count: "1",
+      node_id: "node-1",
+      passed_count: "1",
+    });
+    expect(metricByNodeId.get("node-200")).toEqual({
+      completed_count: "210",
+      current_count: "6",
+      entered_count: "11",
+      node_id: "node-200",
+      passed_count: "2",
+    });
+    expect(metrics).toHaveLength(eventCount);
+    expect(Number(processedCount.count)).toBe(eventCount);
   });
 });
 

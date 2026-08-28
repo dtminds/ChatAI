@@ -1150,6 +1150,33 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("rejects an inactive seat before creating a direct-entry review", async () => {
+    const service = createService(new InMemoryWorkflowRepository(), {
+      sourceIdentityResolver: {
+        async resolveActiveSeatWorkUserIds() {
+          return new Map();
+        },
+      },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.submitReview(operator, created.id, {
+      expectedDraftVersion: configured.draftVersion,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_START_SOURCE_INVALID",
+      statusCode: 400,
+    });
+  });
+
   it("normalizes rolling entry windows before publication", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -1354,11 +1381,51 @@ describe("WorkflowService", () => {
       }]);
   });
 
-  it("publishes direct-push entries without resolving or creating trigger bindings", async () => {
+  it("publishes direct entries with resolved work-user bindings", async () => {
     const repository = new InMemoryWorkflowRepository();
-    const resolveActiveSeatWorkUserIds = vi.fn(async () => new Map<number, number>());
+    const resolveActiveSeatWorkUserIds = vi.fn(async (_uid: number, seatIds: number[]) =>
+      new Map(seatIds.map(seatId => [seatId, seatId + 100])));
     const service = createService(repository, {
       sourceIdentityResolver: { resolveActiveSeatWorkUserIds },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101, 102],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await publishApprovedDraft(service, created.id, saved.draftVersion);
+    await service.enable(operator, created.id);
+
+    expect(resolveActiveSeatWorkUserIds).toHaveBeenCalledWith(operator.uid, [101, 102]);
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "workflow.direct_entry",
+    )).resolves.toMatchObject([{
+      filter: {
+        entryPolicy: { mode: "never" },
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      },
+      revision: 1,
+      subjectType: "chatai_contact",
+      workflowId: created.id,
+    }]);
+  });
+
+  it("rejects direct-entry publication when the reviewed seat mapping changed", async () => {
+    let workUserId = 201;
+    const service = createService(new InMemoryWorkflowRepository(), {
+      sourceIdentityResolver: {
+        async resolveActiveSeatWorkUserIds(_uid, seatIds) {
+          return new Map(seatIds.map(seatId => [seatId, workUserId]));
+        },
+      },
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(operator, created.id, {
@@ -1370,23 +1437,14 @@ describe("WorkflowService", () => {
       }),
       expectedDraftVersion: created.draftVersion,
     });
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+    workUserId = 202;
 
-    await publishApprovedDraft(service, created.id, saved.draftVersion);
-    await service.enable(operator, created.id);
-
-    expect(resolveActiveSeatWorkUserIds).not.toHaveBeenCalled();
-    await expect(repository.listActiveTriggerBindings(
-      operator.uid,
-      "contact.friend_added",
-    )).resolves.toEqual([]);
-    await expect(repository.listActiveTriggerBindings(
-      operator.uid,
-      "contact.tag_added",
-    )).resolves.toEqual([]);
-    await expect(repository.listActiveTriggerBindings(
-      operator.uid,
-      "message.received",
-    )).resolves.toEqual([]);
+    await expect(service.publish(operator, created.id, { reviewId: review.id }))
+      .rejects.toMatchObject({ code: "WORKFLOW_REVIEW_RESOURCES_CHANGED", statusCode: 409 });
   });
 
   it("retains trigger bindings across pause and hides them after stop or deletion", async () => {

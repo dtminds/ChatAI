@@ -137,7 +137,11 @@ export class MysqlWorkflowLlmTestAttemptRepository implements WorkflowLlmTestAtt
   async cleanupExpiredLlmTestAttempts(input: Parameters<WorkflowLlmTestAttemptRepository["cleanupExpiredLlmTestAttempts"]>[0]) {
     if (input.limit <= 0) return 0;
     const rows = await this.db.selectFrom(TABLE).select("id")
-      .where("expires_at", "<=", input.now).orderBy("id", "asc").limit(input.limit).execute();
+      .where("expires_at", "<=", input.now)
+      .orderBy("expires_at", "asc")
+      .orderBy("id", "asc")
+      .limit(input.limit)
+      .execute();
     if (rows.length === 0) return 0;
     const result = await this.db.deleteFrom(TABLE).where("id", "in", rows.map(row => row.id)).executeTakeFirst();
     return Number(result.numDeletedRows);
@@ -291,6 +295,8 @@ export class InMemoryWorkflowLlmTestAttemptRepository implements WorkflowLlmTest
 
   async cleanupExpiredLlmTestAttempts(input: Parameters<WorkflowLlmTestAttemptRepository["cleanupExpiredLlmTestAttempts"]>[0]) {
     const ids = this.attempts.filter(item => item.expiresAt <= input.now)
+      .sort((left, right) => left.expiresAt.getTime() - right.expiresAt.getTime()
+        || Number(left.id) - Number(right.id))
       .slice(0, input.limit).map(item => item.id);
     for (const id of ids) this.attempts.splice(this.attempts.findIndex(item => item.id === id), 1);
     return ids.length;

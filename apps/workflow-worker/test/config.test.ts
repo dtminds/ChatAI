@@ -2,38 +2,39 @@ import { describe, expect, it } from "vitest";
 import { loadWorkflowWorkerConfig } from "../src/config.js";
 
 describe("workflow worker config", () => {
-  it.each([
-    [
-      "dev",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
-    ],
-    [
-      "test",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-test",
-      "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-test",
-    ],
-  ] as const)("maps %s to isolated workflow topics", (environment, entryTopic, taskTopic) => {
-    const config = loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: environment }));
+  it("loads explicitly configured, isolated Workflow broker resources", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv());
 
-    expect(config.topics).toEqual({ entry: entryTopic, task: taskTopic });
+    expect(config.topics).toEqual({
+      entry: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev",
+      task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
+    });
     expect(config.subscriptions).toEqual({
-      entry: `consumer-chatai-worker-env-${environment}`,
-      task: `consumer-chatai-worker-env-${environment}`,
+      entry: "consumer-chatai-worker-entry-dev",
+      task: "consumer-chatai-worker-task-dev",
     });
     expect(config.subscriptionType).toBe("Shared");
-    expect(config.deadLetterTopics.entry).toBe(
-      `persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-${environment}-DLQ`,
-    );
-    expect(config.deadLetterTopics.task).toBe(
-      `persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-${environment}-DLQ`,
-    );
+    expect(config.deadLetterTopics).toEqual({
+      entry: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev-dlq",
+      task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev-dlq",
+    });
   });
 
-  it("allows entry and task subscriptions to be overridden independently", () => {
+  it.each([
+    "WORKFLOW_ENTRY_TOPIC",
+    "WORKFLOW_TASK_TOPIC",
+    "WORKFLOW_ENTRY_SUBSCRIPTION",
+    "WORKFLOW_TASK_SUBSCRIPTION",
+    "WORKFLOW_ENTRY_DLQ_TOPIC",
+    "WORKFLOW_TASK_DLQ_TOPIC",
+  ])("requires explicit broker resource configuration: %s", (name) => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ [name]: undefined })))
+      .toThrow(`Missing required environment variable: ${name}`);
+  });
+
+  it("loads entry and task subscriptions independently", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_ENTRY_SUBSCRIPTION: "entry-subscription",
-      WORKFLOW_SUBSCRIPTION: "shared-subscription",
       WORKFLOW_TASK_SUBSCRIPTION: "task-subscription",
     }));
 
@@ -47,7 +48,6 @@ describe("workflow worker config", () => {
     const token = "secret-token-must-not-leak";
 
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_SERVICE_URL: "",
       WORKFLOW_PULSAR_TOKEN: token,
     }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
@@ -55,7 +55,6 @@ describe("workflow worker config", () => {
 
   it("qualifies Pulsar topics with the configured tenant and namespace", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
       WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
       WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
@@ -67,14 +66,13 @@ describe("workflow worker config", () => {
       task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
     });
     expect(config.deadLetterTopics).toEqual({
-      entry: "persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-dev-DLQ",
-      task: "persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-dev-DLQ",
+      entry: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev-dlq",
+      task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev-dlq",
     });
   });
 
   it("requires a cluster ID and namespace for the Pulsar broker", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_CLUSTER_ID: "",
       WORKFLOW_PULSAR_NAMESPACE: "",
       WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
@@ -85,7 +83,6 @@ describe("workflow worker config", () => {
   it("preserves fully-qualified Pulsar topic overrides", () => {
     const topic = "persistent://another-tenant/another-namespace/custom-entry";
     const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_ENTRY_TOPIC: topic,
       WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
       WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
@@ -96,14 +93,33 @@ describe("workflow worker config", () => {
     expect(config.topics.entry).toBe(topic);
   });
 
-  it("rejects unknown broker modes instead of falling through to Pulsar", () => {
-    expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
-      .toThrow("WORKFLOW_BROKER must be pulsar");
+  it("rejects an unknown NODE_ENV instead of bypassing production checks", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ NODE_ENV: "prod" })))
+      .toThrow("NODE_ENV must be development, test, or production");
   });
 
-  it("rejects the removed test01 environment name", () => {
-    expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: "test01" })))
-      .toThrow("WORKFLOW_ENVIRONMENT must be dev or test");
+  it("rejects a shared Entry and Task topic", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_TOPIC: "topic-workflow-entry-dev",
+    }))).toThrow("WORKFLOW_ENTRY_TOPIC and WORKFLOW_TASK_TOPIC must be different");
+  });
+
+  it("requires separate Entry and Task DLQs in production", () => {
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-entry-prod-dlq",
+    }))).toThrow(
+      "WORKFLOW_ENTRY_DLQ_TOPIC and WORKFLOW_TASK_DLQ_TOPIC must be different in production",
+    );
+  });
+
+  it.each([
+    ["WORKFLOW_ENTRY_DLQ_TOPIC", "topic-workflow-entry-dev"],
+    ["WORKFLOW_ENTRY_DLQ_TOPIC", "topic-workflow-task-dev"],
+    ["WORKFLOW_TASK_DLQ_TOPIC", "topic-workflow-entry-dev"],
+    ["WORKFLOW_TASK_DLQ_TOPIC", "topic-workflow-task-dev"],
+  ])("rejects a DLQ that points to a source topic: %s", (name, topic) => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ [name]: topic })))
+      .toThrow("Workflow source topics and dead-letter topics must be different");
   });
 
   it("loads the Java entitlement endpoint", () => {
@@ -138,22 +154,26 @@ describe("workflow worker config", () => {
       .toThrow("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
   });
 
-  it.each(["allow", " allow ", undefined])(
-    "defaults entitlement checks to allow in production: %j",
-    (mode) => {
-      const config = loadWorkflowWorkerConfig(baseEnv({
-        NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: mode,
-      }));
+  it("defaults entitlement checks to allow outside production", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ENTITLEMENT_MODE: undefined,
+    })).entitlement.mode).toBe("allow");
+  });
 
-      expect(config.entitlement.mode).toBe("allow");
-    },
-  );
+  it("requires an explicit entitlement mode in production", () => {
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_ENTITLEMENT_MODE: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_ENTITLEMENT_MODE");
+
+    expect(loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_ENTITLEMENT_MODE: " allow ",
+    })).entitlement.mode).toBe("allow");
+  });
 
   it("loads an explicit enforce entitlement mode", () => {
-    const config = loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "production",
+    const config = loadWorkflowWorkerConfig(productionEnv({
       WORKFLOW_ENTITLEMENT_MODE: "enforce",
+      WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
     }));
 
     expect(config.entitlement.mode).toBe("enforce");
@@ -163,6 +183,15 @@ describe("workflow worker config", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_ENTITLEMENT_MODE: "disabled",
     }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
+  });
+
+  it("requires the entitlement endpoint in enforce mode", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ENTITLEMENT_API_URL: undefined,
+      WORKFLOW_ENTITLEMENT_MODE: "enforce",
+    }))).toThrow(
+      "WORKFLOW_ENTITLEMENT_API_URL is required when WORKFLOW_ENTITLEMENT_MODE=enforce",
+    );
   });
 
   it("starts every Phase 3 role by default with bounded runtime settings", () => {
@@ -210,21 +239,40 @@ describe("workflow worker config", () => {
   });
 
   it("requires explicit Entry and Task concurrency in production", () => {
-    expect(() => loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "production",
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
       WORKFLOW_ENTRY_CONCURRENCY: undefined,
       WORKFLOW_TASK_CONCURRENCY: undefined,
     }))).toThrow("Missing required environment variable: WORKFLOW_ENTRY_CONCURRENCY");
-    expect(() => loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "production",
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
       WORKFLOW_ENTRY_CONCURRENCY: "20",
       WORKFLOW_TASK_CONCURRENCY: undefined,
     }))).toThrow("Missing required environment variable: WORKFLOW_TASK_CONCURRENCY");
-    expect(loadWorkflowWorkerConfig(baseEnv({
-      NODE_ENV: "production",
+    expect(loadWorkflowWorkerConfig(productionEnv({
       WORKFLOW_ENTRY_CONCURRENCY: "20",
       WORKFLOW_TASK_CONCURRENCY: "30",
     })).consumerConcurrency).toEqual({ entry: 20, task: 30 });
+  });
+
+  it("requires explicit roles and Scheduler shard ownership in production", () => {
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_WORKER_ROLES: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_WORKER_ROLES");
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_SHARD_IDS: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_SHARD_IDS");
+    expect(loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_SHARD_IDS: undefined,
+      WORKFLOW_WORKER_ROLES: "entry-consumer,task-consumer",
+    })).roles).toEqual(new Set(["entry-consumer", "task-consumer"]));
+  });
+
+  it("rejects empty roles and malformed shard lists", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_WORKER_ROLES: ",",
+    }))).toThrow("WORKFLOW_WORKER_ROLES must contain at least one role");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_SHARD_IDS: "0,,1",
+    }))).toThrow("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
   });
 
   it.each(["0", "-1", "1.5", "1001"])(
@@ -316,14 +364,34 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     DATABASE_URL: "mysql://user:password@localhost/workflow",
     JAVA_INTERNAL_API_BASE_URL: "https://java.example.com",
-    WORKFLOW_BROKER: "pulsar",
-    WORKFLOW_ENVIRONMENT: "dev",
+    WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-dev-dlq",
     WORKFLOW_ENTRY_CONCURRENCY: "10",
+    WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-dev",
+    WORKFLOW_ENTRY_TOPIC: "topic-workflow-entry-dev",
     WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
     WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
     WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
     WORKFLOW_PULSAR_TOKEN: "secret-token",
+    WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-task-dev-dlq",
     WORKFLOW_TASK_CONCURRENCY: "10",
+    WORKFLOW_TASK_SUBSCRIPTION: "consumer-chatai-worker-task-dev",
+    WORKFLOW_TASK_TOPIC: "topic-workflow-task-dev",
     ...overrides,
   };
+}
+
+function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return baseEnv({
+    NODE_ENV: "production",
+    WORKFLOW_ENTITLEMENT_MODE: "allow",
+    WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-prod-dlq",
+    WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-prod",
+    WORKFLOW_ENTRY_TOPIC: "topic-workflow-entry-prod",
+    WORKFLOW_SHARD_IDS: "0,1",
+    WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-task-prod-dlq",
+    WORKFLOW_TASK_SUBSCRIPTION: "consumer-chatai-worker-task-prod",
+    WORKFLOW_TASK_TOPIC: "topic-workflow-task-prod",
+    WORKFLOW_WORKER_ROLES: "entry-consumer,task-consumer,scheduler",
+    ...overrides,
+  });
 }

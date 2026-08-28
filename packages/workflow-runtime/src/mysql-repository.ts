@@ -1,6 +1,7 @@
 import {
   WORKFLOW_ACTIVE_RUN_STATUSES,
   WorkflowEntryEventType,
+  WorkflowEntryEventTypeSchema,
   WorkflowInferenceRequestSchema,
   WorkflowInferenceResultSchema,
   WorkflowJsonObjectSchema,
@@ -1449,7 +1450,7 @@ export class MysqlWorkflowRuntimeRepository implements
   async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
     const limit = boundBatchLimit(input.limit);
     if (limit <= 0) return { expired: 0, recovered: 0 };
-    const scanned = await this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+    const candidateQuery = () => this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
       .innerJoin(`${RUN_TABLE} as inference_run`, join => join
         .onRef("inference_run.uid", "=", "job.uid")
         .onRef("inference_run.id", "=", "job.run_id"))
@@ -1457,22 +1458,24 @@ export class MysqlWorkflowRuntimeRepository implements
         .onRef("inference_definition.uid", "=", "inference_run.uid")
         .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
       .select(["job.id", "job.run_id", "job.task_id", "inference_run.uid", "inference_run.workflow_id"])
-      .where("job.status", "in", ["pending", "retry_wait", "running"])
       .where("job.paused_at", "is", null)
       .where("inference_definition.biz_status", "=", 1)
-      .where("inference_definition.runtime_status", "=", "active")
-      .where(eb => eb.or([
-        eb("job.deadline_at", "<=", input.now),
-        eb.and([
-          eb("job.status", "in", ["pending", "retry_wait"]),
-          eb("job.attempt", ">=", input.maxAttempts),
-        ]),
-        eb.and([
-          eb("job.status", "=", "running"),
-          eb("job.lease_expires_at", "<=", input.now),
-        ]),
-      ]))
-      .orderBy("job.id", "asc").limit(limit).execute();
+      .where("inference_definition.runtime_status", "=", "active");
+    const candidateRows = await Promise.all([
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait", "running"])
+        .where("job.deadline_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait"])
+        .where("job.attempt", ">=", input.maxAttempts)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "=", "running")
+        .where("job.lease_expires_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+    ]);
+    const scanned = mergeRowsByNumericId(candidateRows.flat(), limit);
     if (scanned.length === 0) return { expired: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
       const runIds = uniqueSortedIds(scanned.map(row => row.run_id));
@@ -2413,6 +2416,12 @@ export class MysqlWorkflowRuntimeRepository implements
             .forUpdate()
             .execute();
       const tasks = taskRows.map(mapTask);
+      const tasksByRunId = new Map<string, (typeof tasks)[number][]>();
+      for (const task of tasks) {
+        const runTasks = tasksByRunId.get(task.runId) ?? [];
+        runTasks.push(task);
+        tasksByRunId.set(task.runId, runTasks);
+      }
       const taskIdsToCancel = new Set<string>();
       const runsToFail: typeof runs = [];
       const definitionKeys = new Map<string, { uid: number; workflowIds: Array<string | number | bigint> }>();
@@ -2451,7 +2460,7 @@ export class MysqlWorkflowRuntimeRepository implements
         if (boundaryDecision === "cancel") continue;
 
         const runId = normalizeId(run.id);
-        const runTasks = tasks.filter(task => task.runId === runId);
+        const runTasks = tasksByRunId.get(runId) ?? [];
         const authoritativeTask = runTasks.find(task => task.sequence === run.sequence);
         for (const task of runTasks) {
           if (task !== authoritativeTask) taskIdsToCancel.add(task.id);
@@ -2474,24 +2483,26 @@ export class MysqlWorkflowRuntimeRepository implements
         for (const task of runTasks) taskIdsToCancel.add(task.id);
       }
 
-      for (const run of runsToFail) {
+      await insertNodeMetricEventsBulk(trx, runsToFail.flatMap(run => {
         const runId = normalizeId(run.id);
-        const runTasks = tasks.filter(task => task.runId === runId);
+        const runTasks = tasksByRunId.get(runId) ?? [];
         const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
-        if (!activeMetricTask) continue;
-        await insertNodeMetricEvents(trx, {
-          eventKey: `${runId}:runtime-state-inconsistent`,
-          runId,
-          runRevision: run.revision,
-          runShardId: run.shard_id,
-          uid: normalizeTenantId(run.uid),
-          workflowId: normalizeId(run.workflow_id),
-        }, createNodeMetricDeltas({
-          kind: "left-incomplete",
-          nodeId: activeMetricTask.nodeId,
-          nodeKind: activeMetricTask.nodeKind,
-        }));
-      }
+        return activeMetricTask ? [{
+          context: {
+            eventKey: `${runId}:runtime-state-inconsistent`,
+            runId,
+            runRevision: run.revision,
+            runShardId: run.shard_id,
+            uid: normalizeTenantId(run.uid),
+            workflowId: normalizeId(run.workflow_id),
+          },
+          deltas: createNodeMetricDeltas({
+            kind: "left-incomplete" as const,
+            nodeId: activeMetricTask.nodeId,
+            nodeKind: activeMetricTask.nodeKind,
+          }),
+        }] : [];
+      }));
 
       let staleTasksCancelled = 0;
       if (taskIdsToCancel.size > 0) {
@@ -2784,22 +2795,37 @@ export class MysqlWorkflowRuntimeRepository implements
         lease_owner: null,
         status: "dead",
       }).where("attempt", ">=", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .executeTakeFirst();
-      const rows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      const pendingRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
         .where("attempt", "<", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .orderBy("id", "asc")
         .limit(limit)
         .forUpdate()
         .skipLocked()
         .execute();
+      const leasedRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const rows = mergeRowsByNumericId([...pendingRows, ...leasedRows], limit);
       if (rows.length === 0) return [];
       const ids = rows.map(row => row.id);
       await trx.updateTable(REVISION_CLEANUP_TABLE).set({
@@ -2896,10 +2922,16 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
       const expectedTaskType = nodeKind === "wait" ? "wait" : "wait-event";
+      const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
+      for (const task of taskRows) {
+        const runId = normalizeId(task.run_id);
+        const runTasks = taskRowsByRunId.get(runId) ?? [];
+        runTasks.push(task);
+        taskRowsByRunId.set(runId, runTasks);
+      }
       const taskByRunId = new Map(selectedRuns.flatMap(run => {
         const runId = normalizeId(run.id);
-        const task = taskRows.find(candidate => normalizeId(candidate.run_id) === runId
-          && candidate.sequence === run.sequence
+        const task = taskRowsByRunId.get(runId)?.find(candidate => candidate.sequence === run.sequence
           && candidate.node_id === request.node_id
           && candidate.node_kind === nodeKind
           && (candidate.task_type === "execute" || candidate.task_type === expectedTaskType));
@@ -3185,8 +3217,9 @@ export class MysqlWorkflowRuntimeRepository implements
         current.passed += Number(event.passed_delta);
         aggregated.set(key, current);
       }
-      for (const metric of aggregated.values()) {
-        await trx.insertInto(NODE_METRIC_TABLE).values({
+      const orderedMetrics = [...aggregated.values()].sort(compareNodeMetricKeys);
+      for (const chunk of writeChunks(orderedMetrics)) {
+        await trx.insertInto(NODE_METRIC_TABLE).values(chunk.map(metric => ({
           completed_count: metric.completed,
           current_count: Math.max(0, metric.current),
           entered_count: metric.entered,
@@ -3197,12 +3230,20 @@ export class MysqlWorkflowRuntimeRepository implements
           shard_id: metric.shardId,
           uid: metric.uid,
           workflow_id: metric.workflowId,
-        }).onDuplicateKeyUpdate({
-          completed_count: sql<number>`completed_count + ${metric.completed}`,
-          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + ${metric.current})`,
-          entered_count: sql<number>`entered_count + ${metric.entered}`,
-          incomplete_count: sql<number>`incomplete_count + ${metric.incomplete}`,
-          passed_count: sql<number>`passed_count + ${metric.passed}`,
+        }))).onDuplicateKeyUpdate({
+          completed_count: sql<number>`completed_count + VALUES(completed_count)`,
+          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + CASE
+            ${sql.join(chunk.map(metric => sql`WHEN VALUES(uid) = ${metric.uid}
+              AND VALUES(workflow_id) = ${metric.workflowId}
+              AND VALUES(revision) = ${metric.revision}
+              AND BINARY VALUES(node_id) = BINARY ${metric.nodeId}
+              AND VALUES(shard_id) = ${metric.shardId}
+              THEN ${metric.current}`), sql` `)}
+            ELSE 0
+          END)`,
+          entered_count: sql<number>`entered_count + VALUES(entered_count)`,
+          incomplete_count: sql<number>`incomplete_count + VALUES(incomplete_count)`,
+          passed_count: sql<number>`passed_count + VALUES(passed_count)`,
         }).executeTakeFirstOrThrow();
       }
       const processedAt = new Date();
@@ -3718,6 +3759,23 @@ function uniqueSortedIds(values: DatabaseId[]) {
     .sort((first, second) => first < second ? -1 : first > second ? 1 : 0);
 }
 
+function mergeRowsByNumericId<T extends { id: DatabaseId }>(rows: T[], limit: number) {
+  const rowById = new Map<string, T>();
+  for (const row of rows) {
+    const id = normalizeId(row.id);
+    if (!rowById.has(id)) rowById.set(id, row);
+  }
+  return [...rowById.values()]
+    .sort((first, second) => compareDatabaseIds(first.id, second.id))
+    .slice(0, limit);
+}
+
+function compareDatabaseIds(first: DatabaseId, second: DatabaseId) {
+  const firstId = BigInt(first);
+  const secondId = BigInt(second);
+  return firstId === secondId ? 0 : firstId < secondId ? -1 : 1;
+}
+
 function boundBatchLimit(limit: number) {
   if (!Number.isFinite(limit) || limit <= 0) return 0;
   return Math.min(Math.trunc(limit), WORKFLOW_RUNTIME_BATCH_LIMIT);
@@ -4021,6 +4079,16 @@ function compareWorkflowMetricKeys(
   const leftWorkflowId = normalizeId(left.workflowId);
   const rightWorkflowId = normalizeId(right.workflowId);
   return leftWorkflowId < rightWorkflowId ? -1 : leftWorkflowId > rightWorkflowId ? 1 : 0;
+}
+
+function compareNodeMetricKeys(
+  left: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+  right: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+) {
+  return compareWorkflowMetricKeys(left, right)
+    || left.revision - right.revision
+    || (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0)
+    || left.shardId - right.shardId;
 }
 
 async function releaseTenantCapacity(
@@ -4478,9 +4546,7 @@ function parseStatusReason(value: string | null): WorkflowStatusReason {
 }
 
 function parseEntryEventType(value: unknown): WorkflowEntryEventType {
-  if (value === "contact.friend_added" || value === "contact.tag_added" || value === "message.received") {
-    return value;
-  }
+  if (Value.Check(WorkflowEntryEventTypeSchema, value)) return value;
   throw new Error(`Unknown workflow entry event type: ${String(value)}`);
 }
 

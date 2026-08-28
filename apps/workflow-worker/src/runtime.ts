@@ -57,7 +57,6 @@ export async function startWorkflowWorker(input: {
   }
   input.logger.info({
     deadLetterTopics: input.config.deadLetterTopics,
-    environment: input.config.environment,
     event: "workflow.worker.started",
     roles: [...input.config.roles],
     subscriptions: input.config.subscriptions,
@@ -124,7 +123,7 @@ export async function startWorkflowWorkerRuntime(input: {
       subscriptions.push(await input.entryConsumer({
         bindingReader: input.triggerBindingReader,
         broker: input.broker,
-        deadLetterTopic: input.config.deadLetterTopics.entry ?? undefined,
+        deadLetterTopic: input.config.deadLetterTopics.entry,
         eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
         inboxRepository: input.inboxRepository,
         logger: input.logger,
@@ -142,7 +141,7 @@ export async function startWorkflowWorkerRuntime(input: {
     if (input.config.roles.has("task-consumer")) {
       subscriptions.push(await input.taskConsumer({
         broker: input.broker,
-        deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
+        deadLetterTopic: input.config.deadLetterTopics.task,
         maxInFlight: input.config.consumerConcurrency.task,
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,
@@ -279,9 +278,15 @@ export async function startWorkflowWorkerRuntime(input: {
       role: "readiness",
       run: async () => {
         const healthTopics = new Set<string>();
-        if (input.config.roles.has("entry-consumer")) healthTopics.add(input.config.topics.entry);
+        if (input.config.roles.has("entry-consumer")) {
+          healthTopics.add(input.config.topics.entry);
+          healthTopics.add(input.config.deadLetterTopics.entry);
+        }
         if (input.config.roles.has("task-consumer") || input.config.roles.has("outbox")) {
           healthTopics.add(input.config.topics.task);
+        }
+        if (input.config.roles.has("task-consumer")) {
+          healthTopics.add(input.config.deadLetterTopics.task);
         }
         const [database, broker] = await Promise.allSettled([
           input.pingDatabase(),

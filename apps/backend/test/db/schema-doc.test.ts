@@ -209,6 +209,25 @@ describe("database schema document", () => {
     ]);
   });
 
+  it("orders the Workflow Task lease index for bounded running-task recovery", () => {
+    const taskTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_task");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Task 租约恢复索引",
+    );
+
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+    expect(taskTable).not.toContain(
+      "KEY idx_workflow_task_lease (lease_expires_at, status, id)",
+    );
+    expect(migration).toContain("DROP KEY idx_workflow_task_lease");
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+  });
+
   it("keeps the indexes required by bounded workflow history cleanup", () => {
     const nodeExecutionTable = extractCreateTable(
       schemaSql,
@@ -224,13 +243,19 @@ describe("database schema document", () => {
     );
   });
 
-  it("indexes only active Wait Event interest and stores the first trigger fact", () => {
+  it("indexes active Wait Event interest and Run lifecycle operations", () => {
     const subscriptionTable = extractCreateTable(
       schemaSql,
       "xy_wap_embed_workflow_event_subscription",
     );
     expect(subscriptionTable).toContain(
       "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
+    );
+    expect(subscriptionTable).toContain(
+      "KEY idx_workflow_event_subscription_run (run_id, status, id)",
+    );
+    expect(subscriptionTable).not.toContain(
+      "KEY idx_workflow_event_subscription_run (uid, run_id, status, id)",
     );
     expect(subscriptionTable).toContain("resume_at DATETIME NULL");
     expect(subscriptionTable).toContain("trigger_occurred_at DATETIME NULL");

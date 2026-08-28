@@ -106,14 +106,14 @@ describe("workbench MySQL mappers", () => {
       thirdExternalUserId: "external-1",
       thirdUserId: "third-user-1",
       unreadCount: 2,
+      hasStoredUnread: true,
     });
     expect(conversation.createdAt).toBe(1778832000000);
     expect(conversation.verified).toBe(false);
   });
 
   it("clears conversation unread outside the seven-day lookback", () => {
-    expect(
-      mapConversationRow({
+    const conversation = mapConversationRow({
         chat_type: 1,
         create_time: null,
         customer_avatar: "",
@@ -133,8 +133,10 @@ describe("workbench MySQL mappers", () => {
         third_userid: "third-user-1",
         unread_cnt: 2,
         verified: 0,
-      }).unreadCount,
-    ).toBe(0);
+      });
+
+    expect(conversation.unreadCount).toBe(0);
+    expect(conversation.hasStoredUnread).toBe(true);
   });
 
   it("maps application-message bind type for single conversations", () => {
@@ -162,6 +164,7 @@ describe("workbench MySQL mappers", () => {
       customerAvatar: "https://b5.bokr.com.cn/dist/app-avatar.png",
       customerBindType: 2,
       customerName: "应用消息",
+      hasStoredUnread: false,
       mode: "single",
     });
   });

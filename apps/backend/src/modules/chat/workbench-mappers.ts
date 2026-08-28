@@ -150,6 +150,12 @@ export function readUnreadCountInLookback(
   return toNumber(unreadCount);
 }
 
+export function readHasStoredUnread(
+  unreadCount: number | string | null | undefined,
+) {
+  return toNumber(unreadCount) > 0;
+}
+
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
@@ -259,6 +265,7 @@ export function mapConversationRow(
     thirdGroupId: row.third_group_id || undefined,
     thirdUserId: row.third_userid,
     unreadCount: readUnreadCountInLookback(row.unread_cnt, row.last_msgtime),
+    hasStoredUnread: readHasStoredUnread(row.unread_cnt),
     verified: row.verified == null ? undefined : toNumber(row.verified) === 1,
   };
 }

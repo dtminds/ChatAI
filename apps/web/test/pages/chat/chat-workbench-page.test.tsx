@@ -847,6 +847,7 @@ describe("ChatWorkbenchPage", () => {
       thirdExternalUserId: "external-search-opened",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
+      hasStoredUnread: false,
     };
 
     window.localStorage.setItem(
@@ -2658,6 +2659,7 @@ describe("ChatWorkbenchPage", () => {
       thirdExternalUserId: "member-003",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
+      hasStoredUnread: false,
     };
     const getCustomerSeatRelations = vi.fn().mockResolvedValue({
       items: [

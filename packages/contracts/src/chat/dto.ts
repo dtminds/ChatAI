@@ -346,7 +346,10 @@ export type WorkbenchConversationSummaryDto = {
   groupOriginalName?: string;
   lastMessage: string;
   lastMessageTime?: number;
+  /** 近 7 日窗口内的展示未读；超窗为 0，决定角标是否展示 */
   unreadCount: number;
+  /** 库中 `unread_cnt > 0`；与展示窗口无关，打开会话时用于判断是否打已读 */
+  hasStoredUnread: boolean;
   mode: "single" | "group";
   isPinned?: boolean;
   priority: "high" | "medium" | "low";

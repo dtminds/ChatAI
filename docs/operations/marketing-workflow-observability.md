@@ -41,7 +41,7 @@ Entry and Task error details are sampled independently by failure category, with
 | `workflow.capability.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
 | `workflow.node.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
-Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
+Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
 
 ## History Retention
 
@@ -65,7 +65,7 @@ The exception message is a user-safe description persisted in the execution ledg
 
 Synchronous Capability calls have a 15-second default deadline and receive an `AbortSignal`. The deadline must not exceed half of the Task lease. Long-running Inference nodes use durable Inference Jobs with renewable leases and reuse the Node Execution Key as the Java request identity. Action sends the Node Execution Key downstream as `idempotencyKey`; Query receives no downstream key. Adapters must project downstream responses into compact JSON outputs made only of JSON scalars, arrays, and plain objects with enumerable data properties; accessors, symbol keys, class instances, `undefined`, non-finite numbers, sparse arrays, and cycles are rejected. One node output is limited to 8 KiB and the complete Run Context to 128 KiB.
 
-An unclassified exception is treated as an infrastructure or programming failure. After a Task has been claimed, its `task_version` has already advanced, so a NACKed copy of the original broker message becomes stale and is acknowledged on redelivery. Recovery therefore depends on the Task lease expiring: Reconciler returns the Task to `pending`, and Scheduler publishes a new message with the current Task version. Do not describe this path as direct Pulsar redelivery recovery.
+An unclassified exception is treated as an infrastructure or programming failure. After a Task has been claimed, its `task_version` has already advanced, so a NACKed copy of the original broker message becomes stale and is acknowledged on redelivery. Recovery therefore depends on the Task lease expiring: Reconciler moves the Task to `pending`, `suspended`, or `cancelled` according to the current Workflow execution boundary, and Scheduler publishes a new message only for a Task that returns to `pending`. Do not describe this path as direct Pulsar redelivery recovery.
 
 ## DLQ Boundary
 
@@ -122,6 +122,31 @@ GROUP BY status
 ORDER BY status;
 ```
 
+### Task Transition Backlog And Failures
+
+```sql
+SELECT
+  status,
+  COUNT(*) AS request_count,
+  COALESCE(MAX(attempt), 0) AS max_attempt,
+  MIN(next_attempt_at) AS oldest_next_attempt_at,
+  MIN(create_time) AS oldest_request_at
+FROM xy_wap_embed_workflow_task_transition
+WHERE status IN ('pending', 'leased', 'dead')
+GROUP BY status
+ORDER BY status;
+```
+
+Inspect the latest terminal requests before deciding whether to issue a new pause or resume action:
+
+```sql
+SELECT id, uid, workflow_id, target_status, attempt, last_error_code, update_time
+FROM xy_wap_embed_workflow_task_transition
+WHERE status = 'dead'
+ORDER BY update_time DESC, id DESC
+LIMIT 100;
+```
+
 ### Expired Leases
 
 ```sql
@@ -162,6 +187,7 @@ Before Phase 5 defines thresholds, the Workflow dashboard should expose:
 - Due task count and oldest due-task lag.
 - Task counts by status and maximum attempt.
 - Outbox counts by status and maximum attempt.
+- Task transition pending and leased backlog, oldest retry time, and dead requests.
 - Dead Task and dead Outbox counts.
 - Expired Task and Outbox leases.
 - Reconciler recovery counters from `workflow.worker.role.warning`.

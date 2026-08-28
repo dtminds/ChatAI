@@ -158,8 +158,10 @@ export async function startWorkflowWorkerRuntime(input: {
           leaseDurationMs: input.config.runtime.leaseDurationMs,
           leaseOwner: input.workerId,
           limit: input.config.runtime.batchSize,
+          maxAttempts: input.config.runtime.maxTaskAttempts,
           now: now(),
           repository: input.schedulerRepository,
+          retryDelayMs: input.config.runtime.retryDelayMs,
         })));
     }
     if (input.config.roles.has("inference")) {

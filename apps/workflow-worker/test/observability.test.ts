@@ -265,6 +265,28 @@ describe("workflow worker observability", () => {
     }), "workflow worker role reported warning counters");
   });
 
+  it("warns when a Scheduler Task transition fails or becomes dead", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "scheduler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: {
+        dispatched: 2,
+        taskTransitionDead: 1,
+        taskTransitionFailed: 0,
+      },
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      dispatched: 2,
+      event: "workflow.worker.role.warning",
+      role: "scheduler",
+      taskTransitionDead: 1,
+      taskTransitionFailed: 0,
+    }), "workflow worker role reported warning counters");
+  });
+
   it("keeps consistency scans without repairs at debug level", () => {
     const logger = createLogger();
 

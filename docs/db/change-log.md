@@ -7,6 +7,7 @@
 - 暂停 Workflow 的可调度 Task 转为 `suspended`，Inference 等待 Task 使用 `waiting_external`；两者均不进入 `status = pending` 的全局到期队列。
 - 暂停和恢复在控制事务内只写一条带版本的迁移请求；Scheduler 用独立短事务每批最多改写 1000 条 Task，并递增 `task_version`。
 - 多 Scheduler 副本通过迁移请求租约分工；租约过期可恢复，快速暂停/恢复通过 `transition_version` 和当前 Definition 状态共同防止旧请求覆盖新状态。
+- 迁移失败使用 Scheduler 现有重试次数和固定退避配置；可重试请求回到 `pending`，达到上限或目标状态非法时进入 `dead`，且迁移失败不阻断同轮到期 Task 派发。
 - `shard_id` 继续随 Run 和 Task 持久化，保留指标分片和未来物理路由能力。
 
 ```sql
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   target_status VARCHAR(32) NOT NULL COMMENT '目标Task状态：pending、suspended',
   transition_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '同一Workflow迁移请求单调版本',
-  status VARCHAR(32) NOT NULL COMMENT '处理状态：pending、leased',
+  status VARCHAR(32) NOT NULL COMMENT '处理状态：pending、leased、dead',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '批次领取尝试次数',
   next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
   lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',

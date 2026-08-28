@@ -429,9 +429,13 @@ export type WorkflowSchedulerRepository = {
     leaseExpiresAt: Date;
     leaseOwner: string;
     limit: number;
+    maxAttempts: number;
+    nextAttemptAt: Date;
     now: Date;
   }): Promise<{
     claimed: boolean;
+    dead: number;
+    failed: number;
     hasMore: boolean;
     transitioned: number;
   }>;

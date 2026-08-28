@@ -385,7 +385,7 @@ running -> dead       达到最大重试次数或不可恢复失败
 任意非终态 -> cancelled
 ```
 
-`leased` 是 Scheduler 在同一数据库事务内校验 `pending -> dispatched` 状态转换时使用的中间状态，不作为调度租约持久化。多 Scheduler 实例通过候选 Task 行上的 `FOR UPDATE OF task SKIP LOCKED` 互斥认领。`lease_owner / lease_expires_at` 用于 Consumer 的 `running` 执行租约；租约过期后，Reconciler 将任务恢复为可再次派发状态，旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
+`leased` 是 Scheduler 在同一数据库事务内校验 `pending -> dispatched` 状态转换时使用的中间状态，不作为调度租约持久化。多 Scheduler 实例通过候选 Task 行上的 `FOR UPDATE OF task SKIP LOCKED` 互斥认领。`lease_owner / lease_expires_at` 用于 Consumer 的 `running` 执行租约；租约过期后，Reconciler 按当前 Workflow 执行边界将任务转为 `pending`、`suspended` 或 `cancelled`，旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
 
 Reconciler 同时对长期停留在 `dispatched` 且当前版本 Outbox 已发送的任务补写同版本 Outbox。该操作不提升 `task_version`，避免正常 MQ 积压中的消息被持续作废。Task 执行有最大尝试次数，耗尽后 Task 与 Run 进入失败终态；Outbox 达到最大投递次数时，如果对应 Task 仍处于同版本 `dispatched` 状态，则原子地将 Task 与 Run 标记为失败。若 Task 已被 Consumer 认领、完成或取消，则只终止该旧 Outbox，不回滚业务状态。
 
@@ -569,7 +569,7 @@ update_time
 
 `pending` 表示可由 Scheduler 认领的到期任务，`suspended` 表示因 Workflow 暂停而离开调度热队列的任务，`waiting_external` 表示由 Inference Job 等独立生命周期驱动、不能由通用 Scheduler 派发的任务。
 
-暂停和恢复不在 Definition 控制事务内无界改写 Task。控制事务按 Workflow UPSERT 一条带 `transition_version` 的迁移请求；Scheduler 实例通过租约领取请求，并按 `(uid, workflow_id, status, id)` 索引在独立事务中有界迁移 `pending <-> suspended`。每批迁移递增 `task_version`；租约过期后可继续处理，快速暂停/恢复时以当前 Definition 状态和请求版本为准。
+暂停和恢复不在 Definition 控制事务内无界改写 Task。控制事务按 Workflow UPSERT 一条带 `transition_version` 的迁移请求；Scheduler 实例通过租约领取请求，并按 `(uid, workflow_id, status, id)` 索引在独立事务中有界迁移 `pending <-> suspended`。每批迁移递增 `task_version`；租约过期后可继续处理，快速暂停/恢复时以当前 Definition 状态和请求版本为准。迁移失败使用 Scheduler 的固定退避和有限次数重试，达到上限或请求目标状态非法时进入 `dead`；迁移处理与全局到期派发隔离，同轮迁移失败不阻断到期 Task 认领。
 
 ### 9.6 `xy_wap_embed_workflow_node_execution`
 
@@ -815,6 +815,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - 多实例使用 `FOR UPDATE OF task SKIP LOCKED` 领取不同 Task，Definition 不参与候选行锁定。
 - 暂停 Workflow 的 Task 通过持久化迁移请求分批转为 `suspended`；迁移窗口残留的 `pending` Task 若被认领，会在同一有界批次内自愈为 `suspended`。
 - 恢复时通过同一机制分批将 `suspended` Task 转回 `pending`，继续按原 `bucket_time, due_at, id` 顺序参与调度。
+- 迁移请求按 Scheduler 的固定退避和最大尝试次数重试；失败和 `dead` 进入 Scheduler warning 计数，但不阻断同轮到期 Task 派发。
 - 认领后写 Outbox，不直接依赖进程内内存完成投递。
 
 ## 13. 一致性、投递和幂等
@@ -919,6 +920,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 | MQ 不可用 | Outbox 积压；业务状态保留，恢复后补投 |
 | 数据库不可用 | Worker 停止确认消息，由 MQ 重试；不得转为内存执行 |
 | Scheduler 崩溃 | 其他 Scheduler 实例在下一轮继续扫描全局到期队列 |
+| Task 暂停/恢复迁移失败 | 记录失败并固定退避重试，达到最大次数或请求非法时进入 `dead`；同轮全局到期 Task 派发继续执行 |
 | Outbox Publisher 崩溃 | 未发送记录由其他实例继续扫描 |
 | 下游返回可重试错误 | 写入数据库 Retry Task，ACK 当前 Pulsar 消息，保持同一幂等键 |
 | 下游返回不可重试错误 | Node Execution 和 Run 进入失败，记录业务错误码 |

@@ -1148,9 +1148,17 @@ export class MysqlWorkflowRuntimeRepository implements
     input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
   ) {
     const limit = boundBatchLimit(input.limit);
-    if (limit <= 0) return { claimed: false, hasMore: false, transitioned: 0 };
-    const request = await claimMysqlWorkflowTaskTransition(this.db, input);
-    if (!request) return { claimed: false, hasMore: false, transitioned: 0 };
+    if (limit <= 0) {
+      return { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    const claim = await claimMysqlWorkflowTaskTransition(this.db, input);
+    if (!claim) {
+      return { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    if (claim.kind === "dead") {
+      return { claimed: true, dead: 1, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    const { request } = claim;
 
     try {
       const result = await this.db.transaction().execute(async (trx) => {
@@ -1228,20 +1236,34 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("lease_owner", "=", input.leaseOwner)
           .executeTakeFirst();
       }
-      return { claimed: true, ...result };
+      return { claimed: true, dead: 0, failed: 0, ...result };
     } catch (error) {
-      await this.db.updateTable(TASK_TRANSITION_TABLE).set({
-        last_error_code: getTaskTransitionErrorCode(error),
-        lease_expires_at: null,
-        lease_owner: null,
-        next_attempt_at: input.now,
-        status: "pending",
-      }).where("id", "=", request.id)
-        .where("transition_version", "=", request.transitionVersion)
-        .where("status", "=", "leased")
-        .where("lease_owner", "=", input.leaseOwner)
-        .executeTakeFirst();
-      throw error;
+      const dead = request.attempt >= input.maxAttempts;
+      let failureRecorded = false;
+      try {
+        const update = await this.db.updateTable(TASK_TRANSITION_TABLE).set({
+          last_error_code: getTaskTransitionErrorCode(error),
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.nextAttemptAt,
+          status: dead ? "dead" : "pending",
+        }).where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+        failureRecorded = Number(update.numUpdatedRows) === 1;
+      } catch {
+        // Keep the processing failure as the role-level error when compensation also fails.
+      }
+      if (!failureRecorded) throw error;
+      return {
+        claimed: true,
+        dead: dead ? 1 : 0,
+        failed: dead ? 0 : 1,
+        hasMore: false,
+        transitioned: 0,
+      };
     }
   }
 
@@ -3922,6 +3944,7 @@ function definitionKey(uid: number, workflowId: string) {
 }
 
 type MysqlWorkflowTaskTransitionRequest = {
+  attempt: number;
   id: string;
   targetStatus: "pending" | "suspended";
   transitionVersion: number;
@@ -3929,14 +3952,19 @@ type MysqlWorkflowTaskTransitionRequest = {
   workflowId: string;
 };
 
+type MysqlWorkflowTaskTransitionClaim =
+  | { kind: "claimed"; request: MysqlWorkflowTaskTransitionRequest }
+  | { kind: "dead" };
+
 async function claimMysqlWorkflowTaskTransition(
   db: Kysely<WorkflowDatabase>,
   input: {
     leaseExpiresAt: Date;
     leaseOwner: string;
+    maxAttempts: number;
     now: Date;
   },
-): Promise<MysqlWorkflowTaskTransitionRequest | null> {
+): Promise<MysqlWorkflowTaskTransitionClaim | null> {
   return db.transaction().execute(async (trx) => {
     const pending = await trx.selectFrom(TASK_TRANSITION_TABLE).selectAll()
       .where("status", "=", "pending")
@@ -3956,6 +3984,28 @@ async function claimMysqlWorkflowTaskTransition(
       .execute();
     const row = mergeRowsByNumericId([...pending, ...expired], 1)[0];
     if (!row) return null;
+    if (row.attempt >= input.maxAttempts) {
+      await trx.updateTable(TASK_TRANSITION_TABLE).set({
+        last_error_code: "WORKFLOW_TASK_TRANSITION_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", row.id)
+        .where("transition_version", "=", row.transition_version)
+        .executeTakeFirstOrThrow();
+      return { kind: "dead" };
+    }
+    if (row.target_status !== "pending" && row.target_status !== "suspended") {
+      await trx.updateTable(TASK_TRANSITION_TABLE).set({
+        last_error_code: "WORKFLOW_TASK_TRANSITION_TARGET_INVALID",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", row.id)
+        .where("transition_version", "=", row.transition_version)
+        .executeTakeFirstOrThrow();
+      return { kind: "dead" };
+    }
     await trx.updateTable(TASK_TRANSITION_TABLE).set({
       attempt: sql<number>`attempt + 1`,
       last_error_code: null,
@@ -3965,17 +4015,22 @@ async function claimMysqlWorkflowTaskTransition(
     }).where("id", "=", row.id)
       .where("transition_version", "=", row.transition_version)
       .executeTakeFirstOrThrow();
-    return mapTaskTransitionRequest(row);
+    return {
+      kind: "claimed",
+      request: mapTaskTransitionRequest(row, row.attempt + 1),
+    };
   });
 }
 
 function mapTaskTransitionRequest(
   row: Selectable<WorkflowTaskTransitionTable>,
+  attempt: number,
 ): MysqlWorkflowTaskTransitionRequest {
   if (row.target_status !== "pending" && row.target_status !== "suspended") {
     throw new Error(`Unknown Workflow Task transition target status: ${row.target_status}`);
   }
   return {
+    attempt,
     id: normalizeId(row.id),
     targetStatus: row.target_status,
     transitionVersion: row.transition_version,

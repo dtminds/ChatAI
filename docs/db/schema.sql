@@ -779,7 +779,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   target_status VARCHAR(32) NOT NULL COMMENT '目标Task状态：pending、suspended',
   transition_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '同一Workflow迁移请求单调版本',
-  status VARCHAR(32) NOT NULL COMMENT '处理状态：pending、leased',
+  status VARCHAR(32) NOT NULL COMMENT '处理状态：pending、leased、dead',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '批次领取尝试次数',
   next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
   lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',

@@ -163,6 +163,8 @@ describe("MySQL workflow runtime repository contract", () => {
             leaseExpiresAt: new Date(transitionedAt.getTime() + 60_000),
             leaseOwner: "contract-transition-worker",
             limit: 1_000,
+            maxAttempts: 5,
+            nextAttemptAt: transitionedAt,
             now: transitionedAt,
           });
           if (!result.hasMore) break;
@@ -284,12 +286,16 @@ describe("MySQL workflow runtime repository contract", () => {
       leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
       leaseOwner: "transition-worker",
       limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: now,
       now,
     })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1_000 });
     await expect(repository.processTaskStatusTransitionBatch({
       leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
       leaseOwner: "transition-worker",
       limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: now,
       now,
     })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
 
@@ -389,6 +395,8 @@ describe("MySQL workflow runtime repository contract", () => {
         leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
         leaseOwner: "transition-worker",
         limit: 2,
+        maxAttempts: 5,
+        nextAttemptAt: now,
         now,
       })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1 });
 
@@ -406,6 +414,8 @@ describe("MySQL workflow runtime repository contract", () => {
       leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
       leaseOwner: "transition-worker",
       limit: 2,
+      maxAttempts: 5,
+      nextAttemptAt: now,
       now,
     })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
     await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
@@ -425,6 +435,178 @@ describe("MySQL workflow runtime repository contract", () => {
       { id: "30001", status: "suspended" },
       { id: "30002", status: "suspended" },
     ]);
+  });
+
+  it("retries failed Task transitions with backoff and terminates them at the attempt limit", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:06:00+08:00");
+    const nextAttemptAt = new Date("2099-01-01T00:06:05+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "invalid-runtime-status" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt,
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 0,
+      failed: 1,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "next_attempt_at", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 1,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      next_attempt_at: nextAttemptAt,
+      status: "pending",
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt,
+      now: new Date("2099-01-01T00:06:04+08:00"),
+    })).resolves.toEqual({
+      claimed: false,
+      dead: 0,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:05+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt: new Date("2099-01-01T00:06:10+08:00"),
+      now: nextAttemptAt,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 1,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 2,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      status: "dead",
+    });
+  });
+
+  it("does not let a delayed failed Task transition starve a later Workflow", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:08:00+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "invalid-runtime-status" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "32")
+      .executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31", "32"],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:09:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:08:05+08:00"),
+      now,
+    })).resolves.toMatchObject({ claimed: true, failed: 1 });
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:09:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:08:05+08:00"),
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 0,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["status", "workflow_id"])
+      .orderBy("workflow_id", "asc")
+      .execute()).resolves.toEqual([{ status: "pending", workflow_id: "31" }]);
+  });
+
+  it("terminates a Task transition with an invalid target during claim", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:10:00+08:00");
+    await database.insertInto("xy_wap_embed_workflow_task_transition").values({
+      attempt: 0,
+      last_error_code: null,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: now,
+      status: "pending",
+      target_status: "invalid-target",
+      transition_version: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+
+    await expect(new MysqlWorkflowRuntimeRepository(database).processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:11:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:10:05+08:00"),
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 1,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 0,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_TARGET_INVALID",
+      status: "dead",
+    });
   });
 
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {

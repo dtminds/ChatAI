@@ -46,8 +46,10 @@ describe("Wait Event Entry runtime composition", () => {
       leaseDurationMs: 60_000,
       leaseOwner: "scheduler-1",
       limit: 10,
+      maxAttempts: 5,
       now: beforeResume,
       repository: harness.repository,
+      retryDelayMs: 5_000,
     })).resolves.toMatchObject({ dispatched: 0 });
 
     const resumeAt = new Date("2026-08-10T00:00:34.000Z");
@@ -56,8 +58,10 @@ describe("Wait Event Entry runtime composition", () => {
       leaseDurationMs: 60_000,
       leaseOwner: "scheduler-1",
       limit: 10,
+      maxAttempts: 5,
       now: resumeAt,
       repository: harness.repository,
+      retryDelayMs: 5_000,
     })).resolves.toMatchObject({
       dispatched: 1,
     });
@@ -101,8 +105,10 @@ describe("Wait Event Entry runtime composition", () => {
       leaseDurationMs: 60_000,
       leaseOwner: "scheduler-1",
       limit: 10,
+      maxAttempts: 5,
       now: expiresAt,
       repository: harness.repository,
+      retryDelayMs: 5_000,
     })).resolves.toMatchObject({ dispatched: 1 });
     await harness.publishOutbox();
     await harness.publishOutbox();

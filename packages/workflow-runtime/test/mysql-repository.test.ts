@@ -350,6 +350,26 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     ]);
   });
 
+  it("inserts the maximum inconsistent-run metric batch in fixed write chunks", async () => {
+    const db = createWaitingConsistencyDbMock(WORKFLOW_RUNTIME_BATCH_LIMIT);
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2026-07-10T00:01:00.000Z"),
+      limit: WORKFLOW_RUNTIME_BATCH_LIMIT,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      inconsistentRunsFailed: WORKFLOW_RUNTIME_BATCH_LIMIT,
+      runsChecked: WORKFLOW_RUNTIME_BATCH_LIMIT,
+    });
+
+    expect(db.metricEvents).toHaveLength(WORKFLOW_RUNTIME_BATCH_LIMIT);
+    expect(db.metricInsertSizes).toEqual(Array.from(
+      { length: WORKFLOW_RUNTIME_BATCH_LIMIT / WORKFLOW_MYSQL_WRITE_CHUNK_SIZE },
+      () => WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+    ));
+  });
+
   it("checks the workflow boundary in the same transaction before creating a run", async () => {
     const db = createRunDbMock({ bizStatus: 1, runtimeStatus: "stopped" });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -1882,10 +1902,10 @@ function createRunTaskConsistencyDbMock(options: {
   return db;
 }
 
-function createWaitingConsistencyDbMock() {
-  const waitingRun = {
+function createWaitingConsistencyDbMock(runCount = 1) {
+  const waitingRuns = Array.from({ length: runCount }, (_, index) => ({
     current_node_id: "wait-1",
-    id: "1",
+    id: String(index + 1),
     lock_version: 2,
     next_execute_at: new Date("2026-07-11T00:00:00.000Z"),
     revision: 1,
@@ -1895,20 +1915,20 @@ function createWaitingConsistencyDbMock() {
     uid: 9,
     update_time: new Date("2026-07-10T00:00:00.000Z"),
     workflow_id: "31",
-  };
-  const authoritativeWaitTask = {
+  }));
+  const authoritativeWaitTasks = waitingRuns.map((run, index) => ({
     attempt: 0,
     bucket_time: new Date("2026-07-11T00:00:00.000Z"),
     create_time: new Date("2026-07-10T00:00:00.000Z"),
     due_at: new Date("2026-07-11T00:00:00.000Z"),
-    id: "7",
+    id: String(index + 10_001),
     last_error_code: null,
     lease_expires_at: null,
     lease_owner: null,
     node_id: "wait-1",
     node_kind: "wait",
     revision: 1,
-    run_id: "1",
+    run_id: run.id,
     sequence: 2,
     shard_id: 7,
     status: "pending",
@@ -1917,11 +1937,12 @@ function createWaitingConsistencyDbMock() {
     uid: 9,
     update_time: new Date("2026-07-10T00:00:00.000Z"),
     workflow_id: "31",
-  };
+  }));
   let runSelectCount = 0;
   let taskExecuteCount = 0;
   const db = {
     metricEvents: [] as Array<Record<string, unknown>>,
+    metricInsertSizes: [] as number[],
     taskWhereCalls: [] as unknown[][],
     selectFrom(table: string) {
       const builder = {
@@ -1939,11 +1960,11 @@ function createWaitingConsistencyDbMock() {
         async execute() {
           if (table === "xy_wap_embed_workflow_run") {
             runSelectCount += 1;
-            return runSelectCount === 1 ? [waitingRun] : [];
+            return runSelectCount === 1 ? waitingRuns : [];
           }
           if (table === "xy_wap_embed_workflow_task") {
             taskExecuteCount += 1;
-            if (taskExecuteCount === 1) return [authoritativeWaitTask];
+            if (taskExecuteCount === 1) return authoritativeWaitTasks;
             return [];
           }
           if (table === "xy_wap_embed_workflow_definition") {
@@ -1958,7 +1979,10 @@ function createWaitingConsistencyDbMock() {
     insertInto(table: string) {
       const builder = {
         values(values: Array<Record<string, unknown>>) {
-          if (table === "xy_wap_embed_workflow_node_metric_event") db.metricEvents.push(...values);
+          if (table === "xy_wap_embed_workflow_node_metric_event") {
+            db.metricEvents.push(...values);
+            db.metricInsertSizes.push(values.length);
+          }
           return builder;
         },
         onDuplicateKeyUpdate() { return builder; },
@@ -1975,7 +1999,7 @@ function createWaitingConsistencyDbMock() {
       const builder = {
         set() { return builder; },
         where() { return builder; },
-        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirst() { return { numUpdatedRows: BigInt(runCount) }; },
       };
       return builder;
     },

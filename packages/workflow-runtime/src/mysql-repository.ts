@@ -2480,24 +2480,26 @@ export class MysqlWorkflowRuntimeRepository implements
         for (const task of runTasks) taskIdsToCancel.add(task.id);
       }
 
-      for (const run of runsToFail) {
+      await insertNodeMetricEventsBulk(trx, runsToFail.flatMap(run => {
         const runId = normalizeId(run.id);
         const runTasks = tasksByRunId.get(runId) ?? [];
         const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
-        if (!activeMetricTask) continue;
-        await insertNodeMetricEvents(trx, {
-          eventKey: `${runId}:runtime-state-inconsistent`,
-          runId,
-          runRevision: run.revision,
-          runShardId: run.shard_id,
-          uid: normalizeTenantId(run.uid),
-          workflowId: normalizeId(run.workflow_id),
-        }, createNodeMetricDeltas({
-          kind: "left-incomplete",
-          nodeId: activeMetricTask.nodeId,
-          nodeKind: activeMetricTask.nodeKind,
-        }));
-      }
+        return activeMetricTask ? [{
+          context: {
+            eventKey: `${runId}:runtime-state-inconsistent`,
+            runId,
+            runRevision: run.revision,
+            runShardId: run.shard_id,
+            uid: normalizeTenantId(run.uid),
+            workflowId: normalizeId(run.workflow_id),
+          },
+          deltas: createNodeMetricDeltas({
+            kind: "left-incomplete" as const,
+            nodeId: activeMetricTask.nodeId,
+            nodeKind: activeMetricTask.nodeKind,
+          }),
+        }] : [];
+      }));
 
       let staleTasksCancelled = 0;
       if (taskIdsToCancel.size > 0) {

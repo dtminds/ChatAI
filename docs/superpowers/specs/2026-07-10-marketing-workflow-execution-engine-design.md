@@ -378,7 +378,7 @@ running -> dead       达到最大重试次数或不可恢复失败
 任意非终态 -> cancelled
 ```
 
-Consumer 的执行租约与 Scheduler 的调度租约使用同一组 `lease_owner / lease_expires_at` 字段，但处于不同 Task 状态。`running` 租约过期后，Reconciler 将任务恢复为可再次派发状态；旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
+`leased` 是 Scheduler 在同一数据库事务内校验 `pending -> dispatched` 状态转换时使用的中间状态，不作为调度租约持久化。多 Scheduler 实例通过候选 Task 行上的 `FOR UPDATE OF task SKIP LOCKED` 互斥认领。`lease_owner / lease_expires_at` 用于 Consumer 的 `running` 执行租约；租约过期后，Reconciler 将任务恢复为可再次派发状态，旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
 
 Reconciler 同时对长期停留在 `dispatched` 且当前版本 Outbox 已发送的任务补写同版本 Outbox。该操作不提升 `task_version`，避免正常 MQ 积压中的消息被持续作废。Task 执行有最大尝试次数，耗尽后 Task 与 Run 进入失败终态；Outbox 达到最大投递次数时，如果对应 Task 仍处于同版本 `dispatched` 状态，则原子地将 Task 与 Run 标记为失败。若 Task 已被 Consumer 认领、完成或取消，则只终止该旧 Outbox，不回滚业务状态。
 
@@ -516,7 +516,7 @@ UNIQUE (uid, workflow_id, entry_event_id)
 (status, id)
 ```
 
-`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(shard_id, status, bucket_time, due_at, id)` 索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
+`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
 
 `subject_id` 是引擎不解析的不透明字符串，其唯一业务范围为 `uid + subject_id`。平台、托管账号或外部联系人 ID 的组合方式由 Trigger Adapter 决定。
 
@@ -552,9 +552,9 @@ update_time
 关键索引：
 
 ```text
-(shard_id, status, bucket_time, due_at, id)
-(run_id, status, sequence)
-(lease_expires_at, status)
+(status, bucket_time, due_at, id)
+(run_id, status, sequence, id)
+(status, lease_expires_at, id)
 ```
 
 同一 Run 在同一 `sequence` 只能存在一个有效任务。
@@ -746,8 +746,8 @@ workflow-task
 1. 根据配置和统一时区规则计算 `due_at`。
 2. `bucket_time` 向下取整至分钟。
 3. Run 进入 `waiting`，创建 `pending` Task，不立即写 MQ Outbox。
-4. Scheduler 按 `shard_id + bucket_time` 扫描到期任务。
-5. Scheduler 通过租约批量认领，并在事务中写 Outbox。
+4. Scheduler 按 `(status, bucket_time, due_at, id)` 全局到期索引扫描有界批次。
+5. Scheduler 通过 `FOR UPDATE OF task SKIP LOCKED` 锁定并认领 Task 行，在同一事务中写 Outbox。
 6. Outbox Publisher 使用 Pulsar Producer Batching，但每个 Task 保持独立业务消息 ID，避免批次内部分失败难以恢复。
 
 ### 11.5 Branch
@@ -850,7 +850,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 
 - Run 使用 `lock_version` 乐观锁。
 - Task 使用 `task_version + status` 条件更新。
-- Scheduler 使用租约，不使用 Redis 锁。
+- Scheduler 使用 MySQL Task 行锁和 `SKIP LOCKED`，不使用持久化调度租约或 Redis 锁。
 - 同一 Run 的多个消息并发到达时只允许一个状态推进成功。
 - 过期 Task 消息直接确认并记录 Debug 指标，不作为系统错误重试。
 
@@ -876,7 +876,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - 停止不可恢复。
 - 控制面提交 `runtime_status = stopped` 后，停止操作即视为成功；产品侧立即展示“已停止”，不引入“停止中”状态、取消百分比或用户侧进度查询。
 - 控制面立即阻止新 Run 和新任务派发；尚未被后台标记为 `cancelled` 的 Run / Task 也不得开始新的节点执行或下游动作。
-- 后台按逻辑分片异步将活跃 Run 和 Task 标记为 `cancelled`。
+- 后台按全局稳定 ID 顺序，以有界批次异步将活跃 Run 和 Task 标记为 `cancelled`。
 - 异步取消的积压量只作为内部运维健康指标，用于发现 Reconciler 未正常收敛；不得在 HTTP 请求中同步更新数百万 Run，也不向普通用户暴露取消进度。
 - 已经取得执行租约并开始调用下游的动作可能仍会完成，1.0 不承诺撤回已发出的下游请求。
 
@@ -888,7 +888,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - Scheduler 在认领和派发任务前必须校验 `biz_status = 1`。
 - Consumer 在取得执行租约和调用下游 Action 前必须再次校验 `biz_status = 1`。
 - 检测到 Workflow 已删除时，当前未执行 Task 和 Run 转为 `cancelled`，并 ACK 对应 MQ 消息。
-- Reconciler 后台按逻辑分片收敛已删除 Workflow 的其他活跃 Run 和 Task；正确性不能依赖一次同步全量更新。
+- Reconciler 后台按全局稳定 ID 顺序，以有界批次收敛已删除 Workflow 的其他活跃 Run 和 Task；正确性不能依赖一次同步全量更新。
 - 已经调用或已经发往下游的请求不撤回，也不承诺中断。
 - 已删除 Workflow 默认不出现在产品列表，1.0 不提供恢复入口，但定义、Revision 和执行记录继续保留。
 
@@ -1025,7 +1025,7 @@ executionKey
 
 - MySQL 事务、Outbox 和 Inbox。
 - 乐观锁与 Task Version 冲突。
-- Scheduler 多实例租约竞争。
+- Scheduler 多实例 Task 行锁竞争与 `SKIP LOCKED` 认领。
 - Pulsar 重复、乱序、Negative ACK、ACK Timeout 和死信。
 - 下游成功、明确失败和结果未知超时。
 - 发布、暂停、恢复、停止与执行并发。

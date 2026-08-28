@@ -342,8 +342,9 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
     setState({ kind: "loading" });
     void getWorkflowDirectEntryEndpoint(workflowId).then(({ endpointKey }) => {
       if (!active) return;
-      const path = `/workflow/endpoint/${encodeURIComponent(endpointKey)}`;
-      setState({ endpointUrl: new URL(path, window.location.origin).toString(), kind: "ready" });
+      const endpointUrl = new URL("/workflow/endpoint", window.location.origin);
+      endpointUrl.searchParams.set("key", endpointKey);
+      setState({ endpointUrl: endpointUrl.toString(), kind: "ready" });
     }).catch(() => {
       if (active) setState({ kind: "error" });
     });

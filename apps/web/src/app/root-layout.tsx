@@ -9,12 +9,13 @@ import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
-function isDirectEndpointPath(pathname: string) {
-  return /^\/workflow\/endpoint\/[^/]+$/.test(pathname);
+function isDirectEndpointPath(pathname: string, search: string) {
+  if (pathname !== "/workflow/endpoint") return false;
+  return Boolean(new URLSearchParams(search).get("key"));
 }
 
-function isPublicPath(pathname: string) {
-  return pathname === "/login" || isDirectEndpointPath(pathname);
+function isPublicPath(pathname: string, search: string) {
+  return pathname === "/login" || isDirectEndpointPath(pathname, search);
 }
 
 export function RootLayout() {
@@ -51,7 +52,7 @@ export function RootLayout() {
       clearSession();
       return undefined;
     }
-    if (isDirectEndpointPath(location.pathname)) return undefined;
+    if (isDirectEndpointPath(location.pathname, location.search)) return undefined;
 
     const syncAuthSessionState = async (options: { force?: boolean } = {}) => {
       if (!options.force && authStatusRef.current === "authenticated") {
@@ -108,7 +109,7 @@ export function RootLayout() {
     location.pathname,
   ]);
 
-  const publicPath = isPublicPath(location.pathname);
+  const publicPath = isPublicPath(location.pathname, location.search);
   const shouldVerifyPrivatePath =
     !publicPath &&
     status !== "authenticated" &&

@@ -220,7 +220,7 @@ export const routerConfig = [
         element: withRouteSuspense(<LoginPage />),
       },
       {
-        path: "workflow/endpoint/:endpointKey",
+        path: "workflow/endpoint",
         element: withRouteSuspense(<WorkflowDirectEntryPage />),
       },
       {

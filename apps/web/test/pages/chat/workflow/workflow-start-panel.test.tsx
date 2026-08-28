@@ -32,7 +32,9 @@ function createStartNodeWithoutTagTrigger(): WorkflowNode<"start"> {
 describe("StartConfig", () => {
   beforeEach(() => {
     directEntryApiMock.getWorkflowDirectEntryEndpoint.mockReset();
-    directEntryApiMock.getWorkflowDirectEntryEndpoint.mockResolvedValue({ endpointKey: "java.key-1" });
+    directEntryApiMock.getWorkflowDirectEntryEndpoint.mockResolvedValue({
+      endpointKey: "java+/workflow-31=",
+    });
   });
 
   it("renders the formal start node settings sections", async () => {
@@ -109,7 +111,7 @@ describe("StartConfig", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "推送地址" })).toHaveValue(
-        `${window.location.origin}/workflow/endpoint/java.key-1`,
+        `${window.location.origin}/workflow/endpoint?key=java%2B%2Fworkflow-31%3D`,
       );
     });
     expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledWith("31");
@@ -139,7 +141,7 @@ describe("StartConfig", () => {
 
     await user.click(await screen.findByRole("button", { name: "重试" }));
     expect(await screen.findByRole("textbox", { name: "推送地址" })).toHaveValue(
-      `${window.location.origin}/workflow/endpoint/java.key-2`,
+      `${window.location.origin}/workflow/endpoint?key=java.key-2`,
     );
     expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledTimes(2);
   });

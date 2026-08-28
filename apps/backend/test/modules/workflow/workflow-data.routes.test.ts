@@ -87,6 +87,7 @@ describe("workflow data routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toEqual({
       activeWorkflowCount: 23,
+      canViewWorkflowObservability: false,
       recentFailedRunCount: 231,
       recentSuccessRatePercent: 98.2,
       todayRunCount: 12_847,

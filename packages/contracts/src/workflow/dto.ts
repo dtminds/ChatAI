@@ -313,6 +313,7 @@ export const WorkflowCapacityOverviewSchema = Type.Object({
 
 export const WorkflowTenantOverviewSchema = Type.Object({
   activeWorkflowCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
+  canViewWorkflowObservability: Type.Optional(Type.Boolean()),
   recentFailedRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
   recentSuccessRatePercent: Type.Union([Type.Number({ maximum: 100, minimum: 0 }), Type.Null()]),
   todayRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),

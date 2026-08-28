@@ -55,6 +55,13 @@ const WorkflowPage = lazy(() =>
     }),
   ),
 );
+const WorkflowObservabilityPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-observability-page").then(
+    ({ WorkflowObservabilityPage }) => ({
+      default: WorkflowObservabilityPage,
+    }),
+  ),
+);
 const WorkflowEditorPage = lazy(() =>
   import("@/pages/chat/workflow/workflow-editor-page").then(
     ({ WorkflowEditorPage }) => ({
@@ -298,6 +305,10 @@ export const routerConfig = [
       {
         path: "chat/workflows/new",
         element: withRouteSuspense(<WorkflowEditorPage />),
+      },
+      {
+        path: "chat/workflows/observability",
+        element: withRouteSuspense(<WorkflowObservabilityPage />),
       },
       {
         path: "chat/workflows/:workflowId",

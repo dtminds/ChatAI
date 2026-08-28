@@ -28,6 +28,14 @@ export default defineConfig({
         import.meta.dirname,
         "../../packages/user-memory/src/index.ts",
       ),
+      "@chatai/workflow-engine": path.resolve(
+        import.meta.dirname,
+        "../../packages/workflow-engine/src/index.ts",
+      ),
+      "@chatai/workflow-runtime": path.resolve(
+        import.meta.dirname,
+        "../../packages/workflow-runtime/src/index.ts",
+      ),
     },
   },
   test: {

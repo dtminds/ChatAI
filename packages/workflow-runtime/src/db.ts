@@ -182,6 +182,19 @@ export interface WorkflowTaskTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowWorkerStateTable {
+  create_time: GeneratedDate;
+  last_duration_ms: number | null;
+  last_error_code: string | null;
+  last_failure_at: NullableDate;
+  last_started_at: NullableDate;
+  last_success_at: NullableDate;
+  reported_at: DatabaseDate;
+  reported_by: string;
+  role: string;
+  update_time: GeneratedDate;
+}
+
 export interface WorkflowTaskTransitionTable {
   attempt: number;
   create_time: GeneratedDate;
@@ -402,4 +415,5 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_task: WorkflowTaskTable;
   xy_wap_embed_workflow_task_transition: WorkflowTaskTransitionTable;
   xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
+  xy_wap_embed_workflow_worker_state: WorkflowWorkerStateTable;
 }

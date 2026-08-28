@@ -280,6 +280,23 @@ describe("database schema document", () => {
     );
   });
 
+  it("documents the Workflow worker heartbeat table as worker-only writes", () => {
+    const workerStateTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_worker_state",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Worker 角色心跳表",
+    );
+
+    expect(workerStateTable).toContain("PRIMARY KEY (role)");
+    expect(workerStateTable).toContain("last_started_at DATETIME(3) NULL");
+    expect(workerStateTable).toContain("reported_by VARCHAR(128) NOT NULL");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state");
+    expect(WRITABLE_TABLES).not.toContain("xy_wap_embed_workflow_worker_state");
+  });
+
   it("keeps the indexes required by bounded workflow history cleanup", () => {
     const nodeExecutionTable = extractCreateTable(
       schemaSql,

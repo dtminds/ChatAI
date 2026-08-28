@@ -1,5 +1,16 @@
 # Database Change Log
 
+## 2026-08-28 Workflow Task 租约恢复索引
+
+- Task 租约恢复固定先筛选 `running` 状态，再按租约过期时间和 ID 顺序读取有界批次。
+- 将等值状态列放在范围时间列前，索引直接匹配恢复查询的过滤和排序。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_task
+  DROP KEY idx_workflow_task_lease,
+  ADD KEY idx_workflow_task_lease (status, lease_expires_at, id);
+```
+
 ## 2026-08-28 Workflow Event Subscription Run 索引
 
 - Run ID 是全局自增主键；按 Run 取消和删除 Event Subscription 时只传入 `run_id`，不依赖租户前缀。

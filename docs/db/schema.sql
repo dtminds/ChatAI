@@ -769,7 +769,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   KEY idx_workflow_task_schedule (shard_id, status, bucket_time, due_at, id),
   KEY idx_workflow_task_run_status_sequence (run_id, status, sequence, id),
   KEY idx_workflow_task_status_reconcile (status, id),
-  KEY idx_workflow_task_lease (lease_expires_at, status, id)
+  KEY idx_workflow_task_lease (status, lease_expires_at, id)
 ) COMMENT='营销Workflow执行任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (

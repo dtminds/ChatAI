@@ -209,6 +209,25 @@ describe("database schema document", () => {
     ]);
   });
 
+  it("orders the Workflow Task lease index for bounded running-task recovery", () => {
+    const taskTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_task");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Task 租约恢复索引",
+    );
+
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+    expect(taskTable).not.toContain(
+      "KEY idx_workflow_task_lease (lease_expires_at, status, id)",
+    );
+    expect(migration).toContain("DROP KEY idx_workflow_task_lease");
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+  });
+
   it("keeps the indexes required by bounded workflow history cleanup", () => {
     const nodeExecutionTable = extractCreateTable(
       schemaSql,

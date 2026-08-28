@@ -90,13 +90,14 @@ describe("auth routes", () => {
 
   it("renders a direct-entry protocol page without checking the login session", async () => {
     const router = createMemoryRouter(routerConfig, {
-      initialEntries: ["/workflow/endpoint/java.key-1"],
+      initialEntries: ["/workflow/endpoint?key=java%2B%2Fworkflow-31%3D"],
     });
 
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("请按照协议推送数据")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/workflow/endpoint/java.key-1");
+    expect(router.state.location.pathname).toBe("/workflow/endpoint");
+    expect(router.state.location.search).toBe("?key=java%2B%2Fworkflow-31%3D");
     expect(mock.history.get.filter(request => request.url === "/auth/session")).toHaveLength(0);
   });
 
@@ -108,7 +109,7 @@ describe("auth routes", () => {
       messagesByConversationId: { "conv-001": [] },
     });
     const router = createMemoryRouter(routerConfig, {
-      initialEntries: ["/workflow/endpoint/java.key-1"],
+      initialEntries: ["/workflow/endpoint?key=java%2B%2Fworkflow-31%3D"],
     });
 
     render(<RouterProvider router={router} />);

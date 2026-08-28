@@ -6,7 +6,7 @@
 - Java owns endpoint-key generation, decryption, and validation.
 - Backend sends the globally unique plain `workflowId` as `{ "content": workflowId }` to `POST /third-internal/smp-encrypt/aes-encrypt` and accepts `data` only when the Java envelope has `success === true`.
 - Node requests only the returned opaque `endpointKey` through `WorkflowDirectEntryEndpointPort`; tenant `uid` remains part of Backend access control and is not included in the encrypted content.
-- Web builds the user-facing URL as `/workflow/endpoint/{endpointKey}` on the current origin.
+- Web builds the user-facing URL as `/workflow/endpoint?key={endpointKey}` on the current origin.
 - The public route does not require login. It only renders `请按照协议推送数据`; it does not decrypt the key or start a Workflow.
 
 ## Java Entry Event

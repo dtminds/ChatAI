@@ -12,6 +12,8 @@ import {
   encodeWorkflowSubjectType,
   encodeWorkflowType,
   cancelMysqlEntitlementRuns,
+  resumeMysqlWorkflowTasks,
+  suspendMysqlWorkflowTasks,
   transitionMysqlWorkflowInferenceJobs,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
@@ -79,6 +81,12 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         uid: input.uid,
         workflowIds: ids.map(normalizeId),
       });
+      if (input.transition === "pause") {
+        await suspendMysqlWorkflowTasks(transaction, {
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      }
       return ids;
     });
     if (workflowIds.length === 0) return { affectedDefinitions: 0 };
@@ -623,6 +631,17 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         uid: input.uid,
         workflowIds: [input.workflowId],
       });
+      if (input.status === "active") {
+        await resumeMysqlWorkflowTasks(transaction, {
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      } else if (input.status === "paused") {
+        await suspendMysqlWorkflowTasks(transaction, {
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      }
       if (input.status === "stopped") {
         await transaction.updateTable(REVIEW_TABLE).set({
           review_sub_uid: input.opSubUserId,

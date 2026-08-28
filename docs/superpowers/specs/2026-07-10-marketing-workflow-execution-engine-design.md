@@ -553,11 +553,14 @@ update_time
 
 ```text
 (status, bucket_time, due_at, id)
+(uid, workflow_id, status, id)
 (run_id, status, sequence, id)
 (status, lease_expires_at, id)
 ```
 
 同一 Run 在同一 `sequence` 只能存在一个有效任务。
+
+`pending` 表示可由 Scheduler 认领的到期任务，`suspended` 表示因 Workflow 暂停而离开调度热队列的任务，`waiting_external` 表示由 Inference Job 等独立生命周期驱动、不能由通用 Scheduler 派发的任务。
 
 ### 9.6 `xy_wap_embed_workflow_node_execution`
 
@@ -745,7 +748,7 @@ workflow-task
 
 1. 根据配置和统一时区规则计算 `due_at`。
 2. `bucket_time` 向下取整至分钟。
-3. Run 进入 `waiting`，创建 `pending` Task，不立即写 MQ Outbox。
+3. Run 进入 `waiting`；Workflow 活跃时创建 `pending` Task，暂停时创建 `suspended` Task，不立即写 MQ Outbox。
 4. Scheduler 按 `(status, bucket_time, due_at, id)` 全局到期索引扫描有界批次。
 5. Scheduler 通过 `FOR UPDATE OF task SKIP LOCKED` 锁定并认领 Task 行，在同一事务中写 Outbox。
 6. Outbox Publisher 使用 Pulsar Producer Batching，但每个 Task 保持独立业务消息 ID，避免批次内部分失败难以恢复。
@@ -838,7 +841,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 ### 13.4 重试分工
 
 - Consumer 在取得 Task 执行权之前发生的短暂基础设施错误，通过 Pulsar Negative ACK 或 ACK Timeout 重投。
-- 业务 Action 返回明确的可重试错误时，Worker 在数据库中将 Task 恢复为 `pending` 并写入退避后的 `due_at`，随后 ACK 当前 MQ 消息。
+- 业务 Action 返回明确的可重试错误时，Worker 在数据库中写入退避后的 `due_at`；Workflow 活跃时 Task 恢复为 `pending`，暂停时转为 `suspended`，随后 ACK 当前 MQ 消息。
 - 下游超时属于结果未知，也进入数据库 Retry Task，并保持原 `execution_key`；Action 对外重试同时复用由它派生的 `idempotencyKey`。
 - 不可重试业务错误将 Task 标记为 `dead`，Run 标记为 `failed`，随后 ACK MQ 消息。
 - 未被分类的异常允许由 TDMQ Pulsar 重投；超过 Consumer Dead Letter Policy 配置的最大次数后进入 DLQ。
@@ -861,13 +864,16 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - 暂停后拒绝创建新 Run。
 - Scheduler 不派发该 Workflow 的新到期任务。
 - 已经进入单个 Node Executor 的任务允许执行完毕。
-- 已经进入 MQ 但尚未取得执行租约的任务，在 Consumer 发现 Workflow 已暂停后恢复为 `pending` 并 ACK 当前消息，等待恢复后重新派发；不得通过 MQ 持续重试等待恢复。
+- 已经进入 MQ 但尚未取得执行租约的任务，在 Consumer 发现 Workflow 已暂停后转为 `suspended`、递增 `task_version` 并 ACK 当前消息，等待恢复后重新派发；不得通过 MQ 持续重试等待恢复。
+- Scheduler 只扫描 `pending`。认领到暂停 Workflow 的迁移窗口残留 Task 时，将其转为 `suspended`；Wait、重试和节点推进等写路径在暂停边界直接写 `suspended`。
+- Inference Task 在独立 Job 运行期间使用 `waiting_external`，不进入通用 Scheduler 队列；Job 完成后按当前 Workflow 状态进入 `dispatched`、`suspended` 或 `cancelled`。
 - 1.0 不承诺中断已经发出的下游 HTTP 请求。
 - 暂停不逐条更新所有 Run，避免大规模写放大。
 
 ### 14.2 恢复
 
 - 恢复后重新接受新进入。
+- 恢复时将该 Workflow 的 `suspended` Task 转回 `pending` 并递增 `task_version`，使暂停前的旧 MQ 消息失效。
 - 已经过期的 Wait Task 按原顺序尽快补执行。
 - 发送时间窗口由节点或 Start 业务规则再次约束，不能因恢复绕过营销时段限制。
 

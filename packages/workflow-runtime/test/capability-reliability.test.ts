@@ -937,6 +937,36 @@ describe("workflow capability reliability", () => {
     },
   );
 
+  it("suspends an action retry when the Workflow is paused during execution", async () => {
+    let runtimeStatus = "active" as const | "paused";
+    const runtime = new InMemoryWorkflowRuntimeRepository(async () => ({
+      bizStatus: 1,
+      runtimeStatus,
+    }), () => now);
+    const service = createService(runtime, async () => {
+      runtimeStatus = "paused";
+      throw createActionError("retryable", "DOWNSTREAM_TEMPORARY");
+    });
+    const actionTask = await startCapability(runtime, service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "retry-scheduled" });
+
+    await expect(runtime.findTask(9, actionTask.id)).resolves.toMatchObject({
+      status: "suspended",
+      taskVersion: actionTask.taskVersion + 2,
+    });
+    await expect(runtime.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2026-07-13T00:00:05.000Z"),
+    })).resolves.toEqual({ cancelled: 0, dispatched: 0, suspended: 0 });
+  });
+
   it("atomically fails the action task and run for a terminal action error", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => {

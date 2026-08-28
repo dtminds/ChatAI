@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   MysqlWorkflowRuntimeRepository,
   MysqlWorkflowLlmTestAttemptRepository,
+  resumeMysqlWorkflowTasks,
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   type WorkflowDatabase,
 } from "../src/index.js";
@@ -142,6 +143,9 @@ describe("MySQL workflow runtime repository contract", () => {
             uid: 9,
             workflowIds: ["31"],
           });
+          if (status === "active") {
+            await resumeMysqlWorkflowTasks(transaction, { uid: 9, workflowIds: ["31"] });
+          }
         });
       },
     };
@@ -179,19 +183,10 @@ describe("MySQL workflow runtime repository contract", () => {
     const claimOneDueTask = (trx: Transaction<WorkflowDatabase>) => trx
       .selectFrom("xy_wap_embed_workflow_task as task")
       .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
-      .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
-        .onRef("definition.uid", "=", "task.uid")
-        .onRef("definition.id", "=", "task.workflow_id"))
       .select("task.id")
       .where("task.status", "=", "pending")
-      .where("task.task_type", "!=", "inference")
       .where("task.bucket_time", "<=", dueAt)
       .where("task.due_at", "<=", dueAt)
-      .where(eb => eb.or([
-        eb("definition.id", "is", null),
-        eb("definition.biz_status", "=", 0),
-        eb("definition.runtime_status", "!=", "paused"),
-      ]))
       .orderBy("task.bucket_time", "asc")
       .orderBy("task.due_at", "asc")
       .orderBy("task.id", "asc")

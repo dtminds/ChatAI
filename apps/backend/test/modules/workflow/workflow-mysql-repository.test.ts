@@ -242,6 +242,9 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.updateBuilders.find(update =>
       update.table === "xy_wap_embed_workflow_inference_job")?.sets,
     ).toMatchObject({ paused_at: transitionedAt });
+    expect(db.updateBuilders.find(update =>
+      update.table === "xy_wap_embed_workflow_task")?.sets,
+    ).toMatchObject({ status: "suspended" });
   });
 
   it("unfreezes Inference Jobs in the Workflow resume transaction", async () => {
@@ -264,6 +267,9 @@ describe("MysqlWorkflowRepository", () => {
     expect(inferenceUpdate?.sets).toMatchObject({ paused_at: null });
     expect(inferenceUpdate?.sets.deadline_at).toBeDefined();
     expect(inferenceUpdate?.sets.next_attempt_at).toBeDefined();
+    expect(db.updateBuilders.find(update =>
+      update.table === "xy_wap_embed_workflow_task")?.sets,
+    ).toMatchObject({ status: "pending" });
     expect(db.selectBuilders[0]).toMatchObject({
       forUpdate: true,
       wheres: [["uid", "=", 8], ["id", "=", "42"], ["biz_status", "=", 1]],

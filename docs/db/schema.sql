@@ -767,6 +767,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_task_run_sequence (uid, run_id, sequence),
   KEY idx_workflow_task_schedule (status, bucket_time, due_at, id),
+  KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id),
   KEY idx_workflow_task_run_status_sequence (run_id, status, sequence, id),
   KEY idx_workflow_task_status_reconcile (status, id),
   KEY idx_workflow_task_lease (status, lease_expires_at, id)

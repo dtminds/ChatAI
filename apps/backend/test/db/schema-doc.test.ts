@@ -245,6 +245,12 @@ describe("database schema document", () => {
     expect(migration).toContain(
       "ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id)",
     );
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id)",
+    );
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id)",
+    );
   });
 
   it("keeps the indexes required by bounded workflow history cleanup", () => {

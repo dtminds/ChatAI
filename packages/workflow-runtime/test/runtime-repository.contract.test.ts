@@ -24,6 +24,14 @@ describe("in-memory workflow runtime repository contract", () => {
           uid: 9,
           workflowIds: ["31"],
         });
+        if (status === "active") {
+          for (const task of repository.tasks) {
+            if (task.uid === 9 && task.workflowId === "31" && task.status === "suspended") {
+              task.status = "pending";
+              task.taskVersion += 1;
+            }
+          }
+        }
       },
     };
   });

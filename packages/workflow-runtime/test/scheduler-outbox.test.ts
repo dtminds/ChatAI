@@ -30,7 +30,7 @@ describe("workflow scheduler repository", () => {
     });
   });
 
-  it("leaves due tasks pending while the workflow is paused", async () => {
+  it("moves due tasks out of the scheduler queue while the workflow is paused", async () => {
     let runtimeStatus = "active" as const | "paused";
     const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
       bizStatus: 1,
@@ -41,10 +41,10 @@ describe("workflow scheduler repository", () => {
 
     const result = await repository.dispatchDueTasks({ limit: 10, now: dueAt });
 
-    expect(result).toEqual({ cancelled: 0, dispatched: 0 });
+    expect(result).toEqual({ cancelled: 0, dispatched: 0, suspended: 1 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
-      status: "pending",
-      taskVersion: 3,
+      status: "suspended",
+      taskVersion: 4,
     });
   });
 
@@ -59,14 +59,14 @@ describe("workflow scheduler repository", () => {
 
     const result = await repository.dispatchDueTasks({ limit: 10, now: dueAt });
 
-    expect(result).toEqual({ cancelled: 1, dispatched: 0 });
+    expect(result).toEqual({ cancelled: 1, dispatched: 0, suspended: 0 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "cancelled",
       taskVersion: 4,
     });
   });
 
-  it("does not let paused tasks starve an active due task", async () => {
+  it("drains paused tasks in bounded batches before dispatching an active due task", async () => {
     const workflowStatuses = new Map<string, "active" | "paused">();
     const repository = new InMemoryWorkflowRuntimeRepository(async ({ workflowId }) => ({
       bizStatus: 1,
@@ -81,6 +81,12 @@ describe("workflow scheduler repository", () => {
     workflowStatuses.set("200", "active");
     const active = await createWaitingTask(repository, "200", "event-active");
 
+    await expect(repository.dispatchDueTasks({ limit: 1, now: dueAt }))
+      .resolves.toEqual({ cancelled: 0, dispatched: 0, suspended: 1 });
+    await expect(repository.dispatchDueTasks({ limit: 1, now: dueAt }))
+      .resolves.toEqual({ cancelled: 0, dispatched: 0, suspended: 1 });
+    await expect(repository.dispatchDueTasks({ limit: 1, now: dueAt }))
+      .resolves.toEqual({ cancelled: 0, dispatched: 0, suspended: 1 });
     const result = await repository.dispatchDueTasks({ limit: 1, now: dueAt });
 
     expect(result).toMatchObject({ dispatched: 1 });

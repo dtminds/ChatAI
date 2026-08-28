@@ -134,7 +134,11 @@ export function runWorkflowRuntimeRepositoryContract(
       uid: 9,
     };
     const waiting = await harness.repository.beginInference(input);
-    expect(waiting).toMatchObject({ created: true, kind: "success", task: { status: "pending", taskType: "inference" } });
+    expect(waiting).toMatchObject({
+      created: true,
+      kind: "success",
+      task: { status: "waiting_external", taskType: "inference" },
+    });
     await expect(harness.repository.beginInference(input)).resolves.toEqual({ kind: "already-processed" });
     const jobs = await harness.repository.claimInferenceBatch({
       leaseExpiresAt: new Date("2099-01-01T00:02:00.000Z"),
@@ -183,7 +187,7 @@ export function runWorkflowRuntimeRepositoryContract(
       now: new Date("2099-01-01T00:01:00.000Z"),
     })).resolves.toEqual({ expired: 0, recovered: 1 });
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
-      status: "pending",
+      status: "waiting_external",
       taskType: "inference",
     });
     await expect(harness.repository.claimInferenceBatch({
@@ -206,7 +210,7 @@ export function runWorkflowRuntimeRepositoryContract(
       staleTasksCancelled: 0,
     });
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
-      status: "pending",
+      status: "waiting_external",
       taskType: "inference",
     });
   });
@@ -418,7 +422,7 @@ export function runWorkflowRuntimeRepositoryContract(
     const waiting = await createInferenceWait(harness.repository);
     await harness.setWorkflowRuntimeStatus("paused");
     await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
-      status: "pending",
+      status: "waiting_external",
       taskType: "inference",
     });
     await expect(harness.repository.reconcileRunTaskConsistency({
@@ -794,18 +798,20 @@ export function runWorkflowRuntimeRepositoryContract(
     })).resolves.toMatchObject({
       kind: "success",
       subscription: { status: "triggered" },
-      task: { status: "pending" },
+      task: { status: "suspended" },
     });
+    await expect(harness.repository.reconcileEventSubscriptions({ limit: 10 }))
+      .resolves.toMatchObject({ cancelled: 0, checked: 1 });
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: EVENT_RESUME_AT,
-    })).resolves.toEqual({ cancelled: 0, dispatched: 0 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 0, suspended: 0 });
 
     await harness.setWorkflowRuntimeStatus("active");
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: EVENT_RESUME_AT,
-    })).resolves.toEqual({ cancelled: 0, dispatched: 1 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 1, suspended: 0 });
   });
 
   it("latches only the first Wait Event and removes the subscription from matching", async () => {
@@ -989,7 +995,7 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: OUTBOX_RETRY_AT,
-    })).resolves.toEqual({ cancelled: 0, dispatched: 1 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 1, suspended: 0 });
     const retryOutbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:06:00.000Z"),
       leaseOwner: "publisher-retry",

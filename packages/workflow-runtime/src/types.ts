@@ -424,7 +424,7 @@ export type WorkflowSchedulerRepository = {
   dispatchDueTasks(input: {
     limit: number;
     now: Date;
-  }): Promise<{ cancelled: number; dispatched: number }>;
+  }): Promise<{ cancelled: number; dispatched: number; suspended: number }>;
 };
 
 export type WorkflowOutboxRepository = {

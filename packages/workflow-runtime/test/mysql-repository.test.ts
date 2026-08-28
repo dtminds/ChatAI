@@ -35,8 +35,14 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
   });
 
-  it("persists one classified capability retry and fences the current task message", async () => {
-    const db = createCapabilityExecutionDbMock({ executionStatus: "running" });
+  it.each([
+    { expectedStatus: "pending", runtimeStatus: "active" },
+    { expectedStatus: "suspended", runtimeStatus: "paused" },
+  ] as const)("persists a $expectedStatus capability retry for an $runtimeStatus Workflow", async ({
+    expectedStatus,
+    runtimeStatus,
+  }) => {
+    const db = createCapabilityExecutionDbMock({ executionStatus: "running", runtimeStatus });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
     const dueAt = new Date("2026-07-13T00:00:05.000Z");
 
@@ -59,7 +65,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       uid: 9,
     });
 
-    expect(result).toMatchObject({ kind: "success", task: { status: "pending", taskVersion: 3 } });
+    expect(result).toMatchObject({ kind: "success", task: { status: expectedStatus, taskVersion: 3 } });
     expect(db.inserts.xy_wap_embed_workflow_inbox).toMatchObject({ message_id: "message-1" });
     expect(db.updates.xy_wap_embed_workflow_node_execution).toMatchObject({
       error_code: "DOWNSTREAM_TEMPORARY",
@@ -69,7 +75,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.updates.xy_wap_embed_workflow_task).toMatchObject({
       due_at: dueAt,
       lease_owner: null,
-      status: "pending",
+      status: expectedStatus,
       task_version: 3,
     });
     expect(db.updates.xy_wap_embed_workflow_run).toMatchObject({
@@ -631,17 +637,17 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.updates[2]?.wheres).toEqual([["id", "in", ["1", "2"]]]);
   });
 
-  it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
+  it("dispatches a due-task batch without locking definitions and with one outbox insert", async () => {
     const db = createDispatchDueTasksDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
     await expect(repository.dispatchDueTasks({
       limit: 10,
       now: new Date("2026-07-10T00:01:00.000Z"),
-    })).resolves.toEqual({ cancelled: 0, dispatched: 2 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 2, suspended: 0 });
     expect(db.scheduleIndexHints).toBe(1);
     expect(db.taskLockTargets).toEqual(["task"]);
-    expect(db.definitionShareLocks).toBe(1);
+    expect(db.definitionShareLocks).toBe(0);
     expect(db.taskUpdates).toBe(1);
     expect(db.outboxInsertSizes).toEqual([2]);
   });
@@ -657,6 +663,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toEqual({
       cancelled: 0,
       dispatched: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE + overflow,
+      suspended: 0,
     });
     expect(db.claimedLimits).toEqual([WORKFLOW_RUNTIME_BATCH_LIMIT]);
     expect(db.outboxInsertSizes).toEqual([WORKFLOW_MYSQL_WRITE_CHUNK_SIZE, overflow]);
@@ -886,7 +893,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
   });
 
   it.each([
-    { action: "defer", expectedStatus: "pending", runtimeStatus: "paused" },
+    { action: "defer", expectedStatus: "suspended", runtimeStatus: "paused" },
     { action: "cancel", expectedStatus: "cancelled", runtimeStatus: "stopped" },
   ] as const)("persists $action at the task claim boundary", async ({
     action,
@@ -1156,6 +1163,7 @@ function createCapabilityExecutionDbMock(options: {
   nodeId?: string;
   nodeKind?: string;
   publishedExecutionSpec?: Record<string, unknown>;
+  runtimeStatus?: "active" | "paused";
   sequence?: number;
 } = {}) {
   const nodeId = options.nodeId ?? "message";
@@ -1257,8 +1265,12 @@ function createCapabilityExecutionDbMock(options: {
           if (table === "xy_wap_embed_workflow_run") return run;
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_node_execution") return execution;
-          if (table === "xy_wap_embed_workflow_definition" && options.publishedExecutionSpec) {
-            return { biz_status: 1, published_revision: 1, runtime_status: "active" };
+          if (table === "xy_wap_embed_workflow_definition") {
+            return {
+              biz_status: 1,
+              published_revision: options.publishedExecutionSpec ? 1 : null,
+              runtime_status: options.runtimeStatus ?? "active",
+            };
           }
           if (table === "xy_wap_embed_workflow_revision" && options.publishedExecutionSpec) {
             return {
@@ -1554,6 +1566,7 @@ function createClaimDbMock(runtimeStatus = "active", runStatus = "waiting") {
     taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
+        forShare() { return builder; },
         forUpdate() {
           db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
           return builder;
@@ -1687,6 +1700,7 @@ function createLeaseRecoveryDbMock(options: {
     selectFrom(table: string) {
       let locked = false;
       const builder = {
+        forShare() { return builder; },
         forUpdate() {
           locked = true;
           db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
@@ -1698,6 +1712,9 @@ function createLeaseRecoveryDbMock(options: {
         skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
+          if (table === "xy_wap_embed_workflow_definition") {
+            return [{ biz_status: 1, id: "31", runtime_status: "active", uid: 9 }];
+          }
           if (table === "xy_wap_embed_workflow_run") {
             return options.lockedRuns ?? [{ id: "5", status: "running" }];
           }

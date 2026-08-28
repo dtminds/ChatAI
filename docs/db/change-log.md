@@ -4,13 +4,15 @@
 
 - Scheduler 通过全局到期队列认领 `pending` Task，不再按应用逻辑分片过滤。
 - 多 Scheduler 副本使用 `FOR UPDATE OF task SKIP LOCKED` 并行认领，Definition 不参与候选行锁定。
-- 删除每轮重复读取暂停 Task 的截断计数查询；暂停 Task 保持 `pending`，恢复后重新进入全局队列。
+- 暂停 Workflow 的可调度 Task 转为 `suspended`，Inference 等待 Task 使用 `waiting_external`；两者均不进入 `status = pending` 的全局到期队列。
+- Scheduler 认领后批量读取 Definition；暂停 Task 转 `suspended`，恢复时按 Workflow 将 `suspended` Task 转回 `pending` 并递增 `task_version`。
 - `shard_id` 继续随 Run 和 Task 持久化，保留指标分片和未来物理路由能力。
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_task
   DROP KEY idx_workflow_task_schedule,
-  ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id);
+  ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id),
+  ADD KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id);
 ```
 
 ## 2026-08-28 Workflow Task 租约恢复索引

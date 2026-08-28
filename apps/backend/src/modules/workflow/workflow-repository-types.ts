@@ -127,6 +127,7 @@ export type WorkflowDefinitionListInput = {
 export type WorkflowDefinitionRecordPage = {
   items: WorkflowDefinitionListRecord[];
   nextCursor: WorkflowDefinitionListCursor | null;
+  total: number;
 };
 
 export type WorkflowRepository = {

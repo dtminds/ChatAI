@@ -39,6 +39,7 @@ export type WorkflowListItem = {
 export type WorkflowListPage = {
   items: WorkflowListItem[];
   nextCursor: string | null;
+  total: number;
 };
 
 export type WorkflowListInput = {

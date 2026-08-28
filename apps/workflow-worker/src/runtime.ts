@@ -155,10 +155,13 @@ export async function startWorkflowWorkerRuntime(input: {
     if (input.config.roles.has("scheduler")) {
       loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>
         input.scheduler({
+          leaseDurationMs: input.config.runtime.leaseDurationMs,
+          leaseOwner: input.workerId,
           limit: input.config.runtime.batchSize,
+          maxAttempts: input.config.runtime.maxTaskAttempts,
           now: now(),
           repository: input.schedulerRepository,
-          shardIds: input.config.runtime.shardIds,
+          retryDelayMs: input.config.runtime.retryDelayMs,
         })));
     }
     if (input.config.roles.has("inference")) {

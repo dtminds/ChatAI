@@ -353,6 +353,8 @@ type WorkflowTaskStatus =
   | "leased"
   | "dispatched"
   | "running"
+  | "suspended"
+  | "waiting_external"
   | "completed"
   | "cancelled"
   | "dead";
@@ -368,17 +370,22 @@ pending
   -> dispatched   已在同一事务写入 Outbox
   -> running      Consumer 取得执行租约
   -> completed    节点执行和下一状态已提交
+
+pending / leased / dispatched / running -> suspended  Workflow 暂停
+suspended -> pending                              Workflow 恢复
+running -> waiting_external                      交给独立异步 Job
+waiting_external -> dispatched / suspended       Job 完成后按当前控制状态继续
 ```
 
 失败分支：
 
 ```text
-running -> pending    业务可重试错误，写入新的 due_at
+running -> pending / suspended  业务可重试错误，按当前 Workflow 状态写入新的 due_at
 running -> dead       达到最大重试次数或不可恢复失败
 任意非终态 -> cancelled
 ```
 
-Consumer 的执行租约与 Scheduler 的调度租约使用同一组 `lease_owner / lease_expires_at` 字段，但处于不同 Task 状态。`running` 租约过期后，Reconciler 将任务恢复为可再次派发状态；旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
+`leased` 是 Scheduler 在同一数据库事务内校验 `pending -> dispatched` 状态转换时使用的中间状态，不作为调度租约持久化。多 Scheduler 实例通过候选 Task 行上的 `FOR UPDATE OF task SKIP LOCKED` 互斥认领。`lease_owner / lease_expires_at` 用于 Consumer 的 `running` 执行租约；租约过期后，Reconciler 按当前 Workflow 执行边界将任务转为 `pending`、`suspended` 或 `cancelled`，旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
 
 Reconciler 同时对长期停留在 `dispatched` 且当前版本 Outbox 已发送的任务补写同版本 Outbox。该操作不提升 `task_version`，避免正常 MQ 积压中的消息被持续作废。Task 执行有最大尝试次数，耗尽后 Task 与 Run 进入失败终态；Outbox 达到最大投递次数时，如果对应 Task 仍处于同版本 `dispatched` 状态，则原子地将 Task 与 Run 标记为失败。若 Task 已被 Consumer 认领、完成或取消，则只终止该旧 Outbox，不回滚业务状态。
 
@@ -516,7 +523,7 @@ UNIQUE (uid, workflow_id, entry_event_id)
 (status, id)
 ```
 
-`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(shard_id, status, bucket_time, due_at, id)` 索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
+`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
 
 `subject_id` 是引擎不解析的不透明字符串，其唯一业务范围为 `uid + subject_id`。平台、托管账号或外部联系人 ID 的组合方式由 Trigger Adapter 决定。
 
@@ -552,12 +559,17 @@ update_time
 关键索引：
 
 ```text
-(shard_id, status, bucket_time, due_at, id)
-(run_id, status, sequence)
-(lease_expires_at, status)
+(status, bucket_time, due_at, id)
+(uid, workflow_id, status, id)
+(run_id, status, sequence, id)
+(status, lease_expires_at, id)
 ```
 
 同一 Run 在同一 `sequence` 只能存在一个有效任务。
+
+`pending` 表示可由 Scheduler 认领的到期任务，`suspended` 表示因 Workflow 暂停而离开调度热队列的任务，`waiting_external` 表示由 Inference Job 等独立生命周期驱动、不能由通用 Scheduler 派发的任务。
+
+暂停和恢复不在 Definition 控制事务内无界改写 Task。控制事务按 Workflow UPSERT 一条带 `transition_version` 的迁移请求；Scheduler 实例通过租约领取请求，并按 `(uid, workflow_id, status, id)` 索引在独立事务中有界迁移 `pending <-> suspended`。每批迁移递增 `task_version`；租约过期后可继续处理，快速暂停/恢复时以当前 Definition 状态和请求版本为准。迁移失败使用 Scheduler 的固定退避和有限次数重试，达到上限或请求目标状态非法时进入 `dead`；迁移处理与全局到期派发隔离，同轮迁移失败不阻断到期 Task 认领。
 
 ### 9.6 `xy_wap_embed_workflow_node_execution`
 
@@ -745,9 +757,9 @@ workflow-task
 
 1. 根据配置和统一时区规则计算 `due_at`。
 2. `bucket_time` 向下取整至分钟。
-3. Run 进入 `waiting`，创建 `pending` Task，不立即写 MQ Outbox。
-4. Scheduler 按 `shard_id + bucket_time` 扫描到期任务。
-5. Scheduler 通过租约批量认领，并在事务中写 Outbox。
+3. Run 进入 `waiting`；Workflow 活跃时创建 `pending` Task，暂停时创建 `suspended` Task，不立即写 MQ Outbox。
+4. Scheduler 按 `(status, bucket_time, due_at, id)` 全局到期索引扫描有界批次。
+5. Scheduler 通过 `FOR UPDATE OF task SKIP LOCKED` 锁定并认领 Task 行，在同一事务中写 Outbox。
 6. Outbox Publisher 使用 Pulsar Producer Batching，但每个 Task 保持独立业务消息 ID，避免批次内部分失败难以恢复。
 
 ### 11.5 Branch
@@ -788,20 +800,23 @@ Java 消息、标签、优惠券和转人工接口必须接受该幂等键，或
 1.0 从第一天写入逻辑分片：
 
 ```text
-shard_id = hash(uid + subjectId) % 256
+shard_id = hash(uid + subjectType + subjectId) % 256
 ```
 
-256 个逻辑分片先映射到同一个执行数据库集群。Scheduler 实例通过数据库租约领取一组逻辑分片，禁止所有实例扫描全局到期索引。
+256 个逻辑分片先映射到同一个执行数据库集群。1.0 保留行上的 `shard_id`，供指标分片和未来物理库路由使用；Scheduler 不通过静态分片列表划分所有权，而是扫描数据库内的全局到期队列。
 
 逻辑分片数不等于物理数据库数。未来扩容时调整逻辑分片到物理库的映射，不改变外部 Run ID 和 Workflow 契约。
 
 ### 12.2 扫描规则
 
-- 只扫描当前实例持有的逻辑分片。
-- 只扫描当前分钟及有限补偿窗口。
-- 使用 Keyset 条件，不使用 OFFSET 深分页。
+- 使用 `(status, bucket_time, due_at, id)` 索引扫描全局到期 Task。
+- 按 `bucket_time, due_at, id` 稳定顺序读取最早到期的有界批次，不使用 OFFSET 深分页。
 - 每批认领数量可配置。
-- 租约使用数据库时间，避免 Worker 本地时钟漂移。
+- 多实例使用 `FOR UPDATE OF task SKIP LOCKED` 领取不同 Task，Definition 不参与候选行锁定。
+- 暂停 Workflow 的 Task 通过持久化迁移请求分批转为 `suspended`；迁移窗口残留的 `pending` Task 若被认领，会在同一有界批次内自愈为 `suspended`。
+- 恢复时通过同一机制分批将 `suspended` Task 转回 `pending`，继续按原 `bucket_time, due_at, id` 顺序参与调度。
+- 迁移请求按 Scheduler 的固定退避和最大尝试次数重试；失败和 `dead` 进入 Scheduler warning 计数，但不阻断同轮到期 Task 派发。
+- Reconciler 在现有有界一致性扫描中以 Definition boundary 为权威，将有效当前 Task 的 `active + suspended` 修复为 `pending`、`paused + pending` 修复为 `suspended`，保证迁移请求进入 `dead` 或丢失后仍能最终收敛。
 - 认领后写 Outbox，不直接依赖进程内内存完成投递。
 
 ## 13. 一致性、投递和幂等
@@ -838,7 +853,7 @@ shard_id = hash(uid + subjectId) % 256
 ### 13.4 重试分工
 
 - Consumer 在取得 Task 执行权之前发生的短暂基础设施错误，通过 Pulsar Negative ACK 或 ACK Timeout 重投。
-- 业务 Action 返回明确的可重试错误时，Worker 在数据库中将 Task 恢复为 `pending` 并写入退避后的 `due_at`，随后 ACK 当前 MQ 消息。
+- 业务 Action 返回明确的可重试错误时，Worker 在数据库中写入退避后的 `due_at`；Workflow 活跃时 Task 恢复为 `pending`，暂停时转为 `suspended`，随后 ACK 当前 MQ 消息。
 - 下游超时属于结果未知，也进入数据库 Retry Task，并保持原 `execution_key`；Action 对外重试同时复用由它派生的 `idempotencyKey`。
 - 不可重试业务错误将 Task 标记为 `dead`，Run 标记为 `failed`，随后 ACK MQ 消息。
 - 未被分类的异常允许由 TDMQ Pulsar 重投；超过 Consumer Dead Letter Policy 配置的最大次数后进入 DLQ。
@@ -850,7 +865,7 @@ shard_id = hash(uid + subjectId) % 256
 
 - Run 使用 `lock_version` 乐观锁。
 - Task 使用 `task_version + status` 条件更新。
-- Scheduler 使用租约，不使用 Redis 锁。
+- Scheduler 使用 MySQL Task 行锁和 `SKIP LOCKED`，不使用持久化调度租约或 Redis 锁。
 - 同一 Run 的多个消息并发到达时只允许一个状态推进成功。
 - 过期 Task 消息直接确认并记录 Debug 指标，不作为系统错误重试。
 
@@ -861,13 +876,16 @@ shard_id = hash(uid + subjectId) % 256
 - 暂停后拒绝创建新 Run。
 - Scheduler 不派发该 Workflow 的新到期任务。
 - 已经进入单个 Node Executor 的任务允许执行完毕。
-- 已经进入 MQ 但尚未取得执行租约的任务，在 Consumer 发现 Workflow 已暂停后恢复为 `pending` 并 ACK 当前消息，等待恢复后重新派发；不得通过 MQ 持续重试等待恢复。
+- 已经进入 MQ 但尚未取得执行租约的任务，在 Consumer 发现 Workflow 已暂停后转为 `suspended`、递增 `task_version` 并 ACK 当前消息，等待恢复后重新派发；不得通过 MQ 持续重试等待恢复。
+- Scheduler 只扫描 `pending`。认领到暂停 Workflow 的迁移窗口残留 Task 时，将其转为 `suspended`；Wait、重试和节点推进等写路径在暂停边界直接写 `suspended`。
+- Inference Task 在独立 Job 运行期间使用 `waiting_external`，不进入通用 Scheduler 队列；Job 完成后按当前 Workflow 状态进入 `dispatched`、`suspended` 或 `cancelled`。
 - 1.0 不承诺中断已经发出的下游 HTTP 请求。
 - 暂停不逐条更新所有 Run，避免大规模写放大。
 
 ### 14.2 恢复
 
 - 恢复后重新接受新进入。
+- 恢复时将该 Workflow 的 `suspended` Task 转回 `pending` 并递增 `task_version`，使暂停前的旧 MQ 消息失效。
 - 已经过期的 Wait Task 按原顺序尽快补执行。
 - 发送时间窗口由节点或 Start 业务规则再次约束，不能因恢复绕过营销时段限制。
 
@@ -876,7 +894,7 @@ shard_id = hash(uid + subjectId) % 256
 - 停止不可恢复。
 - 控制面提交 `runtime_status = stopped` 后，停止操作即视为成功；产品侧立即展示“已停止”，不引入“停止中”状态、取消百分比或用户侧进度查询。
 - 控制面立即阻止新 Run 和新任务派发；尚未被后台标记为 `cancelled` 的 Run / Task 也不得开始新的节点执行或下游动作。
-- 后台按逻辑分片异步将活跃 Run 和 Task 标记为 `cancelled`。
+- 后台按全局稳定 ID 顺序，以有界批次异步将活跃 Run 和 Task 标记为 `cancelled`。
 - 异步取消的积压量只作为内部运维健康指标，用于发现 Reconciler 未正常收敛；不得在 HTTP 请求中同步更新数百万 Run，也不向普通用户暴露取消进度。
 - 已经取得执行租约并开始调用下游的动作可能仍会完成，1.0 不承诺撤回已发出的下游请求。
 
@@ -888,7 +906,7 @@ shard_id = hash(uid + subjectId) % 256
 - Scheduler 在认领和派发任务前必须校验 `biz_status = 1`。
 - Consumer 在取得执行租约和调用下游 Action 前必须再次校验 `biz_status = 1`。
 - 检测到 Workflow 已删除时，当前未执行 Task 和 Run 转为 `cancelled`，并 ACK 对应 MQ 消息。
-- Reconciler 后台按逻辑分片收敛已删除 Workflow 的其他活跃 Run 和 Task；正确性不能依赖一次同步全量更新。
+- Reconciler 后台按全局稳定 ID 顺序，以有界批次收敛已删除 Workflow 的其他活跃 Run 和 Task；正确性不能依赖一次同步全量更新。
 - 已经调用或已经发往下游的请求不撤回，也不承诺中断。
 - 已删除 Workflow 默认不出现在产品列表，1.0 不提供恢复入口，但定义、Revision 和执行记录继续保留。
 
@@ -902,7 +920,8 @@ shard_id = hash(uid + subjectId) % 256
 | Worker 在事务提交后、MQ ACK 前崩溃 | MQ 重投，Inbox / Task Version 判定为已处理 |
 | MQ 不可用 | Outbox 积压；业务状态保留，恢复后补投 |
 | 数据库不可用 | Worker 停止确认消息，由 MQ 重试；不得转为内存执行 |
-| Scheduler 崩溃 | 分片租约到期后由其他实例接管 |
+| Scheduler 崩溃 | 其他 Scheduler 实例在下一轮继续扫描全局到期队列 |
+| Task 暂停/恢复迁移失败 | 记录失败并固定退避重试，达到最大次数或请求非法时进入 `dead`；同轮全局到期 Task 派发继续执行，残留状态由 Reconciler 的有界一致性扫描最终修复 |
 | Outbox Publisher 崩溃 | 未发送记录由其他实例继续扫描 |
 | 下游返回可重试错误 | 写入数据库 Retry Task，ACK 当前 Pulsar 消息，保持同一幂等键 |
 | 下游返回不可重试错误 | Node Execution 和 Run 进入失败，记录业务错误码 |
@@ -955,7 +974,7 @@ Reconciler 至少负责：
 ### 17.2 1.0 扩容顺序
 
 1. 增加 Workflow Worker 副本、Pulsar Partition 和消费并发。
-2. 调整逻辑分片租约和 Scheduler 批大小。
+2. 调整 Scheduler 副本数和批大小；只有全局队列出现经指标验证的索引热点后，才设计带租约和故障转移的动态分片所有权。
 3. 优化数据库索引、表分区和连接池。
 4. 将读查询迁移到只读副本或专用查询投影。
 5. 当单执行集群持续接近写入、索引或存储上限时，将执行面迁移到 TDSQL 分布式版或应用分库。
@@ -1025,7 +1044,7 @@ executionKey
 
 - MySQL 事务、Outbox 和 Inbox。
 - 乐观锁与 Task Version 冲突。
-- Scheduler 多实例租约竞争。
+- Scheduler 多实例 Task 行锁竞争与 `SKIP LOCKED` 认领。
 - Pulsar 重复、乱序、Negative ACK、ACK Timeout 和死信。
 - 下游成功、明确失败和结果未知超时。
 - 发布、暂停、恢复、停止与执行并发。

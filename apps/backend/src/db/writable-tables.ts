@@ -72,6 +72,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_workflow_revision_cleanup",
   "xy_wap_embed_workflow_run",
   "xy_wap_embed_workflow_task",
+  "xy_wap_embed_workflow_task_transition",
   "xy_wap_embed_workflow_trigger_binding",
 ] as const;
 

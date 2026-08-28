@@ -18,10 +18,12 @@ const taskTransitions: Record<WorkflowTaskStatus, readonly WorkflowTaskStatus[]>
   cancelled: [],
   completed: [],
   dead: [],
-  dispatched: ["running", "pending", "cancelled", "dead"],
-  leased: ["dispatched", "pending", "cancelled", "dead"],
-  pending: ["leased", "running", "cancelled", "dead"],
-  running: ["completed", "pending", "cancelled", "dead"],
+  dispatched: ["running", "pending", "suspended", "cancelled", "dead"],
+  leased: ["dispatched", "pending", "suspended", "cancelled", "dead"],
+  pending: ["leased", "running", "suspended", "cancelled", "dead"],
+  running: ["completed", "pending", "suspended", "waiting_external", "cancelled", "dead"],
+  suspended: ["pending", "cancelled", "dead"],
+  waiting_external: ["dispatched", "suspended", "cancelled", "dead"],
 };
 
 export function transitionRun(from: WorkflowRunStatus, to: WorkflowRunStatus) {

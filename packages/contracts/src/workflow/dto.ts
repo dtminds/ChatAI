@@ -208,6 +208,7 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
 export const WorkflowDefinitionListPageSchema = Type.Object({
   items: Type.Array(WorkflowDefinitionListItemSchema, { maxItems: 50 }),
   nextCursor: Type.Union([Type.String(), Type.Null()]),
+  total: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
 }, { additionalProperties: false });
 
 export const WorkflowRevisionSchema = Type.Object({

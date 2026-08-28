@@ -260,7 +260,6 @@ WORKFLOW_OUTBOX_INTERVAL_MS=1000
 WORKFLOW_OUTBOX_RETRY_DELAY_MS=5000
 WORKFLOW_RECONCILE_INTERVAL_MS=30000
 WORKFLOW_READINESS_INTERVAL_MS=30000
-WORKFLOW_SHARD_IDS=<comma-separated-shard-ids>
 ```
 
 敏感配置放入 Secret：
@@ -281,7 +280,7 @@ Workflow 不维护环境级 Capability 白名单。节点是否可发布由共�
 
 Worker 不根据环境名称推导消息资源。每个部署都必须显式配置 Entry、Task 的 Topic、Subscription 和 DLQ；缺少任一配置时拒绝启动。Entry 和 Task 必须位于不同 Topic。它们位于不同 Topic 时可以使用相同 Subscription 名称，但建议使用独立名称方便监控和归属。测试、开发和生产不得交叉使用 Topic、Subscription 或 DLQ。
 
-`NODE_ENV=production` 时 Entry 和 Task 必须使用不同的 DLQ Topic，Worker 角色和消费并发必须显式配置；启用 `scheduler` 时还必须显式配置该实例负责的 `WORKFLOW_SHARD_IDS`。生产部署不接受依靠代码默认值推导上述资源。进入生产灰度前还必须完成以下运维能力：
+`NODE_ENV=production` 时 Entry 和 Task 必须使用不同的 DLQ Topic，Worker 角色和消费并发必须显式配置。生产部署不接受依靠代码默认值推导上述资源。进入生产灰度前还必须完成以下运维能力：
 
 - 使用 TDMQ 原生指标监控 Entry DLQ 积压和增长，并接入明确的告警渠道。
 - 提供仅供授权运维使用的 Entry 重新投递工具，保留原 `eventId` 并记录操作结果。
@@ -293,7 +292,7 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 
 - `entry-consumer`：消费标准化入口事件并执行触发匹配和重复进入控制。
 - `task-consumer`：消费已派发 Task，并在数据库事务完成后 ACK。
-- `scheduler`：扫描到期 Wait Task。生产必须显式设置 `WORKFLOW_SHARD_IDS`；多副本时为各实例分配互不重叠的逻辑分片。
+- `scheduler`：扫描全局到期 Wait Task；多副本通过 MySQL `FOR UPDATE OF task SKIP LOCKED` 并行认领，不配置静态分片所有权。
 - `outbox`：认领并发布数据库 Outbox。
 - `reconciler`：恢复过期租约、收敛停止或删除的 Run，并低频分批清理超过保留期的运行历史。
 

@@ -127,7 +127,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     input: Parameters<WorkflowRepository["listDefinitions"]>[1],
   ) {
     const normalizedQuery = input.query?.toLocaleLowerCase();
-    const candidates = this.definitions
+    const filteredDefinitions = this.definitions
       .filter((item) => item.uid === uid && item.bizStatus === 1)
       .filter(item => matchesDefinitionListStatus(item, input.status))
       .filter(item => !normalizedQuery
@@ -135,7 +135,8 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       .sort((first, second) => {
         const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
         return createdAtDifference || Number(second.id) - Number(first.id);
-      })
+      });
+    const candidates = filteredDefinitions
       .filter(item => !input.cursor
         || item.createdAt < input.cursor.createdAt
         || (item.createdAt.getTime() === input.cursor.createdAt.getTime()
@@ -148,6 +149,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       nextCursor: candidates.length > items.length && lastItem
         ? { createdAt: lastItem.createdAt, id: lastItem.id }
         : null,
+      total: filteredDefinitions.length,
     };
   }
 

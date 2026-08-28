@@ -81,6 +81,7 @@ export function createHttpWorkflowDraftRepository(
         return {
           items: page.items.map(toListItem),
           nextCursor: page.nextCursor,
+          total: page.total,
         };
       } catch (error) {
         throw normalizeHttpError(error);

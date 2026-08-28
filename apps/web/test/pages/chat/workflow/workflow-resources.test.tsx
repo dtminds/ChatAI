@@ -55,6 +55,7 @@ describe("workflow resources", () => {
 
     expect(result.current.status).toBe("ready");
     expect(result.current.items.map((workflow) => workflow.id)).toContain("newcomer-conversion");
+    expect(result.current.total).toBe(baseRepository.listDocuments().total);
   });
 
   it("does not retain list rows when the request input changes", async () => {

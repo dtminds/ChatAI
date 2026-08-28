@@ -41,6 +41,7 @@ type WorkflowReconciler = {
     lastTaskId: string | null;
     runsChecked: number;
     staleTasksCancelled: number;
+    taskStatusesReconciled: number;
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;
@@ -186,6 +187,7 @@ export async function reconcileWorkflowRuntime(input: {
     eventSubscriptionsChecked: eventSubscriptions.checked,
     taskLeasesDead: taskLeaseRecovery.dead,
     taskLeasesRecovered: taskLeaseRecovery.recovered,
+    taskStatusesReconciled: consistency.taskStatusesReconciled,
     tasksChecked: consistency.tasksChecked,
     tasksDeleted: history.tasksDeleted,
     terminalRunTasksCancelled: consistency.terminalRunTasksCancelled,

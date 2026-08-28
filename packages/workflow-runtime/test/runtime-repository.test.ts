@@ -220,7 +220,7 @@ describe("workflow runtime repository", () => {
     });
   });
 
-  it("creates the latest-revision task as pending when publication wins before a paused commit", async () => {
+  it("suspends the latest-revision task when publication wins before a paused commit", async () => {
     let runtimeStatus = "active" as const | "paused";
     const repository = new InMemoryWorkflowRuntimeRepository(
       async () => ({ bizStatus: 1, runtimeStatus }),
@@ -261,7 +261,7 @@ describe("workflow runtime repository", () => {
 
     expect(committed).toMatchObject({
       kind: "success",
-      nextTask: { nodeId: "end", revision: 2, status: "pending" },
+      nextTask: { nodeId: "end", revision: 2, status: "suspended" },
       run: { currentNodeId: "end", revision: 2, status: "running" },
     });
     expect(repository.snapshot().outbox).toHaveLength(1);

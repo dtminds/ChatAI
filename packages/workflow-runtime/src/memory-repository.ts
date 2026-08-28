@@ -349,13 +349,14 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.nodeId !== run.currentNodeId
       || task.nodeKind !== "wait-event"
       || input.expiresAt <= input.effectiveFrom) return conflict();
+    let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
     if (this.resolveWorkflowBoundary) {
       const boundary = await this.resolveWorkflowBoundary({
         uid: input.uid,
         workflowId: run.workflowId,
       });
-      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
-      if (decision === "cancel") {
+      boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (boundaryDecision === "cancel") {
         return { action: "cancel" as const, kind: "workflow-unavailable" as const };
       }
     }
@@ -390,7 +391,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.dueAt = clone(input.expiresAt);
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    task.status = transitionTask(task.status, "pending");
+    task.status = boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending");
     task.taskType = "wait-event";
     task.taskVersion += 1;
     run.lockVersion += 1;
@@ -421,10 +422,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.nodeKind !== "wait"
       || task.taskType !== "execute"
       || input.dueAt <= input.now) return conflict();
+    let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
     if (this.resolveWorkflowBoundary) {
       const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: run.workflowId });
-      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
-      if (decision === "cancel") {
+      boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (boundaryDecision === "cancel") {
         return { action: "cancel" as const, kind: "workflow-unavailable" as const };
       }
     }
@@ -432,7 +434,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.dueAt = clone(input.dueAt);
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    task.status = transitionTask(task.status, "pending");
+    task.status = boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending");
     task.taskType = "wait";
     task.taskVersion += 1;
     run.lockVersion += 1;
@@ -495,6 +497,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     if (subscription.status !== "waiting") return conflict();
     if ((task.status !== "pending"
+        && task.status !== "suspended"
         && task.status !== "leased"
         && task.status !== "dispatched"
         && task.status !== "running")
@@ -518,7 +521,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.dueAt = clone(input.resumeAt);
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    if (task.status !== "pending") task.status = transitionTask(task.status, "pending");
+    if (decision === "defer") task.status = "suspended";
+    else if (task.status !== "pending") task.status = transitionTask(task.status, "pending");
     task.taskVersion += 1;
     run.lockVersion += 1;
     run.nextExecuteAt = clone(input.resumeAt);
@@ -565,7 +569,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         ? getWorkflowExecutionBoundaryDecision(boundary)
         : "cancel";
       if (decision !== "execute") {
-        task.status = decision === "defer" ? "pending" : "cancelled";
+        task.status = decision === "defer" ? "suspended" : "cancelled";
         task.taskVersion += 1;
         task.leaseOwner = null;
         task.leaseExpiresAt = null;
@@ -606,11 +610,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.nodeId !== run.currentNodeId
       || task.workflowId !== run.workflowId
       || task.shardId !== run.shardId) return conflict();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (boundaryDecision === "cancel") return conflict();
     task.dueAt = input.dueAt;
     task.lastErrorCode = input.reasonCode;
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    task.status = "pending";
+    task.status = boundaryDecision === "defer" ? "suspended" : "pending";
     task.taskVersion += 1;
     run.status = run.status === "waiting" ? "waiting" : transitionRun(run.status, "waiting");
     run.lockVersion += 1;
@@ -643,7 +652,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     for (const task of this.tasks) {
       if (selectedIds.has(task.runId)
-        && (task.status === "pending" || task.status === "leased" || task.status === "dispatched" || task.status === "running")) {
+        && (task.status === "pending" || task.status === "suspended" || task.status === "waiting_external"
+          || task.status === "leased" || task.status === "dispatched" || task.status === "running")) {
         task.status = "cancelled";
         task.taskVersion += 1;
         task.leaseOwner = null;
@@ -687,7 +697,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     for (const task of this.tasks) {
       if (selectedIds.has(task.runId)
-        && (task.status === "pending" || task.status === "leased" || task.status === "dispatched" || task.status === "running")) {
+        && (task.status === "pending" || task.status === "suspended" || task.status === "waiting_external"
+          || task.status === "leased" || task.status === "dispatched" || task.status === "running")) {
         task.status = "cancelled";
         task.taskVersion += 1;
         task.leaseOwner = null;
@@ -792,7 +803,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       task.dueAt = clone(existing.deadlineAt);
       task.leaseExpiresAt = null;
       task.leaseOwner = null;
-      task.status = transitionTask(task.status, "pending");
+      task.status = "waiting_external";
       task.taskType = "inference";
       task.taskVersion += 1;
       run.lockVersion += 1;
@@ -832,7 +843,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.dueAt = clone(input.deadlineAt);
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    task.status = transitionTask(task.status, "pending");
+    task.status = "waiting_external";
     task.taskType = "inference";
     task.taskVersion += 1;
     run.lockVersion += 1;
@@ -1004,6 +1015,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const state = this.requireCapabilityFailureState(input);
     if ("kind" in state) return state;
     const { execution, run, task } = state;
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (boundaryDecision === "cancel") return conflict();
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
     execution.errorCode = input.errorCode;
     execution.errorMessage = input.errorMessage;
@@ -1012,7 +1028,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.dueAt = input.dueAt;
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
-    task.status = transitionTask(task.status, "pending");
+    task.status = boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending");
     task.taskVersion += 1;
     run.lockVersion += 1;
     run.nextExecuteAt = input.dueAt;
@@ -1185,6 +1201,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         nodeKind: forwardRoute.target.kind,
         taskType: "execute",
       });
+      if (boundaryDecision === "defer") nextTask.status = "suspended";
       this.tasks.push(nextTask);
       if (nextTask.status === "dispatched") {
         this.outbox.push(createOutbox(this.createId(), nextTask, arrivedAt));
@@ -1234,7 +1251,17 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     let recovered = 0;
     for (const task of recoverable) {
       const exhausted = task.attempt >= input.maxAttempts;
-      task.status = exhausted ? "dead" : "pending";
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      task.status = exhausted
+        ? "dead"
+        : boundaryDecision === "execute"
+          ? "pending"
+          : boundaryDecision === "defer"
+            ? "suspended"
+            : "cancelled";
       task.taskVersion += 1;
       task.leaseOwner = null;
       task.leaseExpiresAt = null;
@@ -1273,7 +1300,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     input: Parameters<WorkflowRuntimeRepository["reconcileRunTaskConsistency"]>[0],
   ) {
     const activeRunStatuses = new Set(["queued", "running", "waiting"]);
-    const activeTaskStatuses = new Set(["pending", "leased", "dispatched", "running"]);
+    const activeTaskStatuses = new Set(["pending", "suspended", "waiting_external", "leased", "dispatched", "running"]);
     const runCandidates = this.runs
       .filter(run => activeRunStatuses.has(run.status)
         && (!input.afterRunId || BigInt(run.id) > BigInt(input.afterRunId)))
@@ -1282,12 +1309,15 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selectedRuns = runCandidates.slice(0, Math.max(0, input.limit));
     let inconsistentRunsFailed = 0;
     let staleTasksCancelled = 0;
+    let taskStatusesReconciled = 0;
 
     for (const run of selectedRuns) {
       const boundary = this.resolveWorkflowBoundary
         ? await this.resolveWorkflowBoundary({ uid: run.uid, workflowId: run.workflowId })
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
-      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") continue;
+      if (!boundary) continue;
+      const boundaryDecision = getWorkflowExecutionBoundaryDecision(boundary);
+      if (boundaryDecision === "cancel") continue;
 
       const activeTasks = this.tasks.filter(task => task.runId === run.id && activeTaskStatuses.has(task.status));
       const authoritativeTask = activeTasks.find(task => task.sequence === run.sequence);
@@ -1311,6 +1341,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
               && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
+      if (!invalidAuthoritativeTask && authoritativeTask) {
+        const repairedStatus = boundaryDecision === "execute" && authoritativeTask.status === "suspended"
+          ? "pending" as const
+          : boundaryDecision === "defer" && authoritativeTask.status === "pending"
+            ? "suspended" as const
+            : null;
+        if (repairedStatus) {
+          authoritativeTask.leaseExpiresAt = null;
+          authoritativeTask.leaseOwner = null;
+          authoritativeTask.status = repairedStatus;
+          authoritativeTask.taskVersion += 1;
+          taskStatusesReconciled += 1;
+        }
+      }
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
 
       for (const task of activeTasks) {
@@ -1358,6 +1402,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       lastTaskId: selectedTasks.at(-1)?.id ?? null,
       runsChecked: selectedRuns.length,
       staleTasksCancelled,
+      taskStatusesReconciled,
       tasksChecked: selectedTasks.length,
       terminalRunTasksCancelled,
     };
@@ -1402,6 +1447,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         && task.nodeKind === "wait-event"
         && task.taskType === "wait-event"
         && (task.status === "pending"
+          || task.status === "suspended"
           || task.status === "leased"
           || task.status === "dispatched"
           || task.status === "running")
@@ -1588,27 +1634,25 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
-    const shardIds = input.shardIds ? new Set(input.shardIds) : null;
     const candidates = this.tasks
-      .filter(task => task.status === "pending"
-        && task.taskType !== "inference"
-        && task.dueAt <= input.now
-        && (!shardIds || shardIds.has(task.shardId)))
+      .filter(task => task.status === "pending" && task.dueAt <= input.now)
       .sort((first, second) => compareDateAndId(
         first.dueAt,
         first.id,
         second.dueAt,
         second.id,
       ));
-    const result = { cancelled: 0, deferred: 0, dispatched: 0 };
+    const result = { cancelled: 0, dispatched: 0, suspended: 0 };
     for (const task of candidates) {
-      if (result.cancelled + result.dispatched >= Math.max(0, input.limit)) break;
+      if (result.cancelled + result.dispatched + result.suspended >= Math.max(0, input.limit)) break;
       const boundary = this.resolveWorkflowBoundary
         ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
       const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
       if (decision === "defer") {
-        if (result.deferred < Math.max(0, input.limit)) result.deferred += 1;
+        task.status = "suspended";
+        task.taskVersion += 1;
+        result.suspended += 1;
         continue;
       }
       task.taskVersion += 1;
@@ -1624,6 +1668,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       result.dispatched += 1;
     }
     return result;
+  }
+
+  async processTaskStatusTransitionBatch(
+    _input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
+  ) {
+    return { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
   }
 
   async claimOutboxBatch(input: Parameters<WorkflowRuntimeRepository["claimOutboxBatch"]>[0]) {
@@ -1771,7 +1821,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     job.updatedAt = clone(completedAt);
     const task = this.tasks.find(item => item.uid === job.uid && item.id === job.taskId);
     const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
-    if (!task || !run || task.status !== "pending" || task.taskType !== "inference"
+    if (!task || !run || task.status !== "waiting_external" || task.taskType !== "inference"
       || run.status !== "waiting") return true;
     task.dueAt = clone(completedAt);
     task.taskVersion += 1;
@@ -1780,11 +1830,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const boundary = this.resolveWorkflowBoundary
       ? await this.resolveWorkflowBoundary({ uid: job.uid, workflowId: run.workflowId })
       : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
     task.taskType = "execute";
     run.status = transitionRun(run.status, "running");
-    if (boundary && getWorkflowExecutionBoundaryDecision(boundary) === "execute") {
-      task.status = transitionTask(transitionTask(task.status, "leased"), "dispatched");
+    if (boundaryDecision === "execute") {
+      task.status = transitionTask(task.status, "dispatched");
       this.outbox.push(createOutbox(this.createId(), task, completedAt));
+    } else if (boundaryDecision === "defer") {
+      task.status = transitionTask(task.status, "suspended");
+    } else {
+      task.status = transitionTask(task.status, "cancelled");
     }
     this.touchRun(run);
     return true;

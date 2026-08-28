@@ -424,8 +424,21 @@ export type WorkflowSchedulerRepository = {
   dispatchDueTasks(input: {
     limit: number;
     now: Date;
-    shardIds?: number[];
-  }): Promise<{ cancelled: number; deferred: number; dispatched: number }>;
+  }): Promise<{ cancelled: number; dispatched: number; suspended: number }>;
+  processTaskStatusTransitionBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    maxAttempts: number;
+    nextAttemptAt: Date;
+    now: Date;
+  }): Promise<{
+    claimed: boolean;
+    dead: number;
+    failed: number;
+    hasMore: boolean;
+    transitioned: number;
+  }>;
 };
 
 export type WorkflowOutboxRepository = {
@@ -709,6 +722,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     lastTaskId: string | null;
     runsChecked: number;
     staleTasksCancelled: number;
+    taskStatusesReconciled: number;
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;

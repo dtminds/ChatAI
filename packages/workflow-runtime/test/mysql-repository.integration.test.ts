@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { Kysely, MysqlDialect } from "kysely";
+import { Kysely, MysqlDialect, sql, type Transaction } from "kysely";
 import mysql from "mysql2";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   MysqlWorkflowRuntimeRepository,
   MysqlWorkflowLlmTestAttemptRepository,
+  clearMysqlWorkflowTaskTransitions,
+  enqueueMysqlWorkflowTaskTransitions,
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   type WorkflowDatabase,
 } from "../src/index.js";
@@ -142,9 +144,531 @@ describe("MySQL workflow runtime repository contract", () => {
             uid: 9,
             workflowIds: ["31"],
           });
+          if (status === "active" || status === "paused") {
+            await enqueueMysqlWorkflowTaskTransitions(transaction, {
+              requestedAt: transitionedAt,
+              targetStatus: status === "active" ? "pending" : "suspended",
+              uid: 9,
+              workflowIds: ["31"],
+            });
+          } else {
+            await clearMysqlWorkflowTaskTransitions(transaction, {
+              uid: 9,
+              workflowIds: ["31"],
+            });
+          }
         });
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const result = await new MysqlWorkflowRuntimeRepository(contractDatabase).processTaskStatusTransitionBatch({
+            leaseExpiresAt: new Date(transitionedAt.getTime() + 60_000),
+            leaseOwner: "contract-transition-worker",
+            limit: 1_000,
+            maxAttempts: 5,
+            nextAttemptAt: transitionedAt,
+            now: transitionedAt,
+          });
+          if (!result.hasMore) break;
+        }
       },
     };
+  });
+
+  it("claims global due Tasks concurrently without locking their shared Definition", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const dueAt = new Date("2099-01-01T00:01:00+08:00");
+    const task = (input: { id: string; runId: string; shardId: number }) => ({
+      attempt: 0,
+      bucket_time: new Date("2099-01-01T00:01:00+08:00"),
+      create_time: new Date("2099-01-01T00:00:00+08:00"),
+      due_at: dueAt,
+      id: input.id,
+      last_error_code: null,
+      lease_expires_at: null,
+      lease_owner: null,
+      node_id: `wait-${input.id}`,
+      node_kind: "wait",
+      revision: 1,
+      run_id: input.runId,
+      sequence: 1,
+      shard_id: input.shardId,
+      status: "pending",
+      task_type: "wait",
+      task_version: 1,
+      uid: 9,
+      update_time: new Date("2099-01-01T00:00:00+08:00"),
+      workflow_id: "31",
+    });
+    await database.insertInto("xy_wap_embed_workflow_task").values([
+      task({ id: "1001", runId: "2001", shardId: 7 }),
+      task({ id: "1002", runId: "2002", shardId: 255 }),
+    ]).executeTakeFirstOrThrow();
+    const claimOneDueTask = (trx: Transaction<WorkflowDatabase>) => trx
+      .selectFrom("xy_wap_embed_workflow_task as task")
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+      .select("task.id")
+      .where("task.status", "=", "pending")
+      .where("task.bucket_time", "<=", dueAt)
+      .where("task.due_at", "<=", dueAt)
+      .orderBy("task.bucket_time", "asc")
+      .orderBy("task.due_at", "asc")
+      .orderBy("task.id", "asc")
+      .limit(1)
+      .forUpdate("task")
+      .skipLocked()
+      .execute();
+
+    let markFirstClaimed!: () => void;
+    let releaseFirstClaim!: () => void;
+    const firstClaimed = new Promise<void>(resolve => { markFirstClaimed = resolve; });
+    const firstCanFinish = new Promise<void>(resolve => { releaseFirstClaim = resolve; });
+    const firstClaim = database.transaction().execute(async trx => {
+      const rows = await claimOneDueTask(trx);
+      markFirstClaimed();
+      await firstCanFinish;
+      return rows;
+    });
+
+    await firstClaimed;
+    let secondRows: Array<{ id: string }> = [];
+    try {
+      secondRows = await database.transaction().execute(claimOneDueTask);
+    } finally {
+      releaseFirstClaim();
+    }
+    const firstRows = await firstClaim;
+
+    expect(firstRows).toEqual([{ id: "1001" }]);
+    expect(secondRows).toEqual([{ id: "1002" }]);
+  });
+
+  it("moves Task status in bounded, resumable transition batches", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:02:00+08:00");
+    const taskCount = 1_001;
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task").values(
+      Array.from({ length: taskCount }, (_, index) => ({
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: String(10_000 + index),
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: `wait-${index}`,
+        node_kind: "wait",
+        revision: 1,
+        run_id: String(20_000 + index),
+        sequence: 1,
+        shard_id: index % 256,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      })),
+    ).executeTakeFirstOrThrow();
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: now,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1_000 });
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: now,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
+
+    const summary = await database.selectFrom("xy_wap_embed_workflow_task")
+      .select(({ fn }) => [fn.countAll<number>().as("count"), fn.min("task_version").as("min_version")])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .where("status", "=", "suspended")
+      .executeTakeFirstOrThrow();
+    expect(Number(summary.count)).toBe(taskCount);
+    expect(Number(summary.min_version)).toBe(2);
+  });
+
+  it("keeps a transition request when SKIP LOCKED leaves source Tasks behind", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:04:00+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task").values([
+      {
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: "30001",
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: "wait-locked",
+        node_kind: "wait",
+        revision: 1,
+        run_id: "40001",
+        sequence: 1,
+        shard_id: 1,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      },
+      {
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: "30002",
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: "wait-unlocked",
+        node_kind: "wait",
+        revision: 1,
+        run_id: "40002",
+        sequence: 1,
+        shard_id: 2,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      },
+    ]).executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+
+    let releaseLockedTask!: () => void;
+    const lockedTaskCanFinish = new Promise<void>(resolve => {
+      releaseLockedTask = resolve;
+    });
+    let lockedTaskAcquired!: () => void;
+    const lockedTaskIsAcquired = new Promise<void>(resolve => {
+      lockedTaskAcquired = resolve;
+    });
+    const lockTask = database.transaction().execute(async trx => {
+      await trx.selectFrom("xy_wap_embed_workflow_task")
+        .select("id")
+        .where("id", "=", "30001")
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      lockedTaskAcquired();
+      await lockedTaskCanFinish;
+    });
+
+    await lockedTaskIsAcquired;
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    try {
+      await expect(repository.processTaskStatusTransitionBatch({
+        leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
+        leaseOwner: "transition-worker",
+        limit: 2,
+        maxAttempts: 5,
+        nextAttemptAt: now,
+        now,
+      })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1 });
+
+      await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+        .select("status")
+        .where("uid", "=", 9)
+        .where("workflow_id", "=", "31")
+        .executeTakeFirstOrThrow()).resolves.toEqual({ status: "pending" });
+    } finally {
+      releaseLockedTask();
+      await lockTask;
+    }
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 2,
+      maxAttempts: 5,
+      nextAttemptAt: now,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select("id")
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .execute()).resolves.toEqual([]);
+
+    const statuses = await database.selectFrom("xy_wap_embed_workflow_task")
+      .select(["id", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .where("id", "in", ["30001", "30002"])
+      .orderBy("id", "asc")
+      .execute();
+    expect(statuses).toEqual([
+      { id: "30001", status: "suspended" },
+      { id: "30002", status: "suspended" },
+    ]);
+  });
+
+  it("retries failed Task transitions with backoff and terminates them at the attempt limit", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:06:00+08:00");
+    const nextAttemptAt = new Date("2099-01-01T00:06:05+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "invalid-runtime-status" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt,
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 0,
+      failed: 1,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "next_attempt_at", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 1,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      next_attempt_at: nextAttemptAt,
+      status: "pending",
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt,
+      now: new Date("2099-01-01T00:06:04+08:00"),
+    })).resolves.toEqual({
+      claimed: false,
+      dead: 0,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:07:05+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 2,
+      nextAttemptAt: new Date("2099-01-01T00:06:10+08:00"),
+      now: nextAttemptAt,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 1,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 2,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      status: "dead",
+    });
+  });
+
+  it("does not let a delayed failed Task transition starve a later Workflow", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:08:00+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "invalid-runtime-status" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "32")
+      .executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31", "32"],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:09:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:08:05+08:00"),
+      now,
+    })).resolves.toMatchObject({ claimed: true, failed: 1 });
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:09:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:08:05+08:00"),
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 0,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["status", "workflow_id"])
+      .orderBy("workflow_id", "asc")
+      .execute()).resolves.toEqual([{ status: "pending", workflow_id: "31" }]);
+  });
+
+  it("terminates a Task transition with an invalid target during claim", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:10:00+08:00");
+    await database.insertInto("xy_wap_embed_workflow_task_transition").values({
+      attempt: 0,
+      last_error_code: null,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: now,
+      status: "pending",
+      target_status: "invalid-target",
+      transition_version: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+
+    await expect(new MysqlWorkflowRuntimeRepository(database).processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:11:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:10:05+08:00"),
+      now,
+    })).resolves.toEqual({
+      claimed: true,
+      dead: 1,
+      failed: 0,
+      hasMore: false,
+      transitioned: 0,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select(["attempt", "last_error_code", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      attempt: 0,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_TARGET_INVALID",
+      status: "dead",
+    });
+  });
+
+  it("reconciles suspended Tasks after a resume transition becomes dead", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:12:00+08:00");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const created = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "dead-resume-transition",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: now,
+      revision: 1,
+      shardId: 1,
+      subjectId: "dead-resume-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+    if (created.kind !== "success") throw new Error(`Run creation failed: ${created.kind}`);
+    await database.updateTable("xy_wap_embed_workflow_task").set({
+      status: "suspended",
+    }).where("id", "=", created.task.id).executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task_transition").values({
+      attempt: 5,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: now,
+      status: "pending",
+      target_status: "pending",
+      transition_version: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:13:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:12:05+08:00"),
+      now,
+    })).resolves.toMatchObject({ dead: 1 });
+    await expect(repository.reconcileRunTaskConsistency({
+      inconsistentBefore: now,
+      limit: 100,
+      now,
+    })).resolves.toMatchObject({ taskStatusesReconciled: 1 });
+    await expect(repository.dispatchDueTasks({ limit: 100, now })).resolves.toMatchObject({
+      dispatched: 1,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task")
+      .select(["status", "task_version"])
+      .where("id", "=", created.task.id)
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      status: "dispatched",
+      task_version: created.task.taskVersion + 2,
+    });
   });
 
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {

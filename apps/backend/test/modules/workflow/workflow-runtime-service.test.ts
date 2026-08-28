@@ -154,13 +154,17 @@ describe("WorkflowRuntimeService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_PAUSED" });
 
     const deferredTask = await runtime.findTask(owner.uid, started.task.id);
-    expect(deferredTask).toMatchObject({ status: "pending", taskVersion: 2 });
+    expect(deferredTask).toMatchObject({ status: "suspended", taskVersion: 2 });
 
     await workflow.resume(owner, definition.id);
+    const suspendedTask = runtime.tasks.find(task => task.id === started.task.id);
+    if (!suspendedTask || suspendedTask.status !== "suspended") throw new Error("Expected suspended Task");
+    suspendedTask.status = "pending";
+    suspendedTask.taskVersion += 1;
     await service.executeTask({
       now: new Date(),
       taskId: started.task.id,
-      taskVersion: deferredTask!.taskVersion,
+      taskVersion: suspendedTask.taskVersion,
       uid: owner.uid,
       workerId: "worker-1",
     });

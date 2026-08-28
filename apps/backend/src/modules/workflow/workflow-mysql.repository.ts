@@ -12,6 +12,8 @@ import {
   encodeWorkflowSubjectType,
   encodeWorkflowType,
   cancelMysqlEntitlementRuns,
+  clearMysqlWorkflowTaskTransitions,
+  enqueueMysqlWorkflowTaskTransitions,
   transitionMysqlWorkflowInferenceJobs,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
@@ -79,6 +81,19 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         uid: input.uid,
         workflowIds: ids.map(normalizeId),
       });
+      if (input.transition === "pause") {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "suspended",
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      } else {
+        await clearMysqlWorkflowTaskTransitions(transaction, {
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      }
       return ids;
     });
     if (workflowIds.length === 0) return { affectedDefinitions: 0 };
@@ -176,19 +191,6 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     input: Parameters<WorkflowRepository["listDefinitions"]>[1],
   ) {
     let query = this.db.selectFrom(DEFINITION_TABLE)
-      .select([
-        "create_time",
-        "description",
-        "draft_json",
-        "draft_semantic_hash",
-        "id",
-        "name",
-        "published_revision",
-        "published_semantic_hash",
-        "runtime_status",
-        "update_time",
-        "workflow_type",
-      ])
       .where("uid", "=", uid)
       .where("biz_status", "=", 1);
     if (input.status === "active") {
@@ -210,8 +212,24 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       const pattern = `%${escapeLikePattern(input.query)}%`;
       query = query.where("name", "like", pattern);
     }
+    const totalPromise = query
+      .select(({ fn }) => fn.count<number>("id").as("total"))
+      .executeTakeFirst();
+    let pageQuery = query.select([
+      "create_time",
+      "description",
+      "draft_json",
+      "draft_semantic_hash",
+      "id",
+      "name",
+      "published_revision",
+      "published_semantic_hash",
+      "runtime_status",
+      "update_time",
+      "workflow_type",
+    ]);
     if (input.cursor) {
-      query = query.where(eb => eb.or([
+      pageQuery = pageQuery.where(eb => eb.or([
         eb("create_time", "<", input.cursor!.createdAt),
         eb.and([
           eb("create_time", "=", input.cursor!.createdAt),
@@ -219,11 +237,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         ]),
       ]));
     }
-    const rows = await query
-      .orderBy("create_time", "desc")
-      .orderBy("id", "desc")
-      .limit(input.limit + 1)
-      .execute();
+    const [rows, totalRow] = await Promise.all([
+      pageQuery
+        .orderBy("create_time", "desc")
+        .orderBy("id", "desc")
+        .limit(input.limit + 1)
+        .execute(),
+      totalPromise,
+    ]);
     const items = rows.slice(0, input.limit).map(mapDefinitionListRecord);
     const lastItem = items.at(-1);
     return {
@@ -231,6 +252,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       nextCursor: rows.length > items.length && lastItem
         ? { createdAt: lastItem.createdAt, id: lastItem.id }
         : null,
+      total: Number(totalRow?.total ?? 0),
     };
   }
 
@@ -623,6 +645,26 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         uid: input.uid,
         workflowIds: [input.workflowId],
       });
+      if (input.status === "active") {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "pending",
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      } else if (input.status === "paused") {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "suspended",
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      } else {
+        await clearMysqlWorkflowTaskTransitions(transaction, {
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      }
       if (input.status === "stopped") {
         await transaction.updateTable(REVIEW_TABLE).set({
           review_sub_uid: input.opSubUserId,

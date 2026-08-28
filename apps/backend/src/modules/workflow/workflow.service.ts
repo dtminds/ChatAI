@@ -413,6 +413,7 @@ export class WorkflowService {
         metricsByWorkflowId.get(record.id),
       )),
       nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
+      total: page.total,
     };
   }
 

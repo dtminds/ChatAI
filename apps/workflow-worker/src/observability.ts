@@ -318,6 +318,9 @@ function requiresRecoveryWarning(
       "terminalRunTasksCancelled",
     ]);
   }
+  if (role === "scheduler") {
+    return hasPositive(result, ["taskTransitionDead", "taskTransitionFailed"]);
+  }
   return false;
 }
 

@@ -57,7 +57,6 @@ export async function startWorkflowWorker(input: {
   }
   input.logger.info({
     deadLetterTopics: input.config.deadLetterTopics,
-    environment: input.config.environment,
     event: "workflow.worker.started",
     roles: [...input.config.roles],
     subscriptions: input.config.subscriptions,
@@ -124,7 +123,7 @@ export async function startWorkflowWorkerRuntime(input: {
       subscriptions.push(await input.entryConsumer({
         bindingReader: input.triggerBindingReader,
         broker: input.broker,
-        deadLetterTopic: input.config.deadLetterTopics.entry ?? undefined,
+        deadLetterTopic: input.config.deadLetterTopics.entry,
         eventCatalog: input.eventCatalog ?? EMPTY_WORKFLOW_EVENT_CATALOG,
         inboxRepository: input.inboxRepository,
         logger: input.logger,
@@ -142,7 +141,7 @@ export async function startWorkflowWorkerRuntime(input: {
     if (input.config.roles.has("task-consumer")) {
       subscriptions.push(await input.taskConsumer({
         broker: input.broker,
-        deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
+        deadLetterTopic: input.config.deadLetterTopics.task,
         maxInFlight: input.config.consumerConcurrency.task,
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,

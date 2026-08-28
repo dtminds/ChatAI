@@ -162,14 +162,7 @@ Wait 在 Phase 3 支持相对等待 `N 分钟 / N 小时 / N 天`，N 为正整�
 
 Phase 3 不接真实好友、标签和消息数据源。开发和 test 通过标准入口事件 Smoke Producer 验证完整链路，真实数据源后续通过 `EntrySourceAdapter` 归一化，不修改 Entry Consumer 和执行引擎。Smoke Producer 可以根据传入 `workflowId` 只读数据库中的已启用 Trigger Binding，构造匹配事件并投递，但标准 MQ 消息不得携带 `workflowId` 或绕过 Trigger Binding。
 
-dev 与 test 使用独立 Topic 和 Subscription：
-
-| 环境 | Entry Topic | Task Topic | Subscription |
-| --- | --- | --- | --- |
-| dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` | `consumer-chatai-worker-env-dev` |
-| test | `topic-workflow-entry-test` | `topic-workflow-task-test` | `consumer-chatai-worker-env-test` |
-
-Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称而保持独立消费游标；Subscription 类型为 Shared。腾讯云按该消费组自动创建对应的 `-RETRY` 和 `-DLQ` Topic。普通 CI 只使用 Fake Broker，不连接腾讯云；真实 TDMQ 只运行手动 Smoke。Pulsar 地址、Token、Namespace、Topic 和 Subscription 全部通过环境变量注入，禁止写入仓库。
+每个部署必须显式注入独立的 Entry/Task Topic、Subscription 和 DLQ，不通过环境名称推导资源。Entry 和 Task 位于不同 Topic；它们可以复用同一 Subscription 名称而保持独立消费游标，但建议使用独立名称方便监控和归属。Subscription 类型固定为 Shared。生产还必须使用不同的 Entry/Task DLQ。普通 CI 只使用 Fake Broker，不连接腾讯云；真实 TDMQ 只运行手动 Smoke。Pulsar 地址、Token、Namespace 和上述六个消息资源全部通过环境变量注入，禁止写入仓库。
 
 真实 Pulsar 模式必须配置 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE`。Worker 将短 Topic 名统一规范化为 `persistent://<cluster-id>/<namespace>/<topic>`，并对 Entry、Task 和显式 DLQ Topic 使用相同规则，避免依赖 Pulsar 默认 namespace。
 

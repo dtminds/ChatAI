@@ -6,7 +6,6 @@ import {
   WORKFLOW_RUNTIME_BATCH_LIMIT,
 } from "@chatai/workflow-runtime";
 
-export type WorkflowEnvironment = "dev" | "test";
 export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
 export type WorkflowWorkerConfig = {
@@ -21,7 +20,6 @@ export type WorkflowWorkerConfig = {
     mode: "allow" | "enforce";
     token: string | null;
   };
-  environment: WorkflowEnvironment;
   healthPort: number;
   javaInternalApi: {
     baseUrl: string;
@@ -70,8 +68,8 @@ export type WorkflowWorkerConfig = {
     task: string;
   };
   deadLetterTopics: {
-    entry: string | null;
-    task: string | null;
+    entry: string;
+    task: string;
   };
   topics: {
     entry: string;
@@ -91,9 +89,9 @@ const DEFAULT_ROLES: WorkflowWorkerRole[] = [
 const ALL_ROLES: WorkflowWorkerRole[] = [...DEFAULT_ROLES];
 
 export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkflowWorkerConfig {
+  const nodeEnvironment = parseNodeEnvironment(env.NODE_ENV);
   const databaseUrl = requireValue(env, "DATABASE_URL");
   const javaInternalApiBaseUrl = requireHttpBaseUrl(env, "JAVA_INTERNAL_API_BASE_URL");
-  const environment = parseEnvironment(env.WORKFLOW_ENVIRONMENT);
   const broker = parseBroker(env.WORKFLOW_BROKER);
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
@@ -106,10 +104,8 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     throw new Error("Missing required Workflow Pulsar cluster ID or namespace");
   }
 
-  const subscription = optionalValue(env.WORKFLOW_SUBSCRIPTION)
-    ?? `consumer-chatai-worker-env-${environment}`;
-  const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? subscription;
-  const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? subscription;
+  const entrySubscription = requireValue(env, "WORKFLOW_ENTRY_SUBSCRIPTION");
+  const taskSubscription = requireValue(env, "WORKFLOW_TASK_SUBSCRIPTION");
   const qualifyTopic = (topic: string) => qualifyPulsarTopic(
     topic,
     pulsarClusterId!,
@@ -125,7 +121,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     60_000,
     "WORKFLOW_LEASE_DURATION_MS",
   );
-  const entitlementMode = parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE);
+  const entitlementMode = parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE, nodeEnvironment);
+  const entitlementApiUrl = optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL);
+  if (entitlementMode === "enforce" && !entitlementApiUrl) {
+    throw new Error("WORKFLOW_ENTITLEMENT_API_URL is required when WORKFLOW_ENTITLEMENT_MODE=enforce");
+  }
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
   }
@@ -146,14 +146,29 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   }
   const entryConsumerConcurrency = parseConsumerConcurrency(
     env.WORKFLOW_ENTRY_CONCURRENCY,
-    env.NODE_ENV,
+    nodeEnvironment,
     "WORKFLOW_ENTRY_CONCURRENCY",
   );
   const taskConsumerConcurrency = parseConsumerConcurrency(
     env.WORKFLOW_TASK_CONCURRENCY,
-    env.NODE_ENV,
+    nodeEnvironment,
     "WORKFLOW_TASK_CONCURRENCY",
   );
+  const roles = parseRoles(env.WORKFLOW_WORKER_ROLES, nodeEnvironment);
+  const entryTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_TOPIC"));
+  const taskTopic = qualifyTopic(requireValue(env, "WORKFLOW_TASK_TOPIC"));
+  const entryDeadLetterTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_DLQ_TOPIC"));
+  const taskDeadLetterTopic = qualifyTopic(requireValue(env, "WORKFLOW_TASK_DLQ_TOPIC"));
+  if (entryTopic === taskTopic) {
+    throw new Error("WORKFLOW_ENTRY_TOPIC and WORKFLOW_TASK_TOPIC must be different");
+  }
+  if ([entryTopic, taskTopic].includes(entryDeadLetterTopic)
+    || [entryTopic, taskTopic].includes(taskDeadLetterTopic)) {
+    throw new Error("Workflow source topics and dead-letter topics must be different");
+  }
+  if (nodeEnvironment === "production" && entryDeadLetterTopic === taskDeadLetterTopic) {
+    throw new Error("WORKFLOW_ENTRY_DLQ_TOPIC and WORKFLOW_TASK_DLQ_TOPIC must be different in production");
+  }
   return {
     broker,
     consumerConcurrency: {
@@ -162,11 +177,10 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     },
     databaseUrl,
     entitlement: {
-      apiUrl: optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL),
+      apiUrl: entitlementApiUrl,
       mode: entitlementMode,
       token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
     },
-    environment,
     healthPort: parsePort(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
     javaInternalApi: {
       baseUrl: javaInternalApiBaseUrl,
@@ -179,7 +193,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       "WORKFLOW_MAX_REDELIVER_COUNT",
     ),
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
-    roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
+    roles,
     runtime: {
       capabilityMaxRetryDelayMs: parseDurationMs(
         env.WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS,
@@ -290,7 +304,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         1_000,
         "WORKFLOW_SCHEDULER_INTERVAL_MS",
       ),
-      shardIds: parseShardIds(env.WORKFLOW_SHARD_IDS),
+      shardIds: parseShardIds(env.WORKFLOW_SHARD_IDS, nodeEnvironment, roles.has("scheduler")),
       taskOutboxRetentionDays: WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
     },
     subscriptionType: "Shared",
@@ -299,12 +313,12 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       task: taskSubscription,
     },
     deadLetterTopics: {
-      entry: qualifyTopic(optionalValue(env.WORKFLOW_ENTRY_DLQ_TOPIC) ?? `${entrySubscription}-DLQ`),
-      task: qualifyTopic(optionalValue(env.WORKFLOW_TASK_DLQ_TOPIC) ?? `${taskSubscription}-DLQ`),
+      entry: entryDeadLetterTopic,
+      task: taskDeadLetterTopic,
     },
     topics: {
-      entry: qualifyTopic(optionalValue(env.WORKFLOW_ENTRY_TOPIC) ?? `topic-workflow-entry-${environment}`),
-      task: qualifyTopic(optionalValue(env.WORKFLOW_TASK_TOPIC) ?? `topic-workflow-task-${environment}`),
+      entry: entryTopic,
+      task: taskTopic,
     },
   };
 }
@@ -320,20 +334,37 @@ function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] 
   throw new Error("WORKFLOW_BROKER must be pulsar");
 }
 
-function parseEnvironment(value: string | undefined): WorkflowEnvironment {
-  if (value === "dev" || value === "test") return value;
-  throw new Error("WORKFLOW_ENVIRONMENT must be dev or test");
+function parseNodeEnvironment(value: string | undefined) {
+  if (value === undefined || value === "development" || value === "test" || value === "production") {
+    return value;
+  }
+  throw new Error("NODE_ENV must be development, test, or production");
 }
 
-function parseEntitlementMode(value: string | undefined): WorkflowWorkerConfig["entitlement"]["mode"] {
-  const mode = optionalValue(value) ?? "allow";
-  if (mode === "allow" || mode === "enforce") return mode;
+function parseEntitlementMode(
+  value: string | undefined,
+  nodeEnvironment: string | undefined,
+): WorkflowWorkerConfig["entitlement"]["mode"] {
+  const mode = optionalValue(value);
+  if (nodeEnvironment === "production" && !mode) {
+    throw new Error("Missing required environment variable: WORKFLOW_ENTITLEMENT_MODE");
+  }
+  const resolvedMode = mode ?? "allow";
+  if (resolvedMode === "allow" || resolvedMode === "enforce") return resolvedMode;
   throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
 }
 
-function parseRoles(value: string | undefined) {
-  if (!optionalValue(value)) return new Set(DEFAULT_ROLES);
+function parseRoles(value: string | undefined, nodeEnvironment: string | undefined) {
+  if (!optionalValue(value)) {
+    if (nodeEnvironment === "production") {
+      throw new Error("Missing required environment variable: WORKFLOW_WORKER_ROLES");
+    }
+    return new Set(DEFAULT_ROLES);
+  }
   const roles = value!.split(",").map(item => item.trim()).filter(Boolean);
+  if (roles.length === 0) {
+    throw new Error("WORKFLOW_WORKER_ROLES must contain at least one role");
+  }
   const invalid = roles.filter(role => !ALL_ROLES.includes(role as WorkflowWorkerRole));
   if (invalid.length > 0) throw new Error(`Unknown Workflow Worker role: ${invalid.join(", ")}`);
   return new Set(roles as WorkflowWorkerRole[]);
@@ -371,10 +402,21 @@ function parseConsumerConcurrency(
   return parseInteger(value, 10, name, 1_000);
 }
 
-function parseShardIds(value: string | undefined) {
+function parseShardIds(
+  value: string | undefined,
+  nodeEnvironment: string | undefined,
+  schedulerEnabled: boolean,
+) {
   const normalized = optionalValue(value);
+  if (nodeEnvironment === "production" && schedulerEnabled && !normalized) {
+    throw new Error("Missing required environment variable: WORKFLOW_SHARD_IDS");
+  }
   if (!normalized) return Array.from({ length: 256 }, (_, index) => index);
-  const shardIds = [...new Set(normalized.split(",").map(item => Number(item.trim())))];
+  const values = normalized.split(",").map(item => item.trim());
+  if (values.some(value => value.length === 0)) {
+    throw new Error("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
+  }
+  const shardIds = [...new Set(values.map(Number))];
   if (shardIds.length === 0 || shardIds.some(id => !Number.isInteger(id) || id < 0 || id > 255)) {
     throw new Error("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
   }

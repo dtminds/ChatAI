@@ -411,7 +411,6 @@ describe("workflow worker runtime", () => {
 
     expect(logger.info).toHaveBeenCalledWith({
       deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
-      environment: "dev",
       event: "workflow.worker.started",
       roles: ["entry-consumer", "task-consumer"],
       subscriptions: { entry: "entry-sub", task: "task-sub" },
@@ -597,7 +596,6 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },
     entitlement: { apiUrl: null, mode: "enforce" as const, token: null },
-    environment: "dev" as const,
     healthPort: 3002,
     logLevel: "info",
     maxRedeliverCount: 5,

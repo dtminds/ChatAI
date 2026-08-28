@@ -23,7 +23,7 @@ Entry and Task error details are sampled independently by failure category, with
 
 | `event` | Level | Important fields |
 | --- | --- | --- |
-| `workflow.worker.started` | `info` | `environment`, `roles` |
+| `workflow.worker.started` | `info` | `roles`, `topics`, `subscriptions`, `deadLetterTopics`, `workerId` |
 | `workflow.worker.stopped` | `info` | none |
 | `workflow.worker.role.idle` | `debug` | `role`, `durationMs`, role counters |
 | `workflow.worker.role.completed` | `info` | `role`, `durationMs`, role counters |

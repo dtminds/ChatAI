@@ -48,7 +48,6 @@ describe("workflow worker config", () => {
     const token = "secret-token-must-not-leak";
 
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_SERVICE_URL: "",
       WORKFLOW_PULSAR_TOKEN: token,
     }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
@@ -56,7 +55,6 @@ describe("workflow worker config", () => {
 
   it("qualifies Pulsar topics with the configured tenant and namespace", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
       WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
       WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
@@ -75,7 +73,6 @@ describe("workflow worker config", () => {
 
   it("requires a cluster ID and namespace for the Pulsar broker", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_PULSAR_CLUSTER_ID: "",
       WORKFLOW_PULSAR_NAMESPACE: "",
       WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
@@ -86,7 +83,6 @@ describe("workflow worker config", () => {
   it("preserves fully-qualified Pulsar topic overrides", () => {
     const topic = "persistent://another-tenant/another-namespace/custom-entry";
     const config = loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_BROKER: "pulsar",
       WORKFLOW_ENTRY_TOPIC: topic,
       WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
       WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
@@ -95,11 +91,6 @@ describe("workflow worker config", () => {
     }));
 
     expect(config.topics.entry).toBe(topic);
-  });
-
-  it("rejects unknown broker modes instead of falling through to Pulsar", () => {
-    expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
-      .toThrow("WORKFLOW_BROKER must be pulsar");
   });
 
   it("rejects an unknown NODE_ENV instead of bypassing production checks", () => {
@@ -373,7 +364,6 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     DATABASE_URL: "mysql://user:password@localhost/workflow",
     JAVA_INTERNAL_API_BASE_URL: "https://java.example.com",
-    WORKFLOW_BROKER: "pulsar",
     WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-dev-dlq",
     WORKFLOW_ENTRY_CONCURRENCY: "10",
     WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-dev",

@@ -1333,7 +1333,7 @@ Fixture 只冻结公共 Entry Event Envelope、Subject 语义、受控 Projectio
 - `WorkflowWorkerConfig` 不提供 `fake` Broker 运行模式；正常 Worker 入口始终要求完整 Pulsar 配置，缺失时启动失败。
 - Fake Broker、Fake Event Producer、Fake Event Catalog、Fake Entitlement Adapter 和 Fake Capability Adapter 放在对应 package 的 `test/support` 或测试专属私有 package，只作为 `devDependency` 使用。
 - 生产 `src/index.ts`、package exports、Worker Docker 构建和正常配置解析不得 import、export 或按环境变量选择 Fake；CI 增加生产入口依赖图检查保护这一点。
-- CI 不通过 `WORKFLOW_BROKER=fake` 启动正常 Worker。测试直接调用可注入依赖的 Worker 组合函数，并显式传入 Fake。
+- 正常 Worker 不提供 Broker 实现选择环境变量。测试直接调用可注入依赖的 Worker 组合函数，并显式传入 Fake。
 - Fake Event Producer 只读取共享 Fixture 并发布到注入的 Fake Broker，不查询 Binding、不生成真实业务 payload，也不实现 Java Interest Reader。
 - Fake Entitlement Adapter 只按测试脚本返回 `entitled + unentitledSince` 或超时；Fake Capability Adapter 只返回预设的 success、retryable、terminal、unknown、timeout 和非法结果。
 - Fake 不实现消息、订单、标签、权益、身份、资源或副作用规则。测试需要命中某个 Workflow 时直接准备 Binding/Subscription 状态，由 Node 权威匹配逻辑决定结果。

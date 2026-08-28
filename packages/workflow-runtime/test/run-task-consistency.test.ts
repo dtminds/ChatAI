@@ -195,6 +195,58 @@ describe("workflow run/task consistency reconciliation", () => {
     expect(repository.runs[0]?.status).toBe("failed");
   });
 
+  it("repairs an authoritative suspended Task after its Workflow resumes", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
+      bizStatus: 1,
+      runtimeStatus: "active",
+    }), () => admittedAt);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    if (created.kind !== "success") throw new Error("create failed");
+    repository.tasks[0]!.status = "suspended";
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 100,
+      now: reconcileAt,
+    });
+
+    expect(result).toMatchObject({
+      inconsistentRunsFailed: 0,
+      taskStatusesReconciled: 1,
+    });
+    expect(repository.tasks[0]).toMatchObject({
+      status: "pending",
+      taskVersion: created.task.taskVersion + 1,
+    });
+  });
+
+  it("repairs an authoritative pending Task after its Workflow pauses", async () => {
+    let runtimeStatus: "active" | "paused" = "active";
+    const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
+      bizStatus: 1,
+      runtimeStatus,
+    }), () => admittedAt);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    if (created.kind !== "success") throw new Error("create failed");
+    repository.tasks[0]!.status = "pending";
+    runtimeStatus = "paused";
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 100,
+      now: reconcileAt,
+    });
+
+    expect(result).toMatchObject({
+      inconsistentRunsFailed: 0,
+      taskStatusesReconciled: 1,
+    });
+    expect(repository.tasks[0]).toMatchObject({
+      status: "suspended",
+      taskVersion: created.task.taskVersion + 1,
+    });
+  });
+
   it("cancels stale and terminal-run tasks without failing a healthy active run", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
     const active = await repository.createRunWithInitialTask(createRunInput());

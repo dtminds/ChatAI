@@ -722,6 +722,7 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     lastTaskId: string | null;
     runsChecked: number;
     staleTasksCancelled: number;
+    taskStatusesReconciled: number;
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;

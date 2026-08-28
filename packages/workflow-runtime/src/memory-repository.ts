@@ -1309,12 +1309,15 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selectedRuns = runCandidates.slice(0, Math.max(0, input.limit));
     let inconsistentRunsFailed = 0;
     let staleTasksCancelled = 0;
+    let taskStatusesReconciled = 0;
 
     for (const run of selectedRuns) {
       const boundary = this.resolveWorkflowBoundary
         ? await this.resolveWorkflowBoundary({ uid: run.uid, workflowId: run.workflowId })
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
-      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") continue;
+      if (!boundary) continue;
+      const boundaryDecision = getWorkflowExecutionBoundaryDecision(boundary);
+      if (boundaryDecision === "cancel") continue;
 
       const activeTasks = this.tasks.filter(task => task.runId === run.id && activeTaskStatuses.has(task.status));
       const authoritativeTask = activeTasks.find(task => task.sequence === run.sequence);
@@ -1338,6 +1341,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
               && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
         ));
+      if (!invalidAuthoritativeTask && authoritativeTask) {
+        const repairedStatus = boundaryDecision === "execute" && authoritativeTask.status === "suspended"
+          ? "pending" as const
+          : boundaryDecision === "defer" && authoritativeTask.status === "pending"
+            ? "suspended" as const
+            : null;
+        if (repairedStatus) {
+          authoritativeTask.leaseExpiresAt = null;
+          authoritativeTask.leaseOwner = null;
+          authoritativeTask.status = repairedStatus;
+          authoritativeTask.taskVersion += 1;
+          taskStatusesReconciled += 1;
+        }
+      }
       if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
 
       for (const task of activeTasks) {
@@ -1385,6 +1402,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       lastTaskId: selectedTasks.at(-1)?.id ?? null,
       runsChecked: selectedRuns.length,
       staleTasksCancelled,
+      taskStatusesReconciled,
       tasksChecked: selectedTasks.length,
       terminalRunTasksCancelled,
     };

@@ -41,7 +41,7 @@ Entry and Task error details are sampled independently by failure category, with
 | `workflow.capability.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
 | `workflow.node.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
-Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
+Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `taskStatusesReconciled`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
 
 ## History Retention
 
@@ -191,6 +191,7 @@ Before Phase 5 defines thresholds, the Workflow dashboard should expose:
 - Dead Task and dead Outbox counts.
 - Expired Task and Outbox leases.
 - Reconciler recovery counters from `workflow.worker.role.warning`.
+- Reconciler Task boundary repairs from `taskStatusesReconciled`.
 - Reconciler history cleanup counters from `workflow.worker.role.completed`.
 - Internal cancellation backlog after Workflow stop or deletion.
 

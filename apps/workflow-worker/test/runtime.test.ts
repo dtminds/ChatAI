@@ -604,6 +604,7 @@ function reconcilerResult(overrides: {
     stalledTasksRepublished: 0,
     taskLeasesDead: 0,
     taskLeasesRecovered: 0,
+    taskStatusesReconciled: 0,
     tasksChecked: 0,
     terminalRunTasksCancelled: 0,
     ...overrides,

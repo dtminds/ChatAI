@@ -235,6 +235,7 @@ describe("workflow worker observability", () => {
         nextConsistencyRunCursor: "91",
         nextConsistencyTaskCursor: "103",
         staleTasksCancelled: 2,
+        taskStatusesReconciled: 4,
         terminalRunTasksCancelled: 3,
       },
     });
@@ -245,6 +246,7 @@ describe("workflow worker observability", () => {
       inconsistentRunsFailed: 1,
       role: "reconciler",
       staleTasksCancelled: 2,
+      taskStatusesReconciled: 4,
       terminalRunTasksCancelled: 3,
     }, "workflow worker role reported warning counters");
   });

@@ -816,6 +816,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - 暂停 Workflow 的 Task 通过持久化迁移请求分批转为 `suspended`；迁移窗口残留的 `pending` Task 若被认领，会在同一有界批次内自愈为 `suspended`。
 - 恢复时通过同一机制分批将 `suspended` Task 转回 `pending`，继续按原 `bucket_time, due_at, id` 顺序参与调度。
 - 迁移请求按 Scheduler 的固定退避和最大尝试次数重试；失败和 `dead` 进入 Scheduler warning 计数，但不阻断同轮到期 Task 派发。
+- Reconciler 在现有有界一致性扫描中以 Definition boundary 为权威，将有效当前 Task 的 `active + suspended` 修复为 `pending`、`paused + pending` 修复为 `suspended`，保证迁移请求进入 `dead` 或丢失后仍能最终收敛。
 - 认领后写 Outbox，不直接依赖进程内内存完成投递。
 
 ## 13. 一致性、投递和幂等
@@ -920,7 +921,7 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 | MQ 不可用 | Outbox 积压；业务状态保留，恢复后补投 |
 | 数据库不可用 | Worker 停止确认消息，由 MQ 重试；不得转为内存执行 |
 | Scheduler 崩溃 | 其他 Scheduler 实例在下一轮继续扫描全局到期队列 |
-| Task 暂停/恢复迁移失败 | 记录失败并固定退避重试，达到最大次数或请求非法时进入 `dead`；同轮全局到期 Task 派发继续执行 |
+| Task 暂停/恢复迁移失败 | 记录失败并固定退避重试，达到最大次数或请求非法时进入 `dead`；同轮全局到期 Task 派发继续执行，残留状态由 Reconciler 的有界一致性扫描最终修复 |
 | Outbox Publisher 崩溃 | 未发送记录由其他实例继续扫描 |
 | 下游返回可重试错误 | 写入数据库 Retry Task，ACK 当前 Pulsar 消息，保持同一幂等键 |
 | 下游返回不可重试错误 | Node Execution 和 Run 进入失败，记录业务错误码 |

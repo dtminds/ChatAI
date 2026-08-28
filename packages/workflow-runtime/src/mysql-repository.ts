@@ -2612,6 +2612,8 @@ export class MysqlWorkflowRuntimeRepository implements
         tasksByRunId.set(task.runId, runTasks);
       }
       const taskIdsToCancel = new Set<string>();
+      const taskIdsToResume = new Set<string>();
+      const taskIdsToSuspend = new Set<string>();
       const runsToFail: typeof runs = [];
       const definitionKeys = new Map<string, { uid: number; workflowIds: Array<string | number | bigint> }>();
       for (const run of runs) {
@@ -2667,9 +2669,40 @@ export class MysqlWorkflowRuntimeRepository implements
                 && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
             || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
           ));
+        if (!invalidAuthoritativeTask && authoritativeTask) {
+          if (boundaryDecision === "execute" && authoritativeTask.status === "suspended") {
+            taskIdsToResume.add(authoritativeTask.id);
+          } else if (boundaryDecision === "defer" && authoritativeTask.status === "pending") {
+            taskIdsToSuspend.add(authoritativeTask.id);
+          }
+        }
         if (!invalidAuthoritativeTask || toDate(run.update_time) > input.inconsistentBefore) continue;
         runsToFail.push(run);
         for (const task of runTasks) taskIdsToCancel.add(task.id);
+      }
+
+      let taskStatusesReconciled = 0;
+      if (taskIdsToResume.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "pending",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToResume])
+          .where("status", "=", "suspended")
+          .executeTakeFirst();
+        taskStatusesReconciled += Number(update.numUpdatedRows);
+      }
+      if (taskIdsToSuspend.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "suspended",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToSuspend])
+          .where("status", "=", "pending")
+          .executeTakeFirst();
+        taskStatusesReconciled += Number(update.numUpdatedRows);
       }
 
       await insertNodeMetricEventsBulk(trx, runsToFail.flatMap(run => {
@@ -2739,6 +2772,7 @@ export class MysqlWorkflowRuntimeRepository implements
         lastRunId: runs.length > 0 ? normalizeId(runs.at(-1)!.id) : null,
         runsChecked: runs.length,
         staleTasksCancelled,
+        taskStatusesReconciled,
       };
     });
 
@@ -4101,6 +4135,7 @@ function emptyRunTaskConsistencyResult() {
     lastTaskId: null,
     runsChecked: 0,
     staleTasksCancelled: 0,
+    taskStatusesReconciled: 0,
     tasksChecked: 0,
     terminalRunTasksCancelled: 0,
   };

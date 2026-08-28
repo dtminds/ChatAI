@@ -8,6 +8,7 @@
 - 暂停和恢复在控制事务内只写一条带版本的迁移请求；Scheduler 用独立短事务每批最多改写 1000 条 Task，并递增 `task_version`。
 - 多 Scheduler 副本通过迁移请求租约分工；租约过期可恢复，快速暂停/恢复通过 `transition_version` 和当前 Definition 状态共同防止旧请求覆盖新状态。
 - 迁移失败使用 Scheduler 现有重试次数和固定退避配置；可重试请求回到 `pending`，达到上限或目标状态非法时进入 `dead`，且迁移失败不阻断同轮到期 Task 派发。
+- Reconciler 在现有有界 Run/Task 一致性批次内按当前 Definition boundary 修复权威 Task 的 `pending` / `suspended` 状态，作为迁移请求 `dead` 或丢失后的最终收敛路径。
 - `shard_id` 继续随 Run 和 Task 持久化，保留指标分片和未来物理路由能力。
 
 ```sql

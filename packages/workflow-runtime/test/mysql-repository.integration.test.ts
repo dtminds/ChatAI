@@ -609,6 +609,68 @@ describe("MySQL workflow runtime repository contract", () => {
     });
   });
 
+  it("reconciles suspended Tasks after a resume transition becomes dead", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:12:00+08:00");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const created = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "dead-resume-transition",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: now,
+      revision: 1,
+      shardId: 1,
+      subjectId: "dead-resume-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+    if (created.kind !== "success") throw new Error(`Run creation failed: ${created.kind}`);
+    await database.updateTable("xy_wap_embed_workflow_task").set({
+      status: "suspended",
+    }).where("id", "=", created.task.id).executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task_transition").values({
+      attempt: 5,
+      last_error_code: "WORKFLOW_TASK_TRANSITION_FAILED",
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: now,
+      status: "pending",
+      target_status: "pending",
+      transition_version: 1,
+      uid: 9,
+      workflow_id: "31",
+    }).executeTakeFirstOrThrow();
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:13:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      maxAttempts: 5,
+      nextAttemptAt: new Date("2099-01-01T00:12:05+08:00"),
+      now,
+    })).resolves.toMatchObject({ dead: 1 });
+    await expect(repository.reconcileRunTaskConsistency({
+      inconsistentBefore: now,
+      limit: 100,
+      now,
+    })).resolves.toMatchObject({ taskStatusesReconciled: 1 });
+    await expect(repository.dispatchDueTasks({ limit: 100, now })).resolves.toMatchObject({
+      dispatched: 1,
+    });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task")
+      .select(["status", "task_version"])
+      .where("id", "=", created.task.id)
+      .executeTakeFirstOrThrow()).resolves.toEqual({
+      status: "dispatched",
+      task_version: created.task.taskVersion + 2,
+    });
+  });
+
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const now = new Date("2099-01-01T00:02:00+08:00");

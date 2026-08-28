@@ -79,7 +79,7 @@ describe("MysqlWorkflowRepository", () => {
     expect(result).toEqual({ kind: "idempotency-conflict" });
   });
 
-  it("cancels active runtime state when entitlement loss stops workflows", async () => {
+  it("stops definitions without synchronously draining runtime state on entitlement loss", async () => {
     const db = createEntitlementLossDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
 
@@ -96,16 +96,13 @@ describe("MysqlWorkflowRepository", () => {
       runtime_status: "stopped",
       status_reason: "entitlement_revoked",
     });
-    expect(updates.xy_wap_embed_workflow_run).toMatchObject({
-      status: "cancelled",
-      terminal_reason: "entitlement_revoked",
-    });
-    expect(updates.xy_wap_embed_workflow_task).toMatchObject({ status: "cancelled" });
-    expect(updates.xy_wap_embed_workflow_node_execution).toMatchObject({
-      error_code: "WORKFLOW_ENTITLEMENT_REVOKED",
-      status: "failed",
-    });
-    expect(updates.xy_wap_embed_workflow_outbox).toMatchObject({ status: "dead" });
+    expect(db.executedSelectTables).not.toContain("xy_wap_embed_workflow_run");
+    expect(db.updates.every(update => ![
+      "xy_wap_embed_workflow_run",
+      "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_node_execution",
+      "xy_wap_embed_workflow_outbox",
+    ].includes(update.table))).toBe(true);
   });
 
   it("enqueues bounded Task suspension when entitlement loss pauses workflows", async () => {
@@ -602,6 +599,7 @@ function createEntitlementLossDbMock() {
   }> = [];
   let runExecuteCount = 0;
   const db = {
+    executedSelectTables: [] as string[],
     taskTransitionInserts: [] as Array<Record<string, unknown>>,
     updates,
     deleteFrom() {
@@ -634,6 +632,7 @@ function createEntitlementLossDbMock() {
         skipLocked() { return builder; },
         where() { return builder; },
         async execute() {
+          db.executedSelectTables.push(table);
           if (table === "xy_wap_embed_workflow_definition") return [{ id: "42" }];
           if (table === "xy_wap_embed_workflow_run") {
             runExecuteCount += 1;

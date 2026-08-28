@@ -11,7 +11,6 @@ import {
   decodeWorkflowType,
   encodeWorkflowSubjectType,
   encodeWorkflowType,
-  cancelMysqlEntitlementRuns,
   clearMysqlWorkflowTaskTransitions,
   enqueueMysqlWorkflowTaskTransitions,
   transitionMysqlWorkflowInferenceJobs,
@@ -97,13 +96,6 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       return ids;
     });
     if (workflowIds.length === 0) return { affectedDefinitions: 0 };
-    if (input.transition !== "pause") {
-      await cancelMysqlEntitlementRuns(this.db, {
-        now: input.transitionedAt,
-        uid: input.uid,
-        workflowIds,
-      });
-    }
     return { affectedDefinitions: workflowIds.length };
   }
 

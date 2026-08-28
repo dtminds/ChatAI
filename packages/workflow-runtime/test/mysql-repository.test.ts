@@ -567,6 +567,68 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toEqual({ expired: 0, recovered: 0 });
     expect(db.inferenceUpdateCount).toBe(0);
     expect(db.lockOrder).toEqual(["run", "task", "definition", "job"]);
+    expect(db.candidateLimits).toEqual([100, 100, 100]);
+    expect(db.candidatePredicates).toEqual([
+      [["job.status", "in", ["pending", "retry_wait", "running"]], ["job.deadline_at", "<=", now]],
+      [["job.status", "in", ["pending", "retry_wait"]], ["job.attempt", ">=", 1]],
+      [["job.status", "=", "running"], ["job.lease_expires_at", "<=", now]],
+    ]);
+  });
+
+  it("deduplicates split Inference recovery candidates and applies one numeric ID limit", async () => {
+    const now = new Date("2026-07-10T00:02:00.000Z");
+    const db = createInferenceRecoveryRaceDbMock({
+      candidateIds: [["2", "10"], ["1", "2"], ["3"]],
+      lockedJobs: false,
+      renewedLeaseExpiresAt: new Date("2026-07-10T00:03:00.000Z"),
+      scannedLeaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.recoverInferenceJobs({
+      limit: 2,
+      maxAttempts: 1,
+      now,
+    })).resolves.toEqual({ expired: 0, recovered: 0 });
+
+    expect(db.candidateLimits).toEqual([2, 2, 2]);
+    expect(db.lockedJobIds).toEqual(["1", "2"]);
+  });
+
+  it("splits Revision cleanup claim paths and applies one numeric ID limit", async () => {
+    const now = new Date("2026-07-10T00:02:00.000Z");
+    const leaseExpiresAt = new Date("2026-07-10T00:03:00.000Z");
+    const db = createRevisionCleanupClaimDbMock({
+      leasedIds: ["1", "3"],
+      pendingIds: ["2", "10"],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.claimRevisionCleanupBatch({
+      leaseExpiresAt,
+      leaseOwner: "cleanup-worker",
+      limit: 2,
+      maxAttempts: 3,
+      now,
+    })).resolves.toEqual([
+      expect.objectContaining({ attempt: 2, id: "1", leaseOwner: "cleanup-worker", status: "leased" }),
+      expect.objectContaining({ attempt: 2, id: "2", leaseOwner: "cleanup-worker", status: "leased" }),
+    ]);
+
+    expect(db.updates.slice(0, 2).map(update => update.wheres)).toEqual([
+      [["attempt", ">=", 3], ["status", "=", "pending"], ["next_attempt_at", "<=", now]],
+      [["attempt", ">=", 3], ["status", "=", "leased"], ["lease_expires_at", "<=", now]],
+    ]);
+    expect(db.selects.map(select => select.wheres)).toEqual([
+      [["attempt", "<", 3], ["status", "=", "pending"], ["next_attempt_at", "<=", now]],
+      [["attempt", "<", 3], ["status", "=", "leased"], ["lease_expires_at", "<=", now]],
+    ]);
+    expect(db.selects.map(select => ({ forUpdate: select.forUpdate, limit: select.limit, skipLocked: select.skipLocked })))
+      .toEqual([
+        { forUpdate: true, limit: 2, skipLocked: true },
+        { forUpdate: true, limit: 2, skipLocked: true },
+      ]);
+    expect(db.updates[2]?.wheres).toEqual([["id", "in", ["1", "2"]]]);
   });
 
   it("dispatches a due-task batch with one definition lock and one outbox insert", async () => {
@@ -895,6 +957,8 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 });
 
 function createInferenceRecoveryRaceDbMock(input: {
+  candidateIds?: string[][];
+  lockedJobs?: boolean;
   renewedLeaseExpiresAt: Date;
   scannedLeaseExpiresAt: Date;
 }) {
@@ -911,12 +975,21 @@ function createInferenceRecoveryRaceDbMock(input: {
     uid: 8,
     workflow_id: "42",
   };
+  let candidateSelectCount = 0;
   let inferenceSelectCount = 0;
   const db = {
+    candidateLimits: [] as number[],
+    candidatePredicates: [] as unknown[][],
     inferenceUpdateCount: 0,
     jobLocked: false,
+    lockedJobIds: [] as string[],
     lockOrder: [] as string[],
     selectFrom(table: string) {
+      const candidateIndex = table === "xy_wap_embed_workflow_inference_job as job"
+        ? candidateSelectCount++
+        : -1;
+      const predicates: unknown[] = [];
+      if (candidateIndex >= 0) db.candidatePredicates[candidateIndex] = predicates;
       const builder = {
         forShare() {
           if (table === "xy_wap_embed_workflow_definition") db.lockOrder.push("definition");
@@ -934,15 +1007,36 @@ function createInferenceRecoveryRaceDbMock(input: {
           return builder;
         },
         innerJoin() { return builder; },
-        limit() { return builder; },
+        limit(value: number) {
+          if (candidateIndex >= 0) db.candidateLimits[candidateIndex] = value;
+          return builder;
+        },
         orderBy() { return builder; },
         select() { return builder; },
         selectAll() { return builder; },
         skipLocked() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) {
+          if (candidateIndex >= 0 && typeof args[0] === "string"
+            && (args[0] === "job.status" || args[0] === "job.deadline_at"
+              || args[0] === "job.attempt" || args[0] === "job.lease_expires_at")) {
+            predicates.push(args);
+          }
+          if (table === "xy_wap_embed_workflow_inference_job"
+            && args[0] === "id" && args[1] === "in") {
+            db.lockedJobIds = args[2] as string[];
+          }
+          return builder;
+        },
         async execute() {
+          if (candidateIndex >= 0) {
+            return (input.candidateIds?.[candidateIndex] ?? [baseJob.id]).map(id => ({
+              ...baseJob,
+              id,
+              lease_expires_at: input.scannedLeaseExpiresAt,
+            }));
+          }
           if (table.startsWith("xy_wap_embed_workflow_inference_job")) {
-            return [{
+            return input.lockedJobs === false ? [] : [{
               ...baseJob,
               lease_expires_at: db.jobLocked
                 ? input.renewedLeaseExpiresAt
@@ -979,6 +1073,76 @@ function createInferenceRecoveryRaceDbMock(input: {
         where() { return builder; },
         async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createRevisionCleanupClaimDbMock(input: { leasedIds: string[]; pendingIds: string[] }) {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const row = (id: string, status: "leased" | "pending") => ({
+    after_run_id: null,
+    attempt: 1,
+    create_time: now,
+    id,
+    last_error_code: null,
+    lease_expires_at: status === "leased" ? now : null,
+    lease_owner: status === "leased" ? "expired-worker" : null,
+    next_attempt_at: now,
+    node_id: "wait-1",
+    node_kind: "wait",
+    revision: 2,
+    status,
+    uid: 9,
+    update_time: now,
+    workflow_id: "31",
+  });
+  let selectCount = 0;
+  const db = {
+    selects: [] as Array<{
+      forUpdate: boolean;
+      limit: number | null;
+      skipLocked: boolean;
+      wheres: unknown[][];
+    }>,
+    updates: [] as Array<{ set: Record<string, unknown>; wheres: unknown[][] }>,
+    selectFrom(table: string) {
+      if (table !== "xy_wap_embed_workflow_revision_cleanup") {
+        throw new Error(`Unexpected select from ${table}`);
+      }
+      const state = { forUpdate: false, limit: null as number | null, skipLocked: false, wheres: [] as unknown[][] };
+      db.selects.push(state);
+      const index = selectCount++;
+      const builder = {
+        forUpdate() { state.forUpdate = true; return builder; },
+        limit(value: number) { state.limit = value; return builder; },
+        orderBy() { return builder; },
+        selectAll() { return builder; },
+        skipLocked() { state.skipLocked = true; return builder; },
+        where(...args: unknown[]) { state.wheres.push(args); return builder; },
+        async execute() {
+          return (index === 0 ? input.pendingIds : input.leasedIds)
+            .map(id => row(id, index === 0 ? "pending" : "leased"));
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return { execute: async (operation: (transaction: typeof db) => unknown) => operation(db) };
+    },
+    updateTable(table: string) {
+      if (table !== "xy_wap_embed_workflow_revision_cleanup") {
+        throw new Error(`Unexpected update of ${table}`);
+      }
+      const state = { set: {} as Record<string, unknown>, wheres: [] as unknown[][] };
+      db.updates.push(state);
+      const builder = {
+        set(values: Record<string, unknown>) { state.set = values; return builder; },
+        where(...args: unknown[]) { state.wheres.push(args); return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 2n }; },
       };
       return builder;
     },

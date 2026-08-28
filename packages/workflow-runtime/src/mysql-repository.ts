@@ -1449,7 +1449,7 @@ export class MysqlWorkflowRuntimeRepository implements
   async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
     const limit = boundBatchLimit(input.limit);
     if (limit <= 0) return { expired: 0, recovered: 0 };
-    const scanned = await this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+    const candidateQuery = () => this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
       .innerJoin(`${RUN_TABLE} as inference_run`, join => join
         .onRef("inference_run.uid", "=", "job.uid")
         .onRef("inference_run.id", "=", "job.run_id"))
@@ -1457,22 +1457,24 @@ export class MysqlWorkflowRuntimeRepository implements
         .onRef("inference_definition.uid", "=", "inference_run.uid")
         .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
       .select(["job.id", "job.run_id", "job.task_id", "inference_run.uid", "inference_run.workflow_id"])
-      .where("job.status", "in", ["pending", "retry_wait", "running"])
       .where("job.paused_at", "is", null)
       .where("inference_definition.biz_status", "=", 1)
-      .where("inference_definition.runtime_status", "=", "active")
-      .where(eb => eb.or([
-        eb("job.deadline_at", "<=", input.now),
-        eb.and([
-          eb("job.status", "in", ["pending", "retry_wait"]),
-          eb("job.attempt", ">=", input.maxAttempts),
-        ]),
-        eb.and([
-          eb("job.status", "=", "running"),
-          eb("job.lease_expires_at", "<=", input.now),
-        ]),
-      ]))
-      .orderBy("job.id", "asc").limit(limit).execute();
+      .where("inference_definition.runtime_status", "=", "active");
+    const candidateRows = await Promise.all([
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait", "running"])
+        .where("job.deadline_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait"])
+        .where("job.attempt", ">=", input.maxAttempts)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "=", "running")
+        .where("job.lease_expires_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+    ]);
+    const scanned = mergeRowsByNumericId(candidateRows.flat(), limit);
     if (scanned.length === 0) return { expired: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
       const runIds = uniqueSortedIds(scanned.map(row => row.run_id));
@@ -2792,22 +2794,37 @@ export class MysqlWorkflowRuntimeRepository implements
         lease_owner: null,
         status: "dead",
       }).where("attempt", ">=", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .executeTakeFirst();
-      const rows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      const pendingRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
         .where("attempt", "<", input.maxAttempts)
-        .where(eb => eb.or([
-          eb.and([eb("status", "=", "pending"), eb("next_attempt_at", "<=", input.now)]),
-          eb.and([eb("status", "=", "leased"), eb("lease_expires_at", "<=", input.now)]),
-        ]))
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
         .orderBy("id", "asc")
         .limit(limit)
         .forUpdate()
         .skipLocked()
         .execute();
+      const leasedRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const rows = mergeRowsByNumericId([...pendingRows, ...leasedRows], limit);
       if (rows.length === 0) return [];
       const ids = rows.map(row => row.id);
       await trx.updateTable(REVISION_CLEANUP_TABLE).set({
@@ -3739,6 +3756,23 @@ function definitionKey(uid: number, workflowId: string) {
 function uniqueSortedIds(values: DatabaseId[]) {
   return [...new Set(values.map(value => normalizeId(value)))]
     .sort((first, second) => first < second ? -1 : first > second ? 1 : 0);
+}
+
+function mergeRowsByNumericId<T extends { id: DatabaseId }>(rows: T[], limit: number) {
+  const rowById = new Map<string, T>();
+  for (const row of rows) {
+    const id = normalizeId(row.id);
+    if (!rowById.has(id)) rowById.set(id, row);
+  }
+  return [...rowById.values()]
+    .sort((first, second) => compareDatabaseIds(first.id, second.id))
+    .slice(0, limit);
+}
+
+function compareDatabaseIds(first: DatabaseId, second: DatabaseId) {
+  const firstId = BigInt(first);
+  const secondId = BigInt(second);
+  return firstId === secondId ? 0 : firstId < secondId ? -1 : 1;
 }
 
 function boundBatchLimit(limit: number) {

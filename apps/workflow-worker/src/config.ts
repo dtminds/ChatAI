@@ -9,7 +9,6 @@ import {
 export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
 export type WorkflowWorkerConfig = {
-  broker: "pulsar";
   consumerConcurrency: {
     entry: number;
     task: number;
@@ -92,15 +91,14 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   const nodeEnvironment = parseNodeEnvironment(env.NODE_ENV);
   const databaseUrl = requireValue(env, "DATABASE_URL");
   const javaInternalApiBaseUrl = requireHttpBaseUrl(env, "JAVA_INTERNAL_API_BASE_URL");
-  const broker = parseBroker(env.WORKFLOW_BROKER);
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
   const pulsarClusterId = optionalValue(env.WORKFLOW_PULSAR_CLUSTER_ID);
   const pulsarNamespace = optionalValue(env.WORKFLOW_PULSAR_NAMESPACE);
-  if (broker === "pulsar" && (!pulsarServiceUrl || !pulsarToken)) {
+  if (!pulsarServiceUrl || !pulsarToken) {
     throw new Error("Missing required Workflow Pulsar configuration");
   }
-  if (broker === "pulsar" && (!pulsarClusterId || !pulsarNamespace)) {
+  if (!pulsarClusterId || !pulsarNamespace) {
     throw new Error("Missing required Workflow Pulsar cluster ID or namespace");
   }
 
@@ -170,7 +168,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     throw new Error("WORKFLOW_ENTRY_DLQ_TOPIC and WORKFLOW_TASK_DLQ_TOPIC must be different in production");
   }
   return {
-    broker,
     consumerConcurrency: {
       entry: entryConsumerConcurrency,
       task: taskConsumerConcurrency,
@@ -327,11 +324,6 @@ function qualifyPulsarTopic(topic: string, clusterId: string, namespace: string)
   if (topic.startsWith("persistent://")) return topic;
   if (topic.includes("://")) throw new Error("Workflow Pulsar topics must use persistent://");
   return `persistent://${clusterId}/${namespace}/${topic}`;
-}
-
-function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] {
-  if (value === "pulsar") return value;
-  throw new Error("WORKFLOW_BROKER must be pulsar");
 }
 
 function parseNodeEnvironment(value: string | undefined) {

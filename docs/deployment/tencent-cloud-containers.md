@@ -227,7 +227,6 @@ readinessProbe:
 ```text
 NODE_ENV=production
 LOG_LEVEL=info
-WORKFLOW_BROKER=pulsar
 JAVA_INTERNAL_API_BASE_URL=https://<java-internal-host>
 WORKFLOW_ENTITLEMENT_MODE=allow
 WORKFLOW_ENTITLEMENT_API_URL=https://<java-internal-host>/internal/workflow/entitlement

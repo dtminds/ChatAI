@@ -614,7 +614,6 @@ function config(
   roles: WorkflowWorkerConfig["roles"] = new Set(["entry-consumer", "task-consumer"]),
 ) {
   return {
-    broker: "pulsar" as const,
     consumerConcurrency: { entry: 10, task: 10 },
     databaseUrl: "mysql://localhost/workflow",
     deadLetterTopics: { entry: "entry-dlq", task: "task-dlq" },

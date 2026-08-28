@@ -1652,6 +1652,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return result;
   }
 
+  async processTaskStatusTransitionBatch(
+    _input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
+  ) {
+    return { claimed: false, hasMore: false, transitioned: 0 };
+  }
+
   async claimOutboxBatch(input: Parameters<WorkflowRuntimeRepository["claimOutboxBatch"]>[0]) {
     const candidates = this.outbox
       .filter(item => item.status === "pending" && item.nextAttemptAt <= input.now)

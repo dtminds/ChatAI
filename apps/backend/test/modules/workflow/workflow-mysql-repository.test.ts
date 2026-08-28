@@ -108,6 +108,30 @@ describe("MysqlWorkflowRepository", () => {
     expect(updates.xy_wap_embed_workflow_outbox).toMatchObject({ status: "dead" });
   });
 
+  it("enqueues bounded Task suspension when entitlement loss pauses workflows", async () => {
+    const db = createEntitlementLossDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+    const transitionedAt = new Date("2026-07-10T00:00:00.000Z");
+
+    await expect(repository.applyEntitlementLoss({
+      opSubUserId: "19",
+      transitionedAt,
+      transition: "pause",
+      uid: 8,
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ affectedDefinitions: 1 });
+
+    expect(db.taskTransitionInserts).toEqual([expect.objectContaining({
+      next_attempt_at: transitionedAt,
+      status: "pending",
+      target_status: "suspended",
+      transition_version: 1,
+      uid: 8,
+      workflow_id: "42",
+    })]);
+    expect(db.updates.some(update => update.table === "xy_wap_embed_workflow_task")).toBe(false);
+  });
+
   it("updates workflow metadata without changing the draft", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -243,9 +267,12 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.updateBuilders.find(update =>
       update.table === "xy_wap_embed_workflow_inference_job")?.sets,
     ).toMatchObject({ paused_at: transitionedAt });
-    expect(db.updateBuilders.find(update =>
-      update.table === "xy_wap_embed_workflow_task")?.sets,
-    ).toMatchObject({ status: "suspended" });
+    expect(db.taskTransitionInserts).toEqual([expect.objectContaining({
+      next_attempt_at: transitionedAt,
+      target_status: "suspended",
+      workflow_id: "42",
+    })]);
+    expect(db.updateBuilders.some(update => update.table === "xy_wap_embed_workflow_task")).toBe(false);
   });
 
   it("unfreezes Inference Jobs in the Workflow resume transaction", async () => {
@@ -268,9 +295,11 @@ describe("MysqlWorkflowRepository", () => {
     expect(inferenceUpdate?.sets).toMatchObject({ paused_at: null });
     expect(inferenceUpdate?.sets.deadline_at).toBeDefined();
     expect(inferenceUpdate?.sets.next_attempt_at).toBeDefined();
-    expect(db.updateBuilders.find(update =>
-      update.table === "xy_wap_embed_workflow_task")?.sets,
-    ).toMatchObject({ status: "pending" });
+    expect(db.taskTransitionInserts).toEqual([expect.objectContaining({
+      target_status: "pending",
+      workflow_id: "42",
+    })]);
+    expect(db.updateBuilders.some(update => update.table === "xy_wap_embed_workflow_task")).toBe(false);
     expect(db.selectBuilders[0]).toMatchObject({
       forUpdate: true,
       wheres: [["uid", "=", 8], ["id", "=", "42"], ["biz_status", "=", 1]],
@@ -459,6 +488,7 @@ function createWorkflowDbMock(options: {
   };
   const db = {
     deleteFromCalls: 0,
+    taskTransitionInserts: [] as Array<Record<string, unknown>>,
     selectBuilders: [] as Array<{
       forUpdate: boolean;
       orderBys: unknown[][];
@@ -468,9 +498,29 @@ function createWorkflowDbMock(options: {
       wheres: unknown[][];
     }>,
     updateBuilders: [] as Array<{ sets: Record<string, unknown>; table: string; wheres: unknown[][] }>,
-    deleteFrom() {
+    deleteFrom(table: string) {
+      if (table === "xy_wap_embed_workflow_task_transition") {
+        const builder = {
+          where() { return builder; },
+          async executeTakeFirst() { return { numDeletedRows: 1n }; },
+        };
+        return builder;
+      }
       db.deleteFromCalls += 1;
       throw new Error("physical delete is forbidden");
+    },
+    insertInto(table: string) {
+      const builder = {
+        values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
+          if (table === "xy_wap_embed_workflow_task_transition") {
+            db.taskTransitionInserts = Array.isArray(values) ? values : [values];
+          }
+          return builder;
+        },
+        onDuplicateKeyUpdate() { return builder; },
+        async executeTakeFirstOrThrow() { return { numInsertedOrUpdatedRows: 1n }; },
+      };
+      return builder;
     },
     selectFrom(table: string) {
       const state = {
@@ -552,12 +602,25 @@ function createEntitlementLossDbMock() {
   }> = [];
   let runExecuteCount = 0;
   const db = {
+    taskTransitionInserts: [] as Array<Record<string, unknown>>,
     updates,
-    insertInto() {
+    deleteFrom() {
       const builder = {
-        values() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() { return { numDeletedRows: 1n }; },
+      };
+      return builder;
+    },
+    insertInto(table: string) {
+      const builder = {
+        values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
+          if (table === "xy_wap_embed_workflow_task_transition") {
+            db.taskTransitionInserts = Array.isArray(values) ? values : [values];
+          }
+          return builder;
+        },
         onDuplicateKeyUpdate() { return builder; },
-        async executeTakeFirstOrThrow() { return {}; },
+        async executeTakeFirstOrThrow() { return { numInsertedOrUpdatedRows: 1n }; },
       };
       return builder;
     },

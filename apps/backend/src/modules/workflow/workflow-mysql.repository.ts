@@ -12,8 +12,8 @@ import {
   encodeWorkflowSubjectType,
   encodeWorkflowType,
   cancelMysqlEntitlementRuns,
-  resumeMysqlWorkflowTasks,
-  suspendMysqlWorkflowTasks,
+  clearMysqlWorkflowTaskTransitions,
+  enqueueMysqlWorkflowTaskTransitions,
   transitionMysqlWorkflowInferenceJobs,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
@@ -82,7 +82,14 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         workflowIds: ids.map(normalizeId),
       });
       if (input.transition === "pause") {
-        await suspendMysqlWorkflowTasks(transaction, {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "suspended",
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      } else {
+        await clearMysqlWorkflowTaskTransitions(transaction, {
           uid: input.uid,
           workflowIds: ids.map(normalizeId),
         });
@@ -639,12 +646,21 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         workflowIds: [input.workflowId],
       });
       if (input.status === "active") {
-        await resumeMysqlWorkflowTasks(transaction, {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "pending",
           uid: input.uid,
           workflowIds: [input.workflowId],
         });
       } else if (input.status === "paused") {
-        await suspendMysqlWorkflowTasks(transaction, {
+        await enqueueMysqlWorkflowTaskTransitions(transaction, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "suspended",
+          uid: input.uid,
+          workflowIds: [input.workflowId],
+        });
+      } else {
+        await clearMysqlWorkflowTaskTransitions(transaction, {
           uid: input.uid,
           workflowIds: [input.workflowId],
         });

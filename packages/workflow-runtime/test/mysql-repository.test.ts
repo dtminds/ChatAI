@@ -647,7 +647,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toEqual({ cancelled: 0, dispatched: 2, suspended: 0 });
     expect(db.scheduleIndexHints).toBe(1);
     expect(db.taskLockTargets).toEqual(["task"]);
-    expect(db.definitionShareLocks).toBe(0);
+    expect(db.definitionShareLocks).toBe(1);
     expect(db.taskUpdates).toBe(1);
     expect(db.outboxInsertSizes).toEqual([2]);
   });

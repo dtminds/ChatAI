@@ -773,6 +773,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   KEY idx_workflow_task_lease (status, lease_expires_at, id)
 ) COMMENT='营销Workflow执行任务表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  target_status VARCHAR(32) NOT NULL COMMENT '目标Task状态：pending、suspended',
+  transition_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '同一Workflow迁移请求单调版本',
+  status VARCHAR(32) NOT NULL COMMENT '处理状态：pending、leased',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '批次领取尝试次数',
+  next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_task_transition_workflow (uid, workflow_id),
+  KEY idx_workflow_task_transition_pending (status, next_attempt_at, id),
+  KEY idx_workflow_task_transition_lease (status, lease_expires_at, id)
+) COMMENT='营销Workflow Task暂停恢复迁移请求表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

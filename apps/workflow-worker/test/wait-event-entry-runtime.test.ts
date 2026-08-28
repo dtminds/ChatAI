@@ -43,6 +43,8 @@ describe("Wait Event Entry runtime composition", () => {
     const beforeResume = new Date("2026-08-10T00:00:33.999Z");
     harness.setNow(beforeResume);
     await expect(scheduleWorkflowTasks({
+      leaseDurationMs: 60_000,
+      leaseOwner: "scheduler-1",
       limit: 10,
       now: beforeResume,
       repository: harness.repository,
@@ -51,6 +53,8 @@ describe("Wait Event Entry runtime composition", () => {
     const resumeAt = new Date("2026-08-10T00:00:34.000Z");
     harness.setNow(resumeAt);
     await expect(scheduleWorkflowTasks({
+      leaseDurationMs: 60_000,
+      leaseOwner: "scheduler-1",
       limit: 10,
       now: resumeAt,
       repository: harness.repository,
@@ -94,6 +98,8 @@ describe("Wait Event Entry runtime composition", () => {
     const expiresAt = new Date("2026-08-10T00:01:00.000Z");
     harness.setNow(expiresAt);
     await expect(scheduleWorkflowTasks({
+      leaseDurationMs: 60_000,
+      leaseOwner: "scheduler-1",
       limit: 10,
       now: expiresAt,
       repository: harness.repository,

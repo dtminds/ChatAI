@@ -353,6 +353,8 @@ type WorkflowTaskStatus =
   | "leased"
   | "dispatched"
   | "running"
+  | "suspended"
+  | "waiting_external"
   | "completed"
   | "cancelled"
   | "dead";
@@ -368,12 +370,17 @@ pending
   -> dispatched   已在同一事务写入 Outbox
   -> running      Consumer 取得执行租约
   -> completed    节点执行和下一状态已提交
+
+pending / leased / dispatched / running -> suspended  Workflow 暂停
+suspended -> pending                              Workflow 恢复
+running -> waiting_external                      交给独立异步 Job
+waiting_external -> dispatched / suspended       Job 完成后按当前控制状态继续
 ```
 
 失败分支：
 
 ```text
-running -> pending    业务可重试错误，写入新的 due_at
+running -> pending / suspended  业务可重试错误，按当前 Workflow 状态写入新的 due_at
 running -> dead       达到最大重试次数或不可恢复失败
 任意非终态 -> cancelled
 ```
@@ -561,6 +568,8 @@ update_time
 同一 Run 在同一 `sequence` 只能存在一个有效任务。
 
 `pending` 表示可由 Scheduler 认领的到期任务，`suspended` 表示因 Workflow 暂停而离开调度热队列的任务，`waiting_external` 表示由 Inference Job 等独立生命周期驱动、不能由通用 Scheduler 派发的任务。
+
+暂停和恢复不在 Definition 控制事务内无界改写 Task。控制事务按 Workflow UPSERT 一条带 `transition_version` 的迁移请求；Scheduler 实例通过租约领取请求，并按 `(uid, workflow_id, status, id)` 索引在独立事务中有界迁移 `pending <-> suspended`。每批迁移递增 `task_version`；租约过期后可继续处理，快速暂停/恢复时以当前 Definition 状态和请求版本为准。
 
 ### 9.6 `xy_wap_embed_workflow_node_execution`
 
@@ -804,7 +813,8 @@ shard_id = hash(uid + subjectType + subjectId) % 256
 - 按 `bucket_time, due_at, id` 稳定顺序读取最早到期的有界批次，不使用 OFFSET 深分页。
 - 每批认领数量可配置。
 - 多实例使用 `FOR UPDATE OF task SKIP LOCKED` 领取不同 Task，Definition 不参与候选行锁定。
-- 暂停 Workflow 的 Task 保持 `pending` 且不进入认领批次，恢复后按原到期顺序重新参与调度。
+- 暂停 Workflow 的 Task 通过持久化迁移请求分批转为 `suspended`；迁移窗口残留的 `pending` Task 若被认领，会在同一有界批次内自愈为 `suspended`。
+- 恢复时通过同一机制分批将 `suspended` Task 转回 `pending`，继续按原 `bucket_time, due_at, id` 顺序参与调度。
 - 认领后写 Outbox，不直接依赖进程内内存完成投递。
 
 ## 13. 一致性、投递和幂等

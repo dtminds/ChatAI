@@ -6,7 +6,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   MysqlWorkflowRuntimeRepository,
   MysqlWorkflowLlmTestAttemptRepository,
-  resumeMysqlWorkflowTasks,
+  clearMysqlWorkflowTaskTransitions,
+  enqueueMysqlWorkflowTaskTransitions,
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   type WorkflowDatabase,
 } from "../src/index.js";
@@ -143,10 +144,29 @@ describe("MySQL workflow runtime repository contract", () => {
             uid: 9,
             workflowIds: ["31"],
           });
-          if (status === "active") {
-            await resumeMysqlWorkflowTasks(transaction, { uid: 9, workflowIds: ["31"] });
+          if (status === "active" || status === "paused") {
+            await enqueueMysqlWorkflowTaskTransitions(transaction, {
+              requestedAt: transitionedAt,
+              targetStatus: status === "active" ? "pending" : "suspended",
+              uid: 9,
+              workflowIds: ["31"],
+            });
+          } else {
+            await clearMysqlWorkflowTaskTransitions(transaction, {
+              uid: 9,
+              workflowIds: ["31"],
+            });
           }
         });
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const result = await new MysqlWorkflowRuntimeRepository(contractDatabase).processTaskStatusTransitionBatch({
+            leaseExpiresAt: new Date(transitionedAt.getTime() + 60_000),
+            leaseOwner: "contract-transition-worker",
+            limit: 1_000,
+            now: transitionedAt,
+          });
+          if (!result.hasMore) break;
+        }
       },
     };
   });
@@ -217,6 +237,70 @@ describe("MySQL workflow runtime repository contract", () => {
 
     expect(firstRows).toEqual([{ id: "1001" }]);
     expect(secondRows).toEqual([{ id: "1002" }]);
+  });
+
+  it("moves Task status in bounded, resumable transition batches", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:02:00+08:00");
+    const taskCount = 1_001;
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task").values(
+      Array.from({ length: taskCount }, (_, index) => ({
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: String(10_000 + index),
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: `wait-${index}`,
+        node_kind: "wait",
+        revision: 1,
+        run_id: String(20_000 + index),
+        sequence: 1,
+        shard_id: index % 256,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      })),
+    ).executeTakeFirstOrThrow();
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1_000 });
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:03:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 1_000,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
+
+    const summary = await database.selectFrom("xy_wap_embed_workflow_task")
+      .select(({ fn }) => [fn.countAll<number>().as("count"), fn.min("task_version").as("min_version")])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .where("status", "=", "suspended")
+      .executeTakeFirstOrThrow();
+    expect(Number(summary.count)).toBe(taskCount);
+    expect(Number(summary.min_version)).toBe(2);
   });
 
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {

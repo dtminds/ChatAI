@@ -44,6 +44,7 @@ import type {
   WorkflowInferenceJobTable,
   WorkflowRunTable,
   WorkflowTaskTable,
+  WorkflowTaskTransitionTable,
 } from "./db.js";
 import type {
   WorkflowCapabilityExecutionFailureInput,
@@ -73,6 +74,7 @@ const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric
 const WORKFLOW_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_daily_metric" as const;
 const WORKFLOW_METRIC_TABLE = "xy_wap_embed_workflow_metric" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
+const TASK_TRANSITION_TABLE = "xy_wap_embed_workflow_task_transition" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
@@ -133,6 +135,19 @@ export class MysqlWorkflowRuntimeRepository implements
         uid: input.uid,
         workflowIds: ids.map(normalizeId),
       });
+      if (input.transition === "pause") {
+        await enqueueMysqlWorkflowTaskTransitions(trx, {
+          requestedAt: input.transitionedAt,
+          targetStatus: "suspended",
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      } else {
+        await clearMysqlWorkflowTaskTransitions(trx, {
+          uid: input.uid,
+          workflowIds: ids.map(normalizeId),
+        });
+      }
       return ids;
     });
     if (workflowIds.length === 0) return { affectedDefinitions: 0 };
@@ -1066,7 +1081,7 @@ export class MysqlWorkflowRuntimeRepository implements
       const result = { cancelled: 0, dispatched: 0, suspended: 0 };
       if (rows.length === 0) return result;
       const tasks = rows.map(mapTask);
-      const definitionByKey = await loadDefinitions(trx, tasks.map(task => ({
+      const definitionByKey = await loadDefinitionsForShare(trx, tasks.map(task => ({
         uid: task.uid,
         workflowId: task.workflowId,
       })));
@@ -1127,6 +1142,104 @@ export class MysqlWorkflowRuntimeRepository implements
       }
       return result;
     });
+  }
+
+  async processTaskStatusTransitionBatch(
+    input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { claimed: false, hasMore: false, transitioned: 0 };
+    const request = await claimMysqlWorkflowTaskTransition(this.db, input);
+    if (!request) return { claimed: false, hasMore: false, transitioned: 0 };
+
+    try {
+      const result = await this.db.transaction().execute(async (trx) => {
+        const sourceStatus = request.targetStatus === "suspended" ? "pending" : "suspended";
+        const rows = await trx.selectFrom(TASK_TABLE).select("id")
+          .where("uid", "=", request.uid)
+          .where("workflow_id", "=", request.workflowId)
+          .where("status", "=", sourceStatus)
+          .orderBy("id", "asc")
+          .limit(limit)
+          .forUpdate()
+          .skipLocked()
+          .execute();
+        const definitionByKey = await loadDefinitionsForShare(trx, [{
+          uid: request.uid,
+          workflowId: request.workflowId,
+        }]);
+        const definition = definitionByKey.get(definitionKey(request.uid, request.workflowId));
+        const decision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        const targetStillCurrent = request.targetStatus === "suspended"
+          ? decision === "defer"
+          : decision === "execute";
+        if (!targetStillCurrent) {
+          return { hasMore: false, transitioned: 0 };
+        }
+        if (rows.length === 0) {
+          const remaining = await trx.selectFrom(TASK_TABLE).select("id")
+            .where("uid", "=", request.uid)
+            .where("workflow_id", "=", request.workflowId)
+            .where("status", "=", sourceStatus)
+            .limit(1)
+            .executeTakeFirst();
+          return { hasMore: remaining !== undefined, transitioned: 0 };
+        }
+        const update = await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: request.targetStatus,
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", rows.map(row => row.id))
+          .where("status", "=", sourceStatus)
+          .executeTakeFirstOrThrow();
+        return {
+          hasMore: rows.length === limit,
+          transitioned: Number(update.numUpdatedRows),
+        };
+      });
+
+      if (result.hasMore) {
+        await this.db.updateTable(TASK_TRANSITION_TABLE).set({
+          attempt: 0,
+          last_error_code: null,
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.now,
+          status: "pending",
+        }).where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+      } else {
+        await this.db.deleteFrom(TASK_TRANSITION_TABLE)
+          .where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+      }
+      return { claimed: true, ...result };
+    } catch (error) {
+      await this.db.updateTable(TASK_TRANSITION_TABLE).set({
+        last_error_code: getTaskTransitionErrorCode(error),
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        status: "pending",
+      }).where("id", "=", request.id)
+        .where("transition_version", "=", request.transitionVersion)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirst();
+      throw error;
+    }
   }
 
   async prepareCapabilityExecution(
@@ -3801,32 +3914,77 @@ async function loadDefinitionsForShare(
   ]));
 }
 
-async function loadDefinitions(
-  trx: RuntimeTransaction,
-  keys: Array<{ uid: number; workflowId: string }>,
-) {
-  if (keys.length === 0) return new Map<string, { biz_status: number; runtime_status: string }>();
-  const grouped = new Map<number, Set<string>>();
-  for (const key of keys) {
-    const workflowIds = grouped.get(key.uid) ?? new Set<string>();
-    workflowIds.add(key.workflowId);
-    grouped.set(key.uid, workflowIds);
-  }
-  const rows = await trx.selectFrom("xy_wap_embed_workflow_definition")
-    .select(["biz_status", "id", "runtime_status", "uid"])
-    .where(eb => eb.or([...grouped.entries()].map(([uid, workflowIds]) => eb.and([
-      eb("uid", "=", uid),
-      eb("id", "in", [...workflowIds]),
-    ]))))
-    .execute();
-  return new Map(rows.map(row => [
-    definitionKey(normalizeTenantId(row.uid), normalizeId(row.id)),
-    { biz_status: row.biz_status, runtime_status: row.runtime_status },
-  ]));
-}
-
 function definitionKey(uid: number, workflowId: string) {
   return `${uid}:${workflowId}`;
+}
+
+type MysqlWorkflowTaskTransitionRequest = {
+  id: string;
+  targetStatus: "pending" | "suspended";
+  transitionVersion: number;
+  uid: number;
+  workflowId: string;
+};
+
+async function claimMysqlWorkflowTaskTransition(
+  db: Kysely<WorkflowDatabase>,
+  input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    now: Date;
+  },
+): Promise<MysqlWorkflowTaskTransitionRequest | null> {
+  return db.transaction().execute(async (trx) => {
+    const pending = await trx.selectFrom(TASK_TRANSITION_TABLE).selectAll()
+      .where("status", "=", "pending")
+      .where("next_attempt_at", "<=", input.now)
+      .orderBy("id", "asc")
+      .limit(1)
+      .forUpdate()
+      .skipLocked()
+      .execute();
+    const expired = await trx.selectFrom(TASK_TRANSITION_TABLE).selectAll()
+      .where("status", "=", "leased")
+      .where("lease_expires_at", "<=", input.now)
+      .orderBy("id", "asc")
+      .limit(1)
+      .forUpdate()
+      .skipLocked()
+      .execute();
+    const row = mergeRowsByNumericId([...pending, ...expired], 1)[0];
+    if (!row) return null;
+    await trx.updateTable(TASK_TRANSITION_TABLE).set({
+      attempt: sql<number>`attempt + 1`,
+      last_error_code: null,
+      lease_expires_at: input.leaseExpiresAt,
+      lease_owner: input.leaseOwner,
+      status: "leased",
+    }).where("id", "=", row.id)
+      .where("transition_version", "=", row.transition_version)
+      .executeTakeFirstOrThrow();
+    return mapTaskTransitionRequest(row);
+  });
+}
+
+function mapTaskTransitionRequest(
+  row: Selectable<WorkflowTaskTransitionTable>,
+): MysqlWorkflowTaskTransitionRequest {
+  if (row.target_status !== "pending" && row.target_status !== "suspended") {
+    throw new Error(`Unknown Workflow Task transition target status: ${row.target_status}`);
+  }
+  return {
+    id: normalizeId(row.id),
+    targetStatus: row.target_status,
+    transitionVersion: row.transition_version,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function getTaskTransitionErrorCode(error: unknown) {
+  if (typeof error === "object" && error !== null && "code" in error
+    && typeof error.code === "string") return error.code.slice(0, 128);
+  return "WORKFLOW_TASK_TRANSITION_FAILED";
 }
 
 function uniqueSortedIds(values: DatabaseId[]) {
@@ -4497,34 +4655,50 @@ export async function transitionMysqlWorkflowInferenceJobs(
     .executeTakeFirstOrThrow();
 }
 
-export async function resumeMysqlWorkflowTasks(
+export async function enqueueMysqlWorkflowTaskTransitions(
   db: RuntimeDbExecutor,
-  input: { uid: number; workflowIds: string[] },
+  input: {
+    requestedAt: Date;
+    targetStatus: "pending" | "suspended";
+    uid: number;
+    workflowIds: string[];
+  },
 ) {
   if (input.workflowIds.length === 0) return 0;
-  const result = await db.updateTable(TASK_TABLE).set({
+  const result = await db.insertInto(TASK_TRANSITION_TABLE).values(input.workflowIds.map(workflowId => ({
+    attempt: 0,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    next_attempt_at: input.requestedAt,
     status: "pending",
-    task_version: sql<number>`task_version + 1`,
-  }).where("uid", "=", input.uid)
-    .where("workflow_id", "in", input.workflowIds)
-    .where("status", "=", "suspended")
-    .executeTakeFirstOrThrow();
-  return Number(result.numUpdatedRows);
+    target_status: input.targetStatus,
+    transition_version: 1,
+    uid: input.uid,
+    workflow_id: workflowId,
+  }))).onDuplicateKeyUpdate({
+    attempt: 0,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    next_attempt_at: input.requestedAt,
+    status: "pending",
+    target_status: input.targetStatus,
+    transition_version: sql<number>`transition_version + 1`,
+  }).executeTakeFirstOrThrow();
+  return Number(result.numInsertedOrUpdatedRows ?? input.workflowIds.length);
 }
 
-export async function suspendMysqlWorkflowTasks(
+export async function clearMysqlWorkflowTaskTransitions(
   db: RuntimeDbExecutor,
   input: { uid: number; workflowIds: string[] },
 ) {
   if (input.workflowIds.length === 0) return 0;
-  const result = await db.updateTable(TASK_TABLE).set({
-    status: "suspended",
-    task_version: sql<number>`task_version + 1`,
-  }).where("uid", "=", input.uid)
+  const result = await db.deleteFrom(TASK_TRANSITION_TABLE)
+    .where("uid", "=", input.uid)
     .where("workflow_id", "in", input.workflowIds)
-    .where("status", "=", "pending")
-    .executeTakeFirstOrThrow();
-  return Number(result.numUpdatedRows);
+    .executeTakeFirst();
+  return Number(result.numDeletedRows);
 }
 
 function mapEventSubscription(

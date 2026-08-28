@@ -182,6 +182,22 @@ export interface WorkflowTaskTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowTaskTransitionTable {
+  attempt: number;
+  create_time: GeneratedDate;
+  id: Generated<DatabaseId>;
+  last_error_code: string | null;
+  lease_expires_at: NullableDate;
+  lease_owner: string | null;
+  next_attempt_at: DatabaseDate;
+  status: string;
+  target_status: string;
+  transition_version: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowNodeExecutionTable {
   completed_at: NullableDate;
   create_time: GeneratedDate;
@@ -384,5 +400,6 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_revision_cleanup: WorkflowRevisionCleanupTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;
   xy_wap_embed_workflow_task: WorkflowTaskTable;
+  xy_wap_embed_workflow_task_transition: WorkflowTaskTransitionTable;
   xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
 }

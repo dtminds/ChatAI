@@ -425,6 +425,16 @@ export type WorkflowSchedulerRepository = {
     limit: number;
     now: Date;
   }): Promise<{ cancelled: number; dispatched: number; suspended: number }>;
+  processTaskStatusTransitionBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<{
+    claimed: boolean;
+    hasMore: boolean;
+    transitioned: number;
+  }>;
 };
 
 export type WorkflowOutboxRepository = {

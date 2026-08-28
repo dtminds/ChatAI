@@ -121,6 +121,7 @@ describe("database schema document", () => {
       "xy_wap_embed_workflow_trigger_binding",
       "xy_wap_embed_workflow_run",
       "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_task_transition",
       "xy_wap_embed_workflow_event_subscription",
       "xy_wap_embed_workflow_inference_job",
       "xy_wap_embed_workflow_node_execution",
@@ -139,6 +140,7 @@ describe("database schema document", () => {
       expect(table).toContain("PRIMARY KEY (id)");
     }
     expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_inference_job");
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_task_transition");
   });
 
   it("keeps workflow deletion separate from its runtime status", () => {
@@ -250,6 +252,31 @@ describe("database schema document", () => {
     );
     expect(migration).toContain(
       "ADD KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id)",
+    );
+  });
+
+  it("defines a leased and versioned Workflow Task transition queue", () => {
+    const transitionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_task_transition",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Scheduler 全局到期索引",
+    );
+
+    expect(transitionTable).toContain(
+      "UNIQUE KEY uk_workflow_task_transition_workflow (uid, workflow_id)",
+    );
+    expect(transitionTable).toContain(
+      "KEY idx_workflow_task_transition_pending (status, next_attempt_at, id)",
+    );
+    expect(transitionTable).toContain(
+      "KEY idx_workflow_task_transition_lease (status, lease_expires_at, id)",
+    );
+    expect(transitionTable).toContain("transition_version INT UNSIGNED NOT NULL DEFAULT 1");
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition",
     );
   });
 

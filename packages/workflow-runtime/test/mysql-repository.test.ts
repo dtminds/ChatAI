@@ -8,6 +8,28 @@ import {
 } from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
+  it("stops definitions without synchronously scanning active Runs on entitlement loss", async () => {
+    const db = createEntitlementLossDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.applyEntitlementLoss({
+      opSubUserId: "19",
+      transitionedAt: new Date("2026-07-10T00:00:00.000Z"),
+      transition: "stop",
+      uid: 9,
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ affectedDefinitions: 1 });
+
+    expect(db.updates.xy_wap_embed_workflow_definition).toMatchObject({
+      runtime_status: "stopped",
+      status_reason: "entitlement_revoked",
+    });
+    expect(db.executedSelectTables).not.toContain("xy_wap_embed_workflow_run");
+    expect(db.updates.xy_wap_embed_workflow_run).toBeUndefined();
+    expect(db.updates.xy_wap_embed_workflow_task).toBeUndefined();
+    expect(db.updates.xy_wap_embed_workflow_outbox).toBeUndefined();
+  });
+
   it("locks the run and task before creating a capability execution ledger", async () => {
     const db = createCapabilityExecutionDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -963,6 +985,50 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task", "outbox"]);
   });
 });
+
+function createEntitlementLossDbMock() {
+  const updates: Record<string, Record<string, unknown>> = {};
+  const db = {
+    executedSelectTables: [] as string[],
+    updates,
+    deleteFrom() {
+      const builder = {
+        where() { return builder; },
+        async executeTakeFirst() { return { numDeletedRows: 0n }; },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          db.executedSelectTables.push(table);
+          return table === "xy_wap_embed_workflow_definition" ? [{ id: "31" }] : [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return { execute: (operation: (trx: typeof db) => unknown) => operation(db) };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set(values: Record<string, unknown>) {
+          updates[table] = values;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
 
 function createInferenceRecoveryRaceDbMock(input: {
   candidateIds?: string[][];

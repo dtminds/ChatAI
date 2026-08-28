@@ -885,6 +885,12 @@ export function runWorkflowRuntimeRepositoryContract(
       .resolves.toMatchObject({ cancelled: 1 });
     await expect(harness.repository.findEventSubscriptionByTask(9, waiting.task.id))
       .resolves.toMatchObject({ status: "cancelled" });
+    await expect(harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    })).resolves.toEqual([]);
   });
 
   it("reconciles an active subscription whose Run is already terminal", async () => {

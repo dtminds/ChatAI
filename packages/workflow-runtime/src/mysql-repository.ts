@@ -96,7 +96,6 @@ const ACTIVE_TASK_STATUSES = [
   "running",
 ] as const;
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
-const ENTITLEMENT_RUN_CANCEL_BATCH_SIZE = WORKFLOW_MYSQL_WRITE_CHUNK_SIZE;
 const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;
 type RuntimeDbExecutor = Kysely<WorkflowDatabase> | RuntimeTransaction;
@@ -152,13 +151,6 @@ export class MysqlWorkflowRuntimeRepository implements
       return ids;
     });
     if (workflowIds.length === 0) return { affectedDefinitions: 0 };
-    if (input.transition !== "pause") {
-      await cancelMysqlEntitlementRuns(this.db, {
-        now: input.transitionedAt,
-        uid: input.uid,
-        workflowIds,
-      });
-    }
     return { affectedDefinitions: workflowIds.length };
   }
 
@@ -3679,6 +3671,16 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("run_id", "in", runIds)
         .where("status", "in", ACTIVE_TASK_STATUSES)
         .executeTakeFirst();
+      await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("aggregate_type", "=", "workflow_task")
+        .where("aggregate_id", "in", trx.selectFrom(TASK_TABLE)
+          .select("id")
+          .where("run_id", "in", runIds))
+        .where("status", "in", ["pending", "leased", "republished"])
+        .executeTakeFirst();
       await cancelEventSubscriptions(trx, runIds);
       await cancelInferenceJobs(trx, runIds);
       await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
@@ -3714,78 +3716,6 @@ export class MysqlWorkflowRuntimeRepository implements
     const row = await this.db.selectFrom(TASK_TABLE).selectAll()
       .where("uid", "=", uid).where("id", "=", taskId).executeTakeFirst();
     return row ? mapTask(row) : null;
-  }
-}
-
-export async function cancelMysqlEntitlementRuns(
-  db: Kysely<WorkflowDatabase>,
-  input: {
-    now: Date;
-    uid: number;
-    workflowIds: DatabaseId[];
-  },
-) {
-  if (input.workflowIds.length === 0) return;
-  for (;;) {
-    const cancelled = await db.transaction().execute(async (trx) => {
-      const runs = await trx.selectFrom(RUN_TABLE).select(["id", "workflow_id"])
-        .where("uid", "=", input.uid)
-        .where("workflow_id", "in", input.workflowIds)
-        .where("status", "in", ACTIVE_RUN_STATUSES)
-        .orderBy("id", "asc")
-        .limit(ENTITLEMENT_RUN_CANCEL_BATCH_SIZE)
-        .forUpdate()
-        .execute();
-      const runIds = runs.map(run => run.id);
-      if (runIds.length === 0) return 0;
-      const runUpdate = await trx.updateTable(RUN_TABLE).set({
-        completed_at: input.now,
-        lock_version: sql<number>`lock_version + 1`,
-        next_execute_at: null,
-        status: "cancelled",
-        terminal_reason: "entitlement_revoked",
-      }).where("id", "in", runIds)
-        .where("status", "in", ACTIVE_RUN_STATUSES)
-        .executeTakeFirstOrThrow();
-      await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
-      if (Number(runUpdate.numUpdatedRows) === runs.length) {
-        await recordWorkflowRunMetrics(trx, runs.map(run => ({
-          kind: "cancelled" as const,
-          occurredAt: input.now,
-          uid: input.uid,
-          workflowId: run.workflow_id,
-        })));
-      }
-      await trx.updateTable(TASK_TABLE).set({
-        lease_expires_at: null,
-        lease_owner: null,
-        status: "cancelled",
-        task_version: sql<number>`task_version + 1`,
-      }).where("run_id", "in", runIds)
-        .where("status", "in", ACTIVE_TASK_STATUSES)
-        .executeTakeFirstOrThrow();
-      await cancelEventSubscriptions(trx, runIds);
-      await cancelInferenceJobs(trx, runIds);
-      await failRunningNodeExecutions(
-        trx,
-        runIds,
-        input.now,
-        "WORKFLOW_ENTITLEMENT_REVOKED",
-        "Workflow entitlement was revoked",
-      );
-      await trx.updateTable(OUTBOX_TABLE).set({
-        lease_expires_at: null,
-        lease_owner: null,
-        status: "dead",
-      }).where("aggregate_type", "=", "workflow_task")
-        .where("aggregate_id", "in", trx.selectFrom(TASK_TABLE)
-          .select("id")
-          .where("run_id", "in", runIds))
-        .where("status", "in", ["pending", "leased", "republished"])
-        .executeTakeFirstOrThrow();
-      return runIds.length;
-    });
-    if (cancelled === 0) return;
   }
 }
 

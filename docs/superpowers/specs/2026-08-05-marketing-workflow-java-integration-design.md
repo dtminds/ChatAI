@@ -518,7 +518,7 @@ Node 只在真正要使用 Workflow 时惰性查询 Java：
 | --- | --- | --- |
 | `entitled = true` | 不自动修改状态 | 按原状态继续；已因权益失效暂停的 Workflow 仍需用户手动或批量恢复 |
 | 无权益且失效不足 7 天 | 同租户、同 Workflow Type 的 `active` Workflow 改为 `paused`；已有 `paused` 保持暂停，`inactive` 保持不变；记录 `statusReason = entitlement_revoked` 和系统审计 | Entry 不创建 Run；Task 不继续执行并保持可重试 |
-| 无权益且失效已满 7 天 | 同租户、同 Workflow Type 的全部 `inactive / paused` Workflow 改为永久 `stopped`；已停止的保持原状态和原因 | 取消未完成 Run、Task、Outbox 和 Wait Subscription |
+| 无权益且失效已满 7 天 | 同租户、同 Workflow Type 的全部 `inactive / paused` Workflow 改为永久 `stopped`；已停止的保持原状态和原因 | 权威 `stopped` 状态提交后当前操作返回；Reconciler 再按有界批次异步取消未完成 Run、Task、Outbox 和 Wait Subscription |
 | Java 查询超时或不可用 | 不修改任何 Workflow 状态 | 创建、发布、启用、恢复失败；Entry 或 Task 暂缓并重试，不在无法确认权益时执行业务动作 |
 
 权益失效不足 7 天时，已有 Run、Task 和 Wait Subscription 全部保留。Wait Event 可以记录事件命中并形成待执行 Task，但 Workflow 处于暂停状态时不得执行后续节点。权益恢复后不自动恢复运行，避免过期任务集中执行；用户明确恢复时再次查询 Java，确认有权益后才能恢复。

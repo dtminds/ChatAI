@@ -705,6 +705,14 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    for (const outbox of this.outbox) {
+      if (selectedIds.has(outbox.payload.runId)
+        && (outbox.status === "pending" || outbox.status === "leased" || outbox.status === "republished")) {
+        outbox.status = "dead";
+        outbox.leaseOwner = null;
+        outbox.leaseExpiresAt = null;
+      }
+    }
     this.cancelEventSubscriptions(selectedIds);
     this.cancelInferenceJobs(selectedIds);
     this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");

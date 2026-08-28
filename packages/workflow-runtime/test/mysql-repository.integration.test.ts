@@ -303,6 +303,130 @@ describe("MySQL workflow runtime repository contract", () => {
     expect(Number(summary.min_version)).toBe(2);
   });
 
+  it("keeps a transition request when SKIP LOCKED leaves source Tasks behind", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const now = new Date("2099-01-01T00:04:00+08:00");
+    await database.updateTable("xy_wap_embed_workflow_definition")
+      .set({ runtime_status: "paused" })
+      .where("uid", "=", 9)
+      .where("id", "=", "31")
+      .executeTakeFirstOrThrow();
+    await database.insertInto("xy_wap_embed_workflow_task").values([
+      {
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: "30001",
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: "wait-locked",
+        node_kind: "wait",
+        revision: 1,
+        run_id: "40001",
+        sequence: 1,
+        shard_id: 1,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      },
+      {
+        attempt: 0,
+        bucket_time: now,
+        create_time: now,
+        due_at: now,
+        id: "30002",
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        node_id: "wait-unlocked",
+        node_kind: "wait",
+        revision: 1,
+        run_id: "40002",
+        sequence: 1,
+        shard_id: 2,
+        status: "pending",
+        task_type: "wait",
+        task_version: 1,
+        uid: 9,
+        update_time: now,
+        workflow_id: "31",
+      },
+    ]).executeTakeFirstOrThrow();
+    await enqueueMysqlWorkflowTaskTransitions(database, {
+      requestedAt: now,
+      targetStatus: "suspended",
+      uid: 9,
+      workflowIds: ["31"],
+    });
+
+    let releaseLockedTask!: () => void;
+    const lockedTaskCanFinish = new Promise<void>(resolve => {
+      releaseLockedTask = resolve;
+    });
+    let lockedTaskAcquired!: () => void;
+    const lockedTaskIsAcquired = new Promise<void>(resolve => {
+      lockedTaskAcquired = resolve;
+    });
+    const lockTask = database.transaction().execute(async trx => {
+      await trx.selectFrom("xy_wap_embed_workflow_task")
+        .select("id")
+        .where("id", "=", "30001")
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      lockedTaskAcquired();
+      await lockedTaskCanFinish;
+    });
+
+    await lockedTaskIsAcquired;
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    try {
+      await expect(repository.processTaskStatusTransitionBatch({
+        leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
+        leaseOwner: "transition-worker",
+        limit: 2,
+        now,
+      })).resolves.toMatchObject({ claimed: true, hasMore: true, transitioned: 1 });
+
+      await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+        .select("status")
+        .where("uid", "=", 9)
+        .where("workflow_id", "=", "31")
+        .executeTakeFirstOrThrow()).resolves.toEqual({ status: "pending" });
+    } finally {
+      releaseLockedTask();
+      await lockTask;
+    }
+
+    await expect(repository.processTaskStatusTransitionBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:05:00+08:00"),
+      leaseOwner: "transition-worker",
+      limit: 2,
+      now,
+    })).resolves.toMatchObject({ claimed: true, hasMore: false, transitioned: 1 });
+    await expect(database.selectFrom("xy_wap_embed_workflow_task_transition")
+      .select("id")
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .execute()).resolves.toEqual([]);
+
+    const statuses = await database.selectFrom("xy_wap_embed_workflow_task")
+      .select(["id", "status"])
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .where("id", "in", ["30001", "30002"])
+      .orderBy("id", "asc")
+      .execute();
+    expect(statuses).toEqual([
+      { id: "30001", status: "suspended" },
+      { id: "30002", status: "suspended" },
+    ]);
+  });
+
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const now = new Date("2099-01-01T00:02:00+08:00");

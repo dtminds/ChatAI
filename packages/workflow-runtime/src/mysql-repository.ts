@@ -1181,26 +1181,29 @@ export class MysqlWorkflowRuntimeRepository implements
         if (!targetStillCurrent) {
           return { hasMore: false, transitioned: 0 };
         }
-        if (rows.length === 0) {
-          const remaining = await trx.selectFrom(TASK_TABLE).select("id")
+        let transitioned = 0;
+        if (rows.length > 0) {
+          const update = await trx.updateTable(TASK_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: request.targetStatus,
+            task_version: sql<number>`task_version + 1`,
+          }).where("id", "in", rows.map(row => row.id))
+            .where("status", "=", sourceStatus)
+            .executeTakeFirstOrThrow();
+          transitioned = Number(update.numUpdatedRows);
+        }
+        // SKIP LOCKED can return a short batch while locked source rows remain.
+        const hasMore = rows.length === limit
+          || await trx.selectFrom(TASK_TABLE).select("id")
             .where("uid", "=", request.uid)
             .where("workflow_id", "=", request.workflowId)
             .where("status", "=", sourceStatus)
             .limit(1)
-            .executeTakeFirst();
-          return { hasMore: remaining !== undefined, transitioned: 0 };
-        }
-        const update = await trx.updateTable(TASK_TABLE).set({
-          lease_expires_at: null,
-          lease_owner: null,
-          status: request.targetStatus,
-          task_version: sql<number>`task_version + 1`,
-        }).where("id", "in", rows.map(row => row.id))
-          .where("status", "=", sourceStatus)
-          .executeTakeFirstOrThrow();
+            .executeTakeFirst() !== undefined;
         return {
-          hasMore: rows.length === limit,
-          transitioned: Number(update.numUpdatedRows),
+          hasMore,
+          transitioned,
         };
       });
 

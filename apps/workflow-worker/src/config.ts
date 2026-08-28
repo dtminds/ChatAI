@@ -58,7 +58,6 @@ export type WorkflowWorkerConfig = {
     retryDelayMs: number;
     runRetentionDays: number;
     schedulerIntervalMs: number;
-    shardIds: number[];
     taskOutboxRetentionDays: number;
   };
   subscriptionType: "Shared";
@@ -301,7 +300,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         1_000,
         "WORKFLOW_SCHEDULER_INTERVAL_MS",
       ),
-      shardIds: parseShardIds(env.WORKFLOW_SHARD_IDS, nodeEnvironment, roles.has("scheduler")),
       taskOutboxRetentionDays: WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
     },
     subscriptionType: "Shared",
@@ -392,27 +390,6 @@ function parseConsumerConcurrency(
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return parseInteger(value, 10, name, 1_000);
-}
-
-function parseShardIds(
-  value: string | undefined,
-  nodeEnvironment: string | undefined,
-  schedulerEnabled: boolean,
-) {
-  const normalized = optionalValue(value);
-  if (nodeEnvironment === "production" && schedulerEnabled && !normalized) {
-    throw new Error("Missing required environment variable: WORKFLOW_SHARD_IDS");
-  }
-  if (!normalized) return Array.from({ length: 256 }, (_, index) => index);
-  const values = normalized.split(",").map(item => item.trim());
-  if (values.some(value => value.length === 0)) {
-    throw new Error("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
-  }
-  const shardIds = [...new Set(values.map(Number))];
-  if (shardIds.length === 0 || shardIds.some(id => !Number.isInteger(id) || id < 0 || id > 255)) {
-    throw new Error("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
-  }
-  return shardIds.sort((first, second) => first - second);
 }
 
 function requireValue(env: NodeJS.ProcessEnv, name: string) {

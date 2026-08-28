@@ -158,7 +158,6 @@ export async function startWorkflowWorkerRuntime(input: {
           limit: input.config.runtime.batchSize,
           now: now(),
           repository: input.schedulerRepository,
-          shardIds: input.config.runtime.shardIds,
         })));
     }
     if (input.config.roles.has("inference")) {

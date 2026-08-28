@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { Kysely, MysqlDialect } from "kysely";
+import { Kysely, MysqlDialect, sql, type Transaction } from "kysely";
 import mysql from "mysql2";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -145,6 +145,83 @@ describe("MySQL workflow runtime repository contract", () => {
         });
       },
     };
+  });
+
+  it("claims global due Tasks concurrently without locking their shared Definition", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const dueAt = new Date("2099-01-01T00:01:00+08:00");
+    const task = (input: { id: string; runId: string; shardId: number }) => ({
+      attempt: 0,
+      bucket_time: new Date("2099-01-01T00:01:00+08:00"),
+      create_time: new Date("2099-01-01T00:00:00+08:00"),
+      due_at: dueAt,
+      id: input.id,
+      last_error_code: null,
+      lease_expires_at: null,
+      lease_owner: null,
+      node_id: `wait-${input.id}`,
+      node_kind: "wait",
+      revision: 1,
+      run_id: input.runId,
+      sequence: 1,
+      shard_id: input.shardId,
+      status: "pending",
+      task_type: "wait",
+      task_version: 1,
+      uid: 9,
+      update_time: new Date("2099-01-01T00:00:00+08:00"),
+      workflow_id: "31",
+    });
+    await database.insertInto("xy_wap_embed_workflow_task").values([
+      task({ id: "1001", runId: "2001", shardId: 7 }),
+      task({ id: "1002", runId: "2002", shardId: 255 }),
+    ]).executeTakeFirstOrThrow();
+    const claimOneDueTask = (trx: Transaction<WorkflowDatabase>) => trx
+      .selectFrom("xy_wap_embed_workflow_task as task")
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+      .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "task.uid")
+        .onRef("definition.id", "=", "task.workflow_id"))
+      .select("task.id")
+      .where("task.status", "=", "pending")
+      .where("task.task_type", "!=", "inference")
+      .where("task.bucket_time", "<=", dueAt)
+      .where("task.due_at", "<=", dueAt)
+      .where(eb => eb.or([
+        eb("definition.id", "is", null),
+        eb("definition.biz_status", "=", 0),
+        eb("definition.runtime_status", "!=", "paused"),
+      ]))
+      .orderBy("task.bucket_time", "asc")
+      .orderBy("task.due_at", "asc")
+      .orderBy("task.id", "asc")
+      .limit(1)
+      .forUpdate("task")
+      .skipLocked()
+      .execute();
+
+    let markFirstClaimed!: () => void;
+    let releaseFirstClaim!: () => void;
+    const firstClaimed = new Promise<void>(resolve => { markFirstClaimed = resolve; });
+    const firstCanFinish = new Promise<void>(resolve => { releaseFirstClaim = resolve; });
+    const firstClaim = database.transaction().execute(async trx => {
+      const rows = await claimOneDueTask(trx);
+      markFirstClaimed();
+      await firstCanFinish;
+      return rows;
+    });
+
+    await firstClaimed;
+    let secondRows: Array<{ id: string }> = [];
+    try {
+      secondRows = await database.transaction().execute(claimOneDueTask);
+    } finally {
+      releaseFirstClaim();
+    }
+    const firstRows = await firstClaim;
+
+    expect(firstRows).toEqual([{ id: "1001" }]);
+    expect(secondRows).toEqual([{ id: "1002" }]);
   });
 
   it("claims the global lowest Revision cleanup IDs across pending and expired leases", async () => {

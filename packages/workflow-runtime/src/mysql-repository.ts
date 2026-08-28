@@ -1023,31 +1023,13 @@ export class MysqlWorkflowRuntimeRepository implements
 
   async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
     const limit = boundBatchLimit(input.limit);
-    if (limit <= 0 || input.shardIds?.length === 0) {
-      return { cancelled: 0, deferred: 0, dispatched: 0 };
+    if (limit <= 0) {
+      return { cancelled: 0, dispatched: 0 };
     }
     return this.db.transaction().execute(async (trx) => {
-      let deferredQuery = trx.selectFrom(`${TASK_TABLE} as task`)
-        .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
-          .onRef("definition.uid", "=", "task.uid")
-          .onRef("definition.id", "=", "task.workflow_id"))
-        .select("task.id")
-        .where("task.status", "=", "pending")
-        .where("task.task_type", "!=", "inference")
-        .where("task.bucket_time", "<=", floorToMinute(input.now))
-        .where("task.due_at", "<=", input.now)
-        .where("definition.biz_status", "=", 1)
-        .where("definition.runtime_status", "=", "paused")
-        .orderBy("task.bucket_time", "asc")
-        .orderBy("task.due_at", "asc")
-        .orderBy("task.id", "asc")
-        .limit(limit);
-      if (input.shardIds) {
-        deferredQuery = deferredQuery.where("task.shard_id", "in", input.shardIds);
-      }
-      const deferred = (await deferredQuery.execute()).length;
-
-      let query = trx.selectFrom(`${TASK_TABLE} as task`)
+      // MySQL otherwise prefers the shorter reconcile index and filesorts the due queue.
+      const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
+        .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
         .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
           .onRef("definition.uid", "=", "task.uid")
           .onRef("definition.id", "=", "task.workflow_id"))
@@ -1065,11 +1047,10 @@ export class MysqlWorkflowRuntimeRepository implements
         .orderBy("task.due_at", "asc")
         .orderBy("task.id", "asc")
         .limit(limit)
-        .forUpdate()
-        .skipLocked();
-      if (input.shardIds) query = query.where("task.shard_id", "in", input.shardIds);
-      const rows = await query.execute();
-      const result = { cancelled: 0, deferred, dispatched: 0 };
+        .forUpdate("task")
+        .skipLocked()
+        .execute();
+      const result = { cancelled: 0, dispatched: 0 };
       if (rows.length === 0) return result;
       const tasks = rows.map(mapTask);
       const definitionByKey = await loadDefinitionsForShare(trx, tasks.map(task => ({
@@ -1086,10 +1067,7 @@ export class MysqlWorkflowRuntimeRepository implements
               runtimeStatus: parseRuntimeStatus(definition.runtime_status),
             })
           : "cancel";
-        if (decision === "defer") {
-          result.deferred += 1;
-          continue;
-        }
+        if (decision === "defer") continue;
         if (decision === "cancel") cancelled.push(task);
         else dispatched.push(task);
       }

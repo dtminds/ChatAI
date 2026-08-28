@@ -1588,29 +1588,24 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
-    const shardIds = input.shardIds ? new Set(input.shardIds) : null;
     const candidates = this.tasks
       .filter(task => task.status === "pending"
         && task.taskType !== "inference"
-        && task.dueAt <= input.now
-        && (!shardIds || shardIds.has(task.shardId)))
+        && task.dueAt <= input.now)
       .sort((first, second) => compareDateAndId(
         first.dueAt,
         first.id,
         second.dueAt,
         second.id,
       ));
-    const result = { cancelled: 0, deferred: 0, dispatched: 0 };
+    const result = { cancelled: 0, dispatched: 0 };
     for (const task of candidates) {
       if (result.cancelled + result.dispatched >= Math.max(0, input.limit)) break;
       const boundary = this.resolveWorkflowBoundary
         ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
         : { bizStatus: 1 as const, runtimeStatus: "active" as const };
       const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
-      if (decision === "defer") {
-        if (result.deferred < Math.max(0, input.limit)) result.deferred += 1;
-        continue;
-      }
+      if (decision === "defer") continue;
       task.taskVersion += 1;
       if (decision === "cancel") {
         task.status = "cancelled";

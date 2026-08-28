@@ -132,12 +132,11 @@ describe("workflow worker observability", () => {
     logWorkflowRoleHeartbeat(logger, "scheduler", {
       completedAt: new Date("2026-07-12T00:00:00.000Z"),
       durationMs: 12,
-      result: { cancelled: 0, deferred: 0, dispatched: 0 },
+      result: { cancelled: 0, dispatched: 0 },
     });
 
     expect(logger.debug).toHaveBeenCalledWith({
       cancelled: 0,
-      deferred: 0,
       dispatched: 0,
       durationMs: 12,
       event: "workflow.worker.role.idle",
@@ -153,7 +152,7 @@ describe("workflow worker observability", () => {
     logWorkflowRoleHeartbeat(logger, "scheduler", {
       completedAt: new Date("2026-07-12T00:00:00.000Z"),
       durationMs: 18,
-      result: { cancelled: 0, deferred: 0, dispatched: 3 },
+      result: { cancelled: 0, dispatched: 3 },
     });
     logWorkflowRoleHeartbeat(logger, "outbox", {
       completedAt: new Date("2026-07-12T00:00:01.000Z"),
@@ -200,7 +199,7 @@ describe("workflow worker observability", () => {
     logWorkflowRoleHeartbeat(logger, "scheduler", {
       completedAt: new Date("2026-07-12T00:00:00.000Z"),
       durationMs: 12,
-      result: { cancelled: 2, deferred: 0, dispatched: 0 },
+      result: { cancelled: 2, dispatched: 0 },
     });
     logWorkflowRoleHeartbeat(logger, "reconciler", {
       completedAt: new Date("2026-07-12T00:00:01.000Z"),
@@ -210,7 +209,6 @@ describe("workflow worker observability", () => {
 
     expect(logger.info).toHaveBeenNthCalledWith(1, {
       cancelled: 2,
-      deferred: 0,
       dispatched: 0,
       durationMs: 12,
       event: "workflow.worker.role.completed",

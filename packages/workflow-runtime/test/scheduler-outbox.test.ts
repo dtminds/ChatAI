@@ -10,8 +10,8 @@ describe("workflow scheduler repository", () => {
     const created = await createWaitingTask(repository);
 
     const [first, second] = await Promise.all([
-      repository.dispatchDueTasks({ limit: 10, now: dueAt, shardIds: [7] }),
-      repository.dispatchDueTasks({ limit: 10, now: dueAt, shardIds: [7] }),
+      repository.dispatchDueTasks({ limit: 10, now: dueAt }),
+      repository.dispatchDueTasks({ limit: 10, now: dueAt }),
     ]);
 
     expect(first.dispatched + second.dispatched).toBe(1);
@@ -41,7 +41,7 @@ describe("workflow scheduler repository", () => {
 
     const result = await repository.dispatchDueTasks({ limit: 10, now: dueAt });
 
-    expect(result).toMatchObject({ cancelled: 0, deferred: 1, dispatched: 0 });
+    expect(result).toEqual({ cancelled: 0, dispatched: 0 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "pending",
       taskVersion: 3,
@@ -59,7 +59,7 @@ describe("workflow scheduler repository", () => {
 
     const result = await repository.dispatchDueTasks({ limit: 10, now: dueAt });
 
-    expect(result).toMatchObject({ cancelled: 1, deferred: 0, dispatched: 0 });
+    expect(result).toEqual({ cancelled: 1, dispatched: 0 });
     expect(repository.snapshot().tasks.find(task => task.id === created.nextTask!.id)).toMatchObject({
       status: "cancelled",
       taskVersion: 4,

@@ -228,6 +228,25 @@ describe("database schema document", () => {
     );
   });
 
+  it("indexes the global Workflow Task due queue without a shard prefix", () => {
+    const taskTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_task");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Scheduler 全局到期索引",
+    );
+
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_schedule (status, bucket_time, due_at, id)",
+    );
+    expect(taskTable).not.toContain(
+      "KEY idx_workflow_task_schedule (shard_id, status, bucket_time, due_at, id)",
+    );
+    expect(migration).toContain("DROP KEY idx_workflow_task_schedule");
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id)",
+    );
+  });
+
   it("keeps the indexes required by bounded workflow history cleanup", () => {
     const nodeExecutionTable = extractCreateTable(
       schemaSql,

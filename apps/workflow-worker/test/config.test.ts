@@ -235,7 +235,6 @@ describe("workflow worker config", () => {
       schedulerIntervalMs: 1_000,
       taskOutboxRetentionDays: 30,
     });
-    expect(config.runtime.shardIds).toHaveLength(256);
   });
 
   it("requires explicit Entry and Task concurrency in production", () => {
@@ -253,26 +252,19 @@ describe("workflow worker config", () => {
     })).consumerConcurrency).toEqual({ entry: 20, task: 30 });
   });
 
-  it("requires explicit roles and Scheduler shard ownership in production", () => {
+  it("requires explicit roles in production", () => {
     expect(() => loadWorkflowWorkerConfig(productionEnv({
       WORKFLOW_WORKER_ROLES: undefined,
     }))).toThrow("Missing required environment variable: WORKFLOW_WORKER_ROLES");
-    expect(() => loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_SHARD_IDS: undefined,
-    }))).toThrow("Missing required environment variable: WORKFLOW_SHARD_IDS");
     expect(loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_SHARD_IDS: undefined,
       WORKFLOW_WORKER_ROLES: "entry-consumer,task-consumer",
     })).roles).toEqual(new Set(["entry-consumer", "task-consumer"]));
   });
 
-  it("rejects empty roles and malformed shard lists", () => {
+  it("rejects empty roles", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_WORKER_ROLES: ",",
     }))).toThrow("WORKFLOW_WORKER_ROLES must contain at least one role");
-    expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_SHARD_IDS: "0,,1",
-    }))).toThrow("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
   });
 
   it.each(["0", "-1", "1.5", "1001"])(
@@ -387,7 +379,6 @@ function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-prod-dlq",
     WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-prod",
     WORKFLOW_ENTRY_TOPIC: "topic-workflow-entry-prod",
-    WORKFLOW_SHARD_IDS: "0,1",
     WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-task-prod-dlq",
     WORKFLOW_TASK_SUBSCRIPTION: "consumer-chatai-worker-task-prod",
     WORKFLOW_TASK_TOPIC: "topic-workflow-task-prod",

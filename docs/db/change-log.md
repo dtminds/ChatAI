@@ -1,5 +1,18 @@
 # Database Change Log
 
+## 2026-08-28 Workflow Scheduler 全局到期索引
+
+- Scheduler 通过全局到期队列认领 `pending` Task，不再按应用逻辑分片过滤。
+- 多 Scheduler 副本使用 `FOR UPDATE OF task SKIP LOCKED` 并行认领，Definition 不参与候选行锁定。
+- 删除每轮重复读取暂停 Task 的截断计数查询；暂停 Task 保持 `pending`，恢复后重新进入全局队列。
+- `shard_id` 继续随 Run 和 Task 持久化，保留指标分片和未来物理路由能力。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_task
+  DROP KEY idx_workflow_task_schedule,
+  ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id);
+```
+
 ## 2026-08-28 Workflow Task 租约恢复索引
 
 - Task 租约恢复固定先筛选 `running` 状态，再按租约过期时间和 ID 顺序读取有界批次。

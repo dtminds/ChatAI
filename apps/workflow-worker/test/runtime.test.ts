@@ -466,7 +466,7 @@ function createResources() {
     destroy: vi.fn(async () => {}),
   };
   const loopClose = vi.fn(async () => {});
-  const scheduler = vi.fn(async () => ({ cancelled: 0, deferred: 0, dispatched: 0 }));
+  const scheduler = vi.fn(async () => ({ cancelled: 0, dispatched: 0 }));
   const inferenceWorker = vi.fn(async () => ({ claimed: 0, failed: 0, retried: 0, succeeded: 0 }));
   const outboxPublisher = vi.fn(async () => ({ claimed: 0, failed: 0, sent: 0 }));
   const reconciler = vi.fn(async () => ({
@@ -650,7 +650,6 @@ function config(
       retryDelayMs: 5_000,
       runRetentionDays: 180,
       schedulerIntervalMs: 1_000,
-      shardIds: Array.from({ length: 256 }, (_, index) => index),
       taskOutboxRetentionDays: 30,
     },
     subscriptionType: "Shared" as const,

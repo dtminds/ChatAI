@@ -638,7 +638,9 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     await expect(repository.dispatchDueTasks({
       limit: 10,
       now: new Date("2026-07-10T00:01:00.000Z"),
-    })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 2 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 2 });
+    expect(db.scheduleIndexHints).toBe(1);
+    expect(db.taskLockTargets).toEqual(["task"]);
     expect(db.definitionShareLocks).toBe(1);
     expect(db.taskUpdates).toBe(1);
     expect(db.outboxInsertSizes).toEqual([2]);
@@ -654,10 +656,9 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       now: new Date("2026-07-10T00:01:00.000Z"),
     })).resolves.toEqual({
       cancelled: 0,
-      deferred: 0,
       dispatched: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE + overflow,
     });
-    expect(db.claimedLimits).toEqual([WORKFLOW_RUNTIME_BATCH_LIMIT, WORKFLOW_RUNTIME_BATCH_LIMIT]);
+    expect(db.claimedLimits).toEqual([WORKFLOW_RUNTIME_BATCH_LIMIT]);
     expect(db.outboxInsertSizes).toEqual([WORKFLOW_MYSQL_WRITE_CHUNK_SIZE, overflow]);
   });
 
@@ -2310,6 +2311,8 @@ function createDispatchDueTasksDbMock(taskCount = 2) {
     claimedLimits: [] as number[],
     definitionShareLocks: 0,
     outboxInsertSizes: [] as number[],
+    scheduleIndexHints: 0,
+    taskLockTargets: [] as unknown[],
     taskUpdates: 0,
     insertInto(table: string) {
       const builder = {
@@ -2330,11 +2333,19 @@ function createDispatchDueTasksDbMock(taskCount = 2) {
           if (table === "xy_wap_embed_workflow_definition") db.definitionShareLocks += 1;
           return builder;
         },
-        forUpdate() { locked = true; return builder; },
+        forUpdate(target?: unknown) {
+          locked = true;
+          if (table.startsWith("xy_wap_embed_workflow_task")) db.taskLockTargets.push(target);
+          return builder;
+        },
         innerJoin() { return builder; },
         leftJoin() { return builder; },
         limit(value?: number) {
           if (typeof value === "number") db.claimedLimits.push(value);
+          return builder;
+        },
+        modifyFront() {
+          if (table.startsWith("xy_wap_embed_workflow_task")) db.scheduleIndexHints += 1;
           return builder;
         },
         orderBy() { return builder; },

@@ -788,20 +788,20 @@ Java 消息、标签、优惠券和转人工接口必须接受该幂等键，或
 1.0 从第一天写入逻辑分片：
 
 ```text
-shard_id = hash(uid + subjectId) % 256
+shard_id = hash(uid + subjectType + subjectId) % 256
 ```
 
-256 个逻辑分片先映射到同一个执行数据库集群。Scheduler 实例通过数据库租约领取一组逻辑分片，禁止所有实例扫描全局到期索引。
+256 个逻辑分片先映射到同一个执行数据库集群。1.0 保留行上的 `shard_id`，供指标分片和未来物理库路由使用；Scheduler 不通过静态分片列表划分所有权，而是扫描数据库内的全局到期队列。
 
 逻辑分片数不等于物理数据库数。未来扩容时调整逻辑分片到物理库的映射，不改变外部 Run ID 和 Workflow 契约。
 
 ### 12.2 扫描规则
 
-- 只扫描当前实例持有的逻辑分片。
-- 只扫描当前分钟及有限补偿窗口。
-- 使用 Keyset 条件，不使用 OFFSET 深分页。
+- 使用 `(status, bucket_time, due_at, id)` 索引扫描全局到期 Task。
+- 按 `bucket_time, due_at, id` 稳定顺序读取最早到期的有界批次，不使用 OFFSET 深分页。
 - 每批认领数量可配置。
-- 租约使用数据库时间，避免 Worker 本地时钟漂移。
+- 多实例使用 `FOR UPDATE OF task SKIP LOCKED` 领取不同 Task，Definition 不参与候选行锁定。
+- 暂停 Workflow 的 Task 保持 `pending` 且不进入认领批次，恢复后按原到期顺序重新参与调度。
 - 认领后写 Outbox，不直接依赖进程内内存完成投递。
 
 ## 13. 一致性、投递和幂等
@@ -902,7 +902,7 @@ shard_id = hash(uid + subjectId) % 256
 | Worker 在事务提交后、MQ ACK 前崩溃 | MQ 重投，Inbox / Task Version 判定为已处理 |
 | MQ 不可用 | Outbox 积压；业务状态保留，恢复后补投 |
 | 数据库不可用 | Worker 停止确认消息，由 MQ 重试；不得转为内存执行 |
-| Scheduler 崩溃 | 分片租约到期后由其他实例接管 |
+| Scheduler 崩溃 | 其他 Scheduler 实例在下一轮继续扫描全局到期队列 |
 | Outbox Publisher 崩溃 | 未发送记录由其他实例继续扫描 |
 | 下游返回可重试错误 | 写入数据库 Retry Task，ACK 当前 Pulsar 消息，保持同一幂等键 |
 | 下游返回不可重试错误 | Node Execution 和 Run 进入失败，记录业务错误码 |
@@ -955,7 +955,7 @@ Reconciler 至少负责：
 ### 17.2 1.0 扩容顺序
 
 1. 增加 Workflow Worker 副本、Pulsar Partition 和消费并发。
-2. 调整逻辑分片租约和 Scheduler 批大小。
+2. 调整 Scheduler 副本数和批大小；只有全局队列出现经指标验证的索引热点后，才设计带租约和故障转移的动态分片所有权。
 3. 优化数据库索引、表分区和连接池。
 4. 将读查询迁移到只读副本或专用查询投影。
 5. 当单执行集群持续接近写入、索引或存储上限时，将执行面迁移到 TDSQL 分布式版或应用分库。

@@ -799,13 +799,13 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: EVENT_RESUME_AT,
-    })).resolves.toEqual({ cancelled: 0, deferred: 1, dispatched: 0 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 0 });
 
     await harness.setWorkflowRuntimeStatus("active");
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: EVENT_RESUME_AT,
-    })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 1 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 1 });
   });
 
   it("latches only the first Wait Event and removes the subscription from matching", async () => {
@@ -989,7 +989,7 @@ export function runWorkflowRuntimeRepositoryContract(
     await expect(harness.repository.dispatchDueTasks({
       limit: 10,
       now: OUTBOX_RETRY_AT,
-    })).resolves.toEqual({ cancelled: 0, deferred: 0, dispatched: 1 });
+    })).resolves.toEqual({ cancelled: 0, dispatched: 1 });
     const retryOutbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:06:00.000Z"),
       leaseOwner: "publisher-retry",

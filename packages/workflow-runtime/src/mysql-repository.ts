@@ -368,6 +368,7 @@ export class MysqlWorkflowRuntimeRepository implements
             .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
             .where("subject_id", "=", input.subjectId)
             .where("status", "in", ACTIVE_RUN_STATUSES)
+            .orderBy("id", "desc")
             .limit(1)
             .forShare()
             .executeTakeFirst();
@@ -4959,6 +4960,7 @@ function parseRunStatus(value: string): WorkflowRunStatus {
 }
 
 function workflowRunStatusIndexedTable(): typeof RUN_TABLE {
+  // Keep Revision cleanup locks bounded by the active-Run cap; the node index can lock retained terminal Runs before LIMIT.
   // Kysely accepts raw table expressions at runtime but models typed tables as string keys.
   return sql<Selectable<WorkflowRunTable>>`${sql.table(RUN_TABLE)} FORCE INDEX (${sql.id(
     RUN_STATUS_RECORDS_INDEX,

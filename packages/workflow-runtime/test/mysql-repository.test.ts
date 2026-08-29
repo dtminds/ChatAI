@@ -615,6 +615,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       "in",
       ["queued", "running", "waiting"],
     ]);
+    expect(db.runOrderBys).toContainEqual(["id", "desc"]);
     expect(db.guardUpdate).toEqual({ latest_run_id: "5" });
     expect(db.runInsertCount).toBe(0);
   });
@@ -1825,6 +1826,7 @@ function createConcurrentDuplicateRunDbMock(
     runInsertCount: 0,
     runReadCount: 0,
     runShareLockCount: 0,
+    runOrderBys: [] as unknown[][],
     runWhereCalls: [] as unknown[][],
     taskReadLocked: false,
     insertInto(table: string) {
@@ -1853,7 +1855,10 @@ function createConcurrentDuplicateRunDbMock(
           return builder;
         },
         limit() { return builder; },
-        orderBy() { return builder; },
+        orderBy(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run") db.runOrderBys.push(args);
+          return builder;
+        },
         select() { return builder; },
         selectAll() { return builder; },
         where(...args: unknown[]) {

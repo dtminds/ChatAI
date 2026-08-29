@@ -729,7 +729,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   next_execute_at DATETIME NULL COMMENT '下一次执行时间',
   lock_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Run乐观锁版本',
   terminal_reason VARCHAR(255) NULL COMMENT '终止原因',
-  completed_at DATETIME NULL COMMENT '完成时间',
+  completed_at DATETIME NULL COMMENT '终态完成时间；活跃态必须为空，终态必须非空',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),

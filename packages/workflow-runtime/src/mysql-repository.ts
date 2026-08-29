@@ -99,6 +99,8 @@ const ACTIVE_TASK_STATUSES = [
   "dispatched",
   "running",
 ] as const;
+// Run lifecycle invariant: active statuses keep completed_at null, while terminal statuses set it.
+// Any new Run status or status update path must maintain both fields together.
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
 const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;

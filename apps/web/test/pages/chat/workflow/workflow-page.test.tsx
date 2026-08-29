@@ -350,6 +350,10 @@ function renderWorkflowPage(
         element: <WorkflowEditorPage repository={repository} />,
       },
       {
+        path: "/chat/workflows/observability",
+        element: <div>运行观测页</div>,
+      },
+      {
         path: "/chat/workflows/:workflowId",
         element: <WorkflowEditorPage repository={repository} />,
       },
@@ -546,6 +550,50 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("button", { name: "新建 Workflow" })).toBeInTheDocument();
     expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
     expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
+  });
+
+  it("opens the observability page from the list header for observers", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    vi.spyOn(repository, "getTenantOverview").mockImplementation(() => ({
+      activeWorkflowCount: 1,
+      canViewWorkflowObservability: true,
+      recentFailedRunCount: 0,
+      recentSuccessRatePercent: 100,
+      todayRunCount: 1,
+      todayRunCountChangePercent: 0,
+      totalWorkflowCount: 1,
+    }));
+    const { router } = renderWorkflowPage("/chat/workflows", repository);
+
+    const link = await screen.findByRole("link", { name: "运行观测" });
+    expect(link).toHaveAttribute("href", "/chat/workflows/observability");
+    await user.click(link);
+    expect(router.state.location.pathname).toBe("/chat/workflows/observability");
+    expect(screen.getByText("运行观测页")).toBeInTheDocument();
+  });
+
+  it("does not expose ChatAI observability from the embedded Workflow list", async () => {
+    const repository = getWorkflowDraftRepository("sop_embed");
+    vi.spyOn(repository, "getTenantOverview").mockImplementation(() => ({
+      activeWorkflowCount: 1,
+      canViewWorkflowObservability: true,
+      recentFailedRunCount: 0,
+      recentSuccessRatePercent: 100,
+      todayRunCount: 1,
+      todayRunCountChangePercent: 0,
+      totalWorkflowCount: 1,
+    }));
+    const router = createMemoryRouter([{
+      path: "/embed/workflows",
+      element: <WorkflowPage repository={repository} surface="sop_embed" />,
+    }], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByRole("heading", { name: "SOP Workflow" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
   });
 
   it("collects workflow metadata before creating and opens the new canvas", async () => {

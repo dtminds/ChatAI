@@ -199,16 +199,43 @@ describe("database schema document", () => {
   it("keeps only workflow run indexes required by current query paths", () => {
     const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
 
+    expect(runTable.match(/^  (?:PRIMARY KEY|UNIQUE KEY|KEY) .+$/gm)).toHaveLength(7);
     expect(runTable.match(/^  KEY .+$/gm)).toEqual([
       "  KEY idx_workflow_run_records (uid, workflow_id, id),",
-      "  KEY idx_workflow_run_status_records (uid, workflow_id, status, id),",
-      "  KEY idx_workflow_run_retained_records (uid, workflow_id, completed_at, id),",
+      "  KEY idx_workflow_run_status_records (uid, status, workflow_id, id),",
       "  KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),",
-      "  KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id),",
       "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
-      "  KEY idx_workflow_run_status_reconcile (status, id),",
-      "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",
+      "  KEY idx_workflow_run_lifecycle (completed_at, id)",
     ]);
+  });
+
+  it("converges Run lifecycle indexes without duplicating the node metric dimension prefix", () => {
+    const entryGuardTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_entry_guard");
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+    const nodeMetricTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_node_metric");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-29 Workflow Run 索引收敛与节点指标索引收尾",
+    );
+
+    expect(entryGuardTable).toContain("latest_run_id BIGINT UNSIGNED NULL");
+    expect(runTable).toContain("KEY idx_workflow_run_status_records (uid, status, workflow_id, id)");
+    expect(runTable).toContain("KEY idx_workflow_run_lifecycle (completed_at, id)");
+    expect(runTable).not.toContain("idx_workflow_run_retained_records");
+    expect(runTable).not.toContain("idx_workflow_run_cleanup_node");
+    expect(runTable).not.toContain("idx_workflow_run_active_subject");
+    expect(runTable).not.toContain("idx_workflow_run_status_reconcile");
+    expect(runTable).not.toContain("idx_workflow_run_history_cleanup");
+    expect(nodeMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id)",
+    );
+    expect(nodeMetricTable).not.toContain("idx_workflow_node_metric_query");
+    expect(nodeMetricTable).toContain(
+      "KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id)",
+    );
+    expect(migration).toContain("ADD COLUMN latest_run_id");
+    expect(migration).toContain("ADD KEY idx_workflow_run_lifecycle");
+    expect(migration).toContain("DROP KEY idx_workflow_node_metric_query");
   });
 
   it("orders the Workflow Task lease index for bounded running-task recovery", () => {
@@ -278,6 +305,23 @@ describe("database schema document", () => {
     expect(migration).toContain(
       "CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition",
     );
+  });
+
+  it("documents the Workflow worker heartbeat table as worker-only writes", () => {
+    const workerStateTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_worker_state",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Worker 角色心跳表",
+    );
+
+    expect(workerStateTable).toContain("PRIMARY KEY (role)");
+    expect(workerStateTable).toContain("last_started_at DATETIME(3) NULL");
+    expect(workerStateTable).toContain("reported_by VARCHAR(128) NOT NULL");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state");
+    expect(WRITABLE_TABLES).not.toContain("xy_wap_embed_workflow_worker_state");
   });
 
   it("keeps the indexes required by bounded workflow history cleanup", () => {

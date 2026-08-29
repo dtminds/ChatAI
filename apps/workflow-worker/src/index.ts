@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import { sql } from "kysely";
 import { getWorkflowNodeContract, type WorkflowNodeKind } from "@chatai/contracts";
 import {
@@ -37,6 +38,7 @@ import { startRoleLoop } from "./role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
 import { scheduleWorkflowTasks } from "./scheduler.js";
 import { startTaskConsumer } from "./task-consumer.js";
+import { createWorkflowWorkerRuntimeState } from "./worker-runtime-state.js";
 import { processWorkflowInferenceBatch } from "./inference-worker.js";
 import {
   MysqlWorkflowEntryMessageReader,
@@ -171,6 +173,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     throw error;
   }
   const workerId = `${process.pid}-${randomUUID()}`;
+  const runtimeState = createWorkflowWorkerRuntimeState({
+    db: database,
+    logger,
+    reportedBy: `${hostname()}:${process.pid}`.slice(0, 128),
+  });
+  runtimeState.start();
   return startWorkflowWorker({
     config,
     logger,
@@ -198,6 +206,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       reconcilerService,
       roleLoop: startRoleLoop,
       runtimeService,
+      runtimeState,
       scheduler: scheduleWorkflowTasks,
       schedulerRepository: repository,
       taskConsumer: startTaskConsumer,

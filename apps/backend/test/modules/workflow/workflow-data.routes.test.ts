@@ -87,6 +87,7 @@ describe("workflow data routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toEqual({
       activeWorkflowCount: 23,
+      canViewWorkflowObservability: false,
       recentFailedRunCount: 231,
       recentSuccessRatePercent: 98.2,
       todayRunCount: 12_847,
@@ -94,6 +95,27 @@ describe("workflow data routes", () => {
       totalWorkflowCount: 38,
     });
     expect(dataService.getTenantOverview).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }));
+  });
+
+  it("keeps Workflow observability on the ChatAI Surface", async () => {
+    const dataService = {
+      getTenantOverview: vi.fn(async () => ({ totalWorkflowCount: 1 })),
+    };
+    const app = await createApp(dataService, ["owner"], new Set(["9:17"]));
+
+    const [chatResponse, embedResponse] = await Promise.all([
+      app.inject({ method: "GET", url: "/api/server/workflows/overview" }),
+      app.inject({ method: "GET", url: "/api/server/embed/workflows/overview" }),
+    ]);
+
+    expect(chatResponse.json().data.canViewWorkflowObservability).toBe(true);
+    expect(embedResponse.json().data.canViewWorkflowObservability).toBe(false);
+    expect(dataService.getTenantOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "chatai", uid: 9 }),
+    );
+    expect(dataService.getTenantOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "sop_embed", uid: 9 }),
+    );
   });
 
   it("combines tenant Run usage with one tenant-scoped capacity lookup", async () => {
@@ -453,7 +475,11 @@ describe("workflow data routes", () => {
     expect(reader.getTenantOverview).not.toHaveBeenCalled();
   });
 
-  async function createApp(dataService: object, roles = ["owner"]) {
+  async function createApp(
+    dataService: object,
+    roles = ["owner"],
+    observerSubjects: ReadonlySet<string> = new Set(),
+  ) {
     const app = Fastify({ logger: false });
     apps.push(app);
     await registerErrorHandler(app);
@@ -462,6 +488,7 @@ describe("workflow data routes", () => {
     });
     await registerWorkflowRoutes(app, {
       dataService: dataService as never,
+      observerSubjects,
       service: {} as never,
     });
     return app;

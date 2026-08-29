@@ -13,7 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { WorkflowSurface, WorkflowTenantOverview } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -307,6 +307,15 @@ export function WorkflowListPage({
     <WorkflowSurfaceLayout>
       <section className="space-y-5">
         <AiHostingPageHeader
+          actions={surface.surface === "chatai"
+            && tenantOverview.overview?.canViewWorkflowObservability ? (
+              <Button asChild variant="outline">
+                <Link to="/chat/workflows/observability">
+                  <HugeiconsIcon icon={ChartAreaIcon} size={17} strokeWidth={1.8} />
+                  运行观测
+                </Link>
+              </Button>
+            ) : undefined}
           description={surface.description}
           title={surface.title}
         />

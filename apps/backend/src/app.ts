@@ -21,6 +21,7 @@ import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/in
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
 import { registerFriendAddWayRoutes } from "./modules/workflow/friend-add-way.routes.js";
 import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
+import { registerWorkflowObservabilityRoutes } from "./modules/workflow/workflow-observability.routes.js";
 import type { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
 import { validateBackendEnv } from "./config/env.js";
@@ -77,7 +78,11 @@ export async function buildApp(options: AppBuildOptions = {}) {
   await registerInsightsRoutes(app, workerObserverSubjects);
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
-  await registerWorkflowRoutes(app, { service: options.workflowService });
+  await registerWorkflowObservabilityRoutes(app, workerObserverSubjects);
+  await registerWorkflowRoutes(app, {
+    observerSubjects: workerObserverSubjects,
+    service: options.workflowService,
+  });
   await registerFriendAddWayRoutes(app);
   await registerTicketsRoutes(app);
 
@@ -87,5 +92,6 @@ export async function buildApp(options: AppBuildOptions = {}) {
 export function shouldDisableRequestLogging(request: { url: string }) {
   return request.url.startsWith("/api/server/media/playable-voice")
     || request.url.startsWith("/api/server/insights/worker-observability")
-    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability");
+    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability")
+    || request.url.startsWith("/api/server/workflows/observability");
 }

@@ -42,6 +42,7 @@ import { MysqlWorkflowMetricReader } from "./workflow-metric-reader.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
+import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 
 const WorkflowParamsSchema = Type.Object({
@@ -92,7 +93,11 @@ const WorkflowLlmTestAttemptParamsSchema = Type.Intersect([
 
 export async function registerWorkflowRoutes(
   app: FastifyInstance,
-  options: { dataService?: WorkflowDataService; service?: WorkflowService } = {},
+  options: {
+    dataService?: WorkflowDataService;
+    observerSubjects?: ReadonlySet<string>;
+    service?: WorkflowService;
+  } = {},
 ) {
   const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
   const entitlementPort = createWorkflowEntitlementPort({
@@ -119,7 +124,12 @@ export async function registerWorkflowRoutes(
 
   await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(
     surfaceApp,
-    { dataService, service, surface: "chatai" },
+    {
+      dataService,
+      observerSubjects: options.observerSubjects,
+      service,
+      surface: "chatai",
+    },
   ), { prefix: "/api/server" });
   await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(
     surfaceApp,
@@ -131,11 +141,12 @@ function registerWorkflowSurfaceRoutes(
   app: FastifyInstance,
   options: {
     dataService: WorkflowDataService;
+    observerSubjects?: ReadonlySet<string>;
     service: WorkflowService;
     surface: WorkflowSurface;
   },
 ) {
-  const { dataService, service, surface } = options;
+  const { dataService, observerSubjects, service, surface } = options;
   const authenticated = { preHandler: app.authenticate };
 
   app.get(
@@ -147,7 +158,14 @@ function registerWorkflowSurfaceRoutes(
   app.get(
     "/workflows/overview",
     authenticated,
-    async request => apiSuccess(await dataService.getTenantOverview(getWorkflowScope(request, surface))),
+    async request => apiSuccess({
+      ...(await dataService.getTenantOverview(getWorkflowScope(request, surface))),
+      canViewWorkflowObservability: surface === "chatai"
+        && canViewInsightsWorkerObservability(
+          observerSubjects ?? new Set(),
+          { subUserId: request.user.subUserId, uid: request.user.uid },
+        ),
+    }),
   );
 
   app.get<{ Params: WorkflowParams }>(

@@ -110,6 +110,7 @@ export interface WorkflowRunTable {
 export interface WorkflowEntryGuardTable {
   create_time: GeneratedDate;
   id: Generated<DatabaseId>;
+  latest_run_id: Generated<DatabaseId | null>;
   subject_id: string;
   subject_type: number;
   total_entries: number;
@@ -180,6 +181,19 @@ export interface WorkflowTaskTable {
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
+}
+
+export interface WorkflowWorkerStateTable {
+  create_time: GeneratedDate;
+  last_duration_ms: number | null;
+  last_error_code: string | null;
+  last_failure_at: NullableDate;
+  last_started_at: NullableDate;
+  last_success_at: NullableDate;
+  reported_at: DatabaseDate;
+  reported_by: string;
+  role: string;
+  update_time: GeneratedDate;
 }
 
 export interface WorkflowTaskTransitionTable {
@@ -402,4 +416,5 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_task: WorkflowTaskTable;
   xy_wap_embed_workflow_task_transition: WorkflowTaskTransitionTable;
   xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
+  xy_wap_embed_workflow_worker_state: WorkflowWorkerStateTable;
 }

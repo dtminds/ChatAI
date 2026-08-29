@@ -43,6 +43,18 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.selectBuilders[0].wheres.some(where => where[0] === "description")).toBe(false);
   });
 
+  it("returns an empty page without querying MySQL when no Workflow type is visible", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await expect(repository.listDefinitions(8, {
+      limit: 20,
+      status: "all",
+      workflowTypes: [],
+    })).resolves.toEqual({ items: [], nextCursor: null, total: 0 });
+    expect(db.selectBuilders).toHaveLength(0);
+  });
+
   it("derives current review state from the latest review attempt", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);

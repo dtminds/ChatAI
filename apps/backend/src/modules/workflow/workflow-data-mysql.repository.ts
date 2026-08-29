@@ -49,17 +49,21 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     };
   }
 
-  async getTenantOverview(input: {
-    today: string;
-    uid: number;
-    windowStart: string;
-    workflowTypes: WorkflowType[];
-    yesterday: string;
-  }) {
+  async getTenantOverview(input: Parameters<WorkflowDataReader["getTenantOverview"]>[0]) {
+    if (input.workflowTypes?.length === 0) {
+      return {
+        activeWorkflowCount: 0,
+        recentCompletedRunCount: 0,
+        recentFailedRunCount: 0,
+        todayRunCount: 0,
+        totalWorkflowCount: 0,
+        yesterdayRunCount: 0,
+      };
+    }
     const today = toWorkflowMetricDate(input.today);
     const windowStart = toWorkflowMetricDate(input.windowStart);
     const yesterday = toWorkflowMetricDate(input.yesterday);
-    if (!input.workflowTypes?.length) {
+    if (input.workflowTypes === undefined) {
       const [dailyMetric, definitionMetric] = await Promise.all([
         this.db.selectFrom("xy_wap_embed_workflow_daily_metric")
           .select([
@@ -90,7 +94,8 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         yesterdayRunCount: Number(dailyMetric?.yesterday_run_count ?? 0),
       };
     }
-    let dailyQuery = this.db.selectFrom("xy_wap_embed_workflow_daily_metric as metric")
+    const workflowTypes = input.workflowTypes.map(encodeWorkflowType);
+    const dailyQuery = this.db.selectFrom("xy_wap_embed_workflow_daily_metric as metric")
         .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
           .onRef("definition.uid", "=", "metric.uid")
           .onRef("definition.id", "=", "metric.workflow_id"))
@@ -102,26 +107,21 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
           sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`
             .as("yesterday_run_count"),
         ])
+        .where("metric.uid", "=", input.uid)
         .where("metric.metric_date", ">=", windowStart)
-        .where("metric.metric_date", "<=", today);
-    if (input.workflowTypes?.length) dailyQuery = dailyQuery.where("definition.workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+        .where("metric.metric_date", "<=", today)
+        .where("definition.workflow_type", "in", workflowTypes);
     const definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
         .select([
           sql<number>`COALESCE(SUM(runtime_status = 'active'), 0)`.as("active_workflow_count"),
           sql<number>`COUNT(*)`.as("total_workflow_count"),
         ])
         .where("uid", "=", input.uid)
-        .where("biz_status", "=", 1);
-    let typedDefinitionQuery = definitionQuery;
-    if (input.workflowTypes?.length) typedDefinitionQuery = typedDefinitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+        .where("biz_status", "=", 1)
+        .where("workflow_type", "in", workflowTypes);
     const [dailyMetric, definitionMetric] = await Promise.all([
-      dailyQuery.select([
-        sql<number>`COALESCE(SUM(completed_count), 0)`.as("recent_completed_run_count"),
-        sql<number>`COALESCE(SUM(failed_count), 0)`.as("recent_failed_run_count"),
-        sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${today} THEN entered_count ELSE 0 END), 0)`.as("today_run_count"),
-        sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`.as("yesterday_run_count"),
-      ]).where("metric.uid", "=", input.uid).executeTakeFirst(),
-      typedDefinitionQuery.executeTakeFirst(),
+      dailyQuery.executeTakeFirst(),
+      definitionQuery.executeTakeFirst(),
     ]);
     return {
       activeWorkflowCount: Number(definitionMetric?.active_workflow_count ?? 0),
@@ -134,12 +134,17 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
   }
 
   async getOverview(input: Parameters<WorkflowDataReader["getOverview"]>[0]): Promise<WorkflowDataOverview> {
+    if (input.workflowTypes?.length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
     let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("published_revision")
       .where("uid", "=", input.uid)
       .where("id", "=", input.workflowId)
       .where("biz_status", "=", 1);
-    if (input.workflowTypes?.length) definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    if (input.workflowTypes) {
+      definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    }
     const definition = await definitionQuery.executeTakeFirst();
     if (!definition) {
       throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
@@ -209,7 +214,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
   }
 
   async listRecords(input: Parameters<WorkflowDataReader["listRecords"]>[0]): Promise<WorkflowEntryRecordPage> {
-    if (input.workflowTypes?.length) await this.requireVisibleWorkflow(input as Required<typeof input>);
+    if (input.workflowTypes) await this.requireVisibleWorkflow(input as Required<typeof input>);
     let query = this.db.selectFrom("xy_wap_embed_workflow_run")
       .select([
         "create_time",
@@ -259,7 +264,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
   }
 
   async getRecord(input: Parameters<WorkflowDataReader["getRecord"]>[0]): Promise<WorkflowEntryRecordDetail> {
-    if (input.workflowTypes?.length) await this.requireVisibleWorkflow(input as Required<typeof input>);
+    if (input.workflowTypes) await this.requireVisibleWorkflow(input as Required<typeof input>);
     const run = await this.db.selectFrom("xy_wap_embed_workflow_run")
       .select([
         "create_time",
@@ -360,12 +365,15 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     workflowId: string;
     workflowTypes: WorkflowType[];
   }) {
+    if (input.workflowTypes.length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
     let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("id")
       .where("uid", "=", input.uid)
       .where("id", "=", input.workflowId)
       .where("biz_status", "=", 1);
-    if (input.workflowTypes?.length) definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
     const definition = await definitionQuery.executeTakeFirst();
     if (!definition) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
   }

@@ -1,10 +1,13 @@
 import Fastify from "fastify";
+import type { WorkflowType } from "@chatai/contracts";
 import { InMemoryWorkflowLlmTestAttemptRepository } from "@chatai/workflow-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
+import { NotFoundError } from "../../../src/shared/errors.js";
 import {
   InMemoryWorkflowRepository,
   registerWorkflowRoutes,
+  WorkflowDataService,
   WorkflowService,
 } from "../../../src/modules/workflow/index.js";
 
@@ -482,7 +485,46 @@ describe("workflow routes", () => {
   });
 
   it("keeps embedded Workflow routes scoped to WeCom SOPs", async () => {
-    const app = await createApp("owner");
+    const workflowTypesById = new Map<string, WorkflowType>();
+    const requireVisibleWorkflow = (input: {
+      workflowId: string;
+      workflowTypes?: WorkflowType[];
+    }) => {
+      const workflowType = workflowTypesById.get(input.workflowId);
+      if (!workflowType || !input.workflowTypes?.includes(workflowType)) {
+        throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      }
+    };
+    const dataService = new WorkflowDataService({
+      getOverview: async (input) => {
+        requireVisibleWorkflow(input);
+        return {
+          calculatedAt: "2026-08-25T00:00:00.000Z",
+          nodes: [],
+          publishedRevision: 1,
+          summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
+        };
+      },
+      getRecord: async (input) => {
+        requireVisibleWorkflow(input);
+        return {};
+      },
+      listRecords: async (input) => {
+        requireVisibleWorkflow(input);
+        return { items: [], nextCursor: null };
+      },
+    } as never);
+    const app = await createApp("owner", dataService);
+
+    for (const [url, workflowType] of [
+      ["/api/server/workflows", "wecom_sop"],
+      ["/api/server/embed/workflows", "chatai_sop"],
+    ] as const) {
+      const response = await app.inject({ method: "POST", payload: { workflowType }, url });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_TYPE_FORBIDDEN" } });
+    }
+
     const chat = await app.inject({
       method: "POST",
       payload: { workflowType: "chatai_sop" },
@@ -495,26 +537,50 @@ describe("workflow routes", () => {
     });
     expect(chat.statusCode).toBe(200);
     expect(wecom.statusCode).toBe(200);
+    workflowTypesById.set(chat.json().data.id, "chatai_sop");
+    workflowTypesById.set(wecom.json().data.id, "wecom_sop");
 
-    const embedList = await app.inject({ method: "GET", url: "/api/server/embed/workflows" });
+    const [chatList, embedList] = await Promise.all([
+      app.inject({ method: "GET", url: "/api/server/workflows" }),
+      app.inject({ method: "GET", url: "/api/server/embed/workflows" }),
+    ]);
+    expect(chatList.json().data.items).toHaveLength(1);
+    expect(chatList.json().data.items[0].workflowType).toBe("chatai_sop");
     expect(embedList.json().data.items).toHaveLength(1);
     expect(embedList.json().data.items[0].workflowType).toBe("wecom_sop");
-    expect((await app.inject({
+    const embedChatDetail = await app.inject({
       method: "GET",
       url: `/api/server/embed/workflows/${chat.json().data.id}`,
-    })).statusCode).toBe(404);
-    expect((await app.inject({
+    });
+    const chatWecomDetail = await app.inject({
       method: "GET",
       url: `/api/server/workflows/${wecom.json().data.id}`,
-    })).statusCode).toBe(404);
-    expect((await app.inject({
+    });
+    const embedChatMetadata = await app.inject({
       method: "PATCH",
       payload: { description: "跨入口修改", name: "跨入口修改" },
       url: `/api/server/embed/workflows/${chat.json().data.id}/metadata`,
-    })).statusCode).toBe(404);
+    });
+    for (const response of [embedChatDetail, chatWecomDetail, embedChatMetadata]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_NOT_FOUND" } });
+    }
+
+    for (const url of [
+      `/api/server/embed/workflows/${chat.json().data.id}/data`,
+      `/api/server/embed/workflows/${chat.json().data.id}/records`,
+      `/api/server/embed/workflows/${chat.json().data.id}/records/31`,
+      `/api/server/workflows/${wecom.json().data.id}/data`,
+      `/api/server/workflows/${wecom.json().data.id}/records`,
+      `/api/server/workflows/${wecom.json().data.id}/records/31`,
+    ]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_NOT_FOUND" } });
+    }
   });
 
-  async function createApp(role: string) {
+  async function createApp(role: string, dataService?: WorkflowDataService) {
     const app = Fastify({ logger: false });
     apps.push(app);
     await registerErrorHandler(app);
@@ -528,6 +594,7 @@ describe("workflow routes", () => {
       };
     });
     await registerWorkflowRoutes(app, {
+      dataService,
       service: new WorkflowService(new InMemoryWorkflowRepository(), {
         directEntryEndpointPort: {
           getEndpointKey: async () => "test.endpoint-key",

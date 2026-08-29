@@ -254,6 +254,78 @@ describe("workflow data routes", () => {
     ]);
   });
 
+  it("scopes the tenant overview metrics to the requested Workflow types", async () => {
+    const db = createTenantOverviewDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
+
+    await expect(reader.getTenantOverview({
+      today: "2026-08-25",
+      uid: 9,
+      windowStart: "2026-08-19",
+      workflowTypes: ["wecom_sop"],
+      yesterday: "2026-08-24",
+    })).resolves.toMatchObject({
+      recentCompletedRunCount: 9_800,
+      totalWorkflowCount: 38,
+    });
+
+    expect(db.joins).toEqual([[
+      "xy_wap_embed_workflow_daily_metric as metric",
+      "xy_wap_embed_workflow_definition as definition",
+    ]]);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_daily_metric as metric",
+      "metric.uid",
+      "=",
+      9,
+    ]);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_daily_metric as metric",
+      "definition.workflow_type",
+      "in",
+      [2],
+    ]);
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_workflow_definition",
+      "workflow_type",
+      "in",
+      [2],
+    ]);
+    expect(db.selectCounts.get("xy_wap_embed_workflow_daily_metric as metric")).toBe(1);
+  });
+
+  it("fails closed when a data repository is given no visible Workflow types", async () => {
+    const db = createFailClosedDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
+    const emptyTenantOverview = {
+      activeWorkflowCount: 0,
+      recentCompletedRunCount: 0,
+      recentFailedRunCount: 0,
+      todayRunCount: 0,
+      totalWorkflowCount: 0,
+      yesterdayRunCount: 0,
+    };
+
+    await expect(reader.getTenantOverview({
+      today: "2026-08-25",
+      uid: 9,
+      windowStart: "2026-08-19",
+      workflowTypes: [],
+      yesterday: "2026-08-24",
+    })).resolves.toEqual(emptyTenantOverview);
+    await expect(reader.getOverview({ uid: 9, workflowId: "12", workflowTypes: [] }))
+      .rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND", statusCode: 404 });
+    await expect(reader.listRecords({ limit: 20, uid: 9, workflowId: "12", workflowTypes: [] }))
+      .rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND", statusCode: 404 });
+    await expect(reader.getRecord({
+      recordId: "31",
+      uid: 9,
+      workflowId: "12",
+      workflowTypes: [],
+    })).rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND", statusCode: 404 });
+    expect(db.selectFrom).not.toHaveBeenCalled();
+  });
+
   it("shows a waiting node once as the waiting trajectory step", async () => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock() as never);
 
@@ -521,18 +593,31 @@ function createCapacityUsageDbMock() {
 
 function createTenantOverviewDbMock() {
   const db = {
+    joins: [] as string[][],
+    selectCounts: new Map<string, number>(),
     selectedTables: [] as string[],
     wheres: [] as unknown[][],
     selectFrom(table: string) {
       db.selectedTables.push(table);
       const builder = {
-        select() { return builder; },
+        innerJoin(joinedTable: string, on: (join: { onRef: () => unknown }) => unknown) {
+          db.joins.push([table, joinedTable]);
+          const join = {
+            onRef() { return join; },
+          };
+          on(join);
+          return builder;
+        },
+        select() {
+          db.selectCounts.set(table, (db.selectCounts.get(table) ?? 0) + 1);
+          return builder;
+        },
         where(...args: unknown[]) {
           db.wheres.push([table, ...args]);
           return builder;
         },
         async executeTakeFirst() {
-          if (table === "xy_wap_embed_workflow_daily_metric") {
+          if (table.startsWith("xy_wap_embed_workflow_daily_metric")) {
             return {
               recent_completed_run_count: "9800",
               recent_failed_run_count: "200",
@@ -550,6 +635,14 @@ function createTenantOverviewDbMock() {
     },
   };
   return db;
+}
+
+function createFailClosedDbMock() {
+  return {
+    selectFrom: vi.fn(() => {
+      throw new Error("empty Workflow visibility must not query MySQL");
+    }),
+  };
 }
 
 function createOverviewDbMock(options: { emptyMetrics?: boolean } = {}) {

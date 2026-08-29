@@ -13,6 +13,7 @@ import {
   type WorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
+import { raceAbort } from "./abort-race.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
 export async function processWorkflowLlmTestAttemptBatch(input: {
@@ -67,6 +68,7 @@ export async function processWorkflowLlmTestAttemptBatch(input: {
           uid: attempt.uid,
         }),
         controller.signal,
+        "Workflow LLM test Attempt aborted",
       );
       if (!Value.Check(WorkflowInferenceMessageListResultSchema, inferenceResult)) {
         throw new WorkflowCapabilityExecutionError(
@@ -125,18 +127,6 @@ export async function processWorkflowLlmTestAttemptBatch(input: {
   });
   await input.repository.cleanupExpiredLlmTestAttempts({ limit: input.limit, now: now() });
   return result;
-}
-
-function raceAbort<T>(operation: Promise<T>, signal: AbortSignal) {
-  if (signal.aborted) return Promise.reject(new Error("Workflow LLM test Attempt aborted"));
-  let onAbort: (() => void) | undefined;
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new Error("Workflow LLM test Attempt aborted"));
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-  return Promise.race([operation, aborted]).finally(() => {
-    if (onAbort) signal.removeEventListener("abort", onAbort);
-  });
 }
 
 function classifyAttemptError(error: unknown, aborted: boolean) {

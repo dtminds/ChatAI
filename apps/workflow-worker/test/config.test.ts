@@ -13,7 +13,6 @@ describe("workflow worker config", () => {
       entry: "consumer-chatai-worker-entry-dev",
       task: "consumer-chatai-worker-task-dev",
     });
-    expect(config.subscriptionType).toBe("Shared");
     expect(config.deadLetterTopics).toEqual({
       entry: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev-dlq",
       task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev-dlq",

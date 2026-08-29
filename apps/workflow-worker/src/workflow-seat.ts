@@ -1,5 +1,6 @@
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Kysely } from "kysely";
+import { readString } from "./capability-port-support.js";
 
 interface WorkflowSeatTable {
   id: number;
@@ -47,8 +48,4 @@ function asWorkflowSeatDatabase(database: Kysely<WorkflowDatabase>) {
 function readPositiveInteger(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

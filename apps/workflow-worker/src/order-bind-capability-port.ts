@@ -2,7 +2,6 @@ import {
   WorkflowOrderBindCommandSchema,
   type WorkflowOrderBindCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -12,9 +11,21 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_ORDER_BIND_PATH = "/third-internal/one-id/order-bind";
 const JAVA_ORDER_BIND_SOURCE = 28;
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_ORDER_BIND_ABORTED",
+  "关联订单暂时失败",
+  "Workflow Order Bind execution was aborted",
+);
 
 export class HttpWorkflowOrderBindCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -35,19 +46,11 @@ export class HttpWorkflowOrderBindCapabilityPort implements WorkflowCapabilityPo
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey
-        !== WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion
-        !== WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Order Bind port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_ORDER_BIND_CAPABILITY_BINDING.definition,
+      "Workflow Order Bind",
+    );
     const externalUserId = request.identities.externalUserId;
     if (
       !Value.Check(WorkflowOrderBindCommandSchema, request.command)
@@ -146,36 +149,4 @@ export async function executeWorkflowOrderBind(input: {
   return {
     result: body.error === 0,
   };
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_ORDER_BIND_ABORTED",
-    "关联订单暂时失败",
-    "Workflow Order Bind execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

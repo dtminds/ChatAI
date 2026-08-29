@@ -12,6 +12,7 @@ import {
   type WorkflowMessageQueryRequest,
 } from "@chatai/workflow-runtime";
 import type { Kysely } from "kysely";
+import { isRecord } from "./capability-port-support.js";
 
 const CHATAI_PLATFORM = 5;
 const ACTIVE_SEAT_STATUS = 1;
@@ -153,7 +154,7 @@ export async function executeMessageQuery(
   return fitMessageQueryResult({
     rangeEnd: new Date(input.command.rangeEnd).toISOString(),
     rangeStart: new Date(input.command.rangeStart).toISOString(),
-    rows: chronologicalRows.map(createMessageQueryOutputRow),
+    rows: chronologicalRows.map(createWorkflowMessage),
     take: input.command.take,
   });
 }
@@ -242,10 +243,6 @@ export function formatMessageQueryRow(row: MessageQueryRow) {
   return `${getMessageQueryRoleLabel(message.role)}: ${message.parts.map(part =>
     part.type === "text" ? part.text : `[${part.type === "unsupported" ? part.label : part.type === "image" ? "图片" : "视频"}]`
   ).join("")}`;
-}
-
-function createMessageQueryOutputRow(row: MessageQueryRow) {
-  return createWorkflowMessage(row);
 }
 
 function createWorkflowMessage(row: MessageQueryRow): WorkflowMessage {
@@ -360,10 +357,6 @@ function parseJson(value: string | null) {
   } catch {
     return value;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function throwIfAborted(signal: AbortSignal) {

@@ -177,6 +177,22 @@ describe("Workflow Tag Java port", () => {
     })).rejects.toBe(reason);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("maps a non-Error cancellation reason to the stable retryable failure", async () => {
+    const fetchMock = vi.fn();
+    const controller = new AbortController();
+    controller.abort("cancelled");
+
+    await expect(executeWorkflowTag({
+      ...executeInput(),
+      fetch: fetchMock as typeof fetch,
+      signal: controller.signal,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_TAG_ABORTED",
+      failureKind: "retryable",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 function tagCommand(

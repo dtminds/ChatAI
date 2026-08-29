@@ -7,6 +7,7 @@ import {
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Value } from "@sinclair/typebox/value";
+import { raceAbort } from "./abort-race.js";
 
 export async function processWorkflowInferenceBatch(input: {
   adapter: WorkflowChatCompletionPort;
@@ -49,14 +50,14 @@ export async function processWorkflowInferenceBatch(input: {
       });
     }, input.heartbeatIntervalMs);
     try {
-      const output = await raceInferenceAbort(input.adapter.execute({
+      const output = await raceAbort(input.adapter.execute({
           contractVersion: job.contractVersion,
           deadlineAt: job.deadlineAt,
           executionKey: job.executionKey,
           payload: job.payload,
           signal: controller.signal,
           uid: job.uid,
-        }), controller.signal);
+        }), controller.signal, "Workflow inference aborted");
       const resultSchemaMatches = Value.Check(WorkflowInferenceMessageListResultSchema, output);
       const resultTypeMatches = resultSchemaMatches && (
         job.payload.responseFormat.type === "json"
@@ -125,18 +126,6 @@ export async function processWorkflowInferenceBatch(input: {
   });
   result.failed += recovered.expired;
   return result;
-}
-
-function raceInferenceAbort<T>(operation: Promise<T>, signal: AbortSignal) {
-  if (signal.aborted) return Promise.reject(new Error("Workflow inference aborted"));
-  let onAbort: (() => void) | undefined;
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new Error("Workflow inference aborted"));
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-  return Promise.race([operation, aborted]).finally(() => {
-    if (onAbort) signal.removeEventListener("abort", onAbort);
-  });
 }
 
 function classifyInferenceError(error: unknown, aborted: boolean, leaseLost: boolean) {

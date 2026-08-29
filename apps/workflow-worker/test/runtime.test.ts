@@ -100,7 +100,10 @@ describe("workflow worker runtime", () => {
       repository: resources.dependencies.inferenceRepository,
     }));
     expect(resources.scheduler).toHaveBeenCalled();
-    expect(resources.outboxPublisher).toHaveBeenCalled();
+    expect(resources.outboxPublisher).toHaveBeenCalledWith(expect.objectContaining({
+      limit: 100,
+      publishConcurrency: 8,
+    }));
     expect(resources.reconciler).toHaveBeenCalled();
 
     await runtime.close();
@@ -645,6 +648,7 @@ function config(
       maxOutboxAttempts: 100,
       maxOutboxRetryDelayMs: 300_000,
       maxTaskAttempts: 5,
+      outboxPublishConcurrency: 8,
       outboxIntervalMs: 1_000,
       reconcileIntervalMs: 30_000,
       readinessIntervalMs: 30_000,

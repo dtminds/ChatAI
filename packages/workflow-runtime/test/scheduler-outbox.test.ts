@@ -106,8 +106,8 @@ describe("workflow outbox repository", () => {
       limit: 10,
       now,
     });
-    await repository.markOutboxSent({
-      id: claimedOutbox!.id,
+    await repository.markOutboxSentBatch({
+      ids: [claimedOutbox!.id],
       leaseOwner: "publisher-1",
       sentAt: now,
     });
@@ -196,16 +196,16 @@ describe("workflow outbox repository", () => {
       now,
     });
 
-    await expect(repository.markOutboxSent({
-      id: claimed!.id,
+    await expect(repository.markOutboxSentBatch({
+      ids: [claimed!.id],
       leaseOwner: "publisher-2",
       sentAt: now,
-    })).resolves.toBe(false);
-    await expect(repository.markOutboxSent({
-      id: claimed!.id,
+    })).resolves.toBe(0);
+    await expect(repository.markOutboxSentBatch({
+      ids: [claimed!.id],
       leaseOwner: "publisher-1",
       sentAt: now,
-    })).resolves.toBe(true);
+    })).resolves.toBe(1);
   });
 
   it("requires the current lease owner to release a failed outbox row", async () => {

@@ -2235,17 +2235,24 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
-  async markOutboxSent(input: Parameters<WorkflowRuntimeRepository["markOutboxSent"]>[0]) {
-    const result = await this.db.updateTable(OUTBOX_TABLE).set({
-      lease_expires_at: null,
-      lease_owner: null,
-      sent_at: input.sentAt,
-      status: "sent",
-    }).where("id", "=", input.id)
-      .where("status", "=", "leased")
-      .where("lease_owner", "=", input.leaseOwner)
-      .executeTakeFirst();
-    return Number(result.numUpdatedRows) === 1;
+  async markOutboxSentBatch(
+    input: Parameters<WorkflowRuntimeRepository["markOutboxSentBatch"]>[0],
+  ) {
+    const ids = [...new Set(input.ids)];
+    let sent = 0;
+    for (const chunk of writeChunks(ids)) {
+      const result = await this.db.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        sent_at: input.sentAt,
+        status: "sent",
+      }).where("id", "in", chunk)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirst();
+      sent += Number(result.numUpdatedRows);
+    }
+    return sent;
   }
 
   commitNodeResult(input: WorkflowCommitNodeResultInput) {

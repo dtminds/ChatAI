@@ -3,6 +3,7 @@ import {
   WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
 } from "@chatai/contracts";
 import {
+  WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
 } from "@chatai/workflow-runtime";
 
@@ -52,6 +53,7 @@ export type WorkflowWorkerConfig = {
     maxTaskAttempts: number;
     maxOutboxAttempts: number;
     maxOutboxRetryDelayMs: number;
+    outboxPublishConcurrency: number;
     outboxIntervalMs: number;
     readinessIntervalMs: number;
     reconcileIntervalMs: number;
@@ -273,6 +275,12 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         env.WORKFLOW_MAX_OUTBOX_RETRY_DELAY_MS,
         300_000,
         "WORKFLOW_MAX_OUTBOX_RETRY_DELAY_MS",
+      ),
+      outboxPublishConcurrency: parseInteger(
+        env.WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY,
+        8,
+        "WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY",
+        WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
       ),
       outboxIntervalMs: parseDurationMs(
         env.WORKFLOW_OUTBOX_INTERVAL_MS,

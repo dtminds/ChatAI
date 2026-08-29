@@ -1741,16 +1741,22 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return true;
   }
 
-  async markOutboxSent(input: Parameters<WorkflowRuntimeRepository["markOutboxSent"]>[0]) {
-    const item = this.outbox.find(candidate => candidate.id === input.id
-      && candidate.status === "leased"
-      && candidate.leaseOwner === input.leaseOwner);
-    if (!item) return false;
-    item.status = "sent";
-    item.sentAt = input.sentAt;
-    item.leaseOwner = null;
-    item.leaseExpiresAt = null;
-    return true;
+  async markOutboxSentBatch(
+    input: Parameters<WorkflowRuntimeRepository["markOutboxSentBatch"]>[0],
+  ) {
+    const ids = new Set(input.ids);
+    let sent = 0;
+    for (const item of this.outbox) {
+      if (!ids.has(item.id)
+        || item.status !== "leased"
+        || item.leaseOwner !== input.leaseOwner) continue;
+      item.status = "sent";
+      item.sentAt = input.sentAt;
+      item.leaseOwner = null;
+      item.leaseExpiresAt = null;
+      sent += 1;
+    }
+    return sent;
   }
 
   async recoverExpiredOutboxLeases(

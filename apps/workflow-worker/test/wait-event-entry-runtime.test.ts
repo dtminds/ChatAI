@@ -249,6 +249,7 @@ async function publishOutbox(
     maxAttempts: 3,
     maxRetryDelayMs: 60_000,
     now,
+    publishConcurrency: 8,
     repository,
     retryDelayMs: 1_000,
     topic: "task",

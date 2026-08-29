@@ -479,11 +479,11 @@ export type WorkflowOutboxRepository = {
     id: string;
     leaseOwner: string;
   }): Promise<boolean>;
-  markOutboxSent(input: {
-    id: string;
+  markOutboxSentBatch(input: {
+    ids: string[];
     leaseOwner: string;
     sentAt: Date;
-  }): Promise<boolean>;
+  }): Promise<number>;
   recoverExpiredOutboxLeases(input: { limit: number; now: Date }): Promise<number>;
 };
 

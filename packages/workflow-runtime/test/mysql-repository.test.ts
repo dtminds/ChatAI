@@ -1176,7 +1176,49 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
     expect(db.lockOrder).toEqual(["run", "task", "outbox"]);
   });
+
+  it("marks successful Outbox deliveries in fixed write chunks", async () => {
+    const db = createOutboxSentDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+    const ids = Array.from(
+      { length: WORKFLOW_MYSQL_WRITE_CHUNK_SIZE * 2 + 1 },
+      (_, index) => String(index + 1),
+    );
+
+    await expect(repository.markOutboxSentBatch({
+      ids,
+      leaseOwner: "publisher-1",
+      sentAt: new Date("2026-07-11T00:00:00.000Z"),
+    })).resolves.toBe(ids.length);
+    expect(db.updateSizes).toEqual([
+      WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+      WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+      1,
+    ]);
+  });
 });
+
+function createOutboxSentDbMock() {
+  const db = {
+    updateSizes: [] as number[],
+    updateTable() {
+      let ids: string[] = [];
+      const builder = {
+        set() { return builder; },
+        where(column: string, operator: string, value: unknown) {
+          if (column === "id" && operator === "in") ids = value as string[];
+          return builder;
+        },
+        async executeTakeFirst() {
+          db.updateSizes.push(ids.length);
+          return { numUpdatedRows: BigInt(ids.length) };
+        },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
 
 function createRuntimeSnapshotDbMock(rows: Record<string, unknown>[] = []) {
   const db = {

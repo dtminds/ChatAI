@@ -227,6 +227,7 @@ describe("workflow worker config", () => {
       maxOutboxAttempts: 100,
       maxOutboxRetryDelayMs: 300_000,
       maxTaskAttempts: 5,
+      outboxPublishConcurrency: 8,
       outboxIntervalMs: 1_000,
       readinessIntervalMs: 30_000,
       reconcileIntervalMs: 30_000,
@@ -342,6 +343,18 @@ describe("workflow worker config", () => {
     expect(loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_BATCH_SIZE: "1000",
     })).runtime.batchSize).toBe(1000);
+  });
+
+  it("bounds Outbox publish concurrency independently from the batch size", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BATCH_SIZE: "1000",
+      WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY: "16",
+    })).runtime.outboxPublishConcurrency).toBe(16);
+    for (const value of ["0", "-1", "1.5", "101"]) {
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY: value,
+      }))).toThrow("WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY must be an integer from 1 to 100");
+    }
   });
 
   it("rejects an invalid health port independently from durations", () => {

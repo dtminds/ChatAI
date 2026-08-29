@@ -24,7 +24,7 @@ import type { startTaskConsumer } from "./task-consumer.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
-import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
+import type { publishWorkflowOutbox } from "./outbox-publisher.js";
 import type { reconcileWorkflowRuntime } from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
 import type { scheduleWorkflowTasks } from "./scheduler.js";
@@ -103,8 +103,8 @@ export async function startWorkflowWorkerRuntime(input: {
       durationMs: number,
     ): void;
   };
-  outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
-  outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
+  outboxPublisher(input: Parameters<typeof publishWorkflowOutbox>[0]): ReturnType<typeof publishWorkflowOutbox>;
+  outboxRepository: Parameters<typeof publishWorkflowOutbox>[0]["repository"];
   reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
   reconcilerService: Parameters<typeof reconcileWorkflowRuntime>[0]["reconciler"];
   roleLoop: typeof startRoleLoop;
@@ -220,6 +220,7 @@ export async function startWorkflowWorkerRuntime(input: {
           limit: input.config.runtime.batchSize,
           maxAttempts: input.config.runtime.maxOutboxAttempts,
           maxRetryDelayMs: input.config.runtime.maxOutboxRetryDelayMs,
+          publishConcurrency: input.config.runtime.outboxPublishConcurrency,
           repository: input.outboxRepository,
           retryDelayMs: input.config.runtime.retryDelayMs,
           topic: input.config.topics.task,

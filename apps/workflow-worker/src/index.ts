@@ -32,7 +32,7 @@ import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capa
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
 import { createWorkflowWorkerLogger } from "./logger.js";
-import { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
+import { publishWorkflowOutbox } from "./outbox-publisher.js";
 import { reconcileWorkflowRuntime } from "./reconciler.js";
 import { startRoleLoop } from "./role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "./runtime.js";
@@ -199,7 +199,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       llmTestAttemptRepository,
       llmTestAttemptWorker: llmTestWorker?.process,
       logger,
-      outboxPublisher: publishWorkflowOutboxBatch,
+      outboxPublisher: publishWorkflowOutbox,
       outboxRepository: repository,
       pingDatabase: async () => { await sql`select 1`.execute(database); },
       reconciler: reconcileWorkflowRuntime,

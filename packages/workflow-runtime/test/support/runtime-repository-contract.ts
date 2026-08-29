@@ -935,6 +935,38 @@ export function runWorkflowRuntimeRepositoryContract(
     expect(["worker-1", "worker-2"]).toContain(task?.leaseOwner);
   });
 
+  it("marks only Outbox rows held by the requested lease owner in one batch", async () => {
+    await harness.repository.createRunWithInitialTask(createRunInput());
+    await harness.repository.createRunWithInitialTask(createRunInput({
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    }));
+    const first = await harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    const second = await harness.repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "publisher-2",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    const ids = [first[0]!.id, second[0]!.id];
+
+    await expect(harness.repository.markOutboxSentBatch({
+      ids,
+      leaseOwner: "publisher-1",
+      sentAt: OUTBOX_READY_AT,
+    })).resolves.toBe(1);
+    await expect(harness.repository.markOutboxSentBatch({
+      ids,
+      leaseOwner: "publisher-2",
+      sentAt: OUTBOX_READY_AT,
+    })).resolves.toBe(1);
+  });
+
   it("deduplicates action retry inbox messages and republishes failed outbox delivery", async () => {
     const created = requireCreatedRun(
       await harness.repository.createRunWithInitialTask(createRunInput()),
@@ -946,11 +978,11 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_READY_AT,
     });
     expect(initialOutbox).toHaveLength(1);
-    await expect(harness.repository.markOutboxSent({
-      id: initialOutbox[0]!.id,
+    await expect(harness.repository.markOutboxSentBatch({
+      ids: [initialOutbox[0]!.id],
       leaseOwner: "publisher-initial",
       sentAt: OUTBOX_READY_AT,
-    })).resolves.toBe(true);
+    })).resolves.toBe(1);
 
     const claimed = await harness.repository.claimTask({
       expectedTaskVersion: 1,

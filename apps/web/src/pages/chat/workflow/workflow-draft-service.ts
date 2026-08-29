@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WorkflowSurface } from "@chatai/contracts";
 import {
   cloneWorkflowDraft,
   createWorkflowDraftHash,
@@ -26,6 +27,7 @@ import type {
   WorkflowVersionHistoryItem,
 } from "./workflow-repository-types";
 import type { WorkflowDraft } from "./types";
+import { getWorkflowSurfaceProfile } from "./workflow-surface";
 
 export * from "./workflow-repository-types";
 export { createWorkflowDraftHash, createWorkflowPublishHash } from "./workflow-draft-persistence";
@@ -33,14 +35,14 @@ export { createInMemoryWorkflowDraftRepository } from "./workflow-in-memory-repo
 
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
 const workflowDraftTestRepository = createInMemoryWorkflowDraftRepository();
-const workflowDraftRepository = import.meta.env.MODE === "test"
-  ? workflowDraftTestRepository
-  : createHttpWorkflowDraftRepository();
+const workflowDraftRepositories = new Map<WorkflowSurface, WorkflowDraftRepository>();
 
-export function createWorkflowDraftRepository(): WorkflowDraftRepository {
+export function createWorkflowDraftRepository(
+  surface: WorkflowSurface = "chatai",
+): WorkflowDraftRepository {
   return import.meta.env.MODE === "test"
     ? createInMemoryWorkflowDraftRepository()
-    : createHttpWorkflowDraftRepository();
+    : createHttpWorkflowDraftRepository(undefined, getWorkflowSurfaceProfile(surface).apiBasePath);
 }
 
 export function listWorkflowDocuments(): WorkflowListItem[] {
@@ -98,8 +100,15 @@ export function resetWorkflowDocumentsForTest() {
   workflowDraftTestRepository.reset();
 }
 
-export function getWorkflowDraftRepository(): WorkflowDraftRepository {
-  return workflowDraftRepository;
+export function getWorkflowDraftRepository(
+  surface: WorkflowSurface = "chatai",
+): WorkflowDraftRepository {
+  if (import.meta.env.MODE === "test") return workflowDraftTestRepository;
+  const existing = workflowDraftRepositories.get(surface);
+  if (existing) return existing;
+  const repository = createWorkflowDraftRepository(surface);
+  workflowDraftRepositories.set(surface, repository);
+  return repository;
 }
 
 function getSynchronousWorkflowDocument(

@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 export type WorkflowCreateInput = {
   description: string;
   name: string;
-  workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop">;
+  workflowType: WorkflowType;
 };
 
 const workflowTypeOptions: Array<{
@@ -33,6 +33,11 @@ const workflowTypeOptions: Array<{
     label: "企微客户 SOP",
     value: "wecom_sop",
   },
+  {
+    description: "面向会员的自动化服务流程",
+    label: "会员 SOP",
+    value: "member_sop",
+  },
 ];
 
 export function WorkflowCreateDialog({
@@ -42,6 +47,7 @@ export function WorkflowCreateDialog({
   onWorkflowTypeChange,
   open,
   pending = false,
+  workflowTypes = ["chatai_sop", "wecom_sop"],
 }: {
   error?: string | null;
   onCreate: (input: WorkflowCreateInput) => Promise<boolean>;
@@ -49,6 +55,7 @@ export function WorkflowCreateDialog({
   onWorkflowTypeChange?: () => void;
   open: boolean;
   pending?: boolean;
+  workflowTypes?: WorkflowCreateInput["workflowType"][];
 }) {
   const fieldId = useId();
   const nameId = `${fieldId}-name`;
@@ -108,7 +115,7 @@ export function WorkflowCreateDialog({
               }}
               value={workflowType ?? undefined}
             >
-              {workflowTypeOptions.map((option) => (
+              {workflowTypeOptions.filter(option => workflowTypes.includes(option.value)).map((option) => (
                 <label
                   className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 hover:bg-accent/50 has-[[data-state=checked]]:border-primary"
                   key={option.value}

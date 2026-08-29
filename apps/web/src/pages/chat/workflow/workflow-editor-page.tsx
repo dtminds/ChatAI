@@ -6,6 +6,7 @@ import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-rou
 import { toast } from "sonner";
 import {
   getWorkflowCapabilityProfile,
+  type WorkflowSurface,
   type WorkflowPublishReview,
 } from "@chatai/contracts";
 import {
@@ -51,12 +52,31 @@ import {
 } from "./workflow-create-dialog";
 import "@xyflow/react/dist/style.css";
 import "./workflow-page.css";
+import {
+  getWorkflowDocumentPath,
+  useWorkflowSurface,
+  WorkflowSurfaceProvider,
+} from "./workflow-surface";
 
 export function WorkflowEditorPage({
-  repository = getWorkflowDraftRepository(),
+  repository,
+  surface = "chatai",
 }: {
   repository?: WorkflowDraftRepository;
+  surface?: WorkflowSurface;
 } = {}) {
+  return (
+    <WorkflowSurfaceProvider surface={surface}>
+      <WorkflowEditorSurfacePage repository={repository} />
+    </WorkflowSurfaceProvider>
+  );
+}
+
+function WorkflowEditorSurfacePage({ repository: repositoryProp }: {
+  repository?: WorkflowDraftRepository;
+}) {
+  const surface = useWorkflowSurface();
+  const repository = repositoryProp ?? getWorkflowDraftRepository(surface.surface);
   const { workflowId } = useParams();
 
   if (!workflowId) {
@@ -74,6 +94,7 @@ function WorkflowDocumentPage({
   workflowId: string;
 }) {
   const resource = useWorkflowDocumentResource(workflowId, repository);
+  const surface = useWorkflowSurface();
 
   if (resource.status !== "ready" || !resource.document) {
     return (
@@ -82,6 +103,10 @@ function WorkflowDocumentPage({
         status={resource.status === "ready" ? "error" : resource.status}
       />
     );
+  }
+
+  if (!surface.createWorkflowTypes.includes(resource.document.workflowType)) {
+    return <WorkflowEditorResourceState status="not-found" />;
   }
 
   return (
@@ -98,6 +123,7 @@ function WorkflowDocumentPage({
 
 function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepository }) {
   const navigate = useNavigate();
+  const surface = useWorkflowSurface();
   const createRequestIdRef = useRef<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
@@ -112,7 +138,7 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
         clientRequestId: createRequestIdRef.current,
         ...input,
       }));
-      navigate(`/chat/workflows/${document.id}`, { replace: true });
+      navigate(getWorkflowDocumentPath(surface, document.id), { replace: true });
       return true;
     }
     catch {
@@ -130,13 +156,14 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
         error={createError}
         onCreate={createDocument}
         onOpenChange={(open) => {
-          if (!open && !createPending) navigate("/chat/workflows", { replace: true });
+          if (!open && !createPending) navigate(surface.webBasePath, { replace: true });
         }}
         onWorkflowTypeChange={() => {
           createRequestIdRef.current = null;
         }}
         open
         pending={createPending}
+        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
       />
     </main>
   );
@@ -174,6 +201,7 @@ function WorkflowWorkspaceContent({
   repository: WorkflowDraftRepository;
 }) {
   const navigate = useNavigate();
+  const surface = useWorkflowSurface();
   const location = useLocation();
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const shouldLoadFriendAddWays = mode === "design"
@@ -213,7 +241,7 @@ function WorkflowWorkspaceContent({
             ?? await versionHistory.loadVersion(displayedReview.resultingRevision!);
           closeDisplayedReview();
           versionHistory.onSelectVersion(version);
-          if (mode === "data") navigate(`/chat/workflows/${document.id}`);
+          if (mode === "data") navigate(getWorkflowDocumentPath(surface, document.id));
         } catch {
           toast.error("操作失败，请稍后重试");
         }
@@ -246,7 +274,7 @@ function WorkflowWorkspaceContent({
         lastSavedAt={topBar.lastSavedAt}
         metadataUpdating={topBar.metadataUpdating}
         mode={mode}
-        onBack={() => navigate("/chat/workflows")}
+        onBack={() => navigate(surface.webBasePath)}
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
@@ -255,9 +283,11 @@ function WorkflowWorkspaceContent({
         onEnable={topBar.onEnable}
         onPause={topBar.onPause}
         onResume={topBar.onResume}
-        onModeChange={(nextMode) => navigate(nextMode === "data"
-          ? `/chat/workflows/${document.id}/data`
-          : `/chat/workflows/${document.id}`)}
+        onModeChange={(nextMode) => navigate(getWorkflowDocumentPath(
+          surface,
+          document.id,
+          nextMode,
+        ))}
         onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
         onRestoreVersion={canRestoreVersion && versionHistory.previewVersion
@@ -508,7 +538,7 @@ function isWorkflowModeNavigation(currentPath: string, nextPath: string) {
   const normalize = (path: string) => path.endsWith("/data") ? path.slice(0, -5) : path;
   const currentWorkflowPath = normalize(currentPath);
   return currentWorkflowPath === normalize(nextPath)
-    && /^\/chat\/workflows\/[^/]+$/.test(currentWorkflowPath);
+    && /^\/(?:chat|embed)\/workflows\/[^/]+$/.test(currentWorkflowPath);
 }
 
 function WorkflowEditorResourceState({
@@ -518,6 +548,7 @@ function WorkflowEditorResourceState({
   onRetry?: () => void;
   status: "error" | "loading" | "not-found";
 }) {
+  const surface = useWorkflowSurface();
   if (status === "loading") {
     return (
       <main className="fixed inset-0 flex items-center justify-center gap-2 bg-background text-sm text-muted-foreground" role="status">
@@ -540,7 +571,7 @@ function WorkflowEditorResourceState({
           <div className="flex gap-2">
             {onRetry ? <Button onClick={onRetry} type="button">重试</Button> : null}
             <Button asChild variant="outline">
-              <Link to="/chat/workflows">返回列表</Link>
+              <Link to={surface.webBasePath}>返回列表</Link>
             </Button>
           </div>
         </EmptyContent>

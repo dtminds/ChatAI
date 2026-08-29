@@ -574,6 +574,43 @@ describe("Agent workflow page", () => {
     expect(screen.getByText("运行观测页")).toBeInTheDocument();
   });
 
+  it("does not expose ChatAI observability from the embedded Workflow list", async () => {
+    const repository = getWorkflowDraftRepository("sop_embed");
+    vi.spyOn(repository, "getTenantOverview").mockImplementation(() => ({
+      activeWorkflowCount: 1,
+      canViewWorkflowObservability: true,
+      recentFailedRunCount: 0,
+      recentSuccessRatePercent: 100,
+      todayRunCount: 1,
+      todayRunCountChangePercent: 0,
+      totalWorkflowCount: 1,
+    }));
+    const router = createMemoryRouter([{
+      path: "/embed/workflows",
+      element: <WorkflowPage repository={repository} surface="sop_embed" />,
+    }], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByRole("heading", { name: "SOP Workflow" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
+  });
+
+  it("only offers WeCom SOP creation from the embedded Workflow list", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository("sop_embed");
+    const router = createMemoryRouter([{
+      path: "/embed/workflows",
+      element: <WorkflowPage repository={repository} surface="sop_embed" />,
+    }], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+    await user.click(await screen.findByRole("button", { name: "新建 Workflow" }));
+
+    expect(screen.getByRole("radio", { name: /企微客户 SOP/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /ChatAI SOP/ })).not.toBeInTheDocument();
+  });
+
   it("collects workflow metadata before creating and opens the new canvas", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
@@ -583,6 +620,8 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("button", { name: "新建 Workflow" }));
 
     expect(createDocumentSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: /ChatAI SOP/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /企微客户 SOP/ })).not.toBeInTheDocument();
     const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
     const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
     await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
@@ -616,7 +655,7 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("textbox", { name: "Workflow 描述" })).toHaveValue("");
   });
 
-  it("keeps the create request id for retries and rotates it after the Workflow type changes", async () => {
+  it("keeps the create request id for retries within the ChatAI Surface", async () => {
     const user = userEvent.setup();
     const baseRepository = getWorkflowDraftRepository();
     const createDocument = vi.fn()
@@ -637,12 +676,12 @@ describe("Agent workflow page", () => {
     const firstRequestId = createDocument.mock.calls[0]?.[0].clientRequestId;
     expect(createDocument.mock.calls[1]?.[0].clientRequestId).toBe(firstRequestId);
 
-    await user.click(screen.getByRole("radio", { name: /企微客户 SOP/ }));
+    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1"));
 
-    expect(createDocument.mock.calls[2]?.[0]).toMatchObject({ workflowType: "wecom_sop" });
-    expect(createDocument.mock.calls[2]?.[0].clientRequestId).not.toBe(firstRequestId);
+    expect(createDocument.mock.calls[2]?.[0]).toMatchObject({ workflowType: "chatai_sop" });
+    expect(createDocument.mock.calls[2]?.[0].clientRequestId).toBe(firstRequestId);
   });
 
   it("renders workflows in a table with navigation and row actions", async () => {
@@ -815,13 +854,13 @@ describe("Agent workflow page", () => {
     expect(createDocumentSpy).not.toHaveBeenCalled();
     expect(screen.queryByRole("radio", { name: /会员 SOP/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: /企微客户 SOP/ }));
-    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "企微新客旅程");
+    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
+    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "ChatAI 新客旅程");
     await user.click(screen.getByRole("button", { name: "创建" }));
 
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
     expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
-      workflowType: "wecom_sop",
+      workflowType: "chatai_sop",
     }));
     expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1");
     expect(screen.queryByRole("region", { name: "节点库" })).not.toBeInTheDocument();

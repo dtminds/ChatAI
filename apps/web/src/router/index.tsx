@@ -300,11 +300,11 @@ export const routerConfig = [
       },
       {
         path: "chat/workflows",
-        element: withRouteSuspense(<WorkflowPage />),
+        element: withRouteSuspense(<WorkflowPage surface="chatai" />),
       },
       {
         path: "chat/workflows/new",
-        element: withRouteSuspense(<WorkflowEditorPage />),
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
       },
       {
         path: "chat/workflows/observability",
@@ -312,11 +312,27 @@ export const routerConfig = [
       },
       {
         path: "chat/workflows/:workflowId",
-        element: withRouteSuspense(<WorkflowEditorPage />),
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
       },
       {
         path: "chat/workflows/:workflowId/data",
-        element: withRouteSuspense(<WorkflowEditorPage />),
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
+      },
+      {
+        path: "embed/workflows",
+        element: withRouteSuspense(<WorkflowPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/new",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/:workflowId",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/:workflowId/data",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
       },
       {
         path: "chat/ai-hosting/agents/new",

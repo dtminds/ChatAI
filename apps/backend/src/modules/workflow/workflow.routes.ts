@@ -24,6 +24,7 @@ import {
   type WorkflowSaveDraftRequest,
   type WorkflowLlmTestAttemptCreateRequest,
   type WorkflowAiIntentTestAttemptCreateRequest,
+  type WorkflowSurface,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -115,43 +116,70 @@ export async function registerWorkflowRoutes(
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
     },
   );
-  const authenticated = { preHandler: app.authenticate };
   await registerAudienceGroupRoutes(app);
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db),
     { capacityPort: entitlementPort },
   );
 
+  await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(
+    surfaceApp,
+    {
+      dataService,
+      observerSubjects: options.observerSubjects,
+      service,
+      surface: "chatai",
+    },
+  ), { prefix: "/api/server" });
+  await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(
+    surfaceApp,
+    { dataService, service, surface: "sop_embed" },
+  ), { prefix: "/api/server/embed" });
+}
+
+function registerWorkflowSurfaceRoutes(
+  app: FastifyInstance,
+  options: {
+    dataService: WorkflowDataService;
+    observerSubjects?: ReadonlySet<string>;
+    service: WorkflowService;
+    surface: WorkflowSurface;
+  },
+) {
+  const { dataService, observerSubjects, service, surface } = options;
+  const authenticated = { preHandler: app.authenticate };
+
   app.get(
-    "/api/server/workflows/capacity",
+    "/workflows/capacity",
     authenticated,
-    async request => apiSuccess(await dataService.getCapacityOverview(getWorkflowScope(request))),
+    async request => apiSuccess(await dataService.getCapacityOverview(getWorkflowScope(request, surface))),
   );
 
   app.get(
-    "/api/server/workflows/overview",
+    "/workflows/overview",
     authenticated,
     async request => apiSuccess({
-      ...(await dataService.getTenantOverview(getWorkflowScope(request))),
-      canViewWorkflowObservability: canViewInsightsWorkerObservability(
-        options.observerSubjects ?? new Set(),
-        { subUserId: request.user.subUserId, uid: request.user.uid },
-      ),
+      ...(await dataService.getTenantOverview(getWorkflowScope(request, surface))),
+      canViewWorkflowObservability: surface === "chatai"
+        && canViewInsightsWorkerObservability(
+          observerSubjects ?? new Set(),
+          { subUserId: request.user.subUserId, uid: request.user.uid },
+        ),
     }),
   );
 
   app.get<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/data",
+    "/workflows/:workflowId/data",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
     async request => apiSuccess(await dataService.getOverview(
-      getWorkflowScope(request), request.params.workflowId,
+      getWorkflowScope(request, surface), request.params.workflowId,
     )),
   );
 
   app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowRecordsQuerySchema> }>(
-    "/api/server/workflows/:workflowId/records",
+    "/workflows/:workflowId/records",
     { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowRecordsQuerySchema } },
-    async request => apiSuccess(await dataService.listRecords(getWorkflowScope(request), {
+    async request => apiSuccess(await dataService.listRecords(getWorkflowScope(request, surface), {
       cursor: request.query.cursor,
       limit: request.query.limit ?? 50,
       nodeId: request.query.nodeId,
@@ -161,17 +189,17 @@ export async function registerWorkflowRoutes(
   );
 
   app.get<{ Params: Static<typeof WorkflowRecordParamsSchema> }>(
-    "/api/server/workflows/:workflowId/records/:recordId",
+    "/workflows/:workflowId/records/:recordId",
     { ...authenticated, schema: { params: WorkflowRecordParamsSchema } },
     async request => apiSuccess(await dataService.getRecord(
-      getWorkflowScope(request), request.params.workflowId, request.params.recordId,
+      getWorkflowScope(request, surface), request.params.workflowId, request.params.recordId,
     )),
   );
 
   app.get<{ Querystring: Static<typeof WorkflowDefinitionListQuerySchema> }>(
-    "/api/server/workflows",
+    "/workflows",
     { ...authenticated, schema: { querystring: WorkflowDefinitionListQuerySchema } },
-    async request => apiSuccess(await service.list(getWorkflowScope(request), {
+    async request => apiSuccess(await service.list(getWorkflowScope(request, surface), {
       cursor: request.query.cursor,
       limit: request.query.limit ?? 20,
       query: request.query.query,
@@ -180,25 +208,25 @@ export async function registerWorkflowRoutes(
   );
 
   app.post<{ Body: WorkflowCreateRequest }>(
-    "/api/server/workflows",
+    "/workflows",
     { ...authenticated, schema: { body: WorkflowCreateRequestSchema } },
-    async (request) => apiSuccess(await service.create(getWorkflowScope(request), request.body)),
+    async (request) => apiSuccess(await service.create(getWorkflowScope(request, surface), request.body)),
   );
 
   app.get<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId",
+    "/workflows/:workflowId",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
-    async (request) => apiSuccess(await service.get(getWorkflowScope(request), request.params.workflowId)),
+    async (request) => apiSuccess(await service.get(getWorkflowScope(request, surface), request.params.workflowId)),
   );
 
   app.get<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/direct-entry-endpoint",
+    "/workflows/:workflowId/direct-entry-endpoint",
     {
       ...authenticated,
       schema: { params: WorkflowParamsSchema },
     },
     async request => apiSuccess(await service.getDirectEntryEndpoint(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
     )),
   );
@@ -207,7 +235,7 @@ export async function registerWorkflowRoutes(
     Body: WorkflowLlmTestAttemptCreateRequest;
     Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;
   }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts",
+    "/workflows/:workflowId/nodes/:nodeId/llm-test-attempts",
     {
       ...authenticated,
       schema: {
@@ -216,7 +244,7 @@ export async function registerWorkflowRoutes(
       },
     },
     async request => apiSuccess(await service.createLlmTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.body,
@@ -227,7 +255,7 @@ export async function registerWorkflowRoutes(
     Body: WorkflowAiIntentTestAttemptCreateRequest;
     Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;
   }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts",
+    "/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts",
     {
       ...authenticated,
       schema: {
@@ -236,7 +264,7 @@ export async function registerWorkflowRoutes(
       },
     },
     async request => apiSuccess(await service.createAiIntentTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.body,
@@ -244,13 +272,13 @@ export async function registerWorkflowRoutes(
   );
 
   app.get<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId",
+    "/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId",
     {
       ...authenticated,
       schema: { params: WorkflowLlmTestAttemptParamsSchema },
     },
     async request => apiSuccess(await service.getLlmTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.params.attemptId,
@@ -258,13 +286,13 @@ export async function registerWorkflowRoutes(
   );
 
   app.get<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId",
+    "/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId",
     {
       ...authenticated,
       schema: { params: WorkflowLlmTestAttemptParamsSchema },
     },
     async request => apiSuccess(await service.getLlmTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.params.attemptId,
@@ -272,13 +300,13 @@ export async function registerWorkflowRoutes(
   );
 
   app.post<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId/cancel",
+    "/workflows/:workflowId/nodes/:nodeId/llm-test-attempts/:attemptId/cancel",
     {
       ...authenticated,
       schema: { params: WorkflowLlmTestAttemptParamsSchema },
     },
     async request => apiSuccess(await service.cancelLlmTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.params.attemptId,
@@ -286,13 +314,13 @@ export async function registerWorkflowRoutes(
   );
 
   app.post<{ Params: Static<typeof WorkflowLlmTestAttemptParamsSchema> }>(
-    "/api/server/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId/cancel",
+    "/workflows/:workflowId/nodes/:nodeId/ai-intent-test-attempts/:attemptId/cancel",
     {
       ...authenticated,
       schema: { params: WorkflowLlmTestAttemptParamsSchema },
     },
     async request => apiSuccess(await service.cancelLlmTestAttempt(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,
       request.params.attemptId,
@@ -300,79 +328,79 @@ export async function registerWorkflowRoutes(
   );
 
   app.put<{ Body: WorkflowSaveDraftRequest; Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/draft",
+    "/workflows/:workflowId/draft",
     {
       ...authenticated,
       schema: { body: WorkflowSaveDraftRequestSchema, params: WorkflowParamsSchema },
     },
     async (request) => apiSuccess(await service.saveDraft(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.body,
     )),
   );
 
   app.patch<{ Body: WorkflowRenameRequest; Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/name",
+    "/workflows/:workflowId/name",
     {
       ...authenticated,
       schema: { body: WorkflowRenameRequestSchema, params: WorkflowParamsSchema },
     },
     async (request) => apiSuccess(await service.rename(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.body.name,
     )),
   );
 
   app.patch<{ Body: WorkflowMetadataUpdateRequest; Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/metadata",
+    "/workflows/:workflowId/metadata",
     {
       ...authenticated,
       schema: { body: WorkflowMetadataUpdateRequestSchema, params: WorkflowParamsSchema },
     },
     async (request) => apiSuccess(await service.updateMetadata(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.body,
     )),
   );
 
   app.delete<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId",
+    "/workflows/:workflowId",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
     async (request) => {
-      await service.delete(getWorkflowScope(request), request.params.workflowId);
+      await service.delete(getWorkflowScope(request, surface), request.params.workflowId);
       return apiSuccess({ deleted: true });
     },
   );
 
   app.post<{ Body: WorkflowPublishRequest; Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/publish",
+    "/workflows/:workflowId/publish",
     {
       ...authenticated,
       schema: { body: WorkflowPublishRequestSchema, params: WorkflowParamsSchema },
     },
     async (request) => apiSuccess(await service.publish(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.body,
     )),
   );
 
   app.get<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/review",
+    "/workflows/:workflowId/review",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
     async request => apiSuccess(await service.getCurrentReview(
-      getWorkflowScope(request), request.params.workflowId,
+      getWorkflowScope(request, surface), request.params.workflowId,
     )),
   );
 
   app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowHistoryQuerySchema> }>(
-    "/api/server/workflows/:workflowId/reviews",
+    "/workflows/:workflowId/reviews",
     { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowHistoryQuerySchema } },
     async request => apiSuccess(await service.listReviews(
-      getWorkflowScope(request), request.params.workflowId, {
+      getWorkflowScope(request, surface), request.params.workflowId, {
         cursor: request.query.cursor,
         limit: request.query.limit ?? 20,
       },
@@ -380,42 +408,42 @@ export async function registerWorkflowRoutes(
   );
 
   app.post<{ Body: WorkflowReviewSubmitRequest; Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/reviews",
+    "/workflows/:workflowId/reviews",
     { ...authenticated, schema: { body: WorkflowReviewSubmitRequestSchema, params: WorkflowParamsSchema } },
     async request => apiSuccess(await service.submitReview(
-      getWorkflowScope(request), request.params.workflowId, request.body,
+      getWorkflowScope(request, surface), request.params.workflowId, request.body,
     )),
   );
 
   app.post<{ Body: WorkflowReviewApproveRequest; Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/approve",
+    "/workflows/:workflowId/reviews/:reviewId/approve",
     { ...authenticated, schema: { body: WorkflowReviewApproveRequestSchema, params: WorkflowReviewParamsSchema } },
     async request => apiSuccess(await service.approveReview(
-      getWorkflowScope(request), request.params.workflowId, request.params.reviewId, request.body,
+      getWorkflowScope(request, surface), request.params.workflowId, request.params.reviewId, request.body,
     )),
   );
 
   app.post<{ Body: WorkflowReviewRejectRequest; Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/reject",
+    "/workflows/:workflowId/reviews/:reviewId/reject",
     { ...authenticated, schema: { body: WorkflowReviewRejectRequestSchema, params: WorkflowReviewParamsSchema } },
     async request => apiSuccess(await service.rejectReview(
-      getWorkflowScope(request), request.params.workflowId, request.params.reviewId, request.body,
+      getWorkflowScope(request, surface), request.params.workflowId, request.params.reviewId, request.body,
     )),
   );
 
   app.post<{ Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/withdraw",
+    "/workflows/:workflowId/reviews/:reviewId/withdraw",
     { ...authenticated, schema: { params: WorkflowReviewParamsSchema } },
     async request => apiSuccess(await service.withdrawReview(
-      getWorkflowScope(request), request.params.workflowId, request.params.reviewId,
+      getWorkflowScope(request, surface), request.params.workflowId, request.params.reviewId,
     )),
   );
 
   app.post<{ Body: WorkflowRestoreRequest; Params: WorkflowReviewParams }>(
-    "/api/server/workflows/:workflowId/reviews/:reviewId/restore",
+    "/workflows/:workflowId/reviews/:reviewId/restore",
     { ...authenticated, schema: { body: WorkflowRestoreRequestSchema, params: WorkflowReviewParamsSchema } },
     async request => apiSuccess(await service.restoreReview(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.reviewId,
       request.body,
@@ -423,34 +451,34 @@ export async function registerWorkflowRoutes(
   );
 
   app.post<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/enable",
+    "/workflows/:workflowId/enable",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
-    async (request) => apiSuccess(await service.enable(getWorkflowScope(request), request.params.workflowId)),
+    async (request) => apiSuccess(await service.enable(getWorkflowScope(request, surface), request.params.workflowId)),
   );
 
   app.post<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/pause",
+    "/workflows/:workflowId/pause",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
-    async (request) => apiSuccess(await service.pause(getWorkflowScope(request), request.params.workflowId)),
+    async (request) => apiSuccess(await service.pause(getWorkflowScope(request, surface), request.params.workflowId)),
   );
 
   app.post<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/resume",
+    "/workflows/:workflowId/resume",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
-    async (request) => apiSuccess(await service.resume(getWorkflowScope(request), request.params.workflowId)),
+    async (request) => apiSuccess(await service.resume(getWorkflowScope(request, surface), request.params.workflowId)),
   );
 
   app.post<{ Params: WorkflowParams }>(
-    "/api/server/workflows/:workflowId/stop",
+    "/workflows/:workflowId/stop",
     { ...authenticated, schema: { params: WorkflowParamsSchema } },
-    async (request) => apiSuccess(await service.stop(getWorkflowScope(request), request.params.workflowId)),
+    async (request) => apiSuccess(await service.stop(getWorkflowScope(request, surface), request.params.workflowId)),
   );
 
   app.get<{ Params: WorkflowParams; Querystring: Static<typeof WorkflowHistoryQuerySchema> }>(
-    "/api/server/workflows/:workflowId/revisions",
+    "/workflows/:workflowId/revisions",
     { ...authenticated, schema: { params: WorkflowParamsSchema, querystring: WorkflowHistoryQuerySchema } },
     async (request) => apiSuccess(await service.listRevisions(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       {
         cursor: request.query.cursor,
@@ -460,10 +488,10 @@ export async function registerWorkflowRoutes(
   );
 
   app.get<{ Params: WorkflowRevisionParams }>(
-    "/api/server/workflows/:workflowId/revisions/:revision",
+    "/workflows/:workflowId/revisions/:revision",
     { ...authenticated, schema: { params: WorkflowRevisionParamsSchema } },
     async request => apiSuccess(await service.getRevision(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.revision,
     )),
@@ -473,13 +501,13 @@ export async function registerWorkflowRoutes(
     Body: WorkflowRestoreRequest;
     Params: WorkflowRevisionParams;
   }>(
-    "/api/server/workflows/:workflowId/revisions/:revision/restore",
+    "/workflows/:workflowId/revisions/:revision/restore",
     {
       ...authenticated,
       schema: { body: WorkflowRestoreRequestSchema, params: WorkflowRevisionParamsSchema },
     },
     async (request) => apiSuccess(await service.restoreRevision(
-      getWorkflowScope(request),
+      getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.revision,
       request.body,
@@ -487,10 +515,11 @@ export async function registerWorkflowRoutes(
   );
 }
 
-function getWorkflowScope(request: FastifyRequest) {
+function getWorkflowScope(request: FastifyRequest, surface: WorkflowSurface) {
   return {
     roles: request.user.roles,
     subUserId: request.user.subUserId,
+    surface,
     uid: request.user.uid,
   };
 }

@@ -359,6 +359,7 @@ describe("workflow AI intent", () => {
       "42",
       intentNode.id,
       { expectedDraftVersion: 3, inputValue },
+      "/server/workflows",
     );
     expect(onNodeChange).not.toHaveBeenCalled();
     expect(await within(workspace).findByText("咨询退款")).toBeInTheDocument();
@@ -429,6 +430,7 @@ describe("workflow AI intent", () => {
       "42",
       intentNode.id,
       { expectedDraftVersion: 3, inputValue },
+      "/server/workflows",
     );
   });
 

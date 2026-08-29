@@ -10,6 +10,11 @@ export const WorkflowTypeSchema = Type.Union([
   Type.Literal("member_sop"),
 ]);
 
+export const WorkflowSurfaceSchema = Type.Union([
+  Type.Literal("chatai"),
+  Type.Literal("sop_embed"),
+]);
+
 export const WorkflowSubjectTypeSchema = Type.Union([
   Type.Literal("chatai_contact"),
   Type.Literal("wecom_contact"),
@@ -35,6 +40,7 @@ export const WorkflowTenantCapacityResultSchema = Type.Object({
 }, { additionalProperties: false });
 
 export type WorkflowType = Static<typeof WorkflowTypeSchema>;
+export type WorkflowSurface = Static<typeof WorkflowSurfaceSchema>;
 export type WorkflowSubjectType = Static<typeof WorkflowSubjectTypeSchema>;
 export type WorkflowTenantCapacityResult = Static<typeof WorkflowTenantCapacityResultSchema>;
 export type WorkflowTypeEntitlementResult = Static<typeof WorkflowTypeEntitlementResultSchema>;
@@ -163,6 +169,23 @@ export function getEnabledWorkflowTypes(): WorkflowType[] {
   return Object.values(WORKFLOW_CAPABILITY_PROFILES)
     .filter((profile) => profile.availability === "enabled")
     .map((profile) => profile.workflowType);
+}
+
+const WORKFLOW_SURFACE_OWNED_TYPES = {
+  chatai: ["chatai_sop"],
+  sop_embed: ["wecom_sop", "member_sop"],
+} as const satisfies Record<WorkflowSurface, readonly WorkflowType[]>;
+
+export function getWorkflowSurfaceTypes(surface: WorkflowSurface): WorkflowType[] {
+  return WORKFLOW_SURFACE_OWNED_TYPES[surface]
+    .filter(workflowType => getWorkflowCapabilityProfile(workflowType).availability === "enabled");
+}
+
+export function isWorkflowTypeVisibleOnSurface(
+  surface: WorkflowSurface,
+  workflowType: WorkflowType,
+): boolean {
+  return getWorkflowSurfaceTypes(surface).includes(workflowType);
 }
 
 function getWorkflowEntryEventVariableCatalog(

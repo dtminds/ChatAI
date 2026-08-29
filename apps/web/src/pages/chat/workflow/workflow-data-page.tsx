@@ -44,8 +44,7 @@ import {
 } from "./workflow-data-repository";
 import type { WorkflowDraft, WorkflowRenderNode } from "./types";
 import { createWorkflowReadOnlyRenderElements } from "./use-workflow-render-elements";
-
-const defaultWorkflowDataRepository = createWorkflowDataRepository();
+import { useWorkflowSurface } from "./workflow-surface";
 
 type WorkflowRecordsSelection = {
   nodeId?: string;
@@ -70,12 +69,17 @@ function resolveWorkflowDataDraft(document: WorkflowDocument) {
 export function WorkflowDataPage({
   document,
   refreshVersion = 0,
-  repository = defaultWorkflowDataRepository,
+  repository: repositoryProp,
 }: {
   document: WorkflowDocument;
   refreshVersion?: number;
   repository?: WorkflowDataRepository;
 }) {
+  const surface = useWorkflowSurface();
+  const repository = useMemo(
+    () => repositoryProp ?? createWorkflowDataRepository(surface.apiBasePath),
+    [repositoryProp, surface.apiBasePath],
+  );
   const [recordsSelection, setRecordsSelection] = useState<WorkflowRecordsSelection | null>(null);
   const draft = useMemo(() => resolveWorkflowDataDraft(document), [document]);
   useEffect(() => setRecordsSelection(null), [document.publishedRevision]);

@@ -61,6 +61,7 @@ import {
   WorkflowTestWorkspaceTrigger,
   WorkflowTestAttemptCloseDialog,
 } from "../test-attempt-controller";
+import { useWorkflowSurface } from "../../workflow-surface";
 
 type RawInputValues = Record<string, string | undefined>;
 type InputErrors = Record<string, string | undefined>;
@@ -94,6 +95,7 @@ function LlmTestWorkspaceContent({
   node: WorkflowNode<"llm">;
   testContext: WorkflowNodeTestContext;
 }) {
+  const surface = useWorkflowSurface();
   const inputs = useMemo(() => normalizeLlmInputs(node.data.inputs), [node.data.inputs]);
   const output = useMemo(() => normalizeLlmOutput(node.data.output), [node.data.output]);
   const [rawValues, setRawValues] = useState<RawInputValues>(() => createInitialRawValues(inputs));
@@ -103,12 +105,14 @@ function LlmTestWorkspaceContent({
     testContext.workflowId,
     node.id,
     attemptId,
-  ), [node.id, testContext.workflowId]);
+    surface.apiBasePath,
+  ), [node.id, surface.apiBasePath, testContext.workflowId]);
   const cancelAttempt = useCallback((attemptId: string) => cancelWorkflowLlmTestAttempt(
     testContext.workflowId,
     node.id,
     attemptId,
-  ), [node.id, testContext.workflowId]);
+    surface.apiBasePath,
+  ), [node.id, surface.apiBasePath, testContext.workflowId]);
   const controller = useWorkflowTestAttemptController({ cancelAttempt, getAttempt });
   const { attempt, requestError, running, starting, stopping } = controller;
   const configReady = getLlmStatus({
@@ -138,11 +142,12 @@ function LlmTestWorkspaceContent({
     await controller.startAttempt(() => createWorkflowLlmTestAttempt(
         testContext.workflowId,
         node.id,
-        {
-          expectedDraftVersion: testContext.draftVersion,
-          inputValues,
-        },
-      ));
+      {
+        expectedDraftVersion: testContext.draftVersion,
+        inputValues,
+      },
+      surface.apiBasePath,
+    ));
   };
 
   return (

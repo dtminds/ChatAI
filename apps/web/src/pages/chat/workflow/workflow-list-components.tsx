@@ -57,6 +57,7 @@ import { WorkflowStatusBadge } from "./workflow-status-badge";
 export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 
 export function WorkflowListTable({
+  detailBasePath = "/chat/workflows",
   loading,
   onDelete,
   onLifecycleAction,
@@ -64,6 +65,7 @@ export function WorkflowListTable({
   operationPendingId,
   workflows,
 }: {
+  detailBasePath?: string;
   loading: boolean;
   onDelete: (workflow: WorkflowListItem) => void;
   onLifecycleAction: (workflow: WorkflowListItem, action: WorkflowLifecycleAction) => void;
@@ -120,6 +122,7 @@ export function WorkflowListTable({
             </TableRow>
           ) : workflows.map(workflow => (
             <WorkflowListRow
+              detailBasePath={detailBasePath}
               key={workflow.id}
               onDelete={() => onDelete(workflow)}
               onLifecycleAction={action => onLifecycleAction(workflow, action)}
@@ -135,12 +138,14 @@ export function WorkflowListTable({
 }
 
 function WorkflowListRow({
+  detailBasePath,
   onDelete,
   onLifecycleAction,
   onRename,
   operationPending,
   workflow,
 }: {
+  detailBasePath: string;
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
@@ -155,7 +160,7 @@ function WorkflowListRow({
         <Link
           aria-label={`打开 ${workflow.name}`}
           className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-          to={`/chat/workflows/${workflow.id}`}
+          to={`${detailBasePath}/${workflow.id}`}
         >
           <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
         </Link>
@@ -178,6 +183,7 @@ function WorkflowListRow({
       </TableCell>
       <TablePinnedCell className="whitespace-nowrap rounded-r-[8px] border-y border-r border-border/70 px-3 py-4 text-right">
         <WorkflowRowMenu
+          detailBasePath={detailBasePath}
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
           onRename={onRename}
@@ -266,12 +272,14 @@ function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListIt
 }
 
 function WorkflowRowMenu({
+  detailBasePath,
   onDelete,
   onLifecycleAction,
   onRename,
   operationPending,
   workflow,
 }: {
+  detailBasePath: string;
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
@@ -293,7 +301,7 @@ function WorkflowRowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link to={`/chat/workflows/${workflow.id}`}>
+          <Link to={`${detailBasePath}/${workflow.id}`}>
             <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
             编辑工作流
           </Link>

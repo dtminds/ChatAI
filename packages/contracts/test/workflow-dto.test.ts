@@ -23,6 +23,8 @@ import {
 import {
   getEnabledWorkflowTypes,
   getWorkflowCapabilityProfile,
+  getWorkflowSurfaceTypes,
+  isWorkflowTypeVisibleOnSurface,
   WorkflowTenantCapacityResultSchema,
   WorkflowTypeEntitlementResultSchema,
 } from "../src/workflow/policy.js";
@@ -174,6 +176,14 @@ describe("workflow contracts", () => {
       availability: "reserved",
       subjectType: "miniapp_member",
     });
+  });
+
+  it("derives visible Workflow Types from the fixed Surface policy", () => {
+    expect(getWorkflowSurfaceTypes("chatai")).toEqual(["chatai_sop"]);
+    expect(getWorkflowSurfaceTypes("sop_embed")).toEqual(["wecom_sop"]);
+    expect(isWorkflowTypeVisibleOnSurface("chatai", "wecom_sop")).toBe(false);
+    expect(isWorkflowTypeVisibleOnSurface("sop_embed", "wecom_sop")).toBe(true);
+    expect(isWorkflowTypeVisibleOnSurface("sop_embed", "member_sop")).toBe(false);
   });
 
   it("keeps database identifiers as decimal strings", () => {

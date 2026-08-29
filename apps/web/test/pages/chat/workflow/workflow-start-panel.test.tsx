@@ -114,7 +114,10 @@ describe("StartConfig", () => {
         `${window.location.origin}/workflow/endpoint?key=java%2B%2Fworkflow-31%3D`,
       );
     });
-    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledWith("31");
+    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledWith(
+      "31",
+      "/server/workflows",
+    );
     expect(screen.getByRole("button", { name: "复制推送地址" })).toBeEnabled();
   });
 

@@ -182,9 +182,15 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     uid: number,
     input: Parameters<WorkflowRepository["listDefinitions"]>[1],
   ) {
+    if (input.workflowTypes?.length === 0) {
+      return { items: [], nextCursor: null, total: 0 };
+    }
     let query = this.db.selectFrom(DEFINITION_TABLE)
       .where("uid", "=", uid)
       .where("biz_status", "=", 1);
+    if (input.workflowTypes) {
+      query = query.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    }
     if (input.status === "active") {
       query = query.where("runtime_status", "=", "active");
     } else if (input.status === "ready") {

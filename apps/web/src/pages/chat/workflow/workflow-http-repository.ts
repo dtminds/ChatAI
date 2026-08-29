@@ -44,7 +44,9 @@ const workflowHistoryPageSize = 20;
 
 export function createHttpWorkflowDraftRepository(
   client: WorkflowHttpClient = http,
+  apiBasePath = "/server/workflows",
 ): WorkflowDraftRepository {
+  client = createSurfaceWorkflowClient(client, apiBasePath);
   const definitions = new Map<string, ApiWorkflowDefinition>();
   const revisions = new Map<string, ApiWorkflowRevision[]>();
   const revisionCursors = new Map<string, string | null>();
@@ -340,6 +342,20 @@ export function createHttpWorkflowDraftRepository(
   };
 
   return repository;
+}
+
+function createSurfaceWorkflowClient(
+  client: WorkflowHttpClient,
+  apiBasePath: string,
+): WorkflowHttpClient {
+  const resolve = (url: string) => url.replace(/^\/server\/workflows/, apiBasePath);
+  return {
+    delete: url => client.delete(resolve(url)),
+    get: url => client.get(resolve(url)),
+    patch: (url, data) => client.patch(resolve(url), data),
+    post: (url, data) => client.post(resolve(url), data),
+    put: (url, data) => client.put(resolve(url), data),
+  };
 }
 
 function enqueueWorkflowWrite<T>(

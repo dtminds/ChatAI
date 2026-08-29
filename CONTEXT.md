@@ -8,6 +8,10 @@ ChatAI is a marketing and service automation product. Its Workflow domain coordi
 The stable business domain selected when a Workflow is created. It fixes the Workflow's primary Subject Type and the capabilities that are semantically valid for that Workflow. Workflow Type governs orchestration capability; it is not an identity namespace.
 _Avoid_: Workflow category, template type
 
+**Workflow Surface**:
+The access context through which Workflow management is presented. A Workflow Surface selects which Workflow Types are visible without changing their semantics, entitlement, or identity model.
+_Avoid_: Workflow Type, ambiguous channel
+
 **ChatAI SOP**:
 A Workflow Type identified by `chatai_sop`. Its primary Subject Type is `chatai_contact`, and its capability set may include ChatAI messages, conversations, Agents, and AI nodes.
 _Avoid_: ChatAI Workflow

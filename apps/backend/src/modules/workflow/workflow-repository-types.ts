@@ -122,6 +122,7 @@ export type WorkflowDefinitionListInput = {
   limit: number;
   query?: string;
   status: WorkflowDefinitionListStatus;
+  workflowTypes?: WorkflowType[];
 };
 
 export type WorkflowDefinitionRecordPage = {

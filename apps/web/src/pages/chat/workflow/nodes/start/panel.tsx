@@ -48,6 +48,7 @@ import {
 import { ManagedAccountSelection } from "./managed-account-selection";
 import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
+import { useWorkflowSurface } from "../../workflow-surface";
 
 export function StartConfig({
   allowedEntryEventTypes = [],
@@ -329,6 +330,7 @@ export function StartConfig({
 }
 
 function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
+  const surface = useWorkflowSurface();
   const [requestVersion, setRequestVersion] = useState(0);
   const [state, setState] = useState<
     | { kind: "error" }
@@ -340,7 +342,7 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
     if (!workflowId) return;
     let active = true;
     setState({ kind: "loading" });
-    void getWorkflowDirectEntryEndpoint(workflowId).then(({ endpointKey }) => {
+    void getWorkflowDirectEntryEndpoint(workflowId, surface.apiBasePath).then(({ endpointKey }) => {
       if (!active) return;
       const endpointUrl = new URL("/workflow/endpoint", window.location.origin);
       endpointUrl.searchParams.set("key", endpointKey);
@@ -351,7 +353,7 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
     return () => {
       active = false;
     };
-  }, [requestVersion, workflowId]);
+  }, [requestVersion, surface.apiBasePath, workflowId]);
 
   if (!workflowId) return null;
   return (

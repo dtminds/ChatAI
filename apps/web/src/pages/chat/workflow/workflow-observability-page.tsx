@@ -139,6 +139,9 @@ export function WorkflowObservabilityPage() {
         setList(nextList);
         setError(false);
         setForbidden(false);
+        if (page > nextList.totalPages) {
+          setPage(Math.max(1, nextList.totalPages));
+        }
       }
     } catch (caught) {
       if (signal.aborted) return;

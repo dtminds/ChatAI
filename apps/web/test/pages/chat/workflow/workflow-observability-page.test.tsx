@@ -218,6 +218,47 @@ describe("workflow observability page", () => {
     expect(screen.queryByText("执行记录")).not.toBeInTheDocument();
   });
 
+  it("clamps to the last page and reloads when the list shrinks", async () => {
+    const user = userEvent.setup();
+    let catalogTotal = 21;
+    api.listWorkflowObservabilityWorkflows.mockImplementation(async (query: {
+      page?: number;
+    }) => {
+      const requestedPage = query.page ?? 1;
+      const totalPages = Math.max(1, Math.ceil(catalogTotal / 20));
+      return {
+        items: requestedPage <= totalPages
+          ? [{
+              ...listPage.items[0],
+              name: requestedPage === 1 ? "新客旅程" : "第二页旅程",
+              workflowId: String(requestedPage),
+            }]
+          : [],
+        observedAt: listPage.observedAt,
+        page: requestedPage,
+        pageSize: 20,
+        total: catalogTotal,
+        totalPages,
+      };
+    });
+    renderPage();
+    expect(await screen.findByText("新客旅程")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "2" }));
+    expect(await screen.findByText("第二页旅程")).toBeInTheDocument();
+    catalogTotal = 2;
+    await user.click(screen.getByRole("button", { name: "刷新运行观测" }));
+    await waitFor(() => {
+      expect(api.listWorkflowObservabilityWorkflows).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1 }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(await screen.findByText("新客旅程")).toBeInTheDocument();
+    expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "2" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
   it("keeps the previous snapshot when a refresh fails", async () => {
     const user = userEvent.setup();
     renderPage();

@@ -11,6 +11,7 @@ import {
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
+import { readWorkflowTriggerSeatId } from "./context-readers.js";
 
 export type WorkflowMessageQueryCommandContext = {
   currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
@@ -47,7 +48,7 @@ export function createWorkflowMessageQueryCommand(input: {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
   const config = input.config as WorkflowMessageQueryConfig;
-  const seatId = getSeatId(input.context.trigger);
+  const seatId = readWorkflowTriggerSeatId(input.context.trigger);
   if (seatId === null) {
     throw invalidMessageQueryCommand("Message Query requires trigger.projection.seatId");
   }
@@ -168,15 +169,6 @@ function parseTimestamp(value: unknown, diagnosticMessage: string) {
   const timestamp = Date.parse(value);
   if (!Number.isSafeInteger(timestamp)) throw invalidMessageQueryCommand(diagnosticMessage);
   return timestamp;
-}
-
-function getSeatId(trigger: Record<string, unknown>) {
-  const projection = trigger.projection;
-  if (!projection || typeof projection !== "object" || Array.isArray(projection)) return null;
-  const seatId = (projection as Record<string, unknown>).seatId;
-  return typeof seatId === "number" && Number.isSafeInteger(seatId) && seatId > 0
-    ? seatId
-    : null;
 }
 
 function invalidMessageQueryCommand(diagnosticMessage: string) {

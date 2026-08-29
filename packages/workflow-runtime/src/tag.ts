@@ -5,11 +5,11 @@ import {
   type WorkflowTagCommand,
   type WorkflowTagExecutionConfig,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
 
 export const WORKFLOW_TAG_CAPABILITY_BINDING = {
   createCommand: createWorkflowTagCommand,
@@ -45,11 +45,6 @@ export function createWorkflowTagCommand(input: {
   };
 }
 
-function tagCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_TAG_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const tagCommandError = createCapabilityCommandError(
+  "WORKFLOW_TAG_COMMAND_INVALID",
+);

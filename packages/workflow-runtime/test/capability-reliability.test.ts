@@ -192,6 +192,45 @@ describe("workflow capability reliability", () => {
     }
   });
 
+  it("aborts a timed-out Message Query and persists an unknown-outcome retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      let querySignal: AbortSignal | undefined;
+      const service = createService(runtime, async () => ({}), {
+        capabilityTimeoutMs: 100,
+        messageQueryExecute: async (request) => {
+          querySignal = request.signal;
+          return new Promise(() => {});
+        },
+        spec: messageQuerySpec(),
+      });
+      const queryTask = await startCapability(runtime, service, {
+        occurredAt: "2026-07-12T23:00:00.000Z",
+        projection: { seatId: 101 },
+      });
+
+      const execution = service.executeTask({
+        now,
+        taskId: queryTask.id,
+        taskVersion: queryTask.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      });
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(execution).resolves.toMatchObject({
+        diagnosticMessage: "Workflow Message Query exceeded its 100ms deadline",
+        errorCode: "WORKFLOW_CAPABILITY_TIMEOUT",
+        failureKind: "unknown",
+        kind: "retry-scheduled",
+      });
+      expect(querySignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("persists Query retries and terminal failures without an external idempotency key", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const requests: WorkflowMessageQueryRequest[] = [];

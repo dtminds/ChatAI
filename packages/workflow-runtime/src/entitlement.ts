@@ -251,10 +251,7 @@ function isBusinessSuccessEnvelope(value: unknown): value is { data: boolean; su
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
   return body.success === true
-    && body.error === 0
-    && typeof body.data === "boolean"
-    && typeof body.errorMsg === "string"
-    && (body.error_msg === undefined || typeof body.error_msg === "string");
+    && typeof body.data === "boolean";
 }
 
 function normalizeHttpBaseUrl(value: string) {

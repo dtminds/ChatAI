@@ -6,8 +6,6 @@ import {
 
 const success = (data: boolean) => new Response(JSON.stringify({
   data,
-  error: 0,
-  errorMsg: "",
   success: true,
 }), { headers: { "Content-Type": "application/json" }, status: 200 });
 
@@ -68,11 +66,10 @@ describe("workflow entitlement port", () => {
   });
 
   it.each([
-    { data: true, error: 1, errorMsg: "denied", error_msg: "", success: true },
-    { data: true, error: 0, errorMsg: "", error_msg: "", success: false },
-    { data: "true", error: 0, errorMsg: "", error_msg: "", success: true },
-    { data: true, error: 0, errorMsg: "", error_msg: 1, success: true },
-    { data: true, error: 0, success: true },
+    { data: true, success: false },
+    { data: "true", success: true },
+    { success: true },
+    { data: true },
   ])("treats invalid Java envelopes as unavailable: %j", async (body) => {
     const port = createWorkflowEntitlementPort({
       baseUrl: "https://java.example.com",
@@ -80,6 +77,22 @@ describe("workflow entitlement port", () => {
     });
     await expect(port.check({ uid: 9, workflowType: "chatai_sop" }))
       .rejects.toBeInstanceOf(WorkflowEntitlementUnavailableError);
+  });
+
+  it("ignores failure-only envelope fields after a successful decision", async () => {
+    const port = createWorkflowEntitlementPort({
+      baseUrl: "https://java.example.com",
+      fetch: async () => new Response(JSON.stringify({
+        data: false,
+        error: 1,
+        errorMsg: 1,
+        error_msg: null,
+        success: true,
+      }), { status: 200 }),
+    });
+
+    await expect(port.check({ uid: 9, workflowType: "chatai_sop" }))
+      .resolves.toEqual({ entitled: false });
   });
 
   it("shares Redis results and force-refreshes cached denials", async () => {

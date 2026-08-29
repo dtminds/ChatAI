@@ -11,6 +11,7 @@ import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
 
 export const WORKFLOW_TAG_QUERY_CAPABILITY_BINDING = {
   createCommand: createWorkflowTagQueryCommand,
@@ -73,14 +74,9 @@ export function mapWorkflowTagQueryResult(input: {
   };
 }
 
-function tagQueryCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_TAG_QUERY_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const tagQueryCommandError = createCapabilityCommandError(
+  "WORKFLOW_TAG_QUERY_COMMAND_INVALID",
+);
 
 function requireWorkflowTagQueryExecutionConfig(
   config: Record<string, unknown>,

@@ -262,35 +262,25 @@ function validateNodeOutlets(
 }
 
 function getNodeOutletIds(node: WorkflowDraftNode) {
-  if (node.data.kind === "branch") return getBranchOutletIds(node);
-  if (node.data.kind === "ratio-split") return getRatioSplitOutletIds(node);
+  if (node.data.kind === "branch") return getConfiguredOutletIds(node, "branchPaths");
+  if (node.data.kind === "ratio-split") return getConfiguredOutletIds(node, "groups");
   if (node.data.kind === "wait-event") return ["triggered", "timeout"];
   if (node.data.kind === "ai-collect") return ["completed", "incomplete"];
-  if (node.data.kind === "ai-intent") return getAiIntentOutletIds(node);
+  if (node.data.kind === "ai-intent") {
+    return [...getConfiguredOutletIds(node, "intents", "intent:"), "fallback"];
+  }
   return [DEFAULT_OUTLET_ID];
 }
 
-function getBranchOutletIds(node: WorkflowDraftNode) {
-  const paths = (node.data as Record<string, unknown>).branchPaths;
-  if (!Array.isArray(paths)) return [];
-  return paths.flatMap((path) => path && typeof path === "object" && "id" in path
-    && typeof path.id === "string" && path.id.length > 0 ? [path.id] : []);
-}
-
-function getRatioSplitOutletIds(node: WorkflowDraftNode) {
-  const groups = (node.data as Record<string, unknown>).groups;
-  if (!Array.isArray(groups)) return [];
-  return groups.flatMap((group) => group && typeof group === "object" && "id" in group
-    && typeof group.id === "string" && group.id.length > 0 ? [group.id] : []);
-}
-
-function getAiIntentOutletIds(node: WorkflowDraftNode) {
-  const intents = (node.data as Record<string, unknown>).intents;
-  const intentOutlets = Array.isArray(intents)
-    ? intents.flatMap(intent => intent && typeof intent === "object" && "id" in intent
-      && typeof intent.id === "string" && intent.id.length > 0 ? [`intent:${intent.id}`] : [])
-    : [];
-  return [...intentOutlets, "fallback"];
+function getConfiguredOutletIds(
+  node: WorkflowDraftNode,
+  key: "branchPaths" | "groups" | "intents",
+  prefix = "",
+) {
+  const items = (node.data as Record<string, unknown>)[key];
+  if (!Array.isArray(items)) return [];
+  return items.flatMap(item => item && typeof item === "object" && "id" in item
+    && typeof item.id === "string" && item.id.length > 0 ? [`${prefix}${item.id}`] : []);
 }
 
 function indexEdges(edges: WorkflowDraftEdge[], key: "source" | "target") {
@@ -307,38 +297,40 @@ function getAncestorNodeIds(
   edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
   existingNodeIds: Set<string>,
 ) {
-  const incoming = new Map<string, string[]>();
-  edges.forEach((edge) => {
-    if (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target)) return;
-    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source]);
-  });
-  const ancestors = new Set<string>();
-  const queue = [nodeId];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (ancestors.has(current)) continue;
-    ancestors.add(current);
-    queue.push(...incoming.get(current) ?? []);
-  }
-  return ancestors;
+  return getConnectedNodeIds(nodeId, edges, "incoming", existingNodeIds);
 }
 
 function getReachableNodeIds(
   entryNodeId: string,
   edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
 ) {
-  const outgoing = new Map<string, string[]>();
-  edges.forEach(edge =>
-    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target]));
-  const reachable = new Set<string>();
+  return getConnectedNodeIds(entryNodeId, edges, "outgoing");
+}
+
+function getConnectedNodeIds(
+  entryNodeId: string,
+  edges: readonly Pick<WorkflowDraftEdge, "source" | "target">[],
+  direction: "incoming" | "outgoing",
+  existingNodeIds?: Set<string>,
+) {
+  const adjacent = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (existingNodeIds
+      && (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target))) continue;
+    const [from, to] = direction === "incoming"
+      ? [edge.target, edge.source]
+      : [edge.source, edge.target];
+    adjacent.set(from, [...adjacent.get(from) ?? [], to]);
+  }
+  const connected = new Set<string>();
   const queue = [entryNodeId];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    if (reachable.has(current)) continue;
-    reachable.add(current);
-    queue.push(...outgoing.get(current) ?? []);
+    if (connected.has(current)) continue;
+    connected.add(current);
+    queue.push(...adjacent.get(current) ?? []);
   }
-  return reachable;
+  return connected;
 }
 
 function intersectSets(sets: Set<string>[]) {

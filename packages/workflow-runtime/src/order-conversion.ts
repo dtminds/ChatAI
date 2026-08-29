@@ -1,16 +1,16 @@
 import {
   isWorkflowNodeExecutionConfig,
-  WORKFLOW_ORDER_NUMBER_MAX_LENGTH,
   WorkflowOrderConversionCommandSchema,
   WorkflowOrderConversionResultSchema,
   type WorkflowOrderConversionCommand,
   type WorkflowOrderConversionExecutionConfig,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
+import { readWorkflowOrderNumber } from "./order-number.js";
 import { requireWorkflowVariableValue } from "./variable-content.js";
 
 export const WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING = {
@@ -64,7 +64,7 @@ function prepareWorkflowOrderConversionCommand(input: {
     throw orderConversionCommandError("Order Conversion recipient is unavailable in the Run context");
   }
   const config = input.config as WorkflowOrderConversionExecutionConfig;
-  return readOrderNumber(
+  return readWorkflowOrderNumber(
     requireWorkflowVariableValue(
       config.orderNumberSelector,
       input.context,
@@ -73,22 +73,6 @@ function prepareWorkflowOrderConversionCommand(input: {
   );
 }
 
-function readOrderNumber(value: unknown): WorkflowOrderConversionCommand | null {
-  const orderNumber = typeof value === "number" && Number.isFinite(value)
-    ? String(value)
-    : typeof value === "string" ? value.trim() : "";
-  if (!orderNumber || orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) return null;
-  return {
-    orderNumber,
-    source: "workflow",
-  };
-}
-
-function orderConversionCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_ORDER_CONVERSION_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const orderConversionCommandError = createCapabilityCommandError(
+  "WORKFLOW_ORDER_CONVERSION_COMMAND_INVALID",
+);

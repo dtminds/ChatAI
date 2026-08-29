@@ -39,6 +39,7 @@ import {
   createWorkflowChatAiRunContext,
   getNextWorkflowMessageExecutionAt,
 } from "./chatai-action-context.js";
+import { readWorkflowTriggerSeatId } from "./context-readers.js";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -1009,11 +1010,7 @@ export class WorkflowRuntimeService {
 
 function getRunSeatId(context: Record<string, unknown>) {
   const trigger = isRecord(context.trigger) ? context.trigger : null;
-  const projection = trigger && isRecord(trigger.projection) ? trigger.projection : null;
-  const seatId = projection?.seatId;
-  return typeof seatId === "number" && Number.isSafeInteger(seatId) && seatId > 0
-    ? seatId
-    : null;
+  return trigger ? readWorkflowTriggerSeatId(trigger) : null;
 }
 
 function createExecutionContext(
@@ -1075,66 +1072,56 @@ async function executeWithCapabilityTimeout(input: {
       { diagnosticMessage: "Workflow capability port is not configured" },
     );
   }
-  const controller = new AbortController();
+  const binding = input.binding;
+  const port = input.port;
   const deadlineAt = new Date(input.startedAt.getTime() + input.capabilityTimeoutMs);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new WorkflowCapabilityExecutionError(
-        "unknown",
-        "WORKFLOW_CAPABILITY_TIMEOUT",
-        "执行超时",
-        { diagnosticMessage: `Workflow capability exceeded its ${input.capabilityTimeoutMs}ms deadline` },
-      );
-      reject(error);
-      controller.abort(error);
-    }, input.capabilityTimeoutMs);
-  });
-  try {
-    return await Promise.race([
-      executeWorkflowCapabilityStep({
-        binding: input.binding,
-        commandContext: {
-          currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
-          identities: structuredClone(input.preparedContext.identities),
-          nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
-            ? input.run.context.nodeLifecycle as Record<
-              string,
-              { enteredAt?: string; exitedAt?: string }
-            >
-            : {},
-          outputs: isRecord(input.run.context.outputs)
-            ? input.run.context.outputs as Record<string, Record<string, unknown>>
-            : {},
-          subjectId: input.run.subjectId,
-          trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
-          workflow: isRecord(input.run.context.workflow) ? input.run.context.workflow : {},
-        },
-        config: input.node.config,
-        deadlineAt,
-        execution: {
-          nodeId: input.node.id,
-          revision: input.run.revision,
-          runId: input.run.id,
-          sequence: input.run.sequence,
-          workflowId: input.run.workflowId,
-        },
-        executionKey: input.nodeExecutionKey,
-        port: input.port,
-        signal: controller.signal,
+  return raceWithWorkflowTimeout({
+    createError: () => new WorkflowCapabilityExecutionError(
+      "unknown",
+      "WORKFLOW_CAPABILITY_TIMEOUT",
+      "执行超时",
+      { diagnosticMessage: `Workflow capability exceeded its ${input.capabilityTimeoutMs}ms deadline` },
+    ),
+    execute: signal => executeWorkflowCapabilityStep({
+      binding,
+      commandContext: {
+        currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+        identities: structuredClone(input.preparedContext.identities),
+        nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
+          ? input.run.context.nodeLifecycle as Record<
+            string,
+            { enteredAt?: string; exitedAt?: string }
+          >
+          : {},
+        outputs: isRecord(input.run.context.outputs)
+          ? input.run.context.outputs as Record<string, Record<string, unknown>>
+          : {},
         subjectId: input.run.subjectId,
-        subjectType: input.run.subjectType,
-        uid: input.run.uid,
-      }).then(step => ({
-        output: step.output,
-        sourceOutletId: step.sourceOutletId,
-        type: "advance" as const,
-      })),
-      timeout,
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+        trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+        workflow: isRecord(input.run.context.workflow) ? input.run.context.workflow : {},
+      },
+      config: input.node.config,
+      deadlineAt,
+      execution: {
+        nodeId: input.node.id,
+        revision: input.run.revision,
+        runId: input.run.id,
+        sequence: input.run.sequence,
+        workflowId: input.run.workflowId,
+      },
+      executionKey: input.nodeExecutionKey,
+      port,
+      signal,
+      subjectId: input.run.subjectId,
+      subjectType: input.run.subjectType,
+      uid: input.run.uid,
+    }).then(step => ({
+      output: step.output,
+      sourceOutletId: step.sourceOutletId,
+      type: "advance" as const,
+    })),
+    timeoutMs: input.capabilityTimeoutMs,
+  });
 }
 
 async function executeMessageQueryWithTimeout(input: {
@@ -1154,48 +1141,57 @@ async function executeMessageQueryWithTimeout(input: {
       { diagnosticMessage: "Workflow Message Query port is not configured" },
     );
   }
+  const port = input.port;
+  return raceWithWorkflowTimeout({
+    createError: () => new WorkflowCapabilityExecutionError(
+      "unknown",
+      "WORKFLOW_CAPABILITY_TIMEOUT",
+      "执行超时",
+      { diagnosticMessage: `Workflow Message Query exceeded its ${input.capabilityTimeoutMs}ms deadline` },
+    ),
+    execute: signal => executeWorkflowMessageQuery({
+      config: input.node.config,
+      context: {
+        currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+        identities: structuredClone(input.preparedContext.identities),
+        nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
+          ? input.run.context.nodeLifecycle as Record<
+            string,
+            { enteredAt?: string; exitedAt?: string }
+          >
+          : {},
+        outputs: isRecord(input.run.context.outputs)
+          ? input.run.context.outputs as Record<string, Record<string, unknown>>
+          : {},
+        subjectId: input.run.subjectId,
+        trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
+      },
+      port,
+      signal,
+      subjectId: input.run.subjectId,
+      subjectType: input.run.subjectType,
+      uid: input.run.uid,
+    }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+    timeoutMs: input.capabilityTimeoutMs,
+  });
+}
+
+async function raceWithWorkflowTimeout<T>(input: {
+  createError(): WorkflowCapabilityExecutionError;
+  execute(signal: AbortSignal): Promise<T>;
+  timeoutMs: number;
+}) {
   const controller = new AbortController();
-  const deadlineAt = new Date(input.startedAt.getTime() + input.capabilityTimeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const error = new WorkflowCapabilityExecutionError(
-        "unknown",
-        "WORKFLOW_CAPABILITY_TIMEOUT",
-        "执行超时",
-        { diagnosticMessage: `Workflow Message Query exceeded its ${input.capabilityTimeoutMs}ms deadline` },
-      );
+      const error = input.createError();
       reject(error);
       controller.abort(error);
-    }, input.capabilityTimeoutMs);
+    }, input.timeoutMs);
   });
   try {
-    return await Promise.race([
-      executeWorkflowMessageQuery({
-        config: input.node.config,
-        context: {
-          currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
-          identities: structuredClone(input.preparedContext.identities),
-          nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
-            ? input.run.context.nodeLifecycle as Record<
-              string,
-              { enteredAt?: string; exitedAt?: string }
-            >
-            : {},
-          outputs: isRecord(input.run.context.outputs)
-            ? input.run.context.outputs as Record<string, Record<string, unknown>>
-            : {},
-          subjectId: input.run.subjectId,
-          trigger: isRecord(input.run.context.trigger) ? input.run.context.trigger : {},
-        },
-        port: input.port,
-        signal: controller.signal,
-        subjectId: input.run.subjectId,
-        subjectType: input.run.subjectType,
-        uid: input.run.uid,
-      }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
-      timeout,
-    ]);
+    return await Promise.race([input.execute(controller.signal), timeout]);
   } finally {
     if (timer) clearTimeout(timer);
   }

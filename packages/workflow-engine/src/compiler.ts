@@ -242,7 +242,7 @@ function validateWorkflowNodeReferences(
       }
     }
 
-    if (node.kind === "order-conversion"
+    if ((node.kind === "order-conversion" || node.kind === "order-bind")
       && Array.isArray(node.config.orderNumberSelector)) {
       const selectorInput = {
         edges,
@@ -266,9 +266,10 @@ function validateWorkflowNodeReferences(
         expectedValueType: { kind: "number" },
       });
       if (!valid) {
+        const label = node.kind === "order-conversion" ? "Order Conversion" : "Order Bind";
         issues.push({
           code: "invalid-node-config",
-          message: "Order Conversion node references unavailable or incompatible order number data",
+          message: `${label} node references unavailable or incompatible order number data`,
           nodeId: node.id,
         });
       }
@@ -296,38 +297,6 @@ function validateWorkflowNodeReferences(
         issues.push({
           code: "invalid-node-config",
           message: "AI Intent node references unavailable input data",
-          nodeId: node.id,
-        });
-      }
-    }
-
-    if (node.kind === "order-bind"
-      && Array.isArray(node.config.orderNumberSelector)) {
-      const selectorInput = {
-        edges,
-        guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
-          node.id,
-          nodeIds,
-          edges,
-        ),
-        nodeById,
-        requiredUsage: "variable" as const,
-        selector: node.config.orderNumberSelector as WorkflowVariableSelector,
-        targetNodeId: node.id,
-        workflowType,
-        entryEventTypes,
-      };
-      const valid = validateWorkflowVariableSelector({
-        ...selectorInput,
-        expectedValueType: { kind: "string" },
-      }) || validateWorkflowVariableSelector({
-        ...selectorInput,
-        expectedValueType: { kind: "number" },
-      });
-      if (!valid) {
-        issues.push({
-          code: "invalid-node-config",
-          message: "Order Bind node references unavailable or incompatible order number data",
           nodeId: node.id,
         });
       }
@@ -502,18 +471,11 @@ function getWorkflowEntryEventTypes(nodes: WorkflowExecutionNode[]) {
 }
 
 export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
-  return {
-    ...structuredClone(draft),
-    nodes: draft.nodes.map((node) => {
-      if (node.data.kind !== "start") return structuredClone(node);
-      const data = node.data as typeof node.data & { entryPolicy?: unknown };
-      return {
-        ...structuredClone(node),
-        data: {
-          ...structuredClone(data),
-          entryPolicy: normalizeWorkflowEntryPolicy(data.entryPolicy),
-        },
-      };
-    }),
-  } as WorkflowDraft;
+  const normalized = structuredClone(draft);
+  for (const node of normalized.nodes) {
+    if (node.data.kind !== "start") continue;
+    const data = node.data as typeof node.data & { entryPolicy?: unknown };
+    data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);
+  }
+  return normalized;
 }

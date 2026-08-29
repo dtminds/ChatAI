@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { compileWorkflowDraft, WorkflowCompilationError } from "../src/index.js";
+import {
+  compileWorkflowDraft,
+  normalizeWorkflowDraft,
+  WorkflowCompilationError,
+} from "../src/index.js";
 
 describe("compileWorkflowDraft", () => {
+  it("normalizes a deep clone without mutating the draft", () => {
+    const draft = createDraft();
+    const original = structuredClone(draft);
+
+    const normalized = normalizeWorkflowDraft(draft);
+
+    expect(normalized).not.toBe(draft);
+    expect(normalized.nodes[0]).not.toBe(draft.nodes[0]);
+    expect(draft).toEqual(original);
+  });
+
   it("validates and strips canvas-only node data", () => {
     const spec = compileWorkflowDraft({
       draft: createDraft(),

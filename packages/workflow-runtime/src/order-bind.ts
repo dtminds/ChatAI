@@ -1,16 +1,16 @@
 import {
   isWorkflowNodeExecutionConfig,
-  WORKFLOW_ORDER_NUMBER_MAX_LENGTH,
   WorkflowOrderBindCommandSchema,
   WorkflowOrderBindResultSchema,
   type WorkflowOrderBindCommand,
   type WorkflowOrderBindExecutionConfig,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
+import { readWorkflowOrderNumber } from "./order-number.js";
 import { requireWorkflowVariableValue } from "./variable-content.js";
 
 export const WORKFLOW_ORDER_BIND_CAPABILITY_BINDING = {
@@ -64,7 +64,7 @@ function prepareWorkflowOrderBindCommand(input: {
     throw orderBindCommandError("Order Bind recipient is unavailable in the Run context");
   }
   const config = input.config as WorkflowOrderBindExecutionConfig;
-  return readOrderNumber(
+  return readWorkflowOrderNumber(
     requireWorkflowVariableValue(
       config.orderNumberSelector,
       input.context,
@@ -73,23 +73,6 @@ function prepareWorkflowOrderBindCommand(input: {
   );
 }
 
-function readOrderNumber(value: unknown): WorkflowOrderBindCommand | null {
-  const orderNumber = typeof value === "number" && Number.isFinite(value)
-    ? String(value)
-    : typeof value === "string" ? value.trim() : "";
-  if (!orderNumber) return null;
-  if (orderNumber.length > WORKFLOW_ORDER_NUMBER_MAX_LENGTH) return null;
-  return {
-    orderNumber,
-    source: "workflow",
-  };
-}
-
-function orderBindCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const orderBindCommandError = createCapabilityCommandError(
+  "WORKFLOW_ORDER_BIND_COMMAND_INVALID",
+);

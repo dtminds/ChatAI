@@ -6,11 +6,11 @@ import {
   type WorkflowAudienceFilterExecutionConfig,
   type WorkflowAudienceFilterResult,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
 
 export const WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING = {
   createCommand: createWorkflowAudienceFilterCommand,
@@ -89,11 +89,6 @@ function requireWorkflowAudienceFilterExecutionConfig(
   return structuredClone(config) as WorkflowAudienceFilterExecutionConfig;
 }
 
-function audienceFilterCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_AUDIENCE_FILTER_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const audienceFilterCommandError = createCapabilityCommandError(
+  "WORKFLOW_AUDIENCE_FILTER_COMMAND_INVALID",
+);

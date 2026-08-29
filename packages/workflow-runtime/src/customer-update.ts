@@ -9,11 +9,11 @@ import {
   type WorkflowCustomerUpdateValue,
   type WorkflowVariableSelector,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
   WorkflowCapabilityCommandContext,
   WorkflowCapabilityExecutionBinding,
 } from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
 import { resolveWorkflowVariableSelector } from "./variable-content.js";
 
 const UTC8_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1000;
@@ -141,11 +141,6 @@ export function normalizeWorkflowCustomerDate(value: unknown): string | null {
   ].join("-");
 }
 
-function customerUpdateCommandError(diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    "WORKFLOW_CUSTOMER_UPDATE_COMMAND_INVALID",
-    "执行所需数据不可用，流程已停止",
-    { diagnosticMessage },
-  );
-}
+const customerUpdateCommandError = createCapabilityCommandError(
+  "WORKFLOW_CUSTOMER_UPDATE_COMMAND_INVALID",
+);

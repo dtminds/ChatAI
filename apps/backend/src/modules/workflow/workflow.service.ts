@@ -969,6 +969,12 @@ export class WorkflowService {
         workflowType,
       });
       if (decision.action === "allow") return decision.result;
+      const confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
+        forceRefresh: true,
+        uid,
+        workflowType,
+      });
+      if (confirmation.action === "allow") return confirmation.result;
       throw new ForbiddenError(
         "WORKFLOW_ENTITLEMENT_REQUIRED",
         "当前无对应产品权益",

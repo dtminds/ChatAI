@@ -8,7 +8,6 @@ const success = (data: boolean) => new Response(JSON.stringify({
   data,
   error: 0,
   errorMsg: "",
-  error_msg: "",
   success: true,
 }), { headers: { "Content-Type": "application/json" }, status: 200 });
 
@@ -72,6 +71,7 @@ describe("workflow entitlement port", () => {
     { data: true, error: 1, errorMsg: "denied", error_msg: "", success: true },
     { data: true, error: 0, errorMsg: "", error_msg: "", success: false },
     { data: "true", error: 0, errorMsg: "", error_msg: "", success: true },
+    { data: true, error: 0, errorMsg: "", error_msg: 1, success: true },
     { data: true, error: 0, success: true },
   ])("treats invalid Java envelopes as unavailable: %j", async (body) => {
     const port = createWorkflowEntitlementPort({

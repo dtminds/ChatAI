@@ -254,7 +254,7 @@ function isBusinessSuccessEnvelope(value: unknown): value is { data: boolean; su
     && body.error === 0
     && typeof body.data === "boolean"
     && typeof body.errorMsg === "string"
-    && typeof body.error_msg === "string";
+    && (body.error_msg === undefined || typeof body.error_msg === "string");
 }
 
 function normalizeHttpBaseUrl(value: string) {

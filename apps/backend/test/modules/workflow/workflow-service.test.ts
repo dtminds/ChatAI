@@ -701,6 +701,27 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("refreshes a cached denial before deciding a control-plane operation", async () => {
+    const check = vi.fn(async (input: { forceRefresh?: boolean }) => input.forceRefresh
+      ? { activeRunLimit: 10_000, entitled: true as const }
+      : { entitled: false as const });
+    const service = createService(new InMemoryWorkflowRepository(), {
+      entitlementPort: { check },
+    });
+
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .resolves.toMatchObject({ workflowType: "chatai_sop" });
+    expect(check).toHaveBeenNthCalledWith(1, {
+      uid: operator.uid,
+      workflowType: "chatai_sop",
+    });
+    expect(check).toHaveBeenNthCalledWith(2, {
+      forceRefresh: true,
+      uid: operator.uid,
+      workflowType: "chatai_sop",
+    });
+  });
+
   it("enforces entitlement across Workflow editing operations", async () => {
     const repository = new InMemoryWorkflowRepository();
     const allowed = createService(repository);

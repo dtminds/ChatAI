@@ -105,6 +105,17 @@ const taskStatusLabels: Record<keyof WorkflowObservabilityTaskDistribution, stri
   cancelled: "已取消",
   dead: "失败",
 };
+const taskStatusTips: Record<keyof WorkflowObservabilityTaskDistribution, string> = {
+  pending: "时间未到或还没轮到",
+  suspended: "随工作流暂停，暂不执行",
+  waiting_external: "在等事件或外部结果",
+  leased: "调度已领取，即将派发",
+  dispatched: "已发出去，还没开始跑",
+  running: "节点正在执行",
+  completed: "已经跑完",
+  cancelled: "中途取消",
+  dead: "执行失败停住了",
+};
 const taskStatusOrder = Object.keys(taskStatusLabels) as Array<keyof WorkflowObservabilityTaskDistribution>;
 
 export function WorkflowObservabilityPage() {
@@ -267,6 +278,7 @@ export function WorkflowObservabilityPage() {
 
   return (
     <AiHostingLayout title="运行观测">
+      <TooltipProvider>
       <div className="space-y-5">
         {error ? (
           <div className="rounded-[8px] border border-warning/30 bg-warning-muted/30 px-4 py-2.5 text-sm text-warning" role="status">
@@ -344,25 +356,51 @@ export function WorkflowObservabilityPage() {
           <Metric
             detail={summary?.tasks.oldestDueAt ? `最早 ${formatTimestamp(summary.tasks.oldestDueAt)}` : undefined}
             label="到期积压"
+            tip="已到执行时间，还没被调度"
             value={summary?.tasks.dueBacklog}
             warning={Boolean(summary?.tasks.dueBacklog)}
           />
-          <Metric label="租约过期" value={summary?.tasks.expiredLease} warning={Boolean(summary?.tasks.expiredLease)} />
-          <Metric label="派发滞留" value={summary?.tasks.stalledDispatched} warning={Boolean(summary?.tasks.stalledDispatched)} />
+          <Metric
+            label="租约过期"
+            tip="执行中超时未确认，可能卡住了"
+            value={summary?.tasks.expiredLease}
+            warning={Boolean(summary?.tasks.expiredLease)}
+          />
+          <Metric
+            label="派发滞留"
+            tip="已发出去却迟迟没开始跑"
+            value={summary?.tasks.stalledDispatched}
+            warning={Boolean(summary?.tasks.stalledDispatched)}
+          />
           <Metric
             detail={summary?.transitions.dead ? `失败 ${formatInteger(summary.transitions.dead)}` : undefined}
             label="迁移中"
+            tip="暂停或恢复尚未改完"
             value={summary ? summary.transitions.pending + summary.transitions.leased : undefined}
             warning={Boolean(summary?.transitions.dead)}
           />
           <Metric
             detail={summary?.outbox.oldestPendingAt ? `最早 ${formatTimestamp(summary.outbox.oldestPendingAt)}` : undefined}
             label="Outbox 积压"
+            tip="结果还没投递出去"
             value={summary?.outbox.pending}
           />
-          <Metric label="推理等待" value={summary ? summary.inference.pending + summary.inference.retryWait : undefined} />
-          <Metric label="推理租约过期" value={summary?.inference.expiredLease} warning={Boolean(summary?.inference.expiredLease)} />
-          <Metric label="运行中 Task" value={summary?.tasks.running} />
+          <Metric
+            label="推理等待"
+            tip="在等大模型返回"
+            value={summary ? summary.inference.pending + summary.inference.retryWait : undefined}
+          />
+          <Metric
+            label="推理租约过期"
+            tip="推理超时未确认，可能卡住了"
+            value={summary?.inference.expiredLease}
+            warning={Boolean(summary?.inference.expiredLease)}
+          />
+          <Metric
+            label="运行中 Task"
+            tip="当前正在执行的任务"
+            value={summary?.tasks.running}
+          />
         </section>
 
         <section className="overflow-hidden rounded-[8px] border bg-background">
@@ -374,20 +412,18 @@ export function WorkflowObservabilityPage() {
               }}
               value={state}
             >
-              <TooltipProvider>
-                <TabsList className="h-10 rounded-[8px] bg-muted p-1">
-                  {stateFilters.map((filter) => (
-                    <TabsTrigger
-                      className="h-8 gap-1 rounded-[6px] px-3 py-0 text-sm"
-                      key={filter.value}
-                      value={filter.value}
-                    >
-                      {filter.label}
-                      {filter.tip ? <FilterTip tip={filter.tip} /> : null}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </TooltipProvider>
+              <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+                {stateFilters.map((filter) => (
+                  <TabsTrigger
+                    className="h-8 gap-1 rounded-[6px] px-3 py-0 text-sm"
+                    key={filter.value}
+                    value={filter.value}
+                  >
+                    {filter.label}
+                    {filter.tip ? <FilterTip tip={filter.tip} /> : null}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
             </Tabs>
             <div className="flex w-full flex-wrap gap-2 lg:w-auto">
               <Input
@@ -478,6 +514,7 @@ export function WorkflowObservabilityPage() {
         uid={selectedItem?.uid}
         workflowId={selectedItem?.workflowId}
       />
+      </TooltipProvider>
     </AiHostingLayout>
   );
 }
@@ -594,13 +631,14 @@ function WorkflowDetailSheet({
                   <p className="mt-3 text-sm text-muted-foreground">暂无数据</p>
                 )}
               </section>
-              <section>
+              <section aria-label="任务分布">
                 <h3 className="text-sm font-semibold">任务分布</h3>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {taskStatusOrder.map((status) => (
                     <StatusValue
                       key={status}
                       label={taskStatusLabels[status]}
+                      tip={taskStatusTips[status]}
                       value={formatInteger(detail.taskDistribution[status])}
                     />
                   ))}
@@ -622,6 +660,15 @@ function transitionLabel(transition: WorkflowObservabilityTransition) {
     return transition.targetStatus === "pending" ? "恢复中" : "暂停中";
   }
   return transition.targetStatus === "pending" ? "待恢复" : "待暂停";
+}
+
+function MetricLabel({ label, tip }: { label: string; tip?: string }) {
+  return (
+    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+      <span className="truncate">{label}</span>
+      {tip ? <FilterTip tip={tip} /> : null}
+    </p>
+  );
 }
 
 function FilterTip({ tip }: { tip: string }) {
@@ -660,17 +707,19 @@ function HealthBadge({ health }: { health: WorkflowObservabilityHealth }) {
 function Metric({
   detail,
   label,
+  tip,
   value,
   warning,
 }: {
   detail?: string;
   label: string;
+  tip?: string;
   value?: number;
   warning?: boolean;
 }) {
   return (
     <div className="border-b p-4 last:border-b-0 sm:border-r sm:[&:nth-child(even)]:border-r-0 xl:border-b-0 xl:[&:nth-child(4n)]:border-r-0">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <MetricLabel label={label} tip={tip} />
       <p className={cn("mt-2 text-2xl font-semibold tabular-nums", warning && "text-destructive")}>
         {value == null ? "—" : formatInteger(value)}
       </p>
@@ -679,10 +728,20 @@ function Metric({
   );
 }
 
-function StatusValue({ label, mono, value }: { label: string; mono?: boolean; value: string }) {
+function StatusValue({
+  label,
+  mono,
+  tip,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  tip?: string;
+  value: string;
+}) {
   return (
     <div className="min-w-0">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <MetricLabel label={label} tip={tip} />
       <p className={cn("mt-1 truncate tabular-nums", mono && "font-mono text-xs")} title={value}>{value}</p>
     </div>
   );

@@ -210,6 +210,17 @@ describe("workflow observability page", () => {
     expect(await screen.findByRole("tooltip")).toBeInTheDocument();
   });
 
+  it("shows metric tips without prefetching extra requests", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const metrics = await screen.findByRole("region", { name: "队列指标" });
+    const tips = metrics.querySelectorAll("[data-slot='tooltip-trigger']");
+    expect(tips).toHaveLength(8);
+    await user.hover(tips[0] as Element);
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+    expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
+  });
+
   it("opens a detail sheet on name click without prefetching every row", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -220,6 +231,12 @@ describe("workflow observability page", () => {
     expect(within(dialog).getByText("UID 9 · 12")).toBeInTheDocument();
     expect(within(dialog).getByText("待调度")).toBeInTheDocument();
     expect(within(dialog).getByText("恢复失败")).toBeInTheDocument();
+    const distributionTips = within(dialog)
+      .getByRole("region", { name: "任务分布" })
+      .querySelectorAll("[data-slot='tooltip-trigger']");
+    expect(distributionTips).toHaveLength(9);
+    await user.hover(distributionTips[0] as Element);
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     expect(api.getWorkflowObservabilityDetail).toHaveBeenCalledTimes(1);
     expect(api.getWorkflowObservabilityDetail).toHaveBeenCalledWith(
       "12",

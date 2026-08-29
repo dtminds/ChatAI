@@ -17,6 +17,10 @@ import {
   WorkflowEntryRecordDetailSchema,
 } from "../src/workflow/dto.js";
 import {
+  WorkflowObservabilitySummaryResponseSchema,
+  WorkflowObservabilityWorkflowListResponseSchema,
+} from "../src/workflow/observability.js";
+import {
   getEnabledWorkflowTypes,
   getWorkflowCapabilityProfile,
   WorkflowTenantCapacityResultSchema,
@@ -78,6 +82,7 @@ describe("workflow contracts", () => {
   it("validates the tenant Workflow operating overview", () => {
     expect(Value.Check(WorkflowTenantOverviewSchema, {
       activeWorkflowCount: 23,
+      canViewWorkflowObservability: false,
       recentFailedRunCount: 231,
       recentSuccessRatePercent: 98.2,
       todayRunCount: 12_847,
@@ -618,6 +623,56 @@ describe("workflow contracts", () => {
         title: "未来动作",
       }],
     })).toBe(true);
+  });
+
+  it("validates the Workflow observability summary and paged list", () => {
+    const summary = {
+      deadTransitionCount: 1,
+      inference: { expiredLease: 0, pending: 2, retryWait: 0 },
+      observedAt: 1_784_800_000_000,
+      outbox: { pending: 0 },
+      tasks: {
+        dispatched: 0,
+        dueBacklog: 3,
+        expiredLease: 0,
+        pending: 4,
+        running: 1,
+        stalledDispatched: 0,
+        suspended: 0,
+      },
+      transitions: { dead: 1, leased: 0, pending: 0 },
+      workers: [{ health: "healthy", role: "scheduler" }],
+    };
+    expect(Value.Check(WorkflowObservabilitySummaryResponseSchema, summary)).toBe(true);
+    expect(Value.Check(WorkflowObservabilitySummaryResponseSchema, {
+      ...summary,
+      workers: Array.from({ length: 7 }, () => ({ health: "unknown", role: "scheduler" })),
+    })).toBe(false);
+    expect(Value.Check(WorkflowObservabilityWorkflowListResponseSchema, {
+      items: [{
+        activeRunCount: 1,
+        activeTaskCount: 2,
+        dueBacklogCount: 3,
+        name: "新客旅程",
+        runtimeStatus: "active",
+        totalRunCount: 10,
+        uid: 9,
+        workflowId: "12",
+      }],
+      observedAt: 1_784_800_000_000,
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    })).toBe(true);
+    expect(Value.Check(WorkflowObservabilityWorkflowListResponseSchema, {
+      items: [],
+      observedAt: 1_784_800_000_000,
+      page: 1,
+      pageSize: 200,
+      total: 0,
+      totalPages: 1,
+    })).toBe(false);
   });
 });
 

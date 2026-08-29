@@ -41,6 +41,7 @@ import { MysqlWorkflowMetricReader } from "./workflow-metric-reader.js";
 import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
+import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 
 const WorkflowParamsSchema = Type.Object({
@@ -91,7 +92,11 @@ const WorkflowLlmTestAttemptParamsSchema = Type.Intersect([
 
 export async function registerWorkflowRoutes(
   app: FastifyInstance,
-  options: { dataService?: WorkflowDataService; service?: WorkflowService } = {},
+  options: {
+    dataService?: WorkflowDataService;
+    observerSubjects?: ReadonlySet<string>;
+    service?: WorkflowService;
+  } = {},
 ) {
   const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
   const entitlementPort = createWorkflowEntitlementPort({
@@ -126,7 +131,13 @@ export async function registerWorkflowRoutes(
   app.get(
     "/api/server/workflows/overview",
     authenticated,
-    async request => apiSuccess(await dataService.getTenantOverview(getWorkflowScope(request))),
+    async request => apiSuccess({
+      ...(await dataService.getTenantOverview(getWorkflowScope(request))),
+      canViewWorkflowObservability: canViewInsightsWorkerObservability(
+        options.observerSubjects ?? new Set(),
+        { subUserId: request.user.subUserId, uid: request.user.uid },
+      ),
+    }),
   );
 
   app.get<{ Params: WorkflowParams }>(

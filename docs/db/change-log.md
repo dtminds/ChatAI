@@ -35,6 +35,27 @@ Revision cleanup 的强制索引已用 MySQL 8.4 合成数据验证。夹具包�
 
 因此 Revision cleanup 保持强制 `idx_workflow_run_status_records`：标准 entitlement 准入模式下，每批锁集合受租户 `activeRunLimit` 约束（当前业务档位为 10,000）；allow-all 配置不提供该数量边界。该选择避免把保留窗口内无明确数量上限的历史终态 Run 锁入单个控制事务，整轮重复扫描是预期取舍。
 
+## 2026-08-28 Workflow Worker 角色心跳表
+
+- 为运行观测页提供 Worker 六角色存活信号。表只有 workflow-worker 写，Backend 只读，不进入 writable-tables。
+- Worker 在内存更新心跳，15 秒刷库一次，不把 UPSERT 串进 Scheduler / Outbox 热路径。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state (
+  role VARCHAR(32) NOT NULL COMMENT 'Worker角色：scheduler、task-consumer、entry-consumer、inference、outbox、reconciler',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次角色迭代开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次角色迭代成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次角色迭代失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成迭代耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (role)
+) COMMENT='营销Workflow Worker角色运行状态表';
+```
+
 ## 2026-08-28 Workflow Scheduler 全局到期索引
 
 - Scheduler 通过全局到期队列认领 `pending` Task，不再按应用逻辑分片过滤。

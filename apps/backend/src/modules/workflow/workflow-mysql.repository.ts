@@ -357,6 +357,10 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .where("id", "=", input.workflowId)
         .where("biz_status", "=", 1)
         .executeTakeFirstOrThrow();
+      await clearMysqlWorkflowTaskTransitions(transaction, {
+        uid: input.uid,
+        workflowIds: [input.workflowId],
+      });
       await transaction.updateTable(REVIEW_TABLE).set({
         review_sub_uid: input.opSubUserId,
         review_time: new Date(),

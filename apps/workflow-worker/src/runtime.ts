@@ -93,6 +93,16 @@ export async function startWorkflowWorkerRuntime(input: {
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
   now?: () => Date;
+  runtimeState?: {
+    close(): Promise<void>;
+    markConsumer(role: "entry-consumer" | "task-consumer", connected: boolean): void;
+    markFailed(role: "inference" | "outbox" | "reconciler" | "scheduler", error: unknown): void;
+    markStarted(role: "inference" | "outbox" | "reconciler" | "scheduler"): void;
+    markSucceeded(
+      role: "inference" | "outbox" | "reconciler" | "scheduler",
+      durationMs: number,
+    ): void;
+  };
   outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
   outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
   reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
@@ -277,6 +287,18 @@ export async function startWorkflowWorkerRuntime(input: {
         const currentReadiness = heartbeat.result as WorkflowReadiness;
         logWorkflowReadinessTransition(input.logger, previousReadiness, currentReadiness);
         previousReadiness = structuredClone(currentReadiness);
+        if (input.config.roles.has("entry-consumer")) {
+          input.runtimeState?.markConsumer(
+            "entry-consumer",
+            currentReadiness.roles["entry-consumer"] === true,
+          );
+        }
+        if (input.config.roles.has("task-consumer")) {
+          input.runtimeState?.markConsumer(
+            "task-consumer",
+            currentReadiness.roles["task-consumer"] === true,
+          );
+        }
       },
       role: "readiness",
       run: async () => {
@@ -325,7 +347,11 @@ export async function startWorkflowWorkerRuntime(input: {
     readiness.database = false;
     await Promise.allSettled(loops.map(loop => loop.close()));
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
-    await Promise.allSettled([input.broker.close(), input.database.destroy()]);
+    await Promise.allSettled([
+      input.runtimeState?.close() ?? Promise.resolve(),
+      input.broker.close(),
+      input.database.destroy(),
+    ]);
   }
 
   function startBackgroundRole(
@@ -337,6 +363,7 @@ export async function startWorkflowWorkerRuntime(input: {
       intervalMs,
       onError: error => {
         readiness.roles[role] = false;
+        input.runtimeState?.markFailed(role, error);
         input.logger.error({
           err: error,
           event: "workflow.worker.role.failed",
@@ -345,10 +372,14 @@ export async function startWorkflowWorkerRuntime(input: {
       },
       onHeartbeat: heartbeat => {
         readiness.roles[role] = true;
+        input.runtimeState?.markSucceeded(role, heartbeat.durationMs);
         logWorkflowRoleHeartbeat(input.logger, role, heartbeat);
       },
       role,
-      run,
+      run: async () => {
+        input.runtimeState?.markStarted(role);
+        return run();
+      },
     });
   }
 }

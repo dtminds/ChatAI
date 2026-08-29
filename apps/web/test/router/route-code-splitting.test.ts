@@ -13,6 +13,7 @@ const routePageModules = [
   "@/pages/chat/ai-hosting/agent-management-page",
   "@/pages/chat/ai-hosting/agent-hosting-settings-page",
   "@/pages/chat/workflow/workflow-list-page",
+  "@/pages/chat/workflow/workflow-observability-page",
   "@/pages/chat/workflow/workflow-editor-page",
   "@/pages/chat/ai-hosting/agent-subscription-page",
   "@/pages/chat/ai-hosting/ai-skills-page",
@@ -43,6 +44,15 @@ describe("route code splitting", () => {
       expect(routerSource).not.toContain(`from '${modulePath}'`);
       expect(routerSource).toContain(`import("${modulePath}")`);
     }
+  });
+
+  it("registers workflow observability before the workflowId param route", async () => {
+    const { routerConfig } = await import("@/router");
+    const paths = routerConfig[0]?.children?.map((route) => route.path) ?? [];
+    expect(paths.indexOf("chat/workflows/observability")).toBeGreaterThan(-1);
+    expect(paths.indexOf("chat/workflows/observability")).toBeLessThan(
+      paths.indexOf("chat/workflows/:workflowId"),
+    );
   });
 
   it("routes conversation deep links through the workbench page", async () => {

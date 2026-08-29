@@ -791,6 +791,20 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
   KEY idx_workflow_task_transition_lease (status, lease_expires_at, id)
 ) COMMENT='营销Workflow Task暂停恢复迁移请求表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state (
+  role VARCHAR(32) NOT NULL COMMENT 'Worker角色：scheduler、task-consumer、entry-consumer、inference、outbox、reconciler',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次角色迭代开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次角色迭代成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次角色迭代失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成迭代耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (role)
+) COMMENT='营销Workflow Worker角色运行状态表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

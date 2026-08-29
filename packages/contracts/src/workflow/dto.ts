@@ -98,11 +98,8 @@ export const WorkflowDraftSchema = Type.Object({
 });
 
 export const WorkflowPermissionsSchema = Type.Object({
-  canDelete: Type.Boolean(),
   canEdit: Type.Boolean(),
-  canOperate: Type.Boolean(),
   canPublish: Type.Boolean(),
-  canView: Type.Boolean(),
 });
 
 export const WorkflowStatusReasonSchema = Type.Union([
@@ -172,8 +169,6 @@ export const WorkflowDefinitionSchema = Type.Object({
   workflowType: WorkflowTypeSchema,
 });
 
-export const WorkflowDefinitionSummarySchema = Type.Omit(WorkflowDefinitionSchema, ["draft"]);
-
 export const WorkflowDefinitionListStatusSchema = Type.Union([
   Type.Literal("all"),
   Type.Literal("active"),
@@ -183,7 +178,6 @@ export const WorkflowDefinitionListStatusSchema = Type.Union([
 ]);
 
 export const WorkflowDefinitionListItemSchema = Type.Object({
-  canOperate: Type.Boolean(),
   description: Type.String({ maxLength: 1000 }),
   hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
@@ -242,10 +236,6 @@ export const WorkflowCreateRequestSchema = Type.Object({
 export const WorkflowSaveDraftRequestSchema = Type.Object({
   draft: WorkflowDraftSchema,
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
-});
-
-export const WorkflowRenameRequestSchema = Type.Object({
-  name: Type.String({ minLength: 1, maxLength: 100 }),
 });
 
 export const WorkflowMetadataUpdateRequestSchema = Type.Object({
@@ -409,7 +399,6 @@ export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;
 export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
 export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
 export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
-export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
 export type WorkflowDefinitionListStatus = Static<typeof WorkflowDefinitionListStatusSchema>;
 export type WorkflowDefinitionListItem = Static<typeof WorkflowDefinitionListItemSchema>;
 export type WorkflowDefinitionListPage = Static<typeof WorkflowDefinitionListPageSchema>;
@@ -421,7 +410,6 @@ export type WorkflowRevisionPage = Static<typeof WorkflowRevisionPageSchema>;
 export type WorkflowPublishReviewPage = Static<typeof WorkflowPublishReviewPageSchema>;
 export type WorkflowCreateRequest = Static<typeof WorkflowCreateRequestSchema>;
 export type WorkflowSaveDraftRequest = Static<typeof WorkflowSaveDraftRequestSchema>;
-export type WorkflowRenameRequest = Static<typeof WorkflowRenameRequestSchema>;
 export type WorkflowMetadataUpdateRequest = Static<typeof WorkflowMetadataUpdateRequestSchema>;
 export type WorkflowReviewSubmitRequest = Static<typeof WorkflowReviewSubmitRequestSchema>;
 export type WorkflowReviewApproveRequest = Static<typeof WorkflowReviewApproveRequestSchema>;

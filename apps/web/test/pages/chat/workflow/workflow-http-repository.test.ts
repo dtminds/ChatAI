@@ -452,7 +452,6 @@ function createClient({
 
 function toListDefinition(definition: WorkflowDefinition) {
   return {
-    canOperate: definition.permissions.canOperate,
     description: definition.description,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
     id: definition.id,
@@ -511,11 +510,8 @@ function createDefinition(overrides: Partial<WorkflowDefinition> = {}): Workflow
     id: "42",
     name: "新客培育",
     permissions: {
-      canDelete: true,
       canEdit: true,
-      canOperate: true,
       canPublish: false,
-      canView: true,
     },
     publishedRevision: null,
     runtimeStatus: "inactive",

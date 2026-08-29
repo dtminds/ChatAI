@@ -106,10 +106,6 @@ const operatorsByValueType: Record<WorkflowBranchValueType, readonly WorkflowBra
 
 export const WORKFLOW_BRANCH_OPERATORS_BY_VALUE_TYPE = operatorsByValueType;
 
-export function getWorkflowBranchOperators(valueType: WorkflowBranchValueType) {
-  return operatorsByValueType[valueType];
-}
-
 export function workflowBranchOperatorNeedsValue(operator: WorkflowBranchOperator) {
   return !["is-empty", "is-false", "is-not-empty", "is-true"].includes(operator);
 }

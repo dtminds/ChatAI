@@ -810,7 +810,6 @@ export function useWorkflowWorkspace(
     },
     topBar: {
       canEdit: permissions.canEditGraph,
-      canOperate: document.permissions.canOperate,
       canPublish: document.permissions.canPublish,
       canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),

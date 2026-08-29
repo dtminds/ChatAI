@@ -38,7 +38,6 @@ import {
 describe("workflow contracts", () => {
   it("limits each workflow list item to three managed account summaries", () => {
     const item = {
-      canOperate: true,
       description: "",
       hasUnpublishedChanges: false,
       id: "42",
@@ -200,11 +199,8 @@ describe("workflow contracts", () => {
       id: "9007199254740993",
       name: "新客培育",
       permissions: {
-        canDelete: true,
         canEdit: true,
-        canOperate: true,
         canPublish: true,
-        canView: true,
       },
       publishedRevision: null,
       runtimeStatus: "inactive",

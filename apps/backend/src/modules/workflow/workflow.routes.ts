@@ -6,7 +6,6 @@ import {
   WorkflowReviewApproveRequestSchema,
   WorkflowReviewRejectRequestSchema,
   WorkflowReviewSubmitRequestSchema,
-  WorkflowRenameRequestSchema,
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
   WorkflowEntryRecordStatusSchema,
@@ -19,7 +18,6 @@ import {
   type WorkflowReviewApproveRequest,
   type WorkflowReviewRejectRequest,
   type WorkflowReviewSubmitRequest,
-  type WorkflowRenameRequest,
   type WorkflowRestoreRequest,
   type WorkflowSaveDraftRequest,
   type WorkflowLlmTestAttemptCreateRequest,
@@ -337,19 +335,6 @@ function registerWorkflowSurfaceRoutes(
       getWorkflowScope(request, surface),
       request.params.workflowId,
       request.body,
-    )),
-  );
-
-  app.patch<{ Body: WorkflowRenameRequest; Params: WorkflowParams }>(
-    "/workflows/:workflowId/name",
-    {
-      ...authenticated,
-      schema: { body: WorkflowRenameRequestSchema, params: WorkflowParamsSchema },
-    },
-    async (request) => apiSuccess(await service.rename(
-      getWorkflowScope(request, surface),
-      request.params.workflowId,
-      request.body.name,
     )),
   );
 

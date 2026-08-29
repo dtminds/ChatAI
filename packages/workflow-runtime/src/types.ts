@@ -593,12 +593,6 @@ export type WorkflowCapabilityExecutionFailureInput = {
   uid: number;
 };
 
-export type WorkflowRuntimeMutationResult<T> =
-  | { kind: "success"; value: T }
-  | { kind: "already-processed" }
-  | { kind: "conflict" }
-  | { kind: "not-found" };
-
 type WorkflowRuntimeFailure =
   | { kind: "already-processed" }
   | { kind: "conflict" }

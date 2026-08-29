@@ -481,7 +481,6 @@ function toDocument(
     : versionHistory.find((version) => version.revision === definition.publishedRevision) ?? null;
   const publishedDraft = currentVersion ? cloneWorkflowDraft(currentVersion.draft) : null;
   return {
-    canOperate: definition.permissions.canOperate,
     capabilitySummary: definition.capabilitySummary,
     conversion: getWorkflowConversion(draft) ?? "-",
     currentVersion,
@@ -500,7 +499,6 @@ function toDocument(
     owner: "当前账号",
     permissions: {
       canEdit: definition.permissions.canEdit,
-      canOperate: definition.permissions.canOperate,
       canPublish: definition.permissions.canPublish,
     },
     publishedAt: currentVersion?.publishedAt ?? null,
@@ -530,7 +528,6 @@ function toDocument(
 
 function toListItem(definition: ApiWorkflowDefinitionListItem): WorkflowListItem {
   return {
-    canOperate: definition.canOperate,
     description: definition.description,
     id: definition.id,
     inProgressRunCount: definition.inProgressRunCount,

@@ -194,14 +194,7 @@ function getWorkflowEntryEventVariableCatalog(
 ) {
   const shared = [...SHARED_WORKFLOW_VARIABLE_CATALOG];
   if (workflowType === "wecom_sop") {
-    if (eventType === "contact.friend_added") {
-      return [
-        ...shared,
-        "trigger.projection.workUserId",
-        "trigger.projection.externalUserId",
-      ];
-    }
-    if (eventType === "contact.tag_added") {
+    if (eventType === "contact.friend_added" || eventType === "contact.tag_added") {
       return [
         ...shared,
         "trigger.projection.workUserId",
@@ -215,15 +208,8 @@ function getWorkflowEntryEventVariableCatalog(
       "trigger.projection.workUserId",
       "trigger.projection.seatId",
     ];
-    if (eventType === "contact.friend_added") {
+    if (eventType === "contact.friend_added" || eventType === "contact.tag_added") {
       return [...shared, ...contactIdentity, "trigger.projection.externalUserId"];
-    }
-    if (eventType === "contact.tag_added") {
-      return [
-        ...shared,
-        ...contactIdentity,
-        "trigger.projection.externalUserId",
-      ];
     }
     if (eventType === "message.received") {
       return [...shared, ...contactIdentity];

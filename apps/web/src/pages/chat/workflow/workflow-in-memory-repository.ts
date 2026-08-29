@@ -601,7 +601,6 @@ function createWorkflowDocuments(): WorkflowDocument[] {
 
   return [
     {
-      canOperate: true,
       capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "18.4%",
       currentReview: null,
@@ -640,7 +639,6 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       workflowType: "chatai_sop",
     },
     {
-      canOperate: true,
       capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "23.1%",
       currentReview: null,
@@ -680,7 +678,6 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       workflowType: "chatai_sop",
     },
     {
-      canOperate: true,
       capabilitySummary: createInMemoryCapabilitySummary(),
       conversion: "9.7%",
       currentReview: null,
@@ -731,7 +728,6 @@ function createNewWorkflowDocument(
   const draft = createNewWorkflowDraft(workflowType);
 
   return {
-    canOperate: true,
     capabilitySummary: createInMemoryCapabilitySummary(),
     conversion: "0%",
     currentReview: null,
@@ -798,7 +794,6 @@ function matchesListStatus(
 function createDefaultWorkflowPermissions(): WorkflowDocumentPermissions {
   return {
     canEdit: true,
-    canOperate: true,
     canPublish: true,
   };
 }

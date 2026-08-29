@@ -75,6 +75,7 @@ import {
   assertWorkflowRuntimeValue,
   type WorkflowLlmTestAttemptRecord,
   type WorkflowLlmTestAttemptRepository,
+  type WorkflowEntitlementDecision,
   type WorkflowEntitlementPort,
 } from "@chatai/workflow-runtime";
 import {
@@ -132,6 +133,8 @@ export type WorkflowServiceOptions = {
 };
 
 export class WorkflowService {
+  private static readonly ENTITLEMENT_REFRESH_MIN_INTERVAL_MS = 30_000;
+  private static readonly ENTITLEMENT_REFRESH_MAX_ENTRIES = 10_000;
   private readonly clock: () => Date;
   private readonly directEntryEndpointPort: WorkflowDirectEntryEndpointPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
@@ -141,6 +144,10 @@ export class WorkflowService {
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
   private readonly metricReader: WorkflowMetricReader;
+  private readonly entitlementRefreshes = new Map<string, {
+    attemptedAt: number;
+    outcome: "denied" | "unavailable";
+  }>();
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -651,7 +658,6 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
-    await this.requireEntitlement(scope.uid, definition.workflowType);
     return toReview(this.unwrapMutation(await this.repository.withdrawReview({
       opSubUserId: scope.subUserId,
       reviewId,
@@ -968,13 +974,40 @@ export class WorkflowService {
         uid,
         workflowType,
       });
-      if (decision.action === "allow") return decision.result;
-      const confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
-        forceRefresh: true,
-        uid,
-        workflowType,
-      });
-      if (confirmation.action === "allow") return confirmation.result;
+      const refreshKey = `${uid}:${workflowType}`;
+      if (decision.action === "allow") {
+        this.entitlementRefreshes.delete(refreshKey);
+        return decision.result;
+      }
+      const now = this.clock().getTime();
+      const previous = this.entitlementRefreshes.get(refreshKey);
+      if (previous && now - previous.attemptedAt < WorkflowService.ENTITLEMENT_REFRESH_MIN_INTERVAL_MS) {
+        if (previous.outcome === "unavailable") {
+          throw new WorkflowEntitlementUnavailableError();
+        }
+        throw new ForbiddenError(
+          "WORKFLOW_ENTITLEMENT_REQUIRED",
+          "当前无对应产品权益",
+        );
+      }
+      let confirmation: WorkflowEntitlementDecision;
+      try {
+        confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
+          forceRefresh: true,
+          uid,
+          workflowType,
+        });
+      } catch (error) {
+        if (error instanceof WorkflowEntitlementUnavailableError) {
+          this.rememberEntitlementRefresh(refreshKey, now, "unavailable");
+        }
+        throw error;
+      }
+      if (confirmation.action === "allow") {
+        this.entitlementRefreshes.delete(refreshKey);
+        return confirmation.result;
+      }
+      this.rememberEntitlementRefresh(refreshKey, now, "denied");
       throw new ForbiddenError(
         "WORKFLOW_ENTITLEMENT_REQUIRED",
         "当前无对应产品权益",
@@ -988,6 +1021,20 @@ export class WorkflowService {
         );
       }
       throw error;
+    }
+  }
+
+  private rememberEntitlementRefresh(
+    key: string,
+    attemptedAt: number,
+    outcome: "denied" | "unavailable",
+  ) {
+    this.entitlementRefreshes.delete(key);
+    this.entitlementRefreshes.set(key, { attemptedAt, outcome });
+    while (this.entitlementRefreshes.size > WorkflowService.ENTITLEMENT_REFRESH_MAX_ENTRIES) {
+      const oldest = this.entitlementRefreshes.keys().next().value;
+      if (oldest === undefined) break;
+      this.entitlementRefreshes.delete(oldest);
     }
   }
 

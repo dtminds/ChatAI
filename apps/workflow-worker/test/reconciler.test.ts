@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { reconcileWorkflowRuntime } from "../src/reconciler.js";
+import {
+  reconcileWorkflowEntitlements,
+  reconcileWorkflowRuntime,
+} from "../src/reconciler.js";
 
 describe("workflow reconciler", () => {
   it("recovers task and outbox leases and advances workflow cancellation", async () => {
@@ -60,7 +63,6 @@ describe("workflow reconciler", () => {
     await expect(reconcileWorkflowRuntime({
       afterEventSubscriptionId: "70",
       afterCapacityUid: 9,
-      afterEntitlementUid: 8,
       afterRunId: "50",
       afterConsistencyRunId: "80",
       afterConsistencyTaskId: "100",
@@ -83,9 +85,6 @@ describe("workflow reconciler", () => {
       cancelled: 4,
       capacityCountsChecked: 100,
       capacityCountsCorrected: 2,
-      entitlementChecksUnavailable: 1,
-      entitlementTenantsChecked: 3,
-      entitlementWorkflowsDeactivated: 2,
       historyCleanupHasMore: false,
       inboxDeleted: 5,
       eventSubscriptionsCancelled: 2,
@@ -93,7 +92,6 @@ describe("workflow reconciler", () => {
       nodeExecutionsDeleted: 10,
       nextCursor: "88",
       nextEventSubscriptionCursor: "77",
-      nextEntitlementCursor: 108,
       nextConsistencyRunCursor: "91",
       nextConsistencyTaskCursor: null,
       nextCapacityCursor: 109,
@@ -137,10 +135,6 @@ describe("workflow reconciler", () => {
       afterUid: 9,
       limit: 100,
     });
-    expect(reconciler.deactivateUnentitledWorkflows).toHaveBeenCalledWith({
-      afterUid: 8,
-      limit: 100,
-    });
     expect(reconciler.processRevisionCleanups).toHaveBeenCalledWith({
       leaseDurationMs: 30_000,
       leaseOwner: "reconciler-1",
@@ -153,6 +147,27 @@ describe("workflow reconciler", () => {
       limit: 1_000,
       runBefore: new Date("2026-01-12T00:00:00.000Z"),
       taskOutboxBefore: new Date("2026-06-11T00:00:00.000Z"),
+    });
+  });
+
+  it("reconciles entitlements independently from runtime recovery", async () => {
+    const deactivateUnentitledWorkflows = vi.fn(async () => ({
+      checksUnavailable: 1,
+      hasMore: true,
+      lastUid: 108,
+      tenantsChecked: 3,
+      workflowsDeactivated: 2,
+    }));
+
+    await expect(reconcileWorkflowEntitlements({
+      afterUid: 8,
+      limit: 100,
+      reconciler: { deactivateUnentitledWorkflows },
+    })).resolves.toEqual({
+      entitlementChecksUnavailable: 1,
+      entitlementTenantsChecked: 3,
+      entitlementWorkflowsDeactivated: 2,
+      nextEntitlementCursor: 108,
     });
   });
 });

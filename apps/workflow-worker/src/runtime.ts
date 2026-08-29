@@ -25,7 +25,10 @@ import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 import type { publishWorkflowOutbox } from "./outbox-publisher.js";
-import type { reconcileWorkflowRuntime } from "./reconciler.js";
+import {
+  reconcileWorkflowEntitlements,
+  type reconcileWorkflowRuntime,
+} from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
 import type { scheduleWorkflowTasks } from "./scheduler.js";
 
@@ -229,7 +232,6 @@ export async function startWorkflowWorkerRuntime(input: {
     }
     if (input.config.roles.has("reconciler")) {
       let afterCapacityUid: number | undefined;
-      let afterEntitlementUid: number | undefined;
       let afterEventSubscriptionId: string | undefined;
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
@@ -249,7 +251,6 @@ export async function startWorkflowWorkerRuntime(input: {
           : undefined;
         const result = await input.reconciler({
           afterCapacityUid,
-          afterEntitlementUid,
           afterEventSubscriptionId,
           afterRunId,
           afterConsistencyRunId,
@@ -268,7 +269,6 @@ export async function startWorkflowWorkerRuntime(input: {
           retryDelayMs: input.config.runtime.retryDelayMs,
         });
         afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
-        afterEntitlementUid = result.nextEntitlementCursor ?? undefined;
         afterCapacityUid = result.nextCapacityCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
@@ -279,6 +279,30 @@ export async function startWorkflowWorkerRuntime(input: {
             : currentTime.getTime() + input.config.runtime.historyCleanupIntervalMs;
         }
         return result;
+      }));
+      let afterEntitlementUid: number | undefined;
+      loops.push(input.roleLoop({
+        intervalMs: input.config.runtime.reconcileIntervalMs,
+        onError: error => input.logger.error({
+          err: error,
+          event: "workflow.worker.entitlement_reconciler.failed",
+          role: "entitlement-reconciler",
+        }, "workflow entitlement reconciler iteration failed"),
+        onHeartbeat: heartbeat => logWorkflowRoleHeartbeat(
+          input.logger,
+          "reconciler",
+          heartbeat,
+        ),
+        role: "entitlement-reconciler",
+        run: async () => {
+          const result = await reconcileWorkflowEntitlements({
+            afterUid: afterEntitlementUid,
+            limit: input.config.runtime.batchSize,
+            reconciler: input.reconcilerService,
+          });
+          afterEntitlementUid = result.nextEntitlementCursor ?? undefined;
+          return result;
+        },
       }));
     }
     loops.push(input.roleLoop({

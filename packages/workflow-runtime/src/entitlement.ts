@@ -3,6 +3,7 @@ import type {
   WorkflowType,
   WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
+import { encodeWorkflowType } from "./persistence-codecs.js";
 
 const DEFAULT_ACTIVE_RUN_LIMIT = 10_000;
 const DEFAULT_L1_MAX_ENTRIES = 10_000;
@@ -12,7 +13,6 @@ const ENTITLEMENT_PATH = "/third-internal/wap-embed-workflow-definition/can-run"
 
 export type WorkflowEntitlementCheckInput = {
   forceRefresh?: boolean;
-  signal?: AbortSignal;
   uid: number;
   workflowType: WorkflowType;
 };
@@ -21,7 +21,7 @@ export interface WorkflowEntitlementPort {
   check(input: WorkflowEntitlementCheckInput): Promise<WorkflowTypeEntitlementResult>;
 }
 
-export type WorkflowTenantCapacityInput = { signal?: AbortSignal; uid: number };
+export type WorkflowTenantCapacityInput = { uid: number };
 
 export interface WorkflowTenantCapacityPort {
   getTenantCapacity(input: WorkflowTenantCapacityInput): Promise<WorkflowTenantCapacityResult>;
@@ -108,14 +108,12 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort, Wor
 
   private async fetchEntitlement(input: WorkflowEntitlementCheckInput): Promise<boolean> {
     const controller = new AbortController();
-    const forwardAbort = () => controller.abort(input.signal?.reason);
-    input.signal?.addEventListener("abort", forwardAbort, { once: true });
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 3_000);
     try {
       const response = await this.fetchImpl(`${this.baseUrl}${ENTITLEMENT_PATH}`, {
         body: JSON.stringify({
           uid: input.uid,
-          workflowType: encodeJavaWorkflowType(input.workflowType),
+          workflowType: encodeWorkflowType(input.workflowType),
         }),
         headers: {
           "Content-Type": "application/json",
@@ -141,7 +139,6 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort, Wor
       throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
     } finally {
       clearTimeout(timer);
-      input.signal?.removeEventListener("abort", forwardAbort);
     }
   }
 
@@ -239,12 +236,6 @@ export async function decideWorkflowEntitlement(
     if (error instanceof WorkflowEntitlementUnavailableError) throw error;
     throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
   }
-}
-
-function encodeJavaWorkflowType(workflowType: WorkflowType) {
-  if (workflowType === "chatai_sop") return 1;
-  if (workflowType === "wecom_sop") return 2;
-  return 3;
 }
 
 function isBusinessSuccessEnvelope(value: unknown): value is { data: boolean; success: true } {

@@ -81,7 +81,6 @@ type WorkflowReconciler = {
 };
 
 export async function reconcileWorkflowRuntime(input: {
-  afterEntitlementUid?: number;
   afterCapacityUid?: number;
   afterEventSubscriptionId?: string;
   afterRunId?: string;
@@ -109,10 +108,6 @@ export async function reconcileWorkflowRuntime(input: {
   const nodeMetricEventsDeleted = await input.reconciler.cleanupProcessedNodeMetricEvents({
     limit: input.inboxCleanupBatchSize,
     processedBefore: new Date(input.now.getTime() - 7 * 86_400_000),
-  });
-  const entitlement = await input.reconciler.deactivateUnentitledWorkflows({
-    afterUid: input.afterEntitlementUid,
-    limit: input.limit,
   });
   const cancellation = await input.reconciler.cancelUnavailableRuns({
     afterRunId: input.afterRunId,
@@ -173,9 +168,6 @@ export async function reconcileWorkflowRuntime(input: {
       };
   return {
     cancelled: cancellation.cancelled,
-    entitlementChecksUnavailable: entitlement.checksUnavailable,
-    entitlementTenantsChecked: entitlement.tenantsChecked,
-    entitlementWorkflowsDeactivated: entitlement.workflowsDeactivated,
     capacityCountsChecked: capacityCounts.checked,
     capacityCountsCorrected: capacityCounts.corrected,
     revisionCleanupCancelled: revisionCleanup.cancelled,
@@ -192,7 +184,6 @@ export async function reconcileWorkflowRuntime(input: {
     nextEventSubscriptionCursor: eventSubscriptions.hasMore
       ? eventSubscriptions.lastSubscriptionId
       : null,
-    nextEntitlementCursor: entitlement.hasMore ? entitlement.lastUid : null,
     nodeMetricEventsAggregated,
     nodeMetricEventsDeleted,
     nodeExecutionsDeleted: history.nodeExecutionsDeleted,
@@ -210,5 +201,22 @@ export async function reconcileWorkflowRuntime(input: {
     tasksChecked: consistency.tasksChecked,
     tasksDeleted: history.tasksDeleted,
     terminalRunTasksCancelled: consistency.terminalRunTasksCancelled,
+  };
+}
+
+export async function reconcileWorkflowEntitlements(input: {
+  afterUid?: number;
+  limit: number;
+  reconciler: Pick<WorkflowReconciler, "deactivateUnentitledWorkflows">;
+}) {
+  const result = await input.reconciler.deactivateUnentitledWorkflows({
+    afterUid: input.afterUid,
+    limit: input.limit,
+  });
+  return {
+    entitlementChecksUnavailable: result.checksUnavailable,
+    entitlementTenantsChecked: result.tenantsChecked,
+    entitlementWorkflowsDeactivated: result.workflowsDeactivated,
+    nextEntitlementCursor: result.hasMore ? result.lastUid : null,
   };
 }

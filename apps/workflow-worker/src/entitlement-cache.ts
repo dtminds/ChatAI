@@ -22,6 +22,7 @@ export async function createWorkflowEntitlementCache(
   });
   try {
     await client.connect();
+    await verifyRedisAuthentication(client, config.url);
     await client.ping();
   } catch (error) {
     client.disconnect();
@@ -42,4 +43,17 @@ export async function createWorkflowEntitlementCache(
       }
     },
   };
+}
+
+async function verifyRedisAuthentication(client: Redis, redisUrl: string) {
+  const credentials = readRedisCredentials(redisUrl);
+  if (credentials) await client.call("AUTH", ...credentials);
+}
+
+function readRedisCredentials(redisUrl: string) {
+  const { password, username } = new URL(redisUrl);
+  if (!username && !password) return null;
+  const decodedUsername = decodeURIComponent(username);
+  const decodedPassword = decodeURIComponent(password);
+  return decodedUsername ? [decodedUsername, decodedPassword] : [decodedPassword];
 }

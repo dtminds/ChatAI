@@ -1435,8 +1435,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     };
   }
 
-  async deactivateWorkflowForEntitlementLoss() {
-    return { affectedDefinitions: 0 };
+  async deactivateWorkflowForEntitlementLoss(
+    _input: Parameters<WorkflowRuntimeRepository["deactivateWorkflowForEntitlementLoss"]>[0],
+  ): Promise<{ affectedDefinitions: number }> {
+    throw new Error(
+      "InMemoryWorkflowRuntimeRepository does not support Workflow definition deactivation",
+    );
   }
 
   async listActiveCapacityTenants(

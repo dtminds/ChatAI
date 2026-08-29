@@ -722,6 +722,27 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("throttles repeated entitlement refreshes after a confirmed denial", async () => {
+    let now = new Date("2026-08-30T00:00:00.000Z");
+    const check = vi.fn(async () => ({ entitled: false as const }));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+      entitlementPort: { check },
+    });
+
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+
+    expect(check.mock.calls.filter(([input]) => input.forceRefresh)).toHaveLength(1);
+
+    now = new Date("2026-08-30T00:00:30.000Z");
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+    expect(check.mock.calls.filter(([input]) => input.forceRefresh)).toHaveLength(2);
+  });
+
   it("enforces entitlement across Workflow editing operations", async () => {
     const repository = new InMemoryWorkflowRepository();
     const allowed = createService(repository);
@@ -735,6 +756,10 @@ describe("WorkflowService", () => {
     });
     const review = await allowed.submitReview(operator, created.id, {
       expectedDraftVersion: changed.draftVersion,
+    });
+    const withdrawCandidate = await createConfigured(allowed);
+    const withdrawReview = await allowed.submitReview(operator, withdrawCandidate.id, {
+      expectedDraftVersion: withdrawCandidate.draftVersion,
     });
     const denied = createService(repository, {
       entitlementPort: { check: async () => ({ entitled: false }) },
@@ -763,7 +788,8 @@ describe("WorkflowService", () => {
     await rejectsEntitlement(denied.rejectReview(operator, created.id, review.id, {
       reason: "not approved",
     }));
-    await rejectsEntitlement(denied.withdrawReview(operator, created.id, review.id));
+    await expect(denied.withdrawReview(operator, withdrawCandidate.id, withdrawReview.id))
+      .resolves.toMatchObject({ status: "withdrawn" });
     await rejectsEntitlement(denied.restoreReview(operator, created.id, review.id, {
       expectedDraftVersion: changed.draftVersion,
     }));

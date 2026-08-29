@@ -1,4 +1,4 @@
-import type { WorkflowType } from "@chatai/contracts";
+import { WORKFLOW_CAPABILITY_PROFILES, type WorkflowType } from "@chatai/contracts";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -7,7 +7,8 @@ import {
 } from "./entitlement.js";
 import type { WorkflowRuntimeRepository } from "./types.js";
 
-const WORKFLOW_TYPES: WorkflowType[] = ["chatai_sop", "wecom_sop", "member_sop"];
+const WORKFLOW_TYPES: WorkflowType[] = (Object.keys(WORKFLOW_CAPABILITY_PROFILES) as WorkflowType[])
+  .filter(workflowType => WORKFLOW_CAPABILITY_PROFILES[workflowType].availability === "enabled");
 const ENTITLEMENT_TENANT_CONCURRENCY = 10;
 
 export class WorkflowRuntimeReconciler {
@@ -63,17 +64,11 @@ export class WorkflowRuntimeReconciler {
         tenants.uids.slice(offset, offset + ENTITLEMENT_TENANT_CONCURRENCY).map(async uid => {
           const typeResults = await Promise.all(WORKFLOW_TYPES.map(async workflowType => {
             try {
-              const cached = await decideWorkflowEntitlement(
+              const decision = await decideWorkflowEntitlement(
                 this.entitlementPort,
                 { uid, workflowType },
               );
-              if (cached.action === "allow") return { unavailable: false } as const;
-              const confirmed = await decideWorkflowEntitlement(this.entitlementPort, {
-                forceRefresh: true,
-                uid,
-                workflowType,
-              });
-              return confirmed.action === "deny"
+              return decision.action === "deny"
                 ? { deniedType: workflowType, unavailable: false } as const
                 : { unavailable: false } as const;
             } catch (error) {
@@ -81,15 +76,34 @@ export class WorkflowRuntimeReconciler {
               return { unavailable: true } as const;
             }
           }));
-          const workflows = await this.repository.listActiveRunWorkflowIds({
-            uid,
-            workflowTypes: typeResults
-              .filter((result): result is { deniedType: WorkflowType; unavailable: false } =>
-                "deniedType" in result)
-              .map(result => result.deniedType),
-          });
+          const deniedTypes = typeResults
+            .filter((result): result is { deniedType: WorkflowType; unavailable: false } =>
+              "deniedType" in result)
+            .map(result => result.deniedType);
+          const workflows = deniedTypes.length === 0
+            ? []
+            : await this.repository.listActiveRunWorkflowIds({
+                uid,
+                workflowTypes: deniedTypes,
+              });
+          const activeDeniedTypes = new Set(workflows.map(workflow => workflow.workflowType));
+          const confirmedDeniedTypes = new Set<WorkflowType>();
+          let entitlementChecksUnavailable = 0;
+          await Promise.all([...activeDeniedTypes].map(async workflowType => {
+            try {
+              const confirmed = await decideWorkflowEntitlement(this.entitlementPort, {
+                forceRefresh: true,
+                uid,
+                workflowType,
+              });
+              if (confirmed.action === "deny") confirmedDeniedTypes.add(workflowType);
+            } catch (error) {
+              if (!(error instanceof WorkflowEntitlementUnavailableError)) throw error;
+              entitlementChecksUnavailable += 1;
+            }
+          }));
           let deactivated = 0;
-          for (const workflow of workflows) {
+          for (const workflow of workflows.filter(item => confirmedDeniedTypes.has(item.workflowType))) {
             const result = await this.repository.deactivateWorkflowForEntitlementLoss({
               opSubUserId: "0",
               uid,
@@ -99,7 +113,8 @@ export class WorkflowRuntimeReconciler {
             deactivated += result.affectedDefinitions;
           }
           return {
-            checksUnavailable: typeResults.filter(result => result.unavailable).length,
+            checksUnavailable: typeResults.filter(result => result.unavailable).length
+              + entitlementChecksUnavailable,
             workflowsDeactivated: deactivated,
           };
         }),

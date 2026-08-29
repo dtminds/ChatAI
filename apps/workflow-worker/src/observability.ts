@@ -308,6 +308,7 @@ function requiresRecoveryWarning(
   if (role === "inference") return hasPositive(result, ["failed", "retried"]);
   if (role === "reconciler") {
     return hasPositive(result, [
+      "entitlementChecksUnavailable",
       "outboxLeasesRecovered",
       "revisionCleanupFailed",
       "inconsistentRunsFailed",

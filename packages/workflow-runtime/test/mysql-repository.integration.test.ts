@@ -1154,35 +1154,6 @@ describe("MySQL workflow runtime repository contract", () => {
       .resolves.toHaveLength(1);
   });
 
-  it("rejects Run lifecycle states whose completed_at does not match status", async () => {
-    if (!database) throw new Error("MySQL contract database is not initialized");
-    const repository = new MysqlWorkflowRuntimeRepository(database);
-    const created = await repository.createRunWithInitialTask({
-      activeRunLimit: 10_000,
-      context: {},
-      entryEventId: "lifecycle-check-event",
-      entryPolicy: { mode: "never" },
-      initialNodeId: "start",
-      initialNodeKind: "start",
-      occurredAt: new Date("2026-08-24T08:30:15.123Z"),
-      revision: 1,
-      shardId: 7,
-      subjectId: "lifecycle-check-subject",
-      subjectType: "chatai_contact",
-      uid: 9,
-      workflowId: "31",
-      workflowType: "chatai_sop",
-    });
-    if (created.kind !== "success") throw new Error(`Run creation failed: ${created.kind}`);
-
-    await expect(database.updateTable("xy_wap_embed_workflow_run")
-      .set({ status: "completed" })
-      .where("id", "=", created.run.id)
-      .executeTakeFirstOrThrow()).rejects.toMatchObject({
-        code: "ER_CHECK_CONSTRAINT_VIOLATED",
-      });
-  });
-
   it("keeps a MySQL outbox write chunk below one sixteenth of max_allowed_packet", async () => {
     if (!workflowPool) throw new Error("MySQL contract database is not initialized");
     const [rows] = await workflowPool.promise().query(

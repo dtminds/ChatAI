@@ -738,11 +738,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   KEY idx_workflow_run_status_records (uid, status, workflow_id, id),
   KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),
   KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),
-  KEY idx_workflow_run_lifecycle (completed_at, id),
-  CONSTRAINT chk_workflow_run_lifecycle_time CHECK (
-    (status IN ('queued', 'running', 'waiting') AND completed_at IS NULL)
-    OR (status IN ('completed', 'failed', 'cancelled') AND completed_at IS NOT NULL)
-  )
+  KEY idx_workflow_run_lifecycle (completed_at, id)
 ) COMMENT='营销Workflow运行实例表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (

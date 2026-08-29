@@ -524,7 +524,7 @@ UNIQUE (uid, workflow_id, entry_event_id)
 (completed_at, id)
 ```
 
-`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准。Run 以 `completed_at IS NULL` 表示活跃生命周期，Reconciler 使用 `(completed_at, id)` 扫描活跃 Run；同一索引也按完成时间服务终态历史清理。数据库约束保证活跃态的 `completed_at` 为空、终态的 `completed_at` 非空；新增 Run 状态时必须同步更新状态机、终态集合和该 CHECK 约束。
+`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准。Run 以 `completed_at IS NULL` 表示活跃生命周期，Reconciler 使用 `(completed_at, id)` 扫描活跃 Run；同一索引也按完成时间服务终态历史清理。应用写路径同步维护 Run 状态与 `completed_at`，相关查询同时保留状态过滤；新增 Run 状态时必须同步更新状态机、终态集合和持久化映射。
 
 `subject_id` 是引擎不解析的不透明字符串，其唯一业务范围为 `uid + subject_id`。平台、托管账号或外部联系人 ID 的组合方式由 Trigger Adapter 决定。
 

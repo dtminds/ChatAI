@@ -605,6 +605,164 @@ describe("workflow entry consumer", () => {
     );
   });
 
+  it("loads runtime snapshots once for a Start and Wait Event fan-out", async () => {
+    const startSnapshot = {
+      definition: {},
+      revision: { revision: 1 },
+      uid: 9,
+      workflowId: "31",
+    } as never;
+    const waitSnapshot = {
+      definition: {},
+      revision: { revision: 1 },
+      uid: 9,
+      workflowId: "32",
+    } as never;
+    const loadRuntimeSnapshots = vi.fn(async () => ({
+      invalidKeys: [],
+      snapshots: [startSnapshot, waitSnapshot],
+    }));
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const recordWaitEvent = vi.fn(async () => ({ kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { loadRuntimeSnapshots, recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([{
+        ...subscription("subscription-1"),
+        workflowId: "32",
+      }]),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent())))
+      .resolves.toEqual({ code: "admitted", disposition: "ack" });
+
+    expect(loadRuntimeSnapshots).toHaveBeenCalledOnce();
+    expect(loadRuntimeSnapshots).toHaveBeenCalledWith({
+      keys: [
+        { revision: 1, workflowId: "31" },
+        { revision: 1, workflowId: "32" },
+      ],
+      uid: 9,
+    });
+    expect(startRun).toHaveBeenCalledWith(expect.objectContaining({ runtimeSnapshot: startSnapshot }));
+    expect(recordWaitEvent).toHaveBeenCalledWith(expect.objectContaining({ runtimeSnapshot: waitSnapshot }));
+  });
+
+  it("ACKs a Start candidate whose batched runtime snapshot is missing", async () => {
+    const message = createBrokerMessage(messageEvent());
+    const startRun = vi.fn(async (input: { runtimeSnapshot?: unknown }) => {
+      expect(input.runtimeSnapshot).toBeNull();
+      throw new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
+    });
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [messageBinding("31")]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: {
+        loadRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
+        recordWaitEvent: vi.fn(),
+        startRun,
+      },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(message)).resolves.toEqual({
+      code: "runtime_rejected",
+      disposition: "ack",
+    });
+
+    expect(startRun).toHaveBeenCalledOnce();
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.negativeAck).not.toHaveBeenCalled();
+  });
+
+  it("isolates invalid runtime snapshots without blocking valid Start and Wait candidates", async () => {
+    const validSnapshots = ["31", "33", "35"].map(workflowId => ({
+      definition: {},
+      revision: { revision: 1 },
+      uid: 9,
+      workflowId,
+    } as never));
+    const loadRuntimeSnapshots = vi.fn(async () => ({
+      invalidKeys: [
+        { revision: 1, workflowId: "32" },
+        { revision: 1, workflowId: "34" },
+      ],
+      snapshots: validSnapshots,
+    }));
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const recordWaitEvent = vi.fn(async () => ({ kind: "success" as const }));
+    const message = createBrokerMessage(messageEvent());
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => [
+          messageBinding("31"),
+          messageBinding("32"),
+          messageBinding("33"),
+        ]),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { loadRuntimeSnapshots, recordWaitEvent, startRun },
+      subscriptionReader: createSubscriptionReader([
+        { ...subscription("subscription-invalid"), workflowId: "34" },
+        { ...subscription("subscription-valid"), workflowId: "35" },
+      ]),
+    });
+
+    await expect(handler(message)).resolves.toEqual({ code: "admitted", disposition: "ack" });
+
+    expect(startRun).toHaveBeenCalledTimes(2);
+    expect(startRun.mock.calls.map(([input]) => input.workflowId)).toEqual(["31", "33"]);
+    expect(recordWaitEvent).toHaveBeenCalledOnce();
+    expect(recordWaitEvent).toHaveBeenCalledWith(expect.objectContaining({
+      runtimeSnapshot: validSnapshots[2],
+      subscription: expect.objectContaining({ workflowId: "35" }),
+    }));
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.negativeAck).not.toHaveBeenCalled();
+  });
+
+  it("loads runtime snapshots in bounded batches for a large Entry fan-out", async () => {
+    const bindings = Array.from({ length: 1_001 }, (_, index) => messageBinding(String(index + 1)));
+    const loadRuntimeSnapshots = vi.fn(async ({ keys, uid }) => ({
+      invalidKeys: [],
+      snapshots: keys.map(key => ({
+        definition: {},
+        revision: { revision: key.revision },
+        uid,
+        workflowId: key.workflowId,
+      } as never)),
+    }));
+    const startRun = vi.fn(async () => ({ deduplicated: false, kind: "success" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: {
+        listActiveTriggerBindings: vi.fn(async () => bindings),
+      },
+      eventCatalog,
+      inboxRepository: createInboxRepository(),
+      messageReader: createMessageReader(),
+      runtimeService: { loadRuntimeSnapshots, recordWaitEvent: vi.fn(), startRun },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(messageEvent())))
+      .resolves.toEqual({ code: "admitted", disposition: "ack" });
+
+    expect(loadRuntimeSnapshots).toHaveBeenCalledTimes(2);
+    expect(loadRuntimeSnapshots.mock.calls.map(([input]) => input.keys.length)).toEqual([1_000, 1]);
+    expect(startRun).toHaveBeenCalledTimes(1_001);
+  });
+
   it("still wakes an existing Wait Event when a new Run is rejected by capacity", async () => {
     const recordWaitEvent = vi.fn(async () => ({ firstEvent: true, kind: "success" as const }));
     const startRun = vi.fn(async () => ({ kind: "capacity-rejected" as const }));

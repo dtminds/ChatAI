@@ -63,6 +63,9 @@ import type {
   WorkflowRevisionCleanupRecord,
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
+  WorkflowRuntimeSnapshotKey,
+  WorkflowRuntimeSnapshotReadResult,
+  WorkflowRuntimeSnapshotRecord,
   WorkflowTaskRecord,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
@@ -184,6 +187,72 @@ export class MysqlWorkflowRuntimeRepository implements
       subjectType: decodeWorkflowSubjectType(row.subject_type),
       workflowType: decodeWorkflowType(row.workflow_type),
     } : null;
+  }
+
+  async findRuntimeSnapshots(
+    uid: number,
+    keys: readonly WorkflowRuntimeSnapshotKey[],
+  ): Promise<WorkflowRuntimeSnapshotReadResult> {
+    const uniqueKeys = [...new Map(keys.map(key => [
+      runtimeSnapshotKey(key.workflowId, key.revision),
+      key,
+    ])).values()].sort(compareRuntimeSnapshotKeys);
+    const invalidKeys: WorkflowRuntimeSnapshotKey[] = [];
+    const snapshots: WorkflowRuntimeSnapshotRecord[] = [];
+    for (const chunk of chunksOf(uniqueKeys, WORKFLOW_RUNTIME_BATCH_LIMIT)) {
+      const rows = await this.db
+        .selectFrom("xy_wap_embed_workflow_definition as definition")
+        .innerJoin(`${REVISION_TABLE} as revision`, join => join
+          .onRef("revision.uid", "=", "definition.uid")
+          .onRef("revision.workflow_id", "=", "definition.id"))
+        .select([
+          "definition.biz_status as definition_biz_status",
+          "definition.id as workflow_id",
+          "definition.published_revision as definition_published_revision",
+          "definition.runtime_status as definition_runtime_status",
+          "definition.status_reason as definition_status_reason",
+          "definition.workflow_type as definition_workflow_type",
+          "revision.execution_spec_json",
+          "revision.revision",
+          "revision.subject_type",
+          "revision.workflow_type as revision_workflow_type",
+        ])
+        .where("definition.uid", "=", uid)
+        .where(sql<boolean>`(definition.id, revision.revision) in (${sql.join(
+          chunk.map(key => sql`(${key.workflowId}, ${key.revision})`),
+        )})`)
+        .execute();
+      for (const row of rows) {
+        const key = {
+          revision: row.revision,
+          workflowId: normalizeId(row.workflow_id),
+        };
+        try {
+          snapshots.push({
+            definition: {
+              bizStatus: row.definition_biz_status === 1 ? 1 as const : 0 as const,
+              publishedRevision: row.definition_published_revision,
+              runtimeStatus: parseRuntimeStatus(row.definition_runtime_status),
+              statusReason: parseStatusReason(row.definition_status_reason),
+              workflowType: decodeWorkflowType(row.definition_workflow_type),
+            },
+            revision: {
+              executionSpec: normalizeWorkflowExecutionSpec(
+                parseJson(row.execution_spec_json) as WorkflowStoredExecutionSpec,
+              ),
+              revision: row.revision,
+              subjectType: decodeWorkflowSubjectType(row.subject_type),
+              workflowType: decodeWorkflowType(row.revision_workflow_type),
+            },
+            uid,
+            workflowId: key.workflowId,
+          });
+        } catch {
+          invalidKeys.push(key);
+        }
+      }
+    }
+    return { invalidKeys, snapshots };
   }
 
   async listActiveTriggerBindings(
@@ -2858,20 +2927,24 @@ export class MysqlWorkflowRuntimeRepository implements
         normalizeTenantId(row.uid),
         Number(row.active_run_count),
       ]));
-      let corrected = 0;
+      const corrections: Array<{ activeRunCount: number; uid: number }> = [];
       for (const guard of guards) {
         const uid = normalizeTenantId(guard.uid);
         const activeRunCount = activeCountByUid.get(uid) ?? 0;
         if (Number(guard.active_run_count) === activeRunCount) continue;
-        await trx.updateTable(CAPACITY_GUARD_TABLE)
-          .set({ active_run_count: activeRunCount })
-          .where("uid", "=", uid)
+        corrections.push({ activeRunCount, uid });
+      }
+      for (const chunk of writeChunks(corrections)) {
+        await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+          active_run_count: sql<number>`CASE uid ${sql.join(chunk.map(correction =>
+            sql`WHEN ${correction.uid} THEN ${correction.activeRunCount}`), sql` `)}
+            ELSE active_run_count END`,
+        }).where("uid", "in", chunk.map(correction => correction.uid))
           .executeTakeFirstOrThrow();
-        corrected += 1;
       }
       return {
         checked: guards.length,
-        corrected,
+        corrected: corrections.length,
         hasMore: candidateGuards.length > guards.length,
         lastUid: guards.length > 0 ? normalizeTenantId(guards.at(-1)!.uid) : null,
       };
@@ -4038,9 +4111,13 @@ function boundBatchLimit(limit: number) {
 }
 
 function writeChunks<T>(items: readonly T[]) {
+  return chunksOf(items, WORKFLOW_MYSQL_WRITE_CHUNK_SIZE);
+}
+
+function chunksOf<T>(items: readonly T[], size: number) {
   const chunks: T[][] = [];
-  for (let start = 0; start < items.length; start += WORKFLOW_MYSQL_WRITE_CHUNK_SIZE) {
-    chunks.push(items.slice(start, start + WORKFLOW_MYSQL_WRITE_CHUNK_SIZE));
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size));
   }
   return chunks;
 }
@@ -4348,6 +4425,21 @@ function compareNodeMetricKeys(
     || left.shardId - right.shardId;
 }
 
+function compareRuntimeSnapshotKeys(
+  left: WorkflowRuntimeSnapshotKey,
+  right: WorkflowRuntimeSnapshotKey,
+) {
+  return left.workflowId < right.workflowId
+    ? -1
+    : left.workflowId > right.workflowId
+      ? 1
+      : left.revision - right.revision;
+}
+
+function runtimeSnapshotKey(workflowId: string, revision: number) {
+  return `${workflowId}:${revision}`;
+}
+
 async function releaseTenantCapacity(
   trx: RuntimeTransaction,
   uid: number,
@@ -4367,8 +4459,15 @@ async function releaseTenantCapacityForRuns(
 ) {
   const counts = new Map<number, number>();
   for (const run of runs) counts.set(run.uid, (counts.get(run.uid) ?? 0) + 1);
-  for (const [uid, count] of [...counts].sort(([left], [right]) => left - right)) {
-    await releaseTenantCapacity(trx, uid, count);
+  const sortedCounts = [...counts].sort(([left], [right]) => left - right);
+  for (const chunk of writeChunks(sortedCounts)) {
+    await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+      active_run_count: sql<number>`CASE ${sql.join(chunk.map(([uid, count]) =>
+        sql`WHEN uid = ${uid} AND active_run_count >= ${count}
+          THEN active_run_count - ${count}`), sql` `)}
+        ELSE active_run_count END`,
+    }).where("uid", "in", chunk.map(([uid]) => uid))
+      .executeTakeFirst();
   }
 }
 

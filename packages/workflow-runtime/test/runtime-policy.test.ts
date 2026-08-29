@@ -34,6 +34,19 @@ describe("Workflow runtime policy", () => {
     expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
   });
 
+  it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+    });
+
+    await expect(harness.service.startRun(entryInput({ runtimeSnapshot: null }))).rejects.toMatchObject({
+      code: "WORKFLOW_RUNTIME_UNAVAILABLE",
+    });
+
+    expect(harness.control.findDefinition).not.toHaveBeenCalled();
+    expect(harness.control.findRevision).not.toHaveBeenCalled();
+  });
+
   it("passes the entitled tenant capacity into Run admission", async () => {
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 1, entitled: true, unentitledSince: null }),
@@ -451,6 +464,7 @@ function createHarness(options: {
         workflowType: identity.workflowType,
       };
     }),
+    findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   };
   const capabilityCalls: Array<{ definition: unknown; request: unknown }> = [];
   const hasCapabilityPort = options.capabilityPort || options.capabilityResult !== undefined;
@@ -487,7 +501,7 @@ function createHarness(options: {
         : {}),
     },
   );
-  return { applyEntitlementLoss, capabilityCalls, runtime, service };
+  return { applyEntitlementLoss, capabilityCalls, control, runtime, service };
 }
 
 function getWorkflowIdentity(workflowId: string): {

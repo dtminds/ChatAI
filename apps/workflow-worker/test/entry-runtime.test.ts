@@ -18,20 +18,42 @@ describe("Workflow Entry runtime composition", () => {
     const now = new Date("2026-08-10T00:00:00.000Z");
     const broker = new FakeWorkflowBroker();
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const findDefinition = vi.fn(async (_uid: number, workflowId: string) => ({
+      bizStatus: 1 as const,
+      publishedRevision: 1,
+      runtimeStatus: "active" as const,
+      statusReason: null,
+      workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
+    }));
+    const findRevision = vi.fn(async (_uid: number, workflowId: string) => ({
+      executionSpec: executionSpec(workflowId),
+      revision: 1,
+      subjectType: workflowId === "32" ? "wecom_contact" as const : "chatai_contact" as const,
+      workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
+    }));
     const service = new WorkflowRuntimeService({
       applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
-      findDefinition: vi.fn(async (_uid, workflowId) => ({
-        bizStatus: 1 as const,
-        publishedRevision: 1,
-        runtimeStatus: "active" as const,
-        statusReason: null,
-        workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
-      })),
-      findRevision: vi.fn(async (_uid, workflowId) => ({
-        executionSpec: executionSpec(workflowId),
-        revision: 1,
-        subjectType: workflowId === "32" ? "wecom_contact" as const : "chatai_contact" as const,
-        workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
+      findDefinition,
+      findRevision,
+      findRuntimeSnapshots: vi.fn(async (uid, keys) => ({
+        invalidKeys: [],
+        snapshots: keys.map(({ revision, workflowId }) => ({
+          definition: {
+            bizStatus: 1 as const,
+            publishedRevision: 1,
+            runtimeStatus: "active" as const,
+            statusReason: null,
+            workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
+          },
+          revision: {
+            executionSpec: executionSpec(workflowId),
+            revision,
+            subjectType: workflowId === "32" ? "wecom_contact" as const : "chatai_contact" as const,
+            workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
+          },
+          uid,
+          workflowId,
+        })),
       })),
     }, repository, undefined, {
       clock: () => now,
@@ -79,6 +101,8 @@ describe("Workflow Entry runtime composition", () => {
       tasks: [expect.any(Object), expect.any(Object)],
     });
     expect(bindingReader.listActiveTriggerBindings).toHaveBeenCalledTimes(1);
+    expect(findDefinition).not.toHaveBeenCalled();
+    expect(findRevision).not.toHaveBeenCalled();
     await broker.close();
   });
 });

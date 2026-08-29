@@ -1437,6 +1437,7 @@ function createControlReader(spec = actionSpec()) {
       subjectType: "chatai_contact" as const,
       workflowType: "chatai_sop" as const,
     })),
+    findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   };
 }
 

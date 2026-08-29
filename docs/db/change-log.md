@@ -7,6 +7,7 @@
 - 删除记录列表和 Revision cleanup 无法有效利用的 `idx_workflow_run_retained_records`、`idx_workflow_run_cleanup_node`，以及被 lifecycle 索引替代的两条全局状态索引。
 - Entry Guard 保存 `latest_run_id`，主体串行锁内通过 Run 主键点查最近一次运行是否活跃，避免新增包含长 `subject_id` 的 active-subject 索引。`idx_workflow_run_entry_window` 继续服务滚动窗口计数。
 - 删除 `idx_workflow_node_metric_query`；它是唯一索引 `uk_workflow_node_metric_dimension` 的严格前缀。保留 `idx_workflow_node_metric_node_query` 供数据总览按当前 Node ID 跨 Revision 聚合。
+- 当前仍处于开发阶段，生产环境尚未创建 Workflow 表；以下 DDL 仅用于同步测试环境，按整段执行，不设计滚动兼容或生产数据回填。
 
 执行 DDL 前确认查询结果为 `0`；否则先修复 Run 生命周期脏数据：
 

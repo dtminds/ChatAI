@@ -349,10 +349,10 @@ export class MysqlWorkflowRuntimeRepository implements
         if (concurrentDuplicate) {
           return { deduplicated: true, kind: "success" as const, ...concurrentDuplicate };
         }
-        const latestRun = guard.latest_run_id === null
-          ? undefined
-          : await trx.selectFrom(RUN_TABLE)
-              .select("status")
+        let latestRun: { id: DatabaseId; status: string } | undefined;
+        if (guard.latest_run_id !== null) {
+          latestRun = await trx.selectFrom(RUN_TABLE)
+              .select(["id", "status"])
               .where("id", "=", guard.latest_run_id)
               .where("uid", "=", input.uid)
               .where("workflow_id", "=", input.workflowId)
@@ -360,9 +360,30 @@ export class MysqlWorkflowRuntimeRepository implements
               .where("subject_id", "=", input.subjectId)
               .forShare()
               .executeTakeFirst();
+        } else if (guard.total_entries > 0) {
+          latestRun = await trx.selectFrom(RUN_TABLE)
+            .select(["id", "status"])
+            .where("uid", "=", input.uid)
+            .where("workflow_id", "=", input.workflowId)
+            .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+            .where("subject_id", "=", input.subjectId)
+            .where("status", "in", ACTIVE_RUN_STATUSES)
+            .limit(1)
+            .forShare()
+            .executeTakeFirst();
+        }
         if (latestRun && ACTIVE_RUN_STATUSES.includes(
           latestRun.status as typeof ACTIVE_RUN_STATUSES[number],
-        )) return { kind: "active-run-rejected" as const };
+        )) {
+          if (guard.latest_run_id === null) {
+            await trx.updateTable(ENTRY_GUARD_TABLE).set({
+              latest_run_id: latestRun.id,
+            }).where("id", "=", guard.id)
+              .where("latest_run_id", "is", null)
+              .executeTakeFirstOrThrow();
+          }
+          return { kind: "active-run-rejected" as const };
+        }
         if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
           return { kind: "entry-policy-rejected" as const };
         }

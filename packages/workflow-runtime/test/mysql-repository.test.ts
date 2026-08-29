@@ -585,6 +585,40 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.runInsertCount).toBe(0);
   });
 
+  it("repairs a legacy guard before rejecting its active Run", async () => {
+    const db = createConcurrentDuplicateRunDbMock({
+      duplicateAfterGuard: false,
+      latestRunId: null,
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "event-2",
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2020-01-01T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(result).toEqual({ kind: "active-run-rejected" });
+    expect(db.runWhereCalls).toContainEqual([
+      "status",
+      "in",
+      ["queued", "running", "waiting"],
+    ]);
+    expect(db.guardUpdate).toEqual({ latest_run_id: "5" });
+    expect(db.runInsertCount).toBe(0);
+  });
+
   it("rejects admission when the tenant guard has no remaining capacity", async () => {
     const db = createFullCapacityGuardDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -1737,9 +1771,10 @@ function createFullCapacityGuardDbMock() {
 }
 
 function createConcurrentDuplicateRunDbMock(
-  options: { duplicateAfterGuard?: boolean } = {},
+  options: { duplicateAfterGuard?: boolean; latestRunId?: string | null } = {},
 ) {
   const duplicateAfterGuard = options.duplicateAfterGuard ?? true;
+  const latestRunId = options.latestRunId === undefined ? "5" : options.latestRunId;
   const admittedAt = new Date("2026-07-10T00:00:00.000Z");
   const run = {
     completed_at: null,
@@ -1784,6 +1819,7 @@ function createConcurrentDuplicateRunDbMock(
     workflow_id: "42",
   };
   const db = {
+    guardUpdate: null as Record<string, unknown> | null,
     guardWriteLocked: false,
     isolationLevel: null as string | null,
     runInsertCount: 0,
@@ -1844,7 +1880,7 @@ function createConcurrentDuplicateRunDbMock(
         },
         async executeTakeFirstOrThrow() {
           if (table === "xy_wap_embed_workflow_entry_guard") {
-            return { id: "3", latest_run_id: "5", total_entries: 1 };
+            return { id: "3", latest_run_id: latestRunId, total_entries: 1 };
           }
           throw new Error(`Unexpected required read from ${table}`);
         },
@@ -1863,6 +1899,17 @@ function createConcurrentDuplicateRunDbMock(
           db.isolationLevel = level;
           return builder;
         },
+      };
+      return builder;
+    },
+    updateTable(table: string) {
+      const builder = {
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_entry_guard") db.guardUpdate = values;
+          return builder;
+        },
+        where() { return builder; },
       };
       return builder;
     },

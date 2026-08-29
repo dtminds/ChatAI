@@ -4960,7 +4960,8 @@ function parseRunStatus(value: string): WorkflowRunStatus {
 }
 
 function workflowRunStatusIndexedTable(): typeof RUN_TABLE {
-  // Keep Revision cleanup locks bounded by the active-Run cap; the node index can lock retained terminal Runs before LIMIT.
+  // In standard entitlement mode, activeRunLimit bounds Revision cleanup locks.
+  // The node index can lock retained terminal Runs before LIMIT.
   // Kysely accepts raw table expressions at runtime but models typed tables as string keys.
   return sql<Selectable<WorkflowRunTable>>`${sql.table(RUN_TABLE)} FORCE INDEX (${sql.id(
     RUN_STATUS_RECORDS_INDEX,

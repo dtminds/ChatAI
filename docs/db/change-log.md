@@ -48,7 +48,7 @@ Revision cleanup 的强制索引已用 MySQL 8.4 合成数据验证。夹具包�
 - 目标节点包含全部活跃 Run 时，`idx_workflow_run_status_records` 整轮检查 515,099 行，`idx_workflow_run_node_records` 检查 110,099 行；但首批记录锁条目分别约为 20,030 和 200,458。
 - 目标节点仅包含 100 条活跃 Run 时，状态索引首批检查 10,000 行，节点索引检查 100,100 行。
 
-因此 Revision cleanup 保持强制 `idx_workflow_run_status_records`：每批锁集合受租户 10,000 活跃 Run 上限约束，避免把保留窗口内无明确数量上限的历史终态 Run 锁入单个控制事务。整轮重复扫描是该有界锁策略的预期取舍。
+因此 Revision cleanup 保持强制 `idx_workflow_run_status_records`：标准 entitlement 准入模式下，每批锁集合受租户 `activeRunLimit` 约束（当前业务档位为 10,000）；allow-all 配置不提供该数量边界。该选择避免把保留窗口内无明确数量上限的历史终态 Run 锁入单个控制事务，整轮重复扫描是预期取舍。
 
 ## 2026-08-28 Workflow Scheduler 全局到期索引
 

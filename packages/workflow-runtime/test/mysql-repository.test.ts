@@ -393,6 +393,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       terminalRunTasksCancelled: 1,
     });
     expect(db.lockOrder).toEqual(["run", "task", "run", "task"]);
+    expect(db.runWheres).toContainEqual(["completed_at", "is", null]);
     expect(db.runUpdate).toMatchObject({
       status: "failed",
       terminal_reason: "WORKFLOW_RUNTIME_STATE_INCONSISTENT",
@@ -417,6 +418,21 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       runsChecked: 0,
       tasksChecked: 0,
     });
+  });
+
+  it("scans unavailable Workflow Runs through the active lifecycle range", async () => {
+    const db = createUnavailableRunScanDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+      .resolves.toEqual({ cancelled: 0, hasMore: false, lastRunId: null });
+
+    expect(db.wheres).toContainEqual(["run.completed_at", "is", null]);
+    expect(db.wheres).toContainEqual([
+      "run.status",
+      "in",
+      ["queued", "running", "waiting"],
+    ]);
   });
 
   it("keeps a recently updated inconsistent run inside the grace period", async () => {
@@ -559,7 +575,48 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.runReadCount).toBe(3);
     expect(db.guardWriteLocked).toBe(true);
     expect(db.runShareLockCount).toBe(2);
+    expect(db.runWhereCalls).toContainEqual(["id", "=", "5"]);
+    expect(db.runWhereCalls).not.toContainEqual([
+      "status",
+      "in",
+      ["queued", "running", "waiting"],
+    ]);
     expect(db.taskReadLocked).toBe(false);
+    expect(db.runInsertCount).toBe(0);
+  });
+
+  it("repairs a legacy guard before rejecting its active Run", async () => {
+    const db = createConcurrentDuplicateRunDbMock({
+      duplicateAfterGuard: false,
+      latestRunId: null,
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "event-2",
+      entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2020-01-01T00:00:00.000Z"),
+      revision: 1,
+      shardId: 1,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 8,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(result).toEqual({ kind: "active-run-rejected" });
+    expect(db.runWhereCalls).toContainEqual([
+      "status",
+      "in",
+      ["queued", "running", "waiting"],
+    ]);
+    expect(db.runOrderBys).toContainEqual(["id", "desc"]);
+    expect(db.guardUpdate).toEqual({ latest_run_id: "5" });
     expect(db.runInsertCount).toBe(0);
   });
 
@@ -1683,7 +1740,7 @@ function createFullCapacityGuardDbMock() {
         },
         async executeTakeFirstOrThrow() {
           if (table === "xy_wap_embed_workflow_entry_guard") {
-            return { id: "3", total_entries: 0 };
+            return { id: "3", latest_run_id: null, total_entries: 0 };
           }
           throw new Error(`Unexpected required read from ${table}`);
         },
@@ -1715,9 +1772,10 @@ function createFullCapacityGuardDbMock() {
 }
 
 function createConcurrentDuplicateRunDbMock(
-  options: { duplicateAfterGuard?: boolean } = {},
+  options: { duplicateAfterGuard?: boolean; latestRunId?: string | null } = {},
 ) {
   const duplicateAfterGuard = options.duplicateAfterGuard ?? true;
+  const latestRunId = options.latestRunId === undefined ? "5" : options.latestRunId;
   const admittedAt = new Date("2026-07-10T00:00:00.000Z");
   const run = {
     completed_at: null,
@@ -1762,11 +1820,14 @@ function createConcurrentDuplicateRunDbMock(
     workflow_id: "42",
   };
   const db = {
+    guardUpdate: null as Record<string, unknown> | null,
     guardWriteLocked: false,
     isolationLevel: null as string | null,
     runInsertCount: 0,
     runReadCount: 0,
     runShareLockCount: 0,
+    runOrderBys: [] as unknown[][],
+    runWhereCalls: [] as unknown[][],
     taskReadLocked: false,
     insertInto(table: string) {
       if (table === "xy_wap_embed_workflow_run") db.runInsertCount += 1;
@@ -1794,10 +1855,16 @@ function createConcurrentDuplicateRunDbMock(
           return builder;
         },
         limit() { return builder; },
-        orderBy() { return builder; },
+        orderBy(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run") db.runOrderBys.push(args);
+          return builder;
+        },
         select() { return builder; },
         selectAll() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run") db.runWhereCalls.push(args);
+          return builder;
+        },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_definition") {
             return {
@@ -1818,7 +1885,7 @@ function createConcurrentDuplicateRunDbMock(
         },
         async executeTakeFirstOrThrow() {
           if (table === "xy_wap_embed_workflow_entry_guard") {
-            return { id: "3", total_entries: 1 };
+            return { id: "3", latest_run_id: latestRunId, total_entries: 1 };
           }
           throw new Error(`Unexpected required read from ${table}`);
         },
@@ -1837,6 +1904,17 @@ function createConcurrentDuplicateRunDbMock(
           db.isolationLevel = level;
           return builder;
         },
+      };
+      return builder;
+    },
+    updateTable(table: string) {
+      const builder = {
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_entry_guard") db.guardUpdate = values;
+          return builder;
+        },
+        where() { return builder; },
       };
       return builder;
     },
@@ -2339,6 +2417,7 @@ function createRunTaskConsistencyDbMock(options: {
   let taskSelectCount = 0;
   const db = {
     lockOrder: [] as string[],
+    runWheres: [] as unknown[][],
     runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
     insertInto() {
@@ -2361,7 +2440,10 @@ function createRunTaskConsistencyDbMock(options: {
         select() { return builder; },
         selectAll() { return builder; },
         skipLocked() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run") db.runWheres.push(args);
+          return builder;
+        },
         async execute() {
           if (table === "xy_wap_embed_workflow_run") {
             runSelectCount += 1;
@@ -2404,6 +2486,34 @@ function createRunTaskConsistencyDbMock(options: {
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;
+    },
+  };
+  return db;
+}
+
+function createUnavailableRunScanDbMock() {
+  const db = {
+    wheres: [] as unknown[][],
+    selectFrom() {
+      const builder = {
+        forUpdate() { return builder; },
+        leftJoin() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        skipLocked() { return builder; },
+        where(...args: unknown[]) {
+          if (typeof args[0] === "string") db.wheres.push(args);
+          return builder;
+        },
+        async execute() { return []; },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
     },
   };
   return db;

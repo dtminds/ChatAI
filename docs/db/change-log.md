@@ -1,5 +1,40 @@
 # Database Change Log
 
+## 2026-08-29 Workflow Run 索引收敛与节点指标索引收尾
+
+- Workflow Run 从 10 个索引收敛为 7 个。`idx_workflow_run_lifecycle (completed_at, id)` 同时服务活跃 Run 全局巡检和终态历史清理；应用写路径同步维护 Run 状态与 `completed_at`。
+- `idx_workflow_run_status_records` 调整为 `(uid, status, workflow_id, id)`，同时服务租户容量校正、Workflow 状态记录和有界控制面扫描。
+- 删除记录列表和 Revision cleanup 无法有效利用的 `idx_workflow_run_retained_records`、`idx_workflow_run_cleanup_node`，以及被 lifecycle 索引替代的两条全局状态索引。
+- Entry Guard 保存 `latest_run_id`，主体串行锁内通过 Run 主键点查最近一次运行是否活跃，避免新增包含长 `subject_id` 的 active-subject 索引。`idx_workflow_run_entry_window` 继续服务滚动窗口计数。
+- 删除 `idx_workflow_node_metric_query`；它是唯一索引 `uk_workflow_node_metric_dimension` 的严格前缀。保留 `idx_workflow_node_metric_node_query` 供数据总览按当前 Node ID 跨 Revision 聚合。
+- 当前仍处于开发阶段，生产环境尚未创建 Workflow 表；以下 DDL 仅用于同步测试环境，按整段执行，不设计滚动兼容或生产数据回填。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  ADD COLUMN latest_run_id BIGINT UNSIGNED NULL
+    COMMENT '最近一次成功准入的Run ID，用于主体活跃态点查'
+    AFTER total_entries;
+
+ALTER TABLE xy_wap_embed_workflow_run
+  DROP KEY idx_workflow_run_status_records,
+  DROP KEY idx_workflow_run_retained_records,
+  DROP KEY idx_workflow_run_cleanup_node,
+  DROP KEY idx_workflow_run_status_reconcile,
+  DROP KEY idx_workflow_run_history_cleanup,
+  ADD KEY idx_workflow_run_status_records (uid, status, workflow_id, id),
+  ADD KEY idx_workflow_run_lifecycle (completed_at, id);
+
+ALTER TABLE xy_wap_embed_workflow_node_metric
+  DROP KEY idx_workflow_node_metric_query;
+```
+
+Revision cleanup 的强制索引已用 MySQL 8.4 合成数据验证。夹具包含单 Workflow 10,000 条活跃 Run，并在目标节点放置 100,000 条历史终态 Run，批大小为 100：
+
+- 目标节点包含全部活跃 Run 时，`idx_workflow_run_status_records` 整轮检查 515,099 行，`idx_workflow_run_node_records` 检查 110,099 行；但首批记录锁条目分别约为 20,030 和 200,458。
+- 目标节点仅包含 100 条活跃 Run 时，状态索引首批检查 10,000 行，节点索引检查 100,100 行。
+
+因此 Revision cleanup 保持强制 `idx_workflow_run_status_records`：标准 entitlement 准入模式下，每批锁集合受租户 `activeRunLimit` 约束（当前业务档位为 10,000）；allow-all 配置不提供该数量边界。该选择避免把保留窗口内无明确数量上限的历史终态 Run 锁入单个控制事务，整轮重复扫描是预期取舍。
+
 ## 2026-08-28 Workflow Scheduler 全局到期索引
 
 - Scheduler 通过全局到期队列认领 `pending` Task，不再按应用逻辑分片过滤。

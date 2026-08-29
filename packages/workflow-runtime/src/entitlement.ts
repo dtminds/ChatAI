@@ -29,8 +29,6 @@ export interface WorkflowTenantCapacityPort {
   getTenantCapacity(input: WorkflowTenantCapacityInput): Promise<WorkflowTenantCapacityResult>;
 }
 
-export type WorkflowEntitlementMode = "allow" | "enforce";
-
 export type WorkflowEntitlementDecision =
   | { action: "allow"; result: Extract<WorkflowTypeEntitlementResult, { entitled: true }> }
   | {

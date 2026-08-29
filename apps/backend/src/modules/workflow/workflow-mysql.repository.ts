@@ -427,6 +427,21 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   }
 
   async decideReview(input: Parameters<WorkflowRepository["decideReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
+    return this.transitionReview({ ...input, status: input.decision });
+  }
+
+  async withdrawReview(input: Parameters<WorkflowRepository["withdrawReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
+    return this.transitionReview({ ...input, comment: null, status: "withdrawn" });
+  }
+
+  private transitionReview(input: {
+    comment: string | null;
+    opSubUserId: string;
+    reviewId: string;
+    status: "approved" | "rejected" | "withdrawn";
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
     return this.db.transaction().execute(async transaction => {
       const definition = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
       if (!definition) return notFound<WorkflowPublishReviewRecord>();
@@ -443,38 +458,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         review_comment: input.comment,
         review_sub_uid: input.opSubUserId,
         review_time: new Date(),
-        status: input.decision,
-      }).where("uid", "=", input.uid)
-        .where("workflow_id", "=", input.workflowId)
-        .where("id", "=", input.reviewId)
-        .where("status", "=", "pending")
-        .executeTakeFirstOrThrow();
-      return success(mapReview(await transaction.selectFrom(REVIEW_TABLE).selectAll()
-        .where("id", "=", input.reviewId)
-        .executeTakeFirstOrThrow()));
-    });
-  }
-
-  async withdrawReview(input: Parameters<WorkflowRepository["withdrawReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
-    return this.db.transaction().execute(async transaction => {
-      const definition = await selectDefinitionForUpdate(transaction, input.uid, input.workflowId);
-      if (!definition) return notFound<WorkflowPublishReviewRecord>();
-      const reviewRow = await transaction.selectFrom(REVIEW_TABLE).selectAll()
-        .where("uid", "=", input.uid)
-        .where("workflow_id", "=", input.workflowId)
-        .where("id", "=", input.reviewId)
-        .forUpdate()
-        .executeTakeFirst();
-      if (!reviewRow) return notFound<WorkflowPublishReviewRecord>();
-      const review = mapReview(reviewRow);
-      if (review.status !== "pending") {
-        return reviewInvalidStatus(review.status);
-      }
-      await transaction.updateTable(REVIEW_TABLE).set({
-        review_comment: null,
-        review_sub_uid: input.opSubUserId,
-        review_time: new Date(),
-        status: "withdrawn",
+        status: input.status,
       }).where("uid", "=", input.uid)
         .where("workflow_id", "=", input.workflowId)
         .where("id", "=", input.reviewId)
@@ -684,20 +668,6 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         .executeTakeFirstOrThrow();
       return success(mapDefinition(updated));
     });
-  }
-
-  private async resolveUpdatedDefinition(
-    uid: number,
-    workflowId: string,
-    affectedRows: bigint,
-  ): Promise<WorkflowMutationResult<WorkflowDefinitionRecord>> {
-    if (affectedRows > 0n) {
-      return success(await this.requireDefinitionById(uid, workflowId));
-    }
-    const definition = await this.findDefinition(uid, workflowId);
-    if (!definition) return notFound();
-    if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
-    return conflict();
   }
 
   private async requireDefinitionById(uid: number, workflowId: string) {

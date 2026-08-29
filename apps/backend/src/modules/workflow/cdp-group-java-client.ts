@@ -14,13 +14,11 @@ import {
   ServiceUnavailableError,
 } from "../../shared/errors.js";
 import {
-  getLoggerRequestId,
   noopLogger,
   type AppLogger,
   type RequestAwareLogger,
 } from "../../shared/logger.js";
-
-const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
+import { postJavaInternalApi } from "./java-internal-api-client.js";
 
 export const CDP_GROUP_INTERNAL_API_FAILED_CODE = "CDP_GROUP_INTERNAL_API_FAILED";
 export const CDP_GROUP_INTERNAL_API_NOT_CONFIGURED_CODE =
@@ -246,112 +244,26 @@ async function postJavaRequest<T>({
   path,
   token,
 }: PostJavaRequestOptions): Promise<T> {
-  if (!baseUrl) {
-    logger.error(
-      {
-        operation,
-        path,
-        requestId: getLoggerRequestId(logger),
-      },
-      "内部接口未配置",
-    );
-    throw new ServiceUnavailableError(
-      CDP_GROUP_INTERNAL_API_NOT_CONFIGURED_CODE,
-      CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-    );
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
-  const requestId = getLoggerRequestId(logger);
-
-  try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      body,
-      headers: {
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(requestId ? { "x-request-id": requestId } : {}),
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-
-    const text = await response.text();
-    let parsed: unknown;
-
-    try {
-      parsed = text ? JSON.parse(text) : null;
-    } catch {
-      logger.error(
-        {
-          ...logContext,
-          operation,
-          path,
-          requestId,
-          status: response.status,
-        },
-        "内部接口返回非 JSON",
-      );
-      throw new BadGatewayError(
-        CDP_GROUP_INTERNAL_API_FAILED_CODE,
-        CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-        { operation, status: response.status },
-      );
-    }
-
-    if (!response.ok) {
-      logger.error(
-        {
-          ...logContext,
-          operation,
-          path,
-          requestId,
-          status: response.status,
-        },
-        "内部接口 HTTP 失败",
-      );
-      throw new BadGatewayError(
-        CDP_GROUP_INTERNAL_API_FAILED_CODE,
-        CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-        { operation, status: response.status },
-      );
-    }
-
-    return parsed as T;
-  } catch (error) {
-    if (
-      error instanceof BadGatewayError
-      || error instanceof ServiceUnavailableError
-    ) {
-      throw error;
-    }
-
-    logger.error(
-      {
-        ...logContext,
-        err: error,
-        operation,
-        path,
-        requestId,
-      },
-      "内部接口请求异常",
-    );
-    throw new BadGatewayError(
+  return postJavaInternalApi<T>({
+    baseUrl,
+    body,
+    createFailureError: status => new BadGatewayError(
       CDP_GROUP_INTERNAL_API_FAILED_CODE,
       CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-      { operation },
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
+      { operation, ...(status === undefined ? {} : { status }) },
+    ),
+    createNotConfiguredError: () => new ServiceUnavailableError(
+      CDP_GROUP_INTERNAL_API_NOT_CONFIGURED_CODE,
+      CDP_GROUP_INTERNAL_API_USER_MESSAGE,
+    ),
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
 }
 
 function isJavaEnvelopeSuccessful(response: JavaApiResponse) {
   return response.success === true;
-}
-
-function readJavaApiTimeoutMs() {
-  const raw = Number(process.env.JAVA_INTERNAL_API_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
 }

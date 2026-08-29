@@ -70,6 +70,17 @@ describe("Java Workflow direct-entry endpoint port", () => {
     });
   });
 
+  it("fails closed when Java returns a non-object payload", async () => {
+    vi.stubEnv("JAVA_INTERNAL_API_BASE_URL", "https://java.internal");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("null", { status: 200 })));
+    const port = createJavaWorkflowDirectEntryEndpointPort();
+
+    await expect(port.getEndpointKey({ uid: 9, workflowId: "31" })).rejects.toMatchObject({
+      code: "WORKFLOW_DIRECT_ENTRY_INTERNAL_API_FAILED",
+      statusCode: 502,
+    });
+  });
+
   it("fails closed when the Java internal API is not configured", async () => {
     vi.stubEnv("JAVA_INTERNAL_API_BASE_URL", "");
     const fetchMock = vi.fn();

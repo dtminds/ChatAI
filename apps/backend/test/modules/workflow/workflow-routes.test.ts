@@ -72,7 +72,7 @@ describe("workflow routes", () => {
     });
   });
 
-  it("updates workflow metadata and keeps descriptions through the legacy name route", async () => {
+  it("updates workflow metadata", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({
       method: "POST",
@@ -89,16 +89,6 @@ describe("workflow routes", () => {
     expect(metadataResponse.json().data).toMatchObject({
       description: "引导新客完成首购",
       name: "新客首购旅程",
-    });
-
-    const renameResponse = await app.inject({
-      method: "PATCH",
-      payload: { name: "首购旅程" },
-      url: `/api/server/workflows/${created.id}/name`,
-    });
-    expect(renameResponse.json().data).toMatchObject({
-      description: "引导新客完成首购",
-      name: "首购旅程",
     });
   });
 

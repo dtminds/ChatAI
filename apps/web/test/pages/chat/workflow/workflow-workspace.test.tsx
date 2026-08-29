@@ -69,7 +69,6 @@ describe("useWorkflowWorkspace", () => {
     const editableDocument = repository.getDocument("newcomer-conversion");
     editableDocument.permissions = {
       canEdit: true,
-      canOperate: true,
       canPublish: false,
     };
     const { result } = renderHook(() => useWorkflowWorkspace(
@@ -121,7 +120,6 @@ describe("useWorkflowWorkspace", () => {
     const document = repository.getDocument("newcomer-conversion");
     document.permissions = {
       canEdit: false,
-      canOperate: true,
       canPublish: false,
     };
     document.runtimeStatus = "stopped";
@@ -147,7 +145,6 @@ describe("useWorkflowWorkspace", () => {
     const document = repository.getDocument("newcomer-conversion");
     document.permissions = {
       canEdit: false,
-      canOperate: true,
       canPublish: false,
     };
     document.runtimeStatus = "stopped";

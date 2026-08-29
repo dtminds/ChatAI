@@ -1,6 +1,7 @@
 import {
   WORKFLOW_RUN_RETENTION_DAYS,
   WorkflowFlowChangedReasonSchema,
+  WorkflowNodeKindSchema,
   type WorkflowDataOverview,
   type WorkflowEntryRecordDetail,
   type WorkflowEntryRecordPage,
@@ -420,32 +421,7 @@ function parseStatus(value: string): WorkflowEntryRecordStatus {
 }
 
 function parseKnownNodeKind(value: string): WorkflowNodeKind | null {
-  if ([
-    "start",
-    "wait",
-    "wait-event",
-    "branch",
-    "message",
-    "message-query",
-    "tag",
-    "coupon",
-    "handoff",
-    "agent",
-    "llm",
-    "order-bind",
-    "order-query",
-    "order-conversion",
-    "ratio-split",
-    "tag-query",
-    "customer-update",
-    "ai-collect",
-    "ai-intent",
-    "audience-filter",
-    "end",
-  ].includes(value)) {
-    return value as WorkflowNodeKind;
-  }
-  return null;
+  return Value.Check(WorkflowNodeKindSchema, value) ? value as WorkflowNodeKind : null;
 }
 
 function parseRecordNodeKind(value: string): WorkflowEntryRecordStepNodeKind {

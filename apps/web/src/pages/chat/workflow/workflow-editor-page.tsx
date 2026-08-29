@@ -264,7 +264,6 @@ function WorkflowWorkspaceContent({
     <>
       <WorkflowTopBar
         canEdit={topBar.canEdit}
-        canOperate={topBar.canOperate}
         canPublish={topBar.canPublish}
         canRename={topBar.canRename}
         canRetrySave={topBar.canRetrySave}

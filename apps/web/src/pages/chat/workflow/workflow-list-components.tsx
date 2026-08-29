@@ -308,7 +308,7 @@ function WorkflowRowMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled={workflow.runtimeStatus !== "active" || !workflow.canOperate || operationPending}
+          disabled={workflow.runtimeStatus !== "active" || operationPending}
           onSelect={() => onLifecycleAction("pause")}
         >
             <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
@@ -316,7 +316,7 @@ function WorkflowRowMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={!(["paused", "inactive"].includes(workflow.runtimeStatus))
-            || workflow.publishedRevision === null || !workflow.canOperate || operationPending}
+            || workflow.publishedRevision === null || operationPending}
           onSelect={() => onLifecycleAction(workflow.runtimeStatus === "paused" ? "resume" : "enable")}
         >
             <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
@@ -332,7 +332,7 @@ function WorkflowRowMenu({
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           disabled={!(["active", "paused"].includes(workflow.runtimeStatus))
-            || !workflow.canOperate || operationPending}
+            || operationPending}
           onSelect={() => onLifecycleAction("stop")}
         >
           <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />

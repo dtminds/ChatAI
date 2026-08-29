@@ -51,7 +51,6 @@ import {
 
 export function WorkflowTopBar({
   canEdit = true,
-  canOperate = true,
   canPublish = true,
   canRename = false,
   canRetrySave = false,
@@ -91,7 +90,6 @@ export function WorkflowTopBar({
   dataActions,
 }: {
   canEdit?: boolean;
-  canOperate?: boolean;
   canPublish?: boolean;
   canRename?: boolean;
   canRetrySave?: boolean;
@@ -393,7 +391,7 @@ export function WorkflowTopBar({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-44">
                   <DropdownMenuItem
-                    disabled={!canOperate || lifecycleActionState !== "idle"}
+                    disabled={lifecycleActionState !== "idle"}
                     onSelect={() => void runtimeMenuHandler()}
                   >
                     {runtimeMenuItem.label}

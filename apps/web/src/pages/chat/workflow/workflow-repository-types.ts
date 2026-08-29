@@ -17,7 +17,6 @@ export type WorkflowManagedAccountSummary = {
 };
 
 export type WorkflowListItem = {
-  canOperate: boolean;
   description: string;
   id: string;
   inProgressRunCount: number;
@@ -68,7 +67,6 @@ export type WorkflowHistoryPage<T> = {
 
 export type WorkflowDocumentPermissions = {
   canEdit: boolean;
-  canOperate: boolean;
   canPublish: boolean;
 };
 

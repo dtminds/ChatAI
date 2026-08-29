@@ -320,25 +320,23 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   }
 
   async decideReview(input: Parameters<WorkflowRepository["decideReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
-    const review = this.findMutableReview(input.uid, input.workflowId, input.reviewId);
-    if (!review) return notFound<WorkflowPublishReviewRecord>();
-    if (review.status !== "pending") return reviewInvalidStatus(review.status);
-    review.status = input.decision;
-    review.reviewComment = input.comment;
-    review.reviewedAt = new Date();
-    review.reviewedBySubUserId = input.opSubUserId;
-    review.updatedAt = review.reviewedAt;
-    return success(clone(review));
+    return this.transitionReview(input, input.decision, input.comment);
   }
 
   async withdrawReview(input: Parameters<WorkflowRepository["withdrawReview"]>[0]): Promise<WorkflowMutationResult<WorkflowPublishReviewRecord>> {
+    return this.transitionReview(input, "withdrawn", null);
+  }
+
+  private transitionReview(
+    input: { opSubUserId: string; reviewId: string; uid: number; workflowId: string },
+    status: "approved" | "rejected" | "withdrawn",
+    comment: string | null,
+  ): WorkflowMutationResult<WorkflowPublishReviewRecord> {
     const review = this.findMutableReview(input.uid, input.workflowId, input.reviewId);
     if (!review) return notFound<WorkflowPublishReviewRecord>();
-    if (review.status !== "pending") {
-      return reviewInvalidStatus(review.status);
-    }
-    review.status = "withdrawn";
-    review.reviewComment = null;
+    if (review.status !== "pending") return reviewInvalidStatus(review.status);
+    review.status = status;
+    review.reviewComment = comment;
     review.reviewedAt = new Date();
     review.reviewedBySubUserId = input.opSubUserId;
     review.updatedAt = review.reviewedAt;

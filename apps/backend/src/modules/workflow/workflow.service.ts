@@ -485,19 +485,6 @@ export class WorkflowService {
     })));
   }
 
-  async rename(scope: WorkflowOperatorScope, workflowId: string, name: string) {
-    assertWorkflowAccess(scope);
-    await this.requireVisibleDefinition(scope, workflowId);
-    const normalizedName = name.trim();
-    if (!normalizedName) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
-    return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
-      name: normalizedName,
-      opSubUserId: scope.subUserId,
-      uid: scope.uid,
-      workflowId,
-    })));
-  }
-
   async updateMetadata(
     scope: WorkflowOperatorScope,
     workflowId: string,
@@ -1056,7 +1043,6 @@ function toDefinitionListItem(
   metric: WorkflowMetricSummary | undefined,
 ): WorkflowDefinitionListItem {
   return {
-    canOperate: true,
     description: record.description,
     hasUnpublishedChanges: record.publishedSemanticHash !== record.draftSemanticHash,
     id: record.id,
@@ -1137,11 +1123,8 @@ function toDefinition(
     id: record.id,
     name: record.name,
     permissions: {
-      canDelete: true,
       canEdit: record.runtimeStatus !== "stopped" && !reviewLocked,
-      canOperate: true,
       canPublish: record.runtimeStatus !== "stopped",
-      canView: true,
     },
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
@@ -1232,12 +1215,9 @@ function hashDraftSemantics(draft: WorkflowDraft) {
   const semantics = {
     edges: draft.edges.map(({ selected: _selected, ...edge }) => edge)
       .sort((first, second) => first.id.localeCompare(second.id)),
-    nodes: draft.nodes.map(({ position: _position, selected: _selected, ...node }) => ({
-      ...node,
-      data: Object.fromEntries(Object.entries(node.data).filter(([key]) =>
-        key !== "label" && key !== "metric" && key !== "status",
-      )),
-    })).sort((first, second) => first.id.localeCompare(second.id)),
+    nodes: [...draft.nodes]
+      .sort((first, second) => first.id.localeCompare(second.id))
+      .map(nodeSemantics),
   };
   return hashCanonicalValue(semantics);
 }
@@ -1280,8 +1260,7 @@ function summarizeWorkflowChanges(
   const changedNodes = next.nodes.filter(node => {
     const oldNode = previousNodes.get(node.id);
     if (!oldNode) return false;
-    return hashDraftSemantics({ edges: [], nodes: [oldNode], viewport: { x: 0, y: 0, zoom: 1 } })
-      !== hashDraftSemantics({ edges: [], nodes: [node], viewport: { x: 0, y: 0, zoom: 1 } });
+    return !isDeepStrictEqual(nodeSemantics(oldNode), nodeSemantics(node));
   }).map(summarizeNode);
   const previousStart = previous.nodes.find(node => node.data.kind === "start");
   const nextStart = next.nodes.find(node => node.data.kind === "start");
@@ -1296,6 +1275,15 @@ function summarizeWorkflowChanges(
       startTriggerSemantics(nextStart),
     ),
   };
+}
+
+function nodeSemantics(node: WorkflowDraft["nodes"][number]) {
+  const { position: _position, selected: _selected, ...semanticNode } = node;
+  return canonicalize({
+    ...semanticNode,
+    data: Object.fromEntries(Object.entries(node.data).filter(([key]) =>
+      key !== "label" && key !== "metric" && key !== "status")),
+  });
 }
 
 function edgeSemantics(draft: WorkflowDraft) {

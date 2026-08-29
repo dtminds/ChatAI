@@ -662,6 +662,7 @@ describe("workflow LLM node", () => {
           "input-tone": "简洁",
         },
       },
+      "/server/workflows",
     );
     expect(onNodeChange).not.toHaveBeenCalled();
 
@@ -670,6 +671,7 @@ describe("workflow LLM node", () => {
       "42",
       node.id,
       "1",
+      "/server/workflows",
     );
   });
 
@@ -771,7 +773,12 @@ describe("workflow LLM node", () => {
     await waitFor(() => expect(llmTestServiceMock.getWorkflowLlmTestAttempt).toHaveBeenCalled());
 
     await user.click(within(workspace).getByRole("button", { name: "停止运行" }));
-    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith(
+      "42",
+      node.id,
+      "1",
+      "/server/workflows",
+    );
     expect(await within(workspace).findByRole("alert")).toHaveTextContent("试运行已停止");
 
     lateResult.resolve(createAttempt({
@@ -841,7 +848,12 @@ describe("workflow LLM node", () => {
 
     await waitFor(() => expect(screen.queryByRole("region", { name: "试运行展开编辑" }))
       .not.toBeInTheDocument());
-    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith(
+      "42",
+      node.id,
+      "1",
+      "/server/workflows",
+    );
   });
 
   it("clears a pending close confirmation when the Attempt finishes", async () => {
@@ -903,7 +915,12 @@ describe("workflow LLM node", () => {
     expect(onClose).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "停止并关闭" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith("42", node.id, "1");
+    expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).toHaveBeenCalledWith(
+      "42",
+      node.id,
+      "1",
+      "/server/workflows",
+    );
   });
 
   it("guards Escape and switching expanded editors while an Attempt is running", async () => {
@@ -985,7 +1002,7 @@ describe("workflow LLM node", () => {
     created.resolve(createAttempt());
 
     await waitFor(() => expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt)
-      .toHaveBeenCalledWith("42", node.id, "1"));
+      .toHaveBeenCalledWith("42", node.id, "1", "/server/workflows"));
     expect(screen.queryByRole("region", { name: "试运行展开编辑" })).not.toBeInTheDocument();
   });
 
@@ -1010,7 +1027,7 @@ describe("workflow LLM node", () => {
     created.resolve(createAttempt());
 
     await waitFor(() => expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt)
-      .toHaveBeenCalledWith("42", node.id, "1"));
+      .toHaveBeenCalledWith("42", node.id, "1", "/server/workflows"));
   });
 
   it("keeps the test Workspace open when creation fails after confirming close", async () => {

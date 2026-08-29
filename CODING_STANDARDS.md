@@ -76,3 +76,5 @@ Review 章节仅审查时使用。通用审查流程、Finding 门槛、严重�
 - 构建和测试命令遵循 `AGENTS.md` 的 Pre-PR Verification；涉及列表、批量或分页时，额外覆盖当前契约下适用的规模边界。
 - 提交前执行 `git diff --check`。
 - 只有取得完整结束状态的命令才能声明通过；无法运行时写明未执行的命令、原因和剩余风险。
+
+### Tautological tests considered harmful.

@@ -739,6 +739,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),
   KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id),
   KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),
+  KEY idx_workflow_run_active_subject (uid, workflow_id, subject_type, subject_id, status, id),
   KEY idx_workflow_run_status_reconcile (status, id),
   KEY idx_workflow_run_history_cleanup (status, completed_at, id)
 ) COMMENT='营销Workflow运行实例表';
@@ -1021,7 +1022,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
-  KEY idx_workflow_node_metric_query (uid, workflow_id, revision, node_id),
   KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id)
 ) COMMENT='营销Workflow节点分片统计表';
 

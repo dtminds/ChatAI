@@ -1,5 +1,27 @@
 # Database Change Log
 
+## 2026-08-29 Workflow 活跃主体 Run 与节点指标索引收尾
+
+- Workflow 准入在主体串行锁内按 `uid + workflow_id + subject_type + subject_id + active status` 检查是否已有活跃 Run；新增专用索引，避免滚动窗口主体在 180 天保留期内反复扫描历史终态 Run。
+- `idx_workflow_run_entry_window` 继续服务滚动窗口 `create_time` 计数，不能由状态优先索引替代。
+- 删除 `idx_workflow_node_metric_query`；它是唯一索引 `uk_workflow_node_metric_dimension` 的严格前缀，现有 Revision/Node 维度查询仍由唯一索引完整覆盖。
+- 保留 `idx_workflow_node_metric_node_query`，供数据总览按当前 Node ID 跨 Revision 聚合。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_active_subject (
+    uid,
+    workflow_id,
+    subject_type,
+    subject_id,
+    status,
+    id
+  );
+
+ALTER TABLE xy_wap_embed_workflow_node_metric
+  DROP KEY idx_workflow_node_metric_query;
+```
+
 ## 2026-08-28 Workflow Scheduler 全局到期索引
 
 - Scheduler 通过全局到期队列认领 `pending` Task，不再按应用逻辑分片过滤。

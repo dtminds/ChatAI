@@ -206,9 +206,32 @@ describe("database schema document", () => {
       "  KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),",
       "  KEY idx_workflow_run_cleanup_node (uid, workflow_id, status, current_node_id, id),",
       "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
+      "  KEY idx_workflow_run_active_subject (uid, workflow_id, subject_type, subject_id, status, id),",
       "  KEY idx_workflow_run_status_reconcile (status, id),",
       "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",
     ]);
+  });
+
+  it("indexes active subject admission without duplicating the node metric dimension prefix", () => {
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+    const nodeMetricTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_node_metric");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-29 Workflow 活跃主体 Run 与节点指标索引收尾",
+    );
+
+    expect(runTable).toContain(
+      "KEY idx_workflow_run_active_subject (uid, workflow_id, subject_type, subject_id, status, id)",
+    );
+    expect(nodeMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id)",
+    );
+    expect(nodeMetricTable).not.toContain("idx_workflow_node_metric_query");
+    expect(nodeMetricTable).toContain(
+      "KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id)",
+    );
+    expect(migration).toContain("ADD KEY idx_workflow_run_active_subject");
+    expect(migration).toContain("DROP KEY idx_workflow_node_metric_query");
   });
 
   it("orders the Workflow Task lease index for bounded running-task recovery", () => {

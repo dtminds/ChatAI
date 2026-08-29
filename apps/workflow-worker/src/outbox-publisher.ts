@@ -3,6 +3,7 @@ import type {
   WorkflowOutboxRepository,
 } from "@chatai/workflow-runtime";
 import type { WorkflowBroker } from "./broker/types.js";
+import { chunksOf } from "./chunks.js";
 
 const WORKFLOW_OUTBOX_MAX_CONSECUTIVE_BATCHES = 10;
 
@@ -160,12 +161,4 @@ function assertPublishConcurrency(value: number) {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error("Workflow Outbox publish concurrency must be a positive safe integer");
   }
-}
-
-function chunksOf<T>(items: readonly T[], size: number) {
-  const chunks: T[][] = [];
-  for (let start = 0; start < items.length; start += size) {
-    chunks.push(items.slice(start, start + size));
-  }
-  return chunks;
 }

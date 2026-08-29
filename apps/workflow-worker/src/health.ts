@@ -6,6 +6,12 @@ export type WorkflowReadiness = {
   roles: Record<string, boolean>;
 };
 
+export function isWorkflowReady(readiness: WorkflowReadiness) {
+  return readiness.broker
+    && readiness.database
+    && Object.values(readiness.roles).every(Boolean);
+}
+
 export function startWorkflowHealthServer(input: {
   getReadiness(): WorkflowReadiness;
   port: number;
@@ -17,9 +23,7 @@ export function startWorkflowHealthServer(input: {
     }
     if (request.url === "/readyz") {
       const readiness = input.getReadiness();
-      const ready = readiness.broker
-        && readiness.database
-        && Object.values(readiness.roles).every(Boolean);
+      const ready = isWorkflowReady(readiness);
       respond(response, ready ? 200 : 503, { ...readiness, status: ready ? "ready" : "not-ready" });
       return;
     }

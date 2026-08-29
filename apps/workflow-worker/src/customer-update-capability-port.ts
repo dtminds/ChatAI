@@ -2,7 +2,6 @@ import {
   WorkflowCustomerUpdateCommandSchema,
   type WorkflowCustomerUpdateCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -12,9 +11,22 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_CUSTOMER_UPDATE_PATH =
   "/third-internal/custom-field/update-contact-custom-field";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_CUSTOMER_UPDATE_ABORTED",
+  "客户信息更新暂时失败",
+  "Workflow Customer Update execution was aborted",
+);
 
 export class HttpWorkflowCustomerUpdateCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -35,19 +47,11 @@ export class HttpWorkflowCustomerUpdateCapabilityPort implements WorkflowCapabil
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey
-        !== WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion
-        !== WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Customer Update port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING.definition,
+      "Workflow Customer Update",
+    );
     const externalUserId = request.identities.externalUserId;
     const command = request.command as WorkflowCustomerUpdateCommand;
     if (
@@ -194,40 +198,4 @@ function hasValidFieldValues(updates: WorkflowCustomerUpdateCommand["updates"]) 
   return updates.every(update => update.fieldType === 11
     ? typeof update.value === "number" && Number.isFinite(update.value)
     : typeof update.value === "string" && Boolean(update.value.trim()));
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_CUSTOMER_UPDATE_ABORTED",
-    "客户信息更新暂时失败",
-    "Workflow Customer Update execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

@@ -1,4 +1,4 @@
-import type { WorkflowReadiness } from "./health.js";
+import { isWorkflowReady, type WorkflowReadiness } from "./health.js";
 import type { WorkflowEntryConsumeResult } from "./entry-consumer.js";
 
 export type WorkflowWorkerLogger = {
@@ -262,8 +262,8 @@ export function logWorkflowReadinessTransition(
   previous: WorkflowReadiness,
   current: WorkflowReadiness,
 ) {
-  const previousReady = isReady(previous);
-  const ready = isReady(current);
+  const previousReady = isWorkflowReady(previous);
+  const ready = isWorkflowReady(current);
   if (previousReady === ready) return false;
 
   const fields = {
@@ -326,12 +326,6 @@ function requiresRecoveryWarning(
 
 function hasPositive(result: Record<string, unknown>, keys: string[]) {
   return keys.some(key => typeof result[key] === "number" && result[key] > 0);
-}
-
-function isReady(readiness: WorkflowReadiness) {
-  return readiness.broker
-    && readiness.database
-    && Object.values(readiness.roles).every(Boolean);
 }
 
 function createEntryCounters() {

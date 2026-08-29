@@ -3,7 +3,6 @@ import {
   type WorkflowTagQueryCommand,
   type WorkflowTagQueryResult,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -13,8 +12,21 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_TAG_QUERY_PATH = "/third-internal/work-tag/get-wecom-contact-tags";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_TAG_QUERY_ABORTED",
+  "标签查询失败",
+  "Workflow Tag Query execution was aborted",
+);
 
 export class HttpWorkflowTagQueryCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -35,19 +47,11 @@ export class HttpWorkflowTagQueryCapabilityPort implements WorkflowCapabilityPor
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey
-        !== WORKFLOW_TAG_QUERY_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion
-        !== WORKFLOW_TAG_QUERY_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "query"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Tag Query port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_TAG_QUERY_CAPABILITY_BINDING.definition,
+      "Workflow Tag Query",
+    );
     const externalUserId = request.identities.externalUserId;
     if (
       !Value.Check(WorkflowTagQueryCommandSchema, request.command)
@@ -192,46 +196,10 @@ export function decodeWorkflowTagQueryJavaResponse(
   return { matchedTags };
 }
 
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_TAG_QUERY_ABORTED",
-    "标签查询失败",
-    "Workflow Tag Query execution was aborted",
-  );
-}
-
 function invalidOutput(diagnosticMessage: string) {
   return terminalError(
     "WORKFLOW_TAG_QUERY_OUTPUT_INVALID",
     "返回结果异常，流程已停止",
     diagnosticMessage,
   );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

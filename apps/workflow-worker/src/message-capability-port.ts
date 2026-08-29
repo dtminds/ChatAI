@@ -3,7 +3,6 @@ import {
   WorkflowMessageCommandSchema,
   type WorkflowMessageCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -15,10 +14,23 @@ import {
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { Kysely } from "kysely";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 import { findWorkflowSeat } from "./workflow-seat.js";
 
 const JAVA_SEND_MESSAGE_PATH = "/third-internal/wap-embed/conversation/send-message";
 const JAVA_SEND_TYPE_SINGLE = 1;
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_MESSAGE_SEND_ABORTED",
+  "消息发送暂时失败",
+  "Workflow Message execution was aborted",
+);
 
 type WorkflowMessageJavaApiResponse = {
   data?: { optNo?: number | string } | null;
@@ -56,17 +68,11 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey !== WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion !== WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Message port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition,
+      "Workflow Message",
+    );
     if (
       !Value.Check(WorkflowMessageCommandSchema, request.command)
       || !("idempotencyKey" in request)
@@ -329,43 +335,7 @@ function readFirstContentString(content: Record<string, unknown>, keys: string[]
   return "";
 }
 
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function readPositiveInteger(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_MESSAGE_SEND_ABORTED",
-    "消息发送暂时失败",
-    "Workflow Message execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

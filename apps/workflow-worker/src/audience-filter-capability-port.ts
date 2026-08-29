@@ -3,7 +3,6 @@ import {
   type WorkflowAudienceFilterCommand,
   type WorkflowAudienceFilterResult,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -13,8 +12,21 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_AUDIENCE_FILTER_PATH = "/third-internal/cdp-group-operate/check-contact-exist";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_AUDIENCE_FILTER_ABORTED",
+  "人群筛选失败",
+  "Workflow Audience Filter execution was aborted",
+);
 
 export class HttpWorkflowAudienceFilterCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -35,19 +47,11 @@ export class HttpWorkflowAudienceFilterCapabilityPort implements WorkflowCapabil
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey
-        !== WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion
-        !== WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "query"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Audience Filter port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING.definition,
+      "Workflow Audience Filter",
+    );
     const externalUserId = request.identities.externalUserId;
     if (
       !Value.Check(WorkflowAudienceFilterCommandSchema, request.command)
@@ -204,40 +208,4 @@ export function decodeWorkflowAudienceFilterJavaResponse(
     exist: body.data.exist,
     groupIds: requestedGroupIds.filter((groupId) => membershipIds.has(groupId)),
   };
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_AUDIENCE_FILTER_ABORTED",
-    "人群筛选失败",
-    "Workflow Audience Filter execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

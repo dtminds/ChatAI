@@ -7,8 +7,8 @@ describe("FakeWorkflowBroker", () => {
     const entry = vi.fn(async message => message.ack());
     const task = vi.fn(async message => message.ack());
 
-    await broker.subscribe({ handler: entry, maxInFlight: 1, subscription: "entry-sub", topic: "entry", type: "Shared" });
-    await broker.subscribe({ handler: task, maxInFlight: 1, subscription: "task-sub", topic: "task", type: "Shared" });
+    await broker.subscribe({ handler: entry, maxInFlight: 1, subscription: "entry-sub", topic: "entry" });
+    await broker.subscribe({ handler: task, maxInFlight: 1, subscription: "task-sub", topic: "task" });
     await broker.publish({ data: Buffer.from("entry"), key: "subject-1", topic: "entry" });
     await broker.publish({ data: Buffer.from("task"), key: "run-1", topic: "task" });
     await broker.drain();
@@ -34,7 +34,6 @@ describe("FakeWorkflowBroker", () => {
       maxRedeliverCount: 2,
       subscription: "entry-sub",
       topic: "entry",
-      type: "Shared",
     });
     await broker.publish({ data: Buffer.from("bad"), topic: "entry" });
     await broker.drain();

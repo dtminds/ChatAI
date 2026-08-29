@@ -2,7 +2,6 @@ import {
   WorkflowTagCommandSchema,
   type WorkflowTagCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_TAG_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -12,8 +11,21 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_TAG_UPDATE_PATH = "/third-internal/work-tag/update-wecom-contact-tag";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_TAG_ABORTED",
+  "客户标签更新暂时失败",
+  "Workflow Tag execution was aborted",
+);
 
 export class HttpWorkflowTagCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -34,17 +46,11 @@ export class HttpWorkflowTagCapabilityPort implements WorkflowCapabilityPort {
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey !== WORKFLOW_TAG_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion !== WORKFLOW_TAG_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Tag port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_TAG_CAPABILITY_BINDING.definition,
+      "Workflow Tag",
+    );
     const externalUserId = request.identities.externalUserId;
     if (
       !Value.Check(WorkflowTagCommandSchema, request.command)
@@ -153,40 +159,4 @@ export async function executeWorkflowTag(input: {
     );
   }
   return {};
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_TAG_ABORTED",
-    "客户标签更新暂时失败",
-    "Workflow Tag execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

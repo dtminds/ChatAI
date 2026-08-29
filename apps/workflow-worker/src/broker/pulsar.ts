@@ -51,7 +51,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
       receiverQueueSizeAcrossPartitions: input.maxInFlight,
       subscription: input.subscription,
       subscriptionInitialPosition: "Earliest",
-      subscriptionType: input.type,
+      subscriptionType: "Shared",
       topic: input.topic,
     });
     const state = { closing: false, loops: [] as Promise<void>[] };

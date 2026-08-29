@@ -2,7 +2,6 @@ import {
   WorkflowOrderConversionCommandSchema,
   type WorkflowOrderConversionCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -12,8 +11,20 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 
 const JAVA_ORDER_CONVERSION_PATH = "/third-internal/mall-order/transfer-order-point";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_ORDER_CONVERSION_ABORTED",
+  "转积分暂时失败",
+  "Workflow Order Conversion execution was aborted",
+);
 
 export class HttpWorkflowOrderConversionCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -34,19 +45,11 @@ export class HttpWorkflowOrderConversionCapabilityPort implements WorkflowCapabi
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey
-        !== WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion
-        !== WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Order Conversion port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING.definition,
+      "Workflow Order Conversion",
+    );
     const mallUserId = request.identities.mallUserId;
     if (
       !Value.Check(WorkflowOrderConversionCommandSchema, request.command)
@@ -142,36 +145,4 @@ export async function executeWorkflowOrderConversion(input: {
   return {
     result: body.error === 0,
   };
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_ORDER_CONVERSION_ABORTED",
-    "转积分暂时失败",
-    "Workflow Order Conversion execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

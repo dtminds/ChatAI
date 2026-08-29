@@ -4,6 +4,7 @@ import {
   type WorkflowContactIdentityLookupKey,
   type WorkflowContactIdentityPort,
 } from "@chatai/workflow-runtime";
+import { isRecord, readString } from "./capability-port-support.js";
 
 const JAVA_CONTACT_IDENTITY_PATH = "/third-internal/wap-embed-contact/get-contact-identity";
 
@@ -147,12 +148,4 @@ function assertOptionalString(value: unknown, field: string) {
 
 function terminalIdentityError(message: string) {
   return new WorkflowContactIdentityLookupError(message, { failureKind: "terminal" });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

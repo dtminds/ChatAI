@@ -28,7 +28,6 @@ export type WorkflowBrokerSubscribeInput = {
   maxRedeliverCount?: number;
   subscription: string;
   topic: string;
-  type: "Shared";
 };
 
 export interface WorkflowBroker {

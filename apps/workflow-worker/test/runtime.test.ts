@@ -16,7 +16,6 @@ describe("workflow worker runtime", () => {
     expect(resources.broker.subscribe).toHaveBeenCalledWith(expect.objectContaining({
       subscription: "entry-sub",
       topic: "entry-topic",
-      type: "Shared",
     }));
     expect(resources.dependencies.entryConsumer).toHaveBeenCalledWith(expect.objectContaining({
       subscriptionReader: resources.dependencies.eventSubscriptionReader,
@@ -26,7 +25,6 @@ describe("workflow worker runtime", () => {
     expect(resources.broker.subscribe).toHaveBeenCalledWith(expect.objectContaining({
       subscription: "task-sub",
       topic: "task-topic",
-      type: "Shared",
     }));
     expect(runtime.getReadiness()).toMatchObject({
       broker: true,
@@ -492,7 +490,6 @@ function createResources() {
         maxInFlight: input.maxInFlight,
         subscription: input.subscription,
         topic: input.topic,
-        type: "Shared",
       })),
       eventSubscriptionReader: { listMatchingEventSubscriptions: vi.fn(async () => []) },
       inboxRepository: {
@@ -537,7 +534,6 @@ function createResources() {
         maxInFlight: input.maxInFlight,
         subscription: input.subscription,
         topic: input.topic,
-        type: "Shared",
       })),
       triggerBindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       workerId: "worker-1",
@@ -657,7 +653,6 @@ function config(
       schedulerIntervalMs: 1_000,
       taskOutboxRetentionDays: 30,
     },
-    subscriptionType: "Shared" as const,
     subscriptions: { entry: "entry-sub", task: "task-sub" },
     topics: { entry: "entry-topic", task: "task-topic" },
   };

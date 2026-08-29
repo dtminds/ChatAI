@@ -6,6 +6,7 @@ const pulsar = vi.hoisted(() => ({
   producerClose: vi.fn(async () => undefined),
   producerFlush: vi.fn(async () => undefined),
   producerSend: vi.fn(async () => ({ toString: () => "message-1" })),
+  subscribe: vi.fn(),
 }));
 
 vi.mock("pulsar-client", () => ({
@@ -14,6 +15,7 @@ vi.mock("pulsar-client", () => ({
     Client: class Client {
       close = pulsar.clientClose;
       createProducer = pulsar.createProducer;
+      subscribe = pulsar.subscribe;
     },
   },
 }));
@@ -23,6 +25,29 @@ import { PulsarWorkflowBroker } from "../src/broker/pulsar.js";
 describe("Pulsar workflow broker", () => {
   beforeEach(() => {
     pulsar.createProducer.mockReset();
+    pulsar.subscribe.mockReset();
+  });
+
+  it("always creates Shared subscriptions", async () => {
+    pulsar.subscribe.mockRejectedValueOnce(new Error("stop after config capture"));
+    const broker = new PulsarWorkflowBroker({
+      serviceUrl: "pulsar://broker.example.com:6650",
+      token: "token",
+    });
+
+    await expect(broker.subscribe({
+      handler: async () => undefined,
+      maxInFlight: 2,
+      subscription: "entry-sub",
+      topic: "entry-topic",
+    })).rejects.toThrow("stop after config capture");
+    expect(pulsar.subscribe).toHaveBeenCalledWith(expect.objectContaining({
+      subscription: "entry-sub",
+      subscriptionType: "Shared",
+      topic: "entry-topic",
+    }));
+
+    await broker.close();
   });
 
   it("shares one in-flight Producer creation across concurrent publishes to a topic", async () => {

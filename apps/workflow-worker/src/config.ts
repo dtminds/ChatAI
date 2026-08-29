@@ -62,7 +62,6 @@ export type WorkflowWorkerConfig = {
     schedulerIntervalMs: number;
     taskOutboxRetentionDays: number;
   };
-  subscriptionType: "Shared";
   subscriptions: {
     entry: string;
     task: string;
@@ -310,7 +309,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       ),
       taskOutboxRetentionDays: WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
     },
-    subscriptionType: "Shared",
     subscriptions: {
       entry: entrySubscription,
       task: taskSubscription,

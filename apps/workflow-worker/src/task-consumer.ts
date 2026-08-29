@@ -131,7 +131,6 @@ export async function startTaskConsumer(input: {
       maxRedeliverCount: input.maxRedeliverCount,
       subscription: input.subscription,
       topic: input.topic,
-      type: "Shared",
     });
   } catch (error) {
     observer?.close();

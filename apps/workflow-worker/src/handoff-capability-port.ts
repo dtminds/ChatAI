@@ -3,7 +3,6 @@ import {
   WorkflowHandoffCommandSchema,
   type WorkflowHandoffCommand,
 } from "@chatai/contracts";
-import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -15,9 +14,22 @@ import {
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { Kysely } from "kysely";
+import {
+  assertCapabilityDefinition,
+  createAbortGuard,
+  isRecord,
+  readString,
+  retryableError,
+  terminalError,
+} from "./capability-port-support.js";
 import { findWorkflowSeat } from "./workflow-seat.js";
 
 const JAVA_HANDOFF_PATH = "/third-internal/wap-embed/conversation/close-full-auto-with-message";
+const throwIfAborted = createAbortGuard(
+  "WORKFLOW_HANDOFF_ABORTED",
+  "转人工暂时失败",
+  "Workflow Handoff execution was aborted",
+);
 
 export class MysqlWorkflowHandoffCapabilityPort implements WorkflowCapabilityPort {
   private readonly fetch: typeof fetch;
@@ -41,17 +53,11 @@ export class MysqlWorkflowHandoffCapabilityPort implements WorkflowCapabilityPor
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
     request: WorkflowCapabilityRequest<Static<TCommandSchema>, TKind>,
   ): Promise<unknown> {
-    if (
-      definition.capabilityKey !== WORKFLOW_HANDOFF_CAPABILITY_BINDING.definition.capabilityKey
-      || definition.contractVersion !== WORKFLOW_HANDOFF_CAPABILITY_BINDING.definition.contractVersion
-      || definition.kind !== "action"
-    ) {
-      throw terminalError(
-        "WORKFLOW_CAPABILITY_UNSUPPORTED",
-        "执行服务暂不可用，流程已停止",
-        `Workflow Handoff port received unsupported capability ${definition.capabilityKey}@${definition.contractVersion}`,
-      );
-    }
+    assertCapabilityDefinition(
+      definition,
+      WORKFLOW_HANDOFF_CAPABILITY_BINDING.definition,
+      "Workflow Handoff",
+    );
     if (
       !Value.Check(WorkflowHandoffCommandSchema, request.command)
       || !("idempotencyKey" in request)
@@ -180,40 +186,4 @@ export async function executeWorkflowHandoff(
     );
   }
   return {};
-}
-
-function throwIfAborted(signal: AbortSignal): never | void {
-  if (!signal.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw retryableError(
-    "WORKFLOW_HANDOFF_ABORTED",
-    "转人工暂时失败",
-    "Workflow Handoff execution was aborted",
-  );
-}
-
-function terminalError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "terminal",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function retryableError(code: string, message: string, diagnosticMessage: string) {
-  return new WorkflowCapabilityExecutionError(
-    "retryable",
-    code,
-    message,
-    { diagnosticMessage },
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

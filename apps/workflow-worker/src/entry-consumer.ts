@@ -39,6 +39,7 @@ import type {
   WorkflowBrokerMessage,
   WorkflowBrokerSubscription,
 } from "./broker/types.js";
+import { chunksOf } from "./chunks.js";
 import { classifyEntryError } from "./error-policy.js";
 import type { WorkflowEntryMessageReader } from "./message-query-port.js";
 import {
@@ -294,16 +295,13 @@ export function createEntryConsumerHandler(input: {
       }
       const processedAt = observedAt;
       failureStage = "inbox_record";
-      await input.inboxRepository.recordProcessedInboxMessage({
-        capacityRejectedCount: capacityRejected,
-        consumer: WORKFLOW_ENTRY_INBOX_CONSUMER,
-        expiresAt: new Date(
-          processedAt.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
-        ),
-        messageId: inboxMessageId,
+      await recordEntryInbox(
+        input.inboxRepository,
+        parsed.event,
         processedAt,
-        uid: parsed.event.uid,
-      });
+        inboxMessageId,
+        capacityRejected,
+      );
       failureStage = "ack";
       await message.ack();
       const capacityResult = capacityRejected > 0
@@ -490,7 +488,6 @@ export async function startEntryConsumer(input: {
       maxRedeliverCount: input.maxRedeliverCount,
       subscription: input.subscription,
       topic: input.topic,
-      type: "Shared",
     });
   } catch (error) {
     observer?.close();
@@ -644,14 +641,6 @@ async function loadRuntimeSnapshotMap(
 
 function runtimeSnapshotKey(workflowId: string, revision: number) {
   return `${workflowId}:${revision}`;
-}
-
-function chunksOf<T>(items: readonly T[], size: number) {
-  const chunks: T[][] = [];
-  for (let start = 0; start < items.length; start += size) {
-    chunks.push(items.slice(start, start + size));
-  }
-  return chunks;
 }
 
 function listProjectedSubjects(projection: WorkflowTriggerProjection) {

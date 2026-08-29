@@ -481,6 +481,39 @@ describe("workflow routes", () => {
     })).statusCode).toBe(404);
   });
 
+  it("keeps embedded Workflow routes scoped to WeCom SOPs", async () => {
+    const app = await createApp("owner");
+    const chat = await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    const wecom = await app.inject({
+      method: "POST",
+      payload: { workflowType: "wecom_sop" },
+      url: "/api/server/embed/workflows",
+    });
+    expect(chat.statusCode).toBe(200);
+    expect(wecom.statusCode).toBe(200);
+
+    const embedList = await app.inject({ method: "GET", url: "/api/server/embed/workflows" });
+    expect(embedList.json().data.items).toHaveLength(1);
+    expect(embedList.json().data.items[0].workflowType).toBe("wecom_sop");
+    expect((await app.inject({
+      method: "GET",
+      url: `/api/server/embed/workflows/${chat.json().data.id}`,
+    })).statusCode).toBe(404);
+    expect((await app.inject({
+      method: "GET",
+      url: `/api/server/workflows/${wecom.json().data.id}`,
+    })).statusCode).toBe(404);
+    expect((await app.inject({
+      method: "PATCH",
+      payload: { description: "跨入口修改", name: "跨入口修改" },
+      url: `/api/server/embed/workflows/${chat.json().data.id}/metadata`,
+    })).statusCode).toBe(404);
+  });
+
   async function createApp(role: string) {
     const app = Fastify({ logger: false });
     apps.push(app);

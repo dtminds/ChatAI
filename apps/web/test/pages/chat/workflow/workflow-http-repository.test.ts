@@ -10,6 +10,19 @@ import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
 describe("HTTP workflow repository", () => {
+  it("uses the embedded API prefix for every Workflow request", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    client.get
+      .mockResolvedValueOnce(envelope(createDefinition()))
+      .mockResolvedValueOnce(envelope({ items: [], nextCursor: null }));
+    const repository = createHttpWorkflowDraftRepository(client, "/server/embed/workflows");
+
+    await repository.getDocument("42");
+
+    expect(client.get).toHaveBeenNthCalledWith(1, "/server/embed/workflows/42");
+    expect(client.get).toHaveBeenNthCalledWith(2, "/server/embed/workflows/42/revisions?limit=20");
+  });
+
   it("loads the tenant capacity from its dedicated endpoint", async () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     client.get.mockResolvedValueOnce(envelope({

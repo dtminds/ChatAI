@@ -161,6 +161,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     const normalizedQuery = input.query?.toLocaleLowerCase();
     const filteredDefinitions = this.definitions
       .filter((item) => item.uid === uid && item.bizStatus === 1)
+      .filter(item => !input.workflowTypes || input.workflowTypes.includes(item.workflowType))
       .filter(item => matchesDefinitionListStatus(item, input.status))
       .filter(item => !normalizedQuery
         || item.name.toLocaleLowerCase().includes(normalizedQuery))

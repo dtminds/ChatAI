@@ -4,7 +4,9 @@ import type {
   WorkflowEntryRecordDetail,
   WorkflowEntryRecordPage,
   WorkflowTenantOverview,
+  WorkflowType,
 } from "@chatai/contracts";
+import { getEnabledWorkflowTypes, getWorkflowSurfaceTypes } from "@chatai/contracts";
 import {
   formatWorkflowMetricDate,
   UnavailableWorkflowEntitlementPort,
@@ -12,6 +14,7 @@ import {
 } from "@chatai/workflow-runtime";
 import {
   ForbiddenError,
+  NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
 import type { WorkflowOperatorScope } from "./workflow.service.js";
@@ -21,11 +24,16 @@ export type WorkflowDataReader = {
     activeRunCount: number;
     capacityRejectedCountToday: number;
   }>;
-  getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview>;
+  getOverview(input: {
+    uid: number;
+    workflowId: string;
+    workflowTypes?: WorkflowType[];
+  }): Promise<WorkflowDataOverview>;
   getTenantOverview(input: {
     today: string;
     uid: number;
     windowStart: string;
+    workflowTypes?: WorkflowType[];
     yesterday: string;
   }): Promise<{
     activeWorkflowCount: number;
@@ -35,7 +43,6 @@ export type WorkflowDataReader = {
     totalWorkflowCount: number;
     yesterdayRunCount: number;
   }>;
-  getRecord(input: { recordId: string; uid: number; workflowId: string }): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
     cursor?: string;
     limit: number;
@@ -43,7 +50,14 @@ export type WorkflowDataReader = {
     status?: string;
     uid: number;
     workflowId: string;
+    workflowTypes?: WorkflowType[];
   }): Promise<WorkflowEntryRecordPage>;
+  getRecord(input: {
+    recordId: string;
+    uid: number;
+    workflowId: string;
+    workflowTypes?: WorkflowType[];
+  }): Promise<WorkflowEntryRecordDetail>;
 };
 
 export class WorkflowDataService {
@@ -90,16 +104,40 @@ export class WorkflowDataService {
 
   getOverview(scope: WorkflowOperatorScope, workflowId: string) {
     assertAccess(scope);
-    return this.reader.getOverview({ uid: scope.uid, workflowId });
+    if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
+    const input = {
+      uid: scope.uid,
+      workflowId,
+      ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),
+    };
+    return this.reader.getOverview(input);
   }
 
   async getTenantOverview(scope: WorkflowOperatorScope): Promise<WorkflowTenantOverview> {
     assertAccess(scope);
+    if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
+      return {
+        activeWorkflowCount: 0,
+        recentFailedRunCount: 0,
+        recentSuccessRatePercent: null,
+        todayRunCount: 0,
+        todayRunCountChangePercent: 0,
+        totalWorkflowCount: 0,
+      };
+    }
     const now = this.clock();
     const today = formatWorkflowMetricDate(now);
     const yesterday = formatWorkflowMetricDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
     const windowStart = formatWorkflowMetricDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
-    const overview = await this.reader.getTenantOverview({ today, uid: scope.uid, windowStart, yesterday });
+    const overview = await this.reader.getTenantOverview({
+      today,
+      uid: scope.uid,
+      windowStart,
+      ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),
+      yesterday,
+    });
     const resultCount = overview.recentCompletedRunCount + overview.recentFailedRunCount;
     return {
       activeWorkflowCount: overview.activeWorkflowCount,
@@ -116,14 +154,29 @@ export class WorkflowDataService {
     };
   }
 
-  listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid">) {
+  listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid" | "workflowTypes">) {
     assertAccess(scope);
-    return this.reader.listRecords({ ...input, uid: scope.uid });
+    if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
+    return this.reader.listRecords({
+      ...input,
+      uid: scope.uid,
+      ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),
+    });
   }
 
   getRecord(scope: WorkflowOperatorScope, workflowId: string, recordId: string) {
     assertAccess(scope);
-    return this.reader.getRecord({ recordId, uid: scope.uid, workflowId });
+    if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
+    return this.reader.getRecord({
+      recordId,
+      uid: scope.uid,
+      workflowId,
+      ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),
+    });
   }
 }
 
@@ -131,4 +184,8 @@ function assertAccess(scope: WorkflowOperatorScope) {
   if (!scope.roles.some(role => role === "owner" || role === "admin")) {
     throw new ForbiddenError("WORKFLOW_ACCESS_FORBIDDEN", "无权查看 Workflow 数据");
   }
+}
+
+function getVisibleWorkflowTypes(scope: WorkflowOperatorScope): WorkflowType[] {
+  return scope.surface ? getWorkflowSurfaceTypes(scope.surface) : getEnabledWorkflowTypes();
 }

@@ -8,11 +8,13 @@ import {
   type WorkflowEntryRecordStatus,
   type WorkflowFlowChangedReason,
   type WorkflowNodeKind,
+  type WorkflowType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { sql, type Kysely } from "kysely";
 import {
   decodeWorkflowSubjectType,
+  encodeWorkflowType,
   type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import type { Database } from "../../db/schema.js";
@@ -51,13 +53,47 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     today: string;
     uid: number;
     windowStart: string;
+    workflowTypes: WorkflowType[];
     yesterday: string;
   }) {
     const today = toWorkflowMetricDate(input.today);
     const windowStart = toWorkflowMetricDate(input.windowStart);
     const yesterday = toWorkflowMetricDate(input.yesterday);
-    const [dailyMetric, definitionMetric] = await Promise.all([
-      this.db.selectFrom("xy_wap_embed_workflow_daily_metric")
+    if (!input.workflowTypes?.length) {
+      const [dailyMetric, definitionMetric] = await Promise.all([
+        this.db.selectFrom("xy_wap_embed_workflow_daily_metric")
+          .select([
+            sql<number>`COALESCE(SUM(completed_count), 0)`.as("recent_completed_run_count"),
+            sql<number>`COALESCE(SUM(failed_count), 0)`.as("recent_failed_run_count"),
+            sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${today} THEN entered_count ELSE 0 END), 0)`.as("today_run_count"),
+            sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`.as("yesterday_run_count"),
+          ])
+          .where("uid", "=", input.uid)
+          .where("metric_date", ">=", windowStart)
+          .where("metric_date", "<=", today)
+          .executeTakeFirst(),
+        this.db.selectFrom("xy_wap_embed_workflow_definition")
+          .select([
+            sql<number>`COALESCE(SUM(runtime_status = 'active'), 0)`.as("active_workflow_count"),
+            sql<number>`COUNT(*)`.as("total_workflow_count"),
+          ])
+          .where("uid", "=", input.uid)
+          .where("biz_status", "=", 1)
+          .executeTakeFirst(),
+      ]);
+      return {
+        activeWorkflowCount: Number(definitionMetric?.active_workflow_count ?? 0),
+        recentCompletedRunCount: Number(dailyMetric?.recent_completed_run_count ?? 0),
+        recentFailedRunCount: Number(dailyMetric?.recent_failed_run_count ?? 0),
+        todayRunCount: Number(dailyMetric?.today_run_count ?? 0),
+        totalWorkflowCount: Number(definitionMetric?.total_workflow_count ?? 0),
+        yesterdayRunCount: Number(dailyMetric?.yesterday_run_count ?? 0),
+      };
+    }
+    let dailyQuery = this.db.selectFrom("xy_wap_embed_workflow_daily_metric as metric")
+        .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+          .onRef("definition.uid", "=", "metric.uid")
+          .onRef("definition.id", "=", "metric.workflow_id"))
         .select([
           sql<number>`COALESCE(SUM(completed_count), 0)`.as("recent_completed_run_count"),
           sql<number>`COALESCE(SUM(failed_count), 0)`.as("recent_failed_run_count"),
@@ -66,18 +102,26 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
           sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`
             .as("yesterday_run_count"),
         ])
-        .where("uid", "=", input.uid)
-        .where("metric_date", ">=", windowStart)
-        .where("metric_date", "<=", today)
-        .executeTakeFirst(),
-      this.db.selectFrom("xy_wap_embed_workflow_definition")
+        .where("metric.metric_date", ">=", windowStart)
+        .where("metric.metric_date", "<=", today);
+    if (input.workflowTypes?.length) dailyQuery = dailyQuery.where("definition.workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    const definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
         .select([
           sql<number>`COALESCE(SUM(runtime_status = 'active'), 0)`.as("active_workflow_count"),
           sql<number>`COUNT(*)`.as("total_workflow_count"),
         ])
         .where("uid", "=", input.uid)
-        .where("biz_status", "=", 1)
-        .executeTakeFirst(),
+        .where("biz_status", "=", 1);
+    let typedDefinitionQuery = definitionQuery;
+    if (input.workflowTypes?.length) typedDefinitionQuery = typedDefinitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    const [dailyMetric, definitionMetric] = await Promise.all([
+      dailyQuery.select([
+        sql<number>`COALESCE(SUM(completed_count), 0)`.as("recent_completed_run_count"),
+        sql<number>`COALESCE(SUM(failed_count), 0)`.as("recent_failed_run_count"),
+        sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${today} THEN entered_count ELSE 0 END), 0)`.as("today_run_count"),
+        sql<number>`COALESCE(SUM(CASE WHEN metric_date = ${yesterday} THEN entered_count ELSE 0 END), 0)`.as("yesterday_run_count"),
+      ]).where("metric.uid", "=", input.uid).executeTakeFirst(),
+      typedDefinitionQuery.executeTakeFirst(),
     ]);
     return {
       activeWorkflowCount: Number(definitionMetric?.active_workflow_count ?? 0),
@@ -89,14 +133,18 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     };
   }
 
-  async getOverview(input: { uid: number; workflowId: string }): Promise<WorkflowDataOverview> {
-    const definition = await this.db.selectFrom("xy_wap_embed_workflow_definition")
+  async getOverview(input: Parameters<WorkflowDataReader["getOverview"]>[0]): Promise<WorkflowDataOverview> {
+    let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("published_revision")
       .where("uid", "=", input.uid)
       .where("id", "=", input.workflowId)
-      .where("biz_status", "=", 1)
-      .executeTakeFirst();
-    if (!definition?.published_revision) {
+      .where("biz_status", "=", 1);
+    if (input.workflowTypes?.length) definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    const definition = await definitionQuery.executeTakeFirst();
+    if (!definition) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    }
+    if (!definition.published_revision) {
       throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow 尚未发布");
     }
     const revision = await this.db.selectFrom("xy_wap_embed_workflow_revision")
@@ -161,6 +209,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
   }
 
   async listRecords(input: Parameters<WorkflowDataReader["listRecords"]>[0]): Promise<WorkflowEntryRecordPage> {
+    if (input.workflowTypes?.length) await this.requireVisibleWorkflow(input as Required<typeof input>);
     let query = this.db.selectFrom("xy_wap_embed_workflow_run")
       .select([
         "create_time",
@@ -210,6 +259,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
   }
 
   async getRecord(input: Parameters<WorkflowDataReader["getRecord"]>[0]): Promise<WorkflowEntryRecordDetail> {
+    if (input.workflowTypes?.length) await this.requireVisibleWorkflow(input as Required<typeof input>);
     const run = await this.db.selectFrom("xy_wap_embed_workflow_run")
       .select([
         "create_time",
@@ -303,6 +353,21 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       terminalReason: parseFlowChangedReason(run.terminal_reason),
       steps,
     };
+  }
+
+  private async requireVisibleWorkflow(input: {
+    uid: number;
+    workflowId: string;
+    workflowTypes: WorkflowType[];
+  }) {
+    let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
+      .select("id")
+      .where("uid", "=", input.uid)
+      .where("id", "=", input.workflowId)
+      .where("biz_status", "=", 1);
+    if (input.workflowTypes?.length) definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
+    const definition = await definitionQuery.executeTakeFirst();
+    if (!definition) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
   }
 
   private async loadSubjects(

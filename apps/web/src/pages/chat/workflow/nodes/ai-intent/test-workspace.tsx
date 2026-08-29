@@ -50,6 +50,7 @@ import {
   WorkflowTestAttemptCloseDialog,
   WorkflowTestWorkspaceTrigger,
 } from "../test-attempt-controller";
+import { useWorkflowSurface } from "../../workflow-surface";
 
 const AI_INTENT_TEST_MESSAGE_MAX_COUNT = 10;
 const AI_INTENT_TEST_MESSAGE_TEXT_MAX_LENGTH = 100;
@@ -106,6 +107,7 @@ function AiIntentTestWorkspaceContent({
   nodes: WorkflowNode[];
   testContext: WorkflowNodeTestContext;
 }) {
+  const surface = useWorkflowSurface();
   const inputSelector = normalizeAiIntentInputSelector(node.data.inputSelector);
   const inputOptions = useMemo(
     () => getAvailableIntentInputOutputsForNode(node.id, nodes, edges),
@@ -124,12 +126,14 @@ function AiIntentTestWorkspaceContent({
     testContext.workflowId,
     node.id,
     attemptId,
-  ), [node.id, testContext.workflowId]);
+    surface.apiBasePath,
+  ), [node.id, surface.apiBasePath, testContext.workflowId]);
   const cancelAttempt = useCallback((attemptId: string) => cancelWorkflowAiIntentTestAttempt(
     testContext.workflowId,
     node.id,
     attemptId,
-  ), [node.id, testContext.workflowId]);
+    surface.apiBasePath,
+  ), [node.id, surface.apiBasePath, testContext.workflowId]);
   const controller = useWorkflowTestAttemptController({ cancelAttempt, getAttempt });
   const configReady = getAiIntentStatus(node.data) === "ready" && Boolean(inputVariable);
   const draftSaved = testContext.saveState === "saved";
@@ -155,6 +159,7 @@ function AiIntentTestWorkspaceContent({
       testContext.workflowId,
       node.id,
       { expectedDraftVersion: testContext.draftVersion, inputValue },
+      surface.apiBasePath,
     ));
   };
 

@@ -18,17 +18,19 @@ export type WorkflowDataRepository = {
   }): Promise<WorkflowEntryRecordPage>;
 };
 
-export function createWorkflowDataRepository(): WorkflowDataRepository {
+export function createWorkflowDataRepository(
+  apiBasePath = "/server/workflows",
+): WorkflowDataRepository {
   return {
     async getOverview(workflowId) {
-      return unwrap(await http.get(`/server/workflows/${workflowId}/data`));
+      return unwrap(await http.get(`${apiBasePath}/${workflowId}/data`));
     },
     async getRecord(workflowId, recordId) {
-      return unwrap(await http.get(`/server/workflows/${workflowId}/records/${recordId}`));
+      return unwrap(await http.get(`${apiBasePath}/${workflowId}/records/${recordId}`));
     },
     async listRecords(input) {
       const { workflowId, ...params } = input;
-      return unwrap(await http.get(`/server/workflows/${workflowId}/records`, { params }));
+      return unwrap(await http.get(`${apiBasePath}/${workflowId}/records`, { params }));
     },
   };
 }

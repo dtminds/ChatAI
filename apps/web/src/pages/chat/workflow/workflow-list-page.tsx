@@ -10,7 +10,7 @@ import {
   SecurityCheckIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkflowTenantOverview } from "@chatai/contracts";
+import type { WorkflowSurface, WorkflowTenantOverview } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -61,9 +61,24 @@ import {
 } from "./workflow-create-dialog";
 import { getWorkflowLifecycleErrorMessage } from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
+import {
+  getWorkflowDocumentPath,
+  useWorkflowSurface,
+  WorkflowSurfaceProvider,
+} from "./workflow-surface";
 
-export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
-  return <WorkflowListPage repository={repository} />;
+export function WorkflowPage({
+  repository,
+  surface = "chatai",
+}: {
+  repository?: WorkflowDraftRepository;
+  surface?: WorkflowSurface;
+} = {}) {
+  return (
+    <WorkflowSurfaceProvider surface={surface}>
+      <WorkflowListPage repository={repository} />
+    </WorkflowSurfaceProvider>
+  );
 }
 
 type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
@@ -85,10 +100,12 @@ type WorkflowListPaginationState = {
 };
 
 export function WorkflowListPage({
-  repository = getWorkflowDraftRepository(),
+  repository: repositoryProp,
 }: {
   repository?: WorkflowDraftRepository;
 }) {
+  const surface = useWorkflowSurface();
+  const repository = repositoryProp ?? getWorkflowDraftRepository(surface.surface);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
@@ -186,7 +203,7 @@ export function WorkflowListPage({
       }));
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
-      navigate(`/chat/workflows/${document.id}`);
+      navigate(getWorkflowDocumentPath(surface, document.id));
       return true;
     }
     catch (error) {
@@ -287,11 +304,11 @@ export function WorkflowListPage({
   };
 
   return (
-    <AiHostingLayout title="Workflow">
+    <WorkflowSurfaceLayout>
       <section className="space-y-5">
         <AiHostingPageHeader
-          description="管理营销旅程"
-          title="工作流"
+          description={surface.description}
+          title={surface.title}
         />
 
         <WorkflowTenantDataSection
@@ -358,6 +375,7 @@ export function WorkflowListPage({
 
         {status !== "error" ? (
           <WorkflowListTable
+            detailBasePath={surface.webBasePath}
             loading={status === "loading" && items.length === 0}
             onDelete={(workflow) => {
               setOperationError(null);
@@ -422,6 +440,7 @@ export function WorkflowListPage({
         }}
         open={createDialogOpen}
         pending={operationPending}
+        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
       />
 
       <WorkflowDeleteDialog
@@ -450,8 +469,20 @@ export function WorkflowListPage({
         open={Boolean(stopTarget)}
         pending={Boolean(stopTarget && lifecyclePendingId === stopTarget.id)}
       />
-    </AiHostingLayout>
+    </WorkflowSurfaceLayout>
   );
+}
+
+function WorkflowSurfaceLayout({ children }: { children: ReactNode }) {
+  const surface = useWorkflowSurface();
+  if (surface.embedded) {
+    return (
+      <main className="min-h-svh bg-background p-6 text-foreground">
+        <div className="mx-auto max-w-[1600px]">{children}</div>
+      </main>
+    );
+  }
+  return <AiHostingLayout title={surface.title}>{children}</AiHostingLayout>;
 }
 
 const workflowCapacitySegmentCount = 12;

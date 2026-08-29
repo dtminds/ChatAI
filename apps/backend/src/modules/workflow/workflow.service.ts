@@ -21,6 +21,7 @@ import type {
   WorkflowSaveDraftRequest,
   WorkflowStartConfig,
   WorkflowStartDraftConfig,
+  WorkflowSurface,
   WorkflowType,
   WorkflowTypeEntitlementResult,
   WorkflowLlmTestAttempt,
@@ -36,6 +37,8 @@ import {
   extractWorkflowNodeDraftConfig,
   getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowCapabilityProfile,
+  getEnabledWorkflowTypes,
+  getWorkflowSurfaceTypes,
   getWorkflowNodeContract,
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
@@ -109,7 +112,12 @@ import {
   type WorkflowDirectEntryEndpointPort,
 } from "./direct-entry-endpoint-port.js";
 
-export type WorkflowOperatorScope = { roles: string[]; subUserId: string; uid: number };
+export type WorkflowOperatorScope = {
+  roles: string[];
+  subUserId: string;
+  surface?: WorkflowSurface;
+  uid: number;
+};
 
 export type WorkflowServiceOptions = {
   clock?: () => Date;
@@ -158,7 +166,7 @@ export class WorkflowService {
     workflowId: string,
   ): Promise<WorkflowDirectEntryEndpointResponse> {
     assertWorkflowAccess(scope);
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const endpointKey = await this.directEntryEndpointPort.getEndpointKey({
       uid: scope.uid,
       workflowId,
@@ -182,7 +190,7 @@ export class WorkflowService {
   ): Promise<WorkflowLlmTestAttempt> {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
@@ -251,7 +259,7 @@ export class WorkflowService {
   ): Promise<WorkflowLlmTestAttempt> {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
@@ -330,7 +338,7 @@ export class WorkflowService {
   ): Promise<WorkflowLlmTestAttempt> {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const now = this.clock();
     await repository.expireLlmTestAttempt({
       attemptId,
@@ -353,7 +361,7 @@ export class WorkflowService {
   ): Promise<WorkflowLlmTestAttempt> {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const cancelledAt = this.clock();
     await repository.expireLlmTestAttempt({
       attemptId,
@@ -387,11 +395,14 @@ export class WorkflowService {
     status: WorkflowDefinitionListStatus;
   }): Promise<WorkflowDefinitionListPage> {
     assertWorkflowAccess(scope);
+    const workflowTypes = getVisibleWorkflowTypes(scope);
+    if (workflowTypes.length === 0) return { items: [], nextCursor: null, total: 0 };
     const page = await this.repository.listDefinitions(scope.uid, {
       cursor: input.cursor ? decodeWorkflowDefinitionListCursor(input.cursor) : undefined,
       limit: input.limit,
       query: input.query?.trim() || undefined,
       status: input.status,
+      workflowTypes,
     });
     const managedAccountIdsByWorkflowId = new Map(page.items.map(record => [
       record.id,
@@ -419,12 +430,15 @@ export class WorkflowService {
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
-    return this.toDefinition(await this.requireDefinition(scope.uid, workflowId));
+    return this.toDefinition(await this.requireVisibleDefinition(scope, workflowId));
   }
 
   async create(scope: WorkflowOperatorScope, input: WorkflowCreateRequest) {
     assertWorkflowAccess(scope);
     assertWorkflowTypeEnabled(input.workflowType);
+    if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(input.workflowType)) {
+      throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该 Workflow 类型");
+    }
     await this.requireEntitlement(scope.uid, input.workflowType, scope.subUserId);
     const draft = createInitialWorkflowDraft(input.workflowType);
     const result = await this.repository.createDefinition({
@@ -449,7 +463,7 @@ export class WorkflowService {
 
   async saveDraft(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowSaveDraftRequest) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     const draft = normalizeWorkflowDraft(input.draft);
     assertWorkflowDraftNodeContracts(draft);
     assertWorkflowTypePolicy(definition.workflowType, draft);
@@ -473,6 +487,7 @@ export class WorkflowService {
 
   async rename(scope: WorkflowOperatorScope, workflowId: string, name: string) {
     assertWorkflowAccess(scope);
+    await this.requireVisibleDefinition(scope, workflowId);
     const normalizedName = name.trim();
     if (!normalizedName) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
     return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
@@ -489,6 +504,7 @@ export class WorkflowService {
     metadata: WorkflowMetadataUpdateRequest,
   ) {
     assertWorkflowAccess(scope);
+    await this.requireVisibleDefinition(scope, workflowId);
     const name = metadata.name.trim();
     const description = metadata.description.trim();
     if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
@@ -506,6 +522,7 @@ export class WorkflowService {
 
   async delete(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
+    await this.requireVisibleDefinition(scope, workflowId);
     this.unwrapMutation(await this.repository.markDeleted({
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -519,7 +536,7 @@ export class WorkflowService {
     input: WorkflowReviewSubmitRequest,
   ): Promise<WorkflowPublishReview> {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     if (
@@ -578,7 +595,7 @@ export class WorkflowService {
 
   async getCurrentReview(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const review = await this.repository.findCurrentReview(scope.uid, workflowId);
     return review ? toReview(review) : null;
   }
@@ -589,7 +606,7 @@ export class WorkflowService {
     input: { cursor?: string; limit: number } = { limit: 20 },
   ) {
     assertWorkflowAccess(scope);
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const page = await this.repository.listReviews(scope.uid, workflowId, input);
     return { items: page.items.map(toReview), nextCursor: page.nextCursor };
   }
@@ -601,7 +618,7 @@ export class WorkflowService {
     input: WorkflowReviewApproveRequest,
   ) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     return toReview(this.unwrapMutation(await this.repository.decideReview({
       comment: input.comment?.trim() || null,
@@ -620,7 +637,7 @@ export class WorkflowService {
     input: WorkflowReviewRejectRequest,
   ) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
     if (!review) throw workflowNotFound();
@@ -643,7 +660,7 @@ export class WorkflowService {
 
   async withdrawReview(scope: WorkflowOperatorScope, workflowId: string, reviewId: string) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     return toReview(this.unwrapMutation(await this.repository.withdrawReview({
       opSubUserId: scope.subUserId,
@@ -660,7 +677,7 @@ export class WorkflowService {
     input: WorkflowRestoreRequest,
   ) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
     if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
@@ -689,7 +706,7 @@ export class WorkflowService {
 
   async publish(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowPublishRequest): Promise<WorkflowPublishResult> {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     const review = await this.repository.findReview(scope.uid, workflowId, input.reviewId);
     if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
@@ -720,7 +737,7 @@ export class WorkflowService {
 
   async enable(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.runtimeStatus !== "inactive" || definition.publishedRevision === null) {
       throw invalidStatusError(definition.runtimeStatus);
     }
@@ -747,7 +764,7 @@ export class WorkflowService {
 
   async resume(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.runtimeStatus !== "paused" || definition.publishedRevision === null) {
       throw invalidStatusError(definition.runtimeStatus);
     }
@@ -777,14 +794,14 @@ export class WorkflowService {
     input: { cursor?: string; limit: number } = { limit: 20 },
   ) {
     assertWorkflowAccess(scope);
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const page = await this.repository.listRevisions(scope.uid, workflowId, input);
     return { items: page.items.map(toRevision), nextCursor: page.nextCursor };
   }
 
   async getRevision(scope: WorkflowOperatorScope, workflowId: string, revision: number) {
     assertWorkflowAccess(scope);
-    await this.requireDefinition(scope.uid, workflowId);
+    await this.requireVisibleDefinition(scope, workflowId);
     const record = await this.repository.findRevision(scope.uid, workflowId, revision);
     if (!record) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
     return toRevision(record);
@@ -797,7 +814,7 @@ export class WorkflowService {
     input: WorkflowRestoreRequest,
   ) {
     assertWorkflowAccess(scope);
-    const definition = await this.requireDefinition(scope.uid, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     const revisionRecord = await this.repository.findRevision(scope.uid, workflowId, revision);
     if (!revisionRecord) {
@@ -821,6 +838,7 @@ export class WorkflowService {
     allowedCurrentStatuses: WorkflowDefinitionRecord["runtimeStatus"][],
     status: WorkflowDefinitionRecord["runtimeStatus"],
   ) {
+    await this.requireVisibleDefinition(scope, workflowId);
     return this.toDefinition(this.unwrapMutation(await this.repository.setRuntimeStatus({
       allowedCurrentStatuses,
       opSubUserId: scope.subUserId,
@@ -851,6 +869,14 @@ export class WorkflowService {
   private async requireDefinition(uid: number, workflowId: string) {
     const definition = await this.repository.findDefinition(uid, workflowId);
     if (!definition) throw workflowNotFound();
+    return definition;
+  }
+
+  private async requireVisibleDefinition(scope: WorkflowOperatorScope, workflowId: string) {
+    const definition = await this.requireDefinition(scope.uid, workflowId);
+    if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(definition.workflowType)) {
+      throw workflowNotFound();
+    }
     return definition;
   }
 
@@ -999,6 +1025,10 @@ export class WorkflowService {
       : await this.repository.findRevision(definition.uid, definition.id, definition.publishedRevision);
     return summarizeWorkflowChanges(previous?.draft ?? null, draft);
   }
+}
+
+function getVisibleWorkflowTypes(scope: WorkflowOperatorScope) {
+  return scope.surface ? getWorkflowSurfaceTypes(scope.surface) : getEnabledWorkflowTypes();
 }
 
 function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {

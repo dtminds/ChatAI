@@ -79,6 +79,7 @@ export async function startWorkflowWorkerRuntime(input: {
   broker: WorkflowBroker;
   config: WorkflowWorkerConfig;
   database: { destroy(): Promise<void> };
+  entitlementCache?: { close(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   eventCatalog?: WorkflowEventCatalog;
   eventSubscriptionReader: WorkflowEventSubscriptionReader;
@@ -228,6 +229,7 @@ export async function startWorkflowWorkerRuntime(input: {
     }
     if (input.config.roles.has("reconciler")) {
       let afterCapacityUid: number | undefined;
+      let afterEntitlementUid: number | undefined;
       let afterEventSubscriptionId: string | undefined;
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
@@ -247,6 +249,7 @@ export async function startWorkflowWorkerRuntime(input: {
           : undefined;
         const result = await input.reconciler({
           afterCapacityUid,
+          afterEntitlementUid,
           afterEventSubscriptionId,
           afterRunId,
           afterConsistencyRunId,
@@ -265,6 +268,7 @@ export async function startWorkflowWorkerRuntime(input: {
           retryDelayMs: input.config.runtime.retryDelayMs,
         });
         afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
+        afterEntitlementUid = result.nextEntitlementCursor ?? undefined;
         afterCapacityUid = result.nextCapacityCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
@@ -350,6 +354,7 @@ export async function startWorkflowWorkerRuntime(input: {
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
     await Promise.allSettled([
       input.runtimeState?.close() ?? Promise.resolve(),
+      input.entitlementCache?.close() ?? Promise.resolve(),
       input.broker.close(),
       input.database.destroy(),
     ]);

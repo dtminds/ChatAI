@@ -205,7 +205,7 @@ async function createHarness(clock: () => Date = () => ENTERED_AT) {
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => ENTERED_AT);
   const spec = executionSpec();
   const service = new WorkflowRuntimeService({
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,
@@ -223,7 +223,7 @@ async function createHarness(clock: () => Date = () => ENTERED_AT) {
   }, repository, undefined, {
     clock,
     entitlementPort: {
-      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
+      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true })),
     },
   });
   const created = await repository.createRunWithInitialTask({

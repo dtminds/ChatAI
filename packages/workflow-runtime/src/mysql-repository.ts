@@ -112,52 +112,20 @@ export class MysqlWorkflowRuntimeRepository implements
   WorkflowTriggerBindingReader {
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
 
-  async applyEntitlementLoss(
-    input: Parameters<WorkflowRuntimeControlReader["applyEntitlementLoss"]>[0],
+  async deactivateWorkflowForEntitlementLoss(
+    input: Parameters<WorkflowRuntimeControlReader["deactivateWorkflowForEntitlementLoss"]>[0],
   ) {
-    const workflowIds = await this.db.transaction().execute(async (trx) => {
-      const targetStatuses = input.transition === "pause"
-        ? ["active"]
-        : ["active", "inactive", "paused"];
-      const definitions = await trx.selectFrom("xy_wap_embed_workflow_definition")
-        .select("id")
-        .where("uid", "=", input.uid)
-        .where("workflow_type", "=", encodeWorkflowType(input.workflowType))
-        .where("biz_status", "=", 1)
-        .where("runtime_status", "in", targetStatuses)
-        .forUpdate()
-        .execute();
-      if (definitions.length === 0) return [];
-
-      const ids = definitions.map((definition) => definition.id);
-      await trx.updateTable("xy_wap_embed_workflow_definition").set({
-        op_sub_uid: input.opSubUserId,
-        runtime_status: input.transition === "pause" ? "paused" : "stopped",
-        status_reason: "entitlement_revoked",
-      }).where("id", "in", ids).executeTakeFirstOrThrow();
-      await transitionMysqlWorkflowInferenceJobs(trx, {
-        transitionedAt: input.transitionedAt,
-        transition: input.transition === "pause" ? "pause" : "cancel",
-        uid: input.uid,
-        workflowIds: ids.map(normalizeId),
-      });
-      if (input.transition === "pause") {
-        await enqueueMysqlWorkflowTaskTransitions(trx, {
-          requestedAt: input.transitionedAt,
-          targetStatus: "suspended",
-          uid: input.uid,
-          workflowIds: ids.map(normalizeId),
-        });
-      } else {
-        await clearMysqlWorkflowTaskTransitions(trx, {
-          uid: input.uid,
-          workflowIds: ids.map(normalizeId),
-        });
-      }
-      return ids;
-    });
-    if (workflowIds.length === 0) return { affectedDefinitions: 0 };
-    return { affectedDefinitions: workflowIds.length };
+    const result = await this.db.updateTable("xy_wap_embed_workflow_definition").set({
+      op_sub_uid: input.opSubUserId,
+      runtime_status: "inactive",
+      status_reason: "entitlement_revoked",
+    }).where("uid", "=", input.uid)
+      .where("id", "=", input.workflowId)
+      .where("workflow_type", "=", encodeWorkflowType(input.workflowType))
+      .where("biz_status", "=", 1)
+      .where("runtime_status", "in", ["active", "paused"])
+      .executeTakeFirst();
+    return { affectedDefinitions: Number(result.numUpdatedRows) };
   }
 
   async findDefinition(uid: number, workflowId: string) {
@@ -2987,6 +2955,49 @@ export class MysqlWorkflowRuntimeRepository implements
         lastUid: guards.length > 0 ? normalizeTenantId(guards.at(-1)!.uid) : null,
       };
     });
+  }
+
+  async listActiveCapacityTenants(
+    input: Parameters<WorkflowRuntimeRepository["listActiveCapacityTenants"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit === 0) return { hasMore: false, lastUid: null, uids: [] };
+    let query = this.db.selectFrom(CAPACITY_GUARD_TABLE)
+      .select("uid")
+      .where("active_run_count", ">", 0)
+      .orderBy("uid", "asc")
+      .limit(limit + 1);
+    if (input.afterUid !== undefined) query = query.where("uid", ">", input.afterUid);
+    const rows = await query.execute();
+    const selected = rows.slice(0, limit);
+    const uids = selected.map(row => normalizeTenantId(row.uid));
+    return {
+      hasMore: rows.length > selected.length,
+      lastUid: uids.at(-1) ?? null,
+      uids,
+    };
+  }
+
+  async listActiveRunWorkflowIds(
+    input: Parameters<WorkflowRuntimeRepository["listActiveRunWorkflowIds"]>[0],
+  ) {
+    if (input.workflowTypes.length === 0) return [];
+    const rows = await this.db.selectFrom(`${RUN_TABLE} as run`)
+      .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "run.uid")
+        .onRef("definition.id", "=", "run.workflow_id"))
+      .select(["run.workflow_id", "definition.workflow_type"])
+      .distinct()
+      .where("run.uid", "=", input.uid)
+      .where("run.status", "in", ACTIVE_RUN_STATUSES)
+      .where("definition.biz_status", "=", 1)
+      .where("definition.runtime_status", "in", ["active", "paused"])
+      .where("definition.workflow_type", "in", input.workflowTypes.map(encodeWorkflowType))
+      .execute();
+    return rows.map(row => ({
+      workflowId: normalizeId(row.workflow_id),
+      workflowType: decodeWorkflowType(row.workflow_type),
+    }));
   }
 
   async reconcileEventSubscriptions(

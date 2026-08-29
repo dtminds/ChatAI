@@ -20,8 +20,7 @@ export const EnvSchema = Type.Object({
   LOG_LEVEL: Type.Optional(Type.String()),
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
-  WORKFLOW_ENTITLEMENT_API_URL: Type.Optional(Type.String()),
-  WORKFLOW_ENTITLEMENT_MODE: Type.Optional(Type.String()),
+  WORKFLOW_ACTIVE_RUN_LIMIT: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
@@ -30,6 +29,8 @@ export const EnvSchema = Type.Object({
 });
 
 export type Env = Static<typeof EnvSchema>;
+
+export const DEFAULT_WORKFLOW_ACTIVE_RUN_LIMIT = 10_000;
 
 type LoadBackendEnvOptions = {
   appDir?: string;
@@ -128,13 +129,20 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
 
-  const workflowEntitlementMode = env.WORKFLOW_ENTITLEMENT_MODE?.trim() || "allow";
-  if (workflowEntitlementMode !== "allow" && workflowEntitlementMode !== "enforce") {
-    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
-  }
+  getWorkflowActiveRunLimit(env);
   return {
     workerObserverSubjects: parseInsightsWorkerObserverSubjects(
       env.INSIGHTS_WORKER_OBSERVER_SUBJECTS,
     ),
   };
+}
+
+export function getWorkflowActiveRunLimit(env: NodeJS.ProcessEnv = process.env) {
+  const configured = env.WORKFLOW_ACTIVE_RUN_LIMIT?.trim();
+  if (!configured) return DEFAULT_WORKFLOW_ACTIVE_RUN_LIMIT;
+  const activeRunLimit = Number(configured);
+  if (!Number.isSafeInteger(activeRunLimit) || activeRunLimit < 0) {
+    throw new Error("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
+  }
+  return activeRunLimit;
 }

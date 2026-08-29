@@ -303,7 +303,11 @@ export class WorkflowRuntimeService {
     workflowId: string;
   }) {
     const { revision, startConfig } = input;
-    const entitlement = await this.requireEntitlement(input.uid, revision.workflowType);
+    const entitlement = await this.requireEntitlement(
+      input.uid,
+      input.workflowId,
+      revision.workflowType,
+    );
     this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
 
@@ -447,7 +451,7 @@ export class WorkflowRuntimeService {
     }
 
     try {
-      await this.requireEntitlement(input.uid, revision.workflowType);
+      await this.requireEntitlement(input.uid, run.workflowId, revision.workflowType);
       this.assertNodeExecutable(node);
     } catch (error) {
       if (error instanceof WorkflowRuntimeError
@@ -952,22 +956,26 @@ export class WorkflowRuntimeService {
     };
   }
 
-  private async requireEntitlement(uid: number, workflowType: WorkflowType) {
+  private async requireEntitlement(uid: number, workflowId: string, workflowType: WorkflowType) {
     try {
       const decision = await decideWorkflowEntitlement(this.entitlementPort, {
-        now: this.clock(),
         uid,
         workflowType,
       });
       if (decision.action === "allow") return decision.result;
-      await this.controlRepository.applyEntitlementLoss({
-        opSubUserId: "0",
-        transitionedAt: this.clock(),
-        transition: decision.action,
+      const confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
+        forceRefresh: true,
         uid,
         workflowType,
       });
-      throw runtimeStatusError(decision.action === "pause" ? "paused" : "stopped");
+      if (confirmation.action === "allow") return confirmation.result;
+      await this.controlRepository.deactivateWorkflowForEntitlementLoss({
+        opSubUserId: "0",
+        uid,
+        workflowId,
+        workflowType,
+      });
+      throw runtimeStatusError("inactive");
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) {
         throw new WorkflowRuntimeError(

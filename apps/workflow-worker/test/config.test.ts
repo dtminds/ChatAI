@@ -121,17 +121,13 @@ describe("workflow worker config", () => {
       .toThrow("Workflow source topics and dead-letter topics must be different");
   });
 
-  it("loads the Java entitlement endpoint", () => {
+  it("uses the default Workflow capacity and accepts an explicit override", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
-      JAVA_INTERNAL_API_TOKEN: "internal-token",
-      WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
+      WORKFLOW_ACTIVE_RUN_LIMIT: "25000",
     }));
 
-    expect(config.entitlement).toEqual({
-      apiUrl: "https://java.example.com/internal/workflow/entitlement",
-      mode: "allow",
-      token: "internal-token",
-    });
+    expect(config.entitlement.activeRunLimit).toBe(25_000);
+    expect(loadWorkflowWorkerConfig(baseEnv()).entitlement.activeRunLimit).toBe(10_000);
   });
 
   it("loads the Java internal API used by runtime-ready action nodes", () => {
@@ -153,44 +149,17 @@ describe("workflow worker config", () => {
       .toThrow("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
   });
 
-  it("defaults entitlement checks to allow outside production", () => {
-    expect(loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ENTITLEMENT_MODE: undefined,
-    })).entitlement.mode).toBe("allow");
-  });
-
-  it("requires an explicit entitlement mode in production", () => {
-    expect(() => loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_ENTITLEMENT_MODE: undefined,
-    }))).toThrow("Missing required environment variable: WORKFLOW_ENTITLEMENT_MODE");
-
-    expect(loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_ENTITLEMENT_MODE: " allow ",
-    })).entitlement.mode).toBe("allow");
-  });
-
-  it("loads an explicit enforce entitlement mode", () => {
-    const config = loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_ENTITLEMENT_MODE: "enforce",
-      WORKFLOW_ENTITLEMENT_API_URL: "https://java.example.com/internal/workflow/entitlement",
-    }));
-
-    expect(config.entitlement.mode).toBe("enforce");
-  });
-
-  it("rejects unknown entitlement modes", () => {
+  it("rejects invalid Workflow capacity overrides", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ENTITLEMENT_MODE: "disabled",
-    }))).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
+      WORKFLOW_ACTIVE_RUN_LIMIT: "-1",
+    }))).toThrow("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
   });
 
-  it("requires the entitlement endpoint in enforce mode", () => {
+  it("requires a Redis URL when shared caching is enabled", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
-      WORKFLOW_ENTITLEMENT_API_URL: undefined,
-      WORKFLOW_ENTITLEMENT_MODE: "enforce",
-    }))).toThrow(
-      "WORKFLOW_ENTITLEMENT_API_URL is required when WORKFLOW_ENTITLEMENT_MODE=enforce",
-    );
+      REDIS_ENABLED: "true",
+      REDIS_URL: undefined,
+    }))).toThrow("REDIS_URL must be configured when REDIS_ENABLED=true");
   });
 
   it("starts every Phase 3 role by default with bounded runtime settings", () => {
@@ -387,7 +356,6 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return baseEnv({
     NODE_ENV: "production",
-    WORKFLOW_ENTITLEMENT_MODE: "allow",
     WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-prod-dlq",
     WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-prod",
     WORKFLOW_ENTRY_TOPIC: "topic-workflow-entry-prod",

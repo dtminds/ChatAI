@@ -110,7 +110,7 @@ function createHarness(
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
   const executionSpec = createExecutionSpec(startConfig);
   const service = new WorkflowRuntimeService({
-    applyEntitlementLoss: vi.fn(),
+    deactivateWorkflowForEntitlementLoss: vi.fn(),
     findDefinition: vi.fn(async (uid: number, workflowId: string) =>
       uid === 9 && workflowId === "31"
         ? {
@@ -131,7 +131,7 @@ function createHarness(
   }, repository, undefined, {
     clock: () => now,
     entitlementPort: {
-      check: async () => ({ activeRunLimit, entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit, entitled: true }),
     },
   });
   return { repository, service };

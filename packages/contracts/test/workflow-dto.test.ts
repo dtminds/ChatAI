@@ -260,19 +260,16 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
       activeRunLimit: 10_000,
       entitled: true,
-      unentitledSince: null,
     })).toBe(true);
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
       entitled: true,
-      unentitledSince: null,
     })).toBe(false);
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
       entitled: false,
-      unentitledSince: "2026-08-01T00:00:00+08:00",
     })).toBe(true);
     expect(Value.Check(WorkflowTypeEntitlementResultSchema, {
+      activeRunLimit: 10_000,
       entitled: false,
-      unentitledSince: null,
     })).toBe(false);
   });
 

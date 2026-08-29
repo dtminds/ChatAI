@@ -42,6 +42,7 @@ import { WorkflowDataService } from "./workflow-data.service.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
 import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
+import { getWorkflowActiveRunLimit } from "../../config/env.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -99,8 +100,10 @@ export async function registerWorkflowRoutes(
 ) {
   const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
   const entitlementPort = createWorkflowEntitlementPort({
-    endpoint: process.env.WORKFLOW_ENTITLEMENT_API_URL,
-    mode: process.env.WORKFLOW_ENTITLEMENT_MODE,
+    activeRunLimit: getWorkflowActiveRunLimit(),
+    baseUrl: process.env.JAVA_INTERNAL_API_BASE_URL,
+    cache: app.cache,
+    cacheKeyPrefix: process.env.REDIS_KEY_PREFIX,
     token: process.env.JAVA_INTERNAL_API_TOKEN,
   });
   const service = options.service ?? new WorkflowService(

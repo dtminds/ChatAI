@@ -1,16 +1,17 @@
-import {
-  WorkflowTenantCapacityResultSchema,
-  WorkflowTypeEntitlementResultSchema,
-  type WorkflowTenantCapacityResult,
-  type WorkflowType,
-  type WorkflowTypeEntitlementResult,
+import type {
+  WorkflowTenantCapacityResult,
+  WorkflowType,
+  WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
-import type { TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
-const WORKFLOW_ENTITLEMENT_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1_000;
+const DEFAULT_ACTIVE_RUN_LIMIT = 10_000;
+const DEFAULT_L1_MAX_ENTRIES = 10_000;
+const DEFAULT_L1_TTL_MS = 60_000;
+const DEFAULT_REDIS_TTL_SECONDS = 30 * 60;
+const ENTITLEMENT_PATH = "/third-internal/wap-embed-workflow-definition/can-run";
 
 export type WorkflowEntitlementCheckInput = {
+  forceRefresh?: boolean;
   signal?: AbortSignal;
   uid: number;
   workflowType: WorkflowType;
@@ -20,10 +21,7 @@ export interface WorkflowEntitlementPort {
   check(input: WorkflowEntitlementCheckInput): Promise<WorkflowTypeEntitlementResult>;
 }
 
-export type WorkflowTenantCapacityInput = {
-  signal?: AbortSignal;
-  uid: number;
-};
+export type WorkflowTenantCapacityInput = { signal?: AbortSignal; uid: number };
 
 export interface WorkflowTenantCapacityPort {
   getTenantCapacity(input: WorkflowTenantCapacityInput): Promise<WorkflowTenantCapacityResult>;
@@ -31,11 +29,12 @@ export interface WorkflowTenantCapacityPort {
 
 export type WorkflowEntitlementDecision =
   | { action: "allow"; result: Extract<WorkflowTypeEntitlementResult, { entitled: true }> }
-  | {
-      action: "pause" | "stop";
-      result: Extract<WorkflowTypeEntitlementResult, { entitled: false }>;
-      unentitledSince: Date;
-    };
+  | { action: "deny"; result: Extract<WorkflowTypeEntitlementResult, { entitled: false }> };
+
+export type WorkflowEntitlementCache = {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttlSeconds: number): Promise<void>;
+};
 
 export class WorkflowEntitlementUnavailableError extends Error {
   constructor(message = "Workflow entitlement service is unavailable", options?: ErrorOptions) {
@@ -44,69 +43,99 @@ export class WorkflowEntitlementUnavailableError extends Error {
   }
 }
 
-export class HttpWorkflowEntitlementPort implements
-  WorkflowEntitlementPort,
-  WorkflowTenantCapacityPort {
+export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort, WorkflowTenantCapacityPort {
+  private readonly activeRunLimit: number;
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly inFlight = new Map<string, Promise<boolean>>();
+  private readonly l1 = new Map<string, { entitled: boolean; expiresAt: number }>();
+  private readonly l1MaxEntries: number;
+
   constructor(private readonly options: {
-    endpoint: string;
+    activeRunLimit?: number;
+    baseUrl: string;
+    cache?: WorkflowEntitlementCache;
+    cacheKeyPrefix?: string;
     fetch?: typeof fetch;
+    l1MaxEntries?: number;
+    l1TtlMs?: number;
+    redisTtlSeconds?: number;
     timeoutMs?: number;
     token?: string;
   }) {
-    if (!/^https?:\/\//.test(options.endpoint)) {
-      throw new Error("Workflow entitlement endpoint must be an HTTP(S) URL");
+    this.baseUrl = normalizeHttpBaseUrl(options.baseUrl);
+    this.fetchImpl = options.fetch ?? fetch;
+    this.activeRunLimit = options.activeRunLimit ?? DEFAULT_ACTIVE_RUN_LIMIT;
+    this.l1MaxEntries = options.l1MaxEntries ?? DEFAULT_L1_MAX_ENTRIES;
+    assertActiveRunLimit(this.activeRunLimit);
+    if (!Number.isSafeInteger(this.l1MaxEntries) || this.l1MaxEntries <= 0) {
+      throw new Error("Workflow entitlement L1 cache size must be a positive safe integer");
     }
   }
 
-  async check(input: WorkflowEntitlementCheckInput) {
-    return this.request<WorkflowTypeEntitlementResult>(
-      input,
-      { uid: input.uid, workflowType: input.workflowType },
-      WorkflowTypeEntitlementResultSchema,
-    );
+  async check(input: WorkflowEntitlementCheckInput): Promise<WorkflowTypeEntitlementResult> {
+    const entitled = await this.readEntitlement(input);
+    return entitled ? { activeRunLimit: this.activeRunLimit, entitled: true } : { entitled: false };
   }
 
-  async getTenantCapacity(input: WorkflowTenantCapacityInput) {
-    return this.request<WorkflowTenantCapacityResult>(
-      input,
-      { uid: input.uid },
-      WorkflowTenantCapacityResultSchema,
-    );
+  async getTenantCapacity(): Promise<WorkflowTenantCapacityResult> {
+    return { activeRunLimit: this.activeRunLimit };
   }
 
-  private async request<TResult>(
-    input: { signal?: AbortSignal },
-    body: Record<string, unknown>,
-    schema: TSchema,
-  ): Promise<TResult> {
-    const timeoutMs = this.options.timeoutMs ?? 3_000;
-    const timeoutController = new AbortController();
-    const forwardAbort = () => timeoutController.abort(input.signal?.reason);
+  private async readEntitlement(input: WorkflowEntitlementCheckInput): Promise<boolean> {
+    const key = this.cacheKey(input.uid, input.workflowType);
+    if (!input.forceRefresh) {
+      const local = this.l1.get(key);
+      if (local && local.expiresAt > Date.now()) return local.entitled;
+      const cached = await this.readRedis(key);
+      if (cached !== null) {
+        this.writeL1(key, cached);
+        return cached;
+      }
+    }
+
+    const inFlightKey = input.forceRefresh ? `${key}:fresh` : key;
+    const existing = this.inFlight.get(inFlightKey);
+    if (existing) return existing;
+    const request = this.fetchEntitlement(input).then(async (entitled) => {
+      this.writeL1(key, entitled);
+      await this.writeRedis(key, entitled);
+      return entitled;
+    }).finally(() => this.inFlight.delete(inFlightKey));
+    this.inFlight.set(inFlightKey, request);
+    return request;
+  }
+
+  private async fetchEntitlement(input: WorkflowEntitlementCheckInput): Promise<boolean> {
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort(input.signal?.reason);
     input.signal?.addEventListener("abort", forwardAbort, { once: true });
-    const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
-
+    const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 3_000);
     try {
-      const response = await (this.options.fetch ?? fetch)(this.options.endpoint, {
-        body: JSON.stringify(body),
+      const response = await this.fetchImpl(`${this.baseUrl}${ENTITLEMENT_PATH}`, {
+        body: JSON.stringify({
+          uid: input.uid,
+          workflowType: encodeJavaWorkflowType(input.workflowType),
+        }),
         headers: {
           "Content-Type": "application/json",
           ...(this.options.token ? { Authorization: `Bearer ${this.options.token}` } : {}),
         },
         method: "POST",
-        signal: timeoutController.signal,
+        signal: controller.signal,
       });
       if (!response.ok) {
         throw new WorkflowEntitlementUnavailableError(
           `Workflow entitlement endpoint returned HTTP ${response.status}`,
         );
       }
-      const responseBody: unknown = await response.json();
-      if (!Value.Check(schema, responseBody)) {
+      const body: unknown = await response.json();
+      if (!isBusinessSuccessEnvelope(body)) {
         throw new WorkflowEntitlementUnavailableError(
           "Workflow entitlement endpoint returned an invalid response",
         );
       }
-      return structuredClone(responseBody) as TResult;
+      return body.data;
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) throw error;
       throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
@@ -115,52 +144,85 @@ export class HttpWorkflowEntitlementPort implements
       input.signal?.removeEventListener("abort", forwardAbort);
     }
   }
+
+  private cacheKey(uid: number, workflowType: WorkflowType) {
+    return `${this.options.cacheKeyPrefix ?? "chatai:"}workflow:entitlement:v1:${uid}:${workflowType}`;
+  }
+
+  private writeL1(key: string, entitled: boolean) {
+    this.l1.delete(key);
+    this.l1.set(key, {
+      entitled,
+      expiresAt: Date.now() + (this.options.l1TtlMs ?? DEFAULT_L1_TTL_MS),
+    });
+    if (this.l1.size > this.l1MaxEntries) {
+      const oldestKey = this.l1.keys().next().value;
+      if (oldestKey !== undefined) this.l1.delete(oldestKey);
+    }
+  }
+
+  private async readRedis(key: string): Promise<boolean | null> {
+    if (!this.options.cache) return null;
+    try {
+      const value = await this.options.cache.get(key);
+      if (value === "1") return true;
+      if (value === "0") return false;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeRedis(key: string, entitled: boolean) {
+    if (!this.options.cache) return;
+    try {
+      await this.options.cache.set(
+        key,
+        entitled ? "1" : "0",
+        this.options.redisTtlSeconds ?? DEFAULT_REDIS_TTL_SECONDS,
+      );
+    } catch {
+      // Redis is an optimization; Java remains authoritative.
+    }
+  }
 }
 
-export class UnavailableWorkflowEntitlementPort implements
-  WorkflowEntitlementPort,
-  WorkflowTenantCapacityPort {
+export class UnavailableWorkflowEntitlementPort implements WorkflowEntitlementPort, WorkflowTenantCapacityPort {
+  constructor(private readonly activeRunLimit = DEFAULT_ACTIVE_RUN_LIMIT) {
+    assertActiveRunLimit(activeRunLimit);
+  }
+
   async check(): Promise<never> {
     throw new WorkflowEntitlementUnavailableError();
   }
 
-  async getTenantCapacity(): Promise<never> {
-    throw new WorkflowEntitlementUnavailableError();
-  }
-}
-
-export class AllowAllWorkflowEntitlementPort implements
-  WorkflowEntitlementPort,
-  WorkflowTenantCapacityPort {
-  async check(): Promise<WorkflowTypeEntitlementResult> {
-    return {
-      activeRunLimit: Number.MAX_SAFE_INTEGER,
-      entitled: true,
-      unentitledSince: null,
-    };
-  }
-
   async getTenantCapacity(): Promise<WorkflowTenantCapacityResult> {
-    return { activeRunLimit: Number.MAX_SAFE_INTEGER };
+    return { activeRunLimit: this.activeRunLimit };
   }
 }
 
 export function createWorkflowEntitlementPort(options: {
-  endpoint?: string | null;
+  activeRunLimit?: number;
+  baseUrl?: string | null;
+  cache?: WorkflowEntitlementCache;
+  cacheKeyPrefix?: string;
   fetch?: typeof fetch;
-  mode?: string | null;
+  l1MaxEntries?: number;
+  l1TtlMs?: number;
+  redisTtlSeconds?: number;
   timeoutMs?: number;
   token?: string | null;
 }): WorkflowEntitlementPort & WorkflowTenantCapacityPort {
-  const mode = options.mode?.trim() || "allow";
-  if (mode === "allow") return new AllowAllWorkflowEntitlementPort();
-  if (mode !== "enforce") {
-    throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
-  }
-  if (!options.endpoint) return new UnavailableWorkflowEntitlementPort();
+  if (!options.baseUrl) return new UnavailableWorkflowEntitlementPort(options.activeRunLimit);
   return new HttpWorkflowEntitlementPort({
-    endpoint: options.endpoint,
+    activeRunLimit: options.activeRunLimit,
+    baseUrl: options.baseUrl,
+    cache: options.cache,
+    cacheKeyPrefix: options.cacheKeyPrefix,
     fetch: options.fetch,
+    l1MaxEntries: options.l1MaxEntries,
+    l1TtlMs: options.l1TtlMs,
+    redisTtlSeconds: options.redisTtlSeconds,
     timeoutMs: options.timeoutMs,
     token: options.token ?? undefined,
   });
@@ -168,27 +230,42 @@ export function createWorkflowEntitlementPort(options: {
 
 export async function decideWorkflowEntitlement(
   port: WorkflowEntitlementPort,
-  input: WorkflowEntitlementCheckInput & { now: Date },
+  input: WorkflowEntitlementCheckInput,
 ): Promise<WorkflowEntitlementDecision> {
-  let result: WorkflowTypeEntitlementResult;
   try {
-    result = await port.check(input);
+    const result = await port.check(input);
+    return result.entitled ? { action: "allow", result } : { action: "deny", result };
   } catch (error) {
     if (error instanceof WorkflowEntitlementUnavailableError) throw error;
     throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
   }
-  if (result.entitled) return { action: "allow", result };
+}
 
-  const unentitledSince = new Date(result.unentitledSince);
-  const elapsedMs = input.now.getTime() - unentitledSince.getTime();
-  if (Number.isNaN(unentitledSince.getTime()) || elapsedMs < 0) {
-    throw new WorkflowEntitlementUnavailableError(
-      "Workflow entitlement endpoint returned an invalid unentitledSince",
-    );
+function encodeJavaWorkflowType(workflowType: WorkflowType) {
+  if (workflowType === "chatai_sop") return 1;
+  if (workflowType === "wecom_sop") return 2;
+  return 3;
+}
+
+function isBusinessSuccessEnvelope(value: unknown): value is { data: boolean; success: true } {
+  if (!value || typeof value !== "object") return false;
+  const body = value as Record<string, unknown>;
+  return body.success === true
+    && body.error === 0
+    && typeof body.data === "boolean"
+    && typeof body.errorMsg === "string"
+    && typeof body.error_msg === "string";
+}
+
+function normalizeHttpBaseUrl(value: string) {
+  if (!/^https?:\/\//.test(value)) {
+    throw new Error("JAVA_INTERNAL_API_BASE_URL must be an HTTP(S) URL");
   }
-  return {
-    action: elapsedMs >= WORKFLOW_ENTITLEMENT_GRACE_PERIOD_MS ? "stop" : "pause",
-    result,
-    unentitledSince,
-  };
+  return value.replace(/\/+$/, "");
+}
+
+function assertActiveRunLimit(value: number) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Workflow active Run limit must be a non-negative safe integer");
+  }
 }

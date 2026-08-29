@@ -62,6 +62,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private readonly capacityDailyMetrics = new Map<string, number>();
   private readonly totalEntries = new Map<string, number>();
   private readonly runUpdatedAt = new Map<string, Date>();
+  private readonly runWorkflowTypes = new Map<string, import("@chatai/contracts").WorkflowType>();
   private nextId = 1n;
 
   constructor(
@@ -290,6 +291,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       taskType: "execute",
     });
     this.runs.push(run);
+    this.runWorkflowTypes.set(run.id, input.workflowType);
     this.totalEntries.set(entryGuardKey, totalEntries + 1);
     this.runUpdatedAt.set(run.id, admittedAt);
     this.tasks.push(task);
@@ -1431,6 +1433,51 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       hasMore: candidateUids.length > selectedUids.length,
       lastUid: selectedUids.at(-1) ?? null,
     };
+  }
+
+  async deactivateWorkflowForEntitlementLoss() {
+    return { affectedDefinitions: 0 };
+  }
+
+  async listActiveCapacityTenants(
+    input: Parameters<WorkflowRuntimeRepository["listActiveCapacityTenants"]>[0],
+  ) {
+    const limit = Math.max(0, Math.trunc(input.limit));
+    const candidateUids = [...new Set(this.runs.filter(run =>
+      WORKFLOW_ACTIVE_RUN_STATUSES.includes(
+        run.status as typeof WORKFLOW_ACTIVE_RUN_STATUSES[number],
+      )).map(run => run.uid))]
+      .filter(uid => input.afterUid === undefined || uid > input.afterUid)
+      .sort((left, right) => left - right)
+      .slice(0, limit + 1);
+    const uids = candidateUids.slice(0, limit);
+    return {
+      hasMore: candidateUids.length > uids.length,
+      lastUid: uids.at(-1) ?? null,
+      uids,
+    };
+  }
+
+  async listActiveRunWorkflowIds(
+    input: Parameters<WorkflowRuntimeRepository["listActiveRunWorkflowIds"]>[0],
+  ) {
+    const seen = new Set<string>();
+    const result: Array<{
+      workflowId: string;
+      workflowType: import("@chatai/contracts").WorkflowType;
+    }> = [];
+    for (const run of this.runs) {
+      if (run.uid !== input.uid
+        || !WORKFLOW_ACTIVE_RUN_STATUSES.includes(
+          run.status as typeof WORKFLOW_ACTIVE_RUN_STATUSES[number],
+        )
+        || seen.has(run.workflowId)) continue;
+      const workflowType = this.runWorkflowTypes.get(run.id);
+      if (!workflowType || !input.workflowTypes.includes(workflowType)) continue;
+      seen.add(run.workflowId);
+      result.push({ workflowId: run.workflowId, workflowType });
+    }
+    return result;
   }
 
   async reconcileEventSubscriptions(

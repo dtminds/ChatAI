@@ -121,7 +121,7 @@ function createService(
   revisions: ReturnType<typeof compileRatioSplit>[],
 ) {
   return new WorkflowRuntimeService({
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: getPublishedRevision(),
@@ -141,7 +141,7 @@ function createService(
     findRuntimeSnapshots: vi.fn(async () => ({ invalidKeys: [], snapshots: [] })),
   }, runtime, undefined, {
     clock: () => now,
-    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
   });
 }
 

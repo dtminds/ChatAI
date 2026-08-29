@@ -29,6 +29,7 @@ import { createWorkflowDatabase } from "./database.js";
 import { HttpWorkflowAudienceFilterCapabilityPort } from "./audience-filter-capability-port.js";
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
 import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
+import { createWorkflowEntitlementCache } from "./entitlement-cache.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
 import { createWorkflowWorkerLogger } from "./logger.js";
@@ -66,6 +67,13 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     );
   }
   const database = createWorkflowDatabase(config.databaseUrl);
+  let entitlementCache: Awaited<ReturnType<typeof createWorkflowEntitlementCache>>;
+  try {
+    entitlementCache = await createWorkflowEntitlementCache(config.redis, logger);
+  } catch (error) {
+    await database.destroy();
+    throw error;
+  }
   let inferenceAdapter: ReturnType<typeof createVolcengineChatCompletionAdapter> | undefined;
   let llmTestAttemptRepository: MysqlWorkflowLlmTestAttemptRepository | undefined;
   let llmTestWorker: Awaited<ReturnType<typeof loadLlmTestWorker>> | undefined;
@@ -76,14 +84,16 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       llmTestWorker = await loadLlmTestWorker(inferenceAdapter);
     }
   } catch (error) {
-    await database.destroy();
+    await Promise.allSettled([database.destroy(), entitlementCache.close()]);
     throw error;
   }
   const repository = new MysqlWorkflowRuntimeRepository(database);
   const entitlementPort = createWorkflowEntitlementPort({
-    endpoint: config.entitlement.apiUrl,
-    mode: config.entitlement.mode,
-    token: config.entitlement.token,
+    activeRunLimit: config.entitlement.activeRunLimit,
+    baseUrl: config.javaInternalApi.baseUrl,
+    cache: entitlementCache.cache,
+    cacheKeyPrefix: config.redis.keyPrefix,
+    token: config.javaInternalApi.token,
   });
   const messageCapabilityPort = new MysqlWorkflowMessageCapabilityPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,
@@ -159,7 +169,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       taskLeaseDurationMs: config.runtime.leaseDurationMs,
     },
   );
-  const reconcilerService = new WorkflowRuntimeReconciler(repository);
+  const reconcilerService = new WorkflowRuntimeReconciler(repository, { entitlementPort });
   let broker: Awaited<ReturnType<typeof createWorkflowBroker>>;
   try {
     runtimeService.assertRuntimeComposition();
@@ -169,7 +179,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       token: config.pulsar.token,
     });
   } catch (error) {
-    await database.destroy();
+    await Promise.allSettled([database.destroy(), entitlementCache.close()]);
     throw error;
   }
   const workerId = `${process.pid}-${randomUUID()}`;
@@ -187,6 +197,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       broker,
       config,
       database,
+      entitlementCache,
       entryConsumer: startEntryConsumer,
       eventCatalog: WORKFLOW_EVENT_CATALOG,
       eventSubscriptionReader: repository,
@@ -250,6 +261,7 @@ export * from "./contact-identity-port.js";
 export * from "./customer-update-capability-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";
+export * from "./entitlement-cache.js";
 export * from "./error-policy.js";
 export * from "./health.js";
 export * from "./handoff-capability-port.js";

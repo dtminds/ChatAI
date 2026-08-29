@@ -1383,7 +1383,7 @@ function createService(
     capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
     contactIdentityPort: options.contactIdentityPort,
     entitlementPort: {
-      check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit: 10_000, entitled: true }),
     },
     executors: options.executors,
     inferenceTotalTimeoutMs: options.inferenceTotalTimeoutMs,
@@ -1462,7 +1462,7 @@ async function startCapability(
 
 function createControlReader(spec = actionSpec()) {
   return {
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,

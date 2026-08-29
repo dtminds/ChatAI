@@ -42,63 +42,6 @@ type PublishedWriteResult = {
 export class MysqlWorkflowRepository implements WorkflowRepository {
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
 
-  async applyEntitlementLoss(input: Parameters<WorkflowRepository["applyEntitlementLoss"]>[0]) {
-    const workflowIds = await this.db.transaction().execute(async (transaction) => {
-      const workflowType = encodeWorkflowType(input.workflowType);
-      const targetStatuses = input.transition === "pause"
-        ? ["active"]
-        : ["active", "inactive", "paused"];
-      const definitions = await transaction.selectFrom(DEFINITION_TABLE)
-        .select("id")
-        .where("uid", "=", input.uid)
-        .where("workflow_type", "=", workflowType)
-        .where("biz_status", "=", 1)
-        .where("runtime_status", "in", targetStatuses)
-        .forUpdate()
-        .execute();
-      if (definitions.length === 0) return [];
-
-      const ids = definitions.map((definition) => definition.id);
-      await transaction.updateTable(DEFINITION_TABLE).set({
-        op_sub_uid: input.opSubUserId,
-        runtime_status: input.transition === "pause" ? "paused" : "stopped",
-        status_reason: "entitlement_revoked",
-      }).where("id", "in", ids).executeTakeFirstOrThrow();
-      if (input.transition !== "pause") {
-        await transaction.updateTable(REVIEW_TABLE).set({
-          review_sub_uid: input.opSubUserId,
-          review_time: input.transitionedAt,
-          status: "withdrawn",
-        }).where("uid", "=", input.uid)
-          .where("workflow_id", "in", ids)
-          .where("status", "=", "pending")
-          .executeTakeFirst();
-      }
-      await transitionMysqlWorkflowInferenceJobs(transaction, {
-        transitionedAt: input.transitionedAt,
-        transition: input.transition === "pause" ? "pause" : "cancel",
-        uid: input.uid,
-        workflowIds: ids.map(normalizeId),
-      });
-      if (input.transition === "pause") {
-        await enqueueMysqlWorkflowTaskTransitions(transaction, {
-          requestedAt: input.transitionedAt,
-          targetStatus: "suspended",
-          uid: input.uid,
-          workflowIds: ids.map(normalizeId),
-        });
-      } else {
-        await clearMysqlWorkflowTaskTransitions(transaction, {
-          uid: input.uid,
-          workflowIds: ids.map(normalizeId),
-        });
-      }
-      return ids;
-    });
-    if (workflowIds.length === 0) return { affectedDefinitions: 0 };
-    return { affectedDefinitions: workflowIds.length };
-  }
-
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     if (input.clientRequestId) {
       const existing = await this.findDefinitionByRequestId(input.uid, input.clientRequestId);

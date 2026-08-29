@@ -493,43 +493,34 @@ Runtime 对新入口仍校验事件 Subject Type 与 Revision/Binding 一致，�
 
 本期只把“租户是否有权使用某个 Workflow Type”视为 Workflow Type Entitlement，例如是否有权创建和运行 `chatai_sop` 或 `wecom_sop`。节点所需席位、优惠券、账号和其他资源仍是独立发布与执行门槛，不因为某个节点资源失效就停止同类型的全部 Workflow。
 
-Java 是 Product Entitlement 的唯一权威来源。Node 不接收权益事件，不建立租户类型级权益投影，也不运行定时权益扫描任务。Java 提供同步检查接口，至少返回：
+Java 是 Product Entitlement 的唯一权威来源。Node 不接收权益事件，也不建立租户类型级权益投影。Java 提供固定同步接口：
 
 ```ts
-type WorkflowTypeEntitlementResult = {
-  entitled: boolean;
-  unentitledSince: string | null;
-};
+POST /third-internal/wap-embed-workflow-definition/can-run
+body: { uid: number; workflowType: 1 | 2 | 3 }
+response.data: boolean
 ```
 
-`unentitledSince` 是当前连续失去该类型权益的权威起点，使用 RFC 3339 时间；恢复后必须变为 `null`，以后再次失效时使用新的起点。Node 不使用 Workflow `update_time` 或本地首次查询时间推算权益周期。
+类型值固定为 ChatAI SOP=1、WeCom SOP=2、Member SOP=3。只有 HTTP 成功、Java 业务信封成功且 `data` 为 boolean 才构成权益结果；超时、业务错误或非法响应都表示服务不可用，不能解释成无权益。Java 不返回容量，Node 侧每租户活跃 Run 上限默认 10000，可由部署显式覆盖。
 
-Node 只在真正要使用 Workflow 时惰性查询 Java：
+Node 在以下边界查询权益：
 
-- 创建、发布、启用或恢复 Workflow。
+- 创建，以及 Draft、布局、名称、描述、审核、发布、恢复、启用和试运行等编辑操作。删除、暂停、停止和读取不受权益限制。
 - Entry Event 已找到候选 Binding、准备创建 Run 之前。
 - Task、Retry、Wait 到期或其他节点准备继续推进之前。
+- Reconciler 从 `workflow_capacity_guard.active_run_count > 0` 按 UID 主键游标读取仍占用容量的租户，并检查三种 Workflow Type。
 
-同一次请求或调度批次内，相同 `uid + workflowType` 只查询一次。Java 可以提供批量接口以减少候选 Workflow 或 Task 较多时的调用次数，但 Node 不持久化查询结果作为第二权威源。
+查询使用进程内约 60 秒 L1 缓存和 Redis 30 分钟共享缓存，key 为 `workflow:entitlement:v1:<uid>:<workflowType>`。并发回源按 key singleflight 合并。Redis 故障时回源 Java；Redis 不是第二权威源。缓存或普通查询返回 `false` 时，任何自动停用前必须绕过缓存再向 Java 确认一次。
 
 检查结果按以下规则处理：
 
 | Java 结果 | Workflow 处理 | 当前操作 |
 | --- | --- | --- |
-| `entitled = true` | 不自动修改状态 | 按原状态继续；已因权益失效暂停的 Workflow 仍需用户手动或批量恢复 |
-| 无权益且失效不足 7 天 | 同租户、同 Workflow Type 的 `active` Workflow 改为 `paused`；已有 `paused` 保持暂停，`inactive` 保持不变；记录 `statusReason = entitlement_revoked` 和系统审计 | Entry 不创建 Run；Task 不继续执行并保持可重试 |
-| 无权益且失效已满 7 天 | 同租户、同 Workflow Type 的全部 `inactive / paused` Workflow 改为永久 `stopped`；已停止的保持原状态和原因 | 权威 `stopped` 状态提交后当前操作返回；Reconciler 再按有界批次异步取消未完成 Run、Task、Outbox 和 Wait Subscription |
-| Java 查询超时或不可用 | 不修改任何 Workflow 状态 | 创建、发布、启用、恢复失败；Entry 或 Task 暂缓并重试，不在无法确认权益时执行业务动作 |
+| `data = true` | 不自动修改状态 | 按原状态继续；启用或恢复会清除旧的系统状态原因 |
+| `data = false`，且停用前再次确认仍为 `false` | Entry、Task 只把自身 Workflow 改为 `inactive`；Reconciler 只处理该失权类型下仍有未完成 Run 的具体 Workflow ID | Entry 不创建 Run；Task 当前消息 ACK；现有 Reconciler 取消未完成运行资源并释放容量 |
+| Java 查询超时或不可用 | 不修改任何 Workflow 状态 | 控制面写操作失败；Entry 不创建 Run；Task 暂缓并重试 |
 
-权益失效不足 7 天时，已有 Run、Task 和 Wait Subscription 全部保留。Wait Event 可以记录事件命中并形成待执行 Task，但 Workflow 处于暂停状态时不得执行后续节点。权益恢复后不自动恢复运行，避免过期任务集中执行；用户明确恢复时再次查询 Java，确认有权益后才能恢复。
-
-七天是惰性状态边界，不要求精确计时任务：
-
-> 当 Java 返回的 `unentitledSince` 已满 7 天时，Node 在下一次 Entry、Task 推进或用户操作边界把对应 Workflow 转为 `stopped`。
-
-如果一个 Workflow 没有 Entry、没有到期 Task、也没有用户操作，它可以继续以 `inactive` 或 `paused` 状态只保留配置，不为追求准时停止而产生后台扫描。下一次真正使用时仍会先完成权益检查。满七天后转为 `stopped` 的 Workflow 不可原地恢复；权益恢复后只能复制或新建。
-
-任意一个 Workflow 的检查发现权益失效时，状态变更按 `uid + workflowType` 批量作用于同类型 Workflow，避免同一类型出现部分可运行、部分已暂停。Java 返回的 `unentitledSince` 同时作为本轮权益失效审计标识：每条受影响 Workflow 写系统审计，同一租户、Workflow Type 和失效起点只发送一次汇总通知；重复查询只做条件更新，不重复通知。
+控制面查询到无权益时只拒绝当前写操作，不修改 Workflow 状态。状态处理不按 `uid + workflowType` 批量修改全部 Definition，不扫描 Definition 全表，也不新增索引。没有 Entry、Task 或活跃 Run 的失权 Workflow 可以长期保持 `active`；这是接受的惰性状态，因为它不占运行容量。`statusReason = entitlement_revoked` 只用于解释，不参与权限判断。
 
 ### 5.6 跨主体域边界
 
@@ -1133,7 +1124,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 | 冻结 Workflow Type | 产品、Node | Java | 本期使用 `wecom_sop`、`chatai_sop`；`member_sop` 只保留稳定枚举且不可用，并确认主 Subject Type 和不可转换规则 |
 | 冻结 Capability Profile | 产品、Node | Java | 每种类型明确语义上允许的 Start 事件、节点和用户变量，不把 Runtime 进度、Java operation 或套餐差异编码成类型 |
 | 冻结事件 Catalog 与发布顺序 | Node、Java | 运维 | 每个事件明确 Event Type、Payload Version 和 Subject Type；Java、Worker、Backend/Web 按硬顺序发布 |
-| 对接 Workflow Type Entitlement | Java | Node、产品 | Java 接口按 `uid + workflowType` 返回 `entitled + unentitledSince`；Node 按本文定义的惰性边界执行暂停、七天后停止和恢复检查 |
+| 对接 Workflow Type Entitlement | Java | Node、产品 | Java 固定接口按 `uid + workflowType` 返回 boolean；Node 使用共享缓存，并在停用前强制回源确认 |
 | 确认首批事件目录 | 产品 | Java、Node | 本期固定 `message.received`、`contact.friend_added`、`contact.tag_added` 及其适用 Subject Type |
 | 确认 Subject 映射 | Java | Node | 每种事件都能得到稳定的 `subjectType + subjectId`，并明确同一事实多 Subject 投影规则 |
 | 冻结事件 Schema v1 | Node | Java | TypeBox 和 Java DTO 使用相同信封、版本、大小限制、时间格式、消费结果和 JSON Fixture |
@@ -1147,9 +1138,8 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 
 **J0：Workflow Type Entitlement 查询**
 
-- 提供单个或批量 `uid + workflowType` 权益检查接口。
-- 返回当前是否有权益，以及当前连续失效周期的稳定 `unentitledSince`。
-- 恢复权益后返回 `unentitledSince = null`；再次失效时返回新的起点。
+- 提供 `/third-internal/wap-embed-workflow-definition/can-run` 单个 `uid + workflowType` 权益检查接口。
+- 按标准 Java 业务信封返回 boolean `data`。
 - 验收：Node 重复查询得到稳定结果，Java 超时不会被误解释为无权益。
 
 **J1：WorkflowInterestReader**
@@ -1204,9 +1194,9 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 类型创建后不可修改；复制 Workflow 时允许选择目标类型，但必须重新校验并移除不兼容配置。
 - 前端按 Profile 展示语义目录，并读取 Backend 的 Runtime Support 摘要提前提示；打开编辑器不查询 Java Entitlement 或资源状态。
 - Backend 在创建、保存和发布时执行同一语义校验，拒绝绕过前端写入的不兼容节点。
-- 创建、发布、启用和恢复时调用 Java Workflow Type Entitlement 接口；保存 Draft 不要求权益仍有效。
-- 在 Entry 和 Task 推进边界惰性检查权益；失效不足七天批量暂停同类型 Workflow，满七天后批量停止并取消未完成运行数据。
-- 记录系统状态原因、审计和按失效周期去重的租户级汇总通知，不新增权益事件、Node 权益投影或定时扫描任务。
+- 所有 Workflow 编辑操作调用 Java Workflow Type Entitlement 接口；读取、删除、暂停和停止不要求权益。
+- 在 Entry 和 Task 推进边界检查权益；确认失权后只把当前 Workflow 置为 `inactive`。
+- Reconciler 仅扫描仍占容量的租户并处理有未完成 Run 的具体 Workflow，不新增权益事件、Node 权益投影、Definition 全表扫描或索引。
 - 将 Runtime Support 收敛到节点契约 maturity，并建立统一 Production Availability、Event Catalog 校验和完整 blockers。
 - 本轮不增加 Runtime Node Kind，支持集合保持 `start / wait / end`；Fake Entitlement Adapter 只允许由测试组合根直接注入，不能进入正常 Worker 或 Backend 配置。
 - 验收：WeCom SOP 无法保存 ChatAI 消息或 Agent 节点，`member_sop` 无法创建，ChatAI SOP 在权益满足时可以使用。
@@ -1283,7 +1273,7 @@ Node 不应为了减少一次 Java 调用而复制这些资源的存在性、权
 - 覆盖 Event Catalog 不支持事件或 Subject Type 时无法 Publish/Enable，以及 Worker 生产组合缺少 `runtime-ready` 执行路径时启动失败。
 - 覆盖未知 Event Type/Payload Version fail-closed 进入 Entry DLQ，以及 LLM/AI Intent 均通过真实 Chat Completion Adapter 进入生产执行链路。
 - 覆盖旧 Node Schema、Event Payload Version 或 Inference Request Version 仍被活动数据引用时对应 handler 不得移除。
-- 覆盖无权益不足七天暂停、满七天惰性停止、恢复后手动恢复、Java 查询失败不改状态，以及同一失效周期批量更新和通知去重。
+- 覆盖缓存命中、singleflight、`false` 后回源确认、只停用当前 Workflow、Java 查询失败不改状态，以及 capacity guard 有界扫描。
 - 覆盖 Java 动作超时后的同幂等键重试。
 - CI 通过测试组合根直接注入 Fake Broker；Java 接通后再使用 test TDMQ 和真实 Java 入口做手动 Smoke。
 
@@ -1335,7 +1325,7 @@ Fixture 只冻结公共 Entry Event Envelope、Subject 语义、受控 Projectio
 - 生产 `src/index.ts`、package exports、Worker Docker 构建和正常配置解析不得 import、export 或按环境变量选择 Fake；CI 增加生产入口依赖图检查保护这一点。
 - 正常 Worker 不提供 Broker 实现选择环境变量。测试直接调用可注入依赖的 Worker 组合函数，并显式传入 Fake。
 - Fake Event Producer 只读取共享 Fixture 并发布到注入的 Fake Broker，不查询 Binding、不生成真实业务 payload，也不实现 Java Interest Reader。
-- Fake Entitlement Adapter 只按测试脚本返回 `entitled + unentitledSince` 或超时；Fake Capability Adapter 只返回预设的 success、retryable、terminal、unknown、timeout 和非法结果。
+- Fake Entitlement Adapter 只按测试脚本返回 boolean 权益结果或超时；Fake Capability Adapter 只返回预设的 success、retryable、terminal、unknown、timeout 和非法结果。
 - Fake 不实现消息、订单、标签、权益、身份、资源或副作用规则。测试需要命中某个 Workflow 时直接准备 Binding/Subscription 状态，由 Node 权威匹配逻辑决定结果。
 
 Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中移除 Fake Broker；测试只从 `test/support` 直接注入 Fake，不经过生产组合根。
@@ -1431,7 +1421,7 @@ Iteration 1 已从正常 Worker 配置、Broker Factory 和 package exports 中�
 1. 正式确认 WeCom SOP、ChatAI SOP 的产品名称和稳定 `workflowType`，以及 `member_sop` 本期只保留枚举。
 2. 确认两种本期可用类型的主 `subjectType`、Subject ID 来源、唯一性和解析责任方。
 3. 冻结首版 Capability Profile：每种类型语义上允许的 Start 事件、节点和用户变量，并与 Runtime、Deployment 和 Entitlement 门槛分离。
-4. 确认 Java Workflow Type Entitlement 查询接口能够返回稳定的 `entitled + unentitledSince`，并支持 Node 所需批量查询。
+4. 确认 Java Workflow Type Entitlement 固定接口按标准业务信封返回 boolean `data`。
 5. 首批真实事件及其权威 Java 模块，并明确每个事件适用的 Subject Type。
 6. 新增好友、客户打标是直接事件还是统一转化为对应 Subject Type 的 `audience.entered`。
 7. 同一个业务事实映射到多个 Subject Type 时的事件投影和稳定 `eventId` 规则。

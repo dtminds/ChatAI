@@ -91,7 +91,7 @@ describe("Branch runtime", () => {
     let runtimeNow = enteredAt;
     const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
       clock: () => runtimeNow,
-      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
     });
     const started = await service.startRun({
       entryEventId: "event-1",
@@ -240,7 +240,7 @@ async function executeBranch(
   let runtimeNow = enteredAt;
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
     clock: () => runtimeNow,
-    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+    entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
   });
   const started = await service.startRun({
     entryEventId: "event-1",
@@ -273,7 +273,7 @@ async function executeBranch(
 
 function control(spec: ReturnType<typeof compileWorkflowDraft>) {
   return {
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,

@@ -130,7 +130,7 @@ async function createHarness() {
   const broker = new FakeWorkflowBroker();
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
   const service = new WorkflowRuntimeService({
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,
@@ -167,7 +167,7 @@ async function createHarness() {
   }, repository, undefined, {
     clock: () => now,
     entitlementPort: {
-      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
+      check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true })),
     },
   });
   const created = await repository.createRunWithInitialTask({

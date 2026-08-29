@@ -132,13 +132,6 @@ export type WorkflowDefinitionRecordPage = {
 };
 
 export type WorkflowRepository = {
-  applyEntitlementLoss(input: {
-    opSubUserId: string;
-    transitionedAt: Date;
-    transition: "pause" | "stop";
-    uid: number;
-    workflowType: WorkflowType;
-  }): Promise<{ affectedDefinitions: number }>;
   createDefinition(input: {
     clientRequestId?: string;
     description: string;

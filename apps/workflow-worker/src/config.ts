@@ -16,9 +16,7 @@ export type WorkflowWorkerConfig = {
   };
   databaseUrl: string;
   entitlement: {
-    apiUrl: string | null;
-    mode: "allow" | "enforce";
-    token: string | null;
+    activeRunLimit: number;
   };
   healthPort: number;
   javaInternalApi: {
@@ -30,6 +28,13 @@ export type WorkflowWorkerConfig = {
   pulsar: {
     serviceUrl: string | null;
     token: string | null;
+  };
+  redis: {
+    commandTimeoutMs: number;
+    connectTimeoutMs: number;
+    enabled: boolean;
+    keyPrefix: string;
+    url: string | null;
   };
   roles: ReadonlySet<WorkflowWorkerRole>;
   runtime: {
@@ -119,10 +124,10 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     60_000,
     "WORKFLOW_LEASE_DURATION_MS",
   );
-  const entitlementMode = parseEntitlementMode(env.WORKFLOW_ENTITLEMENT_MODE, nodeEnvironment);
-  const entitlementApiUrl = optionalValue(env.WORKFLOW_ENTITLEMENT_API_URL);
-  if (entitlementMode === "enforce" && !entitlementApiUrl) {
-    throw new Error("WORKFLOW_ENTITLEMENT_API_URL is required when WORKFLOW_ENTITLEMENT_MODE=enforce");
+  const redisEnabled = env.REDIS_ENABLED === "true";
+  const redisUrl = optionalValue(env.REDIS_URL);
+  if (redisEnabled && !redisUrl) {
+    throw new Error("REDIS_URL must be configured when REDIS_ENABLED=true");
   }
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
@@ -174,9 +179,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     },
     databaseUrl,
     entitlement: {
-      apiUrl: entitlementApiUrl,
-      mode: entitlementMode,
-      token: optionalValue(env.JAVA_INTERNAL_API_TOKEN),
+      activeRunLimit: parseNonNegativeSafeInteger(
+        env.WORKFLOW_ACTIVE_RUN_LIMIT,
+        10_000,
+        "WORKFLOW_ACTIVE_RUN_LIMIT",
+      ),
     },
     healthPort: parsePort(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
     javaInternalApi: {
@@ -190,6 +197,21 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       "WORKFLOW_MAX_REDELIVER_COUNT",
     ),
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
+    redis: {
+      commandTimeoutMs: parseDurationMs(
+        env.REDIS_COMMAND_TIMEOUT_MS,
+        500,
+        "REDIS_COMMAND_TIMEOUT_MS",
+      ),
+      connectTimeoutMs: parseDurationMs(
+        env.REDIS_CONNECT_TIMEOUT_MS,
+        3_000,
+        "REDIS_CONNECT_TIMEOUT_MS",
+      ),
+      enabled: redisEnabled,
+      keyPrefix: optionalValue(env.REDIS_KEY_PREFIX) ?? "chatai:",
+      url: redisUrl,
+    },
     roles,
     runtime: {
       capabilityMaxRetryDelayMs: parseDurationMs(
@@ -337,19 +359,6 @@ function parseNodeEnvironment(value: string | undefined) {
   throw new Error("NODE_ENV must be development, test, or production");
 }
 
-function parseEntitlementMode(
-  value: string | undefined,
-  nodeEnvironment: string | undefined,
-): WorkflowWorkerConfig["entitlement"]["mode"] {
-  const mode = optionalValue(value);
-  if (nodeEnvironment === "production" && !mode) {
-    throw new Error("Missing required environment variable: WORKFLOW_ENTITLEMENT_MODE");
-  }
-  const resolvedMode = mode ?? "allow";
-  if (resolvedMode === "allow" || resolvedMode === "enforce") return resolvedMode;
-  throw new Error("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
-}
-
 function parseRoles(value: string | undefined, nodeEnvironment: string | undefined) {
   if (!optionalValue(value)) {
     if (nodeEnvironment === "production") {
@@ -385,6 +394,15 @@ function parseDurationMs(value: string | undefined, fallback: number, name: stri
 
 function parseCount(value: string | undefined, fallback: number, name: string) {
   return parseInteger(value, fallback, name, 1_000_000);
+}
+
+function parseNonNegativeSafeInteger(value: string | undefined, fallback: number, name: string) {
+  if (!optionalValue(value)) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
+  return parsed;
 }
 
 function parseConsumerConcurrency(

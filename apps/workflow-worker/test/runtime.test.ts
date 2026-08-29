@@ -227,6 +227,13 @@ describe("workflow worker runtime", () => {
       config: config(new Set(["reconciler"] as const)),
     });
     await vi.waitFor(() => expect(resources.entitlementReconciler).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(resources.dependencies.logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "workflow.worker.role.idle",
+        role: "entitlement-reconciler",
+      }),
+      "workflow worker role idle",
+    ));
 
     await resources.runRole("entitlement-reconciler");
     await resources.runRole("entitlement-reconciler");

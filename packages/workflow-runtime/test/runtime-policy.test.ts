@@ -17,6 +17,7 @@ import {
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
+  type WorkflowRuntimeDefinitionRecord,
 } from "../src/index.js";
 
 const now = new Date("2026-08-10T00:00:00.000Z");
@@ -168,6 +169,38 @@ describe("Workflow runtime policy", () => {
       workflowId: "chatai-workflow",
       workflowType: "chatai_sop",
     });
+    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskVersion: 1,
+    });
+  });
+
+  it("skips entitlement confirmation for a Task whose Workflow is already inactive", async () => {
+    const entitlement = vi.fn()
+      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true })
+      .mockResolvedValue({ entitled: false });
+    const harness = createHarness({ entitlement });
+    const started = await harness.service.startRun(entryInput());
+    const entitlementCalls = entitlement.mock.calls.length;
+    harness.control.findDefinition.mockResolvedValue({
+      bizStatus: 1,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+      statusReason: "entitlement_revoked",
+      workflowType: "chatai_sop",
+    });
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_INACTIVE" });
+
+    expect(entitlement).toHaveBeenCalledTimes(entitlementCalls + 1);
+    expect(entitlement).not.toHaveBeenCalledWith(expect.objectContaining({ forceRefresh: true }));
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
     await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
       status: "dispatched",
       taskVersion: 1,
@@ -468,7 +501,10 @@ function createHarness(options: {
   const deactivateWorkflowForEntitlementLoss = vi.fn(async () => ({ affectedDefinitions: 1 }));
   const control = {
     deactivateWorkflowForEntitlementLoss,
-    findDefinition: vi.fn(async (_uid: number, workflowId: string) => {
+    findDefinition: vi.fn(async (
+      _uid: number,
+      workflowId: string,
+    ): Promise<WorkflowRuntimeDefinitionRecord> => {
       const identity = getWorkflowIdentity(workflowId);
       return {
         bizStatus: 1 as const,

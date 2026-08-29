@@ -1,4 +1,4 @@
-import { WORKFLOW_CAPABILITY_PROFILES, type WorkflowType } from "@chatai/contracts";
+import { getEnabledWorkflowTypes, type WorkflowType } from "@chatai/contracts";
 import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
@@ -7,8 +7,7 @@ import {
 } from "./entitlement.js";
 import type { WorkflowRuntimeRepository } from "./types.js";
 
-const WORKFLOW_TYPES: WorkflowType[] = (Object.keys(WORKFLOW_CAPABILITY_PROFILES) as WorkflowType[])
-  .filter(workflowType => WORKFLOW_CAPABILITY_PROFILES[workflowType].availability === "enabled");
+const WORKFLOW_TYPES = getEnabledWorkflowTypes();
 const ENTITLEMENT_TENANT_CONCURRENCY = 10;
 
 export class WorkflowRuntimeReconciler {

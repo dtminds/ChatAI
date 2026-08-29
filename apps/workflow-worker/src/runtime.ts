@@ -290,7 +290,7 @@ export async function startWorkflowWorkerRuntime(input: {
         }, "workflow entitlement reconciler iteration failed"),
         onHeartbeat: heartbeat => logWorkflowRoleHeartbeat(
           input.logger,
-          "reconciler",
+          "entitlement-reconciler",
           heartbeat,
         ),
         role: "entitlement-reconciler",

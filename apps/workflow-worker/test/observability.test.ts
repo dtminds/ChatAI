@@ -285,6 +285,29 @@ describe("workflow worker observability", () => {
     }), "workflow worker role reported warning counters");
   });
 
+  it("attributes entitlement lookup failures to the entitlement reconciler", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "entitlement-reconciler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: {
+        entitlementChecksUnavailable: 1,
+        entitlementTenantsChecked: 100,
+        entitlementWorkflowsDeactivated: 0,
+      },
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith({
+      durationMs: 20,
+      entitlementChecksUnavailable: 1,
+      entitlementTenantsChecked: 100,
+      entitlementWorkflowsDeactivated: 0,
+      event: "workflow.worker.role.warning",
+      role: "entitlement-reconciler",
+    }, "workflow worker role reported warning counters");
+  });
+
   it("warns when a Scheduler Task transition fails or becomes dead", () => {
     const logger = createLogger();
 

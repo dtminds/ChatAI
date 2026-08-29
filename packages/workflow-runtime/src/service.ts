@@ -963,6 +963,8 @@ export class WorkflowRuntimeService {
         workflowType,
       });
       if (decision.action === "allow") return decision.result;
+      const definition = await this.controlRepository.findDefinition(uid, workflowId);
+      if (definition?.runtimeStatus === "inactive") throw runtimeStatusError("inactive");
       const confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
         forceRefresh: true,
         uid,

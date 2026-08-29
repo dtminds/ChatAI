@@ -12,6 +12,7 @@ import type {
 } from "@chatai/contracts";
 import {
   AlertCircleIcon,
+  InformationCircleIcon,
   RefreshIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -43,6 +44,12 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RequestNormalizedError } from "@/lib/request";
 import { useVisiblePolling } from "../insights/use-visible-polling";
@@ -57,11 +64,15 @@ import {
 } from "./workflow-observability-api";
 
 const PAGE_SIZE = 20;
-const stateFilters: Array<{ label: string; value: WorkflowObservabilityListState }> = [
+const stateFilters: Array<{
+  label: string;
+  tip?: string;
+  value: WorkflowObservabilityListState;
+}> = [
   { label: "全部", value: "all" },
-  { label: "有积压", value: "backlog" },
-  { label: "迁移中", value: "transitioning" },
-  { label: "迁移失败", value: "dead" },
+  { label: "有积压", tip: "到期任务尚未调度", value: "backlog" },
+  { label: "迁移中", tip: "暂停或恢复尚未完成", value: "transitioning" },
+  { label: "迁移失败", tip: "暂停或恢复已失败", value: "dead" },
 ];
 const roleLabels: Record<WorkflowObservabilityRole, string> = {
   scheduler: "调度",
@@ -363,17 +374,20 @@ export function WorkflowObservabilityPage() {
               }}
               value={state}
             >
-              <TabsList className="h-10 rounded-[8px] bg-muted p-1">
-                {stateFilters.map((filter) => (
-                  <TabsTrigger
-                    className="h-8 rounded-[6px] px-3 py-0 text-sm"
-                    key={filter.value}
-                    value={filter.value}
-                  >
-                    {filter.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+              <TooltipProvider>
+                <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+                  {stateFilters.map((filter) => (
+                    <TabsTrigger
+                      className="h-8 gap-1 rounded-[6px] px-3 py-0 text-sm"
+                      key={filter.value}
+                      value={filter.value}
+                    >
+                      {filter.label}
+                      {filter.tip ? <FilterTip tip={filter.tip} /> : null}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </TooltipProvider>
             </Tabs>
             <div className="flex w-full flex-wrap gap-2 lg:w-auto">
               <Input
@@ -608,6 +622,24 @@ function transitionLabel(transition: WorkflowObservabilityTransition) {
     return transition.targetStatus === "pending" ? "恢复中" : "暂停中";
   }
   return transition.targetStatus === "pending" ? "待恢复" : "待暂停";
+}
+
+function FilterTip({ tip }: { tip: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-hidden="true"
+          className="inline-flex text-muted-foreground"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.8} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={6}>{tip}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function HealthBadge({ health }: { health: WorkflowObservabilityHealth }) {

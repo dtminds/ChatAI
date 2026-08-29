@@ -200,6 +200,16 @@ describe("workflow observability page", () => {
     expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
   });
 
+  it("shows a filter tip when hovering the info icon", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const tab = await screen.findByRole("tab", { name: "有积压" });
+    const tip = tab.querySelector("[data-slot='tooltip-trigger']");
+    expect(tip).toBeTruthy();
+    await user.hover(tip as Element);
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+  });
+
   it("opens a detail sheet on name click without prefetching every row", async () => {
     const user = userEvent.setup();
     renderPage();

@@ -1,21 +1,41 @@
 # Database Change Log
 
-## 2026-08-29 Workflow 活跃主体 Run 与节点指标索引收尾
+## 2026-08-29 Workflow Run 索引收敛与节点指标索引收尾
 
-- Workflow 准入在主体串行锁内按 `uid + workflow_id + subject_type + subject_id + active status` 检查是否已有活跃 Run；新增专用索引，避免滚动窗口主体在 180 天保留期内反复扫描历史终态 Run。
-- `idx_workflow_run_entry_window` 继续服务滚动窗口 `create_time` 计数，不能由状态优先索引替代。
-- 删除 `idx_workflow_node_metric_query`；它是唯一索引 `uk_workflow_node_metric_dimension` 的严格前缀，现有 Revision/Node 维度查询仍由唯一索引完整覆盖。
-- 保留 `idx_workflow_node_metric_node_query`，供数据总览按当前 Node ID 跨 Revision 聚合。
+- Workflow Run 从 10 个索引收敛为 7 个。`idx_workflow_run_lifecycle (completed_at, id)` 同时服务活跃 Run 全局巡检和终态历史清理；生命周期 CHECK 固化活跃态与终态的 `completed_at` 不变量。
+- `idx_workflow_run_status_records` 调整为 `(uid, status, workflow_id, id)`，同时服务租户容量校正、Workflow 状态记录和有界控制面扫描。
+- 删除记录列表和 Revision cleanup 无法有效利用的 `idx_workflow_run_retained_records`、`idx_workflow_run_cleanup_node`，以及被 lifecycle 索引替代的两条全局状态索引。
+- Entry Guard 保存 `latest_run_id`，主体串行锁内通过 Run 主键点查最近一次运行是否活跃，避免新增包含长 `subject_id` 的 active-subject 索引。`idx_workflow_run_entry_window` 继续服务滚动窗口计数。
+- 删除 `idx_workflow_node_metric_query`；它是唯一索引 `uk_workflow_node_metric_dimension` 的严格前缀。保留 `idx_workflow_node_metric_node_query` 供数据总览按当前 Node ID 跨 Revision 聚合。
+
+执行 DDL 前确认查询结果为 `0`；否则先修复 Run 生命周期脏数据：
 
 ```sql
+SELECT COUNT(*) AS invalid_run_count
+FROM xy_wap_embed_workflow_run
+WHERE NOT (
+  (status IN ('queued', 'running', 'waiting') AND completed_at IS NULL)
+  OR (status IN ('completed', 'failed', 'cancelled') AND completed_at IS NOT NULL)
+);
+```
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_entry_guard
+  ADD COLUMN latest_run_id BIGINT UNSIGNED NULL
+    COMMENT '最近一次成功准入的Run ID，用于主体活跃态点查'
+    AFTER total_entries;
+
 ALTER TABLE xy_wap_embed_workflow_run
-  ADD KEY idx_workflow_run_active_subject (
-    uid,
-    workflow_id,
-    subject_type,
-    subject_id,
-    status,
-    id
+  DROP KEY idx_workflow_run_status_records,
+  DROP KEY idx_workflow_run_retained_records,
+  DROP KEY idx_workflow_run_cleanup_node,
+  DROP KEY idx_workflow_run_status_reconcile,
+  DROP KEY idx_workflow_run_history_cleanup,
+  ADD KEY idx_workflow_run_status_records (uid, status, workflow_id, id),
+  ADD KEY idx_workflow_run_lifecycle (completed_at, id),
+  ADD CONSTRAINT chk_workflow_run_lifecycle_time CHECK (
+    (status IN ('queued', 'running', 'waiting') AND completed_at IS NULL)
+    OR (status IN ('completed', 'failed', 'cancelled') AND completed_at IS NOT NULL)
   );
 
 ALTER TABLE xy_wap_embed_workflow_node_metric

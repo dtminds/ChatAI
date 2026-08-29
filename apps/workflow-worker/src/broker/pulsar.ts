@@ -14,6 +14,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
     loops: Promise<void>[];
   }>();
   private readonly producers = new Map<string, Pulsar.Producer>();
+  private readonly producerCreations = new Map<string, Promise<Pulsar.Producer>>();
   private closed = false;
 
   constructor(input: { serviceUrl: string; token: string }) {
@@ -73,25 +74,36 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
     if (this.closed) return;
     this.closed = true;
     await Promise.all([...this.consumers.keys()].map(consumer => this.closeConsumer(consumer)));
+    await Promise.allSettled([...this.producerCreations.values()]);
     await Promise.all([...this.producers.values()].map(async producer => {
       await producer.flush();
       await producer.close();
     }));
     this.producers.clear();
+    this.producerCreations.clear();
     await this.client.close();
   }
 
   private async getProducer(topic: string) {
     const existing = this.producers.get(topic);
     if (existing) return existing;
-    const producer = await this.client.createProducer({
+    const pending = this.producerCreations.get(topic);
+    if (pending) return pending;
+    const creation = this.client.createProducer({
       batchingEnabled: true,
       batchingMaxPublishDelayMs: 10,
       blockIfQueueFull: true,
       topic,
+    }).then(producer => {
+      this.producers.set(topic, producer);
+      return producer;
+    }).finally(() => {
+      if (this.producerCreations.get(topic) === creation) {
+        this.producerCreations.delete(topic);
+      }
     });
-    this.producers.set(topic, producer);
-    return producer;
+    this.producerCreations.set(topic, creation);
+    return creation;
   }
 
   private async closeConsumer(consumer: Pulsar.Consumer) {

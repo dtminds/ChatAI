@@ -34,6 +34,8 @@ describe("workflow outbox publisher", () => {
     releases.splice(0).forEach(release => release());
 
     await expect(publishing).resolves.toEqual({ claimed: 10, dead: 0, failed: 0, sent: 10 });
+    expect(broker.publish.mock.calls.map(([input]) => input.key))
+      .toEqual(records.map(record => record.payload.runId));
     expect(repository.markOutboxSentBatch).toHaveBeenNthCalledWith(1, {
       ids: records.slice(0, 8).map(record => record.id),
       leaseOwner: "publisher-1",

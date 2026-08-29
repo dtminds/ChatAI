@@ -116,7 +116,12 @@ describe("MySQL workflow runtime repository contract", () => {
       async setRunStatus(runId, status) {
         await contractDatabase.transaction().execute(async transaction => {
           await transaction.updateTable("xy_wap_embed_workflow_run")
-            .set({ status })
+            .set({
+              completed_at: ["completed", "failed", "cancelled"].includes(status)
+                ? new Date("2099-01-01T00:00:00+08:00")
+                : null,
+              status,
+            })
             .where("uid", "=", 9)
             .where("id", "=", runId)
             .executeTakeFirstOrThrow();
@@ -962,7 +967,7 @@ describe("MySQL workflow runtime repository contract", () => {
       sequence: 2,
     }).executeTakeFirstOrThrow();
     await database.updateTable("xy_wap_embed_workflow_run")
-      .set({ status: "completed" })
+      .set({ completed_at: expiredAt, status: "completed" })
       .where("id", "=", alreadyTerminal.run.id)
       .executeTakeFirstOrThrow();
     await database.updateTable("xy_wap_embed_workflow_capacity_guard")
@@ -1078,10 +1083,73 @@ describe("MySQL workflow runtime repository contract", () => {
 
     expect(results.filter(result => result.kind === "success")).toHaveLength(1);
     expect(results.filter(result => result.kind === "active-run-rejected")).toHaveLength(1);
+    const admittedRun = results.find(result => result.kind === "success");
+    if (!admittedRun || admittedRun.kind !== "success") throw new Error("Expected one admitted Run");
+    await expect(database.selectFrom("xy_wap_embed_workflow_entry_guard")
+      .select("latest_run_id")
+      .where("uid", "=", 9)
+      .where("workflow_id", "=", "31")
+      .where("subject_type", "=", 1)
+      .where("subject_id", "=", "customer-1")
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ latest_run_id: admittedRun.run.id });
     await expect(database.selectFrom("xy_wap_embed_workflow_run")
       .select("id")
       .where("uid", "=", 9)
       .where("workflow_id", "=", "31")
+      .execute())
+      .resolves.toHaveLength(1);
+  });
+
+  it("rejects an active Run when an existing Guard has no latest Run pointer", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const input = {
+      activeRunLimit: 10_000,
+      context: {},
+      entryPolicy: { mode: "never" as const },
+      initialNodeId: "start",
+      initialNodeKind: "start" as const,
+      occurredAt: new Date("2026-08-24T08:30:15.123Z"),
+      revision: 1,
+      shardId: 7,
+      subjectId: "legacy-guard-subject",
+      subjectType: "chatai_contact" as const,
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop" as const,
+    };
+    const created = await repository.createRunWithInitialTask({
+      ...input,
+      entryEventId: "legacy-guard-event-1",
+    });
+    if (created.kind !== "success") throw new Error(`Run creation failed: ${created.kind}`);
+    await database.updateTable("xy_wap_embed_workflow_entry_guard")
+      .set({ latest_run_id: null })
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("subject_type", "=", 1)
+      .where("subject_id", "=", input.subjectId)
+      .executeTakeFirstOrThrow();
+
+    await expect(repository.createRunWithInitialTask({
+      ...input,
+      entryEventId: "legacy-guard-event-2",
+    })).resolves.toEqual({ kind: "active-run-rejected" });
+    await expect(database.selectFrom("xy_wap_embed_workflow_entry_guard")
+      .select("latest_run_id")
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("subject_type", "=", 1)
+      .where("subject_id", "=", input.subjectId)
+      .executeTakeFirstOrThrow())
+      .resolves.toEqual({ latest_run_id: created.run.id });
+    await expect(database.selectFrom("xy_wap_embed_workflow_run")
+      .select("id")
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("subject_type", "=", 1)
+      .where("subject_id", "=", input.subjectId)
       .execute())
       .resolves.toHaveLength(1);
   });

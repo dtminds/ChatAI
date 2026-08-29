@@ -77,6 +77,8 @@ import type {
   WorkflowEventSubscriptionRecord,
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRevisionRecord,
+  WorkflowRuntimeSnapshotKey,
+  WorkflowRuntimeSnapshotRecord,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
@@ -179,6 +181,13 @@ export class WorkflowRuntimeService {
     throw runtimeNodeUnsupportedError();
   }
 
+  async loadRuntimeSnapshots(input: {
+    keys: readonly WorkflowRuntimeSnapshotKey[];
+    uid: number;
+  }) {
+    return this.controlRepository.findRuntimeSnapshots(input.uid, input.keys);
+  }
+
   private assertSpecExecutable(spec: WorkflowExecutionSpec) {
     for (const node of spec.nodes) this.assertNodeExecutable(node);
   }
@@ -191,19 +200,37 @@ export class WorkflowRuntimeService {
     trigger: Record<string, unknown>;
     uid: number;
     workflowId: string;
+    runtimeSnapshot?: WorkflowRuntimeSnapshotRecord | null;
   }) {
-    const definition = await this.controlRepository.findDefinition(input.uid, input.workflowId);
-    if (!definition) throw workflowUnavailable();
+    let snapshot = input.runtimeSnapshot;
+    if (snapshot === undefined) {
+      const definition = await this.controlRepository.findDefinition(input.uid, input.workflowId);
+      if (!definition) throw workflowUnavailable();
+      if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
+        throw runtimeStatusError(definition.runtimeStatus);
+      }
+      if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
+      const revision = await this.controlRepository.findRevision(
+        input.uid,
+        input.workflowId,
+        definition.publishedRevision,
+      );
+      if (!revision) {
+        throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
+      }
+      snapshot = { definition, revision, uid: input.uid, workflowId: input.workflowId };
+    }
+    if (!snapshot) throw workflowUnavailable();
+    if (snapshot.uid !== input.uid
+      || snapshot.workflowId !== input.workflowId
+      || snapshot.revision.revision !== input.expectedRevision) {
+      throw staleDefinitionError();
+    }
+    const { definition, revision } = snapshot;
     if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
       throw runtimeStatusError(definition.runtimeStatus);
     }
     if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
-    const revision = await this.controlRepository.findRevision(
-      input.uid,
-      input.workflowId,
-      definition.publishedRevision,
-    );
-    if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
     if (revision.workflowType !== definition.workflowType
       || revision.subjectType !== input.subjectType) {
       throw staleDefinitionError();
@@ -337,6 +364,7 @@ export class WorkflowRuntimeService {
     subjectId: string;
     subjectType: WorkflowSubjectType;
     uid: number;
+    runtimeSnapshot?: WorkflowRuntimeSnapshotRecord | null;
   }) {
     if (input.subscription.uid !== input.uid
       || input.subscription.eventType !== input.eventType
@@ -344,18 +372,30 @@ export class WorkflowRuntimeService {
       || input.subscription.subjectType !== input.subjectType) {
       throw staleDefinitionError();
     }
-    const definition = await this.controlRepository.findDefinition(
-      input.uid,
-      input.subscription.workflowId,
-    );
-    if (!definition) throw staleDefinitionError();
-    const revision = await this.controlRepository.findRevision(
-      input.uid,
-      input.subscription.workflowId,
-      input.subscription.revision,
-    );
-    if (!revision
-      || revision.workflowType !== definition.workflowType
+    let snapshot = input.runtimeSnapshot;
+    if (snapshot === undefined) {
+      const definition = await this.controlRepository.findDefinition(
+        input.uid,
+        input.subscription.workflowId,
+      );
+      if (!definition) throw staleDefinitionError();
+      const revision = await this.controlRepository.findRevision(
+        input.uid,
+        input.subscription.workflowId,
+        input.subscription.revision,
+      );
+      snapshot = revision
+        ? { definition, revision, uid: input.uid, workflowId: input.subscription.workflowId }
+        : null;
+    }
+    if (!snapshot
+      || snapshot.uid !== input.uid
+      || snapshot.workflowId !== input.subscription.workflowId
+      || snapshot.revision.revision !== input.subscription.revision) {
+      throw staleDefinitionError();
+    }
+    const { definition, revision } = snapshot;
+    if (revision.workflowType !== definition.workflowType
       || revision.subjectType !== input.subscription.subjectType) {
       throw staleDefinitionError();
     }

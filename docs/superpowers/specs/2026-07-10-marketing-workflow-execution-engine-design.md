@@ -497,6 +497,7 @@ id
 uid
 workflow_id
 revision
+subject_type
 subject_id
 entry_event_id
 shard_id
@@ -516,18 +517,18 @@ completed_at
 
 ```text
 UNIQUE (uid, workflow_id, entry_event_id)
-(uid, workflow_id, revision, id)
-(uid, workflow_id, status, revision, id)
-(uid, workflow_id, revision, current_node_id, id)
-(uid, workflow_id, subject_id, create_time, id)
-(status, id)
+(uid, workflow_id, id)
+(uid, status, workflow_id, id)
+(uid, workflow_id, current_node_id, id)
+(uid, workflow_id, subject_type, subject_id, create_time, id)
+(completed_at, id)
 ```
 
-`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
+`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(status, bucket_time, due_at, id)` 全局到期索引为准。Run 以 `completed_at IS NULL` 表示活跃生命周期，Reconciler 使用 `(completed_at, id)` 扫描活跃 Run；同一索引也按完成时间服务终态历史清理。应用写路径同步维护 Run 状态与 `completed_at`，相关查询同时保留状态过滤；新增 Run 状态时必须同步更新状态机、终态集合和持久化映射。
 
 `subject_id` 是引擎不解析的不透明字符串，其唯一业务范围为 `uid + subject_id`。平台、托管账号或外部联系人 ID 的组合方式由 Trigger Adapter 决定。
 
-`(uid, workflow_id, entry_event_id)` 唯一键负责入口事件幂等。是否允许同一客户重复进入由 Start 规则决定，通过 Entry Guard 串行化并使用 Run 的客户时间窗索引校验，不能仅依赖应用内存防重。
+`(uid, workflow_id, entry_event_id)` 唯一键负责入口事件幂等。是否允许同一客户重复进入由 Start 规则决定，通过 Entry Guard 串行化；Guard 的 `latest_run_id` 通过 Run 主键点查最近一次运行是否活跃，Run 的客户时间窗索引用于滚动窗口计数，不能仅依赖应用内存防重。
 
 ### 9.5 `xy_wap_embed_workflow_task`
 

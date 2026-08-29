@@ -7,7 +7,12 @@ import type {
   WorkflowRepository,
   WorkflowRevisionRecord,
 } from "./workflow-repository-types.js";
-import type { WorkflowTriggerBindingReader, WorkflowTriggerBindingRecord } from "@chatai/workflow-runtime";
+import type {
+  WorkflowRuntimeSnapshotKey,
+  WorkflowRuntimeSnapshotReadResult,
+  WorkflowTriggerBindingReader,
+  WorkflowTriggerBindingRecord,
+} from "@chatai/workflow-runtime";
 
 type MemoryDefinition = WorkflowDefinitionRecord & { clientRequestId?: string };
 
@@ -93,6 +98,33 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       && candidate.revision === revision,
     );
     return item ? clone(item) : null;
+  }
+
+  async findRuntimeSnapshots(
+    uid: number,
+    keys: readonly WorkflowRuntimeSnapshotKey[],
+  ): Promise<WorkflowRuntimeSnapshotReadResult> {
+    const uniqueKeys = [...new Map(keys.map(key => [
+      `${key.workflowId}:${key.revision}`,
+      key,
+    ])).values()];
+    const snapshots = uniqueKeys.flatMap(key => {
+      const definition = this.findActive(uid, key.workflowId);
+      const revision = this.revisions.find(candidate =>
+        candidate.uid === uid
+        && candidate.workflowId === key.workflowId
+        && candidate.revision === key.revision,
+      );
+      return definition && revision
+        ? [{
+            definition: clone(definition),
+            revision: clone(revision),
+            uid,
+            workflowId: key.workflowId,
+          }]
+        : [];
+    });
+    return { invalidKeys: [], snapshots };
   }
 
   async findReview(uid: number, workflowId: string, reviewId: string) {

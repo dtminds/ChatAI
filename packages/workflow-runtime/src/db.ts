@@ -110,6 +110,7 @@ export interface WorkflowRunTable {
 export interface WorkflowEntryGuardTable {
   create_time: GeneratedDate;
   id: Generated<DatabaseId>;
+  latest_run_id: Generated<DatabaseId | null>;
   subject_id: string;
   subject_type: number;
   total_entries: number;

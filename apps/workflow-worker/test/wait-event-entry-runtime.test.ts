@@ -144,6 +144,26 @@ async function createHarness() {
       subjectType: "chatai_contact" as const,
       workflowType: "chatai_sop" as const,
     })),
+    findRuntimeSnapshots: vi.fn(async (uid, keys) => ({
+      invalidKeys: [],
+      snapshots: keys.map(({ revision, workflowId }) => ({
+        definition: {
+          bizStatus: 1 as const,
+          publishedRevision: 1,
+          runtimeStatus: "active" as const,
+          statusReason: null,
+          workflowType: "chatai_sop" as const,
+        },
+        revision: {
+          executionSpec: executionSpec(),
+          revision,
+          subjectType: "chatai_contact" as const,
+          workflowType: "chatai_sop" as const,
+        },
+        uid,
+        workflowId,
+      })),
+    })),
   }, repository, undefined, {
     clock: () => now,
     entitlementPort: {

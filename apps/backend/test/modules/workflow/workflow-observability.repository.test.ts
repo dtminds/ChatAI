@@ -24,6 +24,17 @@ describe("workflow observability repository", () => {
     )).toBe(true);
   });
 
+  it("counts transitions only for live definitions", async () => {
+    const db = createRecordingDb();
+    const repository = new WorkflowObservabilityRepository(db as never);
+
+    await repository.getTransitionCounts();
+
+    expect(db.queries[0]?.table).toBe(`${TRANSITION_TABLE} as transition`);
+    expect(db.queries[0]?.whereSql).toContain("definition.biz_status");
+    expect(db.queries[0]?.whereSql).toContain("1");
+  });
+
   it("pages from the filter driver table instead of slicing definitions", async () => {
     const cases = [
       { firstTable: DEFINITION_TABLE, state: "all" as const },
@@ -113,8 +124,8 @@ function createRecordingDb(options: { keyCount?: number } = {}) {
         orderBy: () => builder,
         select: () => builder,
         selectAll: () => builder,
-        where: (clause: unknown) => {
-          query.whereSql += ` ${clauseSql(clause)}`;
+        where: (...args: unknown[]) => {
+          query.whereSql += ` ${args.map(clauseSql).join(" ")}`;
           return builder;
         },
       };

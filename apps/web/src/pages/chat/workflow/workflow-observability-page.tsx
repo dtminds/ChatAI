@@ -3,6 +3,9 @@ import type {
   WorkflowObservabilityListState,
   WorkflowObservabilityRole,
   WorkflowObservabilitySummaryResponse,
+  WorkflowObservabilityTaskDistribution,
+  WorkflowObservabilityTransition,
+  WorkflowObservabilityWorkflowDetailResponse,
   WorkflowObservabilityWorkflowItem,
   WorkflowObservabilityWorkflowListResponse,
   WorkflowRuntimeStatus,
@@ -19,6 +22,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -41,6 +51,7 @@ import {
   AiHostingPageHeader,
 } from "../ai-hosting/ai-hosting-layout";
 import {
+  getWorkflowObservabilityDetail,
   getWorkflowObservabilitySummary,
   listWorkflowObservabilityWorkflows,
 } from "./workflow-observability-api";
@@ -50,7 +61,7 @@ const stateFilters: Array<{ label: string; value: WorkflowObservabilityListState
   { label: "全部", value: "all" },
   { label: "有积压", value: "backlog" },
   { label: "迁移中", value: "transitioning" },
-  { label: "暂停失败", value: "dead" },
+  { label: "迁移失败", value: "dead" },
 ];
 const roleLabels: Record<WorkflowObservabilityRole, string> = {
   scheduler: "调度",
@@ -72,6 +83,18 @@ const runtimeLabels: Record<WorkflowRuntimeStatus, string> = {
   paused: "已暂停",
   stopped: "已停止",
 };
+const taskStatusLabels: Record<keyof WorkflowObservabilityTaskDistribution, string> = {
+  pending: "待调度",
+  suspended: "已暂停",
+  waiting_external: "等待外部",
+  leased: "已租约",
+  dispatched: "已派发",
+  running: "运行中",
+  completed: "已完成",
+  cancelled: "已取消",
+  dead: "失败",
+};
+const taskStatusOrder = Object.keys(taskStatusLabels) as Array<keyof WorkflowObservabilityTaskDistribution>;
 
 export function WorkflowObservabilityPage() {
   const [summary, setSummary] = useState<WorkflowObservabilitySummaryResponse>();
@@ -86,6 +109,11 @@ export function WorkflowObservabilityPage() {
   const [uid, setUid] = useState<number>();
   const [workflowId, setWorkflowId] = useState<string>();
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [selectedItem, setSelectedItem] = useState<WorkflowObservabilityWorkflowItem>();
+  const [detail, setDetail] = useState<WorkflowObservabilityWorkflowDetailResponse>();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailRefreshVersion, setDetailRefreshVersion] = useState(0);
 
   const load = useCallback(async ({
     showLoading,
@@ -131,6 +159,52 @@ export function WorkflowObservabilityPage() {
     load,
     refreshKey: `${page}:${state}:${uid ?? ""}:${workflowId ?? ""}:${refreshVersion}`,
   });
+
+  const selectedWorkflowId = selectedItem?.workflowId;
+  const loadDetail = useCallback(async ({
+    showLoading,
+    signal,
+  }: {
+    showLoading: boolean;
+    signal: AbortSignal;
+  }) => {
+    if (!selectedWorkflowId) return;
+    if (showLoading) setDetailLoading(true);
+    try {
+      const nextDetail = await getWorkflowObservabilityDetail(selectedWorkflowId, { signal });
+      if (!signal.aborted) {
+        setDetail(nextDetail);
+        setDetailError(false);
+      }
+    } catch {
+      if (!signal.aborted) setDetailError(true);
+    } finally {
+      if (!signal.aborted) setDetailLoading(false);
+    }
+  }, [selectedWorkflowId]);
+
+  useVisiblePolling({
+    enabled: !forbidden && selectedWorkflowId != null,
+    intervalMs: 15_000,
+    load: loadDetail,
+    refreshKey: `${selectedWorkflowId ?? ""}:${detailRefreshVersion}`,
+  });
+
+  function openDetail(item: WorkflowObservabilityWorkflowItem) {
+    if (selectedItem?.workflowId !== item.workflowId) {
+      setDetail(undefined);
+      setDetailError(false);
+    }
+    setSelectedItem(item);
+  }
+
+  function closeDetail(open: boolean) {
+    if (open) return;
+    setSelectedItem(undefined);
+    setDetail(undefined);
+    setDetailError(false);
+    setDetailLoading(false);
+  }
 
   function search() {
     const nextUid = parsePositiveInteger(uidInput, "请输入正确的 UID");
@@ -218,7 +292,7 @@ export function WorkflowObservabilityPage() {
               size="sm"
               variant="outline"
             >
-              查看暂停失败
+              查看迁移失败
             </Button>
           </div>
         ) : null}
@@ -348,7 +422,11 @@ export function WorkflowObservabilityPage() {
                   </TableRow>
                 ) : list?.items.length ? (
                   list.items.map((item) => (
-                    <WorkflowRow item={item} key={`${item.uid}:${item.workflowId}`} />
+                    <WorkflowRow
+                      item={item}
+                      key={`${item.uid}:${item.workflowId}`}
+                      onOpen={openDetail}
+                    />
                   ))
                 ) : (
                   <TableRow>
@@ -372,17 +450,34 @@ export function WorkflowObservabilityPage() {
           ) : null}
         </section>
       </div>
+      <WorkflowDetailSheet
+        detail={detail}
+        error={detailError}
+        loading={detailLoading}
+        name={selectedItem?.name}
+        onOpenChange={closeDetail}
+        onRetry={() => setDetailRefreshVersion((value) => value + 1)}
+        open={selectedItem != null}
+        uid={selectedItem?.uid}
+        workflowId={selectedItem?.workflowId}
+      />
     </AiHostingLayout>
   );
 }
 
-function WorkflowRow({ item }: { item: WorkflowObservabilityWorkflowItem }) {
+function WorkflowRow({
+  item,
+  onOpen,
+}: {
+  item: WorkflowObservabilityWorkflowItem;
+  onOpen: (item: WorkflowObservabilityWorkflowItem) => void;
+}) {
   return (
     <TableRow>
       <TableCell className="font-mono tabular-nums">{item.uid}</TableCell>
       <TableCell>
-        <Button asChild className="h-auto p-0" variant="link">
-          <Link to={`/chat/workflows/${item.workflowId}/data`}>{item.name}</Link>
+        <Button className="h-auto p-0" onClick={() => onOpen(item)} variant="link">
+          {item.name}
         </Button>
       </TableCell>
       <TableCell>{runtimeLabels[item.runtimeStatus]}</TableCell>
@@ -393,7 +488,7 @@ function WorkflowRow({ item }: { item: WorkflowObservabilityWorkflowItem }) {
       <TableCell>
         {item.transition ? (
           <span className={cn("text-sm", item.transition.status === "dead" && "text-destructive")}>
-            {transitionLabel(item.transition.status)}
+            {transitionLabel(item.transition)}
           </span>
         ) : "—"}
       </TableCell>
@@ -402,10 +497,114 @@ function WorkflowRow({ item }: { item: WorkflowObservabilityWorkflowItem }) {
   );
 }
 
-function transitionLabel(status: "pending" | "leased" | "dead") {
-  if (status === "dead") return "暂停失败";
-  if (status === "leased") return "迁移中";
-  return "待迁移";
+function WorkflowDetailSheet({
+  detail,
+  error,
+  loading,
+  name,
+  onOpenChange,
+  onRetry,
+  open,
+  uid,
+  workflowId,
+}: {
+  detail?: WorkflowObservabilityWorkflowDetailResponse;
+  error: boolean;
+  loading: boolean;
+  name?: string;
+  onOpenChange: (open: boolean) => void;
+  onRetry: () => void;
+  open: boolean;
+  uid?: number;
+  workflowId?: string;
+}) {
+  const title = detail?.name ?? name ?? "工作流详情";
+  return (
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent className="flex w-full flex-col overflow-hidden sm:max-w-[520px]">
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription>
+            UID {uid ?? "—"} · {workflowId ?? "—"}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+          {loading && !detail ? (
+            <Loading compact />
+          ) : error && !detail ? (
+            <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+              <span>加载失败</span>
+              <Button onClick={onRetry} variant="outline">重新加载</Button>
+            </div>
+          ) : detail ? (
+            <div className="space-y-5">
+              {error ? (
+                <div className="rounded-[8px] border border-warning/30 bg-warning-muted/30 px-3 py-2 text-sm text-warning" role="status">
+                  刷新失败，当前展示上次结果
+                </div>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3">
+                <StatusValue label="运行状态" value={runtimeLabels[detail.runtimeStatus]} />
+                <StatusValue
+                  label="到期积压"
+                  value={formatInteger(detail.dueBacklogCount)}
+                />
+                <StatusValue label="活动运行" value={formatInteger(detail.activeRunCount)} />
+                <StatusValue
+                  label="最早到期"
+                  value={formatTimestamp(detail.oldestDueAt)}
+                />
+              </div>
+              {detail.statusReason ? (
+                <p className="text-sm text-muted-foreground">{detail.statusReason}</p>
+              ) : null}
+              <section>
+                <h3 className="text-sm font-semibold">迁移</h3>
+                {detail.transition ? (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <StatusValue
+                      label="状态"
+                      value={transitionLabel(detail.transition)}
+                    />
+                    <StatusValue label="尝试次数" value={formatInteger(detail.transition.attempt)} />
+                    <StatusValue label="下次尝试" value={formatTimestamp(detail.transition.nextAttemptAt)} />
+                    <StatusValue
+                      label="最近错误"
+                      value={detail.transition.lastErrorCode ?? "—"}
+                    />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">暂无数据</p>
+                )}
+              </section>
+              <section>
+                <h3 className="text-sm font-semibold">任务分布</h3>
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                  {taskStatusOrder.map((status) => (
+                    <StatusValue
+                      key={status}
+                      label={taskStatusLabels[status]}
+                      value={formatInteger(detail.taskDistribution[status])}
+                    />
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function transitionLabel(transition: WorkflowObservabilityTransition) {
+  if (transition.status === "dead") {
+    return transition.targetStatus === "pending" ? "恢复失败" : "暂停失败";
+  }
+  if (transition.status === "leased") {
+    return transition.targetStatus === "pending" ? "恢复中" : "暂停中";
+  }
+  return transition.targetStatus === "pending" ? "待恢复" : "待暂停";
 }
 
 function HealthBadge({ health }: { health: WorkflowObservabilityHealth }) {

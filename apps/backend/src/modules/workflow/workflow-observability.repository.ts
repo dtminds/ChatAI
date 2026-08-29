@@ -158,10 +158,14 @@ export class WorkflowObservabilityRepository {
   }
 
   async getTransitionCounts(): Promise<TransitionCounts> {
-    const rows = await this.db.selectFrom(TRANSITION_TABLE)
-      .select(["status", sql<number>`count(*)`.as("count")])
-      .where("status", "in", ["pending", "leased", "dead"])
-      .groupBy("status")
+    const rows = await this.db.selectFrom(`${TRANSITION_TABLE} as transition`)
+      .innerJoin(`${DEFINITION_TABLE} as definition`, (join) =>
+        join.onRef("transition.uid", "=", "definition.uid")
+          .onRef("transition.workflow_id", "=", "definition.id"))
+      .select(["transition.status as status", sql<number>`count(*)`.as("count")])
+      .where("definition.biz_status", "=", 1)
+      .where("transition.status", "in", ["pending", "leased", "dead"])
+      .groupBy("transition.status")
       .execute();
     const byStatus = Object.fromEntries(rows.map((row) => [row.status, toCount(row.count)]));
     return {

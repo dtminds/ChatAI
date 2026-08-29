@@ -225,6 +225,7 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.deleteFromCalls).toBe(0);
+    expect(db.transitionDeletes).toBe(1);
     expect(db.updateBuilders[0].sets).toMatchObject({ biz_status: 0, client_request_id: null });
   });
 
@@ -485,6 +486,7 @@ function createWorkflowDbMock(options: {
   };
   const db = {
     deleteFromCalls: 0,
+    transitionDeletes: 0,
     taskTransitionInserts: [] as Array<Record<string, unknown>>,
     selectBuilders: [] as Array<{
       forUpdate: boolean;
@@ -497,6 +499,7 @@ function createWorkflowDbMock(options: {
     updateBuilders: [] as Array<{ sets: Record<string, unknown>; table: string; wheres: unknown[][] }>,
     deleteFrom(table: string) {
       if (table === "xy_wap_embed_workflow_task_transition") {
+        db.transitionDeletes += 1;
         const builder = {
           where() { return builder; },
           async executeTakeFirst() { return { numDeletedRows: 1n }; },

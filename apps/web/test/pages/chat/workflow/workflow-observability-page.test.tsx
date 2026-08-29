@@ -1,15 +1,17 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   WorkflowObservabilitySummaryResponse,
+  WorkflowObservabilityWorkflowDetailResponse,
   WorkflowObservabilityWorkflowListResponse,
 } from "@chatai/contracts";
 import { RequestNormalizedError } from "@/lib/request";
 import { WorkflowObservabilityPage } from "@/pages/chat/workflow/workflow-observability-page";
 
 const api = vi.hoisted(() => ({
+  getWorkflowObservabilityDetail: vi.fn(),
   getWorkflowObservabilitySummary: vi.fn(),
   listWorkflowObservabilityWorkflows: vi.fn(),
 }));
@@ -57,21 +59,77 @@ const summary: WorkflowObservabilitySummaryResponse = {
 };
 
 const listPage: WorkflowObservabilityWorkflowListResponse = {
-  items: [{
-    activeRunCount: 1,
-    activeTaskCount: 2,
-    dueBacklogCount: 3,
-    name: "新客旅程",
-    runtimeStatus: "active",
-    totalRunCount: 10,
-    uid: 9,
-    workflowId: "12",
-  }],
+  items: [
+    {
+      activeRunCount: 1,
+      activeTaskCount: 2,
+      dueBacklogCount: 3,
+      name: "新客旅程",
+      runtimeStatus: "active",
+      totalRunCount: 10,
+      transition: {
+        attempt: 2,
+        lastErrorCode: "LEASE_EXPIRED",
+        nextAttemptAt: 1_784_800_000_000,
+        status: "dead",
+        targetStatus: "pending",
+        updateTime: 1_784_800_000_000,
+      },
+      uid: 9,
+      workflowId: "12",
+    },
+    {
+      activeRunCount: 0,
+      activeTaskCount: 1,
+      dueBacklogCount: 0,
+      name: "老客召回",
+      runtimeStatus: "paused",
+      totalRunCount: 4,
+      transition: {
+        attempt: 1,
+        nextAttemptAt: 1_784_800_000_000,
+        status: "dead",
+        targetStatus: "suspended",
+        updateTime: 1_784_800_000_000,
+      },
+      uid: 8,
+      workflowId: "13",
+    },
+  ],
   observedAt: 1_784_800_000_000,
   page: 1,
   pageSize: 20,
-  total: 1,
+  total: 2,
   totalPages: 1,
+};
+
+const detail: WorkflowObservabilityWorkflowDetailResponse = {
+  activeRunCount: 1,
+  dueBacklogCount: 3,
+  name: "新客旅程",
+  observedAt: 1_784_800_000_000,
+  runtimeStatus: "active",
+  taskDistribution: {
+    cancelled: 0,
+    completed: 8,
+    dead: 0,
+    dispatched: 0,
+    leased: 1,
+    pending: 3,
+    running: 1,
+    suspended: 0,
+    waiting_external: 0,
+  },
+  transition: {
+    attempt: 2,
+    lastErrorCode: "LEASE_EXPIRED",
+    nextAttemptAt: 1_784_800_000_000,
+    status: "dead",
+    targetStatus: "pending",
+    updateTime: 1_784_800_000_000,
+  },
+  uid: 9,
+  workflowId: "12",
 };
 
 describe("workflow observability page", () => {
@@ -79,6 +137,7 @@ describe("workflow observability page", () => {
     vi.clearAllMocks();
     api.getWorkflowObservabilitySummary.mockResolvedValue(summary);
     api.listWorkflowObservabilityWorkflows.mockResolvedValue(listPage);
+    api.getWorkflowObservabilityDetail.mockResolvedValue(detail);
   });
 
   it("hides the page when the observer API forbids access", async () => {
@@ -111,6 +170,11 @@ describe("workflow observability page", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "运行观测" })).toBeInTheDocument();
     expect(screen.getByText("2 个暂停或恢复请求已失败")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "迁移失败" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看迁移失败" })).toBeInTheDocument();
+    expect(screen.getByText("恢复失败")).toBeInTheDocument();
+    expect(screen.getByText("暂停失败")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "新客旅程" })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(api.getWorkflowObservabilitySummary).toHaveBeenCalledTimes(1);
       expect(api.listWorkflowObservabilityWorkflows).toHaveBeenCalledWith(
@@ -124,10 +188,7 @@ describe("workflow observability page", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
-    expect(screen.getByRole("link", { name: "新客旅程" })).toHaveAttribute(
-      "href",
-      "/chat/workflows/12/data",
-    );
+    expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
     await user.click(screen.getByRole("tab", { name: "有积压" }));
     await waitFor(() => {
       expect(api.listWorkflowObservabilityWorkflows).toHaveBeenLastCalledWith(
@@ -136,6 +197,25 @@ describe("workflow observability page", () => {
       );
     });
     expect(api.listWorkflowObservabilityWorkflows.mock.calls).toHaveLength(2);
+    expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
+  });
+
+  it("opens a detail sheet on name click without prefetching every row", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByRole("button", { name: "新客旅程" })).toBeInTheDocument();
+    expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "新客旅程" }));
+    const dialog = await screen.findByRole("dialog", { name: "新客旅程" });
+    expect(within(dialog).getByText("UID 9 · 12")).toBeInTheDocument();
+    expect(within(dialog).getByText("待调度")).toBeInTheDocument();
+    expect(within(dialog).getByText("恢复失败")).toBeInTheDocument();
+    expect(api.getWorkflowObservabilityDetail).toHaveBeenCalledTimes(1);
+    expect(api.getWorkflowObservabilityDetail).toHaveBeenCalledWith(
+      "12",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(screen.queryByText("执行记录")).not.toBeInTheDocument();
   });
 
   it("keeps the previous snapshot when a refresh fails", async () => {

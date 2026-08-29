@@ -154,7 +154,7 @@ WorkflowObservabilityWorkflowDetailResponse = {
 }
 ```
 
-Run 级执行轨迹不重复建设，详情页提供跳转到现有 `/:workflowId/records` 记录页。
+Run 级执行轨迹不重复建设。观测详情用 Sheet 展示任务分布、迁移和积压，不跳转租户执行记录页。
 
 ## 5. 前端
 
@@ -165,7 +165,7 @@ Run 级执行轨迹不重复建设，详情页提供跳转到现有 `/:workflowI
 1. **Worker 角色健康卡**：六角色，每卡含健康度 Badge、最近成功 / 失败 / 迭代耗时 / 上报实例；顶部色条按健康度着色（healthy→success、degraded→warning、offline→destructive、unknown→muted）。
 2. **队列指标网格**：到期积压（detail 显示最老到期时间）、租约过期、派发滞留、迁移队列（detail 显示 dead 数，>0 标红）、Outbox 积压、推理积压。容量卡后置。
 3. **迁移告警条**：存在 `dead` 迁移请求时展示 destructive 横幅，引导到列表筛选 `dead`。
-4. **Workflow 状态表**：状态筛选（全部 / 有积压 / 迁移中 / 暂停失败）+ uid / workflowId 搜索 + 服务端分页；点击名称跳转现有 `/:workflowId/data` 执行记录页。趋势图、`failing` 筛选、最近失败列表后置。
+4. **Workflow 状态表**：状态筛选（全部 / 有积压 / 迁移中 / 迁移失败）+ uid / workflowId 搜索 + 服务端分页；点击名称打开详情 Sheet（任务分布、迁移、积压），不跳转租户执行记录。趋势图、`failing` 筛选、最近失败列表后置。
 
 ### 5.2 数据获取与状态
 
@@ -206,7 +206,7 @@ Run 级执行轨迹不重复建设，详情页提供跳转到现有 `/:workflowI
 |---|---|---|
 | D1 | 受众与入口 | 列表页 `AiHostingPageHeader` 右侧入口，点击打开独立路由 `/chat/workflows/observability`。无权限完全隐藏。 |
 | D2 | Worker 心跳上报 | 新增 `workflow_worker_state`；内存更新 + 15s flush，迭代 start 写 `last_started_at`。 |
-| D3 | 首期范围 | Worker 健康、队列计数、dead 迁移告警、全部/有积压/迁移中/dead。详情跳现有执行记录。趋势图、容量卡、failing、最近失败后置。 |
+| D3 | 首期范围 | Worker 健康、队列计数、dead 迁移告警、全部/有积压/迁移中/dead。详情打开观测 Sheet，不跳转租户执行记录。趋势图、容量卡、failing、最近失败后置。 |
 | D4 | 权限配置 | 复用 insights/memory 同一份 observer subjects；owner/admin 不自动获得。 |
 
 已从首期范围拆出、默认后置的两项（成本已评估，随时可并入）：

@@ -177,13 +177,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           : "ai-collect";
       if (!task
         || task.nodeKind !== cleanup.nodeKind
-        || (task.taskType !== "execute" && task.taskType !== expectedTaskType)) continue;
+        || (task.taskType !== "execute"
+          && task.taskType !== expectedTaskType
+          && !(cleanup.nodeKind === "ai-collect" && task.taskType === "inference"))) continue;
       cancelTask(task);
       run.status = "cancelled";
       run.terminalReason = "flow_changed_current_node_deleted";
       run.lockVersion += 1;
       run.nextExecuteAt = null;
       this.cancelEventSubscriptions(new Set([run.id]));
+      this.cancelInferenceJobs(new Set([run.id]));
       this.appendNodeMetricEvents(run, `${run.id}:revision-cleanup:${cleanup.id}`, createNodeMetricDeltas({
         kind: "left-incomplete",
         nodeId: task.nodeId,

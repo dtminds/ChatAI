@@ -3663,7 +3663,9 @@ export class MysqlWorkflowRuntimeRepository implements
         const task = taskRowsByRunId.get(runId)?.find(candidate => candidate.sequence === run.sequence
           && candidate.node_id === request.node_id
           && candidate.node_kind === nodeKind
-          && (candidate.task_type === "execute" || candidate.task_type === expectedTaskType));
+          && (candidate.task_type === "execute"
+            || candidate.task_type === expectedTaskType
+            || (nodeKind === "ai-collect" && candidate.task_type === "inference")));
         return task ? [[runId, task] as const] : [];
       }));
       const runsToCancel = selectedRuns.filter(run => {
@@ -3695,6 +3697,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("run_id", "in", cancelledRunIds)
           .where("status", "in", ["waiting", "triggered"])
           .executeTakeFirst();
+        await cancelInferenceJobs(trx, cancelledRunIds);
         await insertNodeMetricEventsBulk(trx, runsToCancel.map(run => {
           const task = taskByRunId.get(normalizeId(run.id))!;
           return {

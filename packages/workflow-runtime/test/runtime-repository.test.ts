@@ -405,6 +405,122 @@ describe("workflow runtime repository", () => {
     expect(repository.tasks.find(task => task.id === waiting.task.id)?.status).toBe("cancelled");
   });
 
+  it("cleans a deleted AI Collect node while its inference is in flight", async () => {
+    const now = new Date("2026-07-10T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => now,
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const waiting = await createWaitingAiCollectRun(repository, "cleanup-ai-collect-inference");
+    const claimedTask = await repository.claimTask({
+      expectedTaskVersion: waiting.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "task-worker",
+      taskId: waiting.task.id,
+      uid: 9,
+    });
+    if (claimedTask.kind !== "success") throw new Error("claim failed");
+    const executionKey = `9:${waiting.run.id}:collect-1:1:collect:1`;
+    const inference = await repository.beginInference({
+      contractVersion: 1,
+      deadlineAt: new Date("2026-07-10T00:10:00.000Z"),
+      executionKey,
+      expectedRunLockVersion: waiting.run.lockVersion,
+      expectedTaskVersion: claimedTask.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: "ai-collect-inference:cleanup-ai-collect-inference",
+      },
+      now,
+      payload: {
+        kind: "message-list",
+        messageList: [{
+          content: [{ text: "提取订单号", type: "text" }],
+          role: "user",
+        }],
+        modelTarget: { endpointId: "ep-ai-collect", kind: "endpoint" },
+        reasoningEffort: "low",
+        responseFormat: {
+          fields: [
+            { description: "Whether the order number is present", name: "F1_present", type: "boolean" },
+            { description: "The collected order number", name: "F1_value", type: "string" },
+          ],
+          type: "json",
+        },
+      },
+      runId: waiting.run.id,
+      taskId: waiting.task.id,
+      uid: 9,
+    });
+    if (inference.kind !== "success") throw new Error("begin inference failed");
+    await expect(repository.transitionAiCollectState({
+      now,
+      taskId: waiting.task.id,
+      transition: {
+        batchCursor: null,
+        batchCutoffAt: null,
+        batchHasMore: false,
+        executionKey,
+        kind: "inference-started",
+      },
+      uid: 9,
+    })).resolves.toMatchObject({ kind: "success" });
+    const claimedJobs = await repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "inference-worker",
+      limit: 1,
+      now,
+    });
+    expect(claimedJobs).toHaveLength(1);
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "collect-1",
+      nodeKind: "ai-collect",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+    await repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      maxAttempts: 5,
+      now,
+    });
+
+    await expect(repository.processRevisionCleanupBatch({
+      cleanupId: cleanup.id,
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      now,
+    })).resolves.toMatchObject({ cancelled: 1, kind: "success", status: "done" });
+    expect(repository.runs.find(run => run.id === waiting.run.id)).toMatchObject({
+      status: "cancelled",
+      terminalReason: "flow_changed_current_node_deleted",
+    });
+    expect(repository.tasks.find(task => task.id === waiting.task.id)).toMatchObject({
+      status: "cancelled",
+      taskType: "inference",
+    });
+    expect(repository.inferenceJobs.find(job => job.id === claimedJobs[0]!.id)).toMatchObject({
+      leaseExpiresAt: null,
+      leaseOwner: null,
+      status: "cancelled",
+    });
+    await expect(repository.completeInference({
+      completedAt: new Date("2026-07-10T00:00:01.000Z"),
+      id: claimedJobs[0]!.id,
+      leaseOwner: "inference-worker",
+      result: { content: "ignored", type: "text" },
+    })).resolves.toBe(false);
+  });
+
   it("obsoletes a cleanup request when the deleted node is published again", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(
       undefined,

@@ -9,9 +9,6 @@ import {
 describe("Workflow Order Conversion Java port", () => {
   it("maps one idempotent Java request and treats success true as operation success", async () => {
     const fetchMock = vi.fn(async () => javaResponse({
-      data: null,
-      error: 0,
-      errorMsg: "",
       success: true,
     }));
 

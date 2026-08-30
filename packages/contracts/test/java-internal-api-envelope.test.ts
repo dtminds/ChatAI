@@ -3,12 +3,21 @@ import { decodeJavaInternalApiEnvelope } from "../src/index.js";
 
 describe("Java internal API envelope", () => {
   it("returns only business data when success is true", () => {
+    const expected = { data: { id: 88 }, kind: "success" };
+    expect(decodeJavaInternalApiEnvelope({ data: { id: 88 }, success: true }))
+      .toEqual(expected);
+    expect(decodeJavaInternalApiEnvelope({
+      data: { id: 88 },
+      error: null,
+      errorMsg: null,
+      success: true,
+    })).toEqual(expected);
     expect(decodeJavaInternalApiEnvelope({
       data: { id: 88 },
       error: 40001,
       errorMsg: "ignored on success",
       success: true,
-    })).toEqual({ data: { id: 88 }, kind: "success" });
+    })).toEqual(expected);
   });
 
   it("returns Java diagnostics only when success is false", () => {
@@ -29,10 +38,10 @@ describe("Java internal API envelope", () => {
     [[], "envelope must be an object"],
     [{ error: 0, errorMsg: "" }, "success must be a boolean"],
     [{ error: 0, errorMsg: "", success: 1 }, "success must be a boolean"],
-    [{ errorMsg: "", success: true }, "error must be a safe integer"],
-    [{ error: 0.5, errorMsg: "", success: true }, "error must be a safe integer"],
-    [{ error: 0, success: true }, "errorMsg must be a string"],
-  ])("rejects an invalid standard envelope", (value, reason) => {
+    [{ errorMsg: "", success: false }, "error must be a safe integer"],
+    [{ error: 0.5, errorMsg: "", success: false }, "error must be a safe integer"],
+    [{ error: 0, success: false }, "errorMsg must be a string"],
+  ])("rejects an invalid failure envelope", (value, reason) => {
     expect(decodeJavaInternalApiEnvelope(value)).toEqual({ kind: "invalid", reason });
   });
 });

@@ -498,7 +498,7 @@ Java 是 Product Entitlement 的唯一权威来源。Node 不接收权益事件�
 ```ts
 POST /third-internal/wap-embed-workflow-definition/can-run
 body: { uid: number; workflowType: 1 | 2 | 3 }
-response: { success: boolean; error: number; errorMsg: string; data?: boolean }
+response: { success: boolean; error?: number; errorMsg?: string; data?: boolean }
 ```
 
 类型值固定为 ChatAI SOP=1、WeCom SOP=2、Member SOP=3。只有 HTTP 成功、标准 Java 信封 `success === true` 且 `data` 为 boolean 才构成权益结果；`success === false` 时 `error` / `errorMsg` 只用于失败诊断。超时、业务错误或非法响应都表示服务不可用，不能解释成无权益。Java 不返回容量，Node 侧每租户活跃 Run 上限默认 10000，可由部署显式覆盖。
@@ -1020,7 +1020,7 @@ Java 幂等语义：
 | `terminal` | 参数非法、资源不存在、业务明确拒绝 | 节点和 Run 失败 |
 | `unknown` | HTTP 超时、连接断开且结果未知 | 使用同一幂等键重试 |
 
-Workflow 调用采用统一的 Java HTTP envelope 失败契约：标准信封固定包含 boolean `success`、安全整数 `error`、字符串 `errorMsg`，各接口业务字段只放在可选 `data`。只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下只有 `success === true` 表示业务成功；`success === false` 是 Java 明确返回的业务拒绝，必须 terminal，不能通过 `error === 0` 覆盖。`success === true` 时 `error` / `errorMsg` 不参与成功判断。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
+Workflow 调用采用统一的 Java HTTP envelope 失败契约：boolean `success` 是唯一必需的状态字段，各接口业务字段只放在可选 `data`；`success === false` 时还必须提供安全整数 `error` 和字符串 `errorMsg`。只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下只有 `success === true` 表示业务成功；`success === false` 是 Java 明确返回的业务拒绝，必须 terminal，不能通过 `error === 0` 覆盖。`success === true` 时不要求 `error` / `errorMsg` 存在，也不校验或读取这两个字段。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
 
 Java 应返回稳定机器码，不允许 Node 根据中文错误文案判断是否重试。
 

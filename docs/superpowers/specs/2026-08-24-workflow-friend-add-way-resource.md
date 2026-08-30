@@ -37,7 +37,7 @@
 }
 ```
 
-`success`、`error`、`errorMsg` 是标准信封字段；目录数组只从 `data` 读取。
+`success` 是标准信封的权威状态；成功时不要求 `error` / `errorMsg`，目录数组只从 `data` 读取。
 
 ## Java 活动响应
 

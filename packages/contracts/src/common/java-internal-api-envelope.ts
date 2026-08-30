@@ -1,9 +1,16 @@
-export type JavaInternalApiEnvelope<TData = unknown> = {
-  data?: TData;
-  error: number;
-  errorMsg: string;
-  success: boolean;
-};
+export type JavaInternalApiEnvelope<TData = unknown> =
+  | {
+      data?: TData;
+      error?: unknown;
+      errorMsg?: unknown;
+      success: true;
+    }
+  | {
+      data?: TData;
+      error: number;
+      errorMsg: string;
+      success: false;
+    };
 
 export type JavaInternalApiEnvelopeDecodeResult =
   | { data: unknown; kind: "success" }
@@ -19,14 +26,14 @@ export function decodeJavaInternalApiEnvelope(
   if (typeof value.success !== "boolean") {
     return { kind: "invalid", reason: "success must be a boolean" };
   }
+  if (value.success) {
+    return { data: value.data, kind: "success" };
+  }
   if (typeof value.error !== "number" || !Number.isSafeInteger(value.error)) {
     return { kind: "invalid", reason: "error must be a safe integer" };
   }
   if (typeof value.errorMsg !== "string") {
     return { kind: "invalid", reason: "errorMsg must be a string" };
-  }
-  if (value.success) {
-    return { data: value.data, kind: "success" };
   }
   return {
     error: value.error,

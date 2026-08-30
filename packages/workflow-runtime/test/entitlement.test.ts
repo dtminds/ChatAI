@@ -70,8 +70,6 @@ describe("workflow entitlement port", () => {
   it.each([
     { data: true, error: 0, errorMsg: "", success: false },
     { data: "true", error: 0, errorMsg: "", success: true },
-    { data: true, errorMsg: "", success: true },
-    { data: true, error: 0, success: true },
     { data: true, error: 0, errorMsg: "" },
   ])("treats invalid Java envelopes as unavailable: %j", async (body) => {
     const port = createWorkflowEntitlementPort({
@@ -82,13 +80,11 @@ describe("workflow entitlement port", () => {
       .rejects.toBeInstanceOf(WorkflowEntitlementUnavailableError);
   });
 
-  it("ignores failure-only envelope fields after a successful decision", async () => {
+  it("accepts a successful decision without failure-only envelope fields", async () => {
     const port = createWorkflowEntitlementPort({
       baseUrl: "https://java.example.com",
       fetch: async () => new Response(JSON.stringify({
         data: false,
-        error: 1,
-        errorMsg: "ignored on success",
         success: true,
       }), { status: 200 }),
     });

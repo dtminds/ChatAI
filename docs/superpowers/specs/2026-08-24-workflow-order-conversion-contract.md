@@ -109,9 +109,9 @@ Java HTTP 200 响应必须使用标准信封：
 }
 ```
 
-- `success === true` 表示操作成功，忽略 `error` / `errorMsg` 的业务含义，输出 `result: true`
+- `success === true` 表示操作成功，不要求也不读取 `error` / `errorMsg`，输出 `result: true`
 - `success === false` 表示 Java 拒绝，使用 `error` / `errorMsg` 记录诊断并 terminal，不输出 `result: false`
-- `success`、安全整数 `error` 或字符串 `errorMsg` 缺失或类型错误时，视为非法 envelope 并 terminal
+- `success` 缺失或类型错误，或失败响应缺少安全整数 `error` / 字符串 `errorMsg` 时，视为非法 envelope 并 terminal
 - 该接口不依赖 `data` 返回业务结果
 
 ## 4. 幂等与错误

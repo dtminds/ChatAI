@@ -22,14 +22,12 @@ export type WorkflowCreateInput = {
 };
 
 export function WorkflowCreateDialog({
-  error,
   onCreate,
   onOpenChange,
   open,
   pending = false,
   workflowType,
 }: {
-  error?: string | null;
   onCreate: (input: WorkflowCreateInput) => Promise<boolean>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -112,7 +110,6 @@ export function WorkflowCreateDialog({
               value={descriptionValue}
             />
           </div>
-          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button disabled={!nameValue.trim() || pending} type="submit">
               {pending ? "创建中" : "创建"}

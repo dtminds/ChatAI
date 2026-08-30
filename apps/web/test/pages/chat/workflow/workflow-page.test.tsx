@@ -694,6 +694,7 @@ describe("Agent workflow page", () => {
 
   it("keeps the create request id for retries within the ChatAI Surface", async () => {
     const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error");
     const baseRepository = getWorkflowDraftRepository();
     const createDocument = vi.fn()
       .mockRejectedValueOnce(new Error("network"))
@@ -705,7 +706,8 @@ describe("Agent workflow page", () => {
     await user.click(getWorkflowCreateButton());
     await user.type(getWorkflowMetadataInputs().nameInput, "新客欢迎旅程");
     await user.click(screen.getByRole("button", { name: "创建" }));
-    await screen.findByText("操作失败，请稍后重试");
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("操作失败，请稍后重试"));
+    expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(createDocument).toHaveBeenCalledTimes(2));
 
@@ -717,6 +719,48 @@ describe("Agent workflow page", () => {
 
     expect(createDocument.mock.calls[2]?.[0]).toMatchObject({ workflowType: "chatai_sop" });
     expect(createDocument.mock.calls[2]?.[0].clientRequestId).toBe(firstRequestId);
+    toastError.mockRestore();
+  });
+
+  it("reports direct-route create failures through a toast", async () => {
+    const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error");
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      createDocument: vi.fn().mockRejectedValue(new Error("network")),
+    };
+
+    renderWorkflowPage("/chat/workflows/new", repository);
+    await user.type(getWorkflowMetadataInputs().nameInput, "ChatAI 新客旅程");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("操作失败，请稍后重试"));
+    expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    toastError.mockRestore();
+  });
+
+  it("keeps the backend reason when workflow creation is not entitled", async () => {
+    const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error");
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      createDocument: vi.fn().mockRejectedValue(new WorkflowRepositoryError(
+        "forbidden",
+        "当前无对应产品权益",
+        { apiCode: "WORKFLOW_ENTITLEMENT_REQUIRED" },
+      )),
+    };
+
+    renderWorkflowPage("/chat/workflows/new", repository);
+    await user.type(getWorkflowMetadataInputs().nameInput, "无权益工作流");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("当前无对应产品权益"));
+    expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+    toastError.mockRestore();
   });
 
   it("renders workflows in a table with navigation and row actions", async () => {

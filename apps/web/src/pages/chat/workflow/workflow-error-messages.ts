@@ -4,6 +4,28 @@ type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 
 const GENERIC_OPERATION_ERROR = "操作失败，请稍后重试";
 
+export function getWorkflowOperationErrorMessage(error: unknown) {
+  const repositoryError = normalizeWorkflowRepositoryError(error);
+
+  if (repositoryError.apiCode?.startsWith("WORKFLOW_") && repositoryError.message.trim()) {
+    return repositoryError.message;
+  }
+
+  if (repositoryError.code === "validation") {
+    return repositoryError.message || "参数有误";
+  }
+
+  if (repositoryError.code === "not-found") return "内容已不存在";
+  if (repositoryError.code === "forbidden") {
+    return repositoryError.apiCode === "WORKFLOW_ENTITLEMENT_REQUIRED"
+      || repositoryError.apiCode === "WORKFLOW_ENTITLEMENT_UNAVAILABLE"
+      ? repositoryError.message
+      : "没有操作权限";
+  }
+
+  return GENERIC_OPERATION_ERROR;
+}
+
 export function getWorkflowLifecycleErrorMessage(
   action: WorkflowLifecycleAction,
   error: unknown,

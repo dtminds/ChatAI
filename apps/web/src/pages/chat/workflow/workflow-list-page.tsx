@@ -43,7 +43,6 @@ import type {
   WorkflowListItem,
 } from "./workflow-draft-service";
 import {
-  normalizeWorkflowRepositoryError,
   useWorkflowCapacityResource,
   useWorkflowListResource,
   useWorkflowTenantOverviewResource,
@@ -59,7 +58,10 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
-import { getWorkflowLifecycleErrorMessage } from "./workflow-error-messages";
+import {
+  getWorkflowLifecycleErrorMessage,
+  getWorkflowOperationErrorMessage,
+} from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 import {
   getWorkflowDocumentPath,
@@ -193,7 +195,6 @@ export function WorkflowListPage({
     if (operationPending) return false;
 
     setOperationPending(true);
-    setOperationError(null);
     createRequestIdRef.current ??= createWorkflowCreateRequestId();
 
     try {
@@ -207,7 +208,7 @@ export function WorkflowListPage({
       return true;
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -433,7 +434,6 @@ export function WorkflowListPage({
       />
 
       <WorkflowCreateDialog
-        error={operationError}
         onCreate={createWorkflow}
         onOpenChange={(open) => {
           if (!operationPending) {
@@ -758,20 +758,6 @@ function createWorkflowCreateRequestId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `workflow-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getWorkflowOperationErrorMessage(error: unknown) {
-  const repositoryError = normalizeWorkflowRepositoryError(error);
-
-  if (repositoryError.code === "validation") {
-    return "名称不能为空";
-  }
-
-  if (repositoryError.code === "not-found") {
-    return "内容已不存在";
-  }
-
-  return "操作失败，请稍后重试";
 }
 
 function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {

@@ -57,6 +57,7 @@ import {
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
+import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
 
 export function WorkflowEditorPage({
   repository,
@@ -125,12 +126,10 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
   const navigate = useNavigate();
   const surface = useWorkflowSurface();
   const createRequestIdRef = useRef<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
 
   const createDocument = async (input: WorkflowCreateInput) => {
     if (createPending) return false;
-    setCreateError(null);
     setCreatePending(true);
     createRequestIdRef.current ??= createWorkflowCreateRequestId();
     try {
@@ -141,8 +140,8 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
       navigate(getWorkflowDocumentPath(surface, document.id), { replace: true });
       return true;
     }
-    catch {
-      setCreateError("操作失败，请稍后重试");
+    catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
       return false;
     }
     finally {
@@ -153,7 +152,6 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
   return (
     <main className="fixed inset-0 bg-background">
       <WorkflowCreateDialog
-        error={createError}
         onCreate={createDocument}
         onOpenChange={(open) => {
           if (!open && !createPending) navigate(surface.webBasePath, { replace: true });

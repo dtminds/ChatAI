@@ -30,8 +30,6 @@ describe("createWorkbenchJavaClient", () => {
             normalCallbackCnt: 8,
             normalCallbackRate: 600,
           },
-          error: 0,
-          errorMsg: "",
           success: true,
         }),
         {
@@ -58,7 +56,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("requires explicit Java success for broadcast protection status", async () => {
+  it("uses Java success false as authoritative for broadcast protection status", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -177,6 +175,23 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects legacy error-only data envelopes", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: {}, error: 0 }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      statusCode: 502,
+    });
   });
 
   it("passes through Java HTTP failure status codes", async () => {
@@ -1397,7 +1412,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("treats error:0 as success when Java returns success:false for empty smart reply list", async () => {
+  it("rejects success false for an empty smart reply list even when error is zero", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1421,7 +1436,10 @@ describe("createWorkbenchJavaClient", () => {
         thirdUserId: "seat-user-001",
         uid: 9001,
       }),
-    ).resolves.toEqual({ suggestions: [] });
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      statusCode: 200,
+    });
   });
 
   it("posts general-answer requests with smart reply scope fields", async () => {

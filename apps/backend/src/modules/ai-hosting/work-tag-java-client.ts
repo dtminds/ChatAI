@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -16,21 +17,6 @@ export const WORK_TAG_INTERNAL_API_FAILED_CODE = "WORK_TAG_INTERNAL_API_FAILED";
 export const WORK_TAG_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORK_TAG_INTERNAL_API_NOT_CONFIGURED";
 export const WORK_TAG_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-
-type JavaApiResponse<T> = {
-  code?: number;
-  count?: number | string;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  error_msg?: string;
-  hasNext?: boolean;
-  list?: T;
-  message?: string;
-  page?: number | string;
-  pageSize?: number | string;
-  success?: boolean;
-};
 
 export type WorkTagJavaGroupItem = {
   attr?: number | string | null;
@@ -114,9 +100,7 @@ export function createWorkTagJavaClient(
 
   return {
     async getExternalTags(input) {
-      const response = await postJavaRequest<
-        JavaApiResponse<WorkTagJavaLookupItem[]>
-      >({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           tagIds: input.tagIds,
@@ -129,19 +113,17 @@ export function createWorkTagJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "work-tag-external-list");
+      const payload = decodeJavaResponse(response, "work-tag-external-list");
 
       return {
-        items: extractJavaListItems<WorkTagJavaLookupItem>(response),
+        items: extractJavaListItems<WorkTagJavaLookupItem>(payload.data),
       };
     },
 
     async listGroups(input) {
       const attr = input.attr ?? 1;
       const type = input.type ?? 0;
-      const response = await postJavaRequest<
-        JavaApiResponse<WorkTagJavaGroupListData>
-      >({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           attr,
@@ -155,9 +137,9 @@ export function createWorkTagJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "work-tag-group-list");
+      const payload = decodeJavaResponse(response, "work-tag-group-list");
 
-      const data = response.data;
+      const data = payload.data as WorkTagJavaGroupListData | undefined;
       const groups = Array.isArray(data?.info) ? data.info : [];
 
       return {
@@ -188,9 +170,7 @@ export function createWorkTagJavaClient(
         body.type = input.type;
       }
 
-      const response = await postJavaRequest<
-        JavaApiResponse<WorkTagJavaComponentItem[]>
-      >({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify(body),
         logContext: {
@@ -208,25 +188,22 @@ export function createWorkTagJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "work-tag-component-list");
-
-      const items = extractJavaListItems<WorkTagJavaComponentItem>(response);
+      const payload = decodeJavaResponse(response, "work-tag-component-list");
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("work-tag-component-list", "list must be an array");
+      }
+      const items = payload.list as WorkTagJavaComponentItem[];
 
       if (
-        normalizeNonNegativeInteger(response.count) > 0 &&
+        normalizeNonNegativeInteger(payload.count) > 0 &&
         items.length === 0
       ) {
         logger.warn(
           {
-            count: response.count,
-            dataType: response.data == null ? "null" : typeof response.data,
-            hasList: Array.isArray(response.list),
-            listLength: Array.isArray(response.list) ? response.list.length : null,
+            count: payload.count,
+            listLength: items.length,
             operation: "work-tag-component-list",
-            responseKeys:
-              response && typeof response === "object"
-                ? Object.keys(response as object)
-                : [],
+            responseKeys: Object.keys(payload),
             uid: input.uid,
           },
           "tag-component-list 有 count 但未解析到列表项",
@@ -234,71 +211,40 @@ export function createWorkTagJavaClient(
       }
 
       return {
-        hasNext: Boolean(response.hasNext),
+        hasNext: Boolean(payload.hasNext),
         items,
-        page: normalizePositiveInteger(response.page, input.page),
-        pageSize: normalizePositiveInteger(response.pageSize, input.pageSize),
-        total: normalizeNonNegativeInteger(response.count ?? items.length),
+        page: normalizePositiveInteger(payload.page, input.page),
+        pageSize: normalizePositiveInteger(payload.pageSize, input.pageSize),
+        total: normalizeNonNegativeInteger(payload.count ?? items.length),
       };
     },
   };
 }
 
-/**
- * tag-component-list 常见返回：
- * 1) 顶层 list + count
- * 2) data 直接为数组
- * 3) data.list / data.info 嵌套数组
- *
- * 注意：部分环境会同时返回空的顶层 list 与非空 data.*，
- * 不能因为 Array.isArray(list) 就直接采用空数组。
- */
-function extractJavaListItems<T>(response: JavaApiResponse<unknown>): T[] {
-  const candidates: unknown[] = [response.list];
-
-  if (Array.isArray(response.data)) {
-    candidates.push(response.data);
-  } else if (response.data && typeof response.data === "object") {
-    const nested = response.data as {
-      info?: unknown;
-      list?: unknown;
-      records?: unknown;
-      rows?: unknown;
-    };
-    candidates.push(nested.list, nested.info, nested.records, nested.rows);
-  }
-
-  // 优先取「非空数组」；若全都为空数组，再回退第一个数组（兼容真的无数据）
-  let emptyFallback: T[] | null = null;
-  for (const candidate of candidates) {
-    if (!Array.isArray(candidate)) {
-      continue;
-    }
-
-    if (candidate.length > 0) {
-      return candidate as T[];
-    }
-
-    emptyFallback ??= candidate as T[];
-  }
-
-  return emptyFallback ?? [];
+function extractJavaListItems<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   throw new BadGatewayError(
     WORK_TAG_INTERNAL_API_FAILED_CODE,
     WORK_TAG_INTERNAL_API_USER_MESSAGE,
-    {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.error_msg ?? response.message,
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
+  );
+}
+
+function invalidJavaData(operation: string, reason: string) {
+  return new BadGatewayError(
+    WORK_TAG_INTERNAL_API_FAILED_CODE,
+    WORK_TAG_INTERNAL_API_USER_MESSAGE,
+    { operation, reason },
   );
 }
 
@@ -422,22 +368,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function normalizeInteger(value: unknown) {

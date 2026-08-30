@@ -172,4 +172,34 @@ describe("ai-hosting custom-field routes", () => {
       uid: 9001,
     });
   });
+
+  it("rejects select-list responses without a top-level list", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ fieldId: 1, key: "gender", title: "性别", type: 1 }],
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/custom-fields",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "CUSTOM_FIELD_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
 });

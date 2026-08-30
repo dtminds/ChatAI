@@ -626,11 +626,12 @@ type WorkflowNodeContractDefinition<
 
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
-  "ai-collect": draftReadyContract(
+  "ai-collect": runtimeReadyContract(
     "composite",
     1,
     WorkflowAiCollectDraftConfigSchema,
     WorkflowAiCollectExecutionConfigSchema,
+    ["thirdExternalUserId"],
   ),
   "ai-intent": runtimeReadyContract(
     "inference",

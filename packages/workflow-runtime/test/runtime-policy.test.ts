@@ -481,6 +481,7 @@ describe("Workflow runtime policy", () => {
       .toThrow("message-query");
 
     const complete = createHarness({
+      aiCollectPorts: true,
       capabilityPort: true,
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       messageQueryPort: true,
@@ -490,6 +491,7 @@ describe("Workflow runtime policy", () => {
 });
 
 function createHarness(options: {
+  aiCollectPorts?: boolean;
   capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
   capabilityPort?: boolean;
   capabilityResult?: unknown;
@@ -539,6 +541,19 @@ function createHarness(options: {
         }
       : undefined,
     {
+      ...(options.aiCollectPorts
+        ? {
+            aiCollectConversationPort: {
+              readCustomerMessages: async () => ({ cursor: null, hasMore: false, messages: [] }),
+              resolveConversation: async () => ({ conversationId: 1 }),
+              sendOpeningMessage: async () => {},
+            },
+            conversationDirectivePort: {
+              activate: async () => {},
+              disable: async () => {},
+            },
+          }
+        : {}),
       ...(hasCapabilityPort
         ? {
             capabilityBindings: options.capabilityBindings ?? [

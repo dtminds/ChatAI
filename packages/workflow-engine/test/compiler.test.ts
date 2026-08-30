@@ -347,7 +347,7 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
-  it("recognizes both AI Collect outcomes while keeping the node runtime-gated", () => {
+  it("compiles both AI Collect outcomes for runtime execution", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("collect", "ai-collect", {
       fields: [{ id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" }],
@@ -361,7 +361,16 @@ describe("compileWorkflowDraft", () => {
       { id: "collect-incomplete", source: "collect", sourceHandle: "incomplete", target: "end" },
     ];
 
-    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+    expect(compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    })).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: "collect", kind: "ai-collect" }),
+      ]),
+    });
   });
 
   it("compiles Audience Filter with a single default outlet", () => {

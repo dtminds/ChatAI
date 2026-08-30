@@ -89,23 +89,19 @@ The scheduling unit for one node visit on a Run. Creating a Task is Node Arrival
 _Avoid_: MQ message, whole Workflow Run
 
 **Conversation Directive**:
-A temporary, structured conversation goal that an owner attaches to one ChatAI conversation so the Agent can account for it while remaining the sole ongoing responder.
+A temporary natural-language instruction that an owner attaches to one ChatAI conversation for Java to inject into Agent context while the Agent remains the sole ongoing responder.
 _Avoid_: Free-form system prompt, Workflow reply script
 
 **Directive Owner**:
-The module that owns a Conversation Directive's lifecycle and authoritative task state. It interprets candidate observations, decides completion, and withdraws the Directive.
+The module that owns a Conversation Directive's lifecycle and authoritative task state. It decides when to create and withdraw the Directive; Java does not interpret or update that task state.
 _Avoid_: Agent model, Java field collector
-
-**Directive Observation**:
-A non-authoritative candidate fact produced during an Agent Turn for a specific Conversation Directive. It is evidence for the Directive Owner, not validated business state or task progress.
-_Avoid_: Workflow output, extraction result, completion signal
 
 **Agent Turn**:
 One Java-managed response cycle for a new customer message, producing the single ongoing Agent reply for that message.
 _Avoid_: Workflow Task, model retry
 
 **Agent Assistance Turn**:
-One new customer-message turn that occurs while a Conversation Directive is active and may influence the Agent response. It counts as an assistance opportunity even when the Agent decides not to ask a follow-up question.
+A response turn in which a Conversation Directive participated in the Agent context. It does not imply that the Agent asked a follow-up question or produced task progress.
 _Avoid_: Follow-up question count, model call count
 
 **Node Arrival**:

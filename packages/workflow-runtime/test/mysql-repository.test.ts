@@ -966,6 +966,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.outboxWhereCalls).not.toContainEqual(["outbox.status", "=", "leased"]);
     expect(db.deleteOrder).toEqual([
       "inference",
+      "ai-collect",
       "outbox",
       "subscription",
       "task",
@@ -1047,6 +1048,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.outboxWhereCalls).not.toContainEqual(["outbox.status", "=", "leased"]);
     expect(db.deleteOrder).toEqual([
       "inference",
+      "ai-collect",
       "outbox",
       "subscription",
       "task",
@@ -2292,6 +2294,8 @@ function createHistoryCleanupDbMock(options: {
             ? "outbox"
             : table === "xy_wap_embed_workflow_inference_job"
               ? "inference"
+            : table === "xy_wap_embed_workflow_ai_collect_state"
+              ? "ai-collect"
             : table === "xy_wap_embed_workflow_event_subscription"
               ? "subscription"
             : table === "xy_wap_embed_workflow_task"

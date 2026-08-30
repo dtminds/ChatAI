@@ -1,5 +1,58 @@
 # Database Change Log
 
+## 2026-08-30 Workflow AI Collect 复合状态与多批推理
+
+- 新增 `xy_wap_embed_workflow_ai_collect_state`，保存每个 AI Collect Task 的字段进度、Agent Directive 生命周期、回调静默批次、消息游标和单飞推理状态。
+- `xy_wap_embed_workflow_inference_job` 从“每个 Task 唯一”调整为“每个 execution key 唯一”。AI Collect 可在同一 Task 内按批次顺序创建多条推理任务，同时由状态表保证最多一条在途。
+- 当前仍处于开发阶段，生产环境尚未创建 Workflow 表；新环境直接执行 `docs/db/schema.sql` 的最终结构。仅同步已经创建 Workflow 表的测试环境时执行以下 DDL。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_inference_job
+  DROP KEY uk_workflow_inference_task,
+  ADD KEY idx_workflow_inference_task (uid, task_id, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_ai_collect_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow Run ID',
+  task_id BIGINT UNSIGNED NOT NULL COMMENT 'AI Collect Task ID',
+  biz_id VARCHAR(64) NOT NULL COMMENT 'Java Agent指令稳定业务ID',
+  seat_id BIGINT UNSIGNED NOT NULL COMMENT 'ChatAI席位ID',
+  third_external_user_id VARCHAR(128) NOT NULL COMMENT 'ChatAI客户外部ID',
+  conversation_id BIGINT UNSIGNED NULL COMMENT 'ChatAI会话ID',
+  collected_json JSON NOT NULL COMMENT '已收集字段，按字段稳定ID存储',
+  initial_input_processed TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '是否完成初始输入提取',
+  opening_message_sent TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '开场白是否已可靠发送',
+  directive_status VARCHAR(32) NOT NULL DEFAULT 'inactive' COMMENT '指令状态：inactive、active、disabling、disabled',
+  disable_reason VARCHAR(64) NULL COMMENT '待失效或已失效原因',
+  directive_attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '指令失效尝试次数',
+  directive_next_attempt_at DATETIME NOT NULL COMMENT '下次允许尝试失效时间',
+  directive_lease_owner VARCHAR(128) NULL COMMENT '指令失效租约持有者',
+  directive_lease_expires_at DATETIME NULL COMMENT '指令失效租约过期时间',
+  observed_round INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已观察到的Agent指引参与轮次',
+  last_message_time BIGINT UNSIGNED NOT NULL COMMENT '消息查询游标时间戳，初始为节点进入边界',
+  last_message_id BIGINT UNSIGNED NOT NULL COMMENT '消息查询游标ID，初始为节点进入边界',
+  pending_cutoff_at DATETIME(3) NULL COMMENT '待提取回调批次的最大事件时间',
+  quiet_until DATETIME NULL COMMENT '待提取批次静默窗口截止时间',
+  active_inference_key VARCHAR(512) NULL COMMENT '当前唯一在途提取任务稳定键',
+  active_batch_cutoff_at DATETIME(3) NULL COMMENT '当前在途消息批次截止时间',
+  active_batch_cursor_time BIGINT UNSIGNED NULL COMMENT '当前在途批次末消息时间戳',
+  active_batch_cursor_id BIGINT UNSIGNED NULL COMMENT '当前在途批次末消息ID',
+  active_batch_has_more TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前截止时间是否还有后续消息批次',
+  next_batch_sequence INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '下一提取批次序号',
+  expires_at DATETIME NULL COMMENT '智能体辅助最长等待截止时间',
+  terminal_outlet VARCHAR(32) NULL COMMENT '节点待提交出口：completed、incomplete',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_ai_collect_task (uid, task_id),
+  UNIQUE KEY uk_workflow_ai_collect_biz (uid, biz_id),
+  KEY idx_workflow_ai_collect_disable (directive_status, directive_next_attempt_at, directive_lease_expires_at, id),
+  KEY idx_workflow_ai_collect_run_cleanup (run_id, id)
+) COMMENT='营销Workflow AI资料收集复合状态表';
+```
+
 ## 2026-08-29 Workflow Run 索引收敛与节点指标索引收尾
 
 - Workflow Run 从 10 个索引收敛为 7 个。`idx_workflow_run_lifecycle (completed_at, id)` 同时服务活跃 Run 全局巡检和终态历史清理；应用写路径同步维护 Run 状态与 `completed_at`。

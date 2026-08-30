@@ -19,7 +19,7 @@ const ACTIVE_SEAT_STATUS = 1;
 const DIRECT_CHAT_TYPE = 1;
 const SENT_MESSAGE_STATUS = 1;
 
-type MessageQueryRow = {
+export type MessageQueryRow = {
   content: string | null;
   from_type: number | null;
   id: number | string;
@@ -245,7 +245,7 @@ export function formatMessageQueryRow(row: MessageQueryRow) {
   ).join("")}`;
 }
 
-function createWorkflowMessage(row: MessageQueryRow): WorkflowMessage {
+export function createWorkflowMessage(row: MessageQueryRow): WorkflowMessage {
   return {
     id: normalizeMessageId(row.id),
     parts: readMessageParts(row.msgtype, row.content),

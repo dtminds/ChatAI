@@ -1,4 +1,5 @@
 import {
+  isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
   WORKFLOW_MESSAGE_SCHEMA_REF,
@@ -8,6 +9,7 @@ import {
   WorkflowInferenceMessageListResultSchema,
   WorkflowMessageSchema,
   WorkflowMessagesV1Schema,
+  type WorkflowAiCollectExecutionConfig,
   type WorkflowAiIntentExecutionConfig,
   type WorkflowExecutionNode,
   type WorkflowInferenceContentPart,
@@ -15,6 +17,7 @@ import {
   type WorkflowInferenceMessageListResult,
   type WorkflowInferenceMessageListRequest,
   type WorkflowInferenceResult,
+  type WorkflowJsonObject,
   type WorkflowLlmInputParameter,
   type WorkflowOutputValueType,
   type WorkflowVariableContentSegment,
@@ -22,7 +25,10 @@ import {
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
-import { VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL } from "@chatai/llm";
+import {
+  VOLCENGINE_ARK_WORKFLOW_AI_COLLECT_MODEL,
+  VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL,
+} from "@chatai/llm";
 import type { WorkflowRunRecord } from "./types.js";
 import { getWorkflowMessageRoleLabel } from "./workflow-messages.js";
 
@@ -71,6 +77,132 @@ export function createWorkflowAiIntentInferenceRequest(
     throw inferenceConfigError("Rendered inference request failed schema validation");
   }
   return request;
+}
+
+export function hasWorkflowInferenceInput(value: unknown) {
+  if (value === undefined) return false;
+  return hasInferenceContent(renderInferenceValue(value));
+}
+
+export function resolveWorkflowAiCollectInput(
+  node: WorkflowExecutionNode,
+  run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
+) {
+  if (node.kind !== "ai-collect" || !isWorkflowAiCollectExecutionConfigComplete(node.config)) {
+    throw inferenceConfigError("AI Collect execution config failed schema validation");
+  }
+  return node.config.inputSelector
+    ? requireSelectorValue(node.config.inputSelector, run, currentNodeLifecycle)
+    : undefined;
+}
+
+export function createWorkflowAiCollectInferenceRequest(
+  node: WorkflowExecutionNode,
+  inputValue: unknown,
+  collected: Readonly<Record<string, unknown>> = {},
+): WorkflowInferenceMessageListRequest {
+  if (node.kind !== "ai-collect" || !isWorkflowAiCollectExecutionConfigComplete(node.config)) {
+    throw inferenceConfigError("AI Collect execution config failed schema validation");
+  }
+  const content = renderInferenceValue(inputValue);
+  if (!hasInferenceContent(content)) {
+    throw inferenceConfigError("AI Collect input is empty");
+  }
+  const missingFields = node.config.fields.filter(field => !(field.id in collected));
+  if (missingFields.length === 0) {
+    throw inferenceConfigError("AI Collect has no missing fields");
+  }
+  const catalog = missingFields.map((field, index) => ({
+    code: `F${index + 1}`,
+    instruction: field.instruction,
+    name: field.name,
+    type: field.type,
+  }));
+  const request: WorkflowInferenceMessageListRequest = {
+    kind: "message-list",
+    messageList: [
+      {
+        content: [{
+          text: [
+            "Extract explicitly provided values for the configured fields from the user input.",
+            "For every configured field code, return both <code>_present and <code>_value.",
+            "Set <code>_present to false when the value is missing, ambiguous, incomplete, or cannot be normalized. In that case, use a type-safe empty placeholder for <code>_value.",
+            "For date use YYYY-MM-DD, for time use HH:mm, and do not infer unsupported facts.",
+            `Fields:\n${JSON.stringify(catalog, null, 2)}`,
+          ].join("\n\n"),
+          type: "text",
+        }],
+        role: "system",
+      },
+      { content, role: "user" },
+    ],
+    modelTarget: {
+      endpointId: VOLCENGINE_ARK_WORKFLOW_AI_COLLECT_MODEL,
+      kind: "endpoint",
+    },
+    reasoningEffort: "low",
+    responseFormat: {
+      fields: missingFields.flatMap((field, index) => {
+        const code = `F${index + 1}`;
+        return [
+          {
+            description: `Whether ${field.name} was explicitly provided and valid`,
+            name: `${code}_present`,
+            type: "boolean" as const,
+          },
+          {
+            description: createAiCollectFieldDescription(field),
+            name: `${code}_value`,
+            type: field.type === "number" || field.type === "boolean"
+              ? field.type
+              : "string" as const,
+          },
+        ];
+      }),
+      type: "json",
+    },
+  };
+  if (!Value.Check(WorkflowInferenceRequestSchema, request)) {
+    throw inferenceConfigError("Rendered AI Collect request failed schema validation");
+  }
+  return request;
+}
+
+export function mapWorkflowAiCollectInferenceResult(
+  node: WorkflowExecutionNode,
+  result: WorkflowInferenceResult,
+  collected: Readonly<Record<string, unknown>> = {},
+): WorkflowJsonObject {
+  if (node.kind !== "ai-collect" || !isWorkflowAiCollectExecutionConfigComplete(node.config)) {
+    throw inferenceConfigError("AI Collect execution config failed schema validation");
+  }
+  if (!Value.Check(WorkflowInferenceMessageListResultSchema, result) || result.type !== "json") {
+    throw inferenceOutputError("AI Collect result failed schema validation");
+  }
+  const missingFields = node.config.fields.filter(field => !(field.id in collected));
+  const next = structuredClone(collected) as Record<string, unknown>;
+  const allowedKeys = new Set(missingFields.flatMap((_, index) => [
+    `F${index + 1}_present`,
+    `F${index + 1}_value`,
+  ]));
+  if (Object.keys(result.value).some(key => !allowedKeys.has(key))) {
+    throw inferenceOutputError("AI Collect result contains an unknown field");
+  }
+  for (const [index, field] of missingFields.entries()) {
+    const code = `F${index + 1}`;
+    const present = result.value[`${code}_present`];
+    const value = result.value[`${code}_value`];
+    if (typeof present !== "boolean" || value === undefined) {
+      throw inferenceOutputError(`AI Collect result is incomplete for ${code}`);
+    }
+    if (!present) continue;
+    if (!isValidAiCollectValue(field.type, value)) {
+      throw inferenceOutputError(`AI Collect result is invalid for ${code}`);
+    }
+    next[field.id] = typeof value === "string" ? value.trim() : value;
+  }
+  return next as WorkflowJsonObject;
 }
 
 export function resolveWorkflowAiIntentTestWithoutProvider(
@@ -249,6 +381,36 @@ function buildAiIntentPromptV1(
   ];
   if (hasInferenceContent(input)) messageList.push({ content: input, role: "user" });
   return messageList;
+}
+
+function createAiCollectFieldDescription(
+  field: WorkflowAiCollectExecutionConfig["fields"][number],
+) {
+  const format = field.type === "date"
+    ? " Format: YYYY-MM-DD."
+    : field.type === "time"
+      ? " Format: HH:mm."
+      : "";
+  return `${field.name}. ${field.instruction}${format}`.slice(0, 200);
+}
+
+function isValidAiCollectValue(
+  type: WorkflowAiCollectExecutionConfig["fields"][number]["type"],
+  value: unknown,
+) {
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  if (type === "boolean") return typeof value === "boolean";
+  if (typeof value !== "string" || !value.trim() || value.length > 500) return false;
+  if (type === "date") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return false;
+    const normalized = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    return normalized.getUTCFullYear() === Number(match[1])
+      && normalized.getUTCMonth() === Number(match[2]) - 1
+      && normalized.getUTCDate() === Number(match[3]);
+  }
+  if (type === "time") return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  return true;
 }
 
 function resolveAiIntentInput(

@@ -23,6 +23,7 @@ export * from "./settings/password.js";
 export * from "./tickets/dto.js";
 export * from "./workflow/dto.js";
 export * from "./workflow/audience-filter.js";
+export * from "./workflow/agent-directive.js";
 export * from "./workflow/branch.js";
 export * from "./workflow/capability.js";
 export * from "./workflow/customer-update.js";

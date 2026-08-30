@@ -1,10 +1,13 @@
 import {
+  WORKFLOW_AGENT_DIRECTIVE_EVENT_TYPE,
   WORKFLOW_INBOX_RETENTION_DAYS,
   WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+  WorkflowAgentDirectiveEventPayloadSchema,
   WorkflowDirectEntryPayloadSchema,
   WorkflowEntryEventTypeSchema,
   WorkflowMessageReceivedPayloadSchema,
   type WorkflowEntryEnvelopeValidationCode,
+  type WorkflowAgentDirectiveEventPayload,
   type WorkflowEntryEvent,
   type WorkflowEntryEventType,
   type WorkflowDirectEntryPayload,
@@ -74,6 +77,16 @@ type WorkflowEntryRuntimeService = {
           | "not-matched";
       }
   >;
+  recordAiCollectDirectiveEvent(input: {
+    bizId: string;
+    eventId: string;
+    eventOccurredAt: Date;
+    now: Date;
+    seatId: number;
+    thirdExternalUserId: string;
+    totalRound: number;
+    uid: number;
+  }): Promise<{ kind: "deduplicated" | "queued" | "stale" }>;
   startRun(input: {
     entryEventId: string;
     expectedRevision: number;
@@ -164,6 +177,18 @@ export function createEntryConsumerHandler(input: {
       return consumeDirectEntry(message, {
         ...parsed.event,
         payload: parsed.event.payload as WorkflowDirectEntryPayload,
+      }, input);
+    }
+    if (parsed.event.eventType === WORKFLOW_AGENT_DIRECTIVE_EVENT_TYPE) {
+      if (parsed.event.payloadVersion !== 1) {
+        return rejectPermanentEntry(message, "unsupported_payload_version", input.publishToDeadLetter);
+      }
+      if (!Value.Check(WorkflowAgentDirectiveEventPayloadSchema, parsed.event.payload)) {
+        return rejectPermanentEntry(message, "payload_invalid", input.publishToDeadLetter);
+      }
+      return consumeAgentDirectiveEvent(message, {
+        ...parsed.event,
+        payload: parsed.event.payload as WorkflowAgentDirectiveEventPayload,
       }, input);
     }
     const catalogResult = input.eventCatalog.project(parsed.event);
@@ -331,6 +356,37 @@ export function createEntryConsumerHandler(input: {
       return createTemporaryFailure(error, failureStage);
     }
   };
+}
+
+async function consumeAgentDirectiveEvent(
+  message: WorkflowBrokerMessage,
+  event: WorkflowEntryEvent & { payload: WorkflowAgentDirectiveEventPayload },
+  input: { now?: () => Date; runtimeService: WorkflowEntryRuntimeService },
+): Promise<WorkflowEntryConsumeResult> {
+  try {
+    const result = await input.runtimeService.recordAiCollectDirectiveEvent({
+      bizId: event.payload.bizId,
+      eventId: event.eventId,
+      eventOccurredAt: new Date(event.occurredAt),
+      now: input.now?.() ?? new Date(),
+      seatId: event.payload.seatId,
+      thirdExternalUserId: event.payload.thirdExternalUserId,
+      totalRound: event.payload.totalRound,
+      uid: event.uid,
+    });
+    await message.ack();
+    return {
+      code: result.kind === "queued"
+        ? "admitted"
+        : result.kind === "deduplicated"
+          ? "deduplicated"
+          : "no_match",
+      disposition: "ack",
+    };
+  } catch (error) {
+    message.negativeAck();
+    return createTemporaryFailure(error, "runtime_admission");
+  }
 }
 
 async function consumeDirectEntry(

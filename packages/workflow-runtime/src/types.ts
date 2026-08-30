@@ -21,6 +21,7 @@ import type {
 } from "@chatai/contracts";
 import type { WorkflowCapabilityFailureKind } from "@chatai/workflow-engine";
 import type { WorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import type { WorkflowAiCollectMessageCursor } from "./ai-collect.js";
 
 export type WorkflowRuntimeDefinitionRecord = {
   bizStatus: 0 | 1;
@@ -232,7 +233,7 @@ export type WorkflowInferenceJobRecord = {
   leaseOwner: string | null;
   nextAttemptAt: Date;
   nodeId: string;
-  nodeKind: "ai-intent" | "llm";
+  nodeKind: "ai-collect" | "ai-intent" | "llm";
   pausedAt: Date | null;
   payload: WorkflowInferenceRequest;
   result: WorkflowInferenceResult | null;
@@ -242,6 +243,142 @@ export type WorkflowInferenceJobRecord = {
   taskId: string;
   uid: number;
   updatedAt: Date;
+};
+
+export type WorkflowAiCollectDirectiveStatus =
+  | "inactive"
+  | "active"
+  | "disabling"
+  | "disabled";
+
+export type WorkflowAiCollectTerminalOutlet = "completed" | "incomplete";
+
+export type WorkflowAiCollectStateRecord = {
+  activeBatchCutoffAt: Date | null;
+  activeBatchCursor: WorkflowAiCollectMessageCursor | null;
+  activeBatchHasMore: boolean;
+  activeInferenceKey: string | null;
+  bizId: string;
+  collected: WorkflowJsonObject;
+  conversationId: number | null;
+  createdAt: Date;
+  directiveAttempt: number;
+  directiveLeaseExpiresAt: Date | null;
+  directiveLeaseOwner: string | null;
+  directiveNextAttemptAt: Date;
+  directiveStatus: WorkflowAiCollectDirectiveStatus;
+  disableReason: string | null;
+  expiresAt: Date | null;
+  initialInputProcessed: boolean;
+  lastMessageCursor: WorkflowAiCollectMessageCursor;
+  nextBatchSequence: number;
+  observedRound: number;
+  openingMessageSent: boolean;
+  pendingCutoffAt: Date | null;
+  quietUntil: Date | null;
+  runId: string;
+  seatId: number;
+  taskId: string;
+  terminalOutlet: WorkflowAiCollectTerminalOutlet | null;
+  thirdExternalUserId: string;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
+export type WorkflowAiCollectStateTransition =
+  | { kind: "opening-message-sent" }
+  | { conversationId: number; kind: "conversation-resolved" }
+  | { kind: "directive-active" }
+  | { kind: "initial-input-processed" }
+  | {
+      batchCursor: WorkflowAiCollectMessageCursor | null;
+      batchCutoffAt: Date | null;
+      batchHasMore: boolean;
+      executionKey: string;
+      kind: "inference-started";
+    }
+  | {
+      collected: WorkflowJsonObject;
+      executionKey: string;
+      kind: "inference-completed";
+    }
+  | { cutoffAt: Date; kind: "message-batch-empty" }
+  | { kind: "disable-requested"; reason: string }
+  | {
+      disableReason: string;
+      kind: "terminal";
+      outlet: WorkflowAiCollectTerminalOutlet;
+    }
+  | { kind: "directive-disabled" };
+
+export type WorkflowAiCollectRepository = {
+  beginAiCollectWait(input: {
+    dueAt: Date;
+    expectedRunLockVersion: number;
+    expectedTaskVersion: number;
+    inbox: WorkflowCommitNodeResultInput["inbox"];
+    now: Date;
+    runId: string;
+    taskId: string;
+    uid: number;
+  }): Promise<
+    | { kind: "success"; run: WorkflowRunRecord; state: WorkflowAiCollectStateRecord; task: WorkflowTaskRecord }
+    | WorkflowRuntimeFailure
+  >;
+  claimAiCollectDirectiveDisableBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<WorkflowAiCollectStateRecord[]>;
+  completeAiCollectDirectiveDisable(input: {
+    leaseOwner: string;
+    now: Date;
+    taskId: string;
+    uid: number;
+  }): Promise<boolean>;
+  findAiCollectStateByTask(uid: number, taskId: string): Promise<WorkflowAiCollectStateRecord | null>;
+  initializeAiCollectState(input: {
+    bizId: string;
+    expiresAt: Date | null;
+    initialMessageCursor: WorkflowAiCollectMessageCursor;
+    now: Date;
+    runId: string;
+    seatId: number;
+    taskId: string;
+    thirdExternalUserId: string;
+    uid: number;
+    workflowId: string;
+  }): Promise<WorkflowAiCollectStateRecord>;
+  recordAiCollectDirectiveEvent(input: {
+    bizId: string;
+    eventId: string;
+    eventOccurredAt: Date;
+    inboxExpiresAt: Date;
+    now: Date;
+    quietUntil: Date;
+    seatId: number;
+    thirdExternalUserId: string;
+    totalRound: number;
+    uid: number;
+  }): Promise<{ kind: "deduplicated" | "queued" | "stale" }>;
+  retryAiCollectDirectiveDisable(input: {
+    leaseOwner: string;
+    nextAttemptAt: Date;
+    now: Date;
+    taskId: string;
+    uid: number;
+  }): Promise<boolean>;
+  transitionAiCollectState(input: {
+    now: Date;
+    taskId: string;
+    transition: WorkflowAiCollectStateTransition;
+    uid: number;
+  }): Promise<
+    | { kind: "success"; state: WorkflowAiCollectStateRecord }
+    | { kind: "conflict" | "not-found" }
+  >;
 };
 
 export type WorkflowLlmTestAttemptRecord = {
@@ -601,6 +738,7 @@ type WorkflowRuntimeFailure =
 
 export type WorkflowRuntimeRepository = WorkflowInboxRepository
   & WorkflowEventSubscriptionReader
+  & WorkflowAiCollectRepository
   & WorkflowInferenceRepository
   & WorkflowOutboxRepository
   & WorkflowSchedulerRepository & {

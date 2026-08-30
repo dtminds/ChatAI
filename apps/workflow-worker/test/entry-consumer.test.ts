@@ -20,6 +20,54 @@ const workflowFixtureRoot = new URL(
 );
 
 describe("workflow entry consumer", () => {
+  it("routes agent.directive callbacks directly to AI Collect without consulting trigger routing", async () => {
+    const catalogProject = vi.fn(() => {
+      throw new Error("agent.directive must bypass the event catalog");
+    });
+    const recordAiCollectDirectiveEvent = vi.fn(async () => ({ kind: "queued" as const }));
+    const handler = createEntryConsumerHandler({
+      bindingReader: createDirectBindingReader([]),
+      eventCatalog: { project: catalogProject, supports: eventCatalog.supports },
+      inboxRepository: createInboxRepository(),
+      now: () => new Date("2026-08-30T01:00:10.000Z"),
+      runtimeService: {
+        recordAiCollectDirectiveEvent,
+        startDirectRun: vi.fn(),
+        startRun: vi.fn(),
+      },
+      subscriptionReader: createSubscriptionReader(),
+    });
+
+    await expect(handler(createBrokerMessage(event({
+      eventId: "agent.directive:1",
+      eventType: "agent.directive",
+      occurredAt: "2026-08-30T01:00:09.000Z",
+      payload: {
+        bizId: "workflow-task:88",
+        bizInfo: "",
+        externalUserId: 0,
+        seatId: 4,
+        thirdExternalUserId: "external-1",
+        totalRound: 2,
+        type: "collect-fields",
+        workUserId: 35971,
+      },
+      source: "chatai",
+      uid: 272,
+    })))).resolves.toEqual({ code: "admitted", disposition: "ack" });
+    expect(recordAiCollectDirectiveEvent).toHaveBeenCalledWith({
+      bizId: "workflow-task:88",
+      eventId: "agent.directive:1",
+      eventOccurredAt: new Date("2026-08-30T01:00:09.000Z"),
+      now: new Date("2026-08-30T01:00:10.000Z"),
+      seatId: 4,
+      thirdExternalUserId: "external-1",
+      totalRound: 2,
+      uid: 272,
+    });
+    expect(catalogProject).not.toHaveBeenCalled();
+  });
+
   it("admits direct entries after matching the target workflow and work user binding", async () => {
     const processed = new Set<string>();
     const bindingReader = createDirectBindingReader();

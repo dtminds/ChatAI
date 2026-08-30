@@ -554,6 +554,9 @@ function createResources() {
         subscription: input.subscription,
         topic: input.topic,
       })),
+      conversationDirectivePort: { activate: vi.fn(), disable: vi.fn() },
+      conversationDirectiveRepository: {} as never,
+      conversationDirectiveWorker: vi.fn(async () => ({ claimed: 0, disabled: 0, retried: 0 })),
       eventSubscriptionReader: { listMatchingEventSubscriptions: vi.fn(async () => []) },
       inboxRepository: {
         hasProcessedInboxMessage: vi.fn(async () => false),
@@ -591,7 +594,12 @@ function createResources() {
         }));
         return { close: loopClose };
       }),
-      runtimeService: { executeTask: vi.fn(), recordWaitEvent: vi.fn(), startRun: vi.fn() },
+      runtimeService: {
+        executeTask: vi.fn(),
+        recordAiCollectDirectiveEvent: vi.fn(),
+        recordWaitEvent: vi.fn(),
+        startRun: vi.fn(),
+      },
       scheduler,
       schedulerRepository: {} as never,
       taskConsumer: vi.fn(async input => input.broker.subscribe({

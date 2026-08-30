@@ -2,15 +2,53 @@ import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
   createWorkflowAiIntentInferenceRequest,
+  createWorkflowAiCollectInferenceRequest,
   createWorkflowLlmInferenceRequest,
   createWorkflowInferenceRequest,
   mapWorkflowInferenceResult,
+  mapWorkflowAiCollectInferenceResult,
   resolveWorkflowInferenceWithoutProvider,
   resolveWorkflowAiIntentTestWithoutProvider,
   type WorkflowRunRecord,
 } from "../src/index.js";
 
 describe("workflow inference payloads", () => {
+  it("uses a strict presence/value schema and omits unresolved AI Collect fields", () => {
+    const node: WorkflowExecutionNode = {
+      config: {
+        fields: [
+          { id: "order", instruction: "提取完整订单号", name: "订单号", type: "text" },
+          { id: "urgent", instruction: "判断是否加急", name: "是否加急", type: "boolean" },
+        ],
+        maxFollowUpCount: 0,
+        inputSelector: ["node", "message-query", "messages"],
+      },
+      id: "collect",
+      kind: "ai-collect",
+      nodeSchemaVersion: 1,
+    };
+
+    const request = createWorkflowAiCollectInferenceRequest(node, "订单号 A100，是否加急不明确");
+    expect(request.responseFormat).toEqual({
+      fields: [
+        expect.objectContaining({ name: "F1_present", type: "boolean" }),
+        expect.objectContaining({ name: "F1_value", type: "string" }),
+        expect.objectContaining({ name: "F2_present", type: "boolean" }),
+        expect.objectContaining({ name: "F2_value", type: "boolean" }),
+      ],
+      type: "json",
+    });
+    expect(mapWorkflowAiCollectInferenceResult(node, {
+      type: "json",
+      value: {
+        F1_present: true,
+        F1_value: " A100 ",
+        F2_present: false,
+        F2_value: false,
+      },
+    })).toEqual({ order: "A100" });
+  });
+
   it("resolves LLM inputs into a complete message list and maps public names to stable output IDs", () => {
     const node = llmNode({
       inputs: [

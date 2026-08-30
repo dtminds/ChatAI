@@ -52,6 +52,9 @@ import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js
 import { HttpWorkflowOrderConversionCapabilityPort } from "./order-conversion-capability-port.js";
 import { HttpWorkflowOrderBindCapabilityPort } from "./order-bind-capability-port.js";
 import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
+import { MysqlWorkflowAiCollectConversationPort } from "./ai-collect-conversation-port.js";
+import { HttpWorkflowConversationDirectivePort } from "./conversation-directive-port.js";
+import { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
@@ -149,6 +152,14 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
   ]);
+  const aiCollectConversationPort = new MysqlWorkflowAiCollectConversationPort(database, {
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
+  const conversationDirectivePort = new HttpWorkflowConversationDirectivePort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const runtimeService = new WorkflowRuntimeService(
     repository,
     repository,
@@ -158,10 +169,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityRetryDelayMs: config.runtime.capabilityRetryDelayMs,
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
       capabilityBindings: capabilityPort.bindings,
+      aiCollectConversationPort,
       contactIdentityPort: new HttpWorkflowContactIdentityPort({
         baseUrl: config.javaInternalApi.baseUrl,
         token: config.javaInternalApi.token,
       }),
+      conversationDirectivePort,
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       messageQueryPort: new MysqlWorkflowMessageQueryPort(database),
@@ -196,6 +209,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     startRuntime: () => startWorkflowWorkerRuntime({
       broker,
       config,
+      conversationDirectivePort,
+      conversationDirectiveRepository: repository,
+      conversationDirectiveWorker: processWorkflowConversationDirectiveDisableBatch,
       database,
       entitlementCache,
       entryConsumer: startEntryConsumer,
@@ -254,10 +270,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export * from "./audience-filter-capability-port.js";
+export * from "./ai-collect-conversation-port.js";
 export * from "./broker/index.js";
 export * from "./capability-router.js";
 export * from "./config.js";
 export * from "./contact-identity-port.js";
+export * from "./conversation-directive-port.js";
+export * from "./conversation-directive-worker.js";
 export * from "./customer-update-capability-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";

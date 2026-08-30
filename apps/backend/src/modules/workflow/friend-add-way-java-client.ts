@@ -164,10 +164,6 @@ function decodeJavaResponse(
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function invalidJavaData(operation: string) {
   return new BadGatewayError(
     FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,

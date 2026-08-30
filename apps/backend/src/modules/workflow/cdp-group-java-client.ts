@@ -222,10 +222,6 @@ function decodeJavaResponse(response: unknown, operation: string): CdpGroupJavaD
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 type PostJavaRequestOptions = {
   baseUrl: string | undefined;
   body: string;

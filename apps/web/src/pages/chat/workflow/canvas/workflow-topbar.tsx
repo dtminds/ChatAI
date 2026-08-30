@@ -259,8 +259,8 @@ export function WorkflowTopBar({
                 </span>
               )}
               {hasUnpublishedChanges && publishedRevision !== null ? (
-                <span className="inline-flex shrink-0 items-center gap-1 !rounded-[2px] bg-warning-muted px-1.5 py-0.5 text-warning">
-                  <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={2} />
+                <span className="inline-flex shrink-0 items-center gap-1 !rounded-[4px] bg-warning-muted/50 px-1.5 py-0.5 text-warning">
+                  <HugeiconsIcon icon={AlertCircleIcon} size={12} strokeWidth={2} />
                   有尚未发布的修改
                 </span>
               ) : null}

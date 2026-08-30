@@ -1192,6 +1192,30 @@ describe("Agent workflow page", () => {
     expect(getWorkflowDocument("newcomer-conversion").description).toBe("帮助新客户完成第一次购买");
   });
 
+  it("reports metadata save failures through a toast", async () => {
+    const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error");
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      updateDocumentMetadata: vi.fn().mockRejectedValue(new Error("network")),
+    };
+
+    renderWorkflowPage("/chat/workflows", repository);
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    const { nameInput } = getWorkflowMetadataInputs();
+    await user.clear(nameInput);
+    await user.type(nameInput, "新名称");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("操作失败，请稍后重试"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    toastError.mockRestore();
+  });
+
   it("deletes a workflow from the row menu and refreshes the list", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
@@ -1204,6 +1228,27 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
     });
+  });
+
+  it("reports delete failures through a toast", async () => {
+    const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error");
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      deleteDocument: vi.fn().mockRejectedValue(new Error("network")),
+    };
+
+    renderWorkflowPage("/chat/workflows", repository);
+    await screen.findByText("直播后跟进");
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("操作失败，请稍后重试"));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    toastError.mockRestore();
   });
 
   it("returns to the previous page after deleting its only workflow", async () => {

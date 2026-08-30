@@ -349,13 +349,11 @@ function WorkflowRowMenu({
 }
 
 export function WorkflowDeleteDialog({
-  error,
   onDelete,
   onOpenChange,
   open,
   pending,
 }: {
-  error: string | null;
   onDelete: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -368,7 +366,6 @@ export function WorkflowDeleteDialog({
           <AlertDialogTitle>确认要删除该 SOP 吗？</AlertDialogTitle>
           <AlertDialogDescription>删除后无法恢复</AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
           <AlertDialogAction

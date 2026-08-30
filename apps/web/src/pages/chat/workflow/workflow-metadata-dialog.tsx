@@ -20,7 +20,6 @@ export type WorkflowMetadata = {
 };
 
 export function WorkflowMetadataDialog({
-  error,
   metadata,
   onOpenChange,
   onSave,
@@ -29,7 +28,6 @@ export function WorkflowMetadataDialog({
   submitLabel = "保存",
   title = "编辑",
 }: {
-  error?: string | null;
   metadata: WorkflowMetadata;
   onOpenChange: (open: boolean) => void;
   onSave: (metadata: WorkflowMetadata) => Promise<boolean>;
@@ -115,7 +113,6 @@ export function WorkflowMetadataDialog({
               value={descriptionValue}
             />
           </div>
-          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button disabled={!nameValue.trim() || pending} type="submit">
               {pending ? `${submitLabel}中` : submitLabel}

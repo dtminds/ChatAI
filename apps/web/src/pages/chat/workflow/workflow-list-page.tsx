@@ -144,7 +144,6 @@ export function WorkflowListPage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [stopTarget, setStopTarget] = useState<WorkflowListItem | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   useEffect(() => {
@@ -187,7 +186,6 @@ export function WorkflowListPage({
   };
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
-    setOperationError(null);
     setMetadataTarget(workflow);
   };
 
@@ -220,7 +218,6 @@ export function WorkflowListPage({
     if (!metadataTarget || operationPending) return false;
 
     setOperationPending(true);
-    setOperationError(null);
 
     try {
       await Promise.resolve(repository.updateDocumentMetadata(metadataTarget.id, metadata));
@@ -229,7 +226,7 @@ export function WorkflowListPage({
       return true;
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -243,7 +240,6 @@ export function WorkflowListPage({
     }
 
     setOperationPending(true);
-    setOperationError(null);
 
     try {
       await Promise.resolve(repository.deleteDocument(deleteTarget.id));
@@ -260,7 +256,7 @@ export function WorkflowListPage({
       await tenantOverview.reload();
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -366,7 +362,6 @@ export function WorkflowListPage({
           <Button
             className="h-10 px-4"
             onClick={() => {
-              setOperationError(null);
               setCreateDialogOpen(true);
             }}
             type="button"
@@ -388,7 +383,6 @@ export function WorkflowListPage({
             detailBasePath={surface.webBasePath}
             loading={status === "loading" && items.length === 0}
             onDelete={(workflow) => {
-              setOperationError(null);
               setDeleteTarget(workflow);
             }}
             onLifecycleAction={(workflow, action) => {
@@ -417,7 +411,6 @@ export function WorkflowListPage({
       </section>
 
       <WorkflowMetadataDialog
-        error={operationError}
         metadata={{
           description: metadataTarget?.description ?? "",
           name: metadataTarget?.name ?? "",
@@ -425,7 +418,6 @@ export function WorkflowListPage({
         onOpenChange={(open) => {
           if (!open && !operationPending) {
             setMetadataTarget(null);
-            setOperationError(null);
           }
         }}
         onSave={updateWorkflowMetadata}
@@ -440,7 +432,6 @@ export function WorkflowListPage({
             setCreateDialogOpen(open);
             if (!open) {
               createRequestIdRef.current = null;
-              setOperationError(null);
             }
           }
         }}
@@ -450,12 +441,10 @@ export function WorkflowListPage({
       />
 
       <WorkflowDeleteDialog
-        error={operationError}
         onDelete={() => void deleteWorkflow()}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
             setDeleteTarget(null);
-            setOperationError(null);
           }
         }}
         open={Boolean(deleteTarget)}

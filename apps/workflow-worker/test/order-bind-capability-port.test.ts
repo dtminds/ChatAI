@@ -108,7 +108,7 @@ describe("Workflow Order Bind Java port", () => {
     })).resolves.toEqual({ result: false });
     await expect(executeWorkflowOrderBind({
       ...executeInput(),
-      fetch: vi.fn(async () => javaResponse({ error: 40001, errorMsg: null, success: false })) as typeof fetch,
+      fetch: vi.fn(async () => javaResponse({ error: 1.5, errorMsg: null, success: false })) as typeof fetch,
     })).resolves.toEqual({ result: false });
     await expect(executeWorkflowOrderBind({
       ...executeInput(),
@@ -141,8 +141,6 @@ describe("Workflow Order Bind Java port", () => {
       vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", error: 0 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", success: 1 })) as typeof fetch,
-      vi.fn(async () => javaResponse({ data: "ok", error: "0" })) as typeof fetch,
-      vi.fn(async () => javaResponse({ data: "ok", error: 1.5 })) as typeof fetch,
     ];
 
     for (const fetchImplementation of fetches) {

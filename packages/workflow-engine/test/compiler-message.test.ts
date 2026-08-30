@@ -53,15 +53,19 @@ describe("Message compiler validation", () => {
     });
   });
 
-  it("rejects customer custom field references until runtime injection is available", () => {
-    expectCompilationIssue(createMessageDraft({
-      attachments: [],
+  it("compiles customer custom field references for runtime preparation", () => {
+    const compiled = compileWorkflowDraft({
+      draft: createMessageDraft({
+        attachments: [],
+        content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+        contentMode: "custom",
+      }),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+    expect(compiled.nodes.find(node => node.id === "message")?.config).toMatchObject({
       content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
-      contentMode: "custom",
-    }), {
-      code: "invalid-node-config",
-      message: "Workflow custom field variables are not runtime-ready",
-      nodeId: "message",
     });
   });
 });

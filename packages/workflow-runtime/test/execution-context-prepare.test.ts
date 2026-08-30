@@ -9,28 +9,107 @@ import {
 describe("Workflow execution context prepare", () => {
   it("derives direct identity inputs and global context without node declarations", () => {
     expect(deriveWorkflowExecutionContextRequirements(node("message"))).toEqual({
+      customFieldIds: [],
       globalContext: false,
       identities: ["thirdExternalUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("branch", {
       branchPaths: [{ conditions: [{ selector: ["global", "customer", "name"] }] }],
     }))).toEqual({
+      customFieldIds: [],
       globalContext: true,
       identities: ["externalUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("tag", {
       value: { selector: ["global", "session", "startedAt"] },
     }))).toEqual({
+      customFieldIds: [],
       globalContext: true,
       identities: ["externalUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("order-conversion"))).toEqual({
+      customFieldIds: [],
       globalContext: false,
       identities: ["mallUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("order-bind"))).toEqual({
+      customFieldIds: [],
       globalContext: false,
       identities: ["externalUserId"],
+    });
+    expect(deriveWorkflowExecutionContextRequirements(node("branch", {
+      selector: ["subject", "customFields", "42"],
+      duplicate: ["subject", "customFields", "42"],
+    }))).toEqual({
+      customFieldIds: [42],
+      globalContext: false,
+      identities: [],
+    });
+  });
+
+  it("resolves externalUserId then queries all referenced custom fields once", async () => {
+    const getContactIdentity = vi.fn(async () => ({ externalUserId: 101 }));
+    const getContactCustomFields = vi.fn(async () => [
+      { fieldId: 7, fieldType: 11, rawValue: "2" },
+      { fieldId: 42, fieldType: 1, rawValue: "VIP" },
+    ]);
+    await expect(prepareWorkflowExecutionContext({
+      contactCustomFieldPort: { getContactCustomFields },
+      contactIdentityPort: { getContactIdentity },
+      node: node("branch", {
+        fields: [
+          ["subject", "customFields", "42"],
+          ["subject", "customFields", "7"],
+        ],
+      }),
+      subjectId: "chatai-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+    })).resolves.toEqual({
+      customFields: { "7": 2, "42": "VIP" },
+      identities: { externalUserId: 101, thirdExternalUserId: "chatai-1" },
+    });
+    expect(getContactIdentity).toHaveBeenCalledTimes(1);
+    expect(getContactCustomFields).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a supplied custom field snapshot without identity or field lookup", async () => {
+    const getContactIdentity = vi.fn();
+    const getContactCustomFields = vi.fn();
+    await expect(prepareWorkflowExecutionContext({
+      contactCustomFieldPort: { getContactCustomFields },
+      contactIdentityPort: { getContactIdentity },
+      customFieldSnapshot: { "42": "VIP" },
+      node: node("branch", { selector: ["subject", "customFields", "42"] }),
+      subjectId: "chatai-1",
+      subjectType: "chatai_contact",
+      trigger: {},
+      uid: 9,
+    })).resolves.toEqual({ customFields: { "42": "VIP" }, identities: {} });
+    expect(getContactIdentity).not.toHaveBeenCalled();
+    expect(getContactCustomFields).not.toHaveBeenCalled();
+  });
+
+  it("uses a WeCom subject directly for custom field lookup", async () => {
+    const getContactCustomFields = vi.fn(async () => [
+      { fieldId: 42, fieldType: 1, rawValue: "VIP" },
+    ]);
+    await expect(prepareWorkflowExecutionContext({
+      contactCustomFieldPort: { getContactCustomFields },
+      node: node("branch", { selector: ["subject", "customFields", "42"] }),
+      subjectId: "101",
+      subjectType: "wecom_contact",
+      trigger: {},
+      uid: 9,
+    })).resolves.toEqual({
+      customFields: { "42": "VIP" },
+      identities: { externalUserId: 101 },
+    });
+    expect(getContactCustomFields).toHaveBeenCalledWith({
+      externalUserId: 101,
+      signal: undefined,
+      uid: 9,
     });
   });
 
@@ -44,6 +123,7 @@ describe("Workflow execution context prepare", () => {
       trigger: { projection: { externalUserId: 101 } },
       uid: 9,
     })).resolves.toEqual({
+      customFields: {},
       identities: {
         externalUserId: 101,
         thirdExternalUserId: "chatai-1",
@@ -61,7 +141,7 @@ describe("Workflow execution context prepare", () => {
       subjectType: "chatai_contact",
       trigger: { projection: { thirdExternalUserId: "conflicting-chatai-id" } },
       uid: 9,
-    })).resolves.toEqual({ identities: {} });
+    })).resolves.toEqual({ customFields: {}, identities: {} });
     expect(getContactIdentity).not.toHaveBeenCalled();
   });
 
@@ -80,6 +160,7 @@ describe("Workflow execution context prepare", () => {
       trigger: {},
       uid: 9,
     })).resolves.toEqual({
+      customFields: {},
       identities: {
         externalUserId: 101,
         mallUserId: 202,
@@ -103,7 +184,10 @@ describe("Workflow execution context prepare", () => {
       subjectType: "chatai_contact",
       trigger: {},
       uid: 9,
-    })).resolves.toEqual({ identities: { thirdExternalUserId: "chatai-1" } });
+    })).resolves.toEqual({
+      customFields: {},
+      identities: { thirdExternalUserId: "chatai-1" },
+    });
   });
 
   it("maps lookup failure to a bounded retryable node failure", async () => {

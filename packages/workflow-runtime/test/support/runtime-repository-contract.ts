@@ -1003,6 +1003,21 @@ export function runWorkflowRuntimeRepositoryContract(
       uid: 9,
     });
     expect(prepared).toMatchObject({ kind: "success" });
+    const updatedExecution = await harness.repository.updateCapabilityExecutionInput({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      executionKey: "9:1:start:1",
+      input: { customFields: { "42": "VIP" }, subjectId: "customer-1" },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    });
+    expect(updatedExecution).toMatchObject({
+      execution: {
+        input: { customFields: { "42": "VIP" }, subjectId: "customer-1" },
+      },
+      kind: "success",
+    });
 
     const retryInput = {
       dueAt: OUTBOX_RETRY_AT,

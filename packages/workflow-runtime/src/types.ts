@@ -812,6 +812,15 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     taskId: string;
     uid: number;
   }): Promise<{ execution: WorkflowNodeExecutionRecord; kind: "success" } | WorkflowRuntimeFailure>;
+  updateCapabilityExecutionInput(input: {
+    expectedRunLockVersion: number;
+    expectedTaskVersion: number;
+    executionKey: string;
+    input: Record<string, unknown>;
+    runId: string;
+    taskId: string;
+    uid: number;
+  }): Promise<{ execution: WorkflowNodeExecutionRecord; kind: "success" } | WorkflowRuntimeFailure>;
   scheduleCapabilityRetry(input: WorkflowCapabilityExecutionFailureInput & {
     dueAt: Date;
   }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;

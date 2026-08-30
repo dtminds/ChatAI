@@ -36,14 +36,28 @@ export function getWorkflowCustomFieldVariableValueType(
 }
 
 export function containsWorkflowCustomFieldVariableSelector(value: unknown): boolean {
+  return getWorkflowCustomFieldVariableIds(value).length > 0;
+}
+
+export function getWorkflowCustomFieldVariableIds(value: unknown): number[] {
+  const fieldIds = new Set<number>();
+  collectWorkflowCustomFieldVariableIds(value, fieldIds);
+  return [...fieldIds].sort((left, right) => left - right);
+}
+
+function collectWorkflowCustomFieldVariableIds(value: unknown, fieldIds: Set<number>) {
   if (Array.isArray(value)) {
-    if (value.every(item => typeof item === "string")
-      && getWorkflowCustomFieldVariableId(value) !== null) {
-      return true;
+    if (value.every(item => typeof item === "string")) {
+      const fieldId = getWorkflowCustomFieldVariableId(value);
+      if (fieldId !== null) {
+        fieldIds.add(fieldId);
+        return;
+      }
     }
-    return value.some(containsWorkflowCustomFieldVariableSelector);
+    value.forEach(item => collectWorkflowCustomFieldVariableIds(item, fieldIds));
+    return;
   }
 
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value).some(containsWorkflowCustomFieldVariableSelector);
+  if (!value || typeof value !== "object") return;
+  Object.values(value).forEach(item => collectWorkflowCustomFieldVariableIds(item, fieldIds));
 }

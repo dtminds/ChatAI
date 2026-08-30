@@ -1,5 +1,5 @@
 import {
-  containsWorkflowCustomFieldVariableSelector,
+  getWorkflowCustomFieldVariableId,
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
@@ -121,15 +121,6 @@ function validateWorkflowNodeReferences(
   const entryEventTypes = getWorkflowEntryEventTypes(nodes);
 
   for (const node of nodes) {
-    if (containsWorkflowCustomFieldVariableSelector(node.config)) {
-      issues.push({
-        code: "invalid-node-config",
-        message: "Workflow custom field variables are not runtime-ready",
-        nodeId: node.id,
-      });
-      continue;
-    }
-
     if (node.kind === "message" && isWorkflowMessageExecutionConfigComplete(node.config)) {
       const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
         node.id,
@@ -401,6 +392,14 @@ function validateWorkflowVariableSelector(input: {
   const [scope, sourceId, outputKey, ...rest] = input.selector;
   if (scope === "subject" || scope === "trigger") {
     if (!allowsVariableSource(input.allowedSourceKinds, "context")) return false;
+    const customFieldId = getWorkflowCustomFieldVariableId(input.selector);
+    if (customFieldId !== null) {
+      if (input.requiredUsage && input.requiredUsage !== "variable"
+        && input.requiredUsage !== "message-content") return false;
+      return !input.expectedValueType
+        || input.expectedValueType.kind === "string"
+        || input.expectedValueType.kind === "number";
+    }
     const valueType = getWorkflowContextVariableValueType(
       input.selector,
       input.workflowType,

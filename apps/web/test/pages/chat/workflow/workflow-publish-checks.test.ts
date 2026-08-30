@@ -659,7 +659,7 @@ describe("buildPublishChecks", () => {
     }));
   });
 
-  it("allows custom field configuration but blocks publish until runtime injection exists", () => {
+  it("allows publishing an active customer custom field reference", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
     const messageNode = nodes.find(
@@ -682,13 +682,10 @@ describe("buildPublishChecks", () => {
       [{ id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 }],
     );
 
-    expect(issues).toContainEqual(expect.objectContaining({
-      code: "custom-field-variable-runtime-unavailable",
-      source: "config",
-    }));
     expect(issues).not.toContainEqual(expect.objectContaining({
       code: "message-variable-invalid",
     }));
+    expect(issues).toEqual([]);
   });
 
   it("treats disabled or deleted custom field references as unavailable", () => {
@@ -715,7 +712,6 @@ describe("buildPublishChecks", () => {
       [],
     )).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "message-variable-invalid" }),
-      expect.objectContaining({ code: "custom-field-variable-runtime-unavailable" }),
     ]));
   });
 

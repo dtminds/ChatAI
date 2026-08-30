@@ -3,6 +3,7 @@ import {
   containsWorkflowCustomFieldVariableSelector,
   createWorkflowCustomFieldVariableSelector,
   getWorkflowCustomFieldVariableId,
+  getWorkflowCustomFieldVariableIds,
   getWorkflowCustomFieldVariableValueType,
 } from "../src/index.js";
 
@@ -35,5 +36,12 @@ describe("Workflow custom field variables", () => {
     expect(containsWorkflowCustomFieldVariableSelector({
       fields: [{ value: { selector: ["subject", "id"] } }],
     })).toBe(false);
+    expect(getWorkflowCustomFieldVariableIds({
+      first: ["subject", "customFields", "42"],
+      nested: [
+        { selector: ["subject", "customFields", "7"] },
+        { selector: ["subject", "customFields", "42"] },
+      ],
+    })).toEqual([7, 42]);
   });
 });

@@ -36,13 +36,14 @@ export function createWorkflowInferenceRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string } = {},
+  customFields: Record<string, number | string> = {},
 ): WorkflowInferenceRequest {
   const request = node.kind === "llm"
     ? createLlmRequest(node, input => input.value.kind === "literal"
         ? input.value.value
-        : requireSelectorValue(input.value.selector, run, currentNodeLifecycle))
+        : requireSelectorValue(input.value.selector, run, currentNodeLifecycle, customFields))
     : node.kind === "ai-intent"
-      ? createIntentRequest(node, run)
+      ? createIntentRequest(node, run, currentNodeLifecycle, customFields)
       : null;
   if (!request) throw inferenceConfigError(`Unsupported inference node kind: ${node.kind}`);
   if (!Value.Check(WorkflowInferenceRequestSchema, request)) {
@@ -236,9 +237,10 @@ export function resolveWorkflowInferenceWithoutProvider(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string } = {},
+  customFields: Record<string, number | string> = {},
 ): { output: Record<string, unknown>; sourceOutletId: string } | null {
   if (node.kind !== "ai-intent") return null;
-  const { content } = resolveAiIntentInput(node, run, currentNodeLifecycle);
+  const { content } = resolveAiIntentInput(node, run, currentNodeLifecycle, customFields);
   if (hasInferenceContent(content)) return null;
   return {
     output: { matchedIntentDescription: "其他意图", reason: "输入为空" },
@@ -301,8 +303,10 @@ function requireInputValue(inputId: string, inputValues: ReadonlyMap<string, unk
 function createIntentRequest(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
+  currentNodeLifecycle: { enteredAt?: string } = {},
+  customFields: Record<string, number | string> = {},
 ): WorkflowInferenceMessageListRequest {
-  const { content } = resolveAiIntentInput(node, run);
+  const { content } = resolveAiIntentInput(node, run, currentNodeLifecycle, customFields);
   return createIntentRequestFromContent(node, content);
 }
 
@@ -417,6 +421,7 @@ function resolveAiIntentInput(
   node: WorkflowExecutionNode,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string } = {},
+  customFields: Record<string, number | string> = {},
 ): { config: WorkflowAiIntentExecutionConfig; content: WorkflowInferenceContentPart[] } {
   if (!isWorkflowAiIntentExecutionConfigComplete(node.config) || !node.config.inputSelector) {
     throw inferenceConfigError("AI Intent execution config failed schema validation");
@@ -427,6 +432,7 @@ function resolveAiIntentInput(
       node.config.inputSelector,
       run,
       currentNodeLifecycle,
+      customFields,
     )),
   };
 }
@@ -571,8 +577,9 @@ function requireSelectorValue(
   selector: WorkflowVariableSelector,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string } = {},
+  customFields: Record<string, number | string> = {},
 ) {
-  const resolved = resolveSelector(selector, run, currentNodeLifecycle);
+  const resolved = resolveSelector(selector, run, currentNodeLifecycle, customFields);
   if (!resolved.available) throw inferenceConfigError("Inference input references unavailable data");
   return resolved.value;
 }
@@ -581,11 +588,15 @@ function resolveSelector(
   selector: WorkflowVariableSelector,
   run: WorkflowRunRecord,
   currentNodeLifecycle: { enteredAt?: string },
+  customFields: Record<string, number | string>,
 ) {
   const [scope, key, ...path] = selector;
   if (!scope || !key) return { available: false, value: undefined };
   if (scope === "subject" && key === "id" && path.length === 0) {
     return { available: true, value: run.subjectId };
+  }
+  if (scope === "subject" && key === "customFields" && path.length === 1) {
+    return readPath(customFields, path);
   }
   if (scope === "trigger") return readPath(run.context.trigger, [key, ...path]);
   if (scope === "node") return readPath(readRecord(run.context.outputs)?.[key], path);

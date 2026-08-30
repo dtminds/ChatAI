@@ -28,6 +28,7 @@ import { createWorkflowBroker } from "./broker/index.js";
 import { createWorkflowDatabase } from "./database.js";
 import { HttpWorkflowAudienceFilterCapabilityPort } from "./audience-filter-capability-port.js";
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
+import { HttpWorkflowContactCustomFieldPort } from "./contact-custom-field-port.js";
 import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
 import { createWorkflowEntitlementCache } from "./entitlement-cache.js";
 import { startEntryConsumer } from "./entry-consumer.js";
@@ -170,6 +171,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       capabilityTimeoutMs: config.runtime.capabilityTimeoutMs,
       capabilityBindings: capabilityPort.bindings,
       aiCollectConversationPort,
+      contactCustomFieldPort: new HttpWorkflowContactCustomFieldPort({
+        baseUrl: config.javaInternalApi.baseUrl,
+        token: config.javaInternalApi.token,
+      }),
       contactIdentityPort: new HttpWorkflowContactIdentityPort({
         baseUrl: config.javaInternalApi.baseUrl,
         token: config.javaInternalApi.token,

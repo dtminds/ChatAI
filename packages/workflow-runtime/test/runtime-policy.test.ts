@@ -483,6 +483,7 @@ describe("Workflow runtime policy", () => {
     const complete = createHarness({
       aiCollectPorts: true,
       capabilityPort: true,
+      contactCustomFieldPort: true,
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       messageQueryPort: true,
     });
@@ -495,6 +496,7 @@ function createHarness(options: {
   capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
   capabilityPort?: boolean;
   capabilityResult?: unknown;
+  contactCustomFieldPort?: boolean;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
   messageQueryPort?: boolean;
@@ -569,6 +571,9 @@ function createHarness(options: {
           }
         : {}),
       clock: () => now,
+      ...(options.contactCustomFieldPort
+        ? { contactCustomFieldPort: { getContactCustomFields: async () => [] } }
+        : {}),
       entitlementPort: { check: options.entitlement },
       ...(options.messageQueryPort
         ? { messageQueryPort: { execute: async () => ({}) } }

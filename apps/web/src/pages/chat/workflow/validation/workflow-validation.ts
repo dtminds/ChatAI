@@ -1,5 +1,4 @@
 import {
-  containsWorkflowCustomFieldVariableSelector,
   type CustomFieldItem,
 } from "@chatai/contracts";
 import {
@@ -116,18 +115,10 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
     nodes,
   }) ?? [];
   const variableIssues = validateNodeVariableContent(node, nodes, edges, customFields);
-  const runtimeIssues = containsWorkflowCustomFieldVariableSelector(node.data)
-    ? [createVariableContentIssue(
-        "custom-field-variable-runtime-unavailable",
-        "客户自定义属性变量暂不支持发布",
-      )]
-    : [];
-
   return [
     ...configIssues,
     ...definitionIssues,
     ...variableIssues,
-    ...runtimeIssues,
   ];
 }
 

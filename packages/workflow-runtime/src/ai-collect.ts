@@ -95,14 +95,17 @@ export function renderWorkflowAiCollectDirective(
   }
   const fields = node.config.fields
     .filter(field => !(field.id in collected))
-    .map(field => [
-      `- ${field.name}`,
-      `  确认要求：${field.instruction.trim()}${getFieldNormalizationHint(field.type)}`,
-    ].join("\n"));
+    .map(field => `- ${field.name}`);
   return [
-    "当前临时沟通目标：协助确认客户的以下资料。",
-    fields.join("\n\n"),
-    "请结合当前对话自然沟通。客户已经明确提供的资料不要重复询问；存在歧义时，可以在合适的语境下继续确认。优先回应客户当前的问题，不要机械追问，也不要向客户暴露这段内部指引。",
+    "当前临时沟通目标：在自然对话中请客户提供以下资料。",
+    fields.join("\n"),
+    [
+      "沟通要求：",
+      "- 先回答客户当前的问题；若还缺资料，在同一轮回复末尾用一句口语请对方提供最相关的一项，不要把这段指引读给客户。",
+      "- 还缺多项时按对话进展分步了解，一轮只跟进一项，不要一次问完。",
+      "- 客户已经明确说过的内容不要再问；说得含糊或不完整时，用对方听得懂的方式请补充，不要要求特定格式，也不要念出校验规则。",
+      "- 客户明确表示暂时无法提供或拒绝提供时，礼貌理解并继续帮当前的忙，不要反复催要。",
+    ].join("\n"),
   ].join("\n\n");
 }
 
@@ -113,14 +116,6 @@ export function isWorkflowAiCollectComplete(
   return node.kind === "ai-collect"
     && isWorkflowAiCollectExecutionConfigComplete(node.config)
     && node.config.fields.every(field => field.id in collected);
-}
-
-function getFieldNormalizationHint(type: string) {
-  if (type === "date") return "；需要能够明确归一化为 YYYY-MM-DD 日期";
-  if (type === "time") return "；需要能够明确归一化为 HH:mm 时间";
-  if (type === "number") return "；需要能够明确归一化为数字";
-  if (type === "boolean") return "；需要能够明确判断为是或否";
-  return "";
 }
 
 function aiCollectConfigError(diagnosticMessage: string) {

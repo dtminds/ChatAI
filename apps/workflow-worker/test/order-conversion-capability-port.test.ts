@@ -83,7 +83,16 @@ describe("Workflow Order Conversion Java port", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("treats an HTTP 200 business rejection as terminal", async () => {
+  it("uses success as authoritative and maps a Java rejection to result false", async () => {
+    await expect(executeWorkflowOrderConversion({
+      ...executeInput(),
+      fetch: vi.fn(async () => javaResponse({
+        error: 40001,
+        errorMsg: "should be ignored",
+        success: true,
+      })) as typeof fetch,
+    })).resolves.toEqual({ result: true });
+
     await expect(executeWorkflowOrderConversion({
       ...executeInput(),
       fetch: vi.fn(async () => javaResponse({
@@ -93,12 +102,7 @@ describe("Workflow Order Conversion Java port", () => {
         error_msg: "不应读取的兼容字段",
         success: false,
       })) as typeof fetch,
-    })).rejects.toMatchObject({
-      code: "WORKFLOW_ORDER_CONVERSION_REJECTED",
-      diagnosticMessage:
-        "Workflow Order Conversion Java endpoint rejected the request: 40001 订单不存在",
-      failureKind: "terminal",
-    });
+    })).resolves.toEqual({ result: false });
   });
 
   it("classifies transport and every non-200 response as retryable", async () => {

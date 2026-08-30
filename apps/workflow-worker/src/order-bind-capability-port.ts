@@ -148,11 +148,7 @@ export async function executeWorkflowOrderBind(input: {
     );
   }
   if (envelope.kind === "rejected") {
-    throw terminalError(
-      "WORKFLOW_ORDER_BIND_REJECTED",
-      "关联订单失败，流程已停止",
-      `Workflow Order Bind Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
-    );
+    return { result: false };
   }
   return { result: true };
 }

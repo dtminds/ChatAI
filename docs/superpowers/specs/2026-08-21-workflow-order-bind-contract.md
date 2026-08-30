@@ -99,7 +99,7 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 }
 ```
 
-该本地参数失败不调用 Java，节点继续走默认出口，让后续条件分支可以处理无效订单号。
+本地参数失败或 Java 返回 `success === false` 时，节点输出 `result: false` 并继续走默认出口，让后续条件分支处理业务失败。
 
 系统不可用、超时、非法信封和未知结果不属于 `result: false`：
 
@@ -119,7 +119,7 @@ Java HTTP 200 响应必须使用标准信封：
 ```
 
 - `success === true` 表示操作成功，不要求也不读取 `error` / `errorMsg`，输出 `result: true`
-- `success === false` 表示 Java 拒绝，使用 `error` / `errorMsg` 记录诊断并 terminal，不输出 `result: false`
+- `success === false` 表示业务操作未成功，输出 `result: false` 并继续默认出口
 - `success` 缺失或类型错误，或失败响应缺少安全整数 `error` / 字符串 `errorMsg` 时，视为非法 envelope 并 terminal
 - 该接口不依赖 `data` 返回业务结果
 

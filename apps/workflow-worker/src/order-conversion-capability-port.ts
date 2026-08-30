@@ -144,11 +144,7 @@ export async function executeWorkflowOrderConversion(input: {
     );
   }
   if (envelope.kind === "rejected") {
-    throw terminalError(
-      "WORKFLOW_ORDER_CONVERSION_REJECTED",
-      "转积分失败，流程已停止",
-      `Workflow Order Conversion Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
-    );
+    return { result: false };
   }
   return { result: true };
 }

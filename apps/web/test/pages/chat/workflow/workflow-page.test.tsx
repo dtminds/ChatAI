@@ -628,9 +628,10 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
   });
 
-  it("only offers WeCom SOP creation from the embedded Workflow list", async () => {
+  it("creates WeCom SOPs without showing a type selector from the embedded Workflow list", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository("sop_embed");
+    const createDocumentSpy = vi.spyOn(repository, "createDocument");
     const router = createMemoryRouter([{
       path: "/embed/workflows",
       element: <WorkflowPage repository={repository} surface="sop_embed" />,
@@ -639,8 +640,13 @@ describe("Agent workflow page", () => {
     render(<RouterProvider router={router} />);
     await user.click(getWorkflowCreateButton());
 
-    expect(screen.getByRole("radio", { name: /企微客户 SOP/ })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: /ChatAI SOP/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    await user.type(getWorkflowMetadataInputs().nameInput, "企微新客旅程");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
+      workflowType: "wecom_sop",
+    })));
   });
 
   it("collects workflow metadata before creating and opens the new canvas", async () => {
@@ -652,10 +658,8 @@ describe("Agent workflow page", () => {
     await user.click(getWorkflowCreateButton());
 
     expect(createDocumentSpy).not.toHaveBeenCalled();
-    expect(screen.getByRole("radio", { name: /ChatAI SOP/ })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: /企微客户 SOP/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     const { descriptionInput, nameInput } = getWorkflowMetadataInputs();
-    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.type(nameInput, "新客欢迎旅程");
     await user.type(descriptionInput, "添加客户后发送欢迎消息");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -699,7 +703,6 @@ describe("Agent workflow page", () => {
     const { router } = renderWorkflowPage("/chat/workflows", repository);
 
     await user.click(getWorkflowCreateButton());
-    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.type(getWorkflowMetadataInputs().nameInput, "新客欢迎旅程");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await screen.findByText("操作失败，请稍后重试");
@@ -709,7 +712,6 @@ describe("Agent workflow page", () => {
     const firstRequestId = createDocument.mock.calls[0]?.[0].clientRequestId;
     expect(createDocument.mock.calls[1]?.[0].clientRequestId).toBe(firstRequestId);
 
-    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1"));
 
@@ -881,16 +883,15 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("menuitem", { name: "启用" })).toBeInTheDocument();
   });
 
-  it("requires an explicit workflow type before the direct create route creates a document", async () => {
+  it("uses the ChatAI SOP type when creating from the direct route", async () => {
     const user = userEvent.setup();
     const createDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "createDocument");
     const { router } = renderWorkflowPage("/chat/workflows/new");
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(createDocumentSpy).not.toHaveBeenCalled();
-    expect(screen.queryByRole("radio", { name: /会员 SOP/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: /ChatAI SOP/ }));
     await user.type(getWorkflowMetadataInputs().nameInput, "ChatAI 新客旅程");
     await user.click(screen.getByRole("button", { name: "创建" }));
 

@@ -214,7 +214,7 @@ export function WorkflowTopBar({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        aria-label="查看描述"
+                        aria-label="查看备注"
                         className="size-6 shrink-0 rounded-md text-muted-foreground"
                         size="icon"
                         type="button"

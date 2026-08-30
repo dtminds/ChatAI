@@ -444,12 +444,9 @@ export function WorkflowListPage({
             }
           }
         }}
-        onWorkflowTypeChange={() => {
-          createRequestIdRef.current = null;
-        }}
         open={createDialogOpen}
         pending={operationPending}
-        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
+        workflowType={surface.createWorkflowType}
       />
 
       <WorkflowDeleteDialog

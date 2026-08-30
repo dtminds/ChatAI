@@ -158,12 +158,9 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
         onOpenChange={(open) => {
           if (!open && !createPending) navigate(surface.webBasePath, { replace: true });
         }}
-        onWorkflowTypeChange={() => {
-          createRequestIdRef.current = null;
-        }}
         open
         pending={createPending}
-        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
+        workflowType={surface.createWorkflowType}
       />
     </main>
   );

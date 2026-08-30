@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 
 export type WorkflowCreateInput = {
@@ -18,62 +17,36 @@ export type WorkflowCreateInput = {
   workflowType: WorkflowType;
 };
 
-const workflowTypeOptions: Array<{
-  description: string;
-  label: string;
-  value: WorkflowCreateInput["workflowType"];
-}> = [
-  {
-    description: "使用 AI 和自动化能力流转 SOP",
-    label: "ChatAI SOP",
-    value: "chatai_sop",
-  },
-  {
-    description: "灵活编排和执行企微营销任务",
-    label: "企微客户 SOP",
-    value: "wecom_sop",
-  },
-  {
-    description: "面向会员的自动化服务流程",
-    label: "会员 SOP",
-    value: "member_sop",
-  },
-];
-
 export function WorkflowCreateDialog({
   error,
   onCreate,
   onOpenChange,
-  onWorkflowTypeChange,
   open,
   pending = false,
-  workflowTypes = ["chatai_sop", "wecom_sop"],
+  workflowType,
 }: {
   error?: string | null;
   onCreate: (input: WorkflowCreateInput) => Promise<boolean>;
   onOpenChange: (open: boolean) => void;
-  onWorkflowTypeChange?: () => void;
   open: boolean;
   pending?: boolean;
-  workflowTypes?: WorkflowCreateInput["workflowType"][];
+  workflowType: WorkflowCreateInput["workflowType"];
 }) {
   const fieldId = useId();
   const nameId = `${fieldId}-name`;
   const descriptionId = `${fieldId}-description`;
   const [nameValue, setNameValue] = useState("");
   const [descriptionValue, setDescriptionValue] = useState("");
-  const [workflowType, setWorkflowType] = useState<WorkflowCreateInput["workflowType"] | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setNameValue("");
     setDescriptionValue("");
-    setWorkflowType(null);
   }, [open]);
 
   const submit = async () => {
     const name = nameValue.trim();
-    if (!name || !workflowType) return;
+    if (!name) return;
 
     await onCreate({
       description: descriptionValue.trim(),
@@ -91,7 +64,6 @@ export function WorkflowCreateDialog({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="sm:max-w-[720px]"
         closeButtonDisabled={pending}
       >
         <DialogHeader>
@@ -104,31 +76,6 @@ export function WorkflowCreateDialog({
             void submit();
           }}
         >
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">工作流类型</legend>
-            <RadioGroup
-              className="grid gap-2 sm:grid-cols-2"
-              onValueChange={(value) => {
-                const nextWorkflowType = value as WorkflowCreateInput["workflowType"];
-                if (nextWorkflowType !== workflowType) onWorkflowTypeChange?.();
-                setWorkflowType(nextWorkflowType);
-              }}
-              value={workflowType ?? undefined}
-            >
-              {workflowTypeOptions.filter(option => workflowTypes.includes(option.value)).map((option) => (
-                <label
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 hover:bg-accent/50 has-[[data-state=checked]]:border-primary"
-                  key={option.value}
-                >
-                  <RadioGroupItem className="mt-0.5" disabled={pending} value={option.value} />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{option.label}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
-                  </span>
-                </label>
-              ))}
-            </RadioGroup>
-          </fieldset>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <label className="text-sm font-medium" htmlFor={nameId}>工作流名称</label>
@@ -145,21 +92,21 @@ export function WorkflowCreateDialog({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={descriptionId}>工作流描述</label>
+              <label className="text-sm font-medium" htmlFor={descriptionId}>备注</label>
               <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
             </div>
             <Textarea
               id={descriptionId}
               maxLength={1000}
               onChange={(event) => setDescriptionValue(event.target.value)}
-              placeholder="填写工作流的用途或目标"
+              placeholder="填写备注"
               readOnly={pending}
               value={descriptionValue}
             />
           </div>
           {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
-            <Button disabled={!nameValue.trim() || !workflowType || pending} type="submit">
+            <Button disabled={!nameValue.trim() || pending} type="submit">
               {pending ? "创建中" : "创建"}
             </Button>
           </DialogFooter>

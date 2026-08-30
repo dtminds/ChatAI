@@ -95,14 +95,14 @@ export function WorkflowMetadataDialog({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={descriptionId}>描述</label>
+              <label className="text-sm font-medium" htmlFor={descriptionId}>备注</label>
               <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
             </div>
             <Textarea
               id={descriptionId}
               maxLength={1000}
               onChange={(event) => setDescriptionValue(event.target.value)}
-              placeholder="填写用途或目标"
+              placeholder="填写备注"
               readOnly={pending}
               value={descriptionValue}
             />

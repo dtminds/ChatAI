@@ -106,6 +106,9 @@ export function createFriendAddWayJavaClient(
       });
 
       const payload = decodeJavaResponse(response, "friend-add-way-activity", logger);
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("friend-add-way-activity", "list must be an array");
+      }
       const items = extractJavaListItems<FriendAddWayJavaActivity>(payload.list);
 
       return {
@@ -130,7 +133,7 @@ export function createFriendAddWayJavaClient(
 
       const payload = decodeJavaResponse(response, "friend-add-way-list", logger);
       if (!Array.isArray(payload.data)) {
-        throw invalidJavaData("friend-add-way-list");
+        throw invalidJavaData("friend-add-way-list", "data must be an array");
       }
       return { groups: extractJavaListItems<FriendAddWayJavaGroup>(payload.data) };
     },
@@ -164,11 +167,11 @@ function decodeJavaResponse(
   );
 }
 
-function invalidJavaData(operation: string) {
+function invalidJavaData(operation: string, reason: string) {
   return new BadGatewayError(
     FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
     FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
-    { operation, reason: "data must be an array" },
+    { operation, reason },
   );
 }
 

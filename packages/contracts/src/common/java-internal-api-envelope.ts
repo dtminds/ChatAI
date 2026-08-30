@@ -7,8 +7,8 @@ export type JavaInternalApiEnvelope<TData = unknown> =
     }
   | {
       data?: TData;
-      error: number;
-      errorMsg: string;
+      error?: unknown;
+      errorMsg?: unknown;
       success: false;
     };
 
@@ -31,15 +31,9 @@ export function decodeJavaInternalApiEnvelope(
       key !== "success" && key !== "error" && key !== "errorMsg"));
     return { kind: "success", payload };
   }
-  if (typeof value.error !== "number" || !Number.isSafeInteger(value.error)) {
-    return { kind: "invalid", reason: "error must be a safe integer" };
-  }
-  if (typeof value.errorMsg !== "string") {
-    return { kind: "invalid", reason: "errorMsg must be a string" };
-  }
   return {
-    error: value.error,
-    errorMsg: value.errorMsg,
+    error: typeof value.error === "number" ? value.error : -1,
+    errorMsg: typeof value.errorMsg === "string" ? value.errorMsg : "",
     kind: "rejected",
   };
 }

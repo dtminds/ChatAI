@@ -38,6 +38,20 @@ describe("Java internal API envelope", () => {
       errorMsg: "参数无效",
       kind: "rejected",
     });
+    expect(decodeJavaInternalApiEnvelope({ success: false })).toEqual({
+      error: -1,
+      errorMsg: "",
+      kind: "rejected",
+    });
+    expect(decodeJavaInternalApiEnvelope({
+      error: 0.5,
+      errorMsg: null,
+      success: false,
+    })).toEqual({
+      error: 0.5,
+      errorMsg: "",
+      kind: "rejected",
+    });
   });
 
   it.each([
@@ -45,10 +59,7 @@ describe("Java internal API envelope", () => {
     [[], "envelope must be an object"],
     [{ error: 0, errorMsg: "" }, "success must be a boolean"],
     [{ error: 0, errorMsg: "", success: 1 }, "success must be a boolean"],
-    [{ errorMsg: "", success: false }, "error must be a safe integer"],
-    [{ error: 0.5, errorMsg: "", success: false }, "error must be a safe integer"],
-    [{ error: 0, success: false }, "errorMsg must be a string"],
-  ])("rejects an invalid failure envelope", (value, reason) => {
+  ])("rejects an invalid envelope", (value, reason) => {
     expect(decodeJavaInternalApiEnvelope(value)).toEqual({ kind: "invalid", reason });
   });
 });

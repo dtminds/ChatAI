@@ -1020,7 +1020,7 @@ Java 幂等语义：
 | `terminal` | 参数非法、资源不存在、按节点契约需终止的业务拒绝 | 节点和 Run 失败 |
 | `unknown` | HTTP 超时、连接断开且结果未知 | 使用同一幂等键重试 |
 
-Workflow 调用采用统一的 Java HTTP envelope 失败契约：boolean `success` 是唯一必需的状态字段；`success === false` 时还必须提供安全整数 `error` 和字符串 `errorMsg`。业务字段位置按各 Endpoint 已确认的现有契约读取，本次信封统一不顺带迁移 payload；新接口原则上把业务字段放在可选 `data`，legacy 例外在各自 Spec 记录。只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下只有 `success === true` 表示业务成功；`success === false` 是 Java 明确返回的业务拒绝，由具体节点契约映射为 terminal 或显式失败输出，不能通过 `error === 0` 覆盖。`success === true` 时不要求 `error` / `errorMsg` 存在，也不校验或读取这两个字段。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
+Workflow 调用采用统一的 Java HTTP envelope 失败契约：boolean `success` 是唯一必需的状态字段。业务字段位置按各 Endpoint 已确认的现有契约读取，本次信封统一不顺带迁移 payload；新接口原则上把业务字段放在可选 `data`，legacy 例外在各自 Spec 记录。只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下 `success === true` 表示业务成功，`success === false` 表示 Java 明确返回的业务拒绝；两者都不能被 `error` / `errorMsg` 的值或形状覆盖。`error` / `errorMsg` 只在失败时作为可选诊断信息采纳，缺失、`null` 或类型异常不改变失败判定。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
 
 Java 应返回稳定机器码，不允许 Node 根据中文错误文案判断是否重试。
 

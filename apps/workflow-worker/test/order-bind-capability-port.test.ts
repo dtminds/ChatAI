@@ -86,12 +86,20 @@ describe("Workflow Order Bind Java port", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("uses success as authoritative and maps a Java rejection to result false", async () => {
+  it("preserves legacy error-only results and honors success when present", async () => {
+    await expect(executeWorkflowOrderBind({
+      ...executeInput(),
+      fetch: vi.fn(async () => javaResponse({ error: 0, errorMsg: "" })) as typeof fetch,
+    })).resolves.toEqual({ result: true });
+    await expect(executeWorkflowOrderBind({
+      ...executeInput(),
+      fetch: vi.fn(async () => javaResponse({ error: 40001 })) as typeof fetch,
+    })).resolves.toEqual({ result: false });
     await expect(executeWorkflowOrderBind({
       ...executeInput(),
       fetch: vi.fn(async () => javaResponse({
-        error: 40001,
-        errorMsg: "should be ignored",
+        error: 1.5,
+        errorMsg: null,
         success: true,
       })) as typeof fetch,
     })).resolves.toEqual({ result: true });
@@ -105,6 +113,14 @@ describe("Workflow Order Bind Java port", () => {
         error_msg: "不应读取的兼容字段",
         success: false,
       })) as typeof fetch,
+    })).resolves.toEqual({ result: false });
+    await expect(executeWorkflowOrderBind({
+      ...executeInput(),
+      fetch: vi.fn(async () => javaResponse({ error: 40001, errorMsg: null, success: false })) as typeof fetch,
+    })).resolves.toEqual({ result: false });
+    await expect(executeWorkflowOrderBind({
+      ...executeInput(),
+      fetch: vi.fn(async () => javaResponse({ success: false })) as typeof fetch,
     })).resolves.toEqual({ result: false });
   });
 
@@ -131,7 +147,7 @@ describe("Workflow Order Bind Java port", () => {
   it("treats invalid HTTP 200 envelopes as terminal", async () => {
     const fetches: Array<typeof fetch> = [
       vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,
-      vi.fn(async () => javaResponse({ data: "ok" })) as typeof fetch,
+      vi.fn(async () => javaResponse({ data: "ok", success: 1 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", error: "0" })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", error: 1.5 })) as typeof fetch,
     ];

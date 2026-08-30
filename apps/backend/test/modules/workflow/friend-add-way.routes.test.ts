@@ -303,6 +303,41 @@ describe("workflow friend-add-way routes", () => {
     });
   });
 
+  it("rejects an activity response whose fixed top-level list is not an array", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        count: 1,
+        error: 0,
+        errorMsg: "",
+        hasNext: false,
+        page: 1,
+        pageSize: 20,
+        success: true,
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/friend-add-way-activities?key=scan",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "FRIEND_ADD_WAY_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
   it("rejects activity list requests without a key", async () => {
     const created = await createAuthenticatedApp();
     app = created.app;

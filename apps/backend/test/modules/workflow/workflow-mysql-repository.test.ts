@@ -400,6 +400,39 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.definitionUpdate).toMatchObject({ published_revision: 2 });
   });
 
+  it("writes cleanup requests for AI Collect nodes removed by a published revision", async () => {
+    const db = createPublicationDbMock({
+      previousExecutionSpec: executionSpecWithAiCollect(),
+      publishedRevision: 1,
+    });
+    const repository = new MysqlWorkflowRepository(db as never);
+    const input = enableInput();
+    db.reviewRows = [createReviewRow({
+      ...input,
+      executionSpec: { ...input.executionSpec, revision: 2 },
+    }, 1)];
+
+    const result = await repository.publishRevision({
+      candidateHash: input.specHash,
+      opSubUserId: input.opSubUserId,
+      reviewId: "7",
+      uid: input.uid,
+      workflowId: input.workflowId,
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.revisionCleanupInserts).toEqual([
+      expect.objectContaining({
+        node_id: "collect-1",
+        node_kind: "ai-collect",
+        revision: 2,
+        status: "pending",
+        uid: 8,
+        workflow_id: "42",
+      }),
+    ]);
+  });
+
   it("rejects first enable when fifty tenant Workflows are already active", async () => {
     const db = createPublicationDbMock({
       activeDefinitionCount: 50,
@@ -560,7 +593,7 @@ function createPublicationDbMock(options: {
   activeDefinitionCount?: number;
   draftSemanticHash?: string;
   draftVersion?: number;
-  previousExecutionSpec?: ReturnType<typeof executionSpecWithWait>;
+  previousExecutionSpec?: ReturnType<typeof executionSpecWithAiCollect> | ReturnType<typeof executionSpecWithWait>;
   publishedRevision?: number | null;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
 } = {}) {
@@ -797,6 +830,37 @@ function executionSpecWithWait() {
         config: { duration: 1, unit: "day" },
         id: "wait-1",
         kind: "wait" as const,
+        nodeSchemaVersion: 1,
+      },
+      input.executionSpec.nodes[1]!,
+    ],
+  };
+}
+
+function executionSpecWithAiCollect() {
+  const input = enableInput();
+  return {
+    ...input.executionSpec,
+    edges: [
+      { id: "edge-start-collect", source: "start", sourceOutletId: "default", target: "collect-1" },
+      { id: "edge-collect-end", source: "collect-1", sourceOutletId: "completed", target: "end" },
+    ],
+    nodes: [
+      input.executionSpec.nodes[0]!,
+      {
+        config: {
+          fields: [{
+            id: "field-order",
+            instruction: "提取完整订单号",
+            name: "订单号",
+            type: "text" as const,
+          }],
+          maxFollowUpCount: 1,
+          openingMessage: "",
+          timeout: { duration: 1, unit: "hour" as const },
+        },
+        id: "collect-1",
+        kind: "ai-collect" as const,
         nodeSchemaVersion: 1,
       },
       input.executionSpec.nodes[1]!,

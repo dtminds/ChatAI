@@ -3120,6 +3120,7 @@ export class MysqlWorkflowRuntimeRepository implements
           || (run.status === "waiting" && (
             (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
               && authoritativeTask.taskType !== "inference"
+              && authoritativeTask.taskType !== "ai-collect"
               && !(authoritativeTask.taskType === "execute"
                 && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
             || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
@@ -3647,7 +3648,9 @@ export class MysqlWorkflowRuntimeRepository implements
       }
 
       const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
-      const expectedTaskType = nodeKind === "wait" ? "wait" : "wait-event";
+      const expectedTaskType = nodeKind === "wait" ? "wait"
+        : nodeKind === "wait-event" ? "wait-event"
+          : "ai-collect";
       const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
       for (const task of taskRows) {
         const runId = normalizeId(task.run_id);
@@ -5174,8 +5177,8 @@ function mapRevisionCleanup(
   };
 }
 
-function parseRevisionCleanupNodeKind(value: string): "wait" | "wait-event" {
-  if (value === "wait" || value === "wait-event") return value;
+function parseRevisionCleanupNodeKind(value: string): "ai-collect" | "wait" | "wait-event" {
+  if (value === "ai-collect" || value === "wait" || value === "wait-event") return value;
   throw new Error(`Unknown Workflow Revision cleanup node kind: ${value}`);
 }
 

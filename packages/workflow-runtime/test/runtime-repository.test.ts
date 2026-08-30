@@ -364,6 +364,47 @@ describe("workflow runtime repository", () => {
     expect(repository.tasks.find(task => task.id === created.task.id)?.status).toBe("cancelled");
   });
 
+  it("cleans a deleted AI Collect node while its run is waiting", async () => {
+    const now = new Date("2026-07-10T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => now,
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const waiting = await createWaitingAiCollectRun(repository, "cleanup-ai-collect");
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "collect-1",
+      nodeKind: "ai-collect",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+    await repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      maxAttempts: 5,
+      now,
+    });
+
+    await expect(repository.processRevisionCleanupBatch({
+      cleanupId: cleanup.id,
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      now,
+    })).resolves.toMatchObject({ cancelled: 1, kind: "success", status: "done" });
+    expect(repository.runs.find(run => run.id === waiting.run.id)).toMatchObject({
+      status: "cancelled",
+      terminalReason: "flow_changed_current_node_deleted",
+    });
+    expect(repository.tasks.find(task => task.id === waiting.task.id)?.status).toBe("cancelled");
+  });
+
   it("obsoletes a cleanup request when the deleted node is published again", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(
       undefined,
@@ -1231,6 +1272,70 @@ async function createWaitingRun(
     now: new Date("2026-07-10T00:00:00.000Z"),
     runId: created.run.id,
     taskId: claimed.task.id,
+    uid: 9,
+  });
+  if (waiting.kind !== "success") throw new Error("wait failed");
+  return waiting;
+}
+
+async function createWaitingAiCollectRun(
+  repository: InMemoryWorkflowRuntimeRepository,
+  entryEventId: string,
+) {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const dueAt = new Date("2026-07-11T00:00:00.000Z");
+  const created = await repository.createRunWithInitialTask({
+    ...createRunInput(),
+    entryEventId,
+    initialNodeId: "collect-1",
+    initialNodeKind: "ai-collect",
+    subjectId: entryEventId,
+  });
+  if (created.kind !== "success") throw new Error("create failed");
+  const claimed = await repository.claimTask({
+    expectedTaskVersion: created.task.taskVersion,
+    leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    leaseOwner: "task-worker",
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (claimed.kind !== "success") throw new Error("claim failed");
+  await repository.initializeAiCollectState({
+    bizId: `${created.run.id}:${created.task.id}`,
+    expiresAt: dueAt,
+    initialMessageCursor: null,
+    now,
+    runId: created.run.id,
+    seatId: 101,
+    taskId: created.task.id,
+    thirdExternalUserId: "external-1",
+    uid: 9,
+    workflowId: "31",
+  });
+  await repository.transitionAiCollectState({
+    now,
+    taskId: created.task.id,
+    transition: { conversationId: 501, kind: "conversation-resolved" },
+    uid: 9,
+  });
+  await repository.transitionAiCollectState({
+    now,
+    taskId: created.task.id,
+    transition: { kind: "directive-active" },
+    uid: 9,
+  });
+  const waiting = await repository.beginAiCollectWait({
+    dueAt,
+    expectedRunLockVersion: created.run.lockVersion,
+    expectedTaskVersion: claimed.task.taskVersion,
+    inbox: {
+      consumer: "workflow-task",
+      expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+      messageId: `ai-collect:${entryEventId}`,
+    },
+    now,
+    runId: created.run.id,
+    taskId: created.task.id,
     uid: 9,
   });
   if (waiting.kind !== "success") throw new Error("wait failed");

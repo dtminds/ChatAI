@@ -79,7 +79,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   addRevisionCleanupRequest(input: {
     nodeId: string;
-    nodeKind: "wait" | "wait-event";
+    nodeKind: "ai-collect" | "wait" | "wait-event";
     revision: number;
     uid: number;
     workflowId: string;
@@ -172,7 +172,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         && item.status !== "completed"
         && item.status !== "cancelled"
         && item.status !== "dead");
-      const expectedTaskType = cleanup.nodeKind === "wait" ? "wait" : "wait-event";
+      const expectedTaskType = cleanup.nodeKind === "wait" ? "wait"
+        : cleanup.nodeKind === "wait-event" ? "wait-event"
+          : "ai-collect";
       if (!task
         || task.nodeKind !== cleanup.nodeKind
         || (task.taskType !== "execute" && task.taskType !== expectedTaskType)) continue;
@@ -1636,6 +1638,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || (run.status === "waiting" && (
           (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
             && authoritativeTask.taskType !== "inference"
+            && authoritativeTask.taskType !== "ai-collect"
             && !(authoritativeTask.taskType === "execute"
               && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)

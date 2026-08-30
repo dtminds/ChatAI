@@ -570,7 +570,7 @@ export type WorkflowRevisionCleanupRecord = {
   leaseOwner: string | null;
   nextAttemptAt: Date;
   nodeId: string;
-  nodeKind: "wait" | "wait-event";
+  nodeKind: "ai-collect" | "wait" | "wait-event";
   revision: number;
   status: WorkflowRevisionCleanupStatus;
   uid: number;

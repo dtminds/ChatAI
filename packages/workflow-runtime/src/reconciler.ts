@@ -1,7 +1,24 @@
+import { getEnabledWorkflowTypes, type WorkflowType } from "@chatai/contracts";
+import {
+  decideWorkflowEntitlement,
+  UnavailableWorkflowEntitlementPort,
+  WorkflowEntitlementUnavailableError,
+  type WorkflowEntitlementPort,
+} from "./entitlement.js";
 import type { WorkflowRuntimeRepository } from "./types.js";
 
+const WORKFLOW_TYPES = getEnabledWorkflowTypes();
+const ENTITLEMENT_TENANT_CONCURRENCY = 10;
+
 export class WorkflowRuntimeReconciler {
-  constructor(private readonly repository: WorkflowRuntimeRepository) {}
+  private readonly entitlementPort: WorkflowEntitlementPort;
+
+  constructor(
+    private readonly repository: WorkflowRuntimeRepository,
+    options: { entitlementPort?: WorkflowEntitlementPort } = {},
+  ) {
+    this.entitlementPort = options.entitlementPort ?? new UnavailableWorkflowEntitlementPort();
+  }
 
   recoverExpiredLeases(input: { limit: number; maxAttempts: number; now: Date }) {
     return this.repository.recoverExpiredLeases(input);
@@ -35,6 +52,84 @@ export class WorkflowRuntimeReconciler {
     input: Parameters<WorkflowRuntimeRepository["reconcileTenantCapacityCounts"]>[0],
   ) {
     return this.repository.reconcileTenantCapacityCounts(input);
+  }
+
+  async deactivateUnentitledWorkflows(input: { afterUid?: number; limit: number }) {
+    const tenants = await this.repository.listActiveCapacityTenants(input);
+    let checksUnavailable = 0;
+    let workflowsDeactivated = 0;
+    for (let offset = 0; offset < tenants.uids.length; offset += ENTITLEMENT_TENANT_CONCURRENCY) {
+      const results = await Promise.all(
+        tenants.uids.slice(offset, offset + ENTITLEMENT_TENANT_CONCURRENCY).map(async uid => {
+          const typeResults = await Promise.all(WORKFLOW_TYPES.map(async workflowType => {
+            try {
+              const decision = await decideWorkflowEntitlement(
+                this.entitlementPort,
+                { uid, workflowType },
+              );
+              return decision.action === "deny"
+                ? { deniedType: workflowType, unavailable: false } as const
+                : { unavailable: false } as const;
+            } catch (error) {
+              if (!(error instanceof WorkflowEntitlementUnavailableError)) throw error;
+              return { unavailable: true } as const;
+            }
+          }));
+          const deniedTypes = typeResults
+            .filter((result): result is { deniedType: WorkflowType; unavailable: false } =>
+              "deniedType" in result)
+            .map(result => result.deniedType);
+          const workflows = deniedTypes.length === 0
+            ? []
+            : await this.repository.listActiveRunWorkflowIds({
+                uid,
+                workflowTypes: deniedTypes,
+              });
+          const activeDeniedTypes = new Set(workflows.map(workflow => workflow.workflowType));
+          const confirmedDeniedTypes = new Set<WorkflowType>();
+          let entitlementChecksUnavailable = 0;
+          await Promise.all([...activeDeniedTypes].map(async workflowType => {
+            try {
+              const confirmed = await decideWorkflowEntitlement(this.entitlementPort, {
+                forceRefresh: true,
+                uid,
+                workflowType,
+              });
+              if (confirmed.action === "deny") confirmedDeniedTypes.add(workflowType);
+            } catch (error) {
+              if (!(error instanceof WorkflowEntitlementUnavailableError)) throw error;
+              entitlementChecksUnavailable += 1;
+            }
+          }));
+          let deactivated = 0;
+          for (const workflow of workflows.filter(item => confirmedDeniedTypes.has(item.workflowType))) {
+            const result = await this.repository.deactivateWorkflowForEntitlementLoss({
+              opSubUserId: "0",
+              uid,
+              workflowId: workflow.workflowId,
+              workflowType: workflow.workflowType,
+            });
+            deactivated += result.affectedDefinitions;
+          }
+          return {
+            checksUnavailable: typeResults.filter(result => result.unavailable).length
+              + entitlementChecksUnavailable,
+            workflowsDeactivated: deactivated,
+          };
+        }),
+      );
+      for (const result of results) {
+        checksUnavailable += result.checksUnavailable;
+        workflowsDeactivated += result.workflowsDeactivated;
+      }
+    }
+    return {
+      checksUnavailable,
+      hasMore: tenants.hasMore,
+      lastUid: tenants.lastUid,
+      tenantsChecked: tenants.uids.length,
+      workflowsDeactivated,
+    };
   }
 
   reconcileEventSubscriptions(

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { reconcileWorkflowRuntime } from "../src/reconciler.js";
+import {
+  reconcileWorkflowEntitlements,
+  reconcileWorkflowRuntime,
+} from "../src/reconciler.js";
 
 describe("workflow reconciler", () => {
   it("recovers task and outbox leases and advances workflow cancellation", async () => {
@@ -14,6 +17,13 @@ describe("workflow reconciler", () => {
         outboxDeleted: 11,
         runsDeleted: 12,
         tasksDeleted: 13,
+      })),
+      deactivateUnentitledWorkflows: vi.fn(async () => ({
+        checksUnavailable: 1,
+        hasMore: true,
+        lastUid: 108,
+        tenantsChecked: 3,
+        workflowsDeactivated: 2,
       })),
       recoverExpiredLeases: vi.fn(async () => ({ dead: 1, recovered: 2 })),
       processRevisionCleanups: vi.fn(async () => ({
@@ -137,6 +147,27 @@ describe("workflow reconciler", () => {
       limit: 1_000,
       runBefore: new Date("2026-01-12T00:00:00.000Z"),
       taskOutboxBefore: new Date("2026-06-11T00:00:00.000Z"),
+    });
+  });
+
+  it("reconciles entitlements independently from runtime recovery", async () => {
+    const deactivateUnentitledWorkflows = vi.fn(async () => ({
+      checksUnavailable: 1,
+      hasMore: true,
+      lastUid: 108,
+      tenantsChecked: 3,
+      workflowsDeactivated: 2,
+    }));
+
+    await expect(reconcileWorkflowEntitlements({
+      afterUid: 8,
+      limit: 100,
+      reconciler: { deactivateUnentitledWorkflows },
+    })).resolves.toEqual({
+      entitlementChecksUnavailable: 1,
+      entitlementTenantsChecked: 3,
+      entitlementWorkflowsDeactivated: 2,
+      nextEntitlementCursor: 108,
     });
   });
 });

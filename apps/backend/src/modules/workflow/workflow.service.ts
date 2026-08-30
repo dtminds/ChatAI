@@ -75,6 +75,7 @@ import {
   assertWorkflowRuntimeValue,
   type WorkflowLlmTestAttemptRecord,
   type WorkflowLlmTestAttemptRepository,
+  type WorkflowEntitlementDecision,
   type WorkflowEntitlementPort,
 } from "@chatai/workflow-runtime";
 import {
@@ -132,6 +133,8 @@ export type WorkflowServiceOptions = {
 };
 
 export class WorkflowService {
+  private static readonly ENTITLEMENT_REFRESH_MIN_INTERVAL_MS = 30_000;
+  private static readonly ENTITLEMENT_REFRESH_MAX_ENTRIES = 10_000;
   private readonly clock: () => Date;
   private readonly directEntryEndpointPort: WorkflowDirectEntryEndpointPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
@@ -141,6 +144,10 @@ export class WorkflowService {
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
   private readonly metricReader: WorkflowMetricReader;
+  private readonly entitlementRefreshes = new Map<string, {
+    attemptedAt: number;
+    outcome: "denied" | "unavailable";
+  }>();
 
   constructor(
     private readonly repository: WorkflowRepository,
@@ -191,6 +198,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
     const definition = await this.requireVisibleDefinition(scope, workflowId);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
@@ -260,6 +268,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const repository = this.requireLlmTestAttemptRepository();
     const definition = await this.requireVisibleDefinition(scope, workflowId);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
@@ -439,7 +448,7 @@ export class WorkflowService {
     if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(input.workflowType)) {
       throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该 Workflow 类型");
     }
-    await this.requireEntitlement(scope.uid, input.workflowType, scope.subUserId);
+    await this.requireEntitlement(scope.uid, input.workflowType);
     const draft = createInitialWorkflowDraft(input.workflowType);
     const result = await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
@@ -464,6 +473,7 @@ export class WorkflowService {
   async saveDraft(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowSaveDraftRequest) {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     const draft = normalizeWorkflowDraft(input.draft);
     assertWorkflowDraftNodeContracts(draft);
     assertWorkflowTypePolicy(definition.workflowType, draft);
@@ -491,7 +501,8 @@ export class WorkflowService {
     metadata: WorkflowMetadataUpdateRequest,
   ) {
     assertWorkflowAccess(scope);
-    await this.requireVisibleDefinition(scope, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     const name = metadata.name.trim();
     const description = metadata.description.trim();
     if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
@@ -540,11 +551,7 @@ export class WorkflowService {
       ...definition,
       draft: normalizeWorkflowDraft(definition.draft),
     };
-    const entitlement = await this.requireEntitlement(
-      scope.uid,
-      definition.workflowType,
-      scope.subUserId,
-    );
+    const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
 
     const nextRevision = (definition.publishedRevision ?? 0) + 1;
@@ -607,6 +614,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     return toReview(this.unwrapMutation(await this.repository.decideReview({
       comment: input.comment?.trim() || null,
       decision: "approved",
@@ -626,6 +634,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
     if (!review) throw workflowNotFound();
     if (review.submittedBySubUserId === scope.subUserId) {
@@ -666,6 +675,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
     if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
     if (review.status === "pending") {
@@ -702,7 +712,7 @@ export class WorkflowService {
       || definition.draftSemanticHash !== review.draftSemanticHash) {
       throw conflictError();
     }
-    const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType, scope.subUserId);
+    const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     this.assertProductionAvailability(review.executionSpec, entitlement, review.subjectType);
     const currentBindings = await this.createTriggerBindings(scope.uid, review.executionSpec, review.subjectType);
     if (hashCanonicalValue(currentBindings) !== hashCanonicalValue(review.triggerBindings)) {
@@ -728,11 +738,7 @@ export class WorkflowService {
     if (definition.runtimeStatus !== "inactive" || definition.publishedRevision === null) {
       throw invalidStatusError(definition.runtimeStatus);
     }
-    const entitlement = await this.requireEntitlement(
-      scope.uid,
-      definition.workflowType,
-      scope.subUserId,
-    );
+    const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     const revision = await this.repository.findRevision(scope.uid, workflowId, definition.publishedRevision);
     if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
     this.assertProductionAvailability(revision.executionSpec, entitlement, revision.subjectType);
@@ -755,11 +761,7 @@ export class WorkflowService {
     if (definition.runtimeStatus !== "paused" || definition.publishedRevision === null) {
       throw invalidStatusError(definition.runtimeStatus);
     }
-    const entitlement = await this.requireEntitlement(
-      scope.uid,
-      definition.workflowType,
-      scope.subUserId,
-    );
+    const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     const revision = await this.repository.findRevision(
       scope.uid,
       workflowId,
@@ -803,6 +805,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
     const revisionRecord = await this.repository.findRevision(scope.uid, workflowId, revision);
     if (!revisionRecord) {
       throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
@@ -965,23 +968,46 @@ export class WorkflowService {
   private async requireEntitlement(
     uid: number,
     workflowType: WorkflowType,
-    opSubUserId: string,
   ): Promise<WorkflowTypeEntitlementResult> {
     try {
       const decision = await decideWorkflowEntitlement(this.entitlementPort, {
-        now: this.clock(),
         uid,
         workflowType,
       });
-      if (decision.action === "allow") return decision.result;
-
-      await this.repository.applyEntitlementLoss({
-        opSubUserId,
-        transitionedAt: this.clock(),
-        transition: decision.action,
-        uid,
-        workflowType,
-      });
+      const refreshKey = `${uid}:${workflowType}`;
+      if (decision.action === "allow") {
+        this.entitlementRefreshes.delete(refreshKey);
+        return decision.result;
+      }
+      const now = this.clock().getTime();
+      const previous = this.entitlementRefreshes.get(refreshKey);
+      if (previous && now - previous.attemptedAt < WorkflowService.ENTITLEMENT_REFRESH_MIN_INTERVAL_MS) {
+        if (previous.outcome === "unavailable") {
+          throw new WorkflowEntitlementUnavailableError();
+        }
+        throw new ForbiddenError(
+          "WORKFLOW_ENTITLEMENT_REQUIRED",
+          "当前无对应产品权益",
+        );
+      }
+      let confirmation: WorkflowEntitlementDecision;
+      try {
+        confirmation = await decideWorkflowEntitlement(this.entitlementPort, {
+          forceRefresh: true,
+          uid,
+          workflowType,
+        });
+      } catch (error) {
+        if (error instanceof WorkflowEntitlementUnavailableError) {
+          this.rememberEntitlementRefresh(refreshKey, now, "unavailable");
+        }
+        throw error;
+      }
+      if (confirmation.action === "allow") {
+        this.entitlementRefreshes.delete(refreshKey);
+        return confirmation.result;
+      }
+      this.rememberEntitlementRefresh(refreshKey, now, "denied");
       throw new ForbiddenError(
         "WORKFLOW_ENTITLEMENT_REQUIRED",
         "当前无对应产品权益",
@@ -995,6 +1021,20 @@ export class WorkflowService {
         );
       }
       throw error;
+    }
+  }
+
+  private rememberEntitlementRefresh(
+    key: string,
+    attemptedAt: number,
+    outcome: "denied" | "unavailable",
+  ) {
+    this.entitlementRefreshes.delete(key);
+    this.entitlementRefreshes.set(key, { attemptedAt, outcome });
+    while (this.entitlementRefreshes.size > WorkflowService.ENTITLEMENT_REFRESH_MAX_ENTRIES) {
+      const oldest = this.entitlementRefreshes.keys().next().value;
+      if (oldest === undefined) break;
+      this.entitlementRefreshes.delete(oldest);
     }
   }
 

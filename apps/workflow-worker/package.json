@@ -22,6 +22,7 @@
     "@chatai/workflow-engine": "workspace:*",
     "@chatai/workflow-runtime": "workspace:*",
     "@sinclair/typebox": "^0.34.41",
+    "ioredis": "^5.11.1",
     "kysely": "^0.29.0",
     "mysql2": "^3.15.3",
     "pino": "^9.9.4",

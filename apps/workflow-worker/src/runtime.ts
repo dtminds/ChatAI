@@ -25,7 +25,10 @@ import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 import type { publishWorkflowOutbox } from "./outbox-publisher.js";
-import type { reconcileWorkflowRuntime } from "./reconciler.js";
+import {
+  reconcileWorkflowEntitlements,
+  type reconcileWorkflowRuntime,
+} from "./reconciler.js";
 import type { startRoleLoop } from "./role-loop.js";
 import type { scheduleWorkflowTasks } from "./scheduler.js";
 
@@ -79,6 +82,7 @@ export async function startWorkflowWorkerRuntime(input: {
   broker: WorkflowBroker;
   config: WorkflowWorkerConfig;
   database: { destroy(): Promise<void> };
+  entitlementCache?: { close(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   eventCatalog?: WorkflowEventCatalog;
   eventSubscriptionReader: WorkflowEventSubscriptionReader;
@@ -276,6 +280,30 @@ export async function startWorkflowWorkerRuntime(input: {
         }
         return result;
       }));
+      let afterEntitlementUid: number | undefined;
+      loops.push(input.roleLoop({
+        intervalMs: input.config.runtime.reconcileIntervalMs,
+        onError: error => input.logger.error({
+          err: error,
+          event: "workflow.worker.entitlement_reconciler.failed",
+          role: "entitlement-reconciler",
+        }, "workflow entitlement reconciler iteration failed"),
+        onHeartbeat: heartbeat => logWorkflowRoleHeartbeat(
+          input.logger,
+          "entitlement-reconciler",
+          heartbeat,
+        ),
+        role: "entitlement-reconciler",
+        run: async () => {
+          const result = await reconcileWorkflowEntitlements({
+            afterUid: afterEntitlementUid,
+            limit: input.config.runtime.batchSize,
+            reconciler: input.reconcilerService,
+          });
+          afterEntitlementUid = result.nextEntitlementCursor ?? undefined;
+          return result;
+        },
+      }));
     }
     loops.push(input.roleLoop({
       intervalMs: input.config.runtime.readinessIntervalMs,
@@ -350,6 +378,7 @@ export async function startWorkflowWorkerRuntime(input: {
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
     await Promise.allSettled([
       input.runtimeState?.close() ?? Promise.resolve(),
+      input.entitlementCache?.close() ?? Promise.resolve(),
       input.broker.close(),
       input.database.destroy(),
     ]);

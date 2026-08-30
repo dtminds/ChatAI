@@ -60,11 +60,10 @@ export type WorkflowPublishedRevisionResolver = (input: {
 }) => Promise<WorkflowRuntimeRevisionRecord | null>;
 
 export type WorkflowRuntimeControlReader = {
-  applyEntitlementLoss(input: {
+  deactivateWorkflowForEntitlementLoss(input: {
     opSubUserId: string;
-    transitionedAt: Date;
-    transition: "pause" | "stop";
     uid: number;
+    workflowId: string;
     workflowType: WorkflowType;
   }): Promise<{ affectedDefinitions: number }>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowRuntimeDefinitionRecord | null>;
@@ -606,6 +605,12 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
   & WorkflowOutboxRepository
   & WorkflowSchedulerRepository & {
   configurePublishedRevisionResolver?(resolver: WorkflowPublishedRevisionResolver): void;
+  deactivateWorkflowForEntitlementLoss(input: {
+    opSubUserId: string;
+    uid: number;
+    workflowId: string;
+    workflowType: WorkflowType;
+  }): Promise<{ affectedDefinitions: number }>;
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
@@ -741,6 +746,18 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     tasksChecked: number;
     terminalRunTasksCancelled: number;
   }>;
+  listActiveCapacityTenants(input: {
+    afterUid?: number;
+    limit: number;
+  }): Promise<{
+    hasMore: boolean;
+    lastUid: number | null;
+    uids: number[];
+  }>;
+  listActiveRunWorkflowIds(input: {
+    uid: number;
+    workflowTypes: WorkflowType[];
+  }): Promise<Array<{ workflowId: string; workflowType: WorkflowType }>>;
   reconcileTenantCapacityCounts(input: {
     afterUid?: number;
     limit: number;

@@ -26,27 +26,6 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
   private nextReviewId = 1n;
   private nextTriggerBindingId = 1n;
 
-  async applyEntitlementLoss(input: Parameters<WorkflowRepository["applyEntitlementLoss"]>[0]) {
-    let affectedDefinitions = 0;
-    for (const definition of this.definitions) {
-      if (definition.uid !== input.uid
-        || definition.workflowType !== input.workflowType
-        || definition.bizStatus !== 1) continue;
-      if (input.transition === "pause") {
-        if (definition.runtimeStatus !== "active") continue;
-        definition.runtimeStatus = "paused";
-      } else {
-        if (definition.runtimeStatus === "stopped") continue;
-        definition.runtimeStatus = "stopped";
-        this.withdrawPendingReviews(input.uid, definition.id, input.opSubUserId);
-      }
-      definition.statusReason = "entitlement_revoked";
-      touch(definition, input.opSubUserId);
-      affectedDefinitions += 1;
-    }
-    return { affectedDefinitions };
-  }
-
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     const existing = input.clientRequestId
       ? this.definitions.find((item) =>

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getWorkflowActiveRunLimit,
   getPort,
   loadBackendEnv,
   validateBackendEnv,
@@ -18,7 +19,7 @@ const ENV_KEYS = [
   "JWT_PUBLIC_KEY",
   "NODE_ENV",
   "PORT",
-  "WORKFLOW_ENTITLEMENT_MODE",
+  "WORKFLOW_ACTIVE_RUN_LIMIT",
 ] as const;
 
 function clearEnv() {
@@ -151,7 +152,7 @@ describe("backend env config", () => {
     ).toThrow("Missing required environment variables for test: DATABASE_URL");
   });
 
-  it("accepts the entitlement bypass in production when unset or allow", () => {
+  it("uses the default Workflow capacity when no override is configured", () => {
     const productionEnv = {
       DATABASE_URL: "mysql://prod",
       JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
@@ -161,17 +162,18 @@ describe("backend env config", () => {
     };
 
     expect(() => validateBackendEnv(productionEnv)).not.toThrow();
-    expect(() => validateBackendEnv({
+    expect(getWorkflowActiveRunLimit(productionEnv)).toBe(10_000);
+    expect(getWorkflowActiveRunLimit({
       ...productionEnv,
-      WORKFLOW_ENTITLEMENT_MODE: "allow",
-    })).not.toThrow();
-    expect(() => validateBackendEnv({
+      WORKFLOW_ACTIVE_RUN_LIMIT: "   ",
+    })).toBe(10_000);
+    expect(getWorkflowActiveRunLimit({
       ...productionEnv,
-      WORKFLOW_ENTITLEMENT_MODE: " allow ",
-    })).not.toThrow();
+      WORKFLOW_ACTIVE_RUN_LIMIT: "25000",
+    })).toBe(25_000);
   });
 
-  it("rejects unknown entitlement modes", () => {
+  it("rejects invalid Workflow capacity overrides", () => {
     expect(() =>
       validateBackendEnv({
         DATABASE_URL: "mysql://prod",
@@ -179,9 +181,9 @@ describe("backend env config", () => {
         JWT_PRIVATE_KEY: "private",
         JWT_PUBLIC_KEY: "public",
         NODE_ENV: "production",
-        WORKFLOW_ENTITLEMENT_MODE: "disabled",
+        WORKFLOW_ACTIVE_RUN_LIMIT: "1.5",
       }),
-    ).toThrow("WORKFLOW_ENTITLEMENT_MODE must be allow or enforce");
+    ).toThrow("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
   });
 
   it("validates worker observer subjects before backend startup", () => {

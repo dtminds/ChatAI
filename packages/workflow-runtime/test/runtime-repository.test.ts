@@ -7,6 +7,17 @@ import {
 } from "../src/index.js";
 
 describe("workflow runtime repository", () => {
+  it("fails explicitly when entitlement deactivation needs a persistent definition repository", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+
+    await expect(repository.deactivateWorkflowForEntitlementLoss({
+      opSubUserId: "0",
+      uid: 9,
+      workflowId: "1",
+      workflowType: "chatai_sop",
+    })).rejects.toThrow("does not support Workflow definition deactivation");
+  });
+
   it("rejects run creation when the workflow boundary is unavailable", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
       bizStatus: 1,

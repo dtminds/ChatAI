@@ -772,6 +772,72 @@ describe("MySQL workflow runtime repository contract", () => {
     })).resolves.toEqual({ kind: "capacity-rejected" });
   });
 
+  it("finds entitlement candidates from capacity guards and deactivates only the fenced Workflow", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    await database.insertInto("xy_wap_embed_workflow_definition").values({
+      biz_status: 1,
+      client_request_id: null,
+      description: "",
+      draft_json: "{}",
+      draft_schema_version: 1,
+      draft_semantic_hash: "draft-hash-34",
+      draft_version: 1,
+      id: "34",
+      name: "Dormant same-type Workflow",
+      op_sub_uid: "1",
+      published_revision: 1,
+      published_semantic_hash: "published-hash-34",
+      runtime_status: "active",
+      status_reason: null,
+      uid: 9,
+      workflow_type: 1,
+    }).executeTakeFirstOrThrow();
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const created = await repository.createRunWithInitialTask({
+      activeRunLimit: 10_000,
+      context: {},
+      entryEventId: "entitlement-candidate-event",
+      entryPolicy: { mode: "never" },
+      initialNodeId: "start",
+      initialNodeKind: "start",
+      occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+      revision: 1,
+      shardId: 0,
+      subjectId: "entitlement-candidate-subject",
+      subjectType: "chatai_contact",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+    expect(created.kind).toBe("success");
+
+    await expect(repository.listActiveCapacityTenants({ limit: 100 })).resolves.toEqual({
+      hasMore: false,
+      lastUid: 9,
+      uids: [9],
+    });
+    await expect(repository.listActiveRunWorkflowIds({
+      uid: 9,
+      workflowTypes: ["chatai_sop"],
+    })).resolves.toEqual([{ workflowId: "31", workflowType: "chatai_sop" }]);
+    await expect(repository.deactivateWorkflowForEntitlementLoss({
+      opSubUserId: "0",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    })).resolves.toEqual({ affectedDefinitions: 1 });
+
+    await expect(database.selectFrom("xy_wap_embed_workflow_definition")
+      .select(["id", "runtime_status", "status_reason"])
+      .where("uid", "=", 9)
+      .orderBy("id", "asc")
+      .execute()).resolves.toEqual([
+      { id: "31", runtime_status: "inactive", status_reason: "entitlement_revoked" },
+      { id: "32", runtime_status: "active", status_reason: null },
+      { id: "34", runtime_status: "active", status_reason: null },
+    ]);
+  });
+
   it("maintains Workflow totals and daily terminal outcomes without double-counting", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);

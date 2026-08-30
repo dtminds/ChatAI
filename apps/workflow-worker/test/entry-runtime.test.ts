@@ -32,7 +32,7 @@ describe("Workflow Entry runtime composition", () => {
       workflowType: workflowId === "32" ? "wecom_sop" as const : "chatai_sop" as const,
     }));
     const service = new WorkflowRuntimeService({
-      applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+      deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
       findDefinition,
       findRevision,
       findRuntimeSnapshots: vi.fn(async (uid, keys) => ({
@@ -58,7 +58,7 @@ describe("Workflow Entry runtime composition", () => {
     }, repository, undefined, {
       clock: () => now,
       entitlementPort: {
-        check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })),
+        check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true })),
       },
     });
     const bindings = [binding("31", "chatai_contact"), binding("32", "wecom_contact")];

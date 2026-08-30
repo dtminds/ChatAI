@@ -103,9 +103,10 @@ describe("workflow worker runtime", () => {
       publishConcurrency: 8,
     }));
     expect(resources.reconciler).toHaveBeenCalled();
+    expect(resources.entitlementReconciler).toHaveBeenCalled();
 
     await runtime.close();
-    expect(resources.loopClose).toHaveBeenCalledTimes(5);
+    expect(resources.loopClose).toHaveBeenCalledTimes(6);
   });
 
   it("runs LLM test Attempts in real mode", async () => {
@@ -194,6 +195,61 @@ describe("workflow worker runtime", () => {
       afterConsistencyTaskId: undefined,
       afterRunId: undefined,
     }));
+    await runtime.close();
+  });
+
+  it("advances entitlement cursors in an independent reconciler loop", async () => {
+    const resources = createResources();
+    resources.entitlementReconciler
+      .mockResolvedValueOnce({
+        checksUnavailable: 0,
+        hasMore: true,
+        lastUid: 108,
+        tenantsChecked: 100,
+        workflowsDeactivated: 0,
+      })
+      .mockResolvedValueOnce({
+        checksUnavailable: 0,
+        hasMore: false,
+        lastUid: 109,
+        tenantsChecked: 1,
+        workflowsDeactivated: 0,
+      })
+      .mockResolvedValue({
+        checksUnavailable: 0,
+        hasMore: false,
+        lastUid: null,
+        tenantsChecked: 0,
+        workflowsDeactivated: 0,
+      });
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["reconciler"] as const)),
+    });
+    await vi.waitFor(() => expect(resources.entitlementReconciler).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(resources.dependencies.logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "workflow.worker.role.idle",
+        role: "entitlement-reconciler",
+      }),
+      "workflow worker role idle",
+    ));
+
+    await resources.runRole("entitlement-reconciler");
+    await resources.runRole("entitlement-reconciler");
+
+    expect(resources.entitlementReconciler).toHaveBeenNthCalledWith(1, {
+      afterUid: undefined,
+      limit: 100,
+    });
+    expect(resources.entitlementReconciler).toHaveBeenNthCalledWith(2, {
+      afterUid: 108,
+      limit: 100,
+    });
+    expect(resources.entitlementReconciler).toHaveBeenNthCalledWith(3, {
+      afterUid: undefined,
+      limit: 100,
+    });
     await runtime.close();
   });
 
@@ -479,6 +535,13 @@ function createResources() {
     taskLeasesDead: 0,
     taskLeasesRecovered: 0,
   }));
+  const entitlementReconciler = vi.fn(async () => ({
+    checksUnavailable: 0,
+    hasMore: false,
+    lastUid: null,
+    tenantsChecked: 0,
+    workflowsDeactivated: 0,
+  }));
   return {
     broker,
     database,
@@ -515,7 +578,9 @@ function createResources() {
       outboxPublisher,
       outboxRepository: {} as never,
       reconciler,
-      reconcilerService: {} as never,
+      reconcilerService: {
+        deactivateUnentitledWorkflows: entitlementReconciler,
+      } as never,
       roleLoop: vi.fn(input => {
         roleInputs.set(input.role, input);
         if (input.role === "readiness") readinessProbe = input.run;
@@ -547,6 +612,7 @@ function createResources() {
     inferenceWorker,
     outboxPublisher,
     reconciler,
+    entitlementReconciler,
     get brokerReady() { return brokerReady; },
     set brokerReady(value: boolean) { brokerReady = value; },
     get databaseReady() { return databaseReady; },

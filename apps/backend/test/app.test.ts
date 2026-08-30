@@ -159,7 +159,7 @@ describe("backend app", () => {
   it("serves the workflow control-plane lifecycle through formal authentication", async () => {
     const workflowService = new WorkflowService(new InMemoryWorkflowRepository(), {
       entitlementPort: {
-        check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+        check: async () => ({ activeRunLimit: 10_000, entitled: true }),
       },
       sourceIdentityResolver: {
         resolveActiveSeatWorkUserIds: async (_uid, seatIds) =>

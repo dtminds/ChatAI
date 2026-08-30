@@ -17,13 +17,14 @@ import {
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
+  type WorkflowRuntimeDefinitionRecord,
 } from "../src/index.js";
 
 const now = new Date("2026-08-10T00:00:00.000Z");
 describe("Workflow runtime policy", () => {
   it("admits an entry when the Workflow type remains entitled", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
     });
 
     await expect(harness.service.startRun(entryInput())).resolves.toMatchObject({
@@ -31,12 +32,12 @@ describe("Workflow runtime policy", () => {
       kind: "success",
       run: { subjectType: "chatai_contact" },
     });
-    expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
   });
 
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
     });
 
     await expect(harness.service.startRun(entryInput({ runtimeSnapshot: null }))).rejects.toMatchObject({
@@ -49,7 +50,7 @@ describe("Workflow runtime policy", () => {
 
   it("passes the entitled tenant capacity into Run admission", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 1, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 1, entitled: true }),
     });
     await expect(harness.service.startRun(entryInput())).resolves.toMatchObject({
       kind: "success",
@@ -63,7 +64,7 @@ describe("Workflow runtime policy", () => {
 
   it("does not prepare irrelevant identity data before a core node", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
     });
     const started = await harness.service.startRun(entryInput({
       trigger: { projection: { thirdExternalUserId: "conflicting-chatai-id" } },
@@ -86,7 +87,7 @@ describe("Workflow runtime policy", () => {
 
   it("commits a terminal Prepare failure for a core node that needs global context", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec: createGlobalBranchExecutionSpec(),
     });
     const started = await harness.service.startRun(entryInput({
@@ -118,37 +119,92 @@ describe("Workflow runtime policy", () => {
     });
   });
 
-  it.each([
-    {
-      expectedCode: "WORKFLOW_RUNTIME_PAUSED",
-      transition: "pause",
-      unentitledSince: "2026-08-09T00:00:00.000Z",
-    },
-    {
-      expectedCode: "WORKFLOW_RUNTIME_STOPPED",
-      transition: "stop",
-      unentitledSince: "2026-08-03T00:00:00.000Z",
-    },
-  ] as const)("applies the $transition transition at the entry boundary", async ({
-    expectedCode,
-    transition,
-    unentitledSince,
-  }) => {
+  it("deactivates only the entry's Workflow after Java confirms a denial", async () => {
+    const entitlement = vi.fn(async () => ({ entitled: false as const }));
     const harness = createHarness({
-      entitlement: async () => ({ entitled: false, unentitledSince }),
+      entitlement,
     });
 
     await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
-      code: expectedCode,
+      code: "WORKFLOW_RUNTIME_INACTIVE",
     });
-    expect(harness.applyEntitlementLoss).toHaveBeenCalledWith({
+    expect(harness.deactivateWorkflowForEntitlementLoss).toHaveBeenCalledWith({
       opSubUserId: "0",
-      transitionedAt: now,
-      transition,
       uid: 9,
+      workflowId: "chatai-workflow",
       workflowType: "chatai_sop",
     });
+    expect(entitlement).toHaveBeenNthCalledWith(2, expect.objectContaining({ forceRefresh: true }));
     expect(harness.runtime.runs).toHaveLength(0);
+  });
+
+  it("allows the entry when fresh Java confirmation overturns a cached denial", async () => {
+    const entitlement = vi.fn()
+      .mockResolvedValueOnce({ entitled: false })
+      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true });
+    const harness = createHarness({ entitlement });
+
+    await expect(harness.service.startRun(entryInput())).resolves.toMatchObject({ kind: "success" });
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
+  });
+
+  it("deactivates only the Task's Workflow after Java confirms a denial", async () => {
+    const entitlement = vi.fn()
+      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true })
+      .mockResolvedValueOnce({ entitled: false })
+      .mockResolvedValueOnce({ entitled: false });
+    const harness = createHarness({ entitlement });
+    const started = await harness.service.startRun(entryInput());
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_INACTIVE" });
+    expect(harness.deactivateWorkflowForEntitlementLoss).toHaveBeenCalledWith({
+      opSubUserId: "0",
+      uid: 9,
+      workflowId: "chatai-workflow",
+      workflowType: "chatai_sop",
+    });
+    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskVersion: 1,
+    });
+  });
+
+  it("skips entitlement confirmation for a Task whose Workflow is already inactive", async () => {
+    const entitlement = vi.fn()
+      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true })
+      .mockResolvedValue({ entitled: false });
+    const harness = createHarness({ entitlement });
+    const started = await harness.service.startRun(entryInput());
+    const entitlementCalls = entitlement.mock.calls.length;
+    harness.control.findDefinition.mockResolvedValue({
+      bizStatus: 1,
+      publishedRevision: 1,
+      runtimeStatus: "inactive",
+      statusReason: "entitlement_revoked",
+      workflowType: "chatai_sop",
+    });
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_INACTIVE" });
+
+    expect(entitlement).toHaveBeenCalledTimes(entitlementCalls + 1);
+    expect(entitlement).not.toHaveBeenCalledWith(expect.objectContaining({ forceRefresh: true }));
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
+    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskVersion: 1,
+    });
   });
 
   it("fails closed without changing Workflow status when entitlement is unavailable", async () => {
@@ -159,13 +215,13 @@ describe("Workflow runtime policy", () => {
     await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
       code: "WORKFLOW_ENTITLEMENT_UNAVAILABLE",
     });
-    expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
     expect(harness.runtime.runs).toHaveLength(0);
   });
 
   it("defers an existing task without consuming an attempt when entitlement is unavailable", async () => {
     const entitlement = vi.fn<() => Promise<WorkflowTypeEntitlementResult>>()
-      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true, unentitledSince: null })
+      .mockResolvedValueOnce({ activeRunLimit: 10_000, entitled: true })
       .mockRejectedValueOnce(new Error("Java unavailable"));
     const harness = createHarness({ entitlement });
     const started = await harness.service.startRun(entryInput());
@@ -184,7 +240,7 @@ describe("Workflow runtime policy", () => {
       status: "pending",
       taskVersion: 2,
     });
-    expect(harness.applyEntitlementLoss).not.toHaveBeenCalled();
+    expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
   });
 
   it("defers an unsupported node before claiming its Task", async () => {
@@ -200,7 +256,7 @@ describe("Workflow runtime policy", () => {
       { id: "query-end", source: "order-query", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec,
     });
     const claimTask = vi.spyOn(harness.runtime, "claimTask");
@@ -252,7 +308,7 @@ describe("Workflow runtime policy", () => {
       { id: "llm-end", source: "llm", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec,
     });
 
@@ -264,7 +320,7 @@ describe("Workflow runtime policy", () => {
 
   it("keeps identical Subject ids isolated by Subject type", async () => {
     const harness = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
     });
     const chatai = await harness.service.startRun(entryInput());
     const wecom = await harness.service.startRun(entryInput({
@@ -283,7 +339,7 @@ describe("Workflow runtime policy", () => {
       capabilityResult: {
         matchedTags: [{ id: 302, name: "已成交" }],
       },
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec: createTagQueryExecutionSpec(),
     });
     const started = await harness.service.startRun(entryInput({
@@ -335,7 +391,7 @@ describe("Workflow runtime policy", () => {
   it("executes a runtime-ready Tag action with prepared identity and a stable key", async () => {
     const harness = createHarness({
       capabilityResult: {},
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec: createTagExecutionSpec(),
     });
     const started = await harness.service.startRun(entryInput({
@@ -376,7 +432,7 @@ describe("Workflow runtime policy", () => {
   it("executes a runtime-ready Customer Update action with prepared identity and a stable key", async () => {
     const harness = createHarness({
       capabilityResult: {},
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       executionSpec: createCustomerUpdateExecutionSpec(),
     });
     const started = await harness.service.startRun(entryInput({
@@ -419,14 +475,14 @@ describe("Workflow runtime policy", () => {
 
   it("validates that every runtime-ready node has a composed execution path", () => {
     const incomplete = createHarness({
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
     });
     expect(() => incomplete.service.assertRuntimeComposition())
       .toThrow("message-query");
 
     const complete = createHarness({
       capabilityPort: true,
-      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
       messageQueryPort: true,
     });
     expect(() => complete.service.assertRuntimeComposition()).not.toThrow();
@@ -442,10 +498,13 @@ function createHarness(options: {
   messageQueryPort?: boolean;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-  const applyEntitlementLoss = vi.fn(async () => ({ affectedDefinitions: 1 }));
+  const deactivateWorkflowForEntitlementLoss = vi.fn(async () => ({ affectedDefinitions: 1 }));
   const control = {
-    applyEntitlementLoss,
-    findDefinition: vi.fn(async (_uid: number, workflowId: string) => {
+    deactivateWorkflowForEntitlementLoss,
+    findDefinition: vi.fn(async (
+      _uid: number,
+      workflowId: string,
+    ): Promise<WorkflowRuntimeDefinitionRecord> => {
       const identity = getWorkflowIdentity(workflowId);
       return {
         bizStatus: 1 as const,
@@ -501,7 +560,7 @@ function createHarness(options: {
         : {}),
     },
   );
-  return { applyEntitlementLoss, capabilityCalls, control, runtime, service };
+  return { deactivateWorkflowForEntitlementLoss, capabilityCalls, control, runtime, service };
 }
 
 function getWorkflowIdentity(workflowId: string): {

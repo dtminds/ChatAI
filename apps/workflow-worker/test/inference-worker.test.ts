@@ -190,7 +190,7 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => runtimeNow,
-      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
     });
     const started = await seedInferenceRun(repository, `event-${nodeKind}`);
     const startResult = await service.executeTask(taskInput(started.task, "start-message"));
@@ -241,7 +241,7 @@ describe("workflow inference worker", () => {
       undefined,
       {
         clock: () => now,
-        entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+        entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
       },
     );
     const started = await seedInferenceRun(repository, "event-empty-intent", " \n\t");
@@ -298,7 +298,7 @@ describe("workflow inference worker", () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
-      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }) },
+      entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
       maxTaskAttempts: 5,
     });
     const started = await seedInferenceRun(repository, "event-failed-inference");
@@ -487,7 +487,7 @@ function inferenceSpec(nodeKind: "ai-intent" | "llm"): WorkflowExecutionSpec {
 
 function control(spec: WorkflowExecutionSpec) {
   return {
-    applyEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
+    deactivateWorkflowForEntitlementLoss: vi.fn(async () => ({ affectedDefinitions: 0 })),
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,

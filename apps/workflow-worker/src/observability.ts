@@ -227,7 +227,7 @@ type RoleHeartbeat = {
 
 export function logWorkflowRoleHeartbeat(
   logger: WorkflowWorkerLogger,
-  role: "inference" | "outbox" | "reconciler" | "scheduler",
+  role: "entitlement-reconciler" | "inference" | "outbox" | "reconciler" | "scheduler",
   heartbeat: RoleHeartbeat,
 ) {
   const result = flattenResult(heartbeat.result);
@@ -301,11 +301,14 @@ function hasPositiveCount(result: Record<string, unknown>) {
 }
 
 function requiresRecoveryWarning(
-  role: "inference" | "outbox" | "reconciler" | "scheduler",
+  role: "entitlement-reconciler" | "inference" | "outbox" | "reconciler" | "scheduler",
   result: Record<string, unknown>,
 ) {
   if (role === "outbox") return hasPositive(result, ["dead", "failed"]);
   if (role === "inference") return hasPositive(result, ["failed", "retried"]);
+  if (role === "entitlement-reconciler") {
+    return hasPositive(result, ["entitlementChecksUnavailable"]);
+  }
   if (role === "reconciler") {
     return hasPositive(result, [
       "outboxLeasesRecovered",

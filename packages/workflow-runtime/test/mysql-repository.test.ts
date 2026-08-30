@@ -87,20 +87,19 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(compiled.parameters).toHaveLength(WORKFLOW_MYSQL_WRITE_CHUNK_SIZE * 2);
   });
 
-  it("stops definitions without synchronously scanning active Runs on entitlement loss", async () => {
+  it("deactivates only the fenced Workflow on confirmed entitlement loss", async () => {
     const db = createEntitlementLossDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
-    await expect(repository.applyEntitlementLoss({
+    await expect(repository.deactivateWorkflowForEntitlementLoss({
       opSubUserId: "19",
-      transitionedAt: new Date("2026-07-10T00:00:00.000Z"),
-      transition: "stop",
       uid: 9,
+      workflowId: "31",
       workflowType: "chatai_sop",
     })).resolves.toEqual({ affectedDefinitions: 1 });
 
     expect(db.updates.xy_wap_embed_workflow_definition).toMatchObject({
-      runtime_status: "stopped",
+      runtime_status: "inactive",
       status_reason: "entitlement_revoked",
     });
     expect(db.executedSelectTables).not.toContain("xy_wap_embed_workflow_run");
@@ -1320,6 +1319,7 @@ function createCapacityReconciliationDbMock(count: number) {
           return builder;
         },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
       };
       return builder;
     },
@@ -1363,6 +1363,7 @@ function createEntitlementLossDbMock() {
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;

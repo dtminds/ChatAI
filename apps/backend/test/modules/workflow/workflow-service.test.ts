@@ -564,7 +564,7 @@ describe("WorkflowService", () => {
 
   it("rejects the reserved Member SOP type before checking entitlement", async () => {
     const repository = new InMemoryWorkflowRepository();
-    const entitlementCheck = vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true as const, unentitledSince: null }));
+    const entitlementCheck = vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true as const }));
     const service = createService(repository, {
       entitlementPort: { check: entitlementCheck },
     });
@@ -676,19 +676,7 @@ describe("WorkflowService", () => {
     })).resolves.toMatchObject({ draftVersion: created.draftVersion + 1 });
   });
 
-  it.each([
-    {
-      expectedStatus: "paused",
-      unentitledSince: "2026-08-09T00:00:00.000Z",
-    },
-    {
-      expectedStatus: "stopped",
-      unentitledSince: "2026-08-03T00:00:00.000Z",
-    },
-  ] as const)("moves entitled workflows to $expectedStatus when entitlement is lost", async ({
-    expectedStatus,
-    unentitledSince,
-  }) => {
+  it("rejects editing without changing Workflow runtime status", async () => {
     const repository = new InMemoryWorkflowRepository();
     const allowed = createService(repository);
     const created = await createConfigured(allowed);
@@ -699,9 +687,8 @@ describe("WorkflowService", () => {
       expectedDraftVersion: created.draftVersion,
     });
     const denied = createService(repository, {
-      clock: () => new Date("2026-08-10T00:00:00.000Z"),
       entitlementPort: {
-        check: async () => ({ entitled: false, unentitledSince }),
+        check: async () => ({ entitled: false }),
       },
     });
 
@@ -709,9 +696,146 @@ describe("WorkflowService", () => {
       expectedDraftVersion: changed.draftVersion,
     })).rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
     await expect(denied.get(operator, created.id)).resolves.toMatchObject({
-      runtimeStatus: expectedStatus,
-      statusReason: "entitlement_revoked",
+      runtimeStatus: "active",
+      statusReason: null,
     });
+  });
+
+  it("refreshes a cached denial before deciding a control-plane operation", async () => {
+    const check = vi.fn(async (input: { forceRefresh?: boolean }) => input.forceRefresh
+      ? { activeRunLimit: 10_000, entitled: true as const }
+      : { entitled: false as const });
+    const service = createService(new InMemoryWorkflowRepository(), {
+      entitlementPort: { check },
+    });
+
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .resolves.toMatchObject({ workflowType: "chatai_sop" });
+    expect(check).toHaveBeenNthCalledWith(1, {
+      uid: operator.uid,
+      workflowType: "chatai_sop",
+    });
+    expect(check).toHaveBeenNthCalledWith(2, {
+      forceRefresh: true,
+      uid: operator.uid,
+      workflowType: "chatai_sop",
+    });
+  });
+
+  it("throttles repeated entitlement refreshes after a confirmed denial", async () => {
+    let now = new Date("2026-08-30T00:00:00.000Z");
+    const check = vi.fn(async () => ({ entitled: false as const }));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+      entitlementPort: { check },
+    });
+
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+
+    expect(check.mock.calls.filter(([input]) => input.forceRefresh)).toHaveLength(1);
+
+    now = new Date("2026-08-30T00:00:30.000Z");
+    await expect(service.create(operator, { workflowType: "chatai_sop" }))
+      .rejects.toMatchObject({ code: "WORKFLOW_ENTITLEMENT_REQUIRED", statusCode: 403 });
+    expect(check.mock.calls.filter(([input]) => input.forceRefresh)).toHaveLength(2);
+  });
+
+  it("enforces entitlement across Workflow editing operations", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const allowed = createService(repository);
+    const created = await createConfigured(allowed);
+    await publishApprovedDraft(allowed, created.id, created.draftVersion);
+    const changed = await allowed.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        messageSendingWindow: { endTime: "19:00", startTime: "09:00" },
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+    const review = await allowed.submitReview(operator, created.id, {
+      expectedDraftVersion: changed.draftVersion,
+    });
+    const withdrawCandidate = await createConfigured(allowed);
+    const withdrawReview = await allowed.submitReview(operator, withdrawCandidate.id, {
+      expectedDraftVersion: withdrawCandidate.draftVersion,
+    });
+    const denied = createService(repository, {
+      entitlementPort: { check: async () => ({ entitled: false }) },
+      llmTestAttemptRepository: new InMemoryWorkflowLlmTestAttemptRepository(),
+    });
+    const rejectsEntitlement = async (operation: Promise<unknown>) => {
+      await expect(operation).rejects.toMatchObject({
+        code: "WORKFLOW_ENTITLEMENT_REQUIRED",
+        statusCode: 403,
+      });
+    };
+
+    await rejectsEntitlement(denied.create(operator, { workflowType: "chatai_sop" }));
+    await rejectsEntitlement(denied.saveDraft(operator, created.id, {
+      draft: changed.draft,
+      expectedDraftVersion: changed.draftVersion,
+    }));
+    await rejectsEntitlement(denied.updateMetadata(operator, created.id, {
+      description: "new description",
+      name: "new name",
+    }));
+    await rejectsEntitlement(denied.submitReview(operator, created.id, {
+      expectedDraftVersion: changed.draftVersion,
+    }));
+    await rejectsEntitlement(denied.approveReview(operator, created.id, review.id, {}));
+    await rejectsEntitlement(denied.rejectReview(operator, created.id, review.id, {
+      reason: "not approved",
+    }));
+    await expect(denied.withdrawReview(operator, withdrawCandidate.id, withdrawReview.id))
+      .resolves.toMatchObject({ status: "withdrawn" });
+    await rejectsEntitlement(denied.restoreReview(operator, created.id, review.id, {
+      expectedDraftVersion: changed.draftVersion,
+    }));
+    const approved = await allowed.approveReview(operator, created.id, review.id, {});
+    await rejectsEntitlement(denied.publish(operator, created.id, { reviewId: approved.id }));
+    await allowed.publish(operator, created.id, { reviewId: approved.id });
+    await rejectsEntitlement(denied.enable(operator, created.id));
+    await rejectsEntitlement(denied.restoreRevision(operator, created.id, 1, {
+      expectedDraftVersion: changed.draftVersion,
+    }));
+    await rejectsEntitlement(denied.createLlmTestAttempt(
+      operator,
+      created.id,
+      "start",
+      { expectedDraftVersion: changed.draftVersion, inputValues: {} },
+    ));
+    await rejectsEntitlement(denied.createAiIntentTestAttempt(
+      operator,
+      created.id,
+      "start",
+      { expectedDraftVersion: changed.draftVersion, inputValue: "test" },
+    ));
+    await allowed.enable(operator, created.id);
+    await allowed.pause(operator, created.id);
+    await rejectsEntitlement(denied.resume(operator, created.id));
+  });
+
+  it("allows reads, delete, pause, and stop without entitlement", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const allowed = createService(repository);
+    const active = await createConfigured(allowed);
+    await publishApprovedDraft(allowed, active.id, active.draftVersion);
+    await allowed.enable(operator, active.id);
+    const disposable = await allowed.create(operator, { workflowType: "chatai_sop" });
+    const denied = createService(repository, {
+      entitlementPort: { check: async () => ({ entitled: false }) },
+    });
+
+    await expect(denied.get(operator, active.id)).resolves.toMatchObject({ id: active.id });
+    await expect(denied.pause(operator, active.id)).resolves.toMatchObject({
+      runtimeStatus: "paused",
+    });
+    await expect(denied.stop(operator, active.id)).resolves.toMatchObject({
+      runtimeStatus: "stopped",
+    });
+    await expect(denied.delete(operator, disposable.id)).resolves.toBeUndefined();
   });
 
   it("does not change Workflow status when the entitlement API is unavailable", async () => {
@@ -1676,7 +1800,7 @@ function createService(
 ) {
   return new WorkflowService(repository, {
     entitlementPort: {
-      check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+      check: async () => ({ activeRunLimit: 10_000, entitled: true }),
     },
     sourceIdentityResolver: {
       async resolveActiveSeatWorkUserIds(_uid, seatIds) {

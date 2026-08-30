@@ -13,6 +13,16 @@ type WorkflowReconciler = {
     runBefore: Date;
     taskOutboxBefore: Date;
   }): Promise<WorkflowHistoryCleanupResult>;
+  deactivateUnentitledWorkflows(input: {
+    afterUid?: number;
+    limit: number;
+  }): Promise<{
+    checksUnavailable: number;
+    hasMore: boolean;
+    lastUid: number | null;
+    tenantsChecked: number;
+    workflowsDeactivated: number;
+  }>;
   recoverExpiredLeases(input: {
     limit: number;
     maxAttempts: number;
@@ -191,5 +201,22 @@ export async function reconcileWorkflowRuntime(input: {
     tasksChecked: consistency.tasksChecked,
     tasksDeleted: history.tasksDeleted,
     terminalRunTasksCancelled: consistency.terminalRunTasksCancelled,
+  };
+}
+
+export async function reconcileWorkflowEntitlements(input: {
+  afterUid?: number;
+  limit: number;
+  reconciler: Pick<WorkflowReconciler, "deactivateUnentitledWorkflows">;
+}) {
+  const result = await input.reconciler.deactivateUnentitledWorkflows({
+    afterUid: input.afterUid,
+    limit: input.limit,
+  });
+  return {
+    entitlementChecksUnavailable: result.checksUnavailable,
+    entitlementTenantsChecked: result.tenantsChecked,
+    entitlementWorkflowsDeactivated: result.workflowsDeactivated,
+    nextEntitlementCursor: result.hasMore ? result.lastUid : null,
   };
 }

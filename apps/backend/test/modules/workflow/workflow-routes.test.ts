@@ -590,7 +590,7 @@ describe("workflow routes", () => {
           getEndpointKey: async () => "test.endpoint-key",
         },
         entitlementPort: {
-          check: async () => ({ activeRunLimit: 10_000, entitled: true, unentitledSince: null }),
+          check: async () => ({ activeRunLimit: 10_000, entitled: true }),
         },
         sourceIdentityResolver: {
           async resolveActiveSeatWorkUserIds(_uid, seatIds) {

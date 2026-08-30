@@ -176,7 +176,6 @@ export function projectWorkflowNodeExecutionConfig({
           fields,
           inputSelector: draftConfig.inputSelector,
           maxFollowUpCount: 0,
-          openingMessage,
         })
       : compactUndefined({
           fields,

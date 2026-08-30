@@ -160,7 +160,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="开场白"
-            text="配置后，运行到该节点时会先向客户发送这条消息；如果前序节点已发送开场消息，可以留空"
+            text="仅在开启智能体辅助时生效。未配置输入时，运行到该节点后发送；配置输入时，会先提取，仍缺字段才发送；已收集完整时不发送"
           />
         )}
       >
@@ -168,9 +168,10 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           <Textarea
             aria-label="开场白"
             className="h-20 min-h-20 resize-none pb-7"
+            disabled={maxFollowUpCount === 0}
             maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
             onChange={event => updateConfig({ openingMessage: event.target.value })}
-            placeholder="请输入收集引导话术"
+            placeholder={maxFollowUpCount === 0 ? "开启智能体辅助后可配置" : "请输入收集引导话术"}
             rows={2}
             value={openingMessage}
           />
@@ -254,7 +255,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="智能体辅助"
-            text="开启后，会引导 Agent 根据资料收集目标和当前对话语境，自行判断是否需要追问以及如何沟通，并不保证每轮都会追问。如果对应席位未绑定 Agent，则不会发起追问。达到追问轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续。关闭后，仅从输入消息中提取一次，不会引导 Agent 追问"
+            text="开启后，会引导 Agent 根据资料收集目标和当前对话语境，自行判断是否需要追问以及如何沟通。指引参与一次 Agent 回复计为一轮，不代表该轮一定追问。如果对应席位未绑定 Agent，则不会发起追问；如果未收到 Agent 参与回调，节点会等待到最长等待结束后再检查一次客户消息。达到辅助轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续。关闭后，仅从输入消息中提取一次"
           />
         )}
       >

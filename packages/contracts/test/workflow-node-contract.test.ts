@@ -925,7 +925,6 @@ describe("workflow node contracts", () => {
       fields: followUpConfig.fields,
       inputSelector: ["node", "message-query", "messages"],
       maxFollowUpCount: 0,
-      openingMessage: "请提供订单号",
     };
 
     expect(isWorkflowNodeDraftConfig("ai-collect", {
@@ -949,6 +948,10 @@ describe("workflow node contracts", () => {
       ],
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", noFollowUpConfig)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...noFollowUpConfig,
+      openingMessage: "请提供订单号",
+    })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...noFollowUpConfig,
       inputSelector: undefined,

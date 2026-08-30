@@ -522,9 +522,6 @@ export const WorkflowAiCollectExecutionConfigSchema = Type.Union([
     fields: WorkflowAiCollectFieldsSchema,
     inputSelector: WorkflowVariableSelectorSchema,
     maxFollowUpCount: Type.Literal(0),
-    openingMessage: Type.Optional(Type.String({
-      maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
-    })),
   }, { additionalProperties: false }),
   Type.Object({
     fields: WorkflowAiCollectFieldsSchema,

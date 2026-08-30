@@ -1015,10 +1015,8 @@ export class WorkflowRuntimeService {
         }
       }
 
-      const openingMessage = config.openingMessage;
-      const canSendOpeningMessage = config.maxFollowUpCount === 0
-        || state.directiveStatus === "active";
-      if (openingMessage && canSendOpeningMessage && !state.openingMessageSent) {
+      const openingMessage = "openingMessage" in config ? config.openingMessage : undefined;
+      if (openingMessage && state.directiveStatus === "active" && !state.openingMessageSent) {
         await executeAiCollectOperation(this.capabilityTimeoutMs, signal =>
           conversationPort.sendOpeningMessage({
             idempotencyKey: `${input.nodeExecutionKey}:opening`,

@@ -44,7 +44,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       inputSelector: undefined,
       label: "资料收集",
       maxFollowUpCount: 3,
-      metric: "最多追问 3 轮 · 1 个字段",
+      metric: "智能体辅助 3 轮 · 1 个字段",
       openingMessage: "",
       status: "warning",
       timeout: { duration: 24, unit: "hour" },
@@ -104,7 +104,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
     const rawFields = Array.isArray(node.data.fields) ? node.data.fields : [];
 
     if (maxFollowUpCount === 0 && !inputSelector) {
-      issues.push(createCatalogIssue("ai-collect-input-required", "不追问时需要配置输入"));
+      issues.push(createCatalogIssue("ai-collect-input-required", "关闭智能体辅助时需要配置输入"));
     }
     if (inputSelector) {
       const variable = resolveWorkflowVariable(context.availableVariables, inputSelector);
@@ -158,7 +158,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       || node.data.maxFollowUpCount > AI_COLLECT_MAX_FOLLOW_UP_COUNT) {
       issues.push(createCatalogIssue(
         "ai-collect-follow-up-count-invalid",
-        `最多追问轮次需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 轮`,
+        `智能体辅助轮次需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 轮`,
       ));
     }
     const timeout = normalizeAiCollectTimeout(node.data.timeout);

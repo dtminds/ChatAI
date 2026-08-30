@@ -105,6 +105,37 @@ describe("ai-hosting skill resource-auth routes", () => {
     });
   });
 
+  it("treats Java success false as rejected even when error is zero", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: 1,
+          error: 0,
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/skills/resource-auth",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "USER_LIMIT_CONFIG_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
+
   it("persists resource authorization through user-limit-config", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

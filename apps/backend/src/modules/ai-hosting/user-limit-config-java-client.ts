@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -21,15 +22,6 @@ export const USER_LIMIT_CONFIG_INTERNAL_API_USER_MESSAGE = "操作失败，请�
 export const CHAT_AI_XINGYUN_RESOURCE_AUTHORIZATION_CONFIG_KEY =
   "chat_ai_xingyun_resource_authorization";
 
-type JavaApiResponse<T> = {
-  code?: number;
-  data?: T;
-  error?: number | null;
-  errorMsg?: string;
-  message?: string;
-  success?: boolean;
-};
-
 export type UserLimitConfigJavaClient = {
   getByConfigKey: (input: {
     configKey: string;
@@ -50,7 +42,7 @@ export function createUserLimitConfigJavaClient(
 
   return {
     async getByConfigKey(input) {
-      const response = await postJavaRequest<JavaApiResponse<number | string>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           configKey: input.configKey,
@@ -66,12 +58,15 @@ export function createUserLimitConfigJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "user-limit-config-get-by-config-key");
-      return normalizeConfigValue(response.data);
+      const payload = decodeJavaResponse(
+        response,
+        "user-limit-config-get-by-config-key",
+      );
+      return normalizeConfigValue(payload.data);
     },
 
     async setByConfigKey(input) {
-      const response = await postJavaRequest<JavaApiResponse<boolean>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           configKey: input.configKey,
@@ -89,8 +84,11 @@ export function createUserLimitConfigJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "user-limit-config-set-by-config-key");
-      return response.data === true;
+      const payload = decodeJavaResponse(
+        response,
+        "user-limit-config-set-by-config-key",
+      );
+      return payload.data === true;
     },
   };
 }
@@ -110,20 +108,18 @@ function normalizeConfigValue(value: unknown) {
   return 0;
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   throw new BadGatewayError(
     USER_LIMIT_CONFIG_INTERNAL_API_FAILED_CODE,
     USER_LIMIT_CONFIG_INTERNAL_API_USER_MESSAGE,
-    {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.message,
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
   );
 }
 
@@ -247,22 +243,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function readJavaApiTimeoutMs() {

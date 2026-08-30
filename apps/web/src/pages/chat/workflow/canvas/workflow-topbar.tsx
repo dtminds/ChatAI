@@ -187,9 +187,7 @@ export function WorkflowTopBar({
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="truncate text-sm font-semibold">{previewVersionLabel ?? "历史版本"}</h1>
-              <span className="shrink-0 rounded-md border border-primary/20 bg-primary/8 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                只读
-              </span>
+              <WorkflowStatusBadge className="shrink-0" variant="neutral">只读</WorkflowStatusBadge>
             </div>
             {previewVersionMeta ? (
               <p className="mt-1 truncate text-xs text-muted-foreground">{previewVersionMeta}</p>
@@ -209,9 +207,7 @@ export function WorkflowTopBar({
               <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
               <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
               {stoppedReadOnly ? (
-                <span className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                  只读
-                </span>
+                <WorkflowStatusBadge className="shrink-0" variant="neutral">只读</WorkflowStatusBadge>
               ) : null}
               {description ? (
                 <TooltipProvider>

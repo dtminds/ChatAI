@@ -154,16 +154,16 @@ function decodeJavaResponse(
     return envelope.payload;
   }
 
-  logger.error(
-    envelope.kind === "rejected"
-      ? { error: envelope.error, hasErrorMessage: Boolean(envelope.errorMsg), operation }
-      : { operation, reason: envelope.reason },
-    "内部接口业务失败",
-  );
+  const details = envelope.kind === "rejected"
+    ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+    : { operation, reason: envelope.reason };
+
+  logger.error(details, "内部接口业务失败");
 
   throw new BadGatewayError(
     FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
     FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
+    details,
   );
 }
 

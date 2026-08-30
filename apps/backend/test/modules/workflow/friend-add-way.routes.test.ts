@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createFriendAddWayJavaClient } from "../../../src/modules/workflow/friend-add-way-java-client.js";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
@@ -382,7 +383,7 @@ describe("workflow friend-add-way routes", () => {
     });
   });
 
-  it("does not expose Java failure details to the browser", async () => {
+  it("preserves normalized Java failure details", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({
         error: 62001,
@@ -409,9 +410,47 @@ describe("workflow friend-add-way routes", () => {
     expect(response.json()).toEqual({
       error: {
         code: "FRIEND_ADD_WAY_INTERNAL_API_FAILED",
+        details: {
+          error: 62001,
+          errorMsg: "internal entitlement detail",
+          operation: "friend-add-way-list",
+        },
         message: "操作失败，请稍后重试",
       },
       success: false,
     });
+  });
+
+  it("logs the Java failure message for diagnostics", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        error: 62001,
+        errorMsg: "internal entitlement detail",
+        success: false,
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    const logger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const client = createFriendAddWayJavaClient(logger);
+
+    await expect(client.listAddWays({ uid: 9001 })).rejects.toMatchObject({
+      details: {
+        error: 62001,
+        errorMsg: "internal entitlement detail",
+        operation: "friend-add-way-list",
+      },
+    });
+    expect(logger.error).toHaveBeenCalledWith({
+      error: 62001,
+      errorMsg: "internal entitlement detail",
+      operation: "friend-add-way-list",
+    }, "内部接口业务失败");
   });
 });

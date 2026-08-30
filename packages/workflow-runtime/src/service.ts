@@ -831,68 +831,6 @@ export class WorkflowRuntimeService {
         return this.finishAiCollectTask(state, directivePort);
       }
 
-      if (config.maxFollowUpCount > 0) {
-        if (state.expiresAt === null) throw new Error("AI Collect assisted state has no expiry");
-        if (state.conversationId === null) {
-          const conversation = await executeAiCollectOperation(
-            this.capabilityTimeoutMs,
-            () => conversationPort.resolveConversation({
-              seatId,
-              thirdExternalUserId,
-              uid: state.uid,
-            }),
-          );
-          state = await this.transitionAiCollectStateOrThrow({
-            now: this.clock(),
-            taskId: state.taskId,
-            transition: { conversationId: conversation.conversationId, kind: "conversation-resolved" },
-            uid: state.uid,
-          });
-          continue;
-        }
-        if (state.directiveStatus === "inactive" && this.clock() < state.expiresAt) {
-          await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
-            bizId: state.bizId,
-            bizInfo: "",
-            conversationId: state.conversationId!,
-            expiresAt: state.expiresAt!,
-            limitRound: config.maxFollowUpCount,
-            payload: renderWorkflowAiCollectDirective(input.node),
-            priority: 0,
-            signal,
-            type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
-            uid: state.uid,
-          }));
-          state = await this.transitionAiCollectStateOrThrow({
-            now: this.clock(),
-            taskId: state.taskId,
-            transition: { kind: "directive-active" },
-            uid: state.uid,
-          });
-          continue;
-        }
-      }
-
-      const openingMessage = config.openingMessage;
-      if (openingMessage && !state.openingMessageSent) {
-        await executeAiCollectOperation(this.capabilityTimeoutMs, signal =>
-          conversationPort.sendOpeningMessage({
-            idempotencyKey: `${input.nodeExecutionKey}:opening`,
-            message: openingMessage,
-            seatId,
-            signal,
-            thirdExternalUserId,
-            uid: input.input.uid,
-          }));
-        state = await this.transitionAiCollectStateOrThrow({
-          now: this.clock(),
-          taskId: state.taskId,
-          transition: { kind: "opening-message-sent" },
-          uid: state.uid,
-        });
-        continue;
-      }
-
       if (state.activeInferenceKey !== null) {
         const inference = await this.runtimeRepository.findInferenceByExecutionKey(
           state.uid,
@@ -913,13 +851,16 @@ export class WorkflowRuntimeService {
               "返回结果异常，流程已停止",
             );
           }
+          const completedBatchCutoffAt = state.activeBatchCutoffAt;
+          const completedBatchHasMore = state.activeBatchHasMore;
+          const completedAt = this.clock();
           const collected = mapWorkflowAiCollectInferenceResult(
             input.node,
             inference.result,
             state.collected,
           );
           state = await this.transitionAiCollectStateOrThrow({
-            now: this.clock(),
+            now: completedAt,
             taskId: state.taskId,
             transition: {
               collected,
@@ -928,6 +869,24 @@ export class WorkflowRuntimeService {
             },
             uid: state.uid,
           });
+          if (!isWorkflowAiCollectComplete(input.node, state.collected)
+            && completedBatchCutoffAt !== null
+            && !completedBatchHasMore
+            && state.pendingCutoffAt === null
+            && state.expiresAt !== null
+            && (completedAt >= state.expiresAt
+              || state.observedRound >= config.maxFollowUpCount)) {
+            state = await this.transitionAiCollectStateOrThrow({
+              now: completedAt,
+              taskId: state.taskId,
+              transition: {
+                disableReason: completedAt >= state.expiresAt ? "expired" : "round-limit-reached",
+                kind: "terminal",
+                outlet: "incomplete",
+              },
+              uid: state.uid,
+            });
+          }
           continue;
         }
         if (inference.status === "failed") {
@@ -1012,6 +971,72 @@ export class WorkflowRuntimeService {
         continue;
       }
 
+      if (config.maxFollowUpCount > 0) {
+        if (state.expiresAt === null) throw new Error("AI Collect assisted state has no expiry");
+        if (this.clock() < state.expiresAt) {
+          if (state.conversationId === null) {
+            const conversation = await executeAiCollectOperation(
+              this.capabilityTimeoutMs,
+              () => conversationPort.resolveConversation({
+                seatId,
+                thirdExternalUserId,
+                uid: state.uid,
+              }),
+            );
+            state = await this.transitionAiCollectStateOrThrow({
+              now: this.clock(),
+              taskId: state.taskId,
+              transition: { conversationId: conversation.conversationId, kind: "conversation-resolved" },
+              uid: state.uid,
+            });
+            continue;
+          }
+          if (state.directiveStatus === "inactive") {
+            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
+              bizId: state.bizId,
+              bizInfo: "",
+              conversationId: state.conversationId!,
+              expiresAt: state.expiresAt!,
+              limitRound: config.maxFollowUpCount,
+              payload: renderWorkflowAiCollectDirective(input.node, state.collected),
+              priority: 0,
+              signal,
+              type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+              uid: state.uid,
+            }));
+            state = await this.transitionAiCollectStateOrThrow({
+              now: this.clock(),
+              taskId: state.taskId,
+              transition: { kind: "directive-active" },
+              uid: state.uid,
+            });
+            continue;
+          }
+        }
+      }
+
+      const openingMessage = config.openingMessage;
+      const canSendOpeningMessage = config.maxFollowUpCount === 0
+        || state.directiveStatus === "active";
+      if (openingMessage && canSendOpeningMessage && !state.openingMessageSent) {
+        await executeAiCollectOperation(this.capabilityTimeoutMs, signal =>
+          conversationPort.sendOpeningMessage({
+            idempotencyKey: `${input.nodeExecutionKey}:opening`,
+            message: openingMessage,
+            seatId,
+            signal,
+            thirdExternalUserId,
+            uid: input.input.uid,
+          }));
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { kind: "opening-message-sent" },
+          uid: state.uid,
+        });
+        continue;
+      }
+
       if (config.maxFollowUpCount === 0) {
         state = await this.transitionAiCollectStateOrThrow({
           now: this.clock(),
@@ -1024,11 +1049,12 @@ export class WorkflowRuntimeService {
 
       const now = this.clock();
       if (state.expiresAt === null) throw new Error("AI Collect assisted state has no expiry");
+      const expiresAt = state.expiresAt;
 
-      const settling = now >= state.expiresAt
+      const settling = now >= expiresAt
         || state.observedRound >= config.maxFollowUpCount;
-      const queryCutoff = now >= state.expiresAt
-        ? state.expiresAt
+      const queryCutoff = now >= expiresAt
+        ? expiresAt
         : state.pendingCutoffAt;
       const quietElapsed = state.quietUntil === null || state.quietUntil <= now;
       if (queryCutoff && (settling || quietElapsed)) {
@@ -1068,6 +1094,18 @@ export class WorkflowRuntimeService {
           transition: { cutoffAt: queryCutoff, kind: "message-batch-empty" },
           uid: state.uid,
         });
+        if (settling && state.pendingCutoffAt === null) {
+          state = await this.transitionAiCollectStateOrThrow({
+            now: this.clock(),
+            taskId: state.taskId,
+            transition: {
+              disableReason: now >= expiresAt ? "expired" : "round-limit-reached",
+              kind: "terminal",
+              outlet: "incomplete",
+            },
+            uid: state.uid,
+          });
+        }
         continue;
       }
       if (settling && state.pendingCutoffAt === null) {
@@ -1075,7 +1113,7 @@ export class WorkflowRuntimeService {
           now,
           taskId: state.taskId,
           transition: {
-            disableReason: now >= state.expiresAt ? "expired" : "round-limit-reached",
+            disableReason: now >= expiresAt ? "expired" : "round-limit-reached",
             kind: "terminal",
             outlet: "incomplete",
           },
@@ -1085,8 +1123,8 @@ export class WorkflowRuntimeService {
       }
 
       const dueAt = state.pendingCutoffAt && state.quietUntil
-        ? new Date(Math.min(state.quietUntil.getTime(), state.expiresAt.getTime()))
-        : state.expiresAt;
+        ? new Date(Math.min(state.quietUntil.getTime(), expiresAt.getTime()))
+        : expiresAt;
       const waiting = await this.runtimeRepository.beginAiCollectWait({
         dueAt,
         expectedRunLockVersion: input.run.lockVersion,

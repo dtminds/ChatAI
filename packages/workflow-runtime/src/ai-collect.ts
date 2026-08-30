@@ -86,14 +86,19 @@ export function getWorkflowAiCollectTimeoutAt(node: WorkflowExecutionNode, start
   return new Date(startedAt.getTime() + config.timeout.duration * multiplier);
 }
 
-export function renderWorkflowAiCollectDirective(node: WorkflowExecutionNode) {
+export function renderWorkflowAiCollectDirective(
+  node: WorkflowExecutionNode,
+  collected: Readonly<Record<string, unknown>>,
+) {
   if (node.kind !== "ai-collect" || !isWorkflowAiCollectExecutionConfigComplete(node.config)) {
     throw aiCollectConfigError("AI Collect execution config failed schema validation");
   }
-  const fields = node.config.fields.map(field => [
-    `- ${field.name}`,
-    `  确认要求：${field.instruction.trim()}${getFieldNormalizationHint(field.type)}`,
-  ].join("\n"));
+  const fields = node.config.fields
+    .filter(field => !(field.id in collected))
+    .map(field => [
+      `- ${field.name}`,
+      `  确认要求：${field.instruction.trim()}${getFieldNormalizationHint(field.type)}`,
+    ].join("\n"));
   return [
     "当前临时沟通目标：协助确认客户的以下资料。",
     fields.join("\n\n"),

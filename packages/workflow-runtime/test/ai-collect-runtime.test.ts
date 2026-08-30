@@ -12,7 +12,7 @@ import {
 const enteredAt = new Date("2026-08-30T01:00:00.000Z");
 
 describe("AI Collect runtime", () => {
-  it("activates Agent guidance before the initial inference and commits collected fields", async () => {
+  it("completes from the initial input without activating Agent guidance or sending an opening message", async () => {
     const order: string[] = [];
     const harness = createHarness({
       inputSelector: ["trigger", "input"],
@@ -25,7 +25,7 @@ describe("AI Collect runtime", () => {
 
     const initialResult = await harness.service.executeTask(taskInput(collectTask, enteredAt));
     expect(initialResult).toMatchObject({ kind: "inference-waiting" });
-    expect(order).toEqual(["activate", "opening", "inference"]);
+    expect(order).toEqual(["inference"]);
     expect(harness.runtime.inferenceJobs).toHaveLength(1);
 
     const job = await claimOnlyInference(harness.runtime, enteredAt);
@@ -46,11 +46,77 @@ describe("AI Collect runtime", () => {
     ));
 
     expect(result).toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
-    expect(harness.directivePort.disable).toHaveBeenCalledWith(expect.objectContaining({
-      reason: "completed",
-    }));
+    expect(harness.directivePort.activate).not.toHaveBeenCalled();
+    expect(harness.directivePort.disable).not.toHaveBeenCalled();
+    expect(harness.conversationPort.resolveConversation).not.toHaveBeenCalled();
+    expect(harness.conversationPort.sendOpeningMessage).not.toHaveBeenCalled();
     const run = harness.runtime.runs[0];
     expect(run?.context.outputs).toMatchObject({ collect: { "field-order": "A100" } });
+  });
+
+  it("activates Agent guidance only after the initial input remains incomplete", async () => {
+    const order: string[] = [];
+    const harness = createHarness({
+      fields: [
+        {
+          id: "field-order",
+          instruction: "提取完整订单号",
+          name: "订单号",
+          type: "text",
+        },
+        {
+          id: "field-address",
+          instruction: "提取完整收货地址",
+          name: "收货地址",
+          type: "text",
+        },
+      ],
+      inputSelector: ["trigger", "input"],
+      onActivate: () => order.push("activate"),
+      onBeginInference: () => order.push("inference"),
+      onOpeningMessage: () => order.push("opening"),
+      openingMessage: "请提供订单号",
+    });
+    const collectTask = await enterCollect(harness, { input: "我想查一下订单" });
+
+    await expect(harness.service.executeTask(taskInput(collectTask, enteredAt)))
+      .resolves.toMatchObject({ kind: "inference-waiting" });
+    expect(order).toEqual(["inference"]);
+
+    const job = await claimOnlyInference(harness.runtime, enteredAt);
+    await harness.runtime.completeInference({
+      completedAt: new Date(enteredAt.getTime() + 1_000),
+      id: job.id,
+      leaseOwner: "inference-worker",
+      result: {
+        type: "json",
+        value: {
+          F1_present: false,
+          F1_value: "",
+          F2_present: true,
+          F2_value: "上海市浦东新区",
+        },
+      },
+    });
+    harness.setNow(new Date(enteredAt.getTime() + 1_000));
+    const resumedTask = requireTask(harness.runtime, collectTask.id);
+
+    await expect(harness.service.executeTask(taskInput(
+      resumedTask,
+      new Date(enteredAt.getTime() + 1_000),
+    ))).resolves.toMatchObject({ kind: "inference-waiting" });
+
+    expect(order).toEqual(["inference", "activate", "opening"]);
+    expect(harness.directivePort.activate).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.stringContaining("订单号"),
+    }));
+    expect(harness.directivePort.activate).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.not.stringContaining("收货地址"),
+    }));
+    expect(requireTask(harness.runtime, collectTask.id)).toMatchObject({
+      status: "pending",
+      taskType: "ai-collect",
+    });
   });
 
   it("resets the quiet window and keeps callbacks queued behind one in-flight inference", async () => {
@@ -162,10 +228,37 @@ describe("AI Collect runtime", () => {
       until: timeoutAt,
     }));
     expect(harness.runtime.inferenceJobs).toHaveLength(1);
+
+    const job = await claimOnlyInference(harness.runtime, timeoutAt);
+    await harness.runtime.completeInference({
+      completedAt: new Date(timeoutAt.getTime() + 1_000),
+      id: job.id,
+      leaseOwner: "inference-worker",
+      result: {
+        type: "json",
+        value: { F1_present: false, F1_value: "" },
+      },
+    });
+    harness.setNow(new Date(timeoutAt.getTime() + 1_000));
+    const resumedTask = requireTask(harness.runtime, collectTask.id);
+
+    await expect(harness.service.executeTask(taskInput(
+      resumedTask,
+      new Date(timeoutAt.getTime() + 1_000),
+    ))).resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
+    expect(harness.directivePort.disable).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "expired",
+    }));
   });
 });
 
 function createHarness(options: {
+  fields?: Array<{
+    id: string;
+    instruction: string;
+    name: string;
+    type: "text";
+  }>;
   inputSelector?: string[];
   onActivate?: () => void;
   onBeginInference?: () => void;
@@ -174,7 +267,7 @@ function createHarness(options: {
   readCustomerMessages?: WorkflowAiCollectConversationPort["readCustomerMessages"];
 } = {}) {
   const spec = compileWorkflowDraft({
-    draft: collectDraft(options.openingMessage),
+    draft: collectDraft(options.openingMessage, options.fields),
     revision: 1,
     workflowId: "31",
     workflowType: "chatai_sop",
@@ -303,7 +396,15 @@ function control(spec: WorkflowExecutionSpec) {
   };
 }
 
-function collectDraft(openingMessage = ""): WorkflowDraft {
+function collectDraft(
+  openingMessage = "",
+  fields = [{
+    id: "field-order",
+    instruction: "提取完整订单号",
+    name: "订单号",
+    type: "text" as const,
+  }],
+): WorkflowDraft {
   return {
     edges: [
       { id: "start-collect", source: "start", target: "collect" },
@@ -317,12 +418,7 @@ function collectDraft(openingMessage = ""): WorkflowDraft {
         triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       }),
       node("collect", "ai-collect", {
-        fields: [{
-          id: "field-order",
-          instruction: "提取完整订单号",
-          name: "订单号",
-          type: "text",
-        }],
+        fields,
         maxFollowUpCount: 3,
         openingMessage,
         timeout: { duration: 1, unit: "hour" },

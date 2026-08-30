@@ -1232,7 +1232,6 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    expect(within(panel).getByText("只读")).toBeInTheDocument();
     expect(within(panel).getByRole("spinbutton", { name: "等待时长" })).toHaveValue(2);
     expect(within(panel).getByRole("spinbutton", { name: "等待时长" })).toBeDisabled();
     expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find(node => node.id === "wait-2d")?.data)

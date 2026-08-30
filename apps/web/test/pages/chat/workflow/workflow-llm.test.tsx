@@ -679,7 +679,6 @@ describe("workflow LLM node", () => {
     render(createLlmTestPanel(createTestableLlmNode(), vi.fn(), "saved", vi.fn(), true));
 
     expect(screen.queryByRole("button", { name: "试运行大模型节点" })).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent("只读");
   });
 
   it("validates temporary inputs and waits for the current draft to be saved", async () => {

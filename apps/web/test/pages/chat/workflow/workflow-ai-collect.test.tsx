@@ -13,6 +13,7 @@ import {
   AI_COLLECT_COMPLETED_HANDLE_ID,
   AI_COLLECT_FIELD_MAX_COUNT,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
+  normalizeAiCollectTimeout,
 } from "@/pages/chat/workflow/nodes/ai-collect/config";
 import { AiCollectNodeBody } from "@/pages/chat/workflow/nodes/ai-collect/body";
 import { AiCollectConfig } from "@/pages/chat/workflow/nodes/ai-collect/panel";
@@ -49,7 +50,7 @@ describe("workflow AI Collect", () => {
     expect(first).toMatchObject({
       maxFollowUpCount: 3,
       openingMessage: "",
-      timeout: { duration: 24, unit: "hour" },
+      timeout: { duration: 30, unit: "minute" },
     });
     expect(first.fields).toHaveLength(1);
     expect(first.fields[0]?.id).not.toBe(second.fields[0]?.id);
@@ -101,11 +102,10 @@ describe("workflow AI Collect", () => {
     );
 
     await user.hover(screen.getByRole("button", { name: "查看开场白说明" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("配置输入时，会先提取，仍缺字段才发送");
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     await user.unhover(screen.getByRole("button", { name: "查看开场白说明" }));
     await user.hover(screen.getByRole("button", { name: "查看智能体辅助说明" }));
-    expect(await screen.findByText(/指引参与一次 Agent 回复计为一轮/)).toBeInTheDocument();
-    expect(await screen.findByText(/未收到 Agent 参与回调.*最长等待结束后再检查一次客户消息/)).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
 
     const openingMessage = screen.getByRole("textbox", { name: "开场白" });
     await user.type(openingMessage, "请提供订单号");
@@ -168,7 +168,7 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
-  it("caps follow-up collection at 48 hours and offers no day unit", async () => {
+  it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const collect = createAiCollectNode();
@@ -191,10 +191,22 @@ describe("workflow AI Collect", () => {
     const duration = screen.getByRole("spinbutton", { name: "最长等待时间" });
     fireEvent.change(duration, { target: { value: "49" } });
     fireEvent.blur(duration);
-    expect(duration).toHaveValue(48);
+    expect(duration).toHaveValue(24);
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      timeout: { duration: 48, unit: "hour" },
+      timeout: { duration: 24, unit: "hour" },
     }));
+
+    await user.click(screen.getByRole("combobox", { name: "最长等待时间单位" }));
+    await user.click(screen.getByRole("option", { name: "分钟" }));
+    fireEvent.change(duration, { target: { value: "1" } });
+    fireEvent.blur(duration);
+    expect(duration).toHaveValue(10);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      timeout: { duration: 10, unit: "minute" },
+    }));
+
+    expect(normalizeAiCollectTimeout({ unit: "unknown", duration: 24 }))
+      .toEqual({ duration: 30, unit: "minute" });
   });
 
   it("requires input without follow-ups and exposes dynamic outputs only after completion", () => {

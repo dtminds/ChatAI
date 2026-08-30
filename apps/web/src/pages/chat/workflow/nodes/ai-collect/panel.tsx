@@ -55,6 +55,7 @@ import {
   AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
+  AI_COLLECT_TIMEOUT_MIN_BY_UNIT,
   aiCollectFieldTemplates,
   aiCollectFieldTypeLabels,
   createAiCollectField,
@@ -263,17 +264,29 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       </WorkflowSettingsSection>
 
       {maxFollowUpCount > 0 ? (
-        <WorkflowSettingsSection title="最长等待">
+        <WorkflowSettingsSection
+          title="最长等待"
+          titleAccessory={(
+            <SectionInfoTooltip
+              label="最长等待"
+              text="从开始收集时计时。等待时间结束后，会再检查一次客户消息，并根据结果继续后续流程。追问轮次和最长等待时间以先到者为准"
+            />
+          )}
+        >
           <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
             <BoundedTimeoutInput
               max={AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
+              min={AI_COLLECT_TIMEOUT_MIN_BY_UNIT[timeout.unit]}
               onValueChange={duration => updateConfig({ timeout: { ...timeout, duration } })}
               value={timeout.duration}
             />
             <Select
               onValueChange={(unit: WorkflowAiCollectTimeout["unit"]) => updateConfig({
                 timeout: {
-                  duration: Math.min(timeout.duration, AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit]),
+                  duration: Math.min(
+                    AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit],
+                    Math.max(AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit], timeout.duration),
+                  ),
                   unit,
                 },
               })}
@@ -422,8 +435,9 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
   );
 }
 
-function BoundedTimeoutInput({ max, onValueChange, value }: {
+function BoundedTimeoutInput({ max, min, onValueChange, value }: {
   max: number;
+  min: number;
   onValueChange: (value: number) => void;
   value: number;
 }) {
@@ -432,7 +446,7 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
 
   const commitValue = (rawValue: string) => {
     const parsed = Math.trunc(Number(rawValue));
-    const nextValue = Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : 1;
+    const nextValue = Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : min;
     setDraftValue(String(nextValue));
     if (nextValue !== value) onValueChange(nextValue);
   };
@@ -442,14 +456,14 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
       aria-label="最长等待时间"
       className="h-9 w-24 px-2.5"
       max={max}
-      min={1}
+      min={min}
       onBlur={() => commitValue(draftValue)}
       onChange={(event) => {
         const nextDraftValue = event.target.value;
         setDraftValue(nextDraftValue);
         if (/^\d+$/.test(nextDraftValue)) {
           const parsed = Number(nextDraftValue);
-          if (parsed >= 1 && parsed <= max) onValueChange(parsed);
+          if (parsed >= min && parsed <= max) onValueChange(parsed);
         }
       }}
       placeholder="请输入"

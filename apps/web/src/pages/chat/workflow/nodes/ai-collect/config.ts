@@ -5,6 +5,7 @@ import {
   WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH,
   WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
+  WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT,
   WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
 } from "@chatai/contracts";
 import type {
@@ -24,6 +25,7 @@ export const AI_COLLECT_INSTRUCTION_MAX_LENGTH = WORKFLOW_AI_COLLECT_INSTRUCTION
 export const AI_COLLECT_MAX_FOLLOW_UP_COUNT = WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT;
 export const AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH;
 export const AI_COLLECT_TIMEOUT_MAX_BY_UNIT = WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT;
+export const AI_COLLECT_TIMEOUT_MIN_BY_UNIT = WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT;
 export const AI_COLLECT_COMPLETED_HANDLE_ID = "completed";
 export const AI_COLLECT_INCOMPLETE_HANDLE_ID = "incomplete";
 
@@ -115,11 +117,15 @@ export function normalizeAiCollectOpeningMessage(value: unknown) {
 
 export function normalizeAiCollectTimeout(value: unknown): WorkflowAiCollectTimeout {
   const timeout = isRecord(value) ? value : {};
-  const unit = timeout.unit === "minute" ? "minute" : "hour";
+  const hasValidUnit = timeout.unit === "hour" || timeout.unit === "minute";
+  const unit = timeout.unit === "hour" ? "hour" : "minute";
   const parsedDuration = Math.trunc(Number(timeout.duration));
-  const duration = Number.isFinite(parsedDuration)
-    ? Math.min(AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit], Math.max(1, parsedDuration))
-    : unit === "hour" ? 24 : 1;
+  const duration = hasValidUnit && Number.isFinite(parsedDuration)
+    ? Math.min(AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit], Math.max(
+      AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit],
+      parsedDuration,
+    ))
+    : unit === "hour" ? 1 : 30;
   return { duration, unit };
 }
 

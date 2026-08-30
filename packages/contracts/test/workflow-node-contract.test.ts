@@ -973,6 +973,18 @@ describe("workflow node contracts", () => {
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...followUpConfig,
+      timeout: { duration: 10, unit: "minute" },
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 9, unit: "minute" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 25, unit: "hour" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
       timeout: { duration: 1, unit: "day" },
     })).toBe(false);
   });

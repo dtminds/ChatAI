@@ -69,7 +69,7 @@ describe("WorkflowDataPage", () => {
       </ReactFlowProvider>,
     );
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     const renderedWaitNode = within(canvas).getByTestId(`workflow-flow-node-${waitNode.id}`);
     expect(renderedWaitNode).toHaveAttribute("data-position", `${movedPosition.x},${movedPosition.y}`);
     expect(within(renderedWaitNode).getByRole("button", {
@@ -99,7 +99,7 @@ describe("WorkflowDataPage", () => {
     const user = userEvent.setup();
     render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /已进入 9/ }));
 
     const records = await screen.findByRole("dialog", { name: "全部进入记录" });
@@ -201,12 +201,12 @@ describe("WorkflowDataPage", () => {
     const user = userEvent.setup();
     render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     expect(screen.queryByRole("tablist", { name: "数据视图" })).not.toBeInTheDocument();
     expect(within(canvas).queryByRole("button", { name: "打开节点库" })).not.toBeInTheDocument();
     await user.click(within(canvas).getByRole("button", { name: /当前停留 18.*已通过 102/ }));
     const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
-    expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
+    expect(screen.getByRole("application")).toBeInTheDocument();
     expect(within(records).getByText("张三")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith(expect.objectContaining({ nodeId: waitNode.id }));
 
@@ -263,7 +263,7 @@ describe("WorkflowDataPage", () => {
     const user = userEvent.setup();
     render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
     const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
     await user.click(within(records).getByText("等待发送客户"));
@@ -313,7 +313,7 @@ describe("WorkflowDataPage", () => {
         <WorkflowDataPage document={documentWithHistory} repository={repository} />
       </ReactFlowProvider>,
     );
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
     expect(await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` })).toBeInTheDocument();
 
@@ -329,7 +329,7 @@ describe("WorkflowDataPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: `${waitNode.data.title}进入记录` })).not.toBeInTheDocument();
     });
-    expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
+    expect(screen.getByRole("application")).toBeInTheDocument();
   });
 
   it("uses the published draft to resolve current-revision node titles", async () => {
@@ -365,7 +365,7 @@ describe("WorkflowDataPage", () => {
       </ReactFlowProvider>,
     );
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     await userEvent.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
 
     const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
@@ -392,7 +392,7 @@ describe("WorkflowDataPage", () => {
       </ReactFlowProvider>,
     );
 
-    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const canvas = await screen.findByRole("application");
     const branch = within(canvas).getByRole("button", { name: "条件分支" });
     const messageQuery = within(canvas).getByRole("button", { name: "消息查询" });
     const intent = within(canvas).getByRole("button", { name: "意图识别" });

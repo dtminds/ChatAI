@@ -136,7 +136,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
 
   async getOverview(input: Parameters<WorkflowDataReader["getOverview"]>[0]): Promise<WorkflowDataOverview> {
     if (input.workflowTypes?.length === 0) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("published_revision")
@@ -148,10 +148,10 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     }
     const definition = await definitionQuery.executeTakeFirst();
     if (!definition) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     if (!definition.published_revision) {
-      throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow 尚未发布");
+      throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "尚未发布");
     }
     const revision = await this.db.selectFrom("xy_wap_embed_workflow_revision")
       .select("draft_json")
@@ -159,7 +159,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .where("workflow_id", "=", input.workflowId)
       .where("revision", "=", definition.published_revision)
       .executeTakeFirst();
-    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "版本不存在");
     const currentNodeIds = readNodeIds(revision.draft_json);
     const metricScope = () => this.db.selectFrom("xy_wap_embed_workflow_node_metric")
       .where("uid", "=", input.uid)
@@ -367,7 +367,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     workflowTypes: WorkflowType[];
   }) {
     if (input.workflowTypes.length === 0) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     let definitionQuery = this.db.selectFrom("xy_wap_embed_workflow_definition")
       .select("id")
@@ -376,7 +376,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .where("biz_status", "=", 1);
     definitionQuery = definitionQuery.where("workflow_type", "in", input.workflowTypes.map(encodeWorkflowType));
     const definition = await definitionQuery.executeTakeFirst();
-    if (!definition) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    if (!definition) throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
   }
 
   private async loadSubjects(

@@ -85,7 +85,7 @@ export class WorkflowObservabilityService {
     const observedAt = await this.repository.getObservedAt();
     const detail = await this.repository.getWorkflowDetail(workflowId);
     if (!detail) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     return { observedAt, ...detail };
   }

@@ -482,7 +482,7 @@ describe("workflow routes", () => {
     }) => {
       const workflowType = workflowTypesById.get(input.workflowId);
       if (!workflowType || !input.workflowTypes?.includes(workflowType)) {
-        throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+        throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
       }
     };
     const dataService = new WorkflowDataService({

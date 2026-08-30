@@ -95,7 +95,7 @@ export function WorkflowCreateDialog({
         closeButtonDisabled={pending}
       >
         <DialogHeader>
-          <DialogTitle>新建 Workflow</DialogTitle>
+          <DialogTitle>新建工作流</DialogTitle>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -105,7 +105,7 @@ export function WorkflowCreateDialog({
           }}
         >
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Workflow 类型</legend>
+            <legend className="text-sm font-medium">工作流类型</legend>
             <RadioGroup
               className="grid gap-2 sm:grid-cols-2"
               onValueChange={(value) => {
@@ -131,7 +131,7 @@ export function WorkflowCreateDialog({
           </fieldset>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={nameId}>Workflow 名称</label>
+              <label className="text-sm font-medium" htmlFor={nameId}>工作流名称</label>
               <span className="text-xs text-muted-foreground">{nameValue.length}/100</span>
             </div>
             <Input
@@ -145,14 +145,14 @@ export function WorkflowCreateDialog({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={descriptionId}>Workflow 描述</label>
+              <label className="text-sm font-medium" htmlFor={descriptionId}>工作流描述</label>
               <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
             </div>
             <Textarea
               id={descriptionId}
               maxLength={1000}
               onChange={(event) => setDescriptionValue(event.target.value)}
-              placeholder="填写 Workflow 的用途或目标"
+              placeholder="填写工作流的用途或目标"
               readOnly={pending}
               value={descriptionValue}
             />

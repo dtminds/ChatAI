@@ -96,7 +96,8 @@ describe("Workflow tenant capacity", () => {
       </MemoryRouter>,
     );
 
-    const overview = await screen.findByRole("region", { name: "Workflow 数据概览" });
+    const overview = (await screen.findByText("12,847")).closest<HTMLElement>("section");
+    if (!overview) throw new Error("Workflow overview was not rendered");
     expect(within(overview).getByText("12,847")).toBeInTheDocument();
     expect(within(overview).getByText("23")).toBeInTheDocument();
     expect(within(overview).getByText("98.2%")).toBeInTheDocument();

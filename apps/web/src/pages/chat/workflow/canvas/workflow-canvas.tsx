@@ -234,7 +234,7 @@ export function WorkflowCanvas({
 
   return (
     <section
-      aria-label="营销 Workflow 画布"
+      aria-label="工作流"
       className="agent-workflow-canvas absolute inset-0"
       ref={canvasRef}
       role="application"

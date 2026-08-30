@@ -610,7 +610,7 @@ describe("workflow DSL", () => {
       return;
     }
 
-    expect(parsed.document.workflow.name).toBe("导入的 Workflow");
+    expect(parsed.document.workflow.name).toBe("导入工作流");
     expect(parsed.draft.nodes).toHaveLength(1);
     expect(parsed.draft.nodes[0]).toEqual(expect.objectContaining({
       selected: false,

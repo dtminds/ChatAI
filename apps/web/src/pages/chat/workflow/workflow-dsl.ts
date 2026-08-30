@@ -335,7 +335,7 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
   }
 
   if (!isPlainObject(parsed.workflow)) {
-    return createDslParseFailure("missing-draft", "DSL 缺少 Workflow 数据");
+    return createDslParseFailure("missing-draft", "DSL 缺少流程定义");
   }
 
   const rawDraft = parsed.workflow.draft;
@@ -360,7 +360,7 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
     workflowId: typeof parsed.workflow.id === "string" ? parsed.workflow.id : undefined,
     workflowName: typeof parsed.workflow.name === "string" && parsed.workflow.name.trim()
       ? parsed.workflow.name
-      : "导入的 Workflow",
+      : "导入工作流",
     workflowRevision: typeof parsed.workflow.revision === "number" && Number.isFinite(parsed.workflow.revision)
       ? parsed.workflow.revision
       : undefined,

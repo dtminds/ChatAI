@@ -564,7 +564,7 @@ function WorkflowEditorResourceState({
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={AlertCircleIcon} size={20} strokeWidth={1.8} />
           </EmptyMedia>
-          <EmptyTitle>{status === "not-found" ? "工作流不存在" : "工作流加载失败"}</EmptyTitle>
+          <EmptyTitle>{status === "not-found" ? "内容已不存在" : "加载失败"}</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
           <div className="flex gap-2">

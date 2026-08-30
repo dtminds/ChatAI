@@ -1,11 +1,12 @@
 import {
   AlertCircleIcon,
+  DashboardCircleEditIcon,
   Delete01Icon,
-  Edit02Icon,
+  FileEditIcon,
   MoreHorizontalIcon,
-  PauseIcon,
-  PlayIcon,
-  StopCircleIcon,
+  PauseCircleIcon,
+  PlayCircle02Icon,
+  ShutDownIcon,
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -75,7 +76,7 @@ export function WorkflowListTable({
 }) {
   return (
     <div className="overflow-hidden rounded-[10px] border border-border/40 bg-muted px-1 pb-1">
-      <Table aria-label="工作流列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
+      <Table aria-label="列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
         <colgroup>
           <col className="w-[300px]" />
           <col className="w-[120px]" />
@@ -302,8 +303,8 @@ function WorkflowRowMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
           <Link to={`${detailBasePath}/${workflow.id}`}>
-            <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
-            编辑工作流
+            <HugeiconsIcon icon={DashboardCircleEditIcon} size={16} strokeWidth={1.8} />
+            编辑
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -311,7 +312,7 @@ function WorkflowRowMenu({
           disabled={workflow.runtimeStatus !== "active" || operationPending}
           onSelect={() => onLifecycleAction("pause")}
         >
-            <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon icon={PauseCircleIcon} size={16} strokeWidth={1.8} />
             暂停
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -319,14 +320,14 @@ function WorkflowRowMenu({
             || workflow.publishedRevision === null || operationPending}
           onSelect={() => onLifecycleAction(workflow.runtimeStatus === "paused" ? "resume" : "enable")}
         >
-            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon icon={PlayCircle02Icon} size={16} strokeWidth={1.8} />
             启用
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={onRename}
         >
-          <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
-          编辑信息
+          <HugeiconsIcon icon={FileEditIcon} size={16} strokeWidth={1.8} />
+          重命名
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -335,7 +336,7 @@ function WorkflowRowMenu({
             || operationPending}
           onSelect={() => onLifecycleAction("stop")}
         >
-          <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
+          <HugeiconsIcon icon={ShutDownIcon} size={16} strokeWidth={1.8} />
           停止
         </DropdownMenuItem>
         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>

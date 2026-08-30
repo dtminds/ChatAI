@@ -10,12 +10,12 @@ export function getWorkflowLifecycleErrorMessage(
 ) {
   const repositoryError = normalizeWorkflowRepositoryError(error);
   if (repositoryError.apiCode === "WORKFLOW_ACTIVE_LIMIT_EXCEEDED") {
-    return "最多可同时运行 50 个 Workflow";
+    return "最多同时运行 50 个工作流";
   }
   if (action === "enable" && repositoryError.code === "conflict") {
     return "请先在编辑页发布当前草稿";
   }
-  if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
+  if (repositoryError.code === "not-found") return "内容已不存在";
   if (repositoryError.code === "forbidden") return "没有操作权限";
   return GENERIC_OPERATION_ERROR;
 }
@@ -29,7 +29,7 @@ export function getWorkflowReviewActionErrorMessage(error: unknown) {
   if (repositoryError.code === "conflict") {
     return "状态已变化，请刷新页面后重试";
   }
-  if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
+  if (repositoryError.code === "not-found") return "内容已不存在";
   if (repositoryError.code === "forbidden") return "没有操作权限";
   return GENERIC_OPERATION_ERROR;
 }

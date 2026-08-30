@@ -355,10 +355,10 @@ export function WorkflowListPage({
               strokeWidth={1.8}
             />
             <Input
-              aria-label="搜索 Workflow"
+              aria-label="搜索工作流"
               className="h-10 rounded-[8px] pl-9"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索 Workflow"
+              placeholder="搜索工作流"
               value={query}
             />
           </div>
@@ -371,14 +371,14 @@ export function WorkflowListPage({
             type="button"
           >
             <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
-            新建 Workflow
+            新建工作流
           </Button>
         </div>
 
         {status === "error" ? (
           <WorkflowListState
             onRetry={() => void reload()}
-            title="工作流列表加载失败"
+            title="列表加载失败"
           />
         ) : null}
 
@@ -508,7 +508,7 @@ function WorkflowTenantDataSection({
   return (
     <div className="overflow-x-auto">
       <section
-        aria-label="Workflow 数据概览"
+        aria-label="数据概览"
         className="grid min-w-[960px] grid-cols-4 gap-3"
       >
         <WorkflowOverviewMetricCard
@@ -524,7 +524,7 @@ function WorkflowTenantDataSection({
           iconClassName="text-foreground"
           loading={overviewStatus === "loading" && !overview}
           secondary={overview ? `共 ${overview.totalWorkflowCount.toLocaleString("zh-CN")} 个` : null}
-          title="已启用工作流"
+          title="已启用"
           value={overview ? overview.activeWorkflowCount.toLocaleString("zh-CN") : null}
         />
         <WorkflowOverviewMetricCard
@@ -707,7 +707,7 @@ function WorkflowCapacityLabel({
             </Button>
           </TooltipTrigger>
           <TooltipContent className="max-w-80" side="bottom" sideOffset={6}>
-            <strong>工作流并发运行容量：</strong>
+            <strong>并发运行容量：</strong>
             包含所有正处于执行或等待节点的客户流程。容量耗尽期间，新触发的客户将无法进入流程，建议及时结束不必要的长周期流程或联系顾问扩容
           </TooltipContent>
         </Tooltip>
@@ -771,7 +771,7 @@ function getWorkflowOperationErrorMessage(error: unknown) {
   }
 
   if (repositoryError.code === "not-found") {
-    return "该 Workflow 已不存在";
+    return "内容已不存在";
   }
 
   return "操作失败，请稍后重试";

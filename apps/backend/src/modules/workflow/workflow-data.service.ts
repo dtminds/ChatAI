@@ -105,7 +105,7 @@ export class WorkflowDataService {
   getOverview(scope: WorkflowOperatorScope, workflowId: string) {
     assertAccess(scope);
     if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     const input = {
       uid: scope.uid,
@@ -157,7 +157,7 @@ export class WorkflowDataService {
   listRecords(scope: WorkflowOperatorScope, input: Omit<Parameters<WorkflowDataReader["listRecords"]>[0], "uid" | "workflowTypes">) {
     assertAccess(scope);
     if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     return this.reader.listRecords({
       ...input,
@@ -169,7 +169,7 @@ export class WorkflowDataService {
   getRecord(scope: WorkflowOperatorScope, workflowId: string, recordId: string) {
     assertAccess(scope);
     if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
-      throw new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     return this.reader.getRecord({
       recordId,
@@ -182,7 +182,7 @@ export class WorkflowDataService {
 
 function assertAccess(scope: WorkflowOperatorScope) {
   if (!scope.roles.some(role => role === "owner" || role === "admin")) {
-    throw new ForbiddenError("WORKFLOW_ACCESS_FORBIDDEN", "无权查看 Workflow 数据");
+    throw new ForbiddenError("WORKFLOW_ACCESS_FORBIDDEN", "无权查看数据");
   }
 }
 

@@ -126,7 +126,7 @@ describe("workflow draft service", () => {
     });
 
     expect(newDocument.id).toBe("workflow-1");
-    expect(newDocument.name).toBe("未命名 Workflow");
+    expect(newDocument.name).toBe("未命名工作流");
     expect(newDocument.draft.nodes.map((node) => node.data.kind)).toEqual(["start", "end"]);
     expect(repeatedResult.id).toBe(newDocument.id);
     expect(() => repository.createDocument({

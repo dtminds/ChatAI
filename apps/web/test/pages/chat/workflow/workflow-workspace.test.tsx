@@ -725,7 +725,7 @@ describe("useWorkflowWorkspace", () => {
       enableDocument: vi.fn(async () => {
         throw new WorkflowRepositoryError(
           "conflict",
-          "最多可同时运行 50 个 Workflow",
+          "最多同时运行 50 个工作流",
           { apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED" },
         );
       }),
@@ -740,7 +740,7 @@ describe("useWorkflowWorkspace", () => {
       submitReview: vi.fn(async () => {
         throw new WorkflowRepositoryError(
           "validation",
-          "Workflow 校验未通过",
+          "校验未通过",
         );
       }),
       withdrawReview: vi.fn(async () => { throw reviewError; }),
@@ -750,7 +750,7 @@ describe("useWorkflowWorkspace", () => {
     await act(async () => {
       await result.current.topBar.onSubmitReview();
     });
-    expect(toast.error).toHaveBeenLastCalledWith("Workflow 校验未通过");
+    expect(toast.error).toHaveBeenLastCalledWith("校验未通过");
 
     const pending = baseRepository.submitReview(initial.id);
     const reviewId = pending.currentReview!.id;
@@ -793,7 +793,7 @@ describe("useWorkflowWorkspace", () => {
     await act(async () => {
       await inactiveResult.current.topBar.onEnable?.();
     });
-    expect(toast.error).toHaveBeenLastCalledWith("最多可同时运行 50 个 Workflow");
+    expect(toast.error).toHaveBeenLastCalledWith("最多同时运行 50 个工作流");
     expect(toast.error).toHaveBeenCalledTimes(6);
   });
 

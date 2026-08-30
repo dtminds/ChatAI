@@ -172,11 +172,11 @@ export function WorkflowTopBar({
     <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
       <div className="flex min-w-0 items-center gap-2.5 max-sm:w-full">
         <Button
-          aria-label="返回 Workflow 列表"
+          aria-label="返回列表"
           className="size-9 shrink-0 rounded-lg text-muted-foreground"
           onClick={onBack}
           size="icon"
-          title="返回 Workflow 列表"
+          title="返回列表"
           type="button"
           variant="ghost"
         >
@@ -214,7 +214,7 @@ export function WorkflowTopBar({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        aria-label="查看 Workflow 描述"
+                        aria-label="查看描述"
                         className="size-6 shrink-0 rounded-md text-muted-foreground"
                         size="icon"
                         type="button"
@@ -231,11 +231,11 @@ export function WorkflowTopBar({
               ) : null}
               {canRename ? (
                 <Button
-                  aria-label="编辑 Workflow 信息"
+                  aria-label="编辑"
                   className="size-6 shrink-0 rounded-md text-muted-foreground"
                   onClick={() => setMetadataDialogOpen(true)}
                   size="icon"
-                  title="编辑 Workflow 信息"
+                  title="编辑"
                   type="button"
                   variant="ghost"
                 >
@@ -271,7 +271,7 @@ export function WorkflowTopBar({
 
       {!versionPreviewMode && onModeChange ? (
         <div
-          aria-label="Workflow 模式"
+          aria-label="视图切换"
           className="absolute left-1/2 top-0 flex h-full -translate-x-1/2 items-center gap-8 max-md:static max-md:h-auto max-md:translate-x-0"
           role="tablist"
         >
@@ -293,7 +293,7 @@ export function WorkflowTopBar({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 items-center gap-2" aria-label="Workflow 操作">
+      <div className="flex shrink-0 items-center gap-2">
         {versionPreviewMode ? (
           <>
             <Button

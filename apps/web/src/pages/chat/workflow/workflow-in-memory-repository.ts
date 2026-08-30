@@ -742,7 +742,7 @@ function createNewWorkflowDocument(
     lastRunAt: null,
     managedAccountCount: 0,
     managedAccounts: [],
-    name: name?.trim() || "未命名 Workflow",
+    name: name?.trim() || "未命名工作流",
     nodes: draft.nodes.length,
     owner: "运营主管",
     permissions: createDefaultWorkflowPermissions(),

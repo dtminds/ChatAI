@@ -217,7 +217,7 @@ function decodeJavaResponse(response: unknown, operation: string): CdpGroupJavaD
       ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
       : {
           operation,
-          reason: envelope.kind === "invalid" ? envelope.reason : "envelope must be an object",
+          reason: envelope.reason,
         },
   );
 }

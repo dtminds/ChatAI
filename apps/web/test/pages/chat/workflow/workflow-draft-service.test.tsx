@@ -162,11 +162,11 @@ describe("workflow draft service", () => {
     expect(() => repository.createDocument({ name: " ", workflowType: "chatai_sop" }))
       .toThrow(WorkflowRepositoryError);
     expect(() => repository.createDocument({
-      name: "名".repeat(101),
+      name: "名".repeat(41),
       workflowType: "chatai_sop",
     })).toThrow(WorkflowRepositoryError);
     expect(() => repository.createDocument({
-      description: "描".repeat(1001),
+      description: "描".repeat(201),
       name: "有效名称",
       workflowType: "chatai_sop",
     })).toThrow(WorkflowRepositoryError);

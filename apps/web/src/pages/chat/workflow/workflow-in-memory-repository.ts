@@ -1,7 +1,9 @@
-import type {
-  WorkflowCapabilitySummary,
-  WorkflowPublishReview,
-  WorkflowType,
+import {
+  WORKFLOW_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_NAME_MAX_LENGTH,
+  type WorkflowCapabilitySummary,
+  type WorkflowPublishReview,
+  type WorkflowType,
 } from "@chatai/contracts";
 import {
   createInitialDraft,
@@ -76,10 +78,10 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       if (input.name !== undefined && !name) {
         throw new WorkflowRepositoryError("validation", "Workflow name is required");
       }
-      if (name && name.length > 100) {
+      if (name && name.length > WORKFLOW_NAME_MAX_LENGTH) {
         throw new WorkflowRepositoryError("validation", "Workflow name is too long");
       }
-      if (description.length > 1000) {
+      if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
         throw new WorkflowRepositoryError("validation", "Workflow description is too long");
       }
       const existingDocumentId = clientRequestId
@@ -300,7 +302,10 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       if (!normalizedName) {
         throw new WorkflowRepositoryError("validation", "Workflow name is required");
       }
-      if (normalizedDescription.length > 1000) {
+      if (normalizedName.length > WORKFLOW_NAME_MAX_LENGTH) {
+        throw new WorkflowRepositoryError("validation", "Workflow name is too long");
+      }
+      if (normalizedDescription.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
         throw new WorkflowRepositoryError("validation", "Workflow description is too long");
       }
 

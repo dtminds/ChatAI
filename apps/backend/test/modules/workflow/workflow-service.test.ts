@@ -430,6 +430,20 @@ describe("WorkflowService", () => {
     expect(updated.draft).toEqual(created.draft);
   });
 
+  it("rejects workflow notes longer than 200 characters", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+
+    await expect(service.updateMetadata(operator, created.id, {
+      description: "备".repeat(201),
+      name: "新客首购旅程",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_DESCRIPTION_TOO_LONG",
+      message: "备注不能超过 200 字",
+      statusCode: 400,
+    });
+  });
+
   it("keeps creation order after an older workflow is edited", async () => {
     vi.useFakeTimers();
     try {

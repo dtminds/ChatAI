@@ -1142,8 +1142,8 @@ describe("Agent workflow page", () => {
     if (!renameMenuItem) throw new Error("Workflow rename action was not rendered");
     await user.click(renameMenuItem);
     const { descriptionInput, nameInput } = getWorkflowMetadataInputs();
-    expect(nameInput).toHaveAttribute("maxlength", "100");
-    expect(descriptionInput).toHaveAttribute("maxlength", "1000");
+    expect(nameInput).toHaveAttribute("maxlength", "40");
+    expect(descriptionInput).toHaveAttribute("maxlength", "200");
     expect(nameInput).toHaveValue("新人转化旅程");
     expect(descriptionInput).toHaveValue("引导新客户完成首次购买");
     await user.clear(nameInput);

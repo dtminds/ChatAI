@@ -1,5 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { WorkflowIdSchema, WorkflowRuntimeStatusSchema } from "./dto.js";
+import {
+  WORKFLOW_NAME_MAX_LENGTH,
+  WorkflowIdSchema,
+  WorkflowRuntimeStatusSchema,
+} from "./dto.js";
 export const WorkflowObservabilityTaskDistributionSchema = Type.Object({
   cancelled: Type.Integer({ minimum: 0 }),
   completed: Type.Integer({ minimum: 0 }),
@@ -110,7 +114,7 @@ export const WorkflowObservabilityWorkflowItemSchema = Type.Object({
   activeTaskCount: Type.Integer({ minimum: 0 }),
   dueBacklogCount: Type.Integer({ minimum: 0 }),
   lastRunAt: Type.Optional(EpochMsSchema),
-  name: Type.String({ maxLength: 100 }),
+  name: Type.String({ maxLength: WORKFLOW_NAME_MAX_LENGTH }),
   oldestDueAt: Type.Optional(EpochMsSchema),
   runtimeStatus: WorkflowRuntimeStatusSchema,
   totalRunCount: Type.Integer({ minimum: 0 }),
@@ -131,7 +135,7 @@ export const WorkflowObservabilityWorkflowListResponseSchema = Type.Object({
 export const WorkflowObservabilityWorkflowDetailResponseSchema = Type.Object({
   activeRunCount: Type.Integer({ minimum: 0 }),
   dueBacklogCount: Type.Integer({ minimum: 0 }),
-  name: Type.String({ maxLength: 100 }),
+  name: Type.String({ maxLength: WORKFLOW_NAME_MAX_LENGTH }),
   observedAt: EpochMsSchema,
   oldestDueAt: Type.Optional(EpochMsSchema),
   runtimeStatus: WorkflowRuntimeStatusSchema,

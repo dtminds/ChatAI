@@ -151,16 +151,19 @@ export const WorkflowPublishReviewSchema = Type.Object({
   workflowId: WorkflowIdSchema,
 });
 
+export const WORKFLOW_NAME_MAX_LENGTH = 40;
+export const WORKFLOW_DESCRIPTION_MAX_LENGTH = 200;
+
 export const WorkflowDefinitionSchema = Type.Object({
   capabilitySummary: WorkflowCapabilitySummarySchema,
   createdAt: Type.String(),
   currentReview: Type.Union([WorkflowPublishReviewSchema, Type.Null()]),
-  description: Type.String({ maxLength: 1000 }),
+  description: Type.String({ maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH }),
   draft: WorkflowDraftSchema,
   draftVersion: Type.Integer({ minimum: 1 }),
   hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
-  name: Type.String({ minLength: 1, maxLength: 100 }),
+  name: Type.String({ minLength: 1, maxLength: WORKFLOW_NAME_MAX_LENGTH }),
   permissions: WorkflowPermissionsSchema,
   publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   runtimeStatus: WorkflowRuntimeStatusSchema,
@@ -178,7 +181,7 @@ export const WorkflowDefinitionListStatusSchema = Type.Union([
 ]);
 
 export const WorkflowDefinitionListItemSchema = Type.Object({
-  description: Type.String({ maxLength: 1000 }),
+  description: Type.String({ maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH }),
   hasUnpublishedChanges: Type.Boolean(),
   id: WorkflowIdSchema,
   inProgressRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
@@ -189,7 +192,7 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
     id: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
     name: Type.String(),
   }, { additionalProperties: false }), { maxItems: 3 }),
-  name: Type.String({ minLength: 1, maxLength: 100 }),
+  name: Type.String({ minLength: 1, maxLength: WORKFLOW_NAME_MAX_LENGTH }),
   publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   runtimeStatus: WorkflowRuntimeStatusSchema,
   successRatePercent: Type.Union([Type.Integer({ minimum: 0, maximum: 100 }), Type.Null()]),
@@ -228,8 +231,8 @@ export const WorkflowPublishReviewPageSchema = Type.Object({
 
 export const WorkflowCreateRequestSchema = Type.Object({
   clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
-  description: Type.Optional(Type.String({ maxLength: 1000 })),
-  name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+  description: Type.Optional(Type.String({ maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH })),
+  name: Type.Optional(Type.String({ minLength: 1, maxLength: WORKFLOW_NAME_MAX_LENGTH })),
   workflowType: WorkflowTypeSchema,
 });
 
@@ -239,8 +242,8 @@ export const WorkflowSaveDraftRequestSchema = Type.Object({
 });
 
 export const WorkflowMetadataUpdateRequestSchema = Type.Object({
-  description: Type.String({ maxLength: 1000 }),
-  name: Type.String({ minLength: 1, maxLength: 100 }),
+  description: Type.String({ maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH }),
+  name: Type.String({ minLength: 1, maxLength: WORKFLOW_NAME_MAX_LENGTH }),
 });
 
 export const WorkflowReviewSubmitRequestSchema = Type.Object({

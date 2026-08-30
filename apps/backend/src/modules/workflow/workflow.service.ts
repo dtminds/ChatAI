@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { WORKFLOW_DESCRIPTION_MAX_LENGTH } from "@chatai/contracts";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
@@ -506,8 +507,11 @@ export class WorkflowService {
     const name = metadata.name.trim();
     const description = metadata.description.trim();
     if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "名称不能为空");
-    if (description.length > 1000) {
-      throw new BadRequestError("WORKFLOW_DESCRIPTION_TOO_LONG", "描述不能超过 1000 字");
+    if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_DESCRIPTION_TOO_LONG",
+        `备注不能超过 ${WORKFLOW_DESCRIPTION_MAX_LENGTH} 字`,
+      );
     }
     return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
       description,

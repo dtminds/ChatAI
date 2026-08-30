@@ -53,7 +53,7 @@ export function NodeConfigPanel({
     <SettingWorkspaceProvider key={node.id}>
       <SettingWorkspace animateOnMount={animateOnMount}>
         <GuardedBasePanel
-          headerActions={testContext
+          headerActions={!readOnly && testContext
             ? node.data.kind === "llm"
               ? <LlmTestWorkspaceTrigger nodeId={node.id} />
               : node.data.kind === "ai-intent"

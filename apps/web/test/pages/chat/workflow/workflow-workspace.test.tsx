@@ -968,6 +968,22 @@ describe("useWorkflowWorkspace", () => {
     expect(getCanvasStartSourceMarker(result.current.canvas)).toBe("历史版本人群");
 
     act(() => {
+      result.current.canvas.onSelectNode("start");
+    });
+
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.readOnly).toBe(true);
+    expect(getStartSourceMarker({ nodes: result.current.inspector.nodes })).toBe("历史版本人群");
+
+    act(() => {
+      result.current.inspector.onClose();
+      result.current.checks.onNavigateToNode("start");
+    });
+
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.readOnly).toBe(true);
+
+    act(() => {
       result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     });

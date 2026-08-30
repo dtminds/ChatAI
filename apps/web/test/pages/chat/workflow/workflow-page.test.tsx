@@ -1208,6 +1208,37 @@ describe("Agent workflow page", () => {
     expect(settings).toBeInTheDocument();
   });
 
+  it("shows historical node configuration in a read-only inspector", async () => {
+    const user = userEvent.setup();
+    await publishInMemoryWorkflow("newcomer-conversion");
+    const currentDraft = getWorkflowDocument("newcomer-conversion").draft;
+    importWorkflowDraft("newcomer-conversion", {
+      ...currentDraft,
+      nodes: currentDraft.nodes.map((node) => node.id === "wait-2d"
+        ? {
+            ...node,
+            data: node.data.kind === "wait"
+              ? { ...node.data, duration: 5, metric: "5 天后唤醒" }
+              : node.data,
+          }
+        : node),
+    });
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    await user.click(within(screen.getByRole("dialog", { name: "版本历史面板" }))
+      .getByRole("button", { name: /版本 1/ }));
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    expect(within(panel).getByText("只读")).toBeInTheDocument();
+    expect(within(panel).getByRole("spinbutton", { name: "等待时长" })).toHaveValue(2);
+    expect(within(panel).getByRole("spinbutton", { name: "等待时长" })).toBeDisabled();
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find(node => node.id === "wait-2d")?.data)
+      .toMatchObject({ duration: 5 });
+  });
+
   it("groups canvas actions in a single bottom toolbar", async () => {
     renderWorkflowPage();
 

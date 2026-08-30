@@ -82,6 +82,7 @@ import {
   WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
   WORKFLOW_AI_COLLECT_QUIET_PERIOD_MS,
   type WorkflowAiCollectConversationPort,
+  type WorkflowAiCollectMessageCursor,
   type WorkflowConversationDirectivePort,
 } from "./ai-collect.js";
 import {
@@ -1146,7 +1147,7 @@ export class WorkflowRuntimeService {
   }
 
   private async startAiCollectInference(input: {
-    batchCursor: import("./ai-collect.js").WorkflowAiCollectMessageCursor | null;
+    batchCursor: WorkflowAiCollectMessageCursor | null;
     batchCutoffAt: Date | null;
     batchHasMore: boolean;
     claimedTask: WorkflowTaskRecord;

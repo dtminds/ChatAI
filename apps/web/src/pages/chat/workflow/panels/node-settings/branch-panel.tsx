@@ -55,12 +55,17 @@ import {
 } from "../../workflow-variables";
 import type { NodeSettingsProps } from "../types";
 
-export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"branch">) {
+export function BranchConfig({ edges, node, nodes, onNodeChange, resources }: NodeSettingsProps<"branch">) {
   const [pendingDeletePath, setPendingDeletePath] = useState<WorkflowBranchPath | null>(null);
   const branchPaths = getWorkflowBranchPaths(node.data);
   const conditionalPaths = branchPaths.filter((path) => !path.isDefault);
   const fallbackPath = branchPaths.find((path) => path.isDefault)!;
-  const variables = getAvailableBranchVariablesForNode(node.id, nodes, edges)
+  const variables = getAvailableBranchVariablesForNode(
+    node.id,
+    nodes,
+    edges,
+    resources?.customFields?.fields,
+  )
     .filter((variable) => variable.type !== "object");
 
   const updateBranchPaths = (nextPaths: WorkflowBranchPath[]) => {

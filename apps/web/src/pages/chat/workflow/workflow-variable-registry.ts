@@ -1,5 +1,8 @@
 import {
+  createWorkflowCustomFieldVariableSelector,
   getWorkflowGuaranteedVariableCatalog,
+  getWorkflowCustomFieldVariableValueType,
+  type CustomFieldItem,
   type WorkflowType,
 } from "@chatai/contracts";
 import type {
@@ -17,17 +20,42 @@ export const workflowContextVariables: WorkflowVariableDefinition[] = [
   createProjectionVariable("seatId", "托管账号 ID", "number"),
 ];
 
-export function getWorkflowContextVariables(nodes: WorkflowNode[]) {
+export function getWorkflowContextVariables(
+  nodes: WorkflowNode[],
+  customFields: readonly CustomFieldItem[] = [],
+) {
   const startNode = nodes.find((node): node is WorkflowNode<"start"> => node.data.kind === "start");
-  if (!startNode) return workflowContextVariables.slice(0, 3);
+  const customFieldVariables = customFields.flatMap(createCustomFieldVariable);
+  if (!startNode) return [
+    ...workflowContextVariables.slice(0, 3),
+    ...customFieldVariables,
+  ];
   const workflowType: Extract<WorkflowType, "chatai_sop" | "wecom_sop"> =
     isChatAiStartNodeData(startNode.data) ? "chatai_sop" : "wecom_sop";
   const available = new Set(getWorkflowGuaranteedVariableCatalog(
     workflowType,
     startNode.data.triggers.map(trigger => trigger.type),
   ));
-  return workflowContextVariables
-    .filter(variable => available.has(variable.selector.join(".")));
+  return [
+    ...workflowContextVariables
+      .filter(variable => available.has(variable.selector.join("."))),
+    ...customFieldVariables,
+  ];
+}
+
+function createCustomFieldVariable(
+  field: CustomFieldItem,
+): WorkflowVariableDefinition[] {
+  const valueType = getWorkflowCustomFieldVariableValueType(field.type);
+  if (!valueType) return [];
+  return [{
+    key: String(field.id),
+    label: field.title,
+    scope: "subject",
+    selector: createWorkflowCustomFieldVariableSelector(field.id),
+    type: valueType.kind,
+    valueType,
+  }];
 }
 
 function createContextVariable(

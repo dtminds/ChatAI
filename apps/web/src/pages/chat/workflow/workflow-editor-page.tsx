@@ -45,6 +45,10 @@ import type {
 import { useWorkflowDocumentResource } from "./workflow-resources";
 import { useWorkflowFriendAddWayResource } from "./workflow-friend-add-way-resource";
 import { useWorkflowManagedAccountResource } from "./workflow-managed-account-resource";
+import {
+  WorkflowCustomFieldResourceProvider,
+  useWorkflowCustomFieldResource,
+} from "./workflow-custom-field-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
   WorkflowCreateDialog,
@@ -199,11 +203,16 @@ function WorkflowWorkspaceContent({
   const surface = useWorkflowSurface();
   const location = useLocation();
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const customFieldResource = useWorkflowCustomFieldResource(mode === "design");
   const shouldLoadFriendAddWays = mode === "design"
     && getWorkflowCapabilityProfile(document.workflowType)
     .allowedEntryEventTypes.includes("contact.friend_added");
   const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
   const workspace = useWorkflowWorkspace(document.id, repository, document, {
+    customFields: {
+      fields: customFieldResource.fields,
+      status: customFieldResource.status,
+    },
     friendAddWays: {
       groups: friendAddWayResource.groups,
       status: friendAddWayResource.status,
@@ -256,7 +265,7 @@ function WorkflowWorkspaceContent({
   }, [location.pathname, location.search, navigate, review.current, review.onOpen]);
 
   return (
-    <>
+    <WorkflowCustomFieldResourceProvider resource={customFieldResource}>
       <WorkflowTopBar
         canEdit={topBar.canEdit}
         canPublish={topBar.canPublish}
@@ -449,6 +458,7 @@ function WorkflowWorkspaceContent({
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
                 resources={{
+                  customFields: customFieldResource,
                   friendAddWays: {
                     groups: friendAddWayResource.groups,
                     reload: () => void friendAddWayResource.reload(),
@@ -489,7 +499,7 @@ function WorkflowWorkspaceContent({
         </div>
       )}
       <WorkflowLeaveGuard enabled={topBar.saveState !== "saved"} />
-    </>
+    </WorkflowCustomFieldResourceProvider>
   );
 }
 

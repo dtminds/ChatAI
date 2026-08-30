@@ -11,12 +11,13 @@ import {
   normalizeOrderBindSelector,
 } from "./config";
 
-export function OrderBindConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"order-bind">) {
+export function OrderBindConfig({ edges, node, nodes, onNodeChange, resources }: NodeSettingsProps<"order-bind">) {
+  const customFields = resources?.customFields?.fields ?? [];
   const selector = normalizeOrderBindSelector(node.data.orderNumberSelector);
   const availableVariables = useMemo(
-    () => getAvailableVariablesForNode(node.id, nodes, edges)
+    () => getAvailableVariablesForNode(node.id, nodes, edges, customFields)
       .filter((variable) => isOrderBindOrderNumberVariable(variable.valueType)),
-    [edges, node.id, nodes],
+    [customFields, edges, node.id, nodes],
   );
 
   return (

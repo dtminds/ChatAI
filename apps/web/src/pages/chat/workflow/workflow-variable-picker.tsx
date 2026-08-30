@@ -1,9 +1,14 @@
 import { useState, type ReactNode } from "react";
 import {
+  getWorkflowCustomFieldVariableId,
+  getWorkflowCustomFieldVariableValueType,
+} from "@chatai/contracts";
+import {
   Globe02Icon,
   InputCursorTextIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +25,7 @@ import type {
   WorkflowVariableDefinition,
 } from "./types";
 import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
+import { useWorkflowCustomFieldResourceContext } from "./workflow-custom-field-resource";
 
 export function WorkflowVariablePicker({
   children,
@@ -130,9 +136,17 @@ function VariableGroupSubMenu({
   variables: WorkflowVariableDefinition[];
 }) {
   const [open, setOpen] = useState(false);
+  const customFieldResource = useWorkflowCustomFieldResourceContext();
+  const isGlobalGroup = variables.some(variable =>
+    variable.scope === "subject" || variable.scope === "trigger");
+  const customFieldVariables = isGlobalGroup
+    ? variables.filter(variable =>
+        getWorkflowCustomFieldVariableId(variable.selector) !== null)
+    : [];
   const outputVariables = showNodeSections
     ? variables.filter(variable => !isNodeLifecycleVariable(variable))
-    : variables;
+    : variables.filter(variable =>
+        getWorkflowCustomFieldVariableId(variable.selector) === null);
   const attributeVariables = showNodeSections
     ? variables.filter(isNodeLifecycleVariable)
     : [];
@@ -171,6 +185,19 @@ function VariableGroupSubMenu({
             )
           : null}
         {renderVariableItems(outputVariables, onSelect)}
+        {isGlobalGroup && (customFieldResource.status !== "idle" || customFieldVariables.length > 0)
+          ? (
+              <>
+                <DropdownMenuLabel className="mt-1 border-t border-border/60 px-2 pb-0.5 pt-2 text-[11px] font-normal text-muted-foreground/60">
+                  客户自定义属性
+                </DropdownMenuLabel>
+                <CustomFieldVariableItems
+                  onSelect={onSelect}
+                  variables={customFieldVariables}
+                />
+              </>
+            )
+          : null}
         {attributeVariables.length
           ? (
               <DropdownMenuLabel className="px-2 pb-0.5 pt-1.5 text-[11px] font-normal text-muted-foreground/60">
@@ -181,6 +208,59 @@ function VariableGroupSubMenu({
         {renderVariableItems(attributeVariables, onSelect)}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
+  );
+}
+
+function CustomFieldVariableItems({
+  onSelect,
+  variables,
+}: {
+  onSelect: (variable: WorkflowVariableDefinition) => void;
+  variables: WorkflowVariableDefinition[];
+}) {
+  const resource = useWorkflowCustomFieldResourceContext();
+  if (variables.length === 0
+    && (resource.status === "loading" || resource.status === "idle")) {
+    return (
+      <DropdownMenuItem disabled>
+        <Spinner size={12} />
+        <span>正在加载</span>
+      </DropdownMenuItem>
+    );
+  }
+  if (variables.length === 0 && resource.status === "error") {
+    return (
+      <DropdownMenuItem
+        onSelect={(event) => {
+          event.preventDefault();
+          resource.reload();
+        }}
+      >
+        加载失败，重新加载
+      </DropdownMenuItem>
+    );
+  }
+
+  const unsupportedFields = resource.status === "ready"
+    ? resource.fields.filter(field =>
+        getWorkflowCustomFieldVariableValueType(field.type) === null)
+    : [];
+  if (variables.length === 0 && unsupportedFields.length === 0) {
+    return <DropdownMenuItem disabled>暂无数据</DropdownMenuItem>;
+  }
+
+  return (
+    <>
+      {renderVariableItems(variables, onSelect)}
+      {unsupportedFields.map(field => (
+        <DropdownMenuItem disabled key={field.id}>
+          <span className="min-w-0 flex-1 truncate">{field.title}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground/70">
+            暂不支持
+          </span>
+        </DropdownMenuItem>
+      ))}
+    </>
   );
 }
 

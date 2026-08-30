@@ -659,6 +659,66 @@ describe("buildPublishChecks", () => {
     }));
   });
 
+  it("allows custom field configuration but blocks publish until runtime injection exists", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const customFieldMessageNode: WorkflowNode<"message"> = {
+      ...messageNode,
+      data: {
+        ...messageNode.data,
+        content: [{ selector: ["subject", "customFields", "7"], type: "variable" }],
+      },
+    };
+    const nextNodes = nodes.map((node) =>
+      node.id === customFieldMessageNode.id ? customFieldMessageNode : node);
+    const issues = validateWorkflowNodeConfig(
+      customFieldMessageNode,
+      nextNodes,
+      edges,
+      [{ id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 }],
+    );
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      code: "custom-field-variable-runtime-unavailable",
+      source: "config",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      code: "message-variable-invalid",
+    }));
+  });
+
+  it("treats disabled or deleted custom field references as unavailable", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const customFieldMessageNode: WorkflowNode<"message"> = {
+      ...messageNode,
+      data: {
+        ...messageNode.data,
+        content: [{ selector: ["subject", "customFields", "7"], type: "variable" }],
+      },
+    };
+    const nextNodes = nodes.map((node) =>
+      node.id === customFieldMessageNode.id ? customFieldMessageNode : node);
+
+    expect(validateWorkflowNodeConfig(
+      customFieldMessageNode,
+      nextNodes,
+      edges,
+      [],
+    )).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "message-variable-invalid" }),
+      expect.objectContaining({ code: "custom-field-variable-runtime-unavailable" }),
+    ]));
+  });
+
   it("requires message text or attachments and accepts either source", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();

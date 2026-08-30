@@ -40,8 +40,13 @@ import {
   normalizeWorkflowMessageOutputSelector,
 } from "./content-source";
 
-export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"message">) {
-  const variables = getAvailableVariablesForNode(node.id, nodes, edges);
+export function MessageConfig({ edges, node, nodes, onNodeChange, resources }: NodeSettingsProps<"message">) {
+  const variables = getAvailableVariablesForNode(
+    node.id,
+    nodes,
+    edges,
+    resources?.customFields?.fields,
+  );
   const outputOptions = getAvailableMessageContentOutputsForNode(node.id, nodes, edges);
   const attachments = normalizeWorkflowMessageAttachments(node.data.attachments);
   const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);

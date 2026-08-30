@@ -52,6 +52,18 @@ describe("Message compiler validation", () => {
       nodeId: "message",
     });
   });
+
+  it("rejects customer custom field references until runtime injection is available", () => {
+    expectCompilationIssue(createMessageDraft({
+      attachments: [],
+      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+      contentMode: "custom",
+    }), {
+      code: "invalid-node-config",
+      message: "Workflow custom field variables are not runtime-ready",
+      nodeId: "message",
+    });
+  });
 });
 
 function expectCompilationIssue(

@@ -16,12 +16,14 @@ export function OrderConversionConfig({
   node,
   nodes,
   onNodeChange,
+  resources,
 }: NodeSettingsProps<"order-conversion">) {
+  const customFields = resources?.customFields?.fields ?? [];
   const selector = normalizeOrderConversionSelector(node.data.orderNumberSelector);
   const availableVariables = useMemo(
-    () => getAvailableVariablesForNode(node.id, nodes, edges)
+    () => getAvailableVariablesForNode(node.id, nodes, edges, customFields)
       .filter((variable) => isOrderConversionOrderNumberVariable(variable.valueType)),
-    [edges, node.id, nodes],
+    [customFields, edges, node.id, nodes],
   );
   return (
     <WorkflowSettingsSection title="节点输入">

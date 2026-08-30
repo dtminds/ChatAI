@@ -1,4 +1,5 @@
 import {
+  containsWorkflowCustomFieldVariableSelector,
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
@@ -120,6 +121,15 @@ function validateWorkflowNodeReferences(
   const entryEventTypes = getWorkflowEntryEventTypes(nodes);
 
   for (const node of nodes) {
+    if (containsWorkflowCustomFieldVariableSelector(node.config)) {
+      issues.push({
+        code: "invalid-node-config",
+        message: "Workflow custom field variables are not runtime-ready",
+        nodeId: node.id,
+      });
+      continue;
+    }
+
     if (node.kind === "message" && isWorkflowMessageExecutionConfigComplete(node.config)) {
       const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
         node.id,

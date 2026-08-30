@@ -95,7 +95,14 @@ const outputTypeLabels: Record<WorkflowLlmOutputFieldType, string> = {
   string: "String",
 };
 
-export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: NodeSettingsProps<"llm">) {
+export function LlmConfig({
+  edges,
+  node,
+  nodes,
+  onNodeChange,
+  resources,
+  testContext,
+}: NodeSettingsProps<"llm">) {
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState(false);
@@ -119,8 +126,13 @@ export function LlmConfig({ edges, node, nodes, onNodeChange, testContext }: Nod
   const inputVariables = useMemo(() => getLlmInputVariables(inputs), [inputs]);
   const systemPromptVariables = useMemo(() => getLlmSystemPromptVariables(inputs), [inputs]);
   const availableInputValues = useMemo(() =>
-    getAvailableLlmInputVariablesForNode(node.id, nodes, edges),
-  [edges, node.id, nodes]);
+    getAvailableLlmInputVariablesForNode(
+      node.id,
+      nodes,
+      edges,
+      resources?.customFields?.fields,
+    ),
+  [edges, node.id, nodes, resources?.customFields?.fields]);
 
   useEffect(() => {
     let cancelled = false;

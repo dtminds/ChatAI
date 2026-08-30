@@ -28,6 +28,7 @@ export * from "./workflow/agent-directive.js";
 export * from "./workflow/branch.js";
 export * from "./workflow/capability.js";
 export * from "./workflow/customer-update.js";
+export * from "./workflow/custom-field-variable.js";
 export * from "./workflow/entry-event.js";
 export * from "./workflow/execution.js";
 export * from "./workflow/friend-add-way.js";

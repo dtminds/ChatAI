@@ -13,6 +13,7 @@ import {
   isFriendAddWaySelectionInvalid,
   type WorkflowFriendAddWayResource,
 } from "../workflow-friend-add-way-resource";
+import type { WorkflowCustomFieldResource } from "../workflow-custom-field-resource";
 import {
   validateWorkflowDraft,
 } from "./workflow-validation";
@@ -44,6 +45,7 @@ export type WorkflowValidationPolicy = {
 };
 
 export type WorkflowValidationResources = {
+  customFields?: Pick<WorkflowCustomFieldResource, "fields" | "status">;
   friendAddWays?: Pick<WorkflowFriendAddWayResource, "groups" | "status">;
 };
 
@@ -52,7 +54,11 @@ export function buildWorkflowValidationSummary(
   edges: WorkflowEdge[],
   policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
-  const validation = validateWorkflowDraft(nodes, edges);
+  const validation = validateWorkflowDraft(
+    nodes,
+    edges,
+    policy.resources?.customFields?.fields,
+  );
   return buildWorkflowValidationSummaryFromResult(nodes, validation, policy);
 }
 

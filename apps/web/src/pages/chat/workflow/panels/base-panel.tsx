@@ -117,11 +117,6 @@ function PanelHeader({
                 {visual.label}
               </Badge>
             ) : null}
-            {readOnly && !isRenaming ? (
-              <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="outline">
-                只读
-              </Badge>
-            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

@@ -442,7 +442,7 @@ function WorkflowWorkspaceContent({
             ) : null}
           </section>
 
-          {inspector.isOpen && !versionHistory.isPreviewing ? (
+          {inspector.isOpen ? (
             <NodeConfigPanel
                 allowedEntryEventTypes={inspector.allowedEntryEventTypes}
                 animateOnMount={animateInspectorOnMount}

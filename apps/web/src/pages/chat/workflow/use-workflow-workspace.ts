@@ -190,7 +190,7 @@ export function useWorkflowWorkspace(
     selectNode(nodeId);
     const node = controller.nodes.find((candidate) => candidate.id === nodeId);
     dispatchViewState({
-      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind) && !isPreviewingVersion),
+      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind)),
       type: "select-node",
     });
     closeCanvasOverlays();
@@ -209,7 +209,7 @@ export function useWorkflowWorkspace(
     }));
     const node = controller.nodes.find((candidate) => candidate.id === nodeId);
     dispatchViewState({
-      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind) && !isPreviewingVersion),
+      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind)),
       type: "navigate-from-check",
     });
     closeCanvasOverlays();

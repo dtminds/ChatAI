@@ -675,6 +675,12 @@ describe("workflow LLM node", () => {
     );
   });
 
+  it("hides node test actions when the settings panel is read-only", () => {
+    render(createLlmTestPanel(createTestableLlmNode(), vi.fn(), "saved", vi.fn(), true));
+
+    expect(screen.queryByRole("button", { name: "试运行大模型节点" })).not.toBeInTheDocument();
+  });
+
   it("validates temporary inputs and waits for the current draft to be saved", async () => {
     const user = userEvent.setup();
     const node = createTestableLlmNode();
@@ -1237,6 +1243,7 @@ function createLlmTestPanel(
   onNodeChange: (patch: WorkflowNodeConfigPatch<"llm">) => void,
   saveState: "dirty" | "error" | "saved" | "saving" = "saved",
   onClose = vi.fn(),
+  readOnly = false,
 ) {
   return (
     <NodeConfigPanel
@@ -1247,6 +1254,7 @@ function createLlmTestPanel(
       onClose={onClose}
       onNodeChange={onNodeChange}
       onRenameNode={vi.fn()}
+      readOnly={readOnly}
       testContext={{ draftVersion: 3, saveState, workflowId: "42" }}
     />
   );

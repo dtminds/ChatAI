@@ -17,6 +17,7 @@ export * from "./chat/enums.js";
 export * from "./chat/material-collection-content.js";
 export * from "./chat/quick-reply-content.js";
 export * from "./common/envelope.js";
+export * from "./common/java-internal-api-envelope.js";
 export * from "./insights/dto.js";
 export * from "./settings/dto.js";
 export * from "./settings/password.js";

@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowCustomerUpdateCommandSchema,
   type WorkflowCustomerUpdateCommand,
 } from "@chatai/contracts";
@@ -14,8 +15,6 @@ import { Value } from "@sinclair/typebox/value";
 import {
   assertCapabilityDefinition,
   createAbortGuard,
-  isRecord,
-  readString,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -146,21 +145,22 @@ export async function executeWorkflowCustomerUpdate(input: {
       "Workflow Customer Update Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_CUSTOMER_UPDATE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Customer Update Java endpoint returned an invalid envelope",
+      `Workflow Customer Update Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_CUSTOMER_UPDATE_REJECTED",
       "客户信息更新失败，流程已停止",
-      `Workflow Customer Update Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
+      `Workflow Customer Update Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (body.success !== true || body.data !== true) {
+  if (envelope.payload.data !== true) {
     throw terminalError(
       "WORKFLOW_CUSTOMER_UPDATE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",

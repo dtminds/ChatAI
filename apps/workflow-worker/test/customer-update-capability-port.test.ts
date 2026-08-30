@@ -162,7 +162,12 @@ describe("Workflow Customer Update Java port", () => {
     const fetches: Array<typeof fetch> = [
       vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: true })) as typeof fetch,
-      vi.fn(async () => javaResponse({ data: false, success: true })) as typeof fetch,
+      vi.fn(async () => javaResponse({
+        data: false,
+        error: 0,
+        errorMsg: "",
+        success: true,
+      })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: true, success: 1 })) as typeof fetch,
     ];
 
@@ -180,7 +185,12 @@ describe("Workflow Customer Update Java port", () => {
   it("reuses the caller-provided idempotency key and identical batch on retry", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(javaResponse({ data: true, success: true }));
+      .mockResolvedValueOnce(javaResponse({
+        data: true,
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }));
     const input = { ...executeInput(), fetch: fetchMock as typeof fetch };
 
     await expect(executeWorkflowCustomerUpdate(input)).rejects.toMatchObject({
@@ -249,7 +259,12 @@ function executeInput() {
     baseUrl: "https://java.example.com",
     command: customerUpdateCommand(),
     externalUserId: 101,
-    fetch: vi.fn(async () => javaResponse({ data: true, success: true })) as typeof fetch,
+    fetch: vi.fn(async () => javaResponse({
+      data: true,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    })) as typeof fetch,
     idempotencyKey: "stable-key",
     signal: new AbortController().signal,
     token: null,

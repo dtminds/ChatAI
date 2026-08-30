@@ -22,6 +22,8 @@ describe("Workflow Tag Query Java port", () => {
         },
         { id: 301, name: "重点客户" },
       ],
+      error: 0,
+      errorMsg: "",
       success: true,
     }));
     const port = new HttpWorkflowTagQueryCapabilityPort({
@@ -54,9 +56,14 @@ describe("Workflow Tag Query Java port", () => {
   });
 
   it("treats null or missing successful data as an empty intersection", () => {
-    expect(decodeWorkflowTagQueryJavaResponse({ data: null, success: true }, [301]))
+    expect(decodeWorkflowTagQueryJavaResponse({
+      data: null,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }, [301]))
       .toEqual({ matchedTags: [] });
-    expect(decodeWorkflowTagQueryJavaResponse({ success: true }, [301]))
+    expect(decodeWorkflowTagQueryJavaResponse({ error: 0, errorMsg: "", success: true }, [301]))
       .toEqual({ matchedTags: [] });
   });
 
@@ -94,7 +101,12 @@ describe("Workflow Tag Query Java port", () => {
     [[{ id: 301, name: "" }], "invalid tag name"],
     [[null], "non-object tag"],
   ])("rejects an invalid successful intersection: %s", (data, diagnostic) => {
-    expect(() => decodeWorkflowTagQueryJavaResponse({ data, success: true }, [301]))
+    expect(() => decodeWorkflowTagQueryJavaResponse({
+      data,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }, [301]))
       .toThrow(expect.objectContaining({
         code: "WORKFLOW_TAG_QUERY_OUTPUT_INVALID",
         diagnosticMessage: expect.stringContaining(diagnostic),
@@ -151,11 +163,21 @@ describe("Workflow Tag Query Java port", () => {
       },
       {
         expected: { code: "WORKFLOW_TAG_QUERY_RESPONSE_INVALID", failureKind: "terminal" },
-        fetch: vi.fn(async () => javaResponse({ data: {}, success: true })),
+        fetch: vi.fn(async () => javaResponse({
+          data: {},
+          error: 0,
+          errorMsg: "",
+          success: true,
+        })),
       },
       {
         expected: { code: "WORKFLOW_TAG_QUERY_REJECTED", failureKind: "terminal" },
-        fetch: vi.fn(async () => javaResponse({ data: [], success: false })),
+        fetch: vi.fn(async () => javaResponse({
+          data: [],
+          error: 40001,
+          errorMsg: "标签查询参数无效",
+          success: false,
+        })),
       },
     ];
 

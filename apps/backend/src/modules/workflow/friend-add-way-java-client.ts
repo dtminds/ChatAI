@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -17,19 +18,13 @@ export const FRIEND_ADD_WAY_INTERNAL_API_NOT_CONFIGURED_CODE =
   "FRIEND_ADD_WAY_INTERNAL_API_NOT_CONFIGURED";
 export const FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
 
-type JavaApiResponse<T> = {
-  code?: number;
+type FriendAddWayJavaPayload = {
   count?: number;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  error_msg?: string;
+  data?: unknown;
   hasNext?: boolean;
-  list?: T;
-  message?: string;
+  list?: unknown;
   page?: number;
   pageSize?: number;
-  success?: boolean;
 };
 
 export type FriendAddWayJavaChild = {
@@ -95,7 +90,7 @@ export function createFriendAddWayJavaClient(
         body.title = input.title;
       }
 
-      const response = await postJavaRequest<JavaApiResponse<FriendAddWayJavaActivity[]>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify(body),
         logContext: {
@@ -110,21 +105,23 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "friend-add-way-activity", logger);
-
-      const items = extractJavaListItems<FriendAddWayJavaActivity>(response);
+      const payload = decodeJavaResponse(response, "friend-add-way-activity", logger);
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("friend-add-way-activity", "list must be an array");
+      }
+      const items = extractJavaListItems<FriendAddWayJavaActivity>(payload.list);
 
       return {
-        hasNext: Boolean(response.hasNext),
+        hasNext: Boolean(payload.hasNext),
         items,
-        page: normalizePositiveInteger(response.page, input.page),
-        pageSize: normalizePositiveInteger(response.pageSize, input.pageSize),
-        total: normalizeNonNegativeInteger(response.count ?? items.length),
+        page: normalizePositiveInteger(payload.page, input.page),
+        pageSize: normalizePositiveInteger(payload.pageSize, input.pageSize),
+        total: normalizeNonNegativeInteger(payload.count ?? items.length),
       };
     },
 
     async listAddWays(input) {
-      const response = await postJavaRequest<JavaApiResponse<FriendAddWayJavaGroup[]>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({ uid: input.uid }),
         logContext: { uid: input.uid },
@@ -134,61 +131,47 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "friend-add-way-list", logger);
-
-      return {
-        groups: extractJavaListItems<FriendAddWayJavaGroup>(response),
-      };
+      const payload = decodeJavaResponse(response, "friend-add-way-list", logger);
+      if (!Array.isArray(payload.data)) {
+        throw invalidJavaData("friend-add-way-list", "data must be an array");
+      }
+      return { groups: extractJavaListItems<FriendAddWayJavaGroup>(payload.data) };
     },
   };
 }
 
-function extractJavaListItems<T>(response: JavaApiResponse<unknown>): T[] {
-  const candidates: unknown[] = [response.data, response.list];
-
-  if (response.data && typeof response.data === "object" && !Array.isArray(response.data)) {
-    const nested = response.data as { info?: unknown; list?: unknown };
-    candidates.push(nested.list, nested.info);
-  }
-
-  let emptyFallback: T[] | null = null;
-  for (const candidate of candidates) {
-    if (!Array.isArray(candidate)) {
-      continue;
-    }
-
-    if (candidate.length > 0) {
-      return candidate as T[];
-    }
-
-    emptyFallback ??= candidate as T[];
-  }
-
-  return emptyFallback ?? [];
+function extractJavaListItems<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
 }
 
-function assertJavaSuccess(
-  response: JavaApiResponse<unknown>,
+function decodeJavaResponse(
+  response: unknown,
   operation: string,
   logger: AppLogger,
-) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+): FriendAddWayJavaPayload {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   logger.error(
-    {
-      code: response.code,
-      error: response.error,
-      hasErrorMessage: Boolean(response.errorMsg ?? response.error_msg ?? response.message),
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, hasErrorMessage: Boolean(envelope.errorMsg), operation }
+      : { operation, reason: envelope.reason },
     "内部接口业务失败",
   );
 
   throw new BadGatewayError(
     FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
     FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
+  );
+}
+
+function invalidJavaData(operation: string, reason: string) {
+  return new BadGatewayError(
+    FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
+    FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
+    { operation, reason },
   );
 }
 
@@ -233,22 +216,6 @@ async function postJavaRequest<T>({
     path,
     token,
   });
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function mapJavaHttpFailureStatus(status: number) {

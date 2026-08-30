@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowTagQueryCommandSchema,
   type WorkflowTagQueryCommand,
   type WorkflowTagQueryResult,
@@ -16,7 +17,6 @@ import {
   assertCapabilityDefinition,
   createAbortGuard,
   isRecord,
-  readString,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -142,29 +142,23 @@ export function decodeWorkflowTagQueryJavaResponse(
   body: unknown,
   requestedTagIds: readonly number[],
 ): WorkflowTagQueryResult {
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Tag Query Java endpoint returned an invalid envelope",
+      `Workflow Tag Query Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_TAG_QUERY_REJECTED",
       "标签查询失败，流程已停止",
-      `Workflow Tag Query Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
+      `Workflow Tag Query Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (body.success !== true) {
-    throw terminalError(
-      "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
-      "返回结果异常，流程已停止",
-      "Workflow Tag Query Java endpoint returned an invalid success flag",
-    );
-  }
-  if (body.data === undefined || body.data === null) return { matchedTags: [] };
-  if (!Array.isArray(body.data)) {
+  if (envelope.payload.data === undefined || envelope.payload.data === null) return { matchedTags: [] };
+  if (!Array.isArray(envelope.payload.data)) {
     throw terminalError(
       "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
@@ -174,7 +168,7 @@ export function decodeWorkflowTagQueryJavaResponse(
 
   const requestedTagIdSet = new Set(requestedTagIds);
   const matchedTagIds = new Set<number>();
-  const matchedTags = body.data.map((item): WorkflowTagQueryResult["matchedTags"][number] => {
+  const matchedTags = envelope.payload.data.map((item): WorkflowTagQueryResult["matchedTags"][number] => {
     if (!isRecord(item)) throw invalidOutput("Tag Query Java result contains a non-object tag");
     const id = item.id;
     const name = typeof item.name === "string" ? item.name.trim() : "";

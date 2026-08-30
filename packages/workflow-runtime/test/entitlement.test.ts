@@ -6,6 +6,8 @@ import {
 
 const success = (data: boolean) => new Response(JSON.stringify({
   data,
+  error: 0,
+  errorMsg: "",
   success: true,
 }), { headers: { "Content-Type": "application/json" }, status: 200 });
 
@@ -66,10 +68,9 @@ describe("workflow entitlement port", () => {
   });
 
   it.each([
-    { data: true, success: false },
-    { data: "true", success: true },
-    { success: true },
-    { data: true },
+    { data: true, error: 0, errorMsg: "", success: false },
+    { data: "true", error: 0, errorMsg: "", success: true },
+    { data: true, error: 0, errorMsg: "" },
   ])("treats invalid Java envelopes as unavailable: %j", async (body) => {
     const port = createWorkflowEntitlementPort({
       baseUrl: "https://java.example.com",
@@ -79,14 +80,11 @@ describe("workflow entitlement port", () => {
       .rejects.toBeInstanceOf(WorkflowEntitlementUnavailableError);
   });
 
-  it("ignores failure-only envelope fields after a successful decision", async () => {
+  it("accepts a successful decision without failure-only envelope fields", async () => {
     const port = createWorkflowEntitlementPort({
       baseUrl: "https://java.example.com",
       fetch: async () => new Response(JSON.stringify({
         data: false,
-        error: 1,
-        errorMsg: 1,
-        error_msg: null,
         success: true,
       }), { status: 200 }),
     });

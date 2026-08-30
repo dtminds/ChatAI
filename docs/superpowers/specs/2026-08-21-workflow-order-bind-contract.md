@@ -1,6 +1,6 @@
 # Workflow 关联订单跨服务契约
 
-- 状态：Worker Adapter 已接通；Java 成功信封以 `error === 0` 为准
+- 状态：Worker Adapter 已接通；Java 标准信封以 `success` 为成功权威
 - 适用节点：ChatAI SOP、WeCom SOP 的关联订单
 - Capability：`order.bind`，Contract Version `1`
 - Java：`POST /third-internal/one-id/order-bind`
@@ -14,7 +14,7 @@ Node 负责：
 - 使用 Task 执行前准备的 `externalUserId` 表达目标客户
 - 将解析后的订单号投影成类型化命令
 - 生成并重用稳定 `idempotencyKey`
-- 将 Java 关联结果映射为节点输出 `result`
+- Java 操作成功时输出 `result: true`
 - 管理 timeout、retry、terminal failure 和节点结果
 
 Java 负责：
@@ -91,7 +91,7 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 }
 ```
 
-业务失败时节点仍然完成，输出：
+订单号变量解析为空、空白或超过 64 个字符时，输出：
 
 ```json
 {
@@ -99,9 +99,7 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 }
 ```
 
-流程继续走默认出口，由后续条件分支消费 `操作结果`。
-
-订单号变量解析为空、空白或超过 64 个字符时，同样输出 `false` 并继续默认出口，不调用 Java。这让后续条件分支可以处理无效订单号。
+本地参数失败或 Java 返回 `success === false` 时，节点输出 `result: false` 并继续走默认出口，让后续条件分支处理业务失败。
 
 系统不可用、超时、非法信封和未知结果不属于 `result: false`：
 
@@ -109,12 +107,21 @@ Java 请求按现有 third-internal 惯例发送扁平 JSON，Swagger 参数名 
 - HTTP 200 下的非法 JSON、非法 envelope 属于 terminal
 - 配置非法、客户身份不可用属于 terminal
 
-Java HTTP 200 且 `error` 为安全整数时：
+Java HTTP 200 响应必须使用标准信封：
 
-- `error === 0` 映射为 `true`
-- 其它整数 `error` 映射为 `false`，节点完成并继续默认出口
+```json
+{
+  "data": null,
+  "error": 0,
+  "errorMsg": "",
+  "success": true
+}
+```
 
-不把 `success` 字段当作成功条件。
+- `success === true` 表示操作成功，不要求也不读取 `error` / `errorMsg`，输出 `result: true`
+- `success === false` 表示业务操作未成功，输出 `result: false` 并继续默认出口；此时不读取或校验 `error` / `errorMsg`
+- `success` 缺失或类型错误时视为非法响应并 terminal
+- 该接口不依赖 `data` 返回业务结果
 
 ## 4. 幂等与错误
 

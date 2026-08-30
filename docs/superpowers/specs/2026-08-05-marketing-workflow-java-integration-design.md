@@ -498,10 +498,10 @@ Java 是 Product Entitlement 的唯一权威来源。Node 不接收权益事件�
 ```ts
 POST /third-internal/wap-embed-workflow-definition/can-run
 body: { uid: number; workflowType: 1 | 2 | 3 }
-response.data: boolean
+response: { success: boolean; error?: number; errorMsg?: string; data?: boolean }
 ```
 
-类型值固定为 ChatAI SOP=1、WeCom SOP=2、Member SOP=3。只有 HTTP 成功、Java 业务信封成功且 `data` 为 boolean 才构成权益结果；超时、业务错误或非法响应都表示服务不可用，不能解释成无权益。Java 不返回容量，Node 侧每租户活跃 Run 上限默认 10000，可由部署显式覆盖。
+类型值固定为 ChatAI SOP=1、WeCom SOP=2、Member SOP=3。只有 HTTP 成功、标准 Java 信封 `success === true` 且 `data` 为 boolean 才构成权益结果；`success === false` 时 `error` / `errorMsg` 只用于失败诊断。超时、业务错误或非法响应都表示服务不可用，不能解释成无权益。Java 不返回容量，Node 侧每租户活跃 Run 上限默认 10000，可由部署显式覆盖。
 
 Node 在以下边界查询权益：
 
@@ -1017,10 +1017,10 @@ Java 幂等语义：
 | --- | --- | --- |
 | `success` | 已发送、已打标、幂等重复成功 | 提交节点成功 |
 | `retryable` | 限流、临时不可用、依赖超时 | 同步 Capability 创建 Retry Task；Inference Job 更新下次领取时间 |
-| `terminal` | 参数非法、资源不存在、业务明确拒绝 | 节点和 Run 失败 |
+| `terminal` | 参数非法、资源不存在、按节点契约需终止的业务拒绝 | 节点和 Run 失败 |
 | `unknown` | HTTP 超时、连接断开且结果未知 | 使用同一幂等键重试 |
 
-Workflow 调用采用统一的 Java HTTP envelope 失败契约：只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下只有 `success === true` 表示业务成功；`success === false` 是 Java 明确返回的业务拒绝，必须 terminal，不能通过 `error === 0` 覆盖。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
+Workflow 调用采用统一的 Java HTTP envelope 失败契约：boolean `success` 是唯一必需的状态字段。业务字段位置按各 Endpoint 已确认的现有契约读取，本次信封统一不顺带迁移 payload；新接口原则上把业务字段放在可选 `data`，legacy 例外在各自 Spec 记录。只有 HTTP 200 进入业务响应判定；网络异常、超时和任意非 HTTP 200 响应表示服务异常，进入 retryable 或 Action 的 unknown 恢复语义。HTTP 200 下 `success === true` 表示业务成功，`success === false` 表示 Java 明确返回的业务拒绝；两者都不能被 `error` / `errorMsg` 的值或形状覆盖。`error` / `errorMsg` 只在失败时作为可选诊断信息采纳，缺失、`null` 或类型异常不改变失败判定。HTTP 200 下的非法 JSON、非法 envelope、非法 `success` 或非法成功数据属于 terminal 契约错误，不重复调用相同请求。
 
 Java 应返回稳定机器码，不允许 Node 根据中文错误文案判断是否重试。
 

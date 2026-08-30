@@ -302,7 +302,7 @@ function seatRow(id: number, thirdUserId: string) {
 }
 
 function javaResponse(body: Record<string, unknown>) {
-  return new Response(JSON.stringify({ error: 0, success: true, ...body }), {
+  return new Response(JSON.stringify({ error: 0, errorMsg: "", success: true, ...body }), {
     headers: { "content-type": "application/json" },
     status: 200,
   });

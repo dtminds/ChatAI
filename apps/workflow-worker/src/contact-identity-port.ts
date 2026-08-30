@@ -1,10 +1,11 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   WorkflowContactIdentityLookupError,
   type WorkflowContactIdentity,
   type WorkflowContactIdentityLookupKey,
   type WorkflowContactIdentityPort,
 } from "@chatai/workflow-runtime";
-import { isRecord, readString } from "./capability-port-support.js";
+import { isRecord } from "./capability-port-support.js";
 
 const JAVA_CONTACT_IDENTITY_PATH = "/third-internal/wap-embed-contact/get-contact-identity";
 
@@ -86,28 +87,24 @@ export function createJavaContactIdentityRequest(
 }
 
 export function decodeJavaContactIdentityResponse(body: unknown): WorkflowContactIdentity {
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalIdentityError(
-      "Workflow contact identity endpoint returned an invalid envelope",
+      `Workflow contact identity endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalIdentityError(
-      `Workflow contact identity endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
+      `Workflow contact identity endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (body.success !== true) {
-    throw terminalIdentityError(
-      "Workflow contact identity endpoint returned an invalid success flag",
-    );
-  }
-  if (body.data === undefined || body.data === null) return {};
-  if (!isRecord(body.data)) {
+  if (envelope.payload.data === undefined || envelope.payload.data === null) return {};
+  if (!isRecord(envelope.payload.data)) {
     throw terminalIdentityError(
       "Workflow contact identity endpoint returned invalid data",
     );
   }
-  const data = body.data;
+  const data = envelope.payload.data;
   assertOptionalNonNegativeSafeInteger(data.externalUserId, "externalUserId");
   assertOptionalNonNegativeSafeInteger(data.mallUserId, "mallUserId");
   assertOptionalString(data.thirdExternalUserId, "thirdExternalUserId");

@@ -37,6 +37,8 @@
 }
 ```
 
+`success` 是标准信封的权威状态；成功时不要求 `error` / `errorMsg`，目录数组只从 `data` 读取。
+
 ## Java 活动响应
 
 ```json
@@ -53,5 +55,7 @@
   ]
 }
 ```
+
+活动分页字段固定从顶层 `count`、`hasNext`、`page`、`pageSize`、`list` 读取，不兼容迁移到 `data` 的形状。`list` 必须是数组；缺失或类型错误时 Node 返回 502，不得按成功空页处理。`success === true` 表示成功，`error` / `errorMsg` 只在 `success === false` 时用于失败诊断。
 
 失败时 Node 返回「操作失败，请稍后重试」，不把上游错误码暴露给编辑器。

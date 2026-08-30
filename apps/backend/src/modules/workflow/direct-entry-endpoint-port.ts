@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -16,13 +17,6 @@ export const WORKFLOW_DIRECT_ENTRY_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKFLOW_DIRECT_ENTRY_INTERNAL_API_NOT_CONFIGURED";
 export const WORKFLOW_DIRECT_ENTRY_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
 
-type JavaEncryptResponse = {
-  data?: unknown;
-  error?: unknown;
-  errorMsg?: unknown;
-  success?: unknown;
-};
-
 export type WorkflowDirectEntryEndpointPort = {
   getEndpointKey(input: { uid: number; workflowId: string }): Promise<string>;
 };
@@ -35,7 +29,7 @@ export function createJavaWorkflowDirectEntryEndpointPort(
 
   return {
     async getEndpointKey(input) {
-      const response = await postJavaInternalApi<JavaEncryptResponse>({
+      const response = await postJavaInternalApi<unknown>({
         baseUrl,
         body: JSON.stringify({ content: input.workflowId }),
         createFailureError: internalApiFailedError,
@@ -50,23 +44,29 @@ export function createJavaWorkflowDirectEntryEndpointPort(
         token,
       });
 
-      if (!isRecord(response)) throw internalApiFailedError();
-
-      if (response.success !== true) {
+      const envelope = decodeJavaInternalApiEnvelope(response);
+      if (envelope.kind !== "success") {
         logger.error(
-          {
-            error: response.error,
-            hasErrorMessage: typeof response.errorMsg === "string" && Boolean(response.errorMsg),
-            operation: "workflow-direct-entry-encrypt",
-            uid: input.uid,
-            workflowId: input.workflowId,
-          },
+          envelope.kind === "rejected"
+            ? {
+                error: envelope.error,
+                hasErrorMessage: Boolean(envelope.errorMsg),
+                operation: "workflow-direct-entry-encrypt",
+                uid: input.uid,
+                workflowId: input.workflowId,
+              }
+            : {
+                operation: "workflow-direct-entry-encrypt",
+                reason: envelope.reason,
+                uid: input.uid,
+                workflowId: input.workflowId,
+              },
           "内部接口业务失败",
         );
         throw internalApiFailedError();
       }
 
-      if (typeof response.data !== "string" || response.data.trim().length === 0) {
+      if (typeof envelope.payload.data !== "string" || envelope.payload.data.trim().length === 0) {
         logger.error(
           {
             operation: "workflow-direct-entry-encrypt",
@@ -78,7 +78,7 @@ export function createJavaWorkflowDirectEntryEndpointPort(
         throw internalApiFailedError();
       }
 
-      return response.data;
+      return envelope.payload.data;
     },
   };
 }
@@ -98,8 +98,4 @@ function internalApiFailedError() {
     WORKFLOW_DIRECT_ENTRY_INTERNAL_API_FAILED_CODE,
     WORKFLOW_DIRECT_ENTRY_INTERNAL_API_USER_MESSAGE,
   );
-}
-
-function isRecord(value: unknown): value is JavaEncryptResponse {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

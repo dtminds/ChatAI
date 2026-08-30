@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX,
   WorkflowHandoffCommandSchema,
   type WorkflowHandoffCommand,
@@ -17,8 +18,6 @@ import type { Kysely } from "kysely";
 import {
   assertCapabilityDefinition,
   createAbortGuard,
-  isRecord,
-  readString,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -164,25 +163,19 @@ export async function executeWorkflowHandoff(
       "Workflow Handoff Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_HANDOFF_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Handoff Java endpoint returned an invalid envelope",
+      `Workflow Handoff Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_HANDOFF_REJECTED",
       "转人工失败，流程已停止",
-      `Workflow Handoff Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
-    );
-  }
-  if (body.success !== true) {
-    throw terminalError(
-      "WORKFLOW_HANDOFF_RESPONSE_INVALID",
-      "返回结果异常，流程已停止",
-      "Workflow Handoff Java endpoint returned an invalid success flag",
+      `Workflow Handoff Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
   return {};

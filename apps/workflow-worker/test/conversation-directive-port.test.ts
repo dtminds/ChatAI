@@ -77,4 +77,48 @@ describe("Workflow conversation directive port", () => {
       }),
     );
   });
+
+  it.each([
+    { data: 88, success: true },
+    { data: 88, error: 1, errorMsg: "", success: true },
+  ])("accepts success as authoritative: %j", async (body) => {
+    const port = new HttpWorkflowConversationDirectivePort({
+      baseUrl: "https://java.internal",
+      fetch: vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
+    });
+
+    await expect(port.activate(activationInput())).resolves.toBeUndefined();
+  });
+
+  it("classifies an explicit Java rejection separately from an invalid envelope", async () => {
+    const port = new HttpWorkflowConversationDirectivePort({
+      baseUrl: "https://java.internal",
+      fetch: vi.fn(async () => new Response(JSON.stringify({
+        error: 1,
+        errorMsg: "x",
+        success: false,
+      }), { status: 200 })),
+    });
+
+    await expect(port.activate(activationInput())).rejects.toMatchObject({
+      code: "WORKFLOW_AI_COLLECT_DIRECTIVE_REJECTED",
+      diagnosticMessage: "Directive endpoint rejected the request: 1 x",
+      failureKind: "terminal",
+    });
+  });
 });
+
+function activationInput() {
+  return {
+    bizId: "workflow-task:88",
+    bizInfo: "",
+    conversationId: 301,
+    expiresAt: new Date("2026-08-30T01:02:03.000Z"),
+    limitRound: 3,
+    payload: "请结合当前对话自然确认订单号",
+    priority: 0,
+    signal: new AbortController().signal,
+    type: "collect-fields" as const,
+    uid: 9,
+  };
+}

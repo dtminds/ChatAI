@@ -86,15 +86,7 @@ describe("Workflow Order Bind Java port", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("preserves legacy error-only results and honors success when present", async () => {
-    await expect(executeWorkflowOrderBind({
-      ...executeInput(),
-      fetch: vi.fn(async () => javaResponse({ error: 0, errorMsg: "" })) as typeof fetch,
-    })).resolves.toEqual({ result: true });
-    await expect(executeWorkflowOrderBind({
-      ...executeInput(),
-      fetch: vi.fn(async () => javaResponse({ error: 40001 })) as typeof fetch,
-    })).resolves.toEqual({ result: false });
+  it("uses success as authoritative without validating diagnostic fields", async () => {
     await expect(executeWorkflowOrderBind({
       ...executeInput(),
       fetch: vi.fn(async () => javaResponse({
@@ -147,6 +139,7 @@ describe("Workflow Order Bind Java port", () => {
   it("treats invalid HTTP 200 envelopes as terminal", async () => {
     const fetches: Array<typeof fetch> = [
       vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,
+      vi.fn(async () => javaResponse({ data: "ok", error: 0 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", success: 1 })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", error: "0" })) as typeof fetch,
       vi.fn(async () => javaResponse({ data: "ok", error: 1.5 })) as typeof fetch,

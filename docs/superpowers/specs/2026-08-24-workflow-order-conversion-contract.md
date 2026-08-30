@@ -111,8 +111,7 @@ Java HTTP 200 响应必须使用标准信封：
 
 - `success === true` 表示操作成功，不要求也不读取 `error` / `errorMsg`，输出 `result: true`
 - `success === false` 表示业务操作未成功，输出 `result: false` 并继续默认出口；此时不读取或校验 `error` / `errorMsg`
-- 为兼容旧 Java 响应，`success` 缺失时按 `error === 0` 输出 `result: true`，其它安全整数输出 `result: false`；缺少或非法 `error` 才是非法响应并 terminal
-- `success` 存在但类型错误时视为非法响应并 terminal
+- `success` 缺失或类型错误时视为非法响应并 terminal
 - 该接口不依赖 `data` 返回业务结果
 
 ## 4. 幂等与错误

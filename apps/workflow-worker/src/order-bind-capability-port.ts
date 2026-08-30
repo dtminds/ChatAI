@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowOrderBindCommandSchema,
   type WorkflowOrderBindCommand,
 } from "@chatai/contracts";
@@ -14,7 +15,6 @@ import { Value } from "@sinclair/typebox/value";
 import {
   assertCapabilityDefinition,
   createAbortGuard,
-  isRecord,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -139,14 +139,20 @@ export async function executeWorkflowOrderBind(input: {
       "Workflow Order Bind Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body) || typeof body.error !== "number" || !Number.isSafeInteger(body.error)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_ORDER_BIND_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Order Bind Java endpoint returned an invalid envelope",
+      `Workflow Order Bind Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  return {
-    result: body.error === 0,
-  };
+  if (envelope.kind === "rejected") {
+    throw terminalError(
+      "WORKFLOW_ORDER_BIND_REJECTED",
+      "关联订单失败，流程已停止",
+      `Workflow Order Bind Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+    );
+  }
+  return { result: true };
 }

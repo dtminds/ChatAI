@@ -37,6 +37,8 @@
 }
 ```
 
+`success`、`error`、`errorMsg` 是标准信封字段；目录数组只从 `data` 读取。
+
 ## Java 活动响应
 
 ```json
@@ -44,14 +46,18 @@
   "success": true,
   "error": 0,
   "errorMsg": "",
-  "count": 21,
-  "hasNext": true,
-  "page": 1,
-  "pageSize": 20,
-  "list": [
-    { "addWayId": "live-1", "title": "门店活码", "createTime": 1710000000 }
-  ]
+  "data": {
+    "count": 21,
+    "hasNext": true,
+    "page": 1,
+    "pageSize": 20,
+    "list": [
+      { "addWayId": "live-1", "title": "门店活码", "createTime": 1710000000 }
+    ]
+  }
 }
 ```
+
+活动分页字段只从 `data` 读取；顶层业务字段不兼容读取。`success === true` 表示成功，`error` / `errorMsg` 只在 `success === false` 时用于失败诊断。
 
 失败时 Node 返回「操作失败，请稍后重试」，不把上游错误码暴露给编辑器。

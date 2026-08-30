@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WORKBENCH_MESSAGE_SOURCE,
   WorkflowMessageCommandSchema,
   type WorkflowMessageCommand,
@@ -31,13 +32,6 @@ const throwIfAborted = createAbortGuard(
   "消息发送暂时失败",
   "Workflow Message execution was aborted",
 );
-
-type WorkflowMessageJavaApiResponse = {
-  data?: { optNo?: number | string } | null;
-  error?: number;
-  errorMsg?: string;
-  success?: boolean;
-};
 
 type WorkflowMessageJavaData =
   | { msgtype: "text"; text: string }
@@ -275,29 +269,22 @@ async function sendWorkflowJavaMessage(input: {
       "Workflow Message Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Message Java endpoint returned an invalid envelope",
+      `Workflow Message Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  const envelope = body as WorkflowMessageJavaApiResponse;
-  if (envelope.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_MESSAGE_SEND_REJECTED",
       "执行所需数据不可用，流程已停止",
-      `Workflow Message Java endpoint rejected the request: ${String(envelope.error ?? "unknown")} ${envelope.errorMsg?.trim() ?? ""}`.trim(),
+      `Workflow Message Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (envelope.success !== true) {
-    throw terminalError(
-      "WORKFLOW_MESSAGE_RESPONSE_INVALID",
-      "返回结果异常，流程已停止",
-      "Workflow Message Java endpoint returned an invalid success flag",
-    );
-  }
-  const optNo = envelope.data?.optNo;
+  const optNo = isRecord(envelope.data) ? envelope.data.optNo : undefined;
   if ((typeof optNo !== "string" && typeof optNo !== "number") || !String(optNo).trim()) {
     throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",

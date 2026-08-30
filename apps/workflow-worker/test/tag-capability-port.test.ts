@@ -151,7 +151,12 @@ describe("Workflow Tag Java port", () => {
   it("reuses the caller-provided idempotency key on retry", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(javaResponse({ data: "updated", success: true }));
+      .mockResolvedValueOnce(javaResponse({
+        data: "updated",
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }));
     const input = { ...executeInput(), fetch: fetchMock as typeof fetch };
 
     await expect(executeWorkflowTag(input)).rejects.toMatchObject({
@@ -226,7 +231,12 @@ function executeInput() {
     baseUrl: "https://java.example.com",
     command: tagCommand(),
     externalUserId: 101,
-    fetch: vi.fn(async () => javaResponse({ data: "updated", success: true })) as typeof fetch,
+    fetch: vi.fn(async () => javaResponse({
+      data: "updated",
+      error: 0,
+      errorMsg: "",
+      success: true,
+    })) as typeof fetch,
     idempotencyKey: "stable-key",
     signal: new AbortController().signal,
     token: null,

@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowOrderConversionCommandSchema,
   type WorkflowOrderConversionCommand,
 } from "@chatai/contracts";
@@ -14,7 +15,6 @@ import { Value } from "@sinclair/typebox/value";
 import {
   assertCapabilityDefinition,
   createAbortGuard,
-  isRecord,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -135,14 +135,20 @@ export async function executeWorkflowOrderConversion(input: {
       "Workflow Order Conversion Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body) || typeof body.error !== "number" || !Number.isSafeInteger(body.error)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_ORDER_CONVERSION_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Order Conversion Java endpoint returned an invalid envelope",
+      `Workflow Order Conversion Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  return {
-    result: body.error === 0,
-  };
+  if (envelope.kind === "rejected") {
+    throw terminalError(
+      "WORKFLOW_ORDER_CONVERSION_REJECTED",
+      "转积分失败，流程已停止",
+      `Workflow Order Conversion Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+    );
+  }
+  return { result: true };
 }

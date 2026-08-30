@@ -55,6 +55,8 @@ describe("Workflow Audience Filter Java port", () => {
   it("keeps exist when membership is empty and ignores ids outside the request", () => {
     expect(decodeWorkflowAudienceFilterJavaResponse({
       data: { exist: true, groupIds: [999] },
+      error: 0,
+      errorMsg: "",
       success: true,
     }, [301, 302])).toEqual({ exist: true, groupIds: [] });
   });
@@ -62,6 +64,8 @@ describe("Workflow Audience Filter Java port", () => {
   it("rejects string, invalid, or duplicate group ids as terminal", () => {
     expect(() => decodeWorkflowAudienceFilterJavaResponse({
       data: { exist: true, groupIds: ["301"] },
+      error: 0,
+      errorMsg: "",
       success: true,
     }, [301])).toThrow(expect.objectContaining({
       code: "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
@@ -70,6 +74,8 @@ describe("Workflow Audience Filter Java port", () => {
     }));
     expect(() => decodeWorkflowAudienceFilterJavaResponse({
       data: { exist: true, groupIds: [301, {}] },
+      error: 0,
+      errorMsg: "",
       success: true,
     }, [301])).toThrow(expect.objectContaining({
       code: "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
@@ -77,6 +83,8 @@ describe("Workflow Audience Filter Java port", () => {
     }));
     expect(() => decodeWorkflowAudienceFilterJavaResponse({
       data: { exist: true, groupIds: [301, 301] },
+      error: 0,
+      errorMsg: "",
       success: true,
     }, [301])).toThrow(expect.objectContaining({
       diagnosticMessage: "Workflow Audience Filter Java result contains a duplicate group id",
@@ -116,7 +124,12 @@ describe("Workflow Audience Filter Java port", () => {
     [{ exist: "yes", groupIds: [] }, "missing exist"],
     [{ exist: true, groupIds: {} }, "invalid groupIds"],
   ])("rejects an invalid successful payload: %s", (data, diagnostic) => {
-    expect(() => decodeWorkflowAudienceFilterJavaResponse({ data, success: true }, [301]))
+    expect(() => decodeWorkflowAudienceFilterJavaResponse({
+      data,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }, [301]))
       .toThrow(expect.objectContaining({
         diagnosticMessage: expect.stringContaining(diagnostic),
         failureKind: "terminal",
@@ -160,7 +173,12 @@ describe("Workflow Audience Filter Java port", () => {
       },
       {
         expected: { code: "WORKFLOW_AUDIENCE_FILTER_REJECTED", failureKind: "terminal" },
-        fetch: vi.fn(async () => javaResponse({ data: { exist: false }, success: false })),
+        fetch: vi.fn(async () => javaResponse({
+          data: { exist: false },
+          error: 40001,
+          errorMsg: "人群包参数无效",
+          success: false,
+        })),
       },
     ];
 

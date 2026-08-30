@@ -58,6 +58,7 @@ describe("workflow friend-add-way routes", () => {
             },
           ],
           error: 0,
+          errorMsg: "",
           success: true,
         }),
         {
@@ -122,6 +123,8 @@ describe("workflow friend-add-way routes", () => {
             key: `way-${index + 1}`,
             title: `来源 ${index + 1}`,
           })),
+          error: 0,
+          errorMsg: "",
           success: true,
         }),
         {
@@ -160,18 +163,22 @@ describe("workflow friend-add-way routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 84,
-          hasNext: true,
-          list: [
-            { addWayId: "live-61", createTime: 1_710_000_000, title: "活动 61" },
-            ...Array.from({ length: 8 }, (_, index) => ({
-              addWayId: `live-${index + 62}`,
-              title: `活动 ${index + 62}`,
-            })),
-            { addWayId: "", title: "无效活动" },
-          ],
-          page: 7,
-          pageSize: 10,
+          data: {
+            count: 84,
+            hasNext: true,
+            list: [
+              { addWayId: "live-61", createTime: 1_710_000_000, title: "活动 61" },
+              ...Array.from({ length: 8 }, (_, index) => ({
+                addWayId: `live-${index + 62}`,
+                title: `活动 ${index + 62}`,
+              })),
+              { addWayId: "", title: "无效活动" },
+            ],
+            page: 7,
+            pageSize: 10,
+          },
+          error: 0,
+          errorMsg: "",
           success: true,
         }),
         {
@@ -223,14 +230,18 @@ describe("workflow friend-add-way routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 50,
-          hasNext: false,
-          list: Array.from({ length: 50 }, (_, index) => ({
-            addWayId: `live-${index + 1}`,
-            title: `活动 ${index + 1}`,
-          })),
-          page: 1,
-          pageSize: 50,
+          data: {
+            count: 50,
+            hasNext: false,
+            list: Array.from({ length: 50 }, (_, index) => ({
+              addWayId: `live-${index + 1}`,
+              title: `活动 ${index + 1}`,
+            })),
+            page: 1,
+            pageSize: 50,
+          },
+          error: 0,
+          errorMsg: "",
           success: true,
         }),
         {

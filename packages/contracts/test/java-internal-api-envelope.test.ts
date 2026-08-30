@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { decodeJavaInternalApiEnvelope } from "../src/index.js";
+
+describe("Java internal API envelope", () => {
+  it("returns only business data when success is true", () => {
+    expect(decodeJavaInternalApiEnvelope({
+      data: { id: 88 },
+      error: 40001,
+      errorMsg: "ignored on success",
+      success: true,
+    })).toEqual({ data: { id: 88 }, kind: "success" });
+  });
+
+  it("returns Java diagnostics only when success is false", () => {
+    expect(decodeJavaInternalApiEnvelope({
+      data: null,
+      error: 40001,
+      errorMsg: "参数无效",
+      success: false,
+    })).toEqual({
+      error: 40001,
+      errorMsg: "参数无效",
+      kind: "rejected",
+    });
+  });
+
+  it.each([
+    [null, "envelope must be an object"],
+    [[], "envelope must be an object"],
+    [{ error: 0, errorMsg: "" }, "success must be a boolean"],
+    [{ error: 0, errorMsg: "", success: 1 }, "success must be a boolean"],
+    [{ errorMsg: "", success: true }, "error must be a safe integer"],
+    [{ error: 0.5, errorMsg: "", success: true }, "error must be a safe integer"],
+    [{ error: 0, success: true }, "errorMsg must be a string"],
+  ])("rejects an invalid standard envelope", (value, reason) => {
+    expect(decodeJavaInternalApiEnvelope(value)).toEqual({ kind: "invalid", reason });
+  });
+});

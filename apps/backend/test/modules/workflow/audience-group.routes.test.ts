@@ -36,10 +36,8 @@ describe("workflow audience-group routes", () => {
 
   it("forwards the requested page to Java and returns the current page only", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({
+      javaSuccess({
         count: 25,
-        error: 0,
-        errorMsg: "",
         hasNext: true,
         list: [
           {
@@ -65,7 +63,6 @@ describe("workflow audience-group routes", () => {
         ],
         page: 2,
         pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
-        success: true,
       }),
     );
 
@@ -123,14 +120,12 @@ describe("workflow audience-group routes", () => {
 
   it("defaults to page 1 with pageSize 20 and does not follow hasNext", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({
+      javaSuccess({
         count: 40,
-        error: 0,
         hasNext: true,
         list: [{ id: 1, name: "人群包 1" }],
         page: 1,
         pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
-        success: true,
       }),
     );
 
@@ -161,9 +156,8 @@ describe("workflow audience-group routes", () => {
 
   it("clamps pageSize to 50 and caps the current page at that size", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({
+      javaSuccess({
         count: 80,
-        error: 0,
         hasNext: true,
         list: Array.from({ length: 60 }, (_, index) => ({
           id: index + 1,
@@ -171,7 +165,6 @@ describe("workflow audience-group routes", () => {
         })),
         page: 1,
         pageSize: 50,
-        success: true,
       }),
     );
 
@@ -203,14 +196,12 @@ describe("workflow audience-group routes", () => {
 
   it("always sends userType 1 and forwards a non-empty name to Java", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({
+      javaSuccess({
         count: 1,
-        error: 0,
         hasNext: false,
         list: [{ id: 301, name: "高价值客户" }],
         page: 1,
         pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
-        success: true,
       }),
     );
 
@@ -236,14 +227,12 @@ describe("workflow audience-group routes", () => {
 
   it("omits empty name from the Java request body", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({
+      javaSuccess({
         count: 1,
-        error: 0,
         hasNext: false,
         list: [{ id: 1, name: "人群包 1" }],
         page: 1,
         pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
-        success: true,
       }),
     );
 
@@ -270,6 +259,7 @@ describe("workflow audience-group routes", () => {
       jsonResponse({
         count: 1,
         error: 0,
+        errorMsg: "失败",
         hasNext: false,
         list: [{ id: 301, name: "高价值客户" }],
         page: 1,
@@ -299,6 +289,37 @@ describe("workflow audience-group routes", () => {
 
   it("rejects Java envelopes without an explicit success marker", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({}));
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/audience-groups",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "CDP_GROUP_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
+  it("rejects legacy top-level business fields from a successful Java envelope", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({
+      count: 1,
+      error: 0,
+      errorMsg: "",
+      hasNext: false,
+      list: [{ id: 301, name: "高价值客户" }],
+      page: 1,
+      pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
+      success: true,
+    }));
 
     const created = await createAuthenticatedApp();
     app = created.app;
@@ -411,6 +432,10 @@ describe("workflow audience-group routes", () => {
     });
   });
 });
+
+function javaSuccess(data: unknown) {
+  return jsonResponse({ data, error: 0, errorMsg: "", success: true });
+}
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {

@@ -31,6 +31,8 @@ describe("Workflow contact identity Java port", () => {
         thirdExternalUserId: "chatai-1",
         xyId: 303,
       },
+      error: 0,
+      errorMsg: "",
       success: true,
     }));
     const port = new HttpWorkflowContactIdentityPort({
@@ -63,7 +65,10 @@ describe("Workflow contact identity Java port", () => {
   });
 
   it.each([
-    { body: { data: {}, success: false }, expectedKind: "terminal" },
+    {
+      body: { data: {}, error: 40001, errorMsg: "参数无效", success: false },
+      expectedKind: "terminal",
+    },
     { body: { data: {}, error: 0 }, expectedKind: "terminal" },
     { body: { data: {}, success: 1 }, expectedKind: "terminal" },
   ] as const)("treats a 200 business or envelope failure as $expectedKind", async ({
@@ -104,6 +109,8 @@ describe("Workflow contact identity Java port", () => {
         thirdExternalUserId: "",
         xyId: 0,
       },
+      error: 0,
+      errorMsg: "",
       success: true,
     })).toEqual({
       externalUserId: 0,
@@ -111,7 +118,12 @@ describe("Workflow contact identity Java port", () => {
       thirdExternalUserId: "",
       xyId: 0,
     });
-    expect(decodeJavaContactIdentityResponse({ data: null, success: true })).toEqual({});
+    expect(decodeJavaContactIdentityResponse({
+      data: null,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    })).toEqual({});
   });
 
   it("classifies HTTP and network failures as retryable and invalid 200 responses as terminal", async () => {
@@ -143,6 +155,8 @@ describe("Workflow contact identity Java port", () => {
         expectedKind: "terminal",
         fetch: vi.fn(async () => response({
           data: { externalUserId: "101" },
+          error: 0,
+          errorMsg: "",
           success: true,
         })) as typeof fetch,
       },

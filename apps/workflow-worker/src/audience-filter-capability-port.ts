@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowAudienceFilterCommandSchema,
   type WorkflowAudienceFilterCommand,
   type WorkflowAudienceFilterResult,
@@ -16,7 +17,6 @@ import {
   assertCapabilityDefinition,
   createAbortGuard,
   isRecord,
-  readString,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -141,42 +141,37 @@ export function decodeWorkflowAudienceFilterJavaResponse(
   body: unknown,
   requestedGroupIds: readonly number[],
 ): WorkflowAudienceFilterResult {
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Audience Filter Java endpoint returned an invalid envelope",
+      `Workflow Audience Filter Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_REJECTED",
       "人群筛选失败，流程已停止",
-      `Workflow Audience Filter Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
+      `Workflow Audience Filter Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (body.success !== true) {
-    throw terminalError(
-      "WORKFLOW_AUDIENCE_FILTER_RESPONSE_INVALID",
-      "返回结果异常，流程已停止",
-      "Workflow Audience Filter Java endpoint returned an invalid success flag",
-    );
-  }
-  if (!isRecord(body.data)) {
+  const data = envelope.data;
+  if (!isRecord(data)) {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
       "Workflow Audience Filter Java endpoint returned an invalid data envelope",
     );
   }
-  if (typeof body.data.exist !== "boolean") {
+  if (typeof data.exist !== "boolean") {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
       "返回结果异常，流程已停止",
       "Workflow Audience Filter Java result is missing exist",
     );
   }
-  if (body.data.groupIds != null && !Array.isArray(body.data.groupIds)) {
+  if (data.groupIds != null && !Array.isArray(data.groupIds)) {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
       "返回结果异常，流程已停止",
@@ -186,7 +181,7 @@ export function decodeWorkflowAudienceFilterJavaResponse(
 
   const requestedGroupIdSet = new Set(requestedGroupIds);
   const membershipIds = new Set<number>();
-  for (const item of Array.isArray(body.data.groupIds) ? body.data.groupIds : []) {
+  for (const item of Array.isArray(data.groupIds) ? data.groupIds : []) {
     if (typeof item !== "number" || !Number.isSafeInteger(item) || item <= 0) {
       throw terminalError(
         "WORKFLOW_AUDIENCE_FILTER_OUTPUT_INVALID",
@@ -205,7 +200,7 @@ export function decodeWorkflowAudienceFilterJavaResponse(
     membershipIds.add(item);
   }
   return {
-    exist: body.data.exist,
+    exist: data.exist,
     groupIds: requestedGroupIds.filter((groupId) => membershipIds.has(groupId)),
   };
 }

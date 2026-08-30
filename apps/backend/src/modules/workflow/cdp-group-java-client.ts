@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WORKFLOW_AUDIENCE_GROUP_CALCULATE_TIME_MAX_LENGTH,
   WORKFLOW_AUDIENCE_GROUP_CONDITION_MAX_COUNT,
   WORKFLOW_AUDIENCE_GROUP_CONDITIONS_MAX_LENGTH,
@@ -26,17 +27,12 @@ export const CDP_GROUP_INTERNAL_API_NOT_CONFIGURED_CODE =
 export const CDP_GROUP_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
 export const CDP_GROUP_OPERATE_LIST_PATH = "/third-internal/cdp-group-operate/list-group";
 
-type JavaApiResponse = {
-  code?: number;
+type CdpGroupJavaData = {
   count?: number;
-  error?: number;
-  errorMsg?: string;
   hasNext?: boolean;
   list?: unknown;
-  message?: string;
   page?: number;
   pageSize?: number;
-  success?: boolean;
 };
 
 export type CdpGroupJavaClient = {
@@ -63,7 +59,7 @@ export function createCdpGroupJavaClient(
         userType: WORKFLOW_AUDIENCE_GROUP_USER_TYPE_WECOM,
         ...(input.name ? { name: input.name } : {}),
       };
-      const response = await postJavaRequest<JavaApiResponse>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify(body),
         logContext: body,
@@ -73,19 +69,19 @@ export function createCdpGroupJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "cdp-group-list");
+      const data = decodeJavaData(response, "cdp-group-list");
 
-      const groups = extractGroups(response.list, input.pageSize);
+      const groups = extractGroups(data.list, input.pageSize);
       return {
         groups,
         pagination: {
-          hasNext: Boolean(response.hasNext),
+          hasNext: Boolean(data.hasNext),
           page: input.page,
           pageSize: input.pageSize,
           total: resolveListTotal({
-            count: response.count,
+            count: data.count,
             groups,
-            hasNext: Boolean(response.hasNext),
+            hasNext: Boolean(data.hasNext),
             page: input.page,
             pageSize: input.pageSize,
           }),
@@ -208,21 +204,26 @@ function readGroupName(value: unknown) {
   return name.length > 0 ? name : null;
 }
 
-function assertJavaSuccess(response: JavaApiResponse, operation: string) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+function decodeJavaData(response: unknown, operation: string): CdpGroupJavaData {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success" && isRecord(envelope.data)) {
+    return envelope.data;
   }
 
   throw new BadGatewayError(
     CDP_GROUP_INTERNAL_API_FAILED_CODE,
     CDP_GROUP_INTERNAL_API_USER_MESSAGE,
-    {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.message,
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : {
+          operation,
+          reason: envelope.kind === "invalid" ? envelope.reason : "data must be an object",
+        },
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 type PostJavaRequestOptions = {
@@ -262,8 +263,4 @@ async function postJavaRequest<T>({
     path,
     token,
   });
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse) {
-  return response.success === true;
 }

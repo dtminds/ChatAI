@@ -7,11 +7,12 @@ import {
 } from "../src/order-conversion-capability-port.js";
 
 describe("Workflow Order Conversion Java port", () => {
-  it("maps one idempotent Java request and treats error 0 as success", async () => {
+  it("maps one idempotent Java request and treats success true as operation success", async () => {
     const fetchMock = vi.fn(async () => javaResponse({
       data: null,
       error: 0,
       errorMsg: "",
+      success: true,
     }));
 
     await expect(executeWorkflowOrderConversion({
@@ -85,7 +86,7 @@ describe("Workflow Order Conversion Java port", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("completes HTTP 200 business rejection as result false", async () => {
+  it("treats an HTTP 200 business rejection as terminal", async () => {
     await expect(executeWorkflowOrderConversion({
       ...executeInput(),
       fetch: vi.fn(async () => javaResponse({
@@ -95,7 +96,12 @@ describe("Workflow Order Conversion Java port", () => {
         error_msg: "不应读取的兼容字段",
         success: false,
       })) as typeof fetch,
-    })).resolves.toEqual({ result: false });
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_CONVERSION_REJECTED",
+      diagnosticMessage:
+        "Workflow Order Conversion Java endpoint rejected the request: 40001 订单不存在",
+      failureKind: "terminal",
+    });
   });
 
   it("classifies transport and every non-200 response as retryable", async () => {
@@ -140,7 +146,11 @@ describe("Workflow Order Conversion Java port", () => {
   it("reuses the caller-provided idempotency key on retry", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(javaResponse({ error: 0 }));
+      .mockResolvedValueOnce(javaResponse({
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }));
     const input = { ...executeInput(), fetch: fetchMock as typeof fetch };
 
     await expect(executeWorkflowOrderConversion(input)).rejects.toMatchObject({
@@ -198,7 +208,11 @@ function executeInput() {
   return {
     baseUrl: "https://java.example.com",
     command: orderConversionCommand(),
-    fetch: vi.fn(async () => javaResponse({ error: 0 })) as typeof fetch,
+    fetch: vi.fn(async () => javaResponse({
+      error: 0,
+      errorMsg: "",
+      success: true,
+    })) as typeof fetch,
     idempotencyKey: "stable-key",
     mallUserId: 202,
     signal: new AbortController().signal,

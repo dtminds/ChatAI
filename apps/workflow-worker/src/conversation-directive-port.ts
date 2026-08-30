@@ -1,8 +1,8 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   type WorkflowConversationDirectivePort,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
-import { isRecord } from "./capability-port-support.js";
 
 const JAVA_ADD_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/add";
 const JAVA_DISABLE_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/disable";
@@ -19,7 +19,7 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
   }
 
   async activate(input: Parameters<WorkflowConversationDirectivePort["activate"]>[0]) {
-    const body = await this.post(JAVA_ADD_DIRECTIVE_PATH, {
+    const data = await this.post(JAVA_ADD_DIRECTIVE_PATH, {
       bizId: input.bizId,
       bizInfo: input.bizInfo,
       conversationId: input.conversationId,
@@ -30,7 +30,6 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
       type: input.type,
       uid: input.uid,
     }, input.signal);
-    const data = body.data;
     const directiveId = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
     if (!Number.isSafeInteger(directiveId) || directiveId < 0) {
       throw terminal("WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID", "Directive add response data is invalid");
@@ -38,13 +37,13 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
   }
 
   async disable(input: Parameters<WorkflowConversationDirectivePort["disable"]>[0]) {
-    const body = await this.post(JAVA_DISABLE_DIRECTIVE_PATH, {
+    const data = await this.post(JAVA_DISABLE_DIRECTIVE_PATH, {
       bizId: input.bizId,
       reason: input.reason,
       type: input.type,
       uid: input.uid,
     }, input.signal);
-    if (body.data !== true) {
+    if (data !== true) {
       throw terminal(
         "WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID",
         "Directive disable response data is invalid",
@@ -95,13 +94,20 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
         "Directive endpoint returned invalid JSON",
       );
     }
-    if (!isRecord(body) || body.success !== true || body.error !== 0) {
+    const envelope = decodeJavaInternalApiEnvelope(body);
+    if (envelope.kind === "invalid") {
       throw terminal(
         "WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID",
-        "Directive endpoint returned an unsuccessful envelope",
+        `Directive endpoint returned an invalid envelope: ${envelope.reason}`,
       );
     }
-    return body;
+    if (envelope.kind === "rejected") {
+      throw terminal(
+        "WORKFLOW_AI_COLLECT_DIRECTIVE_REJECTED",
+        `Directive endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+      );
+    }
+    return envelope.data;
   }
 }
 

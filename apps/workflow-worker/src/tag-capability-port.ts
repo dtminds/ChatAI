@@ -1,4 +1,5 @@
 import {
+  decodeJavaInternalApiEnvelope,
   WorkflowTagCommandSchema,
   type WorkflowTagCommand,
 } from "@chatai/contracts";
@@ -14,8 +15,6 @@ import { Value } from "@sinclair/typebox/value";
 import {
   assertCapabilityDefinition,
   createAbortGuard,
-  isRecord,
-  readString,
   retryableError,
   terminalError,
 } from "./capability-port-support.js";
@@ -137,25 +136,19 @@ export async function executeWorkflowTag(input: {
       "Workflow Tag Java endpoint returned invalid JSON",
     );
   }
-  if (!isRecord(body)) {
+  const envelope = decodeJavaInternalApiEnvelope(body);
+  if (envelope.kind === "invalid") {
     throw terminalError(
       "WORKFLOW_TAG_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
-      "Workflow Tag Java endpoint returned an invalid envelope",
+      `Workflow Tag Java endpoint returned an invalid envelope: ${envelope.reason}`,
     );
   }
-  if (body.success === false) {
+  if (envelope.kind === "rejected") {
     throw terminalError(
       "WORKFLOW_TAG_REJECTED",
       "客户标签更新失败，流程已停止",
-      `Workflow Tag Java endpoint rejected the request: ${String(body.error ?? "unknown")} ${readString(body.errorMsg)}`.trim(),
-    );
-  }
-  if (body.success !== true) {
-    throw terminalError(
-      "WORKFLOW_TAG_RESPONSE_INVALID",
-      "返回结果异常，流程已停止",
-      "Workflow Tag Java endpoint returned an invalid success flag",
+      `Workflow Tag Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
   return {};

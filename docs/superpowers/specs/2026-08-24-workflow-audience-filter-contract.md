@@ -62,7 +62,6 @@ Java 成功响应 envelope：
   },
   "error": 0,
   "errorMsg": "",
-  "error_msg": "",
   "success": true
 }
 ```
@@ -74,7 +73,7 @@ Java 成功响应 envelope：
 - `data.exist` 必须是 boolean
 - `data.groupIds` 与请求 ID 求交集；请求外 ID 忽略，不 terminal
 - `groupIds` 中的非法项（非正整数）和重复命中 ID 视为返回结果异常，terminal
-- 节点输出不复制 Java 的 `error` / `error_msg`
+- 节点输出不复制 Java 的 `error` / `errorMsg`
 
 匹配规则（membership = `result.groupIds ∩ config.groups[].id`）：
 
@@ -134,33 +133,35 @@ POST /third-internal/cdp-group-operate/list-group
 - `userType` 固定为 `1`（企微客户人群包），由 Backend 写入，不接受前端选择
 - `name` 仅在公开查询提供非空名称时转发
 
-Java 成功响应（字段在顶层，不包裹 `data`）：
+Java 成功响应（业务字段统一放在 `data`）：
 
 ```json
 {
-  "count": 2,
+  "data": {
+    "count": 2,
+    "hasNext": false,
+    "list": [
+      {
+        "conditions": "近30天消费大于1000",
+        "createType": 1,
+        "groupNum": 12,
+        "id": 301,
+        "name": "高价值客户",
+        "peopleCalculateTime": "2026-08-24 10:00:00"
+      }
+    ],
+    "page": 1,
+    "pageSize": 20
+  },
   "error": 0,
   "errorMsg": "",
-  "hasNext": false,
-  "list": [
-    {
-      "conditions": "近30天消费大于1000",
-      "createType": 1,
-      "groupNum": 12,
-      "id": 301,
-      "name": "高价值客户",
-      "peopleCalculateTime": "2026-08-24 10:00:00"
-    }
-  ],
-  "page": 1,
-  "pageSize": 20,
   "success": true
 }
 ```
 
 Node 映射规则：
 
-- 只读取顶层 `list`
+- 只读取 `data.list`；顶层业务字段不兼容读取
 - 列表项读取 `id`、`name`，以及展示字段 `conditions`、`createType`、`groupNum`、`peopleCalculateTime`
 - `conditions` 为规则展示条目，字符串按换行拆成数组，字符串数组逐条截断，最多 20 条；不进入节点配置
 - `createType` 仅接受 `1`（规则配置）和 `2`（数据导入）；`groupNum` 为不少于 0 的整数；计算时间按 Java 原文回传，不做时区换算

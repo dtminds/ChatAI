@@ -25,7 +25,12 @@ describe("Workflow Handoff Java port", () => {
     const { database, queries } = createRecordingDatabase(() => ({
       rows: [seatRow(101, "work-user-1")],
     }));
-    const fetchMock = vi.fn(async () => javaResponse({ data: 9001, success: true }));
+    const fetchMock = vi.fn(async () => javaResponse({
+      data: 9001,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }));
 
     await expect(executeWorkflowHandoff(database, {
       baseUrl: "https://java.example.com/internal",
@@ -65,7 +70,12 @@ describe("Workflow Handoff Java port", () => {
     const { database } = createRecordingDatabase(() => ({
       rows: [seatRow(101, "work-user-1")],
     }));
-    const fetchMock = vi.fn(async () => javaResponse({ data: 9001, success: true }));
+    const fetchMock = vi.fn(async () => javaResponse({
+      data: 9001,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }));
 
     await executeWorkflowHandoff(database, {
       baseUrl: "https://java.example.com",
@@ -208,7 +218,12 @@ describe("Workflow Handoff Java port", () => {
     }));
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(javaResponse({ data: 9001, success: true }));
+      .mockResolvedValueOnce(javaResponse({
+        data: 9001,
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }));
     const input = {
       baseUrl: "https://java.example.com",
       command: handoffCommand(),

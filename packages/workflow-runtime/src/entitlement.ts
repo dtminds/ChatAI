@@ -1,7 +1,8 @@
-import type {
-  WorkflowTenantCapacityResult,
-  WorkflowType,
-  WorkflowTypeEntitlementResult,
+import {
+  decodeJavaInternalApiEnvelope,
+  type WorkflowTenantCapacityResult,
+  type WorkflowType,
+  type WorkflowTypeEntitlementResult,
 } from "@chatai/contracts";
 import { encodeWorkflowType } from "./persistence-codecs.js";
 
@@ -128,12 +129,13 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort, Wor
         );
       }
       const body: unknown = await response.json();
-      if (!isBusinessSuccessEnvelope(body)) {
+      const envelope = decodeJavaInternalApiEnvelope(body);
+      if (envelope.kind !== "success" || typeof envelope.data !== "boolean") {
         throw new WorkflowEntitlementUnavailableError(
           "Workflow entitlement endpoint returned an invalid response",
         );
       }
-      return body.data;
+      return envelope.data;
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) throw error;
       throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
@@ -236,13 +238,6 @@ export async function decideWorkflowEntitlement(
     if (error instanceof WorkflowEntitlementUnavailableError) throw error;
     throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });
   }
-}
-
-function isBusinessSuccessEnvelope(value: unknown): value is { data: boolean; success: true } {
-  if (!value || typeof value !== "object") return false;
-  const body = value as Record<string, unknown>;
-  return body.success === true
-    && typeof body.data === "boolean";
 }
 
 function normalizeHttpBaseUrl(value: string) {

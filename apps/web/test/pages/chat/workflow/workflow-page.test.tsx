@@ -372,13 +372,11 @@ function renderWorkflowPage(
 }
 
 function getWorkflowSearchInput() {
-  return screen.getByRole("textbox");
+  return screen.getByRole("textbox", { name: "搜索工作流" });
 }
 
 function getWorkflowCreateButton() {
-  const toolbar = getWorkflowSearchInput().parentElement?.parentElement;
-  if (!toolbar) throw new Error("Workflow list toolbar was not rendered");
-  return within(toolbar).getByRole("button");
+  return screen.getByRole("button", { name: "新建工作流" });
 }
 
 function getWorkflowMetadataInputs() {
@@ -390,19 +388,14 @@ function getWorkflowMetadataInputs() {
 function getWorkflowBackButton() {
   const topbar = document.querySelector<HTMLElement>(".workflow-canvas-topbar");
   if (!topbar) throw new Error("Workflow canvas topbar was not rendered");
-  const [backButton] = within(topbar).getAllByRole("button");
-  if (!backButton) throw new Error("Workflow back button was not rendered");
-  return backButton;
+  return within(topbar).getByRole("button", { name: "返回列表" });
 }
 
 function getWorkflowMetadataButton(workflowName: string) {
   const heading = screen.getByRole("heading", { name: workflowName });
   const headingRow = heading.parentElement;
   if (!headingRow) throw new Error("Workflow heading row was not rendered");
-  const buttons = within(headingRow).getAllByRole("button");
-  const metadataButton = buttons.at(-1);
-  if (!metadataButton) throw new Error("Workflow metadata button was not rendered");
-  return metadataButton;
+  return within(headingRow).getByRole("button", { name: "编辑" });
 }
 
 function workflowNodeX(nodeId: string) {
@@ -1182,9 +1175,7 @@ describe("Agent workflow page", () => {
     await user.clear(getWorkflowSearchInput());
     await waitFor(() => expect(screen.getByText("新人转化旅程")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
-    const renameMenuItem = screen.getAllByRole("menuitem")[3];
-    if (!renameMenuItem) throw new Error("Workflow rename action was not rendered");
-    await user.click(renameMenuItem);
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
     const { descriptionInput, nameInput } = getWorkflowMetadataInputs();
     expect(nameInput).toHaveAttribute("maxlength", "40");
     expect(descriptionInput).toHaveAttribute("maxlength", "200");

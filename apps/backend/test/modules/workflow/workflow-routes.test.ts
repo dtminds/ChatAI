@@ -92,6 +92,30 @@ describe("workflow routes", () => {
     });
   });
 
+  it("rejects workflow metadata beyond the shared limits", async () => {
+    const app = await createApp("owner");
+
+    const longName = await app.inject({
+      method: "POST",
+      payload: { name: "名".repeat(41), workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    expect(longName.statusCode).toBe(400);
+    expect(longName.json()).toMatchObject({
+      error: { message: "名称不能超过 40 个字符" },
+    });
+
+    const longDescription = await app.inject({
+      method: "POST",
+      payload: { description: "备".repeat(201), workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    });
+    expect(longDescription.statusCode).toBe(400);
+    expect(longDescription.json()).toMatchObject({
+      error: { message: "备注不能超过 200 个字符" },
+    });
+  });
+
   it("saves drafts containing frontend-only message query nodes", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({

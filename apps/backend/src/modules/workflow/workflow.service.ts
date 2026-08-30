@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { WORKFLOW_DESCRIPTION_MAX_LENGTH } from "@chatai/contracts";
+import {
+  WORKFLOW_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_NAME_MAX_LENGTH,
+} from "@chatai/contracts";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
@@ -450,13 +453,27 @@ export class WorkflowService {
       throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该类型");
     }
     await this.requireEntitlement(scope.uid, input.workflowType);
+    const name = input.name?.trim() || "未命名工作流";
+    const description = input.description?.trim() || "";
+    if (name.length > WORKFLOW_NAME_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_NAME_TOO_LONG",
+        `名称不能超过 ${WORKFLOW_NAME_MAX_LENGTH} 字`,
+      );
+    }
+    if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_DESCRIPTION_TOO_LONG",
+        `备注不能超过 ${WORKFLOW_DESCRIPTION_MAX_LENGTH} 字`,
+      );
+    }
     const draft = createInitialWorkflowDraft(input.workflowType);
     const result = await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
-      description: input.description?.trim() || "",
+      description,
       draft,
       draftSemanticHash: hashDraftSemantics(draft),
-      name: input.name?.trim() || "未命名工作流",
+      name,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
       workflowType: input.workflowType,
@@ -507,6 +524,12 @@ export class WorkflowService {
     const name = metadata.name.trim();
     const description = metadata.description.trim();
     if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "名称不能为空");
+    if (name.length > WORKFLOW_NAME_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_NAME_TOO_LONG",
+        `名称不能超过 ${WORKFLOW_NAME_MAX_LENGTH} 字`,
+      );
+    }
     if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
       throw new BadRequestError(
         "WORKFLOW_DESCRIPTION_TOO_LONG",

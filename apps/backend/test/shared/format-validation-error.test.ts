@@ -20,6 +20,24 @@ describe("formatValidationErrorMessage", () => {
     ).toBe("链接描述不能超过 64 个字符");
   });
 
+  it("allows workflow routes to use workflow metadata labels", () => {
+    expect(
+      formatValidationErrorMessage({
+        message: "body/description must NOT have more than 200 characters",
+        name: "FastifyError",
+        validation: [
+          {
+            instancePath: "/description",
+            keyword: "maxLength",
+            message: "must NOT have more than 200 characters",
+            params: { limit: 200 },
+            schemaPath: "#/properties/description/maxLength",
+          },
+        ],
+      }, { description: "备注" }),
+    ).toBe("备注不能超过 200 个字符");
+  });
+
   it.each([
     ["/variables", "最多添加 10 个变量"],
     ["/tools", "最多添加 10 个工具"],

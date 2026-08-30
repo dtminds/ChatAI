@@ -283,10 +283,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
             <Select
               onValueChange={(unit: WorkflowAiCollectTimeout["unit"]) => updateConfig({
                 timeout: {
-                  duration: Math.min(
-                    AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit],
-                    Math.max(AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit], timeout.duration),
-                  ),
+                  duration: AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit],
                   unit,
                 },
               })}

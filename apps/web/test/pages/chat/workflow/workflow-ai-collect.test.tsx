@@ -189,6 +189,10 @@ describe("workflow AI Collect", () => {
     await user.click(screen.getByRole("option", { name: "小时" }));
 
     const duration = screen.getByRole("spinbutton", { name: "最长等待时间" });
+    expect(duration).toHaveValue(1);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      timeout: { duration: 1, unit: "hour" },
+    }));
     fireEvent.change(duration, { target: { value: "49" } });
     fireEvent.blur(duration);
     expect(duration).toHaveValue(24);

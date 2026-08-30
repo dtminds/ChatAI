@@ -69,7 +69,7 @@ export function createCdpGroupJavaClient(
         token,
       });
 
-      const data = decodeJavaData(response, "cdp-group-list");
+      const data = decodeJavaResponse(response, "cdp-group-list");
 
       const groups = extractGroups(data.list, input.pageSize);
       return {
@@ -204,10 +204,10 @@ function readGroupName(value: unknown) {
   return name.length > 0 ? name : null;
 }
 
-function decodeJavaData(response: unknown, operation: string): CdpGroupJavaData {
+function decodeJavaResponse(response: unknown, operation: string): CdpGroupJavaData {
   const envelope = decodeJavaInternalApiEnvelope(response);
-  if (envelope.kind === "success" && isRecord(envelope.data)) {
-    return envelope.data;
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   throw new BadGatewayError(
@@ -217,7 +217,7 @@ function decodeJavaData(response: unknown, operation: string): CdpGroupJavaData 
       ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
       : {
           operation,
-          reason: envelope.kind === "invalid" ? envelope.reason : "data must be an object",
+          reason: envelope.kind === "invalid" ? envelope.reason : "envelope must be an object",
         },
   );
 }

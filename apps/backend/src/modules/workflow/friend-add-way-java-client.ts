@@ -18,8 +18,9 @@ export const FRIEND_ADD_WAY_INTERNAL_API_NOT_CONFIGURED_CODE =
   "FRIEND_ADD_WAY_INTERNAL_API_NOT_CONFIGURED";
 export const FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
 
-type FriendAddWayActivityData = {
+type FriendAddWayJavaPayload = {
   count?: number;
+  data?: unknown;
   hasNext?: boolean;
   list?: unknown;
   page?: number;
@@ -104,17 +105,15 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      const data = decodeJavaData(response, "friend-add-way-activity", logger);
-      if (!isRecord(data)) throw invalidJavaData("friend-add-way-activity");
-      const activityData: FriendAddWayActivityData = data;
-      const items = extractJavaListItems<FriendAddWayJavaActivity>(activityData.list);
+      const payload = decodeJavaResponse(response, "friend-add-way-activity", logger);
+      const items = extractJavaListItems<FriendAddWayJavaActivity>(payload.list);
 
       return {
-        hasNext: Boolean(activityData.hasNext),
+        hasNext: Boolean(payload.hasNext),
         items,
-        page: normalizePositiveInteger(activityData.page, input.page),
-        pageSize: normalizePositiveInteger(activityData.pageSize, input.pageSize),
-        total: normalizeNonNegativeInteger(activityData.count ?? items.length),
+        page: normalizePositiveInteger(payload.page, input.page),
+        pageSize: normalizePositiveInteger(payload.pageSize, input.pageSize),
+        total: normalizeNonNegativeInteger(payload.count ?? items.length),
       };
     },
 
@@ -129,25 +128,27 @@ export function createFriendAddWayJavaClient(
         token,
       });
 
-      const data = decodeJavaData(response, "friend-add-way-list", logger);
-      if (!Array.isArray(data)) throw invalidJavaData("friend-add-way-list");
-      return { groups: extractJavaListItems<FriendAddWayJavaGroup>(data) };
+      const payload = decodeJavaResponse(response, "friend-add-way-list", logger);
+      if (!Array.isArray(payload.data)) {
+        throw invalidJavaData("friend-add-way-list");
+      }
+      return { groups: extractJavaListItems<FriendAddWayJavaGroup>(payload.data) };
     },
   };
 }
 
-function extractJavaListItems<T>(data: unknown): T[] {
-  return Array.isArray(data) ? data as T[] : [];
+function extractJavaListItems<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
 }
 
-function decodeJavaData(
+function decodeJavaResponse(
   response: unknown,
   operation: string,
   logger: AppLogger,
-): unknown {
+): FriendAddWayJavaPayload {
   const envelope = decodeJavaInternalApiEnvelope(response);
   if (envelope.kind === "success") {
-    return envelope.data;
+    return envelope.payload;
   }
 
   logger.error(
@@ -163,16 +164,16 @@ function decodeJavaData(
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function invalidJavaData(operation: string) {
   return new BadGatewayError(
     FRIEND_ADD_WAY_INTERNAL_API_FAILED_CODE,
     FRIEND_ADD_WAY_INTERNAL_API_USER_MESSAGE,
-    { operation, reason: "data must be an object" },
+    { operation, reason: "data must be an array" },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 type PostJavaRequestOptions = {

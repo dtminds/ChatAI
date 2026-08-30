@@ -160,7 +160,7 @@ export async function executeWorkflowCustomerUpdate(input: {
       `Workflow Customer Update Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (envelope.data !== true) {
+  if (envelope.payload.data !== true) {
     throw terminalError(
       "WORKFLOW_CUSTOMER_UPDATE_RESPONSE_INVALID",
       "返回结果异常，流程已停止",

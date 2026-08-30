@@ -66,7 +66,7 @@ export function createJavaWorkflowDirectEntryEndpointPort(
         throw internalApiFailedError();
       }
 
-      if (typeof envelope.data !== "string" || envelope.data.trim().length === 0) {
+      if (typeof envelope.payload.data !== "string" || envelope.payload.data.trim().length === 0) {
         logger.error(
           {
             operation: "workflow-direct-entry-encrypt",
@@ -78,7 +78,7 @@ export function createJavaWorkflowDirectEntryEndpointPort(
         throw internalApiFailedError();
       }
 
-      return envelope.data;
+      return envelope.payload.data;
     },
   };
 }

@@ -107,7 +107,7 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
         `Directive endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
       );
     }
-    return envelope.data;
+    return envelope.payload.data;
   }
 }
 

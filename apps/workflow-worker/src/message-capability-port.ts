@@ -284,7 +284,7 @@ async function sendWorkflowJavaMessage(input: {
       `Workflow Message Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  const optNo = isRecord(envelope.data) ? envelope.data.optNo : undefined;
+  const optNo = isRecord(envelope.payload.data) ? envelope.payload.data.optNo : undefined;
   if ((typeof optNo !== "string" && typeof optNo !== "number") || !String(optNo).trim()) {
     throw terminalError(
       "WORKFLOW_MESSAGE_RESPONSE_INVALID",

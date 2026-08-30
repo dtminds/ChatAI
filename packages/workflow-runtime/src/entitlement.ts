@@ -130,12 +130,12 @@ export class HttpWorkflowEntitlementPort implements WorkflowEntitlementPort, Wor
       }
       const body: unknown = await response.json();
       const envelope = decodeJavaInternalApiEnvelope(body);
-      if (envelope.kind !== "success" || typeof envelope.data !== "boolean") {
+      if (envelope.kind !== "success" || typeof envelope.payload.data !== "boolean") {
         throw new WorkflowEntitlementUnavailableError(
           "Workflow entitlement endpoint returned an invalid response",
         );
       }
-      return envelope.data;
+      return envelope.payload.data;
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) throw error;
       throw new WorkflowEntitlementUnavailableError(undefined, { cause: error });

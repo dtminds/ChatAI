@@ -159,26 +159,56 @@ describe("workflow friend-add-way routes", () => {
     });
   });
 
+  it("rejects a catalog response whose business array is not in data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        error: 0,
+        errorMsg: "",
+        list: [{ key: "scan", title: "错误位置" }],
+        success: true,
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/workflow/friend-add-ways",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: expect.objectContaining({
+        code: "FRIEND_ADD_WAY_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      }),
+      success: false,
+    });
+  });
+
   it("preserves the Java activity page cardinality", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: {
-            count: 84,
-            hasNext: true,
-            list: [
-              { addWayId: "live-61", createTime: 1_710_000_000, title: "活动 61" },
-              ...Array.from({ length: 8 }, (_, index) => ({
-                addWayId: `live-${index + 62}`,
-                title: `活动 ${index + 62}`,
-              })),
-              { addWayId: "", title: "无效活动" },
-            ],
-            page: 7,
-            pageSize: 10,
-          },
+          count: 84,
           error: 0,
           errorMsg: "",
+          hasNext: true,
+          list: [
+            { addWayId: "live-61", createTime: 1_710_000_000, title: "活动 61" },
+            ...Array.from({ length: 8 }, (_, index) => ({
+              addWayId: `live-${index + 62}`,
+              title: `活动 ${index + 62}`,
+            })),
+            { addWayId: "", title: "无效活动" },
+          ],
+          page: 7,
+          pageSize: 10,
           success: true,
         }),
         {
@@ -230,18 +260,16 @@ describe("workflow friend-add-way routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: {
-            count: 50,
-            hasNext: false,
-            list: Array.from({ length: 50 }, (_, index) => ({
-              addWayId: `live-${index + 1}`,
-              title: `活动 ${index + 1}`,
-            })),
-            page: 1,
-            pageSize: 50,
-          },
+          count: 50,
           error: 0,
           errorMsg: "",
+          hasNext: false,
+          list: Array.from({ length: 50 }, (_, index) => ({
+            addWayId: `live-${index + 1}`,
+            title: `活动 ${index + 1}`,
+          })),
+          page: 1,
+          pageSize: 50,
           success: true,
         }),
         {

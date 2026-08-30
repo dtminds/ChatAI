@@ -157,8 +157,8 @@ export function decodeWorkflowTagQueryJavaResponse(
       `Workflow Tag Query Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (envelope.data === undefined || envelope.data === null) return { matchedTags: [] };
-  if (!Array.isArray(envelope.data)) {
+  if (envelope.payload.data === undefined || envelope.payload.data === null) return { matchedTags: [] };
+  if (!Array.isArray(envelope.payload.data)) {
     throw terminalError(
       "WORKFLOW_TAG_QUERY_RESPONSE_INVALID",
       "返回结果异常，流程已停止",
@@ -168,7 +168,7 @@ export function decodeWorkflowTagQueryJavaResponse(
 
   const requestedTagIdSet = new Set(requestedTagIds);
   const matchedTagIds = new Set<number>();
-  const matchedTags = envelope.data.map((item): WorkflowTagQueryResult["matchedTags"][number] => {
+  const matchedTags = envelope.payload.data.map((item): WorkflowTagQueryResult["matchedTags"][number] => {
     if (!isRecord(item)) throw invalidOutput("Tag Query Java result contains a non-object tag");
     const id = item.id;
     const name = typeof item.name === "string" ? item.name.trim() : "";

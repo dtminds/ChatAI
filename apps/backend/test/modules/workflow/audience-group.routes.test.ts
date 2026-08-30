@@ -309,37 +309,6 @@ describe("workflow audience-group routes", () => {
     });
   });
 
-  it("rejects legacy top-level business fields from a successful Java envelope", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({
-      count: 1,
-      error: 0,
-      errorMsg: "",
-      hasNext: false,
-      list: [{ id: 301, name: "高价值客户" }],
-      page: 1,
-      pageSize: WORKFLOW_AUDIENCE_GROUP_LIST_PAGE_SIZE,
-      success: true,
-    }));
-
-    const created = await createAuthenticatedApp();
-    app = created.app;
-
-    const response = await app.inject({
-      headers: { authorization: created.authorization },
-      method: "GET",
-      url: "/api/server/workflow/audience-groups",
-    });
-
-    expect(response.statusCode).toBe(502);
-    expect(response.json()).toMatchObject({
-      error: expect.objectContaining({
-        code: "CDP_GROUP_INTERNAL_API_FAILED",
-        message: "操作失败，请稍后重试",
-      }),
-      success: false,
-    });
-  });
-
   it("rejects unauthenticated list requests", async () => {
     const created = await createAuthenticatedApp();
     app = created.app;
@@ -433,8 +402,8 @@ describe("workflow audience-group routes", () => {
   });
 });
 
-function javaSuccess(data: unknown) {
-  return jsonResponse({ data, error: 0, errorMsg: "", success: true });
+function javaSuccess(data: Record<string, unknown>) {
+  return jsonResponse({ ...data, error: 0, errorMsg: "", success: true });
 }
 
 function jsonResponse(body: unknown) {

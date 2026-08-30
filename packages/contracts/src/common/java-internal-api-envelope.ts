@@ -13,7 +13,7 @@ export type JavaInternalApiEnvelope<TData = unknown> =
     };
 
 export type JavaInternalApiEnvelopeDecodeResult =
-  | { data: unknown; kind: "success" }
+  | { kind: "success"; payload: Record<string, unknown> }
   | { error: number; errorMsg: string; kind: "rejected" }
   | { kind: "invalid"; reason: string };
 
@@ -27,7 +27,9 @@ export function decodeJavaInternalApiEnvelope(
     return { kind: "invalid", reason: "success must be a boolean" };
   }
   if (value.success) {
-    return { data: value.data, kind: "success" };
+    const payload = Object.fromEntries(Object.entries(value).filter(([key]) =>
+      key !== "success" && key !== "error" && key !== "errorMsg"));
+    return { kind: "success", payload };
   }
   if (typeof value.error !== "number" || !Number.isSafeInteger(value.error)) {
     return { kind: "invalid", reason: "error must be a safe integer" };

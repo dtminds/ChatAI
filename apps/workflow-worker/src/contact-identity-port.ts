@@ -98,13 +98,13 @@ export function decodeJavaContactIdentityResponse(body: unknown): WorkflowContac
       `Workflow contact identity endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  if (envelope.data === undefined || envelope.data === null) return {};
-  if (!isRecord(envelope.data)) {
+  if (envelope.payload.data === undefined || envelope.payload.data === null) return {};
+  if (!isRecord(envelope.payload.data)) {
     throw terminalIdentityError(
       "Workflow contact identity endpoint returned invalid data",
     );
   }
-  const data = envelope.data;
+  const data = envelope.payload.data;
   assertOptionalNonNegativeSafeInteger(data.externalUserId, "externalUserId");
   assertOptionalNonNegativeSafeInteger(data.mallUserId, "mallUserId");
   assertOptionalString(data.thirdExternalUserId, "thirdExternalUserId");

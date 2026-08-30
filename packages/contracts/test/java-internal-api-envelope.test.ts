@@ -3,7 +3,7 @@ import { decodeJavaInternalApiEnvelope } from "../src/index.js";
 
 describe("Java internal API envelope", () => {
   it("returns only business data when success is true", () => {
-    const expected = { data: { id: 88 }, kind: "success" };
+    const expected = { kind: "success", payload: { data: { id: 88 } } };
     expect(decodeJavaInternalApiEnvelope({ data: { id: 88 }, success: true }))
       .toEqual(expected);
     expect(decodeJavaInternalApiEnvelope({
@@ -12,6 +12,13 @@ describe("Java internal API envelope", () => {
       errorMsg: null,
       success: true,
     })).toEqual(expected);
+    expect(decodeJavaInternalApiEnvelope({
+      count: 1,
+      error: 0,
+      errorMsg: "",
+      list: [],
+      success: true,
+    })).toEqual({ kind: "success", payload: { count: 1, list: [] } });
     expect(decodeJavaInternalApiEnvelope({
       data: { id: 88 },
       error: 40001,

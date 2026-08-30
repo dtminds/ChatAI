@@ -156,7 +156,7 @@ export function decodeWorkflowAudienceFilterJavaResponse(
       `Workflow Audience Filter Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  const data = envelope.data;
+  const data = envelope.payload.data;
   if (!isRecord(data)) {
     throw terminalError(
       "WORKFLOW_AUDIENCE_FILTER_RESPONSE_INVALID",

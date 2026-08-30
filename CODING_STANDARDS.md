@@ -65,6 +65,12 @@ Review 章节仅审查时使用。通用审查流程、Finding 门槛、严重�
 - UTC+8 部署契约、mysql2 `timezone: "+08:00"` 和运行时偏移校验完整时，使用 `CURRENT_TIMESTAMP`、读取 `DATETIME` 或接收 mysql2 返回的 `Date` 不是时区 Finding。
 - 只有变更破坏该契约时才报，例如移除连接时区、绕过偏移校验、混用 UTC 与 UTC+8 `DATETIME`、重复手工转换，或引入未声明时区语义的外部时间字符串。
 
+#### Java internal API 返回协议
+
+- 审查新增或修改的 `/third-internal/*` JSON 调用时，逐个确认其通过 `@chatai/contracts` 的 `decodeJavaInternalApiEnvelope` 解码。`success: true` 和 `success: false` 是唯一、同等权威的成败信号；成功时不读取或校验 `error` / `errorMsg`，失败时将二者仅作为可选诊断，缺失或类型异常使用共享 decoder 的归一化值。缺失或非 boolean `success` 才是非法信封。把 `error === 0`、`code === 0`、诊断字段合法性或缺失字段默认成功作为成败条件，以及复制本地 decoder，均应报告为 Finding。
+- 标准信封只统一 `success`、`error`、`errorMsg`，不规定业务字段位置。审查者必须根据该 endpoint 已确认的固定 schema 核对业务字段是 `data`、顶层 `list` / 分页字段还是其它固定结构；禁止用 `payload.list ?? payload.data?.list` 等多位置 fallback 猜测协议。非 JSON 的流式或文件响应不适用本条，但必须由 endpoint 的实际响应协议证明。
+- 协议收口不得顺带改写调用方语义。逐个对照变更前后的业务结果、HTTP 状态、Workflow 路由以及 retry / terminal 行为；例如某节点原本将 Java 业务失败映射为 `result: false` 并继续时，改用共享 decoder 后仍须保持。`rejected` 路径应把归一化后的 `error` / `errorMsg` 写入既有内部日志或错误 details，不能只记录是否存在错误消息。
+
 ### Scale Findings
 
 - 写明放大发生在哪一层，不要把前端逐项调用误报为后端轮询。

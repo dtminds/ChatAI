@@ -41,6 +41,7 @@ import {
 import type {
   DatabaseId,
   WorkflowDatabase,
+  WorkflowAiCollectStateTable,
   WorkflowEventSubscriptionTable,
   WorkflowInferenceJobTable,
   WorkflowRunTable,
@@ -49,6 +50,7 @@ import type {
 } from "./db.js";
 import type {
   WorkflowCapabilityExecutionFailureInput,
+  WorkflowAiCollectStateRecord,
   WorkflowBeginEventWaitInput,
   WorkflowBeginFixedWaitInput,
   WorkflowCommitNodeResultInput,
@@ -81,6 +83,7 @@ const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const TASK_TRANSITION_TABLE = "xy_wap_embed_workflow_task_transition" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
+const AI_COLLECT_STATE_TABLE = "xy_wap_embed_workflow_ai_collect_state" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
 const INBOX_TABLE = "xy_wap_embed_workflow_inbox" as const;
 const EVENT_SUBSCRIPTION_TABLE = "xy_wap_embed_workflow_event_subscription" as const;
@@ -1431,7 +1434,7 @@ export class MysqlWorkflowRuntimeRepository implements
         || task.sequence !== run.sequence
         || task.revision !== run.revision
         || task.nodeId !== run.currentNodeId
-        || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
+        || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent" && task.nodeKind !== "ai-collect")
         || input.deadlineAt <= input.now) return { kind: "conflict" as const };
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
         .select(["biz_status", "runtime_status"])
@@ -1555,6 +1558,390 @@ export class MysqlWorkflowRuntimeRepository implements
       .where("uid", "=", uid).where("execution_key", "=", executionKey)
       .executeTakeFirst();
     return row ? mapInferenceJob(row) : null;
+  }
+
+  async initializeAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["initializeAiCollectState"]>[0],
+  ) {
+    await this.db.insertInto(AI_COLLECT_STATE_TABLE).values({
+      active_batch_cutoff_at: null,
+      active_batch_cursor_id: null,
+      active_batch_cursor_time: null,
+      active_batch_has_more: 0,
+      active_inference_key: null,
+      biz_id: input.bizId,
+      collected_json: stringifyJson({}),
+      conversation_id: null,
+      directive_attempt: 0,
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_next_attempt_at: input.now,
+      directive_status: "inactive",
+      disable_reason: null,
+      expires_at: input.expiresAt,
+      initial_input_processed: 0,
+      last_message_id: input.initialMessageCursor.id,
+      last_message_time: input.initialMessageCursor.timestamp,
+      next_batch_sequence: 1,
+      observed_round: 0,
+      opening_message_sent: 0,
+      pending_cutoff_at: null,
+      quiet_until: null,
+      run_id: input.runId,
+      seat_id: input.seatId,
+      task_id: input.taskId,
+      terminal_outlet: null,
+      third_external_user_id: input.thirdExternalUserId,
+      uid: input.uid,
+      workflow_id: input.workflowId,
+    }).onDuplicateKeyUpdate({ task_id: sql`task_id` }).executeTakeFirstOrThrow();
+    const row = await this.db.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+      .where("uid", "=", input.uid)
+      .where("task_id", "=", input.taskId)
+      .executeTakeFirstOrThrow();
+    const state = mapAiCollectState(row);
+    if (state.bizId !== input.bizId
+      || state.runId !== input.runId
+      || state.workflowId !== input.workflowId
+      || state.seatId !== input.seatId
+      || state.thirdExternalUserId !== input.thirdExternalUserId
+      || !sameOptionalTimestamp(state.expiresAt, input.expiresAt)) {
+      throw new Error("AI Collect state initialization conflict");
+    }
+    return state;
+  }
+
+  async findAiCollectStateByTask(uid: number, taskId: string) {
+    const row = await this.db.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+    return row ? mapAiCollectState(row) : null;
+  }
+
+  async transitionAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["transitionAiCollectState"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("task_id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!row) return { kind: "not-found" as const };
+      const state = mapAiCollectState(row);
+      const transition = input.transition;
+      if (state.terminalOutlet !== null
+        && transition.kind !== "terminal"
+        && transition.kind !== "disable-requested"
+        && transition.kind !== "directive-disabled") return { kind: "conflict" as const };
+      if (transition.kind === "opening-message-sent") {
+        state.openingMessageSent = true;
+      } else if (transition.kind === "conversation-resolved") {
+        if (state.conversationId !== null && state.conversationId !== transition.conversationId) {
+          return { kind: "conflict" as const };
+        }
+        state.conversationId = transition.conversationId;
+      } else if (transition.kind === "directive-active") {
+        if (state.conversationId === null || state.expiresAt === null
+          || state.directiveStatus === "disabled") return { kind: "conflict" as const };
+        state.directiveStatus = "active";
+      } else if (transition.kind === "initial-input-processed") {
+        if (state.activeInferenceKey !== null) return { kind: "conflict" as const };
+        state.initialInputProcessed = true;
+      } else if (transition.kind === "inference-started") {
+        if (state.activeInferenceKey === transition.executionKey) {
+          return { kind: "success" as const, state };
+        }
+        if (state.activeInferenceKey !== null || !transition.executionKey) {
+          return { kind: "conflict" as const };
+        }
+        state.activeBatchCursor = transition.batchCursor ? structuredClone(transition.batchCursor) : null;
+        state.activeBatchCutoffAt = transition.batchCutoffAt;
+        state.activeBatchHasMore = transition.batchHasMore;
+        state.activeInferenceKey = transition.executionKey;
+        state.nextBatchSequence += 1;
+      } else if (transition.kind === "inference-completed") {
+        if (state.activeInferenceKey !== transition.executionKey) {
+          return { kind: "conflict" as const };
+        }
+        state.collected = structuredClone(transition.collected);
+        if (state.activeBatchCutoffAt === null) {
+          state.initialInputProcessed = true;
+        } else {
+          if (!state.activeBatchCursor) return { kind: "conflict" as const };
+          state.lastMessageCursor = structuredClone(state.activeBatchCursor);
+          if (state.activeBatchHasMore) {
+            state.quietUntil = input.now;
+          } else if (state.pendingCutoffAt
+            && state.pendingCutoffAt <= state.activeBatchCutoffAt) {
+            state.pendingCutoffAt = null;
+            state.quietUntil = null;
+          }
+        }
+        state.activeBatchCursor = null;
+        state.activeBatchCutoffAt = null;
+        state.activeBatchHasMore = false;
+        state.activeInferenceKey = null;
+      } else if (transition.kind === "message-batch-empty") {
+        if (state.activeInferenceKey !== null) return { kind: "conflict" as const };
+        if (state.pendingCutoffAt && state.pendingCutoffAt <= transition.cutoffAt) {
+          state.pendingCutoffAt = null;
+          state.quietUntil = null;
+        }
+      } else if (transition.kind === "disable-requested") {
+        state.disableReason = transition.reason;
+      } else if (transition.kind === "terminal") {
+        if (state.activeInferenceKey !== null
+          || (state.terminalOutlet !== null && state.terminalOutlet !== transition.outlet)) {
+          return { kind: "conflict" as const };
+        }
+        state.terminalOutlet = transition.outlet;
+        state.disableReason = transition.disableReason;
+      } else if (transition.kind === "directive-disabled") {
+        state.directiveStatus = "disabled";
+        state.directiveLeaseExpiresAt = null;
+        state.directiveLeaseOwner = null;
+      }
+      await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+        .where("uid", "=", input.uid)
+        .where("task_id", "=", input.taskId)
+        .executeTakeFirstOrThrow();
+      return { kind: "success" as const, state: { ...state, updatedAt: input.now } };
+    });
+  }
+
+  async beginAiCollectWait(
+    input: Parameters<WorkflowRuntimeRepository["beginAiCollectWait"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      const stateRow = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow || !stateRow) return { kind: "not-found" as const };
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      const state = mapAiCollectState(stateRow);
+      if (task.runId !== run.id || state.runId !== run.id
+        || run.lockVersion !== input.expectedRunLockVersion || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
+        || task.sequence !== run.sequence || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId || task.nodeKind !== "ai-collect"
+        || (task.taskType !== "execute" && task.taskType !== "ai-collect")
+        || state.activeInferenceKey !== null || state.terminalOutlet !== null
+        || state.directiveStatus !== "active" || state.expiresAt === null
+        || input.dueAt > state.expiresAt || input.dueAt <= input.now) {
+        return { kind: "conflict" as const };
+      }
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      const dueAt = input.dueAt;
+      const nextTaskVersion = task.taskVersion + 1;
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(dueAt),
+        due_at: dueAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: decision === "defer" ? "suspended" : "pending",
+        task_type: "ai-collect",
+        task_version: nextTaskVersion,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: dueAt,
+        status: "waiting",
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: dueAt, status: "waiting" as const },
+        state,
+        task: {
+          ...task,
+          dueAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: decision === "defer" ? "suspended" as const : "pending" as const,
+          taskType: "ai-collect",
+          taskVersion: nextTaskVersion,
+        },
+      };
+    });
+  }
+
+  async recordAiCollectDirectiveEvent(
+    input: Parameters<WorkflowRuntimeRepository["recordAiCollectDirectiveEvent"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const inboxMessageId = `${input.uid}:${input.eventId}`;
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", "workflow-entry")
+        .where("message_id", "=", inboxMessageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "deduplicated" as const };
+      const stateCandidate = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("biz_id", "=", input.bizId)
+        .executeTakeFirst();
+      const runRow = stateCandidate
+        ? await trx.selectFrom(RUN_TABLE).selectAll()
+            .where("uid", "=", input.uid).where("id", "=", stateCandidate.run_id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      const taskRow = stateCandidate
+        ? await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("uid", "=", input.uid).where("id", "=", stateCandidate.task_id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      const stateRow = stateCandidate
+        ? await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+            .where("id", "=", stateCandidate.id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      await insertWorkflowInbox(trx, input.uid, {
+        consumer: "workflow-entry",
+        expiresAt: input.inboxExpiresAt,
+        messageId: inboxMessageId,
+      }, input.now);
+      if (!stateRow || !runRow || !taskRow) return { kind: "stale" as const };
+      const state = mapAiCollectState(stateRow);
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (state.runId !== run.id || state.taskId !== task.id || task.runId !== run.id
+        || state.directiveStatus !== "active" || state.terminalOutlet !== null
+        || state.expiresAt === null || input.eventOccurredAt >= state.expiresAt
+        || state.seatId !== input.seatId
+        || state.thirdExternalUserId !== input.thirdExternalUserId) {
+        return { kind: "stale" as const };
+      }
+      state.observedRound = Math.max(state.observedRound, input.totalRound);
+      state.pendingCutoffAt = !state.pendingCutoffAt || input.eventOccurredAt > state.pendingCutoffAt
+        ? input.eventOccurredAt
+        : state.pendingCutoffAt;
+      state.quietUntil = input.quietUntil < state.expiresAt ? input.quietUntil : state.expiresAt;
+      await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+        .where("id", "=", stateRow.id).executeTakeFirstOrThrow();
+      if (state.activeInferenceKey === null) {
+        if (task.status === "pending"
+          && task.dueAt.getTime() !== state.quietUntil.getTime()
+          && (run.status === "waiting" || run.status === "running")) {
+          await trx.updateTable(TASK_TABLE).set({
+            bucket_time: floorToMinute(state.quietUntil),
+            due_at: state.quietUntil,
+            task_version: task.taskVersion + 1,
+          }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+            .where("status", "=", "pending").executeTakeFirstOrThrow();
+          await trx.updateTable(RUN_TABLE).set({
+            lock_version: run.lockVersion + 1,
+            next_execute_at: state.quietUntil,
+            status: "waiting",
+          }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+            .where("status", "in", ["waiting", "running"]).executeTakeFirstOrThrow();
+        }
+      }
+      return { kind: "queued" as const };
+    });
+  }
+
+  async claimAiCollectDirectiveDisableBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimAiCollectDirectiveDisableBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${AI_COLLECT_STATE_TABLE} as state`)
+        .leftJoin(`${RUN_TABLE} as collect_run`, join => join
+          .onRef("collect_run.uid", "=", "state.uid")
+          .onRef("collect_run.id", "=", "state.run_id"))
+        .selectAll("state")
+        .select("collect_run.status as run_status")
+        .where("state.directive_next_attempt_at", "<=", input.now)
+        .where(eb => eb.or([
+          eb.and([
+            eb("state.directive_status", "=", "active"),
+            eb.or([
+              eb("state.disable_reason", "is not", null),
+              eb("state.expires_at", "<=", input.now),
+              eb("collect_run.status", "in", TERMINAL_RUN_STATUSES),
+            ]),
+          ]),
+          eb.and([
+            eb("state.directive_status", "=", "disabling"),
+            eb("state.directive_lease_expires_at", "<=", input.now),
+          ]),
+        ]))
+        .orderBy("state.directive_next_attempt_at", "asc")
+        .orderBy("state.id", "asc")
+        .limit(limit).forUpdate("state").skipLocked().execute();
+      const claimed: WorkflowAiCollectStateRecord[] = [];
+      for (const row of rows) {
+        const state = mapAiCollectState(row);
+        state.disableReason ??= state.expiresAt !== null && state.expiresAt <= input.now
+          ? "expired"
+          : row.run_status === "failed"
+            ? "workflow-failed"
+            : "workflow-stopped";
+        state.directiveAttempt += 1;
+        state.directiveLeaseExpiresAt = input.leaseExpiresAt;
+        state.directiveLeaseOwner = input.leaseOwner;
+        state.directiveStatus = "disabling";
+        await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+          .where("uid", "=", state.uid).where("task_id", "=", state.taskId)
+          .executeTakeFirstOrThrow();
+        claimed.push({ ...state, updatedAt: input.now });
+      }
+      return claimed;
+    });
+  }
+
+  async completeAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["completeAiCollectDirectiveDisable"]>[0],
+  ) {
+    const result = await this.db.updateTable(AI_COLLECT_STATE_TABLE).set({
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_status: "disabled",
+    }).where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+      .where("directive_status", "=", "disabling")
+      .where("directive_lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async retryAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["retryAiCollectDirectiveDisable"]>[0],
+  ) {
+    const result = await this.db.updateTable(AI_COLLECT_STATE_TABLE).set({
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_next_attempt_at: input.nextAttemptAt,
+      directive_status: "active",
+    }).where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+      .where("directive_status", "=", "disabling")
+      .where("directive_lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
   }
 
   async claimInferenceBatch(input: Parameters<WorkflowRuntimeRepository["claimInferenceBatch"]>[0]) {
@@ -2733,6 +3120,7 @@ export class MysqlWorkflowRuntimeRepository implements
           || (run.status === "waiting" && (
             (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
               && authoritativeTask.taskType !== "inference"
+              && authoritativeTask.taskType !== "ai-collect"
               && !(authoritativeTask.taskType === "execute"
                 && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
             || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
@@ -3260,7 +3648,9 @@ export class MysqlWorkflowRuntimeRepository implements
       }
 
       const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
-      const expectedTaskType = nodeKind === "wait" ? "wait" : "wait-event";
+      const expectedTaskType = nodeKind === "wait" ? "wait"
+        : nodeKind === "wait-event" ? "wait-event"
+          : "ai-collect";
       const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
       for (const task of taskRows) {
         const runId = normalizeId(task.run_id);
@@ -3273,7 +3663,9 @@ export class MysqlWorkflowRuntimeRepository implements
         const task = taskRowsByRunId.get(runId)?.find(candidate => candidate.sequence === run.sequence
           && candidate.node_id === request.node_id
           && candidate.node_kind === nodeKind
-          && (candidate.task_type === "execute" || candidate.task_type === expectedTaskType));
+          && (candidate.task_type === "execute"
+            || candidate.task_type === expectedTaskType
+            || (nodeKind === "ai-collect" && candidate.task_type === "inference")));
         return task ? [[runId, task] as const] : [];
       }));
       const runsToCancel = selectedRuns.filter(run => {
@@ -3305,6 +3697,7 @@ export class MysqlWorkflowRuntimeRepository implements
         }).where("run_id", "in", cancelledRunIds)
           .where("status", "in", ["waiting", "triggered"])
           .executeTakeFirst();
+        await cancelInferenceJobs(trx, cancelledRunIds);
         await insertNodeMetricEventsBulk(trx, runsToCancel.map(run => {
           const task = taskByRunId.get(normalizeId(run.id))!;
           return {
@@ -3436,6 +3829,9 @@ export class MysqlWorkflowRuntimeRepository implements
         };
       }
       await trx.deleteFrom(INFERENCE_JOB_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst();
+      await trx.deleteFrom(AI_COLLECT_STATE_TABLE)
         .where("run_id", "in", deletableRunIds)
         .executeTakeFirst();
       const outboxDeleted = Number((await trx.deleteFrom(OUTBOX_TABLE)
@@ -4226,7 +4622,7 @@ function mapInferenceJob(
     && status !== "succeeded" && status !== "failed" && status !== "cancelled") {
     throw new Error(`Unknown Workflow inference job status: ${status}`);
   }
-  if (row.node_kind !== "llm" && row.node_kind !== "ai-intent") {
+  if (row.node_kind !== "llm" && row.node_kind !== "ai-intent" && row.node_kind !== "ai-collect") {
     throw new Error(`Unknown Workflow inference node kind: ${row.node_kind}`);
   }
   return {
@@ -4256,8 +4652,155 @@ function mapInferenceJob(
   };
 }
 
+function mapAiCollectState(
+  row: Selectable<WorkflowAiCollectStateTable>,
+): WorkflowAiCollectStateRecord {
+  const collected = parseJson(row.collected_json);
+  if (!Value.Check(WorkflowJsonObjectSchema, collected)) {
+    throw new Error("Database returned invalid AI Collect field state");
+  }
+  const directiveStatus = row.directive_status;
+  if (directiveStatus !== "inactive" && directiveStatus !== "active"
+    && directiveStatus !== "disabling" && directiveStatus !== "disabled") {
+    throw new Error(`Unknown AI Collect directive status: ${directiveStatus}`);
+  }
+  const terminalOutlet = row.terminal_outlet;
+  if (terminalOutlet !== null && terminalOutlet !== "completed" && terminalOutlet !== "incomplete") {
+    throw new Error(`Unknown AI Collect terminal outlet: ${terminalOutlet}`);
+  }
+  return {
+    activeBatchCursor: mapAiCollectCursor(
+      row.active_batch_cursor_time,
+      row.active_batch_cursor_id,
+      "active batch",
+    ),
+    activeBatchCutoffAt: row.active_batch_cutoff_at ? toDate(row.active_batch_cutoff_at) : null,
+    activeBatchHasMore: normalizeBooleanFlag(row.active_batch_has_more, "active_batch_has_more"),
+    activeInferenceKey: row.active_inference_key,
+    bizId: row.biz_id,
+    collected: structuredClone(collected),
+    conversationId: row.conversation_id === null
+      ? null
+      : normalizePositiveSafeNumber(row.conversation_id, "conversation_id"),
+    createdAt: toDate(row.create_time),
+    directiveAttempt: normalizeNonNegativeSafeNumber(row.directive_attempt, "directive_attempt"),
+    directiveLeaseExpiresAt: row.directive_lease_expires_at
+      ? toDate(row.directive_lease_expires_at)
+      : null,
+    directiveLeaseOwner: row.directive_lease_owner,
+    directiveNextAttemptAt: toDate(row.directive_next_attempt_at),
+    directiveStatus,
+    disableReason: row.disable_reason,
+    expiresAt: row.expires_at ? toDate(row.expires_at) : null,
+    initialInputProcessed: normalizeBooleanFlag(
+      row.initial_input_processed,
+      "initial_input_processed",
+    ),
+    lastMessageCursor: requireAiCollectCursor(
+      row.last_message_time,
+      row.last_message_id,
+      "last message",
+    ),
+    nextBatchSequence: normalizePositiveSafeNumber(
+      row.next_batch_sequence,
+      "next_batch_sequence",
+    ),
+    observedRound: normalizeNonNegativeSafeNumber(row.observed_round, "observed_round"),
+    openingMessageSent: normalizeBooleanFlag(row.opening_message_sent, "opening_message_sent"),
+    pendingCutoffAt: row.pending_cutoff_at ? toDate(row.pending_cutoff_at) : null,
+    quietUntil: row.quiet_until ? toDate(row.quiet_until) : null,
+    runId: normalizeId(row.run_id),
+    seatId: normalizePositiveSafeNumber(row.seat_id, "seat_id"),
+    taskId: normalizeId(row.task_id),
+    terminalOutlet,
+    thirdExternalUserId: row.third_external_user_id,
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function toAiCollectStateUpdate(state: WorkflowAiCollectStateRecord) {
+  return {
+    active_batch_cutoff_at: state.activeBatchCutoffAt,
+    active_batch_cursor_id: state.activeBatchCursor?.id ?? null,
+    active_batch_cursor_time: state.activeBatchCursor?.timestamp ?? null,
+    active_batch_has_more: state.activeBatchHasMore ? 1 : 0,
+    active_inference_key: state.activeInferenceKey,
+    collected_json: stringifyJson(state.collected),
+    conversation_id: state.conversationId,
+    directive_attempt: state.directiveAttempt,
+    directive_lease_expires_at: state.directiveLeaseExpiresAt,
+    directive_lease_owner: state.directiveLeaseOwner,
+    directive_next_attempt_at: state.directiveNextAttemptAt,
+    directive_status: state.directiveStatus,
+    disable_reason: state.disableReason,
+    initial_input_processed: state.initialInputProcessed ? 1 : 0,
+    last_message_id: state.lastMessageCursor.id,
+    last_message_time: state.lastMessageCursor.timestamp,
+    next_batch_sequence: state.nextBatchSequence,
+    observed_round: state.observedRound,
+    opening_message_sent: state.openingMessageSent ? 1 : 0,
+    pending_cutoff_at: state.pendingCutoffAt,
+    quiet_until: state.quietUntil,
+    terminal_outlet: state.terminalOutlet,
+  };
+}
+
+function mapAiCollectCursor(
+  timestampValue: unknown,
+  idValue: unknown,
+  name: string,
+) {
+  if (timestampValue === null && idValue === null) return null;
+  if (timestampValue === null || idValue === null) {
+    throw new Error(`Database returned incomplete AI Collect ${name} cursor`);
+  }
+  return {
+    id: normalizePositiveSafeNumber(idValue, `${name} id`),
+    timestamp: normalizeNonNegativeSafeNumber(timestampValue, `${name} timestamp`),
+  };
+}
+
+function requireAiCollectCursor(
+  timestampValue: unknown,
+  idValue: unknown,
+  name: string,
+) {
+  const cursor = mapAiCollectCursor(timestampValue, idValue, name);
+  if (!cursor) throw new Error(`Database returned missing AI Collect ${name} cursor`);
+  return cursor;
+}
+
+function normalizeBooleanFlag(value: unknown, name: string) {
+  const normalized = typeof value === "string" ? Number(value) : value;
+  if (normalized === 0) return false;
+  if (normalized === 1) return true;
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
+function normalizePositiveSafeNumber(value: unknown, name: string) {
+  const normalized = typeof value === "string" || typeof value === "bigint" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized > 0) {
+    return normalized;
+  }
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
+function normalizeNonNegativeSafeNumber(value: unknown, name: string) {
+  const normalized = typeof value === "string" || typeof value === "bigint" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized >= 0) {
+    return normalized;
+  }
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
 function sameTimestamp(first: Date, second: Date | null) {
   return second !== null && toDate(first).getTime() === toDate(second).getTime();
+}
+
+function sameOptionalTimestamp(first: Date | null, second: Date | null) {
+  return first === null ? second === null : second !== null && first.getTime() === second.getTime();
 }
 
 function isActiveRunStatus(status: WorkflowRunStatus) {
@@ -4637,8 +5180,8 @@ function mapRevisionCleanup(
   };
 }
 
-function parseRevisionCleanupNodeKind(value: string): "wait" | "wait-event" {
-  if (value === "wait" || value === "wait-event") return value;
+function parseRevisionCleanupNodeKind(value: string): "ai-collect" | "wait" | "wait-event" {
+  if (value === "ai-collect" || value === "wait" || value === "wait-event") return value;
   throw new Error(`Unknown Workflow Revision cleanup node kind: ${value}`);
 }
 

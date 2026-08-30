@@ -1,4 +1,6 @@
 import type {
+  WorkflowAiCollectRepository,
+  WorkflowConversationDirectivePort,
   WorkflowEventSubscriptionReader,
   WorkflowInboxRepository,
   WorkflowInferenceRepository,
@@ -22,6 +24,7 @@ import {
 } from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
+import type { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 import type { publishWorkflowOutbox } from "./outbox-publisher.js";
@@ -81,6 +84,9 @@ export async function startWorkflowWorker(input: {
 export async function startWorkflowWorkerRuntime(input: {
   broker: WorkflowBroker;
   config: WorkflowWorkerConfig;
+  conversationDirectivePort: WorkflowConversationDirectivePort;
+  conversationDirectiveRepository: WorkflowAiCollectRepository;
+  conversationDirectiveWorker: typeof processWorkflowConversationDirectiveDisableBatch;
   database: { destroy(): Promise<void> };
   entitlementCache?: { close(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
@@ -249,25 +255,38 @@ export async function startWorkflowWorkerRuntime(input: {
               ),
             }
           : undefined;
-        const result = await input.reconciler({
-          afterCapacityUid,
-          afterEventSubscriptionId,
-          afterRunId,
-          afterConsistencyRunId,
-          afterConsistencyTaskId,
-          consistencyGraceMs: input.config.runtime.reconcileIntervalMs * 2,
-          dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
-          historyCleanupBatchSize: input.config.runtime.historyCleanupBatchSize,
-          historyRetention,
-          inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
-          leaseDurationMs: input.config.runtime.leaseDurationMs,
-          leaseOwner: input.workerId,
-          limit: input.config.runtime.batchSize,
-          maxTaskAttempts: input.config.runtime.maxTaskAttempts,
-          now: currentTime,
-          reconciler: input.reconcilerService,
-          retryDelayMs: input.config.runtime.retryDelayMs,
-        });
+        const [result, directiveDisable] = await Promise.all([
+          input.reconciler({
+            afterCapacityUid,
+            afterEventSubscriptionId,
+            afterRunId,
+            afterConsistencyRunId,
+            afterConsistencyTaskId,
+            consistencyGraceMs: input.config.runtime.reconcileIntervalMs * 2,
+            dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
+            historyCleanupBatchSize: input.config.runtime.historyCleanupBatchSize,
+            historyRetention,
+            inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
+            leaseDurationMs: input.config.runtime.leaseDurationMs,
+            leaseOwner: input.workerId,
+            limit: input.config.runtime.batchSize,
+            maxTaskAttempts: input.config.runtime.maxTaskAttempts,
+            now: currentTime,
+            reconciler: input.reconcilerService,
+            retryDelayMs: input.config.runtime.retryDelayMs,
+          }),
+          input.conversationDirectiveWorker({
+            leaseDurationMs: input.config.runtime.leaseDurationMs,
+            leaseOwner: input.workerId,
+            limit: input.config.runtime.batchSize,
+            maxRetryDelayMs: input.config.runtime.capabilityMaxRetryDelayMs,
+            now,
+            port: input.conversationDirectivePort,
+            repository: input.conversationDirectiveRepository,
+            retryDelayMs: input.config.runtime.capabilityRetryDelayMs,
+            timeoutMs: input.config.runtime.capabilityTimeoutMs,
+          }),
+        ]);
         afterEventSubscriptionId = result.nextEventSubscriptionCursor ?? undefined;
         afterCapacityUid = result.nextCapacityCursor ?? undefined;
         afterRunId = result.nextCursor ?? undefined;
@@ -278,7 +297,7 @@ export async function startWorkflowWorkerRuntime(input: {
             ? currentTime.getTime() + input.config.runtime.reconcileIntervalMs
             : currentTime.getTime() + input.config.runtime.historyCleanupIntervalMs;
         }
-        return result;
+        return { ...result, directiveDisable };
       }));
       let afterEntitlementUid: number | undefined;
       loops.push(input.roleLoop({

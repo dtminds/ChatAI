@@ -2,6 +2,7 @@ import type {
   WorkflowCapabilityExecutionFailureInput,
   WorkflowBeginEventWaitInput,
   WorkflowBeginFixedWaitInput,
+  WorkflowAiCollectStateRecord,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
   WorkflowEventSubscriptionRecord,
@@ -48,6 +49,7 @@ type NodeMetricEvent = {
 };
 
 export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeRepository {
+  readonly aiCollectStates: WorkflowAiCollectStateRecord[] = [];
   readonly runs: WorkflowRunRecord[] = [];
   readonly tasks: WorkflowTaskRecord[] = [];
   readonly nodeExecutions: WorkflowNodeExecutionRecord[] = [];
@@ -77,7 +79,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   addRevisionCleanupRequest(input: {
     nodeId: string;
-    nodeKind: "wait" | "wait-event";
+    nodeKind: "ai-collect" | "wait" | "wait-event";
     revision: number;
     uid: number;
     workflowId: string;
@@ -170,16 +172,21 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         && item.status !== "completed"
         && item.status !== "cancelled"
         && item.status !== "dead");
-      const expectedTaskType = cleanup.nodeKind === "wait" ? "wait" : "wait-event";
+      const expectedTaskType = cleanup.nodeKind === "wait" ? "wait"
+        : cleanup.nodeKind === "wait-event" ? "wait-event"
+          : "ai-collect";
       if (!task
         || task.nodeKind !== cleanup.nodeKind
-        || (task.taskType !== "execute" && task.taskType !== expectedTaskType)) continue;
+        || (task.taskType !== "execute"
+          && task.taskType !== expectedTaskType
+          && !(cleanup.nodeKind === "ai-collect" && task.taskType === "inference"))) continue;
       cancelTask(task);
       run.status = "cancelled";
       run.terminalReason = "flow_changed_current_node_deleted";
       run.lockVersion += 1;
       run.nextExecuteAt = null;
       this.cancelEventSubscriptions(new Set([run.id]));
+      this.cancelInferenceJobs(new Set([run.id]));
       this.appendNodeMetricEvents(run, `${run.id}:revision-cleanup:${cleanup.id}`, createNodeMetricDeltas({
         kind: "left-incomplete",
         nodeId: task.nodeId,
@@ -804,7 +811,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.sequence !== run.sequence
       || task.revision !== run.revision
       || task.nodeId !== run.currentNodeId
-      || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent")
+      || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent" && task.nodeKind !== "ai-collect")
       || input.deadlineAt <= input.now) return conflict();
     const existing = this.inferenceJobs.find(item => item.uid === input.uid
       && item.executionKey === input.executionKey);
@@ -866,6 +873,293 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   async findInferenceByExecutionKey(uid: number, executionKey: string) {
     const job = this.inferenceJobs.find(item => item.uid === uid && item.executionKey === executionKey);
     return job ? clone(job) : null;
+  }
+
+  async initializeAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["initializeAiCollectState"]>[0],
+  ) {
+    const existing = this.aiCollectStates.find(state => state.uid === input.uid
+      && state.taskId === input.taskId);
+    if (existing) {
+      if (existing.bizId !== input.bizId
+        || existing.runId !== input.runId
+        || existing.workflowId !== input.workflowId
+        || existing.seatId !== input.seatId
+        || existing.thirdExternalUserId !== input.thirdExternalUserId
+        || !sameNullableDate(existing.expiresAt, input.expiresAt)) {
+        throw new Error("AI Collect state initialization conflict");
+      }
+      return clone(existing);
+    }
+    if (this.aiCollectStates.some(state => state.uid === input.uid && state.bizId === input.bizId)) {
+      throw new Error("AI Collect bizId already belongs to another Task");
+    }
+    const state: WorkflowAiCollectStateRecord = {
+      activeBatchCursor: null,
+      activeBatchCutoffAt: null,
+      activeBatchHasMore: false,
+      activeInferenceKey: null,
+      bizId: input.bizId,
+      collected: {},
+      conversationId: null,
+      createdAt: clone(input.now),
+      directiveAttempt: 0,
+      directiveLeaseExpiresAt: null,
+      directiveLeaseOwner: null,
+      directiveNextAttemptAt: clone(input.now),
+      directiveStatus: "inactive",
+      disableReason: null,
+      expiresAt: input.expiresAt ? clone(input.expiresAt) : null,
+      initialInputProcessed: false,
+      lastMessageCursor: clone(input.initialMessageCursor),
+      nextBatchSequence: 1,
+      observedRound: 0,
+      openingMessageSent: false,
+      pendingCutoffAt: null,
+      quietUntil: null,
+      runId: input.runId,
+      seatId: input.seatId,
+      taskId: input.taskId,
+      terminalOutlet: null,
+      thirdExternalUserId: input.thirdExternalUserId,
+      uid: input.uid,
+      updatedAt: clone(input.now),
+      workflowId: input.workflowId,
+    };
+    this.aiCollectStates.push(state);
+    return clone(state);
+  }
+
+  async findAiCollectStateByTask(uid: number, taskId: string) {
+    const state = this.aiCollectStates.find(item => item.uid === uid && item.taskId === taskId);
+    return state ? clone(state) : null;
+  }
+
+  async transitionAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["transitionAiCollectState"]>[0],
+  ) {
+    const state = this.aiCollectStates.find(item => item.uid === input.uid
+      && item.taskId === input.taskId);
+    if (!state) return notFound();
+    const transition = input.transition;
+    if (state.terminalOutlet !== null
+      && transition.kind !== "terminal"
+      && transition.kind !== "disable-requested"
+      && transition.kind !== "directive-disabled") return conflict();
+    if (transition.kind === "opening-message-sent") {
+      state.openingMessageSent = true;
+    } else if (transition.kind === "conversation-resolved") {
+      if (state.conversationId !== null && state.conversationId !== transition.conversationId) {
+        return conflict();
+      }
+      state.conversationId = transition.conversationId;
+    } else if (transition.kind === "directive-active") {
+      if (state.conversationId === null || state.expiresAt === null
+        || state.directiveStatus === "disabled") return conflict();
+      state.directiveStatus = "active";
+    } else if (transition.kind === "initial-input-processed") {
+      if (state.activeInferenceKey !== null) return conflict();
+      state.initialInputProcessed = true;
+    } else if (transition.kind === "inference-started") {
+      if (state.activeInferenceKey === transition.executionKey) return { kind: "success" as const, state: clone(state) };
+      if (state.activeInferenceKey !== null || !transition.executionKey) return conflict();
+      state.activeBatchCursor = transition.batchCursor ? clone(transition.batchCursor) : null;
+      state.activeBatchCutoffAt = transition.batchCutoffAt ? clone(transition.batchCutoffAt) : null;
+      state.activeBatchHasMore = transition.batchHasMore;
+      state.activeInferenceKey = transition.executionKey;
+      state.nextBatchSequence += 1;
+    } else if (transition.kind === "inference-completed") {
+      if (state.activeInferenceKey !== transition.executionKey) return conflict();
+      state.collected = clone(transition.collected);
+      if (state.activeBatchCutoffAt === null) {
+        state.initialInputProcessed = true;
+      } else {
+        if (!state.activeBatchCursor) return conflict();
+        state.lastMessageCursor = clone(state.activeBatchCursor);
+        if (state.activeBatchHasMore) {
+          state.quietUntil = clone(input.now);
+        } else if (state.pendingCutoffAt
+          && state.pendingCutoffAt <= state.activeBatchCutoffAt) {
+          state.pendingCutoffAt = null;
+          state.quietUntil = null;
+        }
+      }
+      state.activeBatchCursor = null;
+      state.activeBatchCutoffAt = null;
+      state.activeBatchHasMore = false;
+      state.activeInferenceKey = null;
+    } else if (transition.kind === "message-batch-empty") {
+      if (state.activeInferenceKey !== null) return conflict();
+      if (state.pendingCutoffAt && state.pendingCutoffAt <= transition.cutoffAt) {
+        state.pendingCutoffAt = null;
+        state.quietUntil = null;
+      }
+    } else if (transition.kind === "disable-requested") {
+      state.disableReason = transition.reason;
+    } else if (transition.kind === "terminal") {
+      if (state.activeInferenceKey !== null) return conflict();
+      if (state.terminalOutlet !== null && state.terminalOutlet !== transition.outlet) return conflict();
+      state.terminalOutlet = transition.outlet;
+      state.disableReason = transition.disableReason;
+    } else if (transition.kind === "directive-disabled") {
+      state.directiveStatus = "disabled";
+      state.directiveLeaseExpiresAt = null;
+      state.directiveLeaseOwner = null;
+    }
+    state.updatedAt = clone(input.now);
+    return { kind: "success" as const, state: clone(state) };
+  }
+
+  async beginAiCollectWait(
+    input: Parameters<WorkflowRuntimeRepository["beginAiCollectWait"]>[0],
+  ) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    const state = this.aiCollectStates.find(item => item.uid === input.uid
+      && item.taskId === input.taskId);
+    if (!run || !task || !state || task.runId !== run.id || state.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || task.sequence !== run.sequence
+      || task.revision !== run.revision
+      || task.nodeId !== run.currentNodeId
+      || task.nodeKind !== "ai-collect"
+      || (task.taskType !== "execute" && task.taskType !== "ai-collect")
+      || state.activeInferenceKey !== null
+      || state.terminalOutlet !== null
+      || state.directiveStatus !== "active"
+      || state.expiresAt === null
+      || input.dueAt > state.expiresAt
+      || input.dueAt <= input.now) return conflict();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: run.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (decision === "cancel") return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    task.dueAt = clone(input.dueAt);
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = decision === "defer" ? "suspended" : transitionTask(task.status, "pending");
+    task.taskType = "ai-collect";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.dueAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), state: clone(state), task: clone(task) };
+  }
+
+  async recordAiCollectDirectiveEvent(
+    input: Parameters<WorkflowRuntimeRepository["recordAiCollectDirectiveEvent"]>[0],
+  ) {
+    const messageId = `${input.uid}:${input.eventId}`;
+    if (this.inbox.some(item => item.consumer === "workflow-entry" && item.messageId === messageId)) {
+      return { kind: "deduplicated" as const };
+    }
+    const state = this.aiCollectStates.find(item => item.uid === input.uid
+      && item.bizId === input.bizId);
+    this.inbox.push({
+      consumer: "workflow-entry",
+      expiresAt: clone(input.inboxExpiresAt),
+      messageId,
+      uid: input.uid,
+    });
+    if (!state
+      || state.directiveStatus !== "active"
+      || state.terminalOutlet !== null
+      || state.expiresAt === null
+      || input.eventOccurredAt >= state.expiresAt
+      || state.seatId !== input.seatId
+      || state.thirdExternalUserId !== input.thirdExternalUserId) {
+      return { kind: "stale" as const };
+    }
+    const expiresAt = state.expiresAt;
+    state.observedRound = Math.max(state.observedRound, input.totalRound);
+    state.pendingCutoffAt = !state.pendingCutoffAt || input.eventOccurredAt > state.pendingCutoffAt
+      ? clone(input.eventOccurredAt)
+      : state.pendingCutoffAt;
+    state.quietUntil = clone(input.quietUntil < expiresAt ? input.quietUntil : expiresAt);
+    state.updatedAt = clone(input.now);
+    const task = this.tasks.find(item => item.uid === state.uid && item.id === state.taskId);
+    const run = this.runs.find(item => item.uid === state.uid && item.id === state.runId);
+    const quietUntil = state.quietUntil;
+    if (task && run && task.status === "pending" && state.activeInferenceKey === null
+      && task.dueAt.getTime() !== quietUntil.getTime()
+      && (run.status === "waiting" || run.status === "running")) {
+      task.dueAt = clone(quietUntil);
+      task.taskVersion += 1;
+      run.lockVersion += 1;
+      run.nextExecuteAt = clone(quietUntil);
+      if (run.status === "running") run.status = transitionRun(run.status, "waiting");
+      this.touchRun(run);
+    }
+    return { kind: "queued" as const };
+  }
+
+  async claimAiCollectDirectiveDisableBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimAiCollectDirectiveDisableBatch"]>[0],
+  ) {
+    const candidates = this.aiCollectStates.filter(state => {
+      const run = this.runs.find(item => item.uid === state.uid && item.id === state.runId);
+      const leaseExpired = state.directiveStatus === "disabling"
+        && state.directiveLeaseExpiresAt !== null
+        && state.directiveLeaseExpiresAt <= input.now;
+      const terminalRun = run && (run.status === "completed" || run.status === "failed" || run.status === "cancelled");
+      return (state.directiveStatus === "active" || leaseExpired)
+        && state.directiveNextAttemptAt <= input.now
+        && (state.disableReason !== null || (state.expiresAt !== null && state.expiresAt <= input.now) || terminalRun);
+    }).sort((first, second) => compareById({ id: first.taskId }, { id: second.taskId }))
+      .slice(0, Math.max(0, input.limit));
+    for (const state of candidates) {
+      const run = this.runs.find(item => item.uid === state.uid && item.id === state.runId);
+      state.disableReason ??= state.expiresAt !== null && state.expiresAt <= input.now
+        ? "expired"
+        : run?.status === "failed"
+          ? "workflow-failed"
+          : "workflow-stopped";
+      state.directiveAttempt += 1;
+      state.directiveLeaseExpiresAt = clone(input.leaseExpiresAt);
+      state.directiveLeaseOwner = input.leaseOwner;
+      state.directiveStatus = "disabling";
+      state.updatedAt = clone(input.now);
+    }
+    return clone(candidates);
+  }
+
+  async completeAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["completeAiCollectDirectiveDisable"]>[0],
+  ) {
+    const state = this.aiCollectStates.find(item => item.uid === input.uid
+      && item.taskId === input.taskId
+      && item.directiveStatus === "disabling"
+      && item.directiveLeaseOwner === input.leaseOwner);
+    if (!state) return false;
+    state.directiveStatus = "disabled";
+    state.directiveLeaseExpiresAt = null;
+    state.directiveLeaseOwner = null;
+    state.updatedAt = clone(input.now);
+    return true;
+  }
+
+  async retryAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["retryAiCollectDirectiveDisable"]>[0],
+  ) {
+    const state = this.aiCollectStates.find(item => item.uid === input.uid
+      && item.taskId === input.taskId
+      && item.directiveStatus === "disabling"
+      && item.directiveLeaseOwner === input.leaseOwner);
+    if (!state) return false;
+    state.directiveStatus = "active";
+    state.directiveLeaseExpiresAt = null;
+    state.directiveLeaseOwner = null;
+    state.directiveNextAttemptAt = clone(input.nextAttemptAt);
+    state.updatedAt = clone(input.now);
+    return true;
   }
 
   async claimInferenceBatch(input: Parameters<WorkflowRuntimeRepository["claimInferenceBatch"]>[0]) {
@@ -1347,6 +1641,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || (run.status === "waiting" && (
           (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
             && authoritativeTask.taskType !== "inference"
+            && authoritativeTask.taskType !== "ai-collect"
             && !(authoritativeTask.taskType === "execute"
               && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
           || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
@@ -1602,6 +1897,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         this.eventSubscriptions.splice(index, 1);
       }
     }
+    for (let index = this.aiCollectStates.length - 1; index >= 0; index -= 1) {
+      if (technicalRunIds.has(this.aiCollectStates[index]!.runId)) {
+        this.aiCollectStates.splice(index, 1);
+      }
+    }
     for (let index = this.tasks.length - 1; index >= 0; index -= 1) {
       if (technicalRunIds.has(this.tasks[index]!.runId)) this.tasks.splice(index, 1);
     }
@@ -1829,6 +2129,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   snapshot() {
     return clone({
+      aiCollectStates: this.aiCollectStates,
       capacityDailyMetrics: [...this.capacityDailyMetrics.entries()],
       eventSubscriptions: this.eventSubscriptions,
       inferenceJobs: this.inferenceJobs,
@@ -1976,6 +2277,10 @@ function compareById(first: { id: string }, second: { id: string }) {
 
 function sameDate(first: Date, second: Date | null) {
   return second !== null && first.getTime() === second.getTime();
+}
+
+function sameNullableDate(first: Date | null, second: Date | null) {
+  return first === null ? second === null : second !== null && first.getTime() === second.getTime();
 }
 
 function canEnterWorkflow(

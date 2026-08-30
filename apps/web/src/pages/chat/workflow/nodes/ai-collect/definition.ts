@@ -18,6 +18,7 @@ import {
   AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
+  AI_COLLECT_TIMEOUT_MIN_BY_UNIT,
   createAiCollectField,
   getAiCollectMetric,
   getAiCollectOutputDefinitions,
@@ -44,10 +45,10 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       inputSelector: undefined,
       label: "资料收集",
       maxFollowUpCount: 3,
-      metric: "最多追问 3 轮 · 1 个字段",
+      metric: "智能体辅助 3 轮 · 1 个字段",
       openingMessage: "",
       status: "warning",
-      timeout: { duration: 24, unit: "hour" },
+      timeout: { duration: 30, unit: "minute" },
       title: "资料收集",
     });
   },
@@ -104,7 +105,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
     const rawFields = Array.isArray(node.data.fields) ? node.data.fields : [];
 
     if (maxFollowUpCount === 0 && !inputSelector) {
-      issues.push(createCatalogIssue("ai-collect-input-required", "不追问时需要配置输入"));
+      issues.push(createCatalogIssue("ai-collect-input-required", "关闭智能体辅助时需要配置输入"));
     }
     if (inputSelector) {
       const variable = resolveWorkflowVariable(context.availableVariables, inputSelector);
@@ -158,16 +159,16 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
       || node.data.maxFollowUpCount > AI_COLLECT_MAX_FOLLOW_UP_COUNT) {
       issues.push(createCatalogIssue(
         "ai-collect-follow-up-count-invalid",
-        `最多追问轮次需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 轮`,
+        `智能体辅助轮次需要为 0-${AI_COLLECT_MAX_FOLLOW_UP_COUNT} 轮`,
       ));
     }
     const timeout = normalizeAiCollectTimeout(node.data.timeout);
     if (maxFollowUpCount > 0
       && (!Number.isInteger(node.data.timeout?.duration)
         || node.data.timeout?.unit !== "minute" && node.data.timeout?.unit !== "hour"
-        || node.data.timeout.duration < 1
+        || node.data.timeout.duration < AI_COLLECT_TIMEOUT_MIN_BY_UNIT[timeout.unit]
         || node.data.timeout.duration > AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit])) {
-      issues.push(createCatalogIssue("ai-collect-timeout-invalid", "最长等待时间不能超过 48 小时"));
+      issues.push(createCatalogIssue("ai-collect-timeout-invalid", "最长等待时间需为 10 分钟至 24 小时"));
     }
     return issues;
   },

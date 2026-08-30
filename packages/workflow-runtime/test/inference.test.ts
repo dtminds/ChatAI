@@ -2,15 +2,88 @@ import type { WorkflowExecutionNode } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {
   createWorkflowAiIntentInferenceRequest,
+  createWorkflowAiCollectInferenceRequest,
   createWorkflowLlmInferenceRequest,
   createWorkflowInferenceRequest,
+  renderWorkflowAiCollectDirective,
   mapWorkflowInferenceResult,
+  mapWorkflowAiCollectInferenceResult,
   resolveWorkflowInferenceWithoutProvider,
   resolveWorkflowAiIntentTestWithoutProvider,
   type WorkflowRunRecord,
 } from "../src/index.js";
 
 describe("workflow inference payloads", () => {
+  it("uses a strict presence/value schema and omits unresolved AI Collect fields", () => {
+    const node: WorkflowExecutionNode = {
+      config: {
+        fields: [
+          { id: "order", instruction: "提取完整订单号", name: "订单号", type: "text" },
+          { id: "urgent", instruction: "判断是否加急", name: "是否加急", type: "boolean" },
+        ],
+        maxFollowUpCount: 0,
+        inputSelector: ["node", "message-query", "messages"],
+      },
+      id: "collect",
+      kind: "ai-collect",
+      nodeSchemaVersion: 1,
+    };
+
+    const request = createWorkflowAiCollectInferenceRequest(node, "订单号 A100，是否加急不明确");
+    expect(request.responseFormat).toEqual({
+      fields: [
+        expect.objectContaining({ name: "F1_present", type: "boolean" }),
+        expect.objectContaining({ name: "F1_value", type: "string" }),
+        expect.objectContaining({ name: "F2_present", type: "boolean" }),
+        expect.objectContaining({ name: "F2_value", type: "boolean" }),
+      ],
+      type: "json",
+    });
+    expect(mapWorkflowAiCollectInferenceResult(node, {
+      type: "json",
+      value: {
+        F1_present: true,
+        F1_value: " A100 ",
+        F2_present: false,
+        F2_value: false,
+      },
+    })).toEqual({ order: "A100" });
+  });
+
+  it("renders a customer-facing Agent guidance payload from remaining field names only", () => {
+    const node: WorkflowExecutionNode = {
+      config: {
+        fields: [
+          { id: "order", instruction: "提取完整订单号；需要归一化", name: "订单号", type: "text" },
+          { id: "address", instruction: "确认省市区和详细地址；不要要求 YYYY-MM-DD 或 HH:mm", name: "收货地址", type: "text" },
+        ],
+        maxFollowUpCount: 3,
+        openingMessage: "请提供资料",
+        timeout: { duration: 24, unit: "hour" },
+      },
+      id: "collect",
+      kind: "ai-collect",
+      nodeSchemaVersion: 1,
+    };
+
+    expect(renderWorkflowAiCollectDirective(node, { order: "A100" })).toBe(`当前临时沟通目标：在自然对话中请客户提供以下资料。
+
+- 收货地址
+
+沟通要求：
+- 先回答客户当前的问题；若还缺资料，在同一轮回复末尾用一句口语请对方提供最相关的一项，不要把这段指引读给客户。
+- 还缺多项时按对话进展分步了解，一轮只跟进一项，不要一次问完。
+- 客户已经明确说过的内容不要再问；说得含糊或不完整时，用对方听得懂的方式请补充，不要要求特定格式，也不要念出校验规则。
+- 客户明确表示暂时无法提供或拒绝提供时，礼貌理解并继续帮当前的忙，不要反复催要。`);
+    const payload = renderWorkflowAiCollectDirective(node, { order: "A100" });
+    expect(payload).not.toContain("提取完整订单号");
+    expect(payload).not.toContain("确认省市区");
+    expect(payload).not.toContain("确认要求");
+    expect(payload).not.toContain("YYYY-MM-DD");
+    expect(payload).not.toContain("HH:mm");
+    expect(payload).not.toContain("归一化");
+  });
+
   it("resolves LLM inputs into a complete message list and maps public names to stable output IDs", () => {
     const node = llmNode({
       inputs: [

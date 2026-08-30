@@ -5,6 +5,7 @@ import {
   WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH,
   WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
+  WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT,
   WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
 } from "@chatai/contracts";
 import type {
@@ -24,6 +25,7 @@ export const AI_COLLECT_INSTRUCTION_MAX_LENGTH = WORKFLOW_AI_COLLECT_INSTRUCTION
 export const AI_COLLECT_MAX_FOLLOW_UP_COUNT = WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT;
 export const AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH;
 export const AI_COLLECT_TIMEOUT_MAX_BY_UNIT = WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT;
+export const AI_COLLECT_TIMEOUT_MIN_BY_UNIT = WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT;
 export const AI_COLLECT_COMPLETED_HANDLE_ID = "completed";
 export const AI_COLLECT_INCOMPLETE_HANDLE_ID = "incomplete";
 
@@ -43,22 +45,22 @@ export type AiCollectFieldTemplate = {
 
 export const aiCollectFieldTemplates: AiCollectFieldTemplate[] = [
   {
-    instruction: "提取客户明确提供的完整订单编号。不要把“那个订单”“上次的订单”等模糊指代当作订单号；编号不完整或存在多个候选时继续确认。",
+    instruction: "提取客户明确提供的完整订单号或交易单号。去除“订单号是”、“NO.”等前后缀，只保留纯编号；“刚才那个”、“上次买的”等模糊代词或编号不完整时视为无效。",
     name: "订单号",
     type: "text",
   },
   {
-    instruction: "提取客户明确提供的 11 位中国大陆手机号。允许包含空格或短横线并在提取时移除；位数不正确或不是客户确认的号码时继续确认。",
+    instruction: "提取 11 位中国大陆手机号。自动去除空格、短横线及国家代码（+86），输出 11 位纯数字；号码位数不足、格式错误或包含猜测时视为无效。",
     name: "手机号",
     type: "text",
   },
   {
-    instruction: "提取可用于配送的完整收货地址，至少包含省市区和详细街道、门牌等信息。仅有城市、公司、家里或“原来的地址”等模糊描述时继续确认。",
+    instruction: "提取可用于发货或派送的详细收货地址。需包含省/市/区县及街道门牌或具体地点；仅提供“北京”、“公司地址”、“老地方”等模糊或不完整信息时视为无效。",
     name: "收货地址",
     type: "text",
   },
   {
-    instruction: "提取客户明确提供的完整邮箱地址。地址需要包含有效的用户名、@ 和域名；信息不完整或存在多个候选时继续确认。",
+    instruction: "提取标准格式的电子邮箱地址。必须包含用户名、@ 及有效域名后缀（如 .com、.cn）；去除多余空格与标点，格式不合规或未写全时视为无效。",
     name: "邮箱",
     type: "text",
   },
@@ -115,11 +117,15 @@ export function normalizeAiCollectOpeningMessage(value: unknown) {
 
 export function normalizeAiCollectTimeout(value: unknown): WorkflowAiCollectTimeout {
   const timeout = isRecord(value) ? value : {};
-  const unit = timeout.unit === "minute" ? "minute" : "hour";
+  const hasValidUnit = timeout.unit === "hour" || timeout.unit === "minute";
+  const unit = timeout.unit === "hour" ? "hour" : "minute";
   const parsedDuration = Math.trunc(Number(timeout.duration));
-  const duration = Number.isFinite(parsedDuration)
-    ? Math.min(AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit], Math.max(1, parsedDuration))
-    : unit === "hour" ? 24 : 1;
+  const duration = hasValidUnit && Number.isFinite(parsedDuration)
+    ? Math.min(AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit], Math.max(
+      AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit],
+      parsedDuration,
+    ))
+    : unit === "hour" ? 1 : 30;
   return { duration, unit };
 }
 
@@ -147,8 +153,8 @@ export function getAiCollectMetric(data: Pick<
   "fields" | "maxFollowUpCount"
 >) {
   const maxFollowUpCount = normalizeAiCollectMaxFollowUpCount(data.maxFollowUpCount);
-  const followUpLabel = maxFollowUpCount === 0 ? "不追问" : `最多追问 ${maxFollowUpCount} 轮`;
-  return `${followUpLabel} · ${normalizeAiCollectFields(data.fields).length} 个字段`;
+  const assistanceLabel = maxFollowUpCount === 0 ? "智能体辅助关闭" : `智能体辅助 ${maxFollowUpCount} 轮`;
+  return `${assistanceLabel} · ${normalizeAiCollectFields(data.fields).length} 个字段`;
 }
 
 export function getAiCollectStatus(data: Pick<

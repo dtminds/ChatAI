@@ -55,6 +55,7 @@ import {
   AI_COLLECT_MAX_FOLLOW_UP_COUNT,
   AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
   AI_COLLECT_TIMEOUT_MAX_BY_UNIT,
+  AI_COLLECT_TIMEOUT_MIN_BY_UNIT,
   aiCollectFieldTemplates,
   aiCollectFieldTypeLabels,
   createAiCollectField,
@@ -160,7 +161,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="开场白"
-            text="配置后，运行到该节点时会先向客户发送这条消息；如果前序节点已发送开场消息，可以留空"
+            text="资料未集齐时，主动向客户发送此引导消息；资料已完整时不发送。仅在开启智能体辅助时生效"
           />
         )}
       >
@@ -168,9 +169,10 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
           <Textarea
             aria-label="开场白"
             className="h-20 min-h-20 resize-none pb-7"
+            disabled={maxFollowUpCount === 0}
             maxLength={AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH}
             onChange={event => updateConfig({ openingMessage: event.target.value })}
-            placeholder="请输入收集引导话术"
+            placeholder={maxFollowUpCount === 0 ? "开启智能体辅助后可配置" : "例如：为了尽快为您处理，请提供您的订单号"}
             rows={2}
             value={openingMessage}
           />
@@ -254,7 +256,7 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
         titleAccessory={(
           <SectionInfoTooltip
             label="智能体辅助"
-            text="开启后，会引导 Agent 根据资料收集目标和当前对话语境，自行判断是否需要追问以及如何沟通，并不保证每轮都会追问。如果对应席位未绑定 Agent，则不会发起追问。达到追问轮次或最长等待限制后仍未收集完成，将从“未完成”出口继续。关闭后，仅从输入消息中提取一次，不会引导 Agent 追问"
+            text="开启后，会引导 Agent 在对话中结合语境自然引导客户提供缺失资料。Agent 每次回复计为 1 轮，不代表该轮一定追问。如果对应席位未绑定 Agent，则不会发起追问；达到轮次上限或等待超时后仍未集齐，将从“未完成”出口继续。关闭后，仅从输入内容中提取一次，不发起追问"
           />
         )}
       >
@@ -262,17 +264,26 @@ export function AiCollectConfig({ edges, node, nodes, onNodeChange }: NodeSettin
       </WorkflowSettingsSection>
 
       {maxFollowUpCount > 0 ? (
-        <WorkflowSettingsSection title="最长等待">
+        <WorkflowSettingsSection
+          title="最长等待"
+          titleAccessory={(
+            <SectionInfoTooltip
+              label="最长等待"
+              text="从开始收集时计时。等待时间结束后，会再检查一次客户消息，并根据结果继续后续流程。追问轮次和最长等待时间以先到者为准"
+            />
+          )}
+        >
           <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
             <BoundedTimeoutInput
               max={AI_COLLECT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
+              min={AI_COLLECT_TIMEOUT_MIN_BY_UNIT[timeout.unit]}
               onValueChange={duration => updateConfig({ timeout: { ...timeout, duration } })}
               value={timeout.duration}
             />
             <Select
               onValueChange={(unit: WorkflowAiCollectTimeout["unit"]) => updateConfig({
                 timeout: {
-                  duration: Math.min(timeout.duration, AI_COLLECT_TIMEOUT_MAX_BY_UNIT[unit]),
+                  duration: AI_COLLECT_TIMEOUT_MIN_BY_UNIT[unit],
                   unit,
                 },
               })}
@@ -355,7 +366,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
   return (
-    <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-2.5">
+    <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-3 pl-2">
       <div className="grid grid-cols-[28px_minmax(0,1fr)_5rem_32px] items-start gap-2">
         <SortableItemHandle
           aria-label={`拖动字段 ${index + 1}`}
@@ -421,8 +432,9 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
   );
 }
 
-function BoundedTimeoutInput({ max, onValueChange, value }: {
+function BoundedTimeoutInput({ max, min, onValueChange, value }: {
   max: number;
+  min: number;
   onValueChange: (value: number) => void;
   value: number;
 }) {
@@ -431,7 +443,7 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
 
   const commitValue = (rawValue: string) => {
     const parsed = Math.trunc(Number(rawValue));
-    const nextValue = Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : 1;
+    const nextValue = Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : min;
     setDraftValue(String(nextValue));
     if (nextValue !== value) onValueChange(nextValue);
   };
@@ -441,14 +453,14 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
       aria-label="最长等待时间"
       className="h-9 w-24 px-2.5"
       max={max}
-      min={1}
+      min={min}
       onBlur={() => commitValue(draftValue)}
       onChange={(event) => {
         const nextDraftValue = event.target.value;
         setDraftValue(nextDraftValue);
         if (/^\d+$/.test(nextDraftValue)) {
           const parsed = Number(nextDraftValue);
-          if (parsed >= 1 && parsed <= max) onValueChange(parsed);
+          if (parsed >= min && parsed <= max) onValueChange(parsed);
         }
       }}
       placeholder="请输入"

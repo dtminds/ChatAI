@@ -462,9 +462,13 @@ export const WORKFLOW_AI_COLLECT_FIELD_NAME_MAX_LENGTH = 10;
 export const WORKFLOW_AI_COLLECT_INSTRUCTION_MAX_LENGTH = 500;
 export const WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH = 500;
 export const WORKFLOW_AI_COLLECT_MAX_FOLLOW_UP_COUNT = 10;
+export const WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT = {
+  hour: 1,
+  minute: 10,
+} as const;
 export const WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT = {
-  hour: 48,
-  minute: 2_880,
+  hour: 24,
+  minute: 1_440,
 } as const;
 
 export const WorkflowAiCollectMaxFollowUpCountSchema = Type.Integer({
@@ -491,14 +495,14 @@ export const WorkflowAiCollectTimeoutSchema = Type.Union([
   Type.Object({
     duration: Type.Integer({
       maximum: WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT.minute,
-      minimum: 1,
+      minimum: WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT.minute,
     }),
     unit: Type.Literal("minute"),
   }, { additionalProperties: false }),
   Type.Object({
     duration: Type.Integer({
       maximum: WORKFLOW_AI_COLLECT_TIMEOUT_MAX_BY_UNIT.hour,
-      minimum: 1,
+      minimum: WORKFLOW_AI_COLLECT_TIMEOUT_MIN_BY_UNIT.hour,
     }),
     unit: Type.Literal("hour"),
   }, { additionalProperties: false }),
@@ -522,9 +526,6 @@ export const WorkflowAiCollectExecutionConfigSchema = Type.Union([
     fields: WorkflowAiCollectFieldsSchema,
     inputSelector: WorkflowVariableSelectorSchema,
     maxFollowUpCount: Type.Literal(0),
-    openingMessage: Type.Optional(Type.String({
-      maxLength: WORKFLOW_AI_COLLECT_OPENING_MESSAGE_MAX_LENGTH,
-    })),
   }, { additionalProperties: false }),
   Type.Object({
     fields: WorkflowAiCollectFieldsSchema,
@@ -626,11 +627,12 @@ type WorkflowNodeContractDefinition<
 
 export const workflowNodeContractRegistry = {
   agent: placeholderContract("action"),
-  "ai-collect": draftReadyContract(
+  "ai-collect": runtimeReadyContract(
     "composite",
     1,
     WorkflowAiCollectDraftConfigSchema,
     WorkflowAiCollectExecutionConfigSchema,
+    ["thirdExternalUserId"],
   ),
   "ai-intent": runtimeReadyContract(
     "inference",

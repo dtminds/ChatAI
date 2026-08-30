@@ -15,10 +15,10 @@ export function AiCollectNodeBody({ data }: NodeBodyProps<"ai-collect">) {
         fields={[
           {
             id: "follow-up",
-            label: "追问",
+            label: "智能体辅助",
             value: {
               kind: "text",
-              text: maxFollowUpCount === 0 ? "不追问" : `最多 ${maxFollowUpCount} 轮`,
+              text: maxFollowUpCount === 0 ? "关闭" : `${maxFollowUpCount} 轮`,
             },
           },
           {

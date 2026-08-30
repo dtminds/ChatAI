@@ -86,7 +86,6 @@ describe("workflow node projection registry", () => {
       fields: projectableDraftData["ai-collect"].fields,
       inputSelector: ["node", "message-query", "messages"],
       maxFollowUpCount: 0,
-      openingMessage: "请提供订单号",
     });
   });
 

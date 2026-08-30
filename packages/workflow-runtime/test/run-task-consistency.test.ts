@@ -53,6 +53,81 @@ describe("workflow run/task consistency reconciliation", () => {
     expect(repository.tasks[0]).toMatchObject({ nodeId: "wait-1", status: "pending", taskType: "wait" });
   });
 
+  it("keeps a waiting run whose authoritative task remains on the AI Collect node", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "collect-1",
+      initialNodeKind: "ai-collect",
+    });
+    if (created.kind !== "success") throw new Error("create failed");
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:00:30.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: created.task.uid,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    await repository.initializeAiCollectState({
+      bizId: `${created.run.id}:${created.task.id}`,
+      expiresAt: new Date("2026-07-11T00:00:00.000Z"),
+      initialMessageCursor: null,
+      now: admittedAt,
+      runId: created.run.id,
+      seatId: 101,
+      taskId: created.task.id,
+      thirdExternalUserId: "external-1",
+      uid: created.run.uid,
+      workflowId: created.run.workflowId,
+    });
+    await repository.transitionAiCollectState({
+      now: admittedAt,
+      taskId: created.task.id,
+      transition: { conversationId: 501, kind: "conversation-resolved" },
+      uid: created.run.uid,
+    });
+    await repository.transitionAiCollectState({
+      now: admittedAt,
+      taskId: created.task.id,
+      transition: { kind: "directive-active" },
+      uid: created.run.uid,
+    });
+    const waiting = await repository.beginAiCollectWait({
+      dueAt: new Date("2026-07-11T00:00:00.000Z"),
+      expectedRunLockVersion: created.run.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        messageId: "ai-collect-waiting",
+      },
+      now: admittedAt,
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: created.run.uid,
+    });
+    if (waiting.kind !== "success") throw new Error("wait failed");
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 100,
+      now: reconcileAt,
+    });
+
+    expect(result).toMatchObject({
+      inconsistentRunsFailed: 0,
+      staleTasksCancelled: 0,
+      terminalRunTasksCancelled: 0,
+    });
+    expect(repository.runs[0]).toMatchObject({ currentNodeId: "collect-1", status: "waiting" });
+    expect(repository.tasks[0]).toMatchObject({
+      nodeId: "collect-1",
+      status: "pending",
+      taskType: "ai-collect",
+    });
+  });
+
   it("leaves an unavailable run for the cancellation reconciler", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
       bizStatus: 1,

@@ -182,9 +182,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect"]);
+      .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent", "coupon", "order-query"]);
   });
@@ -538,7 +538,7 @@ describe("workflow node contracts", () => {
       contract.identityInputs,
     ]))).toEqual({
       agent: [],
-      "ai-collect": [],
+      "ai-collect": ["thirdExternalUserId"],
       "ai-intent": [],
       "audience-filter": ["externalUserId"],
       branch: [],
@@ -925,7 +925,6 @@ describe("workflow node contracts", () => {
       fields: followUpConfig.fields,
       inputSelector: ["node", "message-query", "messages"],
       maxFollowUpCount: 0,
-      openingMessage: "请提供订单号",
     };
 
     expect(isWorkflowNodeDraftConfig("ai-collect", {
@@ -951,6 +950,10 @@ describe("workflow node contracts", () => {
     expect(isWorkflowNodeExecutionConfig("ai-collect", noFollowUpConfig)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...noFollowUpConfig,
+      openingMessage: "请提供订单号",
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...noFollowUpConfig,
       inputSelector: undefined,
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
@@ -967,6 +970,18 @@ describe("workflow node contracts", () => {
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...followUpConfig,
       timeout: { duration: 49, unit: "hour" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 10, unit: "minute" },
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 9, unit: "minute" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("ai-collect", {
+      ...followUpConfig,
+      timeout: { duration: 25, unit: "hour" },
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("ai-collect", {
       ...followUpConfig,

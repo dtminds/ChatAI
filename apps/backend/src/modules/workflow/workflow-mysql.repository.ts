@@ -432,9 +432,9 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       const publishedAt = new Date();
       const nextRevision = (definition.publishedRevision ?? 0) + 1;
       const executionSpec = { ...review.executionSpec, revision: nextRevision };
-      const removedWaitNodes = definition.publishedRevision === null
+      const removedBlockingNodes = definition.publishedRevision === null
         ? []
-        : await findRemovedWaitNodes(transaction, {
+        : await findRemovedBlockingNodes(transaction, {
             nextSpec: executionSpec,
             previousRevision: definition.publishedRevision,
             uid: input.uid,
@@ -468,8 +468,8 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
           workflow_id: input.workflowId,
         }))).executeTakeFirstOrThrow();
       }
-      if (removedWaitNodes.length > 0) {
-        await transaction.insertInto(REVISION_CLEANUP_TABLE).values(removedWaitNodes.map(node => ({
+      if (removedBlockingNodes.length > 0) {
+        await transaction.insertInto(REVISION_CLEANUP_TABLE).values(removedBlockingNodes.map(node => ({
           after_run_id: null,
           attempt: 0,
           last_error_code: null,
@@ -630,7 +630,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
   }
 }
 
-async function findRemovedWaitNodes(
+async function findRemovedBlockingNodes(
   transaction: Transaction<WorkflowDatabase>,
   input: {
     nextSpec: WorkflowExecutionSpec;
@@ -651,7 +651,7 @@ async function findRemovedWaitNodes(
   );
   const nextNodeIds = new Set(input.nextSpec.nodes.map(node => node.id));
   return previousSpec.nodes.filter(node =>
-    (node.kind === "wait" || node.kind === "wait-event")
+    (node.kind === "wait" || node.kind === "wait-event" || node.kind === "ai-collect")
     && !nextNodeIds.has(node.id));
 }
 

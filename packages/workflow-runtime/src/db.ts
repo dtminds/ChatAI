@@ -280,6 +280,42 @@ export interface WorkflowInferenceJobTable {
   update_time: GeneratedDate;
 }
 
+export interface WorkflowAiCollectStateTable {
+  active_batch_cutoff_at: NullableDate;
+  active_batch_cursor_id: number | null;
+  active_batch_cursor_time: number | null;
+  active_batch_has_more: number;
+  active_inference_key: string | null;
+  biz_id: string;
+  collected_json: JsonText;
+  conversation_id: DatabaseId | null;
+  create_time: GeneratedDate;
+  directive_attempt: number;
+  directive_lease_expires_at: NullableDate;
+  directive_lease_owner: string | null;
+  directive_next_attempt_at: DatabaseDate;
+  directive_status: string;
+  disable_reason: string | null;
+  expires_at: NullableDate;
+  id: Generated<DatabaseId>;
+  initial_input_processed: number;
+  last_message_id: number;
+  last_message_time: number;
+  next_batch_sequence: number;
+  observed_round: number;
+  opening_message_sent: number;
+  pending_cutoff_at: NullableDate;
+  quiet_until: NullableDate;
+  run_id: DatabaseId;
+  seat_id: number;
+  task_id: DatabaseId;
+  terminal_outlet: string | null;
+  third_external_user_id: string;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowLlmTestAttemptTable {
   attempt: number;
   completed_at: NullableDate;
@@ -395,6 +431,7 @@ export interface WorkflowNodeMetricTable {
 }
 
 export interface WorkflowDatabase {
+  xy_wap_embed_workflow_ai_collect_state: WorkflowAiCollectStateTable;
   xy_wap_embed_workflow_capacity_daily_metric: WorkflowCapacityDailyMetricTable;
   xy_wap_embed_workflow_capacity_guard: WorkflowCapacityGuardTable;
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;

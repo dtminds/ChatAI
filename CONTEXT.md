@@ -88,6 +88,22 @@ _Avoid_: Revision instance, event delivery
 The scheduling unit for one node visit on a Run. Creating a Task is Node Arrival and pins that visit's Node ID, Node Kind, Revision, and configuration until the node completes or is cancelled.
 _Avoid_: MQ message, whole Workflow Run
 
+**Conversation Directive**:
+A temporary natural-language instruction that an owner attaches to one ChatAI conversation for Java to inject into Agent context while the Agent remains the sole ongoing responder.
+_Avoid_: Free-form system prompt, Workflow reply script
+
+**Directive Owner**:
+The module that owns a Conversation Directive's lifecycle and authoritative task state. It decides when to create and withdraw the Directive; Java does not interpret or update that task state.
+_Avoid_: Agent model, Java field collector
+
+**Agent Turn**:
+One Java-managed response cycle for a new customer message, producing the single ongoing Agent reply for that message.
+_Avoid_: Workflow Task, model retry
+
+**Agent Assistance Turn**:
+A response turn in which a Conversation Directive participated in the Agent context. It does not imply that the Agent asked a follow-up question or produced task progress.
+_Avoid_: Follow-up question count, model call count
+
 **Node Arrival**:
 The creation of the current Task for a node. From that moment the visit is pinned to that Task's Revision and configuration, independent of when a Worker later executes it.
 _Avoid_: Worker pickup, execution start

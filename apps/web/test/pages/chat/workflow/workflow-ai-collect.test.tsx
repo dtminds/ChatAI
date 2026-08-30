@@ -13,6 +13,7 @@ import {
   AI_COLLECT_COMPLETED_HANDLE_ID,
   AI_COLLECT_FIELD_MAX_COUNT,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
+  normalizeAiCollectTimeout,
 } from "@/pages/chat/workflow/nodes/ai-collect/config";
 import { AiCollectNodeBody } from "@/pages/chat/workflow/nodes/ai-collect/body";
 import { AiCollectConfig } from "@/pages/chat/workflow/nodes/ai-collect/panel";
@@ -38,6 +39,8 @@ describe("workflow AI Collect", () => {
     const outcomes = within(screen.getByLabelText("资料收集出口"));
     expect(outcomes.getByText("已完成")).toBeInTheDocument();
     expect(outcomes.getByText("未完成")).toBeInTheDocument();
+    expect(screen.getByText("智能体辅助：")).toBeInTheDocument();
+    expect(screen.getByText("3 轮")).toBeInTheDocument();
   });
 
   it("creates a stable follow-up draft and preserves field IDs during hydration", () => {
@@ -47,7 +50,7 @@ describe("workflow AI Collect", () => {
     expect(first).toMatchObject({
       maxFollowUpCount: 3,
       openingMessage: "",
-      timeout: { duration: 24, unit: "hour" },
+      timeout: { duration: 30, unit: "minute" },
     });
     expect(first.fields).toHaveLength(1);
     expect(first.fields[0]?.id).not.toBe(second.fields[0]?.id);
@@ -99,10 +102,14 @@ describe("workflow AI Collect", () => {
     );
 
     await user.hover(screen.getByRole("button", { name: "查看开场白说明" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("运行到该节点时会先向客户发送");
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     await user.unhover(screen.getByRole("button", { name: "查看开场白说明" }));
     await user.hover(screen.getByRole("button", { name: "查看智能体辅助说明" }));
-    expect(await screen.findByText(/对应席位未绑定 Agent，则不会发起追问/)).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+
+    const openingMessage = screen.getByRole("textbox", { name: "开场白" });
+    await user.type(openingMessage, "请提供订单号");
+    expect(openingMessage).toHaveValue("请提供订单号");
 
     await user.click(screen.getByRole("button", { name: "从模板选择" }));
     await user.click(screen.getByRole("menuitem", { name: "订单号" }));
@@ -114,7 +121,7 @@ describe("workflow AI Collect", () => {
       fields: [expect.objectContaining({ name: "交易单号" })],
     }));
 
-    expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
+    expect(openingMessage).toBeEnabled();
     await user.click(screen.getByRole("combobox", { name: "智能体辅助" }));
     expect(screen.getByRole("option", { name: "关闭" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "1 轮" })).toBeInTheDocument();
@@ -127,7 +134,8 @@ describe("workflow AI Collect", () => {
 
     await user.click(screen.getByRole("combobox", { name: "智能体辅助" }));
     await user.click(screen.getByRole("option", { name: "关闭" }));
-    expect(screen.getByRole("textbox", { name: "开场白" })).toBeInTheDocument();
+    expect(openingMessage).toBeDisabled();
+    expect(openingMessage).toHaveValue("请提供订单号");
     expect(screen.queryByRole("spinbutton", { name: "最长等待时间" })).not.toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       maxFollowUpCount: 0,
@@ -145,6 +153,8 @@ describe("workflow AI Collect", () => {
     await user.click(screen.getByRole("combobox", { name: "智能体辅助" }));
     await user.click(screen.getByRole("option", { name: "10 轮" }));
     expect(screen.getByRole("combobox", { name: "智能体辅助" })).toHaveTextContent("10 轮");
+    expect(openingMessage).toBeEnabled();
+    expect(openingMessage).toHaveValue("请提供订单号");
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       maxFollowUpCount: 10,
     }));
@@ -158,7 +168,7 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
-  it("caps follow-up collection at 48 hours and offers no day unit", async () => {
+  it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const collect = createAiCollectNode();
@@ -179,12 +189,28 @@ describe("workflow AI Collect", () => {
     await user.click(screen.getByRole("option", { name: "小时" }));
 
     const duration = screen.getByRole("spinbutton", { name: "最长等待时间" });
+    expect(duration).toHaveValue(1);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      timeout: { duration: 1, unit: "hour" },
+    }));
     fireEvent.change(duration, { target: { value: "49" } });
     fireEvent.blur(duration);
-    expect(duration).toHaveValue(48);
+    expect(duration).toHaveValue(24);
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      timeout: { duration: 48, unit: "hour" },
+      timeout: { duration: 24, unit: "hour" },
     }));
+
+    await user.click(screen.getByRole("combobox", { name: "最长等待时间单位" }));
+    await user.click(screen.getByRole("option", { name: "分钟" }));
+    fireEvent.change(duration, { target: { value: "1" } });
+    fireEvent.blur(duration);
+    expect(duration).toHaveValue(10);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      timeout: { duration: 10, unit: "minute" },
+    }));
+
+    expect(normalizeAiCollectTimeout({ unit: "unknown", duration: 24 }))
+      .toEqual({ duration: 30, unit: "minute" });
   });
 
   it("requires input without follow-ups and exposes dynamic outputs only after completion", () => {

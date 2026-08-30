@@ -1,4 +1,5 @@
 import type {
+  WorkflowAiCollectExecutionConfig,
   WorkflowEntryEventType,
   WorkflowDirectEntryPayload,
   WorkflowExecutionNode,
@@ -19,6 +20,7 @@ import {
   WorkflowWaitEventConfigSchema,
   WorkflowMessageSchema,
   WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
+  isWorkflowAiCollectExecutionConfigComplete,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -64,10 +66,25 @@ import {
   WorkflowRuntimeValueError,
 } from "./runtime-value-limits.js";
 import {
+  createWorkflowAiCollectInferenceRequest,
   createWorkflowInferenceRequest,
+  hasWorkflowInferenceInput,
+  mapWorkflowAiCollectInferenceResult,
   mapWorkflowInferenceResult,
+  resolveWorkflowAiCollectInput,
   resolveWorkflowInferenceWithoutProvider,
 } from "./inference.js";
+import {
+  createWorkflowAiCollectBizId,
+  getWorkflowAiCollectTimeoutAt,
+  isWorkflowAiCollectComplete,
+  renderWorkflowAiCollectDirective,
+  WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+  WORKFLOW_AI_COLLECT_QUIET_PERIOD_MS,
+  type WorkflowAiCollectConversationPort,
+  type WorkflowAiCollectMessageCursor,
+  type WorkflowConversationDirectivePort,
+} from "./ai-collect.js";
 import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
@@ -75,6 +92,7 @@ import {
 import { fitWorkflowMessageOutput } from "./workflow-messages.js";
 import type {
   WorkflowCommitNodeResultInput,
+  WorkflowAiCollectStateRecord,
   WorkflowEventSubscriptionRecord,
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRevisionRecord,
@@ -108,6 +126,8 @@ export class WorkflowRuntimeService {
   private readonly contactIdentityPort?: WorkflowContactIdentityPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
   private readonly messageQueryPort?: WorkflowMessageQueryPort;
+  private readonly aiCollectConversationPort?: WorkflowAiCollectConversationPort;
+  private readonly conversationDirectivePort?: WorkflowConversationDirectivePort;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
@@ -126,6 +146,8 @@ export class WorkflowRuntimeService {
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
       messageQueryPort?: WorkflowMessageQueryPort;
+      aiCollectConversationPort?: WorkflowAiCollectConversationPort;
+      conversationDirectivePort?: WorkflowConversationDirectivePort;
       taskLeaseDurationMs?: number;
     } = {},
   ) {
@@ -143,6 +165,8 @@ export class WorkflowRuntimeService {
     this.contactIdentityPort = options.contactIdentityPort;
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
     this.messageQueryPort = options.messageQueryPort;
+    this.aiCollectConversationPort = options.aiCollectConversationPort;
+    this.conversationDirectivePort = options.conversationDirectivePort;
     this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
       const definition = await this.controlRepository.findDefinition(uid, workflowId);
       if (definition?.publishedRevision === null || definition?.publishedRevision === undefined) {
@@ -165,6 +189,10 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
+      if (kind === "ai-collect") {
+        return this.aiCollectConversationPort === undefined
+          || this.conversationDirectivePort === undefined;
+      }
       const executionClass: string = getWorkflowNodeContract(kind).executionClass;
       if (executionClass === "core") return !this.executors.has(kind);
       if (executionClass === "inference") return false;
@@ -187,6 +215,25 @@ export class WorkflowRuntimeService {
     uid: number;
   }) {
     return this.controlRepository.findRuntimeSnapshots(input.uid, input.keys);
+  }
+
+  recordAiCollectDirectiveEvent(input: {
+    bizId: string;
+    eventId: string;
+    eventOccurredAt: Date;
+    now: Date;
+    seatId: number;
+    thirdExternalUserId: string;
+    totalRound: number;
+    uid: number;
+  }) {
+    return this.runtimeRepository.recordAiCollectDirectiveEvent({
+      ...input,
+      inboxExpiresAt: new Date(
+        input.now.getTime() + WORKFLOW_INBOX_RETENTION_DAYS * 86_400_000,
+      ),
+      quietUntil: new Date(input.now.getTime() + WORKFLOW_AI_COLLECT_QUIET_PERIOD_MS),
+    });
   }
 
   private assertSpecExecutable(spec: WorkflowExecutionSpec) {
@@ -479,6 +526,7 @@ export class WorkflowRuntimeService {
       }
     }
     const executionClass = getWorkflowNodeContract(node.kind).executionClass;
+    const compositeNode = executionClass === "composite";
     const capabilityNode = executionClass === "action"
       || executionClass === "inference"
       || executionClass === "query";
@@ -486,6 +534,7 @@ export class WorkflowRuntimeService {
     const capabilityBinding = this.capabilityBindings.get(node.kind);
     const contextRequirements = deriveWorkflowExecutionContextRequirements(node);
     const requiresPreparedExecution = capabilityNode
+      || compositeNode
       || contextRequirements.globalContext
       || contextRequirements.identities.length > 0;
     const capabilityTimeoutMs = capabilityBinding?.executionTimeoutMs
@@ -559,6 +608,15 @@ export class WorkflowRuntimeService {
             sourceOutletId: "default",
             type: "advance" as const,
           }
+        : compositeNode
+          ? await this.executeAiCollectTask({
+              claimedTask: claimed.task,
+              input,
+              node,
+              nodeExecutionKey,
+              preparedContext,
+              run,
+            })
         : inferenceNode
         ? await this.executeInferenceTask({
             claimedTask: claimed.task,
@@ -713,6 +771,484 @@ export class WorkflowRuntimeService {
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
     return committed;
+  }
+
+  private async executeAiCollectTask(input: {
+    claimedTask: WorkflowTaskRecord;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    nodeExecutionKey: string;
+    preparedContext: WorkflowPreparedExecutionContext;
+    run: WorkflowRunRecord;
+  }): Promise<
+    | { kind: "inference-waiting"; type: "inference-wait" }
+    | { output: Record<string, unknown>; sourceOutletId: string; type: "advance" }
+  > {
+    if (input.node.kind !== "ai-collect"
+      || !isWorkflowAiCollectExecutionConfigComplete(input.node.config)) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_AI_COLLECT_CONFIG_INVALID",
+        "资料收集配置不可用，流程已停止",
+      );
+    }
+    const config = input.node.config as WorkflowAiCollectExecutionConfig;
+    const conversationPort = this.aiCollectConversationPort;
+    const directivePort = this.conversationDirectivePort;
+    if (!conversationPort || !directivePort) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_AI_COLLECT_PORT_UNAVAILABLE",
+        "资料收集服务不可用，流程已停止",
+      );
+    }
+    const seatId = getRunSeatId(input.run.context);
+    const thirdExternalUserId = input.preparedContext.identities.thirdExternalUserId;
+    if (seatId === null || !thirdExternalUserId) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_AI_COLLECT_CONTEXT_INVALID",
+        "执行所需数据不可用，流程已停止",
+      );
+    }
+    let state = await this.runtimeRepository.initializeAiCollectState({
+      bizId: createWorkflowAiCollectBizId(input.claimedTask.id),
+      expiresAt: getWorkflowAiCollectTimeoutAt(input.node, input.claimedTask.createdAt),
+      initialMessageCursor: {
+        id: 1,
+        timestamp: Math.max(0, input.claimedTask.createdAt.getTime() - 1),
+      },
+      now: input.input.now,
+      runId: input.run.id,
+      seatId,
+      taskId: input.claimedTask.id,
+      thirdExternalUserId,
+      uid: input.input.uid,
+      workflowId: input.run.workflowId,
+    });
+
+    while (true) {
+      if (state.terminalOutlet !== null) {
+        return this.finishAiCollectTask(state, directivePort);
+      }
+
+      if (state.activeInferenceKey !== null) {
+        const inference = await this.runtimeRepository.findInferenceByExecutionKey(
+          state.uid,
+          state.activeInferenceKey,
+        );
+        if (!inference) {
+          throw new WorkflowCapabilityExecutionError(
+            "unknown",
+            "WORKFLOW_AI_COLLECT_INFERENCE_STATE_MISSING",
+            "资料提取暂未完成",
+          );
+        }
+        if (inference.status === "succeeded") {
+          if (!inference.result) {
+            throw new WorkflowCapabilityExecutionError(
+              "terminal",
+              "WORKFLOW_INFERENCE_OUTPUT_INVALID",
+              "返回结果异常，流程已停止",
+            );
+          }
+          const completedBatchCutoffAt = state.activeBatchCutoffAt;
+          const completedBatchHasMore = state.activeBatchHasMore;
+          const completedAt = this.clock();
+          const collected = mapWorkflowAiCollectInferenceResult(
+            input.node,
+            inference.result,
+            state.collected,
+          );
+          state = await this.transitionAiCollectStateOrThrow({
+            now: completedAt,
+            taskId: state.taskId,
+            transition: {
+              collected,
+              executionKey: state.activeInferenceKey,
+              kind: "inference-completed",
+            },
+            uid: state.uid,
+          });
+          if (!isWorkflowAiCollectComplete(input.node, state.collected)
+            && completedBatchCutoffAt !== null
+            && !completedBatchHasMore
+            && state.pendingCutoffAt === null
+            && state.expiresAt !== null
+            && (completedAt >= state.expiresAt
+              || state.observedRound >= config.maxFollowUpCount)) {
+            state = await this.transitionAiCollectStateOrThrow({
+              now: completedAt,
+              taskId: state.taskId,
+              transition: {
+                disableReason: completedAt >= state.expiresAt ? "expired" : "round-limit-reached",
+                kind: "terminal",
+                outlet: "incomplete",
+              },
+              uid: state.uid,
+            });
+          }
+          continue;
+        }
+        if (inference.status === "failed") {
+          await this.transitionAiCollectStateOrThrow({
+            now: this.clock(),
+            taskId: state.taskId,
+            transition: { kind: "disable-requested", reason: "workflow-failed" },
+            uid: state.uid,
+          });
+          throw new WorkflowCapabilityExecutionError(
+            inference.failureKind ?? "unknown",
+            inference.errorCode ?? "WORKFLOW_AI_COLLECT_INFERENCE_FAILED",
+            inference.errorMessage ?? "资料提取未完成",
+          );
+        }
+        if (inference.status === "cancelled") throw staleTaskError();
+        const waiting = await this.runtimeRepository.beginInference({
+          contractVersion: inference.contractVersion,
+          deadlineAt: inference.deadlineAt,
+          executionKey: inference.executionKey,
+          expectedRunLockVersion: input.run.lockVersion,
+          expectedTaskVersion: input.claimedTask.taskVersion,
+          inbox: createInbox(
+            input.input.messageId,
+            input.claimedTask.id,
+            input.input.taskVersion,
+            input.input.now,
+          ),
+          now: input.input.now,
+          payload: inference.payload,
+          runId: input.run.id,
+          taskId: input.claimedTask.id,
+          uid: input.input.uid,
+        });
+        if (waiting.kind === "already-processed") throw alreadyProcessedError();
+        if (waiting.kind === "workflow-unavailable") throw workflowUnavailable();
+        if (waiting.kind !== "success") throw staleTaskError();
+        return { kind: "inference-waiting", type: "inference-wait" };
+      }
+
+      if (isWorkflowAiCollectComplete(input.node, state.collected)) {
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { disableReason: "completed", kind: "terminal", outlet: "completed" },
+          uid: state.uid,
+        });
+        continue;
+      }
+
+      if (!state.initialInputProcessed) {
+        const initialInput = resolveWorkflowAiCollectInput(
+          input.node,
+          input.run,
+          { enteredAt: input.claimedTask.createdAt.toISOString() },
+        );
+        if (hasWorkflowInferenceInput(initialInput)) {
+          const started = await this.startAiCollectInference({
+            batchCursor: null,
+            batchCutoffAt: null,
+            batchHasMore: false,
+            claimedTask: input.claimedTask,
+            input: input.input,
+            node: input.node,
+            nodeExecutionKey: input.nodeExecutionKey,
+            payloadInput: initialInput,
+            run: input.run,
+            state,
+          });
+          if (started.kind === "waiting") {
+            return { kind: "inference-waiting", type: "inference-wait" };
+          }
+          state = started.state;
+          continue;
+        }
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { kind: "initial-input-processed" },
+          uid: state.uid,
+        });
+        continue;
+      }
+
+      if (config.maxFollowUpCount > 0) {
+        if (state.expiresAt === null) throw new Error("AI Collect assisted state has no expiry");
+        if (this.clock() < state.expiresAt) {
+          if (state.conversationId === null) {
+            const conversation = await executeAiCollectOperation(
+              this.capabilityTimeoutMs,
+              () => conversationPort.resolveConversation({
+                seatId,
+                thirdExternalUserId,
+                uid: state.uid,
+              }),
+            );
+            state = await this.transitionAiCollectStateOrThrow({
+              now: this.clock(),
+              taskId: state.taskId,
+              transition: { conversationId: conversation.conversationId, kind: "conversation-resolved" },
+              uid: state.uid,
+            });
+            continue;
+          }
+          if (state.directiveStatus === "inactive") {
+            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
+              bizId: state.bizId,
+              bizInfo: "",
+              conversationId: state.conversationId!,
+              expiresAt: state.expiresAt!,
+              limitRound: config.maxFollowUpCount,
+              payload: renderWorkflowAiCollectDirective(input.node, state.collected),
+              priority: 0,
+              signal,
+              type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+              uid: state.uid,
+            }));
+            state = await this.transitionAiCollectStateOrThrow({
+              now: this.clock(),
+              taskId: state.taskId,
+              transition: { kind: "directive-active" },
+              uid: state.uid,
+            });
+            continue;
+          }
+        }
+      }
+
+      const openingMessage = "openingMessage" in config ? config.openingMessage : undefined;
+      if (openingMessage && state.directiveStatus === "active" && !state.openingMessageSent) {
+        await executeAiCollectOperation(this.capabilityTimeoutMs, signal =>
+          conversationPort.sendOpeningMessage({
+            idempotencyKey: `${input.nodeExecutionKey}:opening`,
+            message: openingMessage,
+            seatId,
+            signal,
+            thirdExternalUserId,
+            uid: input.input.uid,
+          }));
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { kind: "opening-message-sent" },
+          uid: state.uid,
+        });
+        continue;
+      }
+
+      if (config.maxFollowUpCount === 0) {
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { disableReason: "incomplete", kind: "terminal", outlet: "incomplete" },
+          uid: state.uid,
+        });
+        continue;
+      }
+
+      const now = this.clock();
+      if (state.expiresAt === null) throw new Error("AI Collect assisted state has no expiry");
+      const expiresAt = state.expiresAt;
+
+      const settling = now >= expiresAt
+        || state.observedRound >= config.maxFollowUpCount;
+      const queryCutoff = now >= expiresAt
+        ? expiresAt
+        : state.pendingCutoffAt;
+      const quietElapsed = state.quietUntil === null || state.quietUntil <= now;
+      if (queryCutoff && (settling || quietElapsed)) {
+        const batch = await executeAiCollectOperation(
+          this.capabilityTimeoutMs,
+          () => conversationPort.readCustomerMessages({
+            after: state.lastMessageCursor,
+            seatId,
+            thirdExternalUserId,
+            uid: state.uid,
+            until: queryCutoff,
+          }),
+        );
+        if (batch.messages.length > 0) {
+          if (!batch.cursor) throw new Error("AI Collect message batch has no cursor");
+          const started = await this.startAiCollectInference({
+            batchCursor: batch.cursor,
+            batchCutoffAt: queryCutoff,
+            batchHasMore: batch.hasMore,
+            claimedTask: input.claimedTask,
+            input: input.input,
+            node: input.node,
+            nodeExecutionKey: input.nodeExecutionKey,
+            payloadInput: batch.messages,
+            run: input.run,
+            state,
+          });
+          if (started.kind === "waiting") {
+            return { kind: "inference-waiting", type: "inference-wait" };
+          }
+          state = started.state;
+          continue;
+        }
+        state = await this.transitionAiCollectStateOrThrow({
+          now: this.clock(),
+          taskId: state.taskId,
+          transition: { cutoffAt: queryCutoff, kind: "message-batch-empty" },
+          uid: state.uid,
+        });
+        if (settling && state.pendingCutoffAt === null) {
+          state = await this.transitionAiCollectStateOrThrow({
+            now: this.clock(),
+            taskId: state.taskId,
+            transition: {
+              disableReason: now >= expiresAt ? "expired" : "round-limit-reached",
+              kind: "terminal",
+              outlet: "incomplete",
+            },
+            uid: state.uid,
+          });
+        }
+        continue;
+      }
+      if (settling && state.pendingCutoffAt === null) {
+        state = await this.transitionAiCollectStateOrThrow({
+          now,
+          taskId: state.taskId,
+          transition: {
+            disableReason: now >= expiresAt ? "expired" : "round-limit-reached",
+            kind: "terminal",
+            outlet: "incomplete",
+          },
+          uid: state.uid,
+        });
+        continue;
+      }
+
+      const dueAt = state.pendingCutoffAt && state.quietUntil
+        ? new Date(Math.min(state.quietUntil.getTime(), expiresAt.getTime()))
+        : expiresAt;
+      const waiting = await this.runtimeRepository.beginAiCollectWait({
+        dueAt,
+        expectedRunLockVersion: input.run.lockVersion,
+        expectedTaskVersion: input.claimedTask.taskVersion,
+        inbox: createInbox(
+          input.input.messageId,
+          input.claimedTask.id,
+          input.input.taskVersion,
+          input.input.now,
+        ),
+        now: input.input.now,
+        runId: input.run.id,
+        taskId: input.claimedTask.id,
+        uid: input.input.uid,
+      });
+      if (waiting.kind === "already-processed") throw alreadyProcessedError();
+      if (waiting.kind === "workflow-unavailable") throw workflowUnavailable();
+      if (waiting.kind !== "success") throw staleTaskError();
+      return { kind: "inference-waiting", type: "inference-wait" };
+    }
+  }
+
+  private async startAiCollectInference(input: {
+    batchCursor: WorkflowAiCollectMessageCursor | null;
+    batchCutoffAt: Date | null;
+    batchHasMore: boolean;
+    claimedTask: WorkflowTaskRecord;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    nodeExecutionKey: string;
+    payloadInput: unknown;
+    run: WorkflowRunRecord;
+    state: WorkflowAiCollectStateRecord;
+  }): Promise<
+    | { kind: "adopted"; state: WorkflowAiCollectStateRecord }
+    | { kind: "waiting" }
+  > {
+    const executionKey = `${input.nodeExecutionKey}:collect:${input.state.nextBatchSequence}`;
+    const payload = createWorkflowAiCollectInferenceRequest(
+      input.node,
+      input.payloadInput,
+      input.state.collected,
+    );
+    const existing = await this.runtimeRepository.findInferenceByExecutionKey(
+      input.state.uid,
+      executionKey,
+    );
+    if (!existing) {
+      const waiting = await this.runtimeRepository.beginInference({
+        contractVersion: 1,
+        deadlineAt: new Date(input.input.now.getTime() + this.inferenceTotalTimeoutMs),
+        executionKey,
+        expectedRunLockVersion: input.run.lockVersion,
+        expectedTaskVersion: input.claimedTask.taskVersion,
+        inbox: createInbox(
+          input.input.messageId,
+          input.claimedTask.id,
+          input.input.taskVersion,
+          input.input.now,
+        ),
+        now: input.input.now,
+        payload,
+        runId: input.run.id,
+        taskId: input.claimedTask.id,
+        uid: input.state.uid,
+      });
+      if (waiting.kind === "already-processed") throw alreadyProcessedError();
+      if (waiting.kind === "workflow-unavailable") throw workflowUnavailable();
+      if (waiting.kind !== "success") throw staleTaskError();
+    }
+    const state = await this.transitionAiCollectStateOrThrow({
+      now: this.clock(),
+      taskId: input.state.taskId,
+      transition: {
+        batchCursor: input.batchCursor,
+        batchCutoffAt: input.batchCutoffAt,
+        batchHasMore: input.batchHasMore,
+        executionKey,
+        kind: "inference-started",
+      },
+      uid: input.state.uid,
+    });
+    return existing && (existing.status === "succeeded" || existing.status === "failed")
+      ? { kind: "adopted", state }
+      : { kind: "waiting" };
+  }
+
+  private async finishAiCollectTask(
+    state: WorkflowAiCollectStateRecord,
+    directivePort: WorkflowConversationDirectivePort,
+  ): Promise<{ output: Record<string, unknown>; sourceOutletId: string; type: "advance" }> {
+    if (state.directiveStatus === "active") {
+      await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.disable({
+        bizId: state.bizId,
+        reason: state.disableReason ?? state.terminalOutlet!,
+        signal,
+        type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+        uid: state.uid,
+      }));
+      state = await this.transitionAiCollectStateOrThrow({
+        now: this.clock(),
+        taskId: state.taskId,
+        transition: { kind: "directive-disabled" },
+        uid: state.uid,
+      });
+    } else if (state.directiveStatus === "disabling") {
+      throw new WorkflowCapabilityExecutionError(
+        "retryable",
+        "WORKFLOW_AI_COLLECT_DIRECTIVE_DISABLE_PENDING",
+        "资料收集正在结束",
+      );
+    }
+    return {
+      output: state.terminalOutlet === "completed" ? structuredClone(state.collected) : {},
+      sourceOutletId: state.terminalOutlet!,
+      type: "advance",
+    };
+  }
+
+  private async transitionAiCollectStateOrThrow(
+    input: Parameters<WorkflowRuntimeRepository["transitionAiCollectState"]>[0],
+  ) {
+    const result = await this.runtimeRepository.transitionAiCollectState(input);
+    if (result.kind !== "success") throw staleTaskError();
+    return result.state;
   }
 
   private async executeInferenceTask(input: {
@@ -1205,6 +1741,22 @@ async function raceWithWorkflowTimeout<T>(input: {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function executeAiCollectOperation<T>(
+  timeoutMs: number,
+  execute: (signal: AbortSignal) => Promise<T>,
+) {
+  return raceWithWorkflowTimeout({
+    createError: () => new WorkflowCapabilityExecutionError(
+      "unknown",
+      "WORKFLOW_AI_COLLECT_OPERATION_TIMEOUT",
+      "资料收集操作超时",
+      { diagnosticMessage: `AI Collect operation exceeded its ${timeoutMs}ms deadline` },
+    ),
+    execute,
+    timeoutMs,
+  });
 }
 
 function toCapabilityExecutionError(error: unknown) {

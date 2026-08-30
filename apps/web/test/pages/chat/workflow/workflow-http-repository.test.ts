@@ -247,7 +247,7 @@ describe("HTTP workflow repository", () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     client.post.mockRejectedValueOnce(new RequestNormalizedError({
       code: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
-      message: "最多可同时运行 50 个 Workflow",
+      message: "最多同时运行 50 个工作流",
       status: 409,
     }));
     const repository = createHttpWorkflowDraftRepository(client);
@@ -255,7 +255,7 @@ describe("HTTP workflow repository", () => {
     await expect(repository.enableDocument?.("42")).rejects.toMatchObject({
       apiCode: "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
       code: "conflict",
-      message: "最多可同时运行 50 个 Workflow",
+      message: "最多同时运行 50 个工作流",
     });
   });
 

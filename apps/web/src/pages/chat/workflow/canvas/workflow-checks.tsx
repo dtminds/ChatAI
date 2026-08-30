@@ -44,7 +44,7 @@ export function WorkflowChecks({
         <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto">
           {checks.length === 0 ? (
             <article className="rounded-[8px] border bg-card p-4 text-sm text-muted-foreground">
-              当前 Workflow 已通过发布前检查
+              已通过发布检查
             </article>
           ) : checks.map((check) => {
             const canNavigate = Boolean(check.nodeId && onNavigateToNode);

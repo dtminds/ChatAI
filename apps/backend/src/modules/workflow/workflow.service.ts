@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import {
+  WORKFLOW_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_NAME_MAX_LENGTH,
+} from "@chatai/contracts";
 import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
@@ -202,7 +206,7 @@ export class WorkflowService {
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
-    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "Workflow 节点不存在");
+    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "节点不存在");
     if (draftNode.data.kind !== "llm") {
       throw new BadRequestError("WORKFLOW_LLM_TEST_NODE_INVALID", "仅支持试运行大模型节点");
     }
@@ -272,7 +276,7 @@ export class WorkflowService {
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const draft = normalizeWorkflowDraft(definition.draft);
     const draftNode = draft.nodes.find(node => node.id === nodeId);
-    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "Workflow 节点不存在");
+    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "节点不存在");
     if (draftNode.data.kind !== "ai-intent") {
       throw new BadRequestError(
         "WORKFLOW_AI_INTENT_TEST_NODE_INVALID",
@@ -446,16 +450,30 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     assertWorkflowTypeEnabled(input.workflowType);
     if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(input.workflowType)) {
-      throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该 Workflow 类型");
+      throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该类型");
     }
     await this.requireEntitlement(scope.uid, input.workflowType);
+    const name = input.name?.trim() || "未命名工作流";
+    const description = input.description?.trim() || "";
+    if (name.length > WORKFLOW_NAME_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_NAME_TOO_LONG",
+        `名称不能超过 ${WORKFLOW_NAME_MAX_LENGTH} 字`,
+      );
+    }
+    if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_DESCRIPTION_TOO_LONG",
+        `备注不能超过 ${WORKFLOW_DESCRIPTION_MAX_LENGTH} 字`,
+      );
+    }
     const draft = createInitialWorkflowDraft(input.workflowType);
     const result = await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
-      description: input.description?.trim() || "",
+      description,
       draft,
       draftSemanticHash: hashDraftSemantics(draft),
-      name: input.name?.trim() || "未命名 Workflow",
+      name,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
       workflowType: input.workflowType,
@@ -463,7 +481,7 @@ export class WorkflowService {
     if (result.kind === "idempotency-conflict") {
       throw new AppError(
         "WORKFLOW_CREATE_REQUEST_CONFLICT",
-        "创建请求与已有 Workflow 类型不一致",
+        "创建请求与已有类型不一致",
         409,
       );
     }
@@ -505,9 +523,18 @@ export class WorkflowService {
     await this.requireEntitlement(scope.uid, definition.workflowType);
     const name = metadata.name.trim();
     const description = metadata.description.trim();
-    if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
-    if (description.length > 1000) {
-      throw new BadRequestError("WORKFLOW_DESCRIPTION_TOO_LONG", "Workflow 描述不能超过 1000 字");
+    if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "名称不能为空");
+    if (name.length > WORKFLOW_NAME_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_NAME_TOO_LONG",
+        `名称不能超过 ${WORKFLOW_NAME_MAX_LENGTH} 字`,
+      );
+    }
+    if (description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
+      throw new BadRequestError(
+        "WORKFLOW_DESCRIPTION_TOO_LONG",
+        `备注不能超过 ${WORKFLOW_DESCRIPTION_MAX_LENGTH} 字`,
+      );
     }
     return this.toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
       description,
@@ -677,7 +704,7 @@ export class WorkflowService {
     this.assertNotStopped(definition);
     await this.requireEntitlement(scope.uid, definition.workflowType);
     const review = await this.repository.findReview(scope.uid, workflowId, reviewId);
-    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
+    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "审核不存在");
     if (review.status === "pending") {
       throw new AppError("WORKFLOW_REVIEW_RESTORE_PENDING", "待审核内容无需恢复", 409);
     }
@@ -706,7 +733,7 @@ export class WorkflowService {
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     const review = await this.repository.findReview(scope.uid, workflowId, input.reviewId);
-    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "Workflow 审核不存在");
+    if (!review) throw new NotFoundError("WORKFLOW_REVIEW_NOT_FOUND", "审核不存在");
     if (review.status !== "approved") throw reviewInvalidStatusError(review.status);
     if (definition.publishedRevision !== review.basePublishedRevision
       || definition.draftSemanticHash !== review.draftSemanticHash) {
@@ -740,7 +767,7 @@ export class WorkflowService {
     }
     const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     const revision = await this.repository.findRevision(scope.uid, workflowId, definition.publishedRevision);
-    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "版本不存在");
     this.assertProductionAvailability(revision.executionSpec, entitlement, revision.subjectType);
     const enabled = this.unwrapMutation(await this.repository.enable({
       opSubUserId: scope.subUserId,
@@ -767,7 +794,7 @@ export class WorkflowService {
       workflowId,
       definition.publishedRevision,
     );
-    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "版本不存在");
     this.assertProductionAvailability(revision.executionSpec, entitlement, revision.subjectType);
     return this.changeStatus(scope, workflowId, ["paused"], "active");
   }
@@ -792,7 +819,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     await this.requireVisibleDefinition(scope, workflowId);
     const record = await this.repository.findRevision(scope.uid, workflowId, revision);
-    if (!record) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!record) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "版本不存在");
     return toRevision(record);
   }
 
@@ -808,7 +835,7 @@ export class WorkflowService {
     await this.requireEntitlement(scope.uid, definition.workflowType);
     const revisionRecord = await this.repository.findRevision(scope.uid, workflowId, revision);
     if (!revisionRecord) {
-      throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+      throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "版本不存在");
     }
     const draft = normalizeWorkflowDraft(revisionRecord.draft);
     assertWorkflowTypePolicy(definition.workflowType, draft);
@@ -850,7 +877,7 @@ export class WorkflowService {
       });
     } catch (error) {
       if (error instanceof WorkflowCompilationError) {
-        throw new BadRequestError("WORKFLOW_VALIDATION_FAILED", "Workflow 校验未通过", { issues: error.issues });
+        throw new BadRequestError("WORKFLOW_VALIDATION_FAILED", "校验未通过", { issues: error.issues });
       }
       throw error;
     }
@@ -930,13 +957,13 @@ export class WorkflowService {
     if (result.kind === "active-limit-exceeded") {
       throw new AppError(
         "WORKFLOW_ACTIVE_LIMIT_EXCEEDED",
-        "最多可同时运行 50 个 Workflow",
+        "最多同时运行 50 个工作流",
         409,
       );
     }
     if (result.kind === "conflict") throw conflictError();
     if (result.kind === "review-locked") {
-      throw new AppError("WORKFLOW_REVIEW_LOCKED", "Workflow 已进入审核，请刷新后重试", 409);
+      throw new AppError("WORKFLOW_REVIEW_LOCKED", "已进入审核，请刷新后重试", 409);
     }
     if (result.kind === "review-invalid-status") throw reviewInvalidStatusError(result.status);
     throw invalidStatusError(result.status);
@@ -959,7 +986,7 @@ export class WorkflowService {
     if (!availability.available) {
       throw new BadRequestError(
         "WORKFLOW_PRODUCTION_UNAVAILABLE",
-        "Workflow 暂不可发布或运行",
+        "暂不可发布或运行",
         { blockers: availability.blockers },
       );
     }
@@ -1070,7 +1097,7 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
     ) {
       throw new BadRequestError(
         "WORKFLOW_DRAFT_NODE_CONFIG_INVALID",
-        `Workflow 节点配置不符合当前契约: ${node.id}`,
+        `节点配置不符合当前契约: ${node.id}`,
       );
     }
   }
@@ -1346,7 +1373,7 @@ function startTriggerSemantics(node: WorkflowDraft["nodes"][number] | undefined)
 
 function assertWorkflowTypeEnabled(workflowType: WorkflowType) {
   if (getWorkflowCapabilityProfile(workflowType).availability !== "enabled") {
-    throw new BadRequestError("WORKFLOW_TYPE_UNAVAILABLE", "该 Workflow 类型暂不可用");
+    throw new BadRequestError("WORKFLOW_TYPE_UNAVAILABLE", "该类型暂不可用");
   }
 }
 
@@ -1355,18 +1382,18 @@ function assertWorkflowTypePolicy(workflowType: WorkflowType, draft: WorkflowDra
   if (issues.length > 0) {
     throw new BadRequestError(
       "WORKFLOW_TYPE_POLICY_VIOLATION",
-      "Workflow 包含当前类型不支持的配置",
+      "包含当前类型不支持的配置",
       { issues },
     );
   }
 }
 
 function workflowNotFound() {
-  return new NotFoundError("WORKFLOW_NOT_FOUND", "Workflow 不存在");
+  return new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
 }
 
 function conflictError() {
-  return new AppError("WORKFLOW_DRAFT_CONFLICT", "Workflow 草稿已被其他操作更新", 409);
+  return new AppError("WORKFLOW_DRAFT_CONFLICT", "草稿已被其他操作更新", 409);
 }
 
 function invalidStatusError(status: WorkflowDefinitionRecord["runtimeStatus"]) {
@@ -1380,7 +1407,7 @@ function reviewInvalidStatusError(status: WorkflowPublishReviewRecord["status"])
 }
 
 function stoppedError() {
-  return new AppError("WORKFLOW_STOPPED", "已停止的 Workflow 不可恢复或修改配置", 409);
+  return new AppError("WORKFLOW_STOPPED", "已停止后不可恢复或修改配置", 409);
 }
 
 function isWorkflowDraftLayoutOnlyChange(current: WorkflowDraft, next: WorkflowDraft) {
@@ -1399,7 +1426,7 @@ function isWorkflowDraftLayoutOnlyChange(current: WorkflowDraft, next: WorkflowD
 
 function assertWorkflowAccess(scope: WorkflowOperatorScope) {
   if (!scope.roles.some((role) => role === "owner" || role === "admin")) {
-    throw new ForbiddenError("WORKFLOW_FORBIDDEN", "无权访问 Workflow");
+    throw new ForbiddenError("WORKFLOW_FORBIDDEN", "无权访问");
   }
 }
 

@@ -107,7 +107,7 @@ const taskStatusLabels: Record<keyof WorkflowObservabilityTaskDistribution, stri
 };
 const taskStatusTips: Record<keyof WorkflowObservabilityTaskDistribution, string> = {
   pending: "时间未到或还没轮到",
-  suspended: "随工作流暂停，暂不执行",
+  suspended: "暂停后暂不执行",
   waiting_external: "在等事件或外部结果",
   leased: "调度已领取，即将派发",
   dispatched: "已发出去，还没开始跑",
@@ -290,7 +290,7 @@ export function WorkflowObservabilityPage() {
           actions={(
             <div className="flex items-center gap-2">
               <Button asChild variant="outline">
-                <Link to="/chat/workflows">返回工作流</Link>
+                <Link to="/chat/workflows">返回列表</Link>
               </Button>
               <Button
                 aria-label="刷新运行观测"
@@ -438,14 +438,14 @@ export function WorkflowObservabilityPage() {
                 value={uidInput}
               />
               <Input
-                aria-label="搜索 Workflow ID"
+                aria-label="搜索工作流 ID"
                 className="w-full sm:w-40"
                 inputMode="numeric"
                 onChange={(event) => setWorkflowIdInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") search();
                 }}
-                placeholder="Workflow ID"
+                placeholder="工作流 ID"
                 value={workflowIdInput}
               />
               <Button aria-label="搜索" onClick={search} size="icon" variant="outline">
@@ -454,7 +454,7 @@ export function WorkflowObservabilityPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <Table aria-label="Workflow 运行状态">
+            <Table aria-label="运行状态">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>UID</TableHead>
@@ -494,7 +494,7 @@ export function WorkflowObservabilityPage() {
           {list ? (
             <TablePagination
               className="px-4"
-              itemLabel="个工作流"
+              itemLabel="个"
               onPageChange={setPage}
               page={pagination.activePage}
               total={list.total}
@@ -572,7 +572,7 @@ function WorkflowDetailSheet({
   uid?: number;
   workflowId?: string;
 }) {
-  const title = detail?.name ?? name ?? "工作流详情";
+  const title = detail?.name ?? name ?? "详情";
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
       <SheetContent className="flex w-full flex-col overflow-hidden sm:max-w-[520px]">
@@ -785,7 +785,7 @@ function parseWorkflowId(value: string) {
   const normalized = value.trim();
   if (!normalized) return undefined;
   if (!/^[1-9]\d*$/.test(normalized)) {
-    toast.error("请输入正确的 Workflow ID");
+    toast.error("工作流 ID 格式错误");
     return false;
   }
   return normalized;

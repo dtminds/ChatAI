@@ -13,6 +13,7 @@ Review 章节仅审查时使用。通用审查流程、Finding 门槛、严重�
 - 一次页面加载或一次用户操作的请求数不随列表项、字段或分页 `N` 线性增长。逐项请求改为批量接口或受控并发。`Promise.all` 只改变并发，不会消除 `N` 次调用。
 - 不要在 `for`、`map` 或逐项 hydration 里发 HTTP。Effect 可以做稳定依赖下的单次加载；禁止依赖抖动或重复触发造成的请求放大。相同资源按稳定 Key 去重。
 - 轮询和失败重试必须有启动条件、间隔、超时、退避、终止状态，以及页面隐藏或切换后的停止行为。
+- 用户主动触发的创建、保存、编辑、删除、启用、停用等异步操作失败，禁止使用页面级 `setXxxError` / `setError` 状态在页面、弹窗或表单内渲染错误；必须通过全局 `toast.error` 反馈。仅当区块自身加载失败且提供重试/重载，或已经实现并确认的字段级校验需要就地提示时，才允许内联错误；不得自行扩展其它例外。
 
 ### Backend / Worker
 
@@ -60,10 +61,21 @@ Review 章节仅审查时使用。通用审查流程、Finding 门槛、严重�
 - 当前项目不考虑国际化，硬编码中文提示本身不是 Finding。
 - 未要求的视觉偏好、非契约性文案和纯风格差异不是 Finding。
 
+#### Web 错误反馈
+
+- 审查 Web 页面时，发现用户主动触发的异步操作失败通过页面级 `setXxxError` / `setError` 或弹窗内错误文案承载，而不是全局 `toast.error`，一律报告为 Finding。只有任务、产品确认或 PR 记录明确批准的例外可以不报；“已有类似实现”、测试通过或错误文案可读都不构成确认。
+- 对允许内联的区块加载错误和字段级校验，审查时必须同时确认其边界：加载错误有重试/重载路径，字段错误有实际字段校验与展示契约；否则仍按前一条报告。
+
 #### 数据库时区
 
 - UTC+8 部署契约、mysql2 `timezone: "+08:00"` 和运行时偏移校验完整时，使用 `CURRENT_TIMESTAMP`、读取 `DATETIME` 或接收 mysql2 返回的 `Date` 不是时区 Finding。
 - 只有变更破坏该契约时才报，例如移除连接时区、绕过偏移校验、混用 UTC 与 UTC+8 `DATETIME`、重复手工转换，或引入未声明时区语义的外部时间字符串。
+
+#### Java internal API 返回协议
+
+- 审查新增或修改的 `/third-internal/*` JSON 调用时，逐个确认其通过 `@chatai/contracts` 的 `decodeJavaInternalApiEnvelope` 解码。`success: true` 和 `success: false` 是唯一、同等权威的成败信号；成功时不读取或校验 `error` / `errorMsg`，失败时将二者仅作为可选诊断，缺失或类型异常使用共享 decoder 的归一化值。缺失或非 boolean `success` 才是非法信封。把 `error === 0`、`code === 0`、诊断字段合法性或缺失字段默认成功作为成败条件，以及复制本地 decoder，均应报告为 Finding。
+- 标准信封只统一 `success`、`error`、`errorMsg`，不规定业务字段位置。审查者必须根据该 endpoint 已确认的固定 schema 核对业务字段是 `data`、顶层 `list` / 分页字段还是其它固定结构；禁止用 `payload.list ?? payload.data?.list` 等多位置 fallback 猜测协议。非 JSON 的流式或文件响应不适用本条，但必须由 endpoint 的实际响应协议证明。
+- 协议收口不得顺带改写调用方语义。逐个对照变更前后的业务结果、HTTP 状态、Workflow 路由以及 retry / terminal 行为；例如某节点原本将 Java 业务失败映射为 `result: false` 并继续时，改用共享 decoder 后仍须保持。`rejected` 路径应把归一化后的 `error` / `errorMsg` 写入既有内部日志或错误 details，不能只记录是否存在错误消息。
 
 ### Scale Findings
 

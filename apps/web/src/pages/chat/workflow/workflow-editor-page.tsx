@@ -57,6 +57,7 @@ import {
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
+import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
 
 export function WorkflowEditorPage({
   repository,
@@ -125,12 +126,10 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
   const navigate = useNavigate();
   const surface = useWorkflowSurface();
   const createRequestIdRef = useRef<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
 
   const createDocument = async (input: WorkflowCreateInput) => {
     if (createPending) return false;
-    setCreateError(null);
     setCreatePending(true);
     createRequestIdRef.current ??= createWorkflowCreateRequestId();
     try {
@@ -141,8 +140,8 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
       navigate(getWorkflowDocumentPath(surface, document.id), { replace: true });
       return true;
     }
-    catch {
-      setCreateError("操作失败，请稍后重试");
+    catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
       return false;
     }
     finally {
@@ -153,17 +152,13 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
   return (
     <main className="fixed inset-0 bg-background">
       <WorkflowCreateDialog
-        error={createError}
         onCreate={createDocument}
         onOpenChange={(open) => {
           if (!open && !createPending) navigate(surface.webBasePath, { replace: true });
         }}
-        onWorkflowTypeChange={() => {
-          createRequestIdRef.current = null;
-        }}
         open
         pending={createPending}
-        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
+        workflowType={surface.createWorkflowType}
       />
     </main>
   );
@@ -564,7 +559,7 @@ function WorkflowEditorResourceState({
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={AlertCircleIcon} size={20} strokeWidth={1.8} />
           </EmptyMedia>
-          <EmptyTitle>{status === "not-found" ? "工作流不存在" : "工作流加载失败"}</EmptyTitle>
+          <EmptyTitle>{status === "not-found" ? "内容已不存在" : "加载失败"}</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
           <div className="flex gap-2">

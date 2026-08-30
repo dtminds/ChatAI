@@ -414,6 +414,38 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("rejects workflow metadata that exceeds the shared limits", async () => {
+    const service = createService();
+
+    await expect(service.create(operator, {
+      name: "名".repeat(41),
+      workflowType: "chatai_sop",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_NAME_TOO_LONG",
+      message: "名称不能超过 40 字",
+      statusCode: 400,
+    });
+
+    await expect(service.create(operator, {
+      description: "备".repeat(201),
+      workflowType: "chatai_sop",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_DESCRIPTION_TOO_LONG",
+      message: "备注不能超过 200 字",
+      statusCode: 400,
+    });
+
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await expect(service.updateMetadata(operator, created.id, {
+      description: "备注",
+      name: "名".repeat(41),
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_NAME_TOO_LONG",
+      message: "名称不能超过 40 字",
+      statusCode: 400,
+    });
+  });
+
   it("updates trimmed workflow metadata without changing the draft", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });
@@ -428,6 +460,20 @@ describe("WorkflowService", () => {
       name: "新客首购旅程",
     });
     expect(updated.draft).toEqual(created.draft);
+  });
+
+  it("rejects workflow notes longer than 200 characters", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+
+    await expect(service.updateMetadata(operator, created.id, {
+      description: "备".repeat(201),
+      name: "新客首购旅程",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_DESCRIPTION_TOO_LONG",
+      message: "备注不能超过 200 字",
+      statusCode: 400,
+    });
   });
 
   it("keeps creation order after an older workflow is edited", async () => {

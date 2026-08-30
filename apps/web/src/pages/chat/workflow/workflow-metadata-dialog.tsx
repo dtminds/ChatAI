@@ -1,3 +1,7 @@
+import {
+  WORKFLOW_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_NAME_MAX_LENGTH,
+} from "@chatai/contracts";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,16 +20,14 @@ export type WorkflowMetadata = {
 };
 
 export function WorkflowMetadataDialog({
-  error,
   metadata,
   onOpenChange,
   onSave,
   open,
   pending = false,
   submitLabel = "保存",
-  title = "编辑 Workflow 信息",
+  title = "编辑",
 }: {
-  error?: string | null;
   metadata: WorkflowMetadata;
   onOpenChange: (open: boolean) => void;
   onSave: (metadata: WorkflowMetadata) => Promise<boolean>;
@@ -81,13 +83,15 @@ export function WorkflowMetadataDialog({
         >
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={nameId}>Workflow 名称</label>
-              <span className="text-xs text-muted-foreground">{nameValue.length}/100</span>
+              <label className="text-sm font-medium" htmlFor={nameId}>名称</label>
+              <span className="text-xs text-muted-foreground">
+                {nameValue.length}/{WORKFLOW_NAME_MAX_LENGTH}
+              </span>
             </div>
             <Input
               autoFocus
               id={nameId}
-              maxLength={100}
+              maxLength={WORKFLOW_NAME_MAX_LENGTH}
               onChange={(event) => setNameValue(event.target.value)}
               readOnly={pending}
               value={nameValue}
@@ -95,19 +99,20 @@ export function WorkflowMetadataDialog({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={descriptionId}>Workflow 描述</label>
-              <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
+              <label className="text-sm font-medium" htmlFor={descriptionId}>备注</label>
+              <span className="text-xs text-muted-foreground">
+                {descriptionValue.length}/{WORKFLOW_DESCRIPTION_MAX_LENGTH}
+              </span>
             </div>
             <Textarea
               id={descriptionId}
-              maxLength={1000}
+              maxLength={WORKFLOW_DESCRIPTION_MAX_LENGTH}
               onChange={(event) => setDescriptionValue(event.target.value)}
-              placeholder="填写 Workflow 的用途或目标"
+              placeholder="填写备注"
               readOnly={pending}
               value={descriptionValue}
             />
           </div>
-          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button disabled={!nameValue.trim() || pending} type="submit">
               {pending ? `${submitLabel}中` : submitLabel}

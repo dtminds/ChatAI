@@ -43,7 +43,6 @@ import type {
   WorkflowListItem,
 } from "./workflow-draft-service";
 import {
-  normalizeWorkflowRepositoryError,
   useWorkflowCapacityResource,
   useWorkflowListResource,
   useWorkflowTenantOverviewResource,
@@ -59,7 +58,10 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
-import { getWorkflowLifecycleErrorMessage } from "./workflow-error-messages";
+import {
+  getWorkflowLifecycleErrorMessage,
+  getWorkflowOperationErrorMessage,
+} from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 import {
   getWorkflowDocumentPath,
@@ -142,7 +144,6 @@ export function WorkflowListPage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [stopTarget, setStopTarget] = useState<WorkflowListItem | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   useEffect(() => {
@@ -185,7 +186,6 @@ export function WorkflowListPage({
   };
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
-    setOperationError(null);
     setMetadataTarget(workflow);
   };
 
@@ -193,7 +193,6 @@ export function WorkflowListPage({
     if (operationPending) return false;
 
     setOperationPending(true);
-    setOperationError(null);
     createRequestIdRef.current ??= createWorkflowCreateRequestId();
 
     try {
@@ -207,7 +206,7 @@ export function WorkflowListPage({
       return true;
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -219,7 +218,6 @@ export function WorkflowListPage({
     if (!metadataTarget || operationPending) return false;
 
     setOperationPending(true);
-    setOperationError(null);
 
     try {
       await Promise.resolve(repository.updateDocumentMetadata(metadataTarget.id, metadata));
@@ -228,7 +226,7 @@ export function WorkflowListPage({
       return true;
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -242,7 +240,6 @@ export function WorkflowListPage({
     }
 
     setOperationPending(true);
-    setOperationError(null);
 
     try {
       await Promise.resolve(repository.deleteDocument(deleteTarget.id));
@@ -259,7 +256,7 @@ export function WorkflowListPage({
       await tenantOverview.reload();
     }
     catch (error) {
-      setOperationError(getWorkflowOperationErrorMessage(error));
+      toast.error(getWorkflowOperationErrorMessage(error));
     }
     finally {
       setOperationPending(false);
@@ -355,30 +352,29 @@ export function WorkflowListPage({
               strokeWidth={1.8}
             />
             <Input
-              aria-label="搜索 Workflow"
+              aria-label="搜索工作流"
               className="h-10 rounded-[8px] pl-9"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索 Workflow"
+              placeholder="搜索工作流"
               value={query}
             />
           </div>
           <Button
             className="h-10 px-4"
             onClick={() => {
-              setOperationError(null);
               setCreateDialogOpen(true);
             }}
             type="button"
           >
             <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
-            新建 Workflow
+            新建工作流
           </Button>
         </div>
 
         {status === "error" ? (
           <WorkflowListState
             onRetry={() => void reload()}
-            title="工作流列表加载失败"
+            title="列表加载失败"
           />
         ) : null}
 
@@ -387,7 +383,6 @@ export function WorkflowListPage({
             detailBasePath={surface.webBasePath}
             loading={status === "loading" && items.length === 0}
             onDelete={(workflow) => {
-              setOperationError(null);
               setDeleteTarget(workflow);
             }}
             onLifecycleAction={(workflow, action) => {
@@ -416,7 +411,6 @@ export function WorkflowListPage({
       </section>
 
       <WorkflowMetadataDialog
-        error={operationError}
         metadata={{
           description: metadataTarget?.description ?? "",
           name: metadataTarget?.name ?? "",
@@ -424,7 +418,6 @@ export function WorkflowListPage({
         onOpenChange={(open) => {
           if (!open && !operationPending) {
             setMetadataTarget(null);
-            setOperationError(null);
           }
         }}
         onSave={updateWorkflowMetadata}
@@ -433,32 +426,25 @@ export function WorkflowListPage({
       />
 
       <WorkflowCreateDialog
-        error={operationError}
         onCreate={createWorkflow}
         onOpenChange={(open) => {
           if (!operationPending) {
             setCreateDialogOpen(open);
             if (!open) {
               createRequestIdRef.current = null;
-              setOperationError(null);
             }
           }
         }}
-        onWorkflowTypeChange={() => {
-          createRequestIdRef.current = null;
-        }}
         open={createDialogOpen}
         pending={operationPending}
-        workflowTypes={surface.createWorkflowTypes as WorkflowCreateInput["workflowType"][]}
+        workflowType={surface.createWorkflowType}
       />
 
       <WorkflowDeleteDialog
-        error={operationError}
         onDelete={() => void deleteWorkflow()}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
             setDeleteTarget(null);
-            setOperationError(null);
           }
         }}
         open={Boolean(deleteTarget)}
@@ -508,7 +494,7 @@ function WorkflowTenantDataSection({
   return (
     <div className="overflow-x-auto">
       <section
-        aria-label="Workflow 数据概览"
+        aria-label="数据概览"
         className="grid min-w-[960px] grid-cols-4 gap-3"
       >
         <WorkflowOverviewMetricCard
@@ -524,7 +510,7 @@ function WorkflowTenantDataSection({
           iconClassName="text-foreground"
           loading={overviewStatus === "loading" && !overview}
           secondary={overview ? `共 ${overview.totalWorkflowCount.toLocaleString("zh-CN")} 个` : null}
-          title="已启用工作流"
+          title="已启用"
           value={overview ? overview.activeWorkflowCount.toLocaleString("zh-CN") : null}
         />
         <WorkflowOverviewMetricCard
@@ -707,7 +693,7 @@ function WorkflowCapacityLabel({
             </Button>
           </TooltipTrigger>
           <TooltipContent className="max-w-80" side="bottom" sideOffset={6}>
-            <strong>工作流并发运行容量：</strong>
+            <strong>并发运行容量：</strong>
             包含所有正处于执行或等待节点的客户流程。容量耗尽期间，新触发的客户将无法进入流程，建议及时结束不必要的长周期流程或联系顾问扩容
           </TooltipContent>
         </Tooltip>
@@ -761,20 +747,6 @@ function createWorkflowCreateRequestId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `workflow-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getWorkflowOperationErrorMessage(error: unknown) {
-  const repositoryError = normalizeWorkflowRepositoryError(error);
-
-  if (repositoryError.code === "validation") {
-    return "名称不能为空";
-  }
-
-  if (repositoryError.code === "not-found") {
-    return "该 Workflow 已不存在";
-  }
-
-  return "操作失败，请稍后重试";
 }
 
 function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {

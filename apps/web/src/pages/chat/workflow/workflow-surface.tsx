@@ -7,6 +7,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 export type WorkflowSurfaceProfile = {
   apiBasePath: "/server/workflows" | "/server/embed/workflows";
+  createWorkflowType: WorkflowType;
   createWorkflowTypes: WorkflowType[];
   description: string;
   embedded: boolean;
@@ -18,20 +19,22 @@ export type WorkflowSurfaceProfile = {
 const workflowSurfaceProfiles: Record<WorkflowSurface, WorkflowSurfaceProfile> = {
   chatai: {
     apiBasePath: "/server/workflows",
+    createWorkflowType: "chatai_sop",
     createWorkflowTypes: getWorkflowSurfaceTypes("chatai"),
-    description: "创建、发布并管理 ChatAI SOP",
+    description: "把复杂的个性化营销策略，可视化编排为 AI 驱动的自动化客户旅程",
     embedded: false,
     surface: "chatai",
-    title: "工作流",
+    title: "SOP 工作流",
     webBasePath: "/chat/workflows",
   },
   sop_embed: {
     apiBasePath: "/server/embed/workflows",
+    createWorkflowType: "wecom_sop",
     createWorkflowTypes: getWorkflowSurfaceTypes("sop_embed"),
-    description: "创建、发布并管理企微 SOP",
+    description: "面向目标人群灵活编排营销策略，构建个性化运营链路",
     embedded: true,
     surface: "sop_embed",
-    title: "SOP Workflow",
+    title: "营销画布",
     webBasePath: "/embed/workflows",
   },
 };

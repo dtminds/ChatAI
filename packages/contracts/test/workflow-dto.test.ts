@@ -213,14 +213,18 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowDefinitionSchema, { ...definition, id: 9_007_199_254_740_993 })).toBe(false);
   });
 
-  it("limits workflow metadata descriptions to 1000 characters", () => {
+  it("limits workflow metadata names to 40 and descriptions to 200 characters", () => {
     expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
-      description: "描".repeat(1000),
-      name: "新客培育",
+      description: "描".repeat(200),
+      name: "名".repeat(40),
     })).toBe(true);
     expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
-      description: "描".repeat(1001),
+      description: "描".repeat(201),
       name: "新客培育",
+    })).toBe(false);
+    expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
+      description: "新客培育备注",
+      name: "名".repeat(41),
     })).toBe(false);
   });
 
@@ -247,8 +251,12 @@ describe("workflow contracts", () => {
       workflowType: "chatai_sop",
     })).toBe(true);
     expect(Value.Check(WorkflowCreateRequestSchema, {
-      description: "描".repeat(1001),
+      description: "描".repeat(201),
       name: "新客欢迎旅程",
+      workflowType: "chatai_sop",
+    })).toBe(false);
+    expect(Value.Check(WorkflowCreateRequestSchema, {
+      name: "名".repeat(41),
       workflowType: "chatai_sop",
     })).toBe(false);
     expect(Value.Check(WorkflowCreateRequestSchema, {

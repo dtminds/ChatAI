@@ -28,14 +28,17 @@ const MAX_ITEMS_ACTIONS: Record<string, string> = {
 
 type ValidationIssue = NonNullable<FastifyError["validation"]>[number];
 
-export function formatValidationErrorMessage(error: FastifyError) {
+export function formatValidationErrorMessage(
+  error: FastifyError,
+  fieldLabels: Record<string, string> = {},
+) {
   const issue = error.validation?.[0];
 
   if (!issue) {
     return "请求参数有误";
   }
 
-  const field = readValidationField(issue);
+  const field = readValidationField(issue, fieldLabels);
 
   if (issue.keyword === "maxItems" && typeof issue.params?.limit === "number") {
     const fieldName = readValidationFieldName(issue);
@@ -65,11 +68,11 @@ export function formatValidationErrorMessage(error: FastifyError) {
   return "请求参数有误";
 }
 
-function readValidationField(issue: ValidationIssue) {
+function readValidationField(issue: ValidationIssue, fieldLabels: Record<string, string>) {
   const fieldName = readValidationFieldName(issue);
 
   if (fieldName) {
-    return REQUEST_FIELD_LABELS[fieldName] ?? fieldName;
+    return fieldLabels[fieldName] ?? REQUEST_FIELD_LABELS[fieldName] ?? fieldName;
   }
 
   return "参数";

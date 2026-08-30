@@ -1,16 +1,17 @@
-import type {
-  WorkbenchBroadcastProtectionStatusDto,
-  WorkbenchSendMessageResponse,
-  WorkbenchSmartReplyAttachmentsResponse,
-  WorkbenchSmartReplyAutoGeneralAnswerResponse,
-  WorkbenchSmartReplyGeneralAnswerResponse,
-  WorkbenchSmartReplyPollResponse,
-  WorkbenchKnowledgePageResponse,
-  WorkbenchKnowledgeDocPageResponse,
-  WorkbenchKnowledgeFaqAddResponse,
-  WorkbenchKnowledgeConfigResponse,
-  WorkbenchSmartReplyTextModerationResponse,
-  WorkbenchUploadCredentialResponse,
+import {
+  decodeJavaInternalApiEnvelope,
+  type WorkbenchBroadcastProtectionStatusDto,
+  type WorkbenchSendMessageResponse,
+  type WorkbenchSmartReplyAttachmentsResponse,
+  type WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  type WorkbenchSmartReplyGeneralAnswerResponse,
+  type WorkbenchSmartReplyPollResponse,
+  type WorkbenchKnowledgePageResponse,
+  type WorkbenchKnowledgeDocPageResponse,
+  type WorkbenchKnowledgeFaqAddResponse,
+  type WorkbenchKnowledgeConfigResponse,
+  type WorkbenchSmartReplyTextModerationResponse,
+  type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { mapJavaAttachmentList } from "./attachment-mappers.js";
 import {
@@ -1223,7 +1224,7 @@ async function postJavaPageEnvelope(
   logger: AppLogger,
   operation: string,
 ) {
-  const response = await postJava<JavaApiResponse<unknown> & Record<string, unknown>>(
+  const response = await postJava<unknown>(
     baseUrl,
     token,
     path,
@@ -1232,44 +1233,79 @@ async function postJavaPageEnvelope(
     operation,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "rejected") {
     logger.error(
       {
         ...buildJavaLogContext(body),
-        error: response.error,
-        errorMsg: response.errorMsg,
+        error: envelope.error,
+        errorMsg: envelope.errorMsg,
         requestId: getLoggerRequestId(logger),
         operation,
         path,
-        success: response.success,
+        success: false,
       },
       "内部接口业务失败",
     );
     throw new BusinessError(
       WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
-      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
+      envelope.errorMsg.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
       {
-        error: response.error,
-        errorMsg: response.errorMsg,
+        error: envelope.error,
+        errorMsg: envelope.errorMsg,
       },
+    );
+  }
+  if (envelope.kind === "invalid") {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        operation,
+        path,
+        reason: envelope.reason,
+        requestId: getLoggerRequestId(logger),
+      },
+      "上游接口响应异常",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+    );
+  }
+
+  const payload = envelope.payload;
+  if (!Array.isArray(payload.list)) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        operation,
+        path,
+        reason: "list must be an array",
+        requestId: getLoggerRequestId(logger),
+      },
+      "上游接口响应异常",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
     );
   }
 
   logger.info(
     {
       ...buildJavaLogContext(body),
-      count: response.count,
-      list: response.list,
-      listLength: Array.isArray(response.list) ? response.list.length : undefined,
+      count: payload.count,
+      list: payload.list,
+      listLength: payload.list.length,
       operation,
       path,
       requestId: getLoggerRequestId(logger),
-      response,
+      response: payload,
     },
     "分页接口原始响应",
   );
 
-  return response;
+  return payload;
 }
 
 function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {

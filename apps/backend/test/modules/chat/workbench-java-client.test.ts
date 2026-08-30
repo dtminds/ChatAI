@@ -1720,7 +1720,6 @@ describe("createWorkbenchJavaClient", () => {
       new Response(
         JSON.stringify({
           count: 1,
-          error: 0,
           list: [
             {
               id: 101,
@@ -1772,7 +1771,8 @@ describe("createWorkbenchJavaClient", () => {
       new Response(
         JSON.stringify({
           count: 1,
-          error: 0,
+          error: 50001,
+          errorMsg: "ignored on success",
           list: [
             {
               id: 1001,
@@ -1818,6 +1818,43 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
+  });
+
+  it.each([
+    [
+      "success false with unusable diagnostics",
+      { count: 0, error: 0, errorMsg: null, list: [], success: false },
+      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      200,
+    ],
+    [
+      "a legacy error-only envelope",
+      { count: 0, error: 0, list: [] },
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      502,
+    ],
+    [
+      "a list outside the top-level field",
+      { count: 1, data: { list: [] }, success: true },
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      502,
+    ],
+  ])("rejects knowledge pages for %s", async (_case, javaResponse, code, statusCode) => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(javaResponse), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listKnowledgePage({
+        page: 1,
+        pageSize: 20,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({ code, statusCode });
   });
 
   it("posts knowledge faq add requests with docId, source, uid and list", async () => {

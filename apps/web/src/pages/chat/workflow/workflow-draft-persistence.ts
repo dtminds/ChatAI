@@ -247,6 +247,7 @@ function hashWorkflowValue(prefix: "draft" | "publish", serializedValue: string)
 export function getWorkflowTrigger(draft: WorkflowDraft) {
   const entryNode = findWorkflowEntryNode(draft.nodes);
   if (entryNode?.data.kind !== "start") return undefined;
+  if (entryNode.data.entryMode === "direct-push") return "外部推送";
   const triggerLabels = entryNode.data.triggers.map(trigger => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";

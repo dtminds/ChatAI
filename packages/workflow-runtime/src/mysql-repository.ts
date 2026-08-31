@@ -2988,7 +2988,7 @@ export class MysqlWorkflowRuntimeRepository implements
         await trx.updateTable(EXECUTION_TABLE).set({
           completed_at: input.now,
           error_code: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
-          error_message: "Workflow Task attempts exhausted",
+          error_message: "多次执行失败，流程已停止",
           failure_kind: null,
           status: "failed",
         }).where(eb => eb.or(deadRows.map(row => eb.and([

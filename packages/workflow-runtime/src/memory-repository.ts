@@ -1599,7 +1599,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           && item.status === "running");
         if (execution) {
           execution.errorCode = "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED";
-          execution.errorMessage = "Workflow Task attempts exhausted";
+          execution.errorMessage = "多次执行失败，流程已停止";
           execution.failureKind = null;
           execution.status = "failed";
         }

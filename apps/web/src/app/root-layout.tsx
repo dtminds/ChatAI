@@ -136,7 +136,7 @@ export function RootLayout() {
             <span>正在验证登录状态</span>
           </div>
         </main>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
       </div>
     );
   }
@@ -148,7 +148,7 @@ export function RootLayout() {
   return (
     <div className="min-h-svh bg-background text-foreground">
       <Outlet />
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" />
     </div>
   );
 }

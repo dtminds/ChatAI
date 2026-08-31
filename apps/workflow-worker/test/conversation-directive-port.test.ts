@@ -23,7 +23,7 @@ describe("Workflow conversation directive port", () => {
     });
     const signal = new AbortController().signal;
 
-    await port.activate({
+    await port.addOrUpdate({
       bizId: "workflow-task:88",
       bizInfo: "",
       conversationId: 301,
@@ -44,13 +44,13 @@ describe("Workflow conversation directive port", () => {
     });
 
     expect(fetchImpl).toHaveBeenNthCalledWith(1,
-      new URL("https://java.internal/third-internal/wap-embed-agent-directive/add"),
+      new URL("https://java.internal/third-internal/wap-embed-agent-directive/add-or-update"),
       expect.objectContaining({
         body: JSON.stringify({
           bizId: "workflow-task:88",
           bizInfo: "",
           conversationId: 301,
-          expiresAt: "2026-08-30 09:02:03",
+          expiresAt: "2026-08-30T09:02:03",
           limitRound: 3,
           payload: "请结合当前对话自然确认订单号",
           priority: 0,
@@ -87,7 +87,7 @@ describe("Workflow conversation directive port", () => {
       fetch: vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
     });
 
-    await expect(port.activate(activationInput())).resolves.toBeUndefined();
+    await expect(port.addOrUpdate(activationInput())).resolves.toBeUndefined();
   });
 
   it("classifies an explicit Java rejection separately from an invalid envelope", async () => {
@@ -100,7 +100,7 @@ describe("Workflow conversation directive port", () => {
       }), { status: 200 })),
     });
 
-    await expect(port.activate(activationInput())).rejects.toMatchObject({
+    await expect(port.addOrUpdate(activationInput())).rejects.toMatchObject({
       code: "WORKFLOW_AI_COLLECT_DIRECTIVE_REJECTED",
       diagnosticMessage: "Directive endpoint rejected the request: 1 x",
       failureKind: "terminal",

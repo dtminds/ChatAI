@@ -250,7 +250,7 @@ function WorkflowWorkspaceContent({
           versionHistory.onSelectVersion(version);
           if (mode === "data") navigate(getWorkflowDocumentPath(surface, document.id));
         } catch {
-          toast.error("操作失败，请稍后重试");
+          toast.error("操作失败，请稍后重试", { position: "top-center" });
         }
       }
   useEffect(() => {

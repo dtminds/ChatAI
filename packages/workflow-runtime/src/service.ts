@@ -863,6 +863,27 @@ export class WorkflowRuntimeService {
       uid: input.input.uid,
       workflowId: input.run.workflowId,
     });
+    const addOrUpdateDirective = async (
+      directiveState: WorkflowAiCollectStateRecord,
+      payload: string,
+    ) => {
+      const { conversationId, expiresAt } = directiveState;
+      if (conversationId === null || expiresAt === null) {
+        throw new Error("AI Collect directive has no conversation or expiry");
+      }
+      await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.addOrUpdate({
+        bizId: directiveState.bizId,
+        bizInfo: "",
+        conversationId,
+        expiresAt,
+        limitRound: config.maxFollowUpCount,
+        payload,
+        priority: 0,
+        signal,
+        type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+        uid: directiveState.uid,
+      }));
+    };
 
     while (true) {
       if (state.terminalOutlet !== null) {
@@ -897,6 +918,21 @@ export class WorkflowRuntimeService {
             inference.result,
             state.collected,
           );
+          const completed = isWorkflowAiCollectComplete(input.node, collected);
+          const remainingFieldsChanged = config.fields.some(field =>
+            (field.id in state.collected) !== (field.id in collected));
+          const expired = state.expiresAt !== null && completedAt >= state.expiresAt;
+          const roundLimitReached = state.observedRound >= config.maxFollowUpCount;
+          if (state.directiveStatus === "active"
+            && !completed
+            && !expired
+            && !roundLimitReached
+            && remainingFieldsChanged) {
+            await addOrUpdateDirective(
+              state,
+              renderWorkflowAiCollectDirective(input.node, collected),
+            );
+          }
           state = await this.transitionAiCollectStateOrThrow({
             now: completedAt,
             taskId: state.taskId,
@@ -907,18 +943,16 @@ export class WorkflowRuntimeService {
             },
             uid: state.uid,
           });
-          if (!isWorkflowAiCollectComplete(input.node, state.collected)
+          if (!completed
             && completedBatchCutoffAt !== null
             && !completedBatchHasMore
             && state.pendingCutoffAt === null
-            && state.expiresAt !== null
-            && (completedAt >= state.expiresAt
-              || state.observedRound >= config.maxFollowUpCount)) {
+            && (expired || roundLimitReached)) {
             state = await this.transitionAiCollectStateOrThrow({
               now: completedAt,
               taskId: state.taskId,
               transition: {
-                disableReason: completedAt >= state.expiresAt ? "expired" : "round-limit-reached",
+                disableReason: expired ? "expired" : "round-limit-reached",
                 kind: "terminal",
                 outlet: "incomplete",
               },
@@ -1029,19 +1063,9 @@ export class WorkflowRuntimeService {
             });
             continue;
           }
+          const directivePayload = renderWorkflowAiCollectDirective(input.node, state.collected);
           if (state.directiveStatus === "inactive") {
-            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
-              bizId: state.bizId,
-              bizInfo: "",
-              conversationId: state.conversationId!,
-              expiresAt: state.expiresAt!,
-              limitRound: config.maxFollowUpCount,
-              payload: renderWorkflowAiCollectDirective(input.node, state.collected),
-              priority: 0,
-              signal,
-              type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
-              uid: state.uid,
-            }));
+            await addOrUpdateDirective(state, directivePayload);
             state = await this.transitionAiCollectStateOrThrow({
               now: this.clock(),
               taskId: state.taskId,

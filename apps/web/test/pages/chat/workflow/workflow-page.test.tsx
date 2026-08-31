@@ -790,6 +790,56 @@ describe("Agent workflow page", () => {
     );
   });
 
+  it("opens the data tab from the workflow row menu", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWorkflowPage("/chat/workflows");
+    const table = await screen.findByRole("table");
+    const row = within(table).getByRole("row", { name: /新人转化旅程/ });
+
+    await user.click(within(row).getByRole("button", { name: "操作 新人转化旅程" }));
+    const menuItems = screen.getAllByRole("menuitem");
+    expect(menuItems.slice(0, 2).map(item => item.textContent?.trim())).toEqual(["编辑", "数据"]);
+    const dataLink = screen.getByRole("menuitem", { name: "数据" });
+    expect(dataLink).toHaveAttribute("href", "/chat/workflows/newcomer-conversion/data");
+
+    await user.click(dataLink);
+
+    await waitFor(() => expect(router.state.location.pathname)
+      .toBe("/chat/workflows/newcomer-conversion/data"));
+    expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("marks published workflows that have unpublished changes", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      async listDocuments(input?: WorkflowListInput): Promise<WorkflowListPage> {
+        const page = await baseRepository.listDocuments(input);
+        return {
+          ...page,
+          items: page.items.map(workflow => workflow.id === "vip-reactivation"
+            ? { ...workflow, hasUnpublishedChanges: true }
+            : workflow),
+        };
+      },
+    };
+    renderWorkflowPage("/chat/workflows", repository);
+
+    const table = await screen.findByRole("table");
+    const changedRow = within(table).getByRole("row", { name: /会员复购唤醒/ });
+    const newDraftRow = within(table).getByRole("row", { name: /新人转化旅程/ });
+    const publishedRow = within(table).getByRole("row", { name: /直播后跟进/ });
+
+    const marker = within(changedRow).getByRole("img", { name: "有未发布的修改" });
+    expect(marker).toBeInTheDocument();
+    expect(within(newDraftRow).queryByRole("img", { name: "有未发布的修改" })).not.toBeInTheDocument();
+    expect(within(publishedRow).queryByRole("img", { name: "有未发布的修改" })).not.toBeInTheDocument();
+
+    await user.hover(marker);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("有未发布的修改");
+  });
+
   it("does not find workflows by description", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");

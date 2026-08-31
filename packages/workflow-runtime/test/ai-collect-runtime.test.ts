@@ -46,7 +46,7 @@ describe("AI Collect runtime", () => {
     ));
 
     expect(result).toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
-    expect(harness.directivePort.activate).not.toHaveBeenCalled();
+    expect(harness.directivePort.addOrUpdate).not.toHaveBeenCalled();
     expect(harness.directivePort.disable).not.toHaveBeenCalled();
     expect(harness.conversationPort.resolveConversation).not.toHaveBeenCalled();
     expect(harness.conversationPort.sendOpeningMessage).not.toHaveBeenCalled();
@@ -107,15 +107,95 @@ describe("AI Collect runtime", () => {
     ))).resolves.toMatchObject({ kind: "inference-waiting" });
 
     expect(order).toEqual(["inference", "activate", "opening"]);
-    expect(harness.directivePort.activate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.stringContaining("订单号"),
     }));
-    expect(harness.directivePort.activate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.not.stringContaining("收货地址"),
     }));
     expect(requireTask(harness.runtime, collectTask.id)).toMatchObject({
       status: "pending",
       taskType: "ai-collect",
+    });
+  });
+
+  it("updates Agent guidance before committing newly extracted fields", async () => {
+    const fields = [
+      { id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" as const },
+      { id: "field-phone", instruction: "提取完整手机号", name: "手机号", type: "text" as const },
+      { id: "field-address", instruction: "提取完整收货地址", name: "收货地址", type: "text" as const },
+    ];
+    const harness = createHarness({
+      fields,
+      readCustomerMessages: vi.fn(async () => ({
+        cursor: { id: 101, timestamp: enteredAt.getTime() + 1_000 },
+        hasMore: false,
+        messages: [{
+          id: 101,
+          parts: [{ text: "订单号 A100，手机号 13800138000", type: "text" }],
+          role: "customer",
+        }],
+      })),
+    });
+    const collectTask = await enterCollect(harness, {});
+
+    await harness.service.executeTask(taskInput(collectTask, enteredAt));
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledTimes(1);
+    const initialRequest = harness.directivePort.addOrUpdate.mock.calls[0]?.[0];
+    expect(initialRequest?.payload).toEqual(expect.stringContaining("订单号"));
+    expect(initialRequest?.payload).toEqual(expect.stringContaining("手机号"));
+    expect(initialRequest?.payload).toEqual(expect.stringContaining("收货地址"));
+
+    await harness.service.recordAiCollectDirectiveEvent(directiveEvent(collectTask.id, 1_000, 1));
+    const extractionAt = new Date(enteredAt.getTime() + 31_000);
+    harness.setNow(extractionAt);
+    await harness.service.executeTask(taskInput(
+      requireTask(harness.runtime, collectTask.id),
+      extractionAt,
+    ));
+    const job = await claimOnlyInference(harness.runtime, extractionAt);
+    await harness.runtime.completeInference({
+      completedAt: new Date(extractionAt.getTime() + 1_000),
+      id: job.id,
+      leaseOwner: "inference-worker",
+      result: {
+        type: "json",
+        value: {
+          F1_present: true,
+          F1_value: "A100",
+          F2_present: true,
+          F2_value: "13800138000",
+          F3_present: false,
+          F3_value: "",
+        },
+      },
+    });
+    harness.directivePort.addOrUpdate.mockImplementation(async () => {
+      expect(harness.runtime.aiCollectStates[0]).toMatchObject({
+        activeInferenceKey: job.executionKey,
+        collected: {},
+      });
+    });
+
+    const resumedAt = new Date(extractionAt.getTime() + 1_000);
+    harness.setNow(resumedAt);
+    await harness.service.executeTask(taskInput(
+      requireTask(harness.runtime, collectTask.id),
+      resumedAt,
+    ));
+
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledTimes(2);
+    const updatedRequest = harness.directivePort.addOrUpdate.mock.calls[1]?.[0];
+    expect(updatedRequest).toMatchObject({
+      bizId: initialRequest?.bizId,
+      limitRound: 3,
+    });
+    expect(updatedRequest?.payload).not.toContain("订单号");
+    expect(updatedRequest?.payload).not.toContain("手机号");
+    expect(updatedRequest?.payload).toContain("收货地址");
+    expect(harness.runtime.aiCollectStates[0]?.collected).toEqual({
+      "field-order": "A100",
+      "field-phone": "13800138000",
     });
   });
 
@@ -185,6 +265,7 @@ describe("AI Collect runtime", () => {
       pendingTask,
       new Date(enteredAt.getTime() + 46_000),
     ));
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledTimes(1);
     expect(harness.runtime.inferenceJobs).toHaveLength(1);
     pendingTask = requireTask(harness.runtime, collectTask.id);
     expect(pendingTask.dueAt).toEqual(new Date(enteredAt.getTime() + 75_000));
@@ -212,7 +293,13 @@ describe("AI Collect runtime", () => {
         role: "customer" as const,
       }],
     }));
-    const harness = createHarness({ readCustomerMessages });
+    const harness = createHarness({
+      fields: [
+        { id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" },
+        { id: "field-address", instruction: "提取完整收货地址", name: "收货地址", type: "text" },
+      ],
+      readCustomerMessages,
+    });
     const collectTask = await enterCollect(harness, {});
 
     await harness.service.executeTask(taskInput(collectTask, enteredAt));
@@ -236,7 +323,12 @@ describe("AI Collect runtime", () => {
       leaseOwner: "inference-worker",
       result: {
         type: "json",
-        value: { F1_present: false, F1_value: "" },
+        value: {
+          F1_present: true,
+          F1_value: "A100",
+          F2_present: false,
+          F2_value: "",
+        },
       },
     });
     harness.setNow(new Date(timeoutAt.getTime() + 1_000));
@@ -249,6 +341,7 @@ describe("AI Collect runtime", () => {
     expect(harness.directivePort.disable).toHaveBeenCalledWith(expect.objectContaining({
       reason: "expired",
     }));
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -296,7 +389,7 @@ function createHarness(options: {
     sendOpeningMessage: vi.fn(async () => options.onOpeningMessage?.()),
   };
   const directivePort: WorkflowConversationDirectivePort = {
-    activate: vi.fn(async () => options.onActivate?.()),
+    addOrUpdate: vi.fn(async () => options.onActivate?.()),
     disable: vi.fn(async () => {}),
   };
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
@@ -309,7 +402,7 @@ function createHarness(options: {
   return {
     conversationPort,
     directivePort: directivePort as {
-      activate: ReturnType<typeof vi.fn>;
+      addOrUpdate: ReturnType<typeof vi.fn>;
       disable: ReturnType<typeof vi.fn>;
     },
     runtime,

@@ -1332,6 +1332,31 @@ html.dark[data-appearance-theme="nature"] {
   pointer-events: none;
 }
 
+[data-sonner-toast][data-styled="true"] [data-close-button] {
+  background: var(--background) !important;
+  border-color: var(--border) !important;
+  color: var(--muted-foreground) !important;
+  left: auto !important;
+  opacity: 0;
+  pointer-events: none;
+  right: 0 !important;
+  transform: translate(35%, -35%) !important;
+  transition: opacity 120ms ease;
+}
+
+[data-sonner-toast][data-styled="true"]:hover [data-close-button],
+[data-sonner-toast][data-styled="true"]:focus-within [data-close-button] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none), (pointer: coarse) {
+  [data-sonner-toast][data-styled="true"] [data-close-button] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shiny-text,
   .animated-text-switch__char,

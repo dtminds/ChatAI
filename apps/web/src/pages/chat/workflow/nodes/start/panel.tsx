@@ -396,9 +396,9 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
 async function copyDirectEntryEndpoint(endpointUrl: string) {
   try {
     await navigator.clipboard.writeText(endpointUrl);
-    toast.success("已复制推送地址");
+    toast.success("已复制推送地址", { position: "top-center" });
   } catch {
-    toast.error("操作失败，请稍后重试");
+    toast.error("操作失败，请稍后重试", { position: "top-center" });
   }
 }
 

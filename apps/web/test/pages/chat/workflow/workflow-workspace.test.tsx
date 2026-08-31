@@ -105,14 +105,14 @@ describe("useWorkflowWorkspace", () => {
     });
     expect(repository.pauseDocument).toHaveBeenCalledWith(initial.id);
     expect(result.current.document.runtimeStatus).toBe("paused");
-    expect(toast.success).toHaveBeenLastCalledWith("已暂停");
+    expect(toast.success).toHaveBeenLastCalledWith("已暂停", { position: "top-center" });
 
     await act(async () => {
       await result.current.topBar.onResume?.();
     });
     expect(repository.resumeDocument).toHaveBeenCalledWith(initial.id);
     expect(result.current.document.runtimeStatus).toBe("active");
-    expect(toast.success).toHaveBeenLastCalledWith("已启用");
+    expect(toast.success).toHaveBeenLastCalledWith("已启用", { position: "top-center" });
   });
 
   it("keeps stopped nodes selectable while exposing a read-only inspector", () => {
@@ -706,7 +706,7 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
-      expect(toast.success).toHaveBeenCalledWith("发布成功");
+      expect(toast.success).toHaveBeenCalledWith("发布成功", { position: "top-center" });
       expect(getStartSourceMarker(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
     }
     finally {
@@ -750,7 +750,7 @@ describe("useWorkflowWorkspace", () => {
     await act(async () => {
       await result.current.topBar.onSubmitReview();
     });
-    expect(toast.error).toHaveBeenLastCalledWith("校验未通过");
+    expect(toast.error).toHaveBeenLastCalledWith("校验未通过", { position: "top-center" });
 
     const pending = baseRepository.submitReview(initial.id);
     const reviewId = pending.currentReview!.id;
@@ -778,7 +778,10 @@ describe("useWorkflowWorkspace", () => {
     await act(async () => {
       await approvedResult.current.topBar.onPublish();
     });
-    expect(toast.error).toHaveBeenLastCalledWith("审核内容依赖的业务资源已变化，请处理后重试发布");
+    expect(toast.error).toHaveBeenLastCalledWith(
+      "审核内容依赖的业务资源已变化，请处理后重试发布",
+      { position: "top-center" },
+    );
     expect(toast.error).toHaveBeenCalledTimes(5);
 
     const inactive = {
@@ -793,7 +796,10 @@ describe("useWorkflowWorkspace", () => {
     await act(async () => {
       await inactiveResult.current.topBar.onEnable?.();
     });
-    expect(toast.error).toHaveBeenLastCalledWith("最多同时运行 50 个工作流");
+    expect(toast.error).toHaveBeenLastCalledWith(
+      "最多同时运行 50 个工作流",
+      { position: "top-center" },
+    );
     expect(toast.error).toHaveBeenCalledTimes(6);
   });
 

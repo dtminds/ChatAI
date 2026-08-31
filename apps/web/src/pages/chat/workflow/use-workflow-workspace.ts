@@ -43,6 +43,8 @@ import {
   reduceWorkflowViewState,
 } from "./workflow-view-state";
 
+const workflowToastOptions = { position: "top-center" } as const;
+
 type WorkflowWorkspaceEditResult = {
   draft: WorkflowDraft;
   edgeId?: string;
@@ -500,9 +502,9 @@ export function useWorkflowWorkspace(
     closeCanvasOverlays();
     try {
       const result = await submitReview();
-      if (result) toast.success("已提交审核");
+      if (result) toast.success("已提交审核", workflowToastOptions);
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
     }
   });
 
@@ -511,9 +513,9 @@ export function useWorkflowWorkspace(
     if (!reviewId) return;
     try {
       const result = await publishReview(reviewId);
-      if (result) toast.success("发布成功");
+      if (result) toast.success("发布成功", workflowToastOptions);
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
     }
   });
 
@@ -521,14 +523,14 @@ export function useWorkflowWorkspace(
     try {
       const result = await enableDocument();
       if (result) {
-        toast.success("已启用");
+        toast.success("已启用", workflowToastOptions);
         return true;
       }
     } catch (error) {
-      toast.error(getWorkflowLifecycleErrorMessage("enable", error));
+      toast.error(getWorkflowLifecycleErrorMessage("enable", error), workflowToastOptions);
       return false;
     }
-    toast.error("操作失败，请稍后重试");
+    toast.error("操作失败，请稍后重试", workflowToastOptions);
     return false;
   });
 
@@ -536,14 +538,14 @@ export function useWorkflowWorkspace(
     try {
       const result = await pauseDocument();
       if (result) {
-        toast.success("已暂停");
+        toast.success("已暂停", workflowToastOptions);
         return true;
       }
     } catch (error) {
-      toast.error(getWorkflowLifecycleErrorMessage("pause", error));
+      toast.error(getWorkflowLifecycleErrorMessage("pause", error), workflowToastOptions);
       return false;
     }
-    toast.error("操作失败，请稍后重试");
+    toast.error("操作失败，请稍后重试", workflowToastOptions);
     return false;
   });
 
@@ -551,14 +553,14 @@ export function useWorkflowWorkspace(
     try {
       const result = await resumeDocument();
       if (result) {
-        toast.success("已启用");
+        toast.success("已启用", workflowToastOptions);
         return true;
       }
     } catch (error) {
-      toast.error(getWorkflowLifecycleErrorMessage("resume", error));
+      toast.error(getWorkflowLifecycleErrorMessage("resume", error), workflowToastOptions);
       return false;
     }
-    toast.error("操作失败，请稍后重试");
+    toast.error("操作失败，请稍后重试", workflowToastOptions);
     return false;
   });
 
@@ -567,10 +569,10 @@ export function useWorkflowWorkspace(
     if (!reviewId) return false;
     try {
       const result = await approveReview(reviewId, comment);
-      if (result) toast.success("审核通过");
+      if (result) toast.success("审核通过", workflowToastOptions);
       return Boolean(result);
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
       return false;
     }
   });
@@ -580,10 +582,10 @@ export function useWorkflowWorkspace(
     if (!reviewId) return false;
     try {
       const result = await rejectReview(reviewId, reason);
-      if (result) toast.success("已驳回审核");
+      if (result) toast.success("已驳回审核", workflowToastOptions);
       return Boolean(result);
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
       return false;
     }
   });
@@ -593,10 +595,10 @@ export function useWorkflowWorkspace(
     if (!reviewId) return false;
     try {
       const result = await withdrawReview(reviewId);
-      if (result) toast.success("已撤回审核");
+      if (result) toast.success("已撤回审核", workflowToastOptions);
       return Boolean(result);
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
       return false;
     }
   });
@@ -606,7 +608,7 @@ export function useWorkflowWorkspace(
       return await updateMetadata(metadata);
     }
     catch {
-      toast.error("保存失败，请重试");
+      toast.error("保存失败，请重试", workflowToastOptions);
       return false;
     }
   });
@@ -738,10 +740,10 @@ export function useWorkflowWorkspace(
       clearEdgeSelection();
       clearNodeSelection();
       closeCanvasOverlays();
-      toast.success("已还原到指定版本");
+      toast.success("已还原到指定版本", workflowToastOptions);
       return true;
     } catch (error) {
-      toast.error(getWorkflowReviewActionErrorMessage(error));
+      toast.error(getWorkflowReviewActionErrorMessage(error), workflowToastOptions);
       return false;
     }
   });

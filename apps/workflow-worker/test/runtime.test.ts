@@ -39,6 +39,32 @@ describe("workflow worker runtime", () => {
     expect(resources.database.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("flushes runtime state before destroying the database", async () => {
+    const resources = createResources();
+    const closeOrder: string[] = [];
+    const runtimeState = {
+      close: vi.fn(async () => { closeOrder.push("runtime-state"); }),
+      markConsumer: vi.fn(),
+      markFailed: vi.fn(),
+      markStarted: vi.fn(),
+      markSucceeded: vi.fn(),
+    };
+    resources.database.destroy.mockImplementation(async () => {
+      closeOrder.push("database");
+    });
+
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+      database: resources.database,
+      runtimeState,
+    });
+
+    await runtime.close();
+
+    expect(closeOrder).toEqual(["runtime-state", "database"]);
+  });
+
   it("does not require inference dependencies when the inference role is disabled", async () => {
     const resources = createResources();
     const runtime = await startWorkflowWorkerRuntime({

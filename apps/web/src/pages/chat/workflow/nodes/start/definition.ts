@@ -140,7 +140,14 @@ export function createStartNodeData(
 
 function sanitizeStartSource(data: StartNodeData): StartNodeData {
   if (isWeComStartNodeData(data)) {
-    const { seatIds: _seatIds, ...weComData } = data as StartNodeData & { seatIds?: unknown };
+    const {
+      messageSendingWindow: _messageSendingWindow,
+      seatIds: _seatIds,
+      ...weComData
+    } = data as StartNodeData & {
+      messageSendingWindow?: unknown;
+      seatIds?: unknown;
+    };
     return {
       ...weComData,
       workUserIds: sanitizePositiveIds(data.workUserIds),

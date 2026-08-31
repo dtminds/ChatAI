@@ -179,7 +179,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
   "occurredAt": "2026-08-24T08:30:15.123Z",
   "source": "chatai",
   "payload": {
-    "workflowId": "31",
+    "workflowId": 31,
     "workUserId": 201,
     "seatId": 101,
     "thirdExternalUserId": "chatai_external_456",
@@ -188,7 +188,7 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
 }
 ```
 
-WeCom contact Workflow 必填 `workflowId`、`workUserId`、`externalUserId`。ChatAI contact Workflow 必填 `workflowId`、`workUserId`、`seatId`、`thirdExternalUserId`，`externalUserId` 可选。Java 解密 endpoint key 得到 `workflowId`，且重试同一逻辑投递时必须复用 `eventId`。
+WeCom contact Workflow 必填正整数 `workflowId`、`workUserId`、`externalUserId`。ChatAI contact Workflow 必填正整数 `workflowId`、`workUserId`、`seatId`、`thirdExternalUserId`，`externalUserId` 可选。Java 解密 endpoint key 得到 `workflowId`，且重试同一逻辑投递时必须复用 `eventId`。Producer 可以携带额外字段，Worker 会在进入 Runtime 前清洗掉未定义字段。
 
 ## 4. Java 只读数据库契约
 

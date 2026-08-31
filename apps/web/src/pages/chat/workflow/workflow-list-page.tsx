@@ -408,6 +408,9 @@ export function WorkflowListPage({
             }}
             onRename={openMetadataDialog}
             operationPendingId={lifecyclePendingId}
+            sourceColumnLabel={surface.createWorkflowType === "wecom_sop"
+              ? "企微成员"
+              : "托管账号"}
             workflows={items}
           />
         ) : null}

@@ -16,6 +16,8 @@ export type WorkflowManagedAccountSummary = {
   name: string;
 };
 
+export type WorkflowWeComMemberSummary = WorkflowManagedAccountSummary;
+
 export type WorkflowListItem = {
   description: string;
   id: string;
@@ -31,6 +33,8 @@ export type WorkflowListItem = {
   trigger: string;
   totalRunCount: number;
   updatedAt: string;
+  wecomMemberCount: number;
+  wecomMembers: WorkflowWeComMemberSummary[];
   workflowType: WorkflowType;
   hasUnpublishedChanges: boolean;
 };

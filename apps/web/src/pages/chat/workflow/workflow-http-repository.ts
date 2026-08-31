@@ -518,6 +518,8 @@ function toDocument(
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     totalRunCount: 0,
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
+    wecomMemberCount: 0,
+    wecomMembers: [],
     workflowType: definition.workflowType,
     currentReview: definition.currentReview,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
@@ -548,6 +550,8 @@ function toListItem(definition: ApiWorkflowDefinitionListItem): WorkflowListItem
     trigger: definition.trigger,
     totalRunCount: definition.totalRunCount,
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
+    wecomMemberCount: definition.wecomMemberCount,
+    wecomMembers: definition.wecomMembers,
     workflowType: definition.workflowType,
     hasUnpublishedChanges: definition.hasUnpublishedChanges,
   };

@@ -44,6 +44,7 @@ import { canViewInsightsWorkerObservability } from "../insights/insights-worker-
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 import { getWorkflowActiveRunLimit } from "../../config/env.js";
 import { createCustomFieldService } from "../ai-hosting/custom-field.service.js";
+import { createWecomMemberService } from "./wecom-member.service.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -120,6 +121,8 @@ export async function registerWorkflowRoutes(
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
+      logger: app.log,
+      wecomMemberReader: createWecomMemberService(app.log),
     },
   );
   await registerAudienceGroupRoutes(app);

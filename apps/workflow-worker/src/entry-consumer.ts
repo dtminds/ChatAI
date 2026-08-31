@@ -176,7 +176,7 @@ export function createEntryConsumerHandler(input: {
       }
       return consumeDirectEntry(message, {
         ...parsed.event,
-        payload: parsed.event.payload as WorkflowDirectEntryPayload,
+        payload: normalizeDirectEntryPayload(parsed.event.payload as WorkflowDirectEntryPayload),
       }, input);
     }
     if (parsed.event.eventType === WORKFLOW_AGENT_DIRECTIVE_EVENT_TYPE) {
@@ -389,6 +389,19 @@ async function consumeAgentDirectiveEvent(
   }
 }
 
+function normalizeDirectEntryPayload(payload: WorkflowDirectEntryPayload): WorkflowDirectEntryPayload {
+  const normalized: Record<string, unknown> = {
+    workflowId: payload.workflowId,
+    workUserId: payload.workUserId,
+  };
+  if ("externalUserId" in payload) normalized.externalUserId = payload.externalUserId;
+  if ("seatId" in payload) normalized.seatId = payload.seatId;
+  if ("thirdExternalUserId" in payload) {
+    normalized.thirdExternalUserId = payload.thirdExternalUserId;
+  }
+  return normalized as WorkflowDirectEntryPayload;
+}
+
 async function consumeDirectEntry(
   message: WorkflowBrokerMessage,
   event: WorkflowEntryEvent & {
@@ -419,7 +432,7 @@ async function consumeDirectEntry(
       event.uid,
       WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
     );
-    const matchedBinding = bindings.find(binding => binding.workflowId === event.payload.workflowId
+    const matchedBinding = bindings.find(binding => binding.workflowId === String(event.payload.workflowId)
       && binding.filter.eventType === WORKFLOW_DIRECT_ENTRY_EVENT_TYPE
       && binding.filter.workUserIds.includes(event.payload.workUserId));
 

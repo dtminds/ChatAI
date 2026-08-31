@@ -311,7 +311,8 @@ export class WorkflowRuntimeService {
     source: string;
     uid: number;
   }) {
-    const definition = await this.controlRepository.findDefinition(input.uid, input.payload.workflowId);
+    const workflowId = String(input.payload.workflowId);
+    const definition = await this.controlRepository.findDefinition(input.uid, workflowId);
     if (!definition) throw workflowUnavailable();
     if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
       throw runtimeStatusError(definition.runtimeStatus);
@@ -319,7 +320,7 @@ export class WorkflowRuntimeService {
     if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
     const revision = await this.controlRepository.findRevision(
       input.uid,
-      input.payload.workflowId,
+      workflowId,
       input.expectedRevision,
     );
     if (!revision || revision.workflowType !== definition.workflowType) {
@@ -329,7 +330,8 @@ export class WorkflowRuntimeService {
     const startConfig = requireStartConfig(entryNode);
     if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
     const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
-    const { workflowId, ...projection } = input.payload;
+    const projection: Record<string, unknown> = { ...input.payload };
+    delete projection.workflowId;
     return this.createInitialRun({
       entryEventId: input.entryEventId,
       revision,

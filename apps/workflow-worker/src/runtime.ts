@@ -395,8 +395,8 @@ export async function startWorkflowWorkerRuntime(input: {
     readiness.database = false;
     await Promise.allSettled(loops.map(loop => loop.close()));
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
+    await (input.runtimeState?.close() ?? Promise.resolve());
     await Promise.allSettled([
-      input.runtimeState?.close() ?? Promise.resolve(),
       input.entitlementCache?.close() ?? Promise.resolve(),
       input.broker.close(),
       input.database.destroy(),

@@ -23,7 +23,7 @@ Java publishes to the existing Workflow Entry topic after resolving the endpoint
   "occurredAt": "2026-08-24T08:30:15.123Z",
   "source": "chatai",
   "payload": {
-    "workflowId": "31",
+    "workflowId": 31,
     "externalUserId": 3267,
     "workUserId": 201,
     "seatId": 101,
@@ -32,7 +32,7 @@ Java publishes to the existing Workflow Entry topic after resolving the endpoint
 }
 ```
 
-`eventId` is producer-owned and must uniquely identify one logical delivery. Retrying the same delivery reuses the same value. `workflowId` is the Java-decoded plain ID. Payload identity fields use the same concrete identities as existing Entry events; no generic `subjectId` is accepted.
+`eventId` is producer-owned and must uniquely identify one logical delivery. Retrying the same delivery reuses the same value. `workflowId` is a positive integer containing the Java-decoded plain ID. Payload identity fields use the same concrete identities as existing Entry events; no generic `subjectId` is accepted. Additional producer fields are accepted for forward compatibility and removed by the Worker before Runtime admission.
 
 For WeCom contact Workflows, payload requires `workflowId`, `externalUserId`, and `workUserId`. For ChatAI contact Workflows, payload requires `workflowId`, `workUserId`, `seatId`, and `thirdExternalUserId`; `externalUserId` is optional.
 

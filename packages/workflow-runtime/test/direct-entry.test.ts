@@ -73,7 +73,7 @@ describe("workflow direct entry", () => {
     }, "wecom_sop");
 
     await expect(service.startDirectRun(directInput({
-      payload: { externalUserId: 3267, workUserId: 201, workflowId: "31" },
+      payload: { externalUserId: 3267, workUserId: 201, workflowId: 31 },
       source: "wecom",
     }))).resolves.toMatchObject({
       kind: "success",
@@ -170,7 +170,7 @@ function directInput(
       seatId: 101,
       thirdExternalUserId: "chatai-contact-1",
       workUserId: 201,
-      workflowId: "31",
+      workflowId: 31,
     },
     payloadVersion: 1,
     source: "chatai",

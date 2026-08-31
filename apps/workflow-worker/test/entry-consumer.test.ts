@@ -109,7 +109,7 @@ describe("workflow entry consumer", () => {
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
-        workflowId: "31",
+        workflowId: 31,
       },
       payloadVersion: 1,
       source: "chatai",
@@ -182,7 +182,7 @@ describe("workflow entry consumer", () => {
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
-        workflowId: "31",
+        workflowId: 31,
       },
     });
 
@@ -195,7 +195,7 @@ describe("workflow entry consumer", () => {
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
-        workflowId: "31",
+        workflowId: 31,
       },
     }));
   });
@@ -1156,9 +1156,10 @@ function directEvent(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntry
     payload: {
       externalUserId: 3267,
       seatId: 101,
+      taskId: 62,
       thirdExternalUserId: "chatai-contact-1",
       workUserId: 201,
-      workflowId: "31",
+      workflowId: 31,
     },
     source: "chatai",
     ...overrides,

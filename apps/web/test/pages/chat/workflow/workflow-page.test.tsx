@@ -665,6 +665,53 @@ describe("Agent workflow page", () => {
     postMessage.mockRestore();
   });
 
+  it("opens data from the embedded Workflow list in fullscreen", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository("sop_embed");
+    const document = await repository.createDocument({
+      name: "营销画布数据跳转",
+      workflowType: "wecom_sop",
+    });
+    const router = createMemoryRouter([
+      {
+        path: "/embed/workflows",
+        element: <WorkflowPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId/data",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+    ], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+
+    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
+    const row = await screen.findByRole("row", { name: new RegExp(document.name) });
+
+    await user.click(within(row).getByRole("button", { name: `操作 ${document.name}` }));
+    const dataLink = screen.getByRole("menuitem", { name: "数据" });
+    expect(dataLink).toHaveAttribute("href", `/embed/workflows/${document.id}/data`);
+
+    await user.click(dataLink);
+
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        channel: "smp-basement-chat-embed",
+        fullscreen: true,
+        path: `/embed/workflows/${document.id}/data`,
+        type: "navigate",
+      },
+      "*",
+    );
+    expect(router.state.location.pathname).toBe(`/embed/workflows/${document.id}/data`);
+    expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
+    postMessage.mockRestore();
+  });
+
   it("creates WeCom SOPs without showing a type selector from the embedded Workflow list", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository("sop_embed");
@@ -861,6 +908,7 @@ describe("Agent workflow page", () => {
     const { router } = renderWorkflowPage("/chat/workflows");
     const table = await screen.findByRole("table");
     const row = within(table).getByRole("row", { name: /新人转化旅程/ });
+    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
 
     await user.click(within(row).getByRole("button", { name: "操作 新人转化旅程" }));
     const menuItems = screen.getAllByRole("menuitem");
@@ -873,6 +921,8 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(router.state.location.pathname)
       .toBe("/chat/workflows/newcomer-conversion/data"));
     expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
+    expect(postMessage).not.toHaveBeenCalled();
+    postMessage.mockRestore();
   });
 
   it("marks published workflows that have unpublished changes", async () => {

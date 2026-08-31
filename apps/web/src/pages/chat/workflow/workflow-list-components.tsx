@@ -355,7 +355,12 @@ function WorkflowRowMenu({
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to={`${editorPath}/data`}>
+          <Link
+            onClick={() => {
+              notifyParentWorkflowEditor(`${editorPath}/data`, notifyParentOnOpen);
+            }}
+            to={`${editorPath}/data`}
+          >
             <HugeiconsIcon icon={Activity01Icon} size={16} strokeWidth={1.8} />
             数据
           </Link>

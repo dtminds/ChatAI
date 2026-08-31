@@ -624,7 +624,7 @@ describe("Agent workflow page", () => {
   it("opens the editor from the embedded Workflow list", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository("sop_embed");
-    const document = repository.createDocument({
+    const document = await repository.createDocument({
       name: "营销画布编辑跳转",
       workflowType: "wecom_sop",
     });

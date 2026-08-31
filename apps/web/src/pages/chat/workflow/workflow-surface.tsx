@@ -71,3 +71,7 @@ export function getWorkflowDocumentPath(
   const path = `${profile.webBasePath}/${workflowId}`;
   return mode === "data" ? `${path}/data` : path;
 }
+
+export function getWorkflowCreatePath(profile: WorkflowSurfaceProfile) {
+  return `${profile.webBasePath}/new`;
+}

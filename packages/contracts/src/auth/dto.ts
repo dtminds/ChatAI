@@ -66,7 +66,18 @@ export const AuthLoginRequestSchema = Type.Object({
   password: Type.String(),
 });
 
+export const AuthEmbedSsoRequestSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 2048 }),
+  uid: Type.String({ minLength: 1, maxLength: 2048 }),
+});
+
 export const AuthLoginResponseSchema = Type.Object({
+  expiresIn: Type.Number(),
+  subUser: AuthSubUserSchema,
+});
+
+export const AuthEmbedSsoResponseSchema = Type.Object({
+  accessToken: Type.String({ minLength: 1 }),
   expiresIn: Type.Number(),
   subUser: AuthSubUserSchema,
 });
@@ -119,7 +130,9 @@ export const JwtUserSchema = Type.Object({
 });
 
 export type AuthLoginRequest = Static<typeof AuthLoginRequestSchema>;
+export type AuthEmbedSsoRequest = Static<typeof AuthEmbedSsoRequestSchema>;
 export type AuthLoginResponse = Static<typeof AuthLoginResponseSchema>;
+export type AuthEmbedSsoResponse = Static<typeof AuthEmbedSsoResponseSchema>;
 export type AuthRefreshRequest = Static<typeof AuthRefreshRequestSchema>;
 export type AuthRefreshResponse = Static<typeof AuthRefreshResponseSchema>;
 export type AuthSessionResponse = Static<typeof AuthSessionResponseSchema>;

@@ -45,7 +45,7 @@ chatai-prod
 
 三类环境的 Java 内部接口约定如下：
 
-- 开发环境：`JAVA_INTERNAL_API_BASE_URL=https://scrm-api-test01.st.iyouke.com/`
+- 开发环境：`JAVA_INTERNAL_API_BASE_URL=<平台内部 API 地址>`
 - 测试环境：使用测试 Java 内部地址，由测试 namespace 的 Secret / ConfigMap 提供
 - 生产环境：使用生产 Java 内部地址，由生产 namespace 的 Secret / ConfigMap 提供
 

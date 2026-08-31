@@ -64,10 +64,12 @@ import {
 } from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 import {
+  getWorkflowCreatePath,
   getWorkflowDocumentPath,
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
+import { postSmpBasementChatEmbedNavigate } from "./workflow-embed-bridge";
 
 export function WorkflowPage({
   repository,
@@ -202,7 +204,11 @@ export function WorkflowListPage({
       }));
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
-      navigate(getWorkflowDocumentPath(surface, document.id));
+      const path = getWorkflowDocumentPath(surface, document.id);
+      if (surface.embedded) {
+        postSmpBasementChatEmbedNavigate(path, true);
+      }
+      navigate(path);
       return true;
     }
     catch (error) {
@@ -362,6 +368,13 @@ export function WorkflowListPage({
           <Button
             className="h-10 px-4"
             onClick={() => {
+              if (surface.embedded) {
+                const path = getWorkflowCreatePath(surface);
+                postSmpBasementChatEmbedNavigate(path, true);
+                navigate(path);
+                return;
+              }
+
               setCreateDialogOpen(true);
             }}
             type="button"
@@ -382,6 +395,7 @@ export function WorkflowListPage({
           <WorkflowListTable
             detailBasePath={surface.webBasePath}
             loading={status === "loading" && items.length === 0}
+            notifyParentOnOpen={surface.embedded}
             onDelete={(workflow) => {
               setDeleteTarget(workflow);
             }}
@@ -444,7 +458,7 @@ export function WorkflowListPage({
         onDelete={() => void deleteWorkflow()}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
-            setDeleteTarget(null);
+
           }
         }}
         open={Boolean(deleteTarget)}

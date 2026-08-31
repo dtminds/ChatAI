@@ -1,6 +1,7 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountPermission } from "@chatai/contracts";
+import { getEmbedAccessToken, setEmbedAccessToken } from "@/lib/embed-access-token";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { useAuthStore } from "@/store/auth-store";
@@ -21,6 +22,7 @@ const operatorSubUser = {
 describe("request", () => {
   afterEach(() => {
     mock.reset();
+    setEmbedAccessToken(null);
     useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
@@ -365,6 +367,46 @@ describe("request", () => {
     });
 
     await expect(http.get("/server/me")).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
+    expect(mock.history.post).toHaveLength(0);
+    expect(sessionChanged).toHaveBeenCalledTimes(1);
+    window.removeEventListener("chatai:auth-session-changed", sessionChanged);
+  });
+
+  it("sends the embed access token as a bearer header", async () => {
+    setEmbedAccessToken("embed-access-token");
+    mock.onGet("/server/embed/workflows").reply((config) => [
+      200,
+      {
+        authorization: config.headers?.Authorization,
+      },
+    ]);
+
+    const response = await http.get<{ authorization: string }>(
+      "/server/embed/workflows",
+    );
+
+    expect(getEmbedAccessToken()).toBe("embed-access-token");
+    expect(response).toEqual({
+      authorization: "Bearer embed-access-token",
+    });
+  });
+
+  it("does not cookie-refresh when an embed access token is present", async () => {
+    const sessionChanged = vi.fn();
+    window.addEventListener("chatai:auth-session-changed", sessionChanged);
+    setEmbedAccessToken("embed-access-token");
+    mock.onGet("/server/embed/workflows").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+
+    await expect(http.get("/server/embed/workflows")).rejects.toMatchObject({
       code: "UNAUTHORIZED",
       status: 401,
     });

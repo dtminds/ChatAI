@@ -1,7 +1,9 @@
 import {
   apiError,
   apiSuccess,
+  AuthEmbedSsoRequestSchema,
   AuthLoginRequestSchema,
+  type AuthEmbedSsoRequest,
   type AuthLoginRequest,
   SupportInvestigationStartRequestSchema,
   type SupportInvestigationStartRequest,
@@ -12,9 +14,11 @@ import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js"
 import {
   getCurrentSession,
   loginWithPassword,
+  loginWithSmpEmbed,
   refreshAccessToken,
   revokeSession,
 } from "./auth.service.js";
+import { createJavaSmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import {
   clearAuthCookies,
   readAuthCookie,
@@ -85,6 +89,38 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
 
       return apiSuccess({
+        expiresIn: login.expiresIn,
+        subUser: login.subUser,
+      });
+    },
+  );
+  app.post<{ Body: AuthEmbedSsoRequest }>(
+    "/api/auth/embed-sso",
+    {
+      schema: {
+        body: AuthEmbedSsoRequestSchema,
+      },
+    },
+    async (request, reply) => {
+      const login = await loginWithSmpEmbed(
+        app,
+        request.body,
+        createJavaSmpEmbedDecryptPort(request.log),
+        {
+          ip: getRequestIp(request),
+          userAgent: request.headers["user-agent"],
+        },
+      );
+
+      setAuthCookies(reply, {
+        accessToken: login.accessToken,
+        accessTokenMaxAgeSeconds: login.expiresIn,
+        refreshToken: login.refreshToken,
+        refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
+      });
+
+      return apiSuccess({
+        accessToken: login.accessToken,
         expiresIn: login.expiresIn,
         subUser: login.subUser,
       });

@@ -1,4 +1,5 @@
 import type { AccountPermission, AuthSubUser } from "@chatai/contracts";
+import { clearEmbedAuthHandoff } from "@/lib/embed-access-token";
 import { create } from "zustand";
 
 type AuthStatus = "anonymous" | "authenticated" | "checking";
@@ -26,6 +27,7 @@ function createInitialState() {
 export const useAuthStore = create<AuthState>((set, get) => ({
   ...createInitialState(),
   clearSession(checkedPath = null) {
+    clearEmbedAuthHandoff();
     set({
       checkedPath,
       errorMessage: undefined,

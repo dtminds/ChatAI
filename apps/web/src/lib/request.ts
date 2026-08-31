@@ -6,6 +6,7 @@ import axios, {
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
+import { getEmbedAccessToken } from "@/lib/embed-access-token";
 import type { AuthRefreshResponse } from "@chatai/contracts";
 
 export type RequestError = {
@@ -88,6 +89,11 @@ requestInstance.interceptors.request.use((config) => {
 
   headers.set("X-Workbench-Client", "chat-ai-ui");
   headers.set("Accept", "application/json");
+  const embedAccessToken = getEmbedAccessToken();
+
+  if (embedAccessToken && !headers.get("Authorization")) {
+    headers.set("Authorization", `Bearer ${embedAccessToken}`);
+  }
 
   config.headers = headers;
 
@@ -217,7 +223,7 @@ export async function request<TResponse = unknown, TPayload = unknown>(
       }
     }
 
-    if (shouldEndSupportSession(error, config)) {
+    if (shouldEndSupportSession(error, config) || shouldRetryEmbedSso(error, config)) {
       notifyAuthSessionChanged();
     }
 
@@ -230,11 +236,19 @@ function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {
     config._skipAuthRetry
     || config._authRetry
     || isSupportReadOnlySession()
+    || getEmbedAccessToken()
   ) {
     return false;
   }
 
   return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
+function shouldRetryEmbedSso(error: unknown, config: AuthRetryConfig) {
+  return !config._skipAuthRetry
+    && Boolean(getEmbedAccessToken())
+    && axios.isAxiosError(error)
+    && error.response?.status === 401;
 }
 
 function shouldEndSupportSession(error: unknown, config: AuthRetryConfig) {

@@ -33,7 +33,7 @@ describe("voice message playback", () => {
 
     expect(message.content).toMatchObject({
       type: "voice",
-      audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+      audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
       durationLabel: "",
     });
   });
@@ -83,7 +83,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
         }}
@@ -1067,7 +1067,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
         }}
@@ -1114,7 +1114,7 @@ describe("voice message playback", () => {
         <VoiceMessageCard
           content={{
             type: "voice",
-            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/first.amr",
+            audioUrl: "https://media.example.com/bilin/20260421/272/first.amr",
             durationLabel: "11\"",
             playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
           }}
@@ -1123,7 +1123,7 @@ describe("voice message playback", () => {
         <VoiceMessageCard
           content={{
             type: "voice",
-            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/second.amr",
+            audioUrl: "https://media.example.com/bilin/20260421/272/second.amr",
             durationLabel: "12\"",
             playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
           }}
@@ -1164,7 +1164,7 @@ describe("voice message playback", () => {
         <VoiceMessageCard
           content={{
             type: "voice",
-            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/first.amr",
+            audioUrl: "https://media.example.com/bilin/20260421/272/first.amr",
             durationLabel: "11\"",
             playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
           }}
@@ -1173,7 +1173,7 @@ describe("voice message playback", () => {
         <VoiceMessageCard
           content={{
             type: "voice",
-            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/second.amr",
+            audioUrl: "https://media.example.com/bilin/20260421/272/second.amr",
             durationLabel: "12\"",
             playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
           }}
@@ -1202,7 +1202,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
         }}
@@ -1240,7 +1240,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
           transFileUrlPersisted: false,
@@ -1265,7 +1265,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
           transFileUrlPersisted: false,
@@ -1299,7 +1299,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/first.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/first.amr",
           durationLabel: "11\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
         }}
@@ -1316,7 +1316,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/second.amr",
+          audioUrl: "https://media.example.com/bilin/20260421/272/second.amr",
           durationLabel: "12\"",
           playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
         }}
@@ -1347,7 +1347,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.mp3",
+          audioUrl: "https://media.example.com/bilin/20260421/272/voice.mp3",
           durationLabel: "11\"",
         }}
         isAgent={false}
@@ -1451,7 +1451,7 @@ function stubAudio({
 function createVoiceDto(): WorkbenchMessageDto {
   return {
     content: {
-      audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+      audioUrl: "https://media.example.com/bilin/20260421/272/voice.amr",
       durationLabel: "",
     },
     contentType: "voice",

@@ -1,6 +1,8 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  AuthEmbedSsoRequestSchema,
+  AuthEmbedSsoResponseSchema,
   AuthRefreshResponseSchema,
   AuthSessionResponseSchema,
   JwtUserSchema,
@@ -234,6 +236,48 @@ describe("settings sub-account DTOs", () => {
         itemIds: ["202", "201"],
       }),
     ).toBe(true);
+  });
+
+  it("accepts encrypted embed SSO tickets", () => {
+    expect(
+      Value.Check(AuthEmbedSsoRequestSchema, {
+        id: "enc-id",
+        uid: "enc-uid",
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthEmbedSsoRequestSchema, {
+        id: "",
+        uid: "enc-uid",
+      }),
+    ).toBe(false);
+  });
+
+  it("requires embed SSO access token", () => {
+    const subUser = {
+      accountType: "sub",
+      displayName: "营销画布账号",
+      permissions: ["chat.access"],
+      role: "operator",
+      subUserId: "101",
+      uid: 9001,
+    };
+
+    expect(
+      Value.Check(AuthEmbedSsoResponseSchema, {
+        accessToken: "embed-access-token",
+        expiresIn: 1200,
+        subUser,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthEmbedSsoResponseSchema, {
+        expiresIn: 1200,
+        subUser,
+      }),
+    ).toBe(false);
   });
 
   it("accepts auth session role and permissions", () => {

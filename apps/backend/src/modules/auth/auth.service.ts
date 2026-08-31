@@ -1,5 +1,6 @@
 import type {
   AccountRole,
+  AuthEmbedSsoRequest,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthSubUser,
@@ -23,6 +24,7 @@ import {
   deriveAccountType,
   getRolePermissions,
 } from "./permissions.js";
+import type { SmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import { canStartSupportInvestigation } from "./support-investigation-access.js";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
@@ -61,6 +63,12 @@ export class InvalidCredentialsError extends AppError {
   }
 }
 
+export class InvalidEmbedTicketError extends AppError {
+  constructor() {
+    super("EMBED_SSO_REJECTED", "当前账号不可用", 401);
+  }
+}
+
 export type AuthSessionTokens = {
   accessToken: string;
   expiresIn: number;
@@ -91,6 +99,46 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
+  return issueAuthSession(app, subUser, metadata);
+}
+
+export async function loginWithSmpEmbed(
+  app: FastifyInstance,
+  payload: AuthEmbedSsoRequest,
+  decryptPort: SmpEmbedDecryptPort,
+  metadata: LoginRequestMetadata = {},
+): Promise<AuthSessionTokens> {
+  const [decryptedId, decryptedUid] = await Promise.all([
+    decryptPort.decrypt(payload.id),
+    decryptPort.decrypt(payload.uid),
+  ]);
+  const subUserId = parsePositiveInteger(decryptedId);
+  const uid = parsePositiveInteger(decryptedUid);
+
+  if (subUserId === undefined || uid === undefined) {
+    throw new InvalidEmbedTicketError();
+  }
+
+  const subUser = await findActiveSubUser(app.db, subUserId);
+
+  if (!subUser || subUser.uid !== uid) {
+    throw new InvalidEmbedTicketError();
+  }
+
+  return issueAuthSession(app, subUser, metadata);
+}
+
+async function issueAuthSession(
+  app: FastifyInstance,
+  subUser: {
+    id: number;
+    name: string;
+    role?: string | null;
+    type?: number | null;
+    uid: number;
+  },
+  metadata: LoginRequestMetadata,
+): Promise<AuthSessionTokens> {
   const session = await createOrReplaceSession(app.db, subUser.id, {
     ip: metadata.ip,
     userAgent: metadata.userAgent,
@@ -573,4 +621,20 @@ function hashRefreshToken(refreshToken: string) {
 
 function createRefreshExpiry() {
   return new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function parsePositiveInteger(value: string) {
+  const normalized = value.trim();
+
+  if (!/^[1-9]\d*$/.test(normalized)) {
+    return undefined;
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isSafeInteger(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
 }

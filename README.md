@@ -203,6 +203,16 @@ pnpm database:codegen -- table_name
 - **`qd`**：仅在当前会话为**群聊**且后端返回了三方群 ID（`thirdGroupId`）时追加，供嵌入页识别群会话。
 - **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，由后端 `POST /api/server/sidebar-iframe-params` 按当前席位与会话（服务端查库）签发并拼入 URL；**切换会话或侧栏 Tab 时会重新请求**，从而刷新 `ts`。前端不持有 `secret` / `iv`。仅用于 URL 脱敏与既有嵌入页协议，**不是**对嵌入页的身份防伪边界。
 
+### 营销画布嵌入页查询参数
+
+SMP 打开 `/embed/workflows` 时会拼接加密的 `id`、`uid`。ChatAI 用这两个参数换登录态，再展示画布列表：
+
+- 浏览器只请求 `POST /api/auth/embed-sso`，不直接调用内部解密接口。
+- 后端分别解密 `id`、`uid`，确认账号存在且属于该租户后签发正常登录。
+- SMP 嵌在跨站 iframe 里时，ChatAI 的登录 cookie 带不过去；换票后的接口用请求头带登录，不依赖 iframe cookie。
+- 嵌在 SMP 里时，点「新建」或进入 `/embed/workflows/编号` 会通知外层全屏；返回列表时退出全屏。登录凭证只放在通知的 `token` 字段里，**不要**写进 iframe 的 `src`。外层用 `path` 打开地址后，再把 `token` 用同样的 channel 回传给 iframe。
+- 没有换票参数且也没有可用登录凭证时回到登录页；只有换票被明确拒绝时才提示账号不可用。连不上服务时会重试，不会误显示账号不可用。
+
 ## 关键文件
 
 - 腾讯云容器部署指南：[docs/deployment/tencent-cloud-containers.md](docs/deployment/tencent-cloud-containers.md)

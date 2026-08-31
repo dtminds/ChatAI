@@ -7,6 +7,7 @@ import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insight
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
+  CHAT_EMBED_HOSTNAMES: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
@@ -109,6 +110,7 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
 
   if (env.NODE_ENV === "production") {
     requiredVariables.push(
+      "CHAT_EMBED_HOSTNAMES",
       "JWT_PRIVATE_KEY",
       "JWT_PUBLIC_KEY",
       "JAVA_INTERNAL_API_BASE_URL",

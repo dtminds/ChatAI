@@ -9,6 +9,27 @@ const schemaSql = readFileSync(resolve(__dirname, "../../../../docs/db/schema.sq
 const changeLogMarkdown = readFileSync(resolve(__dirname, "../../../../docs/db/change-log.md"), "utf8");
 
 describe("database schema document", () => {
+  it("defines independently revocable embed browser sessions", () => {
+    const sessionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_sub_user_embed_session",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-31 Embed 独立登录会话",
+    );
+
+    expect(sessionTable).toContain("UNIQUE KEY uk_sub_user_embed_session_refresh");
+    expect(sessionTable).toContain(
+      "KEY idx_sub_user_embed_session_sub_user_expiry (sub_user_id, expires_at, id)",
+    );
+    expect(sessionTable).not.toContain("UNIQUE KEY uk_sub_user_id");
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS xy_wap_embed_sub_user_embed_session",
+    );
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_sub_user_embed_session");
+  });
+
   it("defines the final ticket fields on session action items", () => {
     const actionItemTable = extractCreateTable(schemaSql, "xy_wap_embed_session_action_item");
 

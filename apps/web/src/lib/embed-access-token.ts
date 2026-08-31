@@ -1,12 +1,12 @@
 const EMBED_AUTH_HANDOFF_STORAGE_KEY = "chatai.embed-auth-handoff";
 
-export type EmbedWorkflowTickets = {
+export type EmbedTickets = {
   id: string;
   uid: string;
 };
 
 let embedAccessToken: string | null = null;
-let embedTickets: EmbedWorkflowTickets | null = null;
+let embedTickets: EmbedTickets | null = null;
 
 export function setEmbedAccessToken(token: string | null) {
   embedAccessToken = token && token.trim() ? token : null;
@@ -17,14 +17,14 @@ export function getEmbedAccessToken() {
   return embedAccessToken;
 }
 
-export function rememberEmbedWorkflowTickets(tickets: EmbedWorkflowTickets | null) {
+export function rememberEmbedTickets(tickets: EmbedTickets | null) {
   embedTickets = tickets && tickets.id.trim() && tickets.uid.trim()
     ? { id: tickets.id.trim(), uid: tickets.uid.trim() }
     : null;
   persistEmbedAuthHandoff();
 }
 
-export function getRememberedEmbedWorkflowTickets() {
+export function getRememberedEmbedTickets() {
   return embedTickets;
 }
 
@@ -61,7 +61,7 @@ export function consumeEmbedAuthHandoffFromSearch(search: string) {
   }
 
   if (id && uid) {
-    rememberEmbedWorkflowTickets({ id, uid });
+    rememberEmbedTickets({ id, uid });
   }
 
   params.delete("token");
@@ -95,7 +95,7 @@ export function stripEmbedAccessTokenFromWindowLocation() {
   );
 }
 
-export function withEmbedWorkflowHandoff(path: string) {
+export function withEmbedAuthHandoff(path: string) {
   const url = new URL(path, "https://chatai.local");
 
   if (embedTickets) {
@@ -132,7 +132,7 @@ function persistEmbedAuthHandoff() {
 
 function readStoredEmbedAuthHandoff(): {
   accessToken: string | null;
-  tickets: EmbedWorkflowTickets | null;
+  tickets: EmbedTickets | null;
 } {
   try {
     const raw = sessionStorage.getItem(EMBED_AUTH_HANDOFF_STORAGE_KEY);

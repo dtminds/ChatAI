@@ -5,7 +5,9 @@ export const ACCESS_TOKEN_COOKIE_NAME = "chatai_access_token";
 export const REFRESH_TOKEN_COOKIE_NAME = "chatai_refresh_token";
 
 const accessTokenCookiePath = "/api";
-const refreshTokenCookiePath = "/api/auth/refresh";
+// Embed SSO reuses the current browser Session when its access token expires.
+// The refresh cookie therefore needs to reach both refresh and embed-sso.
+const refreshTokenCookiePath = "/api/auth";
 const sharedAuthCookieOptions = {
   httpOnly: true,
   sameSite: "strict" as const,

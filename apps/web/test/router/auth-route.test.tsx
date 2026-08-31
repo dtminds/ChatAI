@@ -5,7 +5,11 @@ import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RootLayout } from "@/app/root-layout";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
-import { getEmbedAccessToken, clearEmbedAuthHandoff } from "@/lib/embed-access-token";
+import {
+  clearEmbedAuthHandoff,
+  getEmbedAccessToken,
+  setEmbedAccessToken,
+} from "@/lib/embed-access-token";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
@@ -92,7 +96,7 @@ describe("auth routes", () => {
     });
   });
 
-  it("redirects /embed/workflows to login when the session is missing", async () => {
+  it("keeps an unauthenticated embed page out of the login flow", async () => {
     mock.onGet("/auth/session").reply(401, {
       error: {
         code: "UNAUTHORIZED",
@@ -106,19 +110,19 @@ describe("auth routes", () => {
 
     render(<RouterProvider router={router} />);
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/login");
-    });
-    expect(router.state.location.search).toBe("?redirect=%2Fembed%2Fworkflows");
+    expect(await screen.findByText("当前账号不可用")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/embed/workflows");
   });
 
   it("logs in embed workflows with encrypted id and uid tickets", async () => {
-    mock.onGet("/auth/session").reply(401, {
-      error: {
-        code: "UNAUTHORIZED",
-        message: "登录已失效",
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: {
+          ...operatorSubUser,
+          subUserId: "999",
+        },
       },
-      success: false,
+      success: true,
     });
     mock.onPost("/auth/embed-sso").reply(200, {
       data: {
@@ -143,6 +147,7 @@ describe("auth routes", () => {
     });
     expect(getEmbedAccessToken()).toBe("embed-access-token");
     expect(mock.history.post.filter((request) => request.url === "/auth/embed-sso")).toHaveLength(1);
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       id: "enc-id",
       uid: "enc-uid",
@@ -188,6 +193,7 @@ describe("auth routes", () => {
   });
 
   it("does not send embed workflows to login when the encrypted tickets are rejected", async () => {
+    setEmbedAccessToken("stale-access-token");
     mock.onGet("/auth/session").reply(401, {
       error: {
         code: "UNAUTHORIZED",
@@ -213,6 +219,7 @@ describe("auth routes", () => {
     });
     expect(router.state.location.pathname).toBe("/embed/workflows");
     expect(useAuthStore.getState().status).toBe("anonymous");
+    expect(getEmbedAccessToken()).toBeNull();
   });
 
   it("does not treat embed SSO network failures as an unusable account", async () => {
@@ -278,6 +285,40 @@ describe("auth routes", () => {
       });
     });
     expect(screen.queryByText("登录页占位")).not.toBeInTheDocument();
+  });
+
+  it("clears a rejected token-only embed handoff", async () => {
+    mock.onGet("/auth/session").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            {
+              path: "embed/workflows",
+              element: <div data-testid="embed-content" />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ["/embed/workflows?token=stale-handoff-token"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByTestId("embed-content")).toBeInTheDocument();
+    expect(getEmbedAccessToken()).toBe("stale-handoff-token");
+
+    expect(await screen.findByText("当前账号不可用")).toBeInTheDocument();
+    expect(getEmbedAccessToken()).toBeNull();
+    expect(useAuthStore.getState().status).toBe("anonymous");
   });
 
   it("still redirects /chat/workflows to login when the session is missing", async () => {

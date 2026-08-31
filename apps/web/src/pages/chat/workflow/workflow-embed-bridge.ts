@@ -1,4 +1,4 @@
-import { withEmbedWorkflowHandoff } from "@/lib/embed-access-token";
+import { withEmbedAuthHandoff } from "@/lib/embed-access-token";
 
 export const SMP_BASEMENT_CHAT_EMBED_CHANNEL = "smp-basement-chat-embed";
 
@@ -7,7 +7,7 @@ export function postSmpBasementChatEmbedNavigate(path: string, fullscreen: boole
     {
       channel: SMP_BASEMENT_CHAT_EMBED_CHANNEL,
       type: "navigate",
-      path: withEmbedWorkflowHandoff(path),
+      path: withEmbedAuthHandoff(path),
       fullscreen,
     },
     "*",

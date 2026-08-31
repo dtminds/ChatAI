@@ -93,6 +93,7 @@ async function createAuthenticatedSettingsApp(
 
 describe("backend app", () => {
   beforeEach(() => {
+    process.env.CHAT_EMBED_HOSTNAMES = "embed.example.com";
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
     process.env.NODE_ENV = "development";
   });
@@ -107,6 +108,7 @@ describe("backend app", () => {
     delete process.env.ALTCHA_PARALLELISM;
     delete process.env.AUTH_COOKIE_SECURE;
     delete process.env.AUTH_DEV_BYPASS;
+    delete process.env.CHAT_EMBED_HOSTNAMES;
     delete process.env.DATABASE_URL;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
@@ -529,7 +531,7 @@ describe("backend app", () => {
     );
     expect(readSetCookieHeader(response, ACCESS_TOKEN_COOKIE_NAME)).toContain("Path=/api");
     expect(readSetCookieHeader(response, REFRESH_TOKEN_COOKIE_NAME)).toContain(
-      "Path=/api/auth/refresh",
+      "Path=/api/auth",
     );
 
     const decoded = app.jwt.verify(readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME));

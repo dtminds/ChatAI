@@ -1,10 +1,10 @@
 import {
-  getRememberedEmbedWorkflowTickets,
+  getRememberedEmbedTickets,
   stripEmbedAccessTokenFromSearch,
 } from "@/lib/embed-access-token";
 
 const DEFAULT_AUTH_REDIRECT = "/chat";
-const EMBED_WORKFLOW_PATH = "/embed/workflows";
+const EMBED_PATH = "/embed";
 
 type RedirectLocation = {
   hash?: string;
@@ -12,17 +12,16 @@ type RedirectLocation = {
   search?: string;
 };
 
-export type EmbedWorkflowSsoParams = {
+export type EmbedSsoParams = {
   id: string;
   uid: string;
 };
 
-export function isEmbedWorkflowPath(pathname: string) {
-  return pathname === EMBED_WORKFLOW_PATH
-    || pathname.startsWith(`${EMBED_WORKFLOW_PATH}/`);
+export function isEmbedPath(pathname: string) {
+  return pathname === EMBED_PATH || pathname.startsWith(`${EMBED_PATH}/`);
 }
 
-export function readEmbedWorkflowSsoParams(search: string): EmbedWorkflowSsoParams | null {
+export function readEmbedSsoParams(search: string): EmbedSsoParams | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const id = params.get("id")?.trim() ?? "";
   const uid = params.get("uid")?.trim() ?? "";
@@ -34,10 +33,10 @@ export function readEmbedWorkflowSsoParams(search: string): EmbedWorkflowSsoPara
   return { id, uid };
 }
 
-export function readEmbedWorkflowSsoAttempt(location: RedirectLocation) {
-  if (isEmbedWorkflowPath(location.pathname)) {
-    const params = readEmbedWorkflowSsoParams(location.search ?? "")
-      ?? getRememberedEmbedWorkflowTickets();
+export function readEmbedSsoAttempt(location: RedirectLocation) {
+  if (isEmbedPath(location.pathname)) {
+    const params = readEmbedSsoParams(location.search ?? "")
+      ?? getRememberedEmbedTickets();
 
     if (!params) {
       return null;
@@ -58,11 +57,11 @@ export function readEmbedWorkflowSsoAttempt(location: RedirectLocation) {
   try {
     const redirectUrl = new URL(redirect, "https://chatai.local");
 
-    if (!isEmbedWorkflowPath(redirectUrl.pathname)) {
+    if (!isEmbedPath(redirectUrl.pathname)) {
       return null;
     }
 
-    const params = readEmbedWorkflowSsoParams(redirectUrl.search);
+    const params = readEmbedSsoParams(redirectUrl.search);
 
     if (!params) {
       return null;

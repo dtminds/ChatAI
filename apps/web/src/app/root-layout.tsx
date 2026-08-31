@@ -6,10 +6,11 @@ import { Toaster } from "@/components/ui/sonner";
 import { useAppearancePreferences } from "@/hooks/use-appearance-preferences";
 import {
   buildLoginRedirectPath,
-  isEmbedWorkflowPath,
-  readEmbedWorkflowSsoAttempt,
+  isEmbedPath,
+  readEmbedSsoAttempt,
 } from "@/pages/auth/auth-redirect";
 import {
+  clearEmbedAuthHandoff,
   consumeEmbedAuthHandoffFromSearch,
   getEmbedAccessToken,
   restoreEmbedAuthHandoff,
@@ -34,7 +35,7 @@ function isPublicPath(pathname: string, search: string) {
 }
 
 function applyEmbedAuthHandoff(pathname: string, search: string) {
-  if (!isEmbedWorkflowPath(pathname)) {
+  if (!isEmbedPath(pathname)) {
     return;
   }
 
@@ -50,8 +51,14 @@ export function RootLayout() {
   useAppearancePreferences();
 
   const location = useLocation();
-  applyEmbedAuthHandoff(location.pathname, location.search);
-  const embedSsoAttempt = readEmbedWorkflowSsoAttempt(location);
+  const appliedEmbedHandoffLocationRef = useRef<string | null>(null);
+
+  if (appliedEmbedHandoffLocationRef.current !== location.key) {
+    applyEmbedAuthHandoff(location.pathname, location.search);
+    appliedEmbedHandoffLocationRef.current = location.key;
+  }
+  const embedPath = isEmbedPath(location.pathname);
+  const embedSsoAttempt = readEmbedSsoAttempt(location);
   const clearSession = useAuthStore((state) => state.clearSession);
   const checkedPath = useAuthStore((state) => state.checkedPath);
   const setChecking = useAuthStore((state) => state.setChecking);
@@ -66,7 +73,8 @@ export function RootLayout() {
   const lastSubUserIdRef = useRef<string | null>(null);
   const [embedLoginUnavailable, setEmbedLoginUnavailable] = useState(false);
   const [embedRetryNonce, setEmbedRetryNonce] = useState(0);
-  const hasEmbedAccessToken = isEmbedWorkflowPath(location.pathname)
+  const hasEmbedAccessToken = embedPath
+    && !embedSsoAttempt
     && Boolean(getEmbedAccessToken());
 
   useEffect(() => {
@@ -105,59 +113,67 @@ export function RootLayout() {
         setChecking();
       }
 
-      try {
-        const response = await getAuthSession();
+      const applyAuthenticatedSession = (
+        nextSubUser: Awaited<ReturnType<typeof getAuthSession>>["data"]["subUser"],
+      ) => {
+        if (!isActive) {
+          return;
+        }
 
-        if (isActive) {
-          const nextSubUserId = response.data.subUser.subUserId;
-          // RootLayout may mount after login already populated auth-store, so
-          // compare the last synced session first and fall back to auth-store.
-          const currentSubUserId =
-            lastSubUserIdRef.current ?? authSubUserIdRef.current;
+        const nextSubUserId = nextSubUser.subUserId;
+        const currentSubUserId =
+          lastSubUserIdRef.current ?? authSubUserIdRef.current;
 
-          if (
-            currentSubUserId !== null &&
-            currentSubUserId !== nextSubUserId
-          ) {
+        if (currentSubUserId !== null && currentSubUserId !== nextSubUserId) {
+          resetWorkbenchSession();
+        }
+
+        lastSubUserIdRef.current = nextSubUserId;
+        setEmbedLoginUnavailable(false);
+        setSession(nextSubUser);
+      };
+
+      if (embedSsoAttempt) {
+        try {
+          const embedLogin = await loginWithEmbedSso(embedSsoAttempt.params);
+          applyAuthenticatedSession(embedLogin.data.subUser);
+          return;
+        } catch (embedError) {
+          if (isActive && isEmbedSsoRejected(embedError)) {
+            clearEmbedAuthHandoff();
             resetWorkbenchSession();
+            lastSubUserIdRef.current = null;
+            clearSession(location.pathname);
+            return;
           }
 
-          lastSubUserIdRef.current = nextSubUserId;
-          setEmbedLoginUnavailable(false);
-          setSession(response.data.subUser);
-        }
-      } catch {
-        if (embedSsoAttempt) {
-          try {
-            const embedLogin = await loginWithEmbedSso(embedSsoAttempt.params);
-
-            if (isActive) {
-              lastSubUserIdRef.current = embedLogin.data.subUser.subUserId;
-              setEmbedLoginUnavailable(false);
-              setSession(embedLogin.data.subUser);
+          if (isActive) {
+            if (embedRetryTimer !== undefined) {
+              window.clearTimeout(embedRetryTimer);
             }
-            return;
-          } catch (embedError) {
-            if (isActive && !isEmbedSsoRejected(embedError)) {
-              if (embedRetryTimer !== undefined) {
-                window.clearTimeout(embedRetryTimer);
-              }
 
-              if (embedRetryCount >= EMBED_SSO_RETRY_LIMIT) {
-                setEmbedLoginUnavailable(true);
-                return;
-              }
-
-              embedRetryCount += 1;
-              embedRetryTimer = window.setTimeout(() => {
-                void syncAuthSessionState({ force: true });
-              }, EMBED_SSO_RETRY_INTERVAL_MS);
+            if (embedRetryCount >= EMBED_SSO_RETRY_LIMIT) {
+              setEmbedLoginUnavailable(true);
               return;
             }
-          }
-        }
 
+            embedRetryCount += 1;
+            embedRetryTimer = window.setTimeout(() => {
+              void syncAuthSessionState({ force: true });
+            }, EMBED_SSO_RETRY_INTERVAL_MS);
+          }
+          return;
+        }
+      }
+
+      try {
+        const response = await getAuthSession();
+        applyAuthenticatedSession(response.data.subUser);
+      } catch {
         if (isActive) {
+          if (embedPath) {
+            clearEmbedAuthHandoff();
+          }
           resetWorkbenchSession();
           lastSubUserIdRef.current = null;
           clearSession(location.pathname);
@@ -200,7 +216,7 @@ export function RootLayout() {
     return <Navigate replace to={embedSsoAttempt.returnPath} />;
   }
 
-  if (embedSsoAttempt && embedLoginUnavailable) {
+  if (embedPath && embedLoginUnavailable) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">
@@ -251,7 +267,7 @@ export function RootLayout() {
     );
   }
 
-  if (embedSsoAttempt && status === "anonymous" && !hasEmbedAccessToken) {
+  if (embedPath && status === "anonymous" && !hasEmbedAccessToken) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">

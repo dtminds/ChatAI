@@ -3,11 +3,11 @@ import {
   clearEmbedAuthHandoff,
   consumeEmbedAuthHandoffFromSearch,
   getEmbedAccessToken,
-  getRememberedEmbedWorkflowTickets,
+  getRememberedEmbedTickets,
   restoreEmbedAuthHandoff,
   setEmbedAccessToken,
   stripEmbedAccessTokenFromSearch,
-  withEmbedWorkflowHandoff,
+  withEmbedAuthHandoff,
 } from "@/lib/embed-access-token";
 
 describe("embed access token handoff", () => {
@@ -22,7 +22,7 @@ describe("embed access token handoff", () => {
 
     expect(search).toBe("?id=enc-id&uid=enc-uid");
     expect(getEmbedAccessToken()).toBe("handoff-token");
-    expect(getRememberedEmbedWorkflowTickets()).toEqual({
+    expect(getRememberedEmbedTickets()).toEqual({
       id: "enc-id",
       uid: "enc-uid",
     });
@@ -31,7 +31,7 @@ describe("embed access token handoff", () => {
   it("appends remembered tickets onto an embed path without the access token", () => {
     consumeEmbedAuthHandoffFromSearch("?id=enc-id&uid=enc-uid&token=handoff-token");
 
-    expect(withEmbedWorkflowHandoff("/embed/workflows/31")).toBe(
+    expect(withEmbedAuthHandoff("/embed/workflows/31")).toBe(
       "/embed/workflows/31?id=enc-id&uid=enc-uid",
     );
     expect(getEmbedAccessToken()).toBe("handoff-token");
@@ -56,7 +56,7 @@ describe("embed access token handoff", () => {
     restoreEmbedAuthHandoff();
 
     expect(getEmbedAccessToken()).toBe("stored-token");
-    expect(getRememberedEmbedWorkflowTickets()).toEqual({
+    expect(getRememberedEmbedTickets()).toEqual({
       id: "enc-id",
       uid: "enc-uid",
     });

@@ -123,6 +123,10 @@ export const JwtUserSchema = Type.Object({
   actorUid: Type.Optional(Type.Number()),
   investigationReason: Type.Optional(SupportInvestigationReasonSchema),
   roles: Type.Array(Type.String()),
+  sessionKind: Type.Optional(Type.Union([
+    Type.Literal("app"),
+    Type.Literal("embed"),
+  ])),
   sessionId: Type.String(),
   sessionVersion: Type.Number(),
   subUserId: Type.String(),

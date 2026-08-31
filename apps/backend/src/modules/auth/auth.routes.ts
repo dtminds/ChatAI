@@ -13,6 +13,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
 import {
   getCurrentSession,
+  InvalidEmbedTicketError,
   loginWithPassword,
   loginWithSmpEmbed,
   refreshAccessToken,
@@ -21,11 +22,13 @@ import {
 import { createJavaSmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import {
   clearAuthCookies,
+  ACCESS_TOKEN_COOKIE_NAME,
   readAuthCookie,
   REFRESH_TOKEN_COOKIE_NAME,
   setAuthCookies,
   setSupportAuthCookie,
 } from "./auth-cookies.js";
+import { getRequestAuthSessionKind, requireAuthHost } from "./auth-host.js";
 import {
   listSupportInvestigationAccounts,
   startSupportInvestigation,
@@ -76,17 +79,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      requireAuthHost(request, "app");
       const login = await loginWithPassword(app, request.body, {
         ip: getRequestIp(request),
         userAgent: request.headers["user-agent"],
       });
 
-      setAuthCookies(reply, {
-        accessToken: login.accessToken,
-        accessTokenMaxAgeSeconds: login.expiresIn,
-        refreshToken: login.refreshToken,
-        refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
-      });
+      setLoginCookies(reply, login);
 
       return apiSuccess({
         expiresIn: login.expiresIn,
@@ -102,22 +101,33 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const login = await loginWithSmpEmbed(
-        app,
-        request.body,
-        createJavaSmpEmbedDecryptPort(request.log),
-        {
-          ip: getRequestIp(request),
-          userAgent: request.headers["user-agent"],
-        },
-      );
+      requireAuthHost(request, "embed");
+      let login: Awaited<ReturnType<typeof loginWithSmpEmbed>>;
 
-      setAuthCookies(reply, {
-        accessToken: login.accessToken,
-        accessTokenMaxAgeSeconds: login.expiresIn,
-        refreshToken: login.refreshToken,
-        refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
-      });
+      try {
+        login = await loginWithSmpEmbed(
+          app,
+          request.body,
+          createJavaSmpEmbedDecryptPort(request.log),
+          {
+            ip: getRequestIp(request),
+            userAgent: request.headers["user-agent"],
+          },
+          {
+            accessToken: readAuthCookie(request, ACCESS_TOKEN_COOKIE_NAME),
+            refreshToken: readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME),
+          },
+        );
+      } catch (error) {
+        if (error instanceof InvalidEmbedTicketError) {
+          clearAuthCookies(reply);
+        }
+        throw error;
+      }
+
+      if (login.cookiesChanged) {
+        setLoginCookies(reply, login);
+      }
 
       return apiSuccess({
         accessToken: login.accessToken,
@@ -140,14 +150,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }
 
       try {
-        const refresh = await refreshAccessToken(app, refreshToken);
+        const refresh = await refreshAccessToken(
+          app,
+          refreshToken,
+          getRequestAuthSessionKind(request),
+        );
 
-        setAuthCookies(reply, {
-          accessToken: refresh.accessToken,
-          accessTokenMaxAgeSeconds: refresh.expiresIn,
-          refreshToken: refresh.refreshToken,
-          refreshTokenMaxAgeSeconds: refresh.refreshTokenExpiresIn,
-        });
+        setLoginCookies(reply, refresh);
 
         return apiSuccess({
           expiresIn: refresh.expiresIn,
@@ -207,11 +216,31 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
   );
   app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request, reply) => {
-    const result = await revokeSession(app, request.user);
+    const result = await revokeSession(
+      app,
+      request.user,
+      getRequestAuthSessionKind(request),
+    );
 
     clearAuthCookies(reply);
 
     return apiSuccess(result);
+  });
+}
+
+function setLoginCookies(
+  reply: Parameters<typeof setAuthCookies>[0],
+  login: Awaited<ReturnType<typeof loginWithPassword>>,
+) {
+  if (!login.refreshToken) {
+    throw new Error("Cannot set auth cookies without a refresh token");
+  }
+
+  setAuthCookies(reply, {
+    accessToken: login.accessToken,
+    accessTokenMaxAgeSeconds: login.expiresIn,
+    refreshToken: login.refreshToken,
+    refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
   });
 }
 

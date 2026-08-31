@@ -3318,6 +3318,50 @@ export interface XyWapEmbedSubUserSession {
   user_agent: string | null;
 }
 
+export interface XyWapEmbedSubUserEmbedSession {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * refresh token过期时间
+   */
+  expires_at: Date;
+  id: Generated<number>;
+  /**
+   * 登录IP
+   */
+  ip: string | null;
+  /**
+   * 最近刷新时间
+   */
+  last_used_at: Date | null;
+  /**
+   * refresh token哈希
+   */
+  refresh_token_hash: string;
+  /**
+   * 吊销时间
+   */
+  revoked_at: Date | null;
+  /**
+   * 会话版本
+   */
+  session_version: Generated<number>;
+  /**
+   * 子账号id(xy_wap_embed_sub_user.id)
+   */
+  sub_user_id: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 登录设备UA
+   */
+  user_agent: string | null;
+}
+
 export interface XyWapEmbedUserRelation {
   /**
    * appid
@@ -3607,6 +3651,7 @@ export interface DB {
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_support_investigation_log: XyWapEmbedSupportInvestigationLog;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
+  xy_wap_embed_sub_user_embed_session: XyWapEmbedSubUserEmbedSession;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;
   xy_wap_embed_ticket_activity: XyWapEmbedTicketActivity;
   xy_wap_embed_user_relation: XyWapEmbedUserRelation;

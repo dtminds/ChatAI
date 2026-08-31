@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearEmbedAuthHandoff,
-  rememberEmbedWorkflowTickets,
+  rememberEmbedTickets,
 } from "@/lib/embed-access-token";
 import {
   buildLoginRedirectPath,
-  isEmbedWorkflowPath,
-  readEmbedWorkflowSsoAttempt,
-  readEmbedWorkflowSsoParams,
+  isEmbedPath,
+  readEmbedSsoAttempt,
+  readEmbedSsoParams,
   resolveLoginRedirect,
 } from "@/pages/auth/auth-redirect";
 
@@ -66,16 +66,16 @@ describe("auth redirect", () => {
   });
 
   it("reads encrypted embed workflow tickets from the query string", () => {
-    expect(isEmbedWorkflowPath("/embed/workflows")).toBe(true);
-    expect(isEmbedWorkflowPath("/embed/workflows/31")).toBe(true);
-    expect(isEmbedWorkflowPath("/chat/workflows")).toBe(false);
-    expect(readEmbedWorkflowSsoParams("?id=enc-id&uid=enc-uid")).toEqual({
+    expect(isEmbedPath("/embed/workflows")).toBe(true);
+    expect(isEmbedPath("/embed/future-module/31")).toBe(true);
+    expect(isEmbedPath("/chat/workflows")).toBe(false);
+    expect(readEmbedSsoParams("?id=enc-id&uid=enc-uid")).toEqual({
       id: "enc-id",
       uid: "enc-uid",
     });
-    expect(readEmbedWorkflowSsoParams("?id=enc-id")).toBeNull();
+    expect(readEmbedSsoParams("?id=enc-id")).toBeNull();
     expect(
-      readEmbedWorkflowSsoAttempt({
+      readEmbedSsoAttempt({
         pathname: "/login",
         search: "?redirect=%2Fembed%2Fworkflows%3Fid%3Denc-id%26uid%3Denc-uid",
       }),
@@ -86,10 +86,10 @@ describe("auth redirect", () => {
   });
 
   it("reuses remembered embed tickets when the editor path has no query", () => {
-    rememberEmbedWorkflowTickets({ id: "enc-id", uid: "enc-uid" });
+    rememberEmbedTickets({ id: "enc-id", uid: "enc-uid" });
 
     expect(
-      readEmbedWorkflowSsoAttempt({
+      readEmbedSsoAttempt({
         pathname: "/embed/workflows/31",
         search: "?token=secret-token",
       }),

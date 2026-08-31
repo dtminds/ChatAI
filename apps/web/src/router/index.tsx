@@ -2,12 +2,14 @@ import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import {
   Navigate,
   createBrowserRouter,
+  useLocation,
   useRouteError,
 } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
+import { isPagePathAllowedForHostname } from "@/lib/host-page-access";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -212,10 +214,21 @@ function RouteLoadingFallback() {
   );
 }
 
+function HostRestrictedRoot() {
+  const location = useLocation();
+  const hostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
+
+  if (!isPagePathAllowedForHostname(hostname, location.pathname)) {
+    return withRouteSuspense(<NotFoundPage />);
+  }
+
+  return <RootLayout />;
+}
+
 export const routerConfig = [
   {
     path: "/",
-    element: <RootLayout />,
+    element: <HostRestrictedRoot />,
     errorElement: <RouteErrorFallback />,
     children: [
       {

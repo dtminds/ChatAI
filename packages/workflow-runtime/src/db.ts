@@ -294,7 +294,6 @@ export interface WorkflowAiCollectStateTable {
   directive_lease_expires_at: NullableDate;
   directive_lease_owner: string | null;
   directive_next_attempt_at: DatabaseDate;
-  directive_payload: string | null;
   directive_status: string;
   disable_reason: string | null;
   expires_at: NullableDate;

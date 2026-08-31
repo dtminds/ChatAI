@@ -119,7 +119,7 @@ describe("AI Collect runtime", () => {
     });
   });
 
-  it("updates Agent guidance after extraction reduces the remaining fields", async () => {
+  it("updates Agent guidance before committing newly extracted fields", async () => {
     const fields = [
       { id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" as const },
       { id: "field-phone", instruction: "提取完整手机号", name: "手机号", type: "text" as const },
@@ -170,6 +170,12 @@ describe("AI Collect runtime", () => {
         },
       },
     });
+    harness.directivePort.addOrUpdate.mockImplementation(async () => {
+      expect(harness.runtime.aiCollectStates[0]).toMatchObject({
+        activeInferenceKey: job.executionKey,
+        collected: {},
+      });
+    });
 
     const resumedAt = new Date(extractionAt.getTime() + 1_000);
     harness.setNow(resumedAt);
@@ -187,7 +193,10 @@ describe("AI Collect runtime", () => {
     expect(updatedRequest?.payload).not.toContain("订单号");
     expect(updatedRequest?.payload).not.toContain("手机号");
     expect(updatedRequest?.payload).toContain("收货地址");
-    expect(harness.runtime.aiCollectStates[0]?.directivePayload).toBe(updatedRequest?.payload);
+    expect(harness.runtime.aiCollectStates[0]?.collected).toEqual({
+      "field-order": "A100",
+      "field-phone": "13800138000",
+    });
   });
 
   it("resets the quiet window and keeps callbacks queued behind one in-flight inference", async () => {
@@ -284,7 +293,13 @@ describe("AI Collect runtime", () => {
         role: "customer" as const,
       }],
     }));
-    const harness = createHarness({ readCustomerMessages });
+    const harness = createHarness({
+      fields: [
+        { id: "field-order", instruction: "提取完整订单号", name: "订单号", type: "text" },
+        { id: "field-address", instruction: "提取完整收货地址", name: "收货地址", type: "text" },
+      ],
+      readCustomerMessages,
+    });
     const collectTask = await enterCollect(harness, {});
 
     await harness.service.executeTask(taskInput(collectTask, enteredAt));
@@ -308,7 +323,12 @@ describe("AI Collect runtime", () => {
       leaseOwner: "inference-worker",
       result: {
         type: "json",
-        value: { F1_present: false, F1_value: "" },
+        value: {
+          F1_present: true,
+          F1_value: "A100",
+          F2_present: false,
+          F2_value: "",
+        },
       },
     });
     harness.setNow(new Date(timeoutAt.getTime() + 1_000));
@@ -321,6 +341,7 @@ describe("AI Collect runtime", () => {
     expect(harness.directivePort.disable).toHaveBeenCalledWith(expect.objectContaining({
       reason: "expired",
     }));
+    expect(harness.directivePort.addOrUpdate).toHaveBeenCalledTimes(1);
   });
 });
 

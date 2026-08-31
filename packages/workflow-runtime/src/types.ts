@@ -266,7 +266,6 @@ export type WorkflowAiCollectStateRecord = {
   directiveLeaseExpiresAt: Date | null;
   directiveLeaseOwner: string | null;
   directiveNextAttemptAt: Date;
-  directivePayload: string | null;
   directiveStatus: WorkflowAiCollectDirectiveStatus;
   disableReason: string | null;
   expiresAt: Date | null;
@@ -290,7 +289,7 @@ export type WorkflowAiCollectStateRecord = {
 export type WorkflowAiCollectStateTransition =
   | { kind: "opening-message-sent" }
   | { conversationId: number; kind: "conversation-resolved" }
-  | { kind: "directive-synced"; payload: string }
+  | { kind: "directive-active" }
   | { kind: "initial-input-processed" }
   | {
       batchCursor: WorkflowAiCollectMessageCursor | null;

@@ -907,7 +907,6 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       directiveLeaseExpiresAt: null,
       directiveLeaseOwner: null,
       directiveNextAttemptAt: clone(input.now),
-      directivePayload: null,
       directiveStatus: "inactive",
       disableReason: null,
       expiresAt: input.expiresAt ? clone(input.expiresAt) : null,
@@ -954,12 +953,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         return conflict();
       }
       state.conversationId = transition.conversationId;
-    } else if (transition.kind === "directive-synced") {
+    } else if (transition.kind === "directive-active") {
       if (state.conversationId === null || state.expiresAt === null
-        || (state.directiveStatus !== "inactive" && state.directiveStatus !== "active")) {
-        return conflict();
-      }
-      state.directivePayload = transition.payload;
+        || state.directiveStatus === "disabled") return conflict();
       state.directiveStatus = "active";
     } else if (transition.kind === "initial-input-processed") {
       if (state.activeInferenceKey !== null) return conflict();

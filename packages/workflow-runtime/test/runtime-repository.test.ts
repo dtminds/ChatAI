@@ -1437,7 +1437,7 @@ async function createWaitingAiCollectRun(
   await repository.transitionAiCollectState({
     now,
     taskId: created.task.id,
-    transition: { kind: "directive-synced", payload: "collect order" },
+    transition: { kind: "directive-active" },
     uid: 9,
   });
   const waiting = await repository.beginAiCollectWait({

@@ -1576,7 +1576,6 @@ export class MysqlWorkflowRuntimeRepository implements
       directive_lease_expires_at: null,
       directive_lease_owner: null,
       directive_next_attempt_at: input.now,
-      directive_payload: null,
       directive_status: "inactive",
       disable_reason: null,
       expires_at: input.expiresAt,
@@ -1643,12 +1642,9 @@ export class MysqlWorkflowRuntimeRepository implements
           return { kind: "conflict" as const };
         }
         state.conversationId = transition.conversationId;
-      } else if (transition.kind === "directive-synced") {
+      } else if (transition.kind === "directive-active") {
         if (state.conversationId === null || state.expiresAt === null
-          || (state.directiveStatus !== "inactive" && state.directiveStatus !== "active")) {
-          return { kind: "conflict" as const };
-        }
-        state.directivePayload = transition.payload;
+          || state.directiveStatus === "disabled") return { kind: "conflict" as const };
         state.directiveStatus = "active";
       } else if (transition.kind === "initial-input-processed") {
         if (state.activeInferenceKey !== null) return { kind: "conflict" as const };
@@ -4693,7 +4689,6 @@ function mapAiCollectState(
       : null,
     directiveLeaseOwner: row.directive_lease_owner,
     directiveNextAttemptAt: toDate(row.directive_next_attempt_at),
-    directivePayload: row.directive_payload,
     directiveStatus,
     disableReason: row.disable_reason,
     expiresAt: row.expires_at ? toDate(row.expires_at) : null,
@@ -4738,7 +4733,6 @@ function toAiCollectStateUpdate(state: WorkflowAiCollectStateRecord) {
     directive_lease_expires_at: state.directiveLeaseExpiresAt,
     directive_lease_owner: state.directiveLeaseOwner,
     directive_next_attempt_at: state.directiveNextAttemptAt,
-    directive_payload: state.directivePayload,
     directive_status: state.directiveStatus,
     disable_reason: state.disableReason,
     initial_input_processed: state.initialInputProcessed ? 1 : 0,

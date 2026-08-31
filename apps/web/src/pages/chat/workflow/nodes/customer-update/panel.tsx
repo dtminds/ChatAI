@@ -215,6 +215,7 @@ function CustomerUpdateFieldRow({
       <WorkflowLiteralOrVariableInput
         ariaLabel={`${selectedField?.title ?? "客户属性"}的值`}
         className="col-start-2"
+        customFieldVisibility="compatible"
         disabled={!selectedField}
         inputMode={selectedField?.type === 11 ? "decimal" : undefined}
         inputType={getLiteralInputType(selectedField)}

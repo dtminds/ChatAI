@@ -104,6 +104,7 @@ function HandoffMessageField({
     >
       <VariableContentEditor
         ariaLabel={ariaLabel}
+        customFieldVisibility="all"
         maxLength={WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}

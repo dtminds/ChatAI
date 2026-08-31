@@ -123,6 +123,7 @@ export function MessageConfig({ edges, node, nodes, onNodeChange, resources }: N
         {contentMode === "custom" ? (
           <VariableContentEditor
             ariaLabel="消息内容"
+            customFieldVisibility="all"
             maxLength={QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH}
             onChange={(content) => updateMessage({ content })}
             placeholder="请输入消息内容"

@@ -27,14 +27,18 @@ import type {
 import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
 import { useWorkflowCustomFieldResourceContext } from "./workflow-custom-field-resource";
 
+export type WorkflowCustomFieldVisibility = "all" | "compatible" | "hidden";
+
 export function WorkflowVariablePicker({
   children,
+  customFieldVisibility,
   onOpenChange,
   onSelect,
   open,
   variables,
 }: {
   children: ReactNode;
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   onOpenChange: (open: boolean) => void;
   onSelect: (variable: WorkflowVariableDefinition) => void;
   open: boolean;
@@ -49,14 +53,19 @@ export function WorkflowVariablePicker({
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-0" sideOffset={6}>
         <div className="max-h-72 overflow-y-auto p-1">
-          <VariableOptions variables={variables} onSelect={onSelect} />
+          <VariableOptions
+            customFieldVisibility={customFieldVisibility}
+            onSelect={onSelect}
+            variables={variables}
+          />
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function VariableOptions({ variables, onSelect }: {
+function VariableOptions({ customFieldVisibility, variables, onSelect }: {
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   variables: WorkflowVariableDefinition[];
   onSelect: (variable: WorkflowVariableDefinition) => void;
 }) {
@@ -89,6 +98,7 @@ function VariableOptions({ variables, onSelect }: {
     <>
       {contextVariableGroups.map(group => (
         <VariableGroupSubMenu
+          customFieldVisibility={customFieldVisibility}
           icon={group.icon}
           key={group.key}
           label={group.label}
@@ -106,6 +116,7 @@ function VariableOptions({ variables, onSelect }: {
 
         return (
           <VariableGroupSubMenu
+            customFieldVisibility={customFieldVisibility}
             icon={visual?.icon}
             isCurrentNode={group.isCurrentNode}
             key={group.sourceNodeId}
@@ -121,6 +132,7 @@ function VariableOptions({ variables, onSelect }: {
 }
 
 function VariableGroupSubMenu({
+  customFieldVisibility,
   icon,
   isCurrentNode = false,
   label,
@@ -128,6 +140,7 @@ function VariableGroupSubMenu({
   showNodeSections = false,
   variables,
 }: {
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   icon?: typeof Globe02Icon;
   isCurrentNode?: boolean;
   label: string;
@@ -150,6 +163,14 @@ function VariableGroupSubMenu({
   const attributeVariables = showNodeSections
     ? variables.filter(isNodeLifecycleVariable)
     : [];
+  const showCustomFieldSection = isGlobalGroup
+    && customFieldVisibility !== "hidden"
+    && (
+      customFieldVariables.length > 0
+      || customFieldResource.status === "loading"
+      || customFieldResource.status === "error"
+      || (customFieldVisibility === "all" && customFieldResource.status === "ready")
+    );
 
   return (
     <DropdownMenuSub onOpenChange={setOpen} open={open}>
@@ -176,7 +197,7 @@ function VariableGroupSubMenu({
             : null}
         </span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-56">
+      <DropdownMenuSubContent className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-x-hidden overflow-y-auto">
         {outputVariables.length && showNodeSections
           ? (
               <DropdownMenuLabel className="px-2 pb-0.5 pt-1 text-[11px] font-normal text-muted-foreground/60">
@@ -185,7 +206,7 @@ function VariableGroupSubMenu({
             )
           : null}
         {renderVariableItems(outputVariables, onSelect)}
-        {isGlobalGroup && (customFieldResource.status !== "idle" || customFieldVariables.length > 0)
+        {showCustomFieldSection
           ? (
               <>
                 <DropdownMenuLabel className="mt-1 border-t border-border/60 px-2 pb-0.5 pt-2 text-[11px] font-normal text-muted-foreground/60">
@@ -193,6 +214,7 @@ function VariableGroupSubMenu({
                 </DropdownMenuLabel>
                 <CustomFieldVariableItems
                   onSelect={onSelect}
+                  showUnsupported={customFieldVisibility === "all"}
                   variables={customFieldVariables}
                 />
               </>
@@ -213,9 +235,11 @@ function VariableGroupSubMenu({
 
 function CustomFieldVariableItems({
   onSelect,
+  showUnsupported,
   variables,
 }: {
   onSelect: (variable: WorkflowVariableDefinition) => void;
+  showUnsupported: boolean;
   variables: WorkflowVariableDefinition[];
 }) {
   const resource = useWorkflowCustomFieldResourceContext();
@@ -241,7 +265,7 @@ function CustomFieldVariableItems({
     );
   }
 
-  const unsupportedFields = resource.status === "ready"
+  const unsupportedFields = showUnsupported && resource.status === "ready"
     ? resource.fields.filter(field =>
         getWorkflowCustomFieldVariableValueType(field.type) === null)
     : [];

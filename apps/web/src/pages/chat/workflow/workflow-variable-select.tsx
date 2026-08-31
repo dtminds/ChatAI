@@ -7,7 +7,10 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "./types";
-import { WorkflowVariablePicker } from "./workflow-variable-picker";
+import {
+  WorkflowVariablePicker,
+  type WorkflowCustomFieldVisibility,
+} from "./workflow-variable-picker";
 import { WorkflowVariableValueTag } from "./workflow-variable-value-tag";
 import {
   getWorkflowVariableDisplaySourceLabel,
@@ -17,6 +20,7 @@ import {
 export function WorkflowVariableSelect({
   ariaLabel,
   buttonClassName,
+  customFieldVisibility,
   disabled = false,
   invalidLabel = "原变量不可用",
   onSelect,
@@ -26,6 +30,7 @@ export function WorkflowVariableSelect({
 }: {
   ariaLabel: string;
   buttonClassName?: string;
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   disabled?: boolean;
   invalidLabel?: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
@@ -39,6 +44,7 @@ export function WorkflowVariableSelect({
 
   return (
     <WorkflowVariablePicker
+      customFieldVisibility={customFieldVisibility}
       onOpenChange={setOpen}
       onSelect={(variable) => {
         onSelect(variable);

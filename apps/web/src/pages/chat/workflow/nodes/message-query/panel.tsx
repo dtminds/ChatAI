@@ -213,6 +213,7 @@ function DynamicTimeField({
       <span className="text-[13px]">{label}</span>
       <WorkflowVariableSelect
         ariaLabel={`${label}时间点`}
+        customFieldVisibility="compatible"
         invalidLabel="时间变量不可用"
         onSelect={(variable) => onChange(variable.selector)}
         value={value}

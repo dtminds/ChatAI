@@ -483,6 +483,7 @@ function LlmInputRow({
       <WorkflowLiteralOrVariableInput
         ariaLabel={`${input.name || "输入参数"}的值`}
         clearVariableAriaLabel="改为固定文本"
+        customFieldVisibility="all"
         onChange={(value) => onChange({ ...input, value })}
         placeholder="输入或引用变量"
         value={input.value}
@@ -543,6 +544,7 @@ function PromptSection({
     >
       <VariableContentEditor
         ariaLabel={ariaLabel}
+        customFieldVisibility="hidden"
         maxLength={LLM_PROMPT_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}
@@ -576,6 +578,7 @@ function ExpandedPromptEditor({
           ariaLabel={`${ariaLabel}展开编辑`}
           className="flex min-h-0 flex-1 flex-col"
           contentEditableClassName="h-full min-h-full overflow-y-auto"
+          customFieldVisibility="hidden"
           editorClassName="min-h-0 flex-1 overflow-y-auto"
           maxLength={LLM_PROMPT_MAX_LENGTH}
           onChange={onChange}

@@ -25,6 +25,7 @@ export function OrderBindConfig({ edges, node, nodes, onNodeChange, resources }:
       <WorkflowVariableSelect
         ariaLabel="订单号"
         buttonClassName="h-10 text-sm"
+        customFieldVisibility="compatible"
         invalidLabel="原节点输出不可用"
         onSelect={(variable) => {
           onNodeChange(getOrderBindNodePatch(variable.selector));

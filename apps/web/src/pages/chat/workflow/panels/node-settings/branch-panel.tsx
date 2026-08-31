@@ -254,6 +254,7 @@ function BranchConditionRow({
       <div className="grid grid-cols-[minmax(0,1fr)_8.5rem_2rem] gap-2">
         <WorkflowVariableSelect
           ariaLabel={`条件 ${index + 1} 变量`}
+          customFieldVisibility="all"
           onSelect={(nextVariable) => {
             const operator = getDefaultBranchOperator(nextVariable.type);
             onChange({

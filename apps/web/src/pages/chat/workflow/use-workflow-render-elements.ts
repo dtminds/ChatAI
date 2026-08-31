@@ -120,11 +120,12 @@ const ignoreWorkflowRenderAction = () => {};
 export function createWorkflowReadOnlyRenderElements(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ) {
   return createWorkflowRenderElements({
     activeEdgeInsertMenuId: null,
     allowedInsertableNodeKinds: [],
-    customFields: [],
+    customFields,
     edges,
     nodes,
     onDeleteNode: ignoreWorkflowRenderAction,

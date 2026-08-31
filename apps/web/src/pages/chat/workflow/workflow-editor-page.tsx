@@ -203,7 +203,7 @@ function WorkflowWorkspaceContent({
   const surface = useWorkflowSurface();
   const location = useLocation();
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
-  const customFieldResource = useWorkflowCustomFieldResource(mode === "design");
+  const customFieldResource = useWorkflowCustomFieldResource(true);
   const shouldLoadFriendAddWays = mode === "design"
     && getWorkflowCapabilityProfile(document.workflowType)
     .allowedEntryEventTypes.includes("contact.friend_added");
@@ -361,6 +361,7 @@ function WorkflowWorkspaceContent({
       {mode === "data" ? (
         <div className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden">
           <WorkflowDataPage
+            customFields={customFieldResource.fields}
             document={currentDocument}
             refreshVersion={dataRefreshVersion}
           />

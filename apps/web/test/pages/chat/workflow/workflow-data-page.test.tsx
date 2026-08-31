@@ -82,6 +82,60 @@ describe("WorkflowDataPage", () => {
     );
   });
 
+  it("renders active customer custom field references with their current label", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const messageNode = document.publishedDraft!.nodes.find(node => node.data.kind === "message")!;
+    const publishedDraft = {
+      ...document.publishedDraft!,
+      nodes: document.publishedDraft!.nodes.map(node => node.id === messageNode.id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              content: [{
+                selector: ["subject", "customFields", "7"] as [string, string, string],
+                type: "variable" as const,
+              }],
+              contentMode: "custom" as const,
+            },
+          }
+        : node),
+    };
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(),
+    };
+
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage
+          customFields={[{
+            id: 7,
+            key: "level",
+            options: [],
+            sort: 1,
+            title: "会员等级",
+            type: 1,
+          }]}
+          document={{ ...document, publishedDraft }}
+          repository={repository}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const canvas = await screen.findByRole("application");
+    const renderedMessageNode = within(canvas).getByTestId(`workflow-flow-node-${messageNode.id}`);
+    expect(within(renderedMessageNode).getByText("会员等级")).toBeInTheDocument();
+    expect(within(renderedMessageNode).queryByText("原变量不可用")).not.toBeInTheDocument();
+  });
+
   it("opens all records from the start node metric action", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");

@@ -43,6 +43,7 @@ import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
 import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 import { getWorkflowActiveRunLimit } from "../../config/env.js";
+import { createCustomFieldService } from "../ai-hosting/custom-field.service.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -106,9 +107,13 @@ export async function registerWorkflowRoutes(
     cacheKeyPrefix: process.env.REDIS_KEY_PREFIX,
     token: process.env.JAVA_INTERNAL_API_TOKEN,
   });
+  const customFieldService = createCustomFieldService(app.log);
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
+      customFieldReader: {
+        listActiveFields: async uid => (await customFieldService.listFields(uid, { status: 1 })).fields,
+      },
       directEntryEndpointPort: createJavaWorkflowDirectEntryEndpointPort(app.log),
       entitlementPort,
       managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),

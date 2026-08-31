@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   WORKFLOW_RUN_RETENTION_DAYS,
+  type CustomFieldItem,
   type WorkflowDataOverview,
   type WorkflowEntryRecord,
   type WorkflowEntryRecordDetail,
@@ -67,10 +68,12 @@ function resolveWorkflowDataDraft(document: WorkflowDocument) {
 }
 
 export function WorkflowDataPage({
+  customFields = [],
   document,
   refreshVersion = 0,
   repository: repositoryProp,
 }: {
+  customFields?: readonly CustomFieldItem[];
   document: WorkflowDocument;
   refreshVersion?: number;
   repository?: WorkflowDataRepository;
@@ -91,6 +94,7 @@ export function WorkflowDataPage({
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       <WorkflowDataOverviewView
+        customFields={customFields}
         document={document}
         draft={draft}
         onViewAllRecords={() => setRecordsSelection({})}
@@ -125,6 +129,7 @@ export function WorkflowDataActions({
 }
 
 function WorkflowDataOverviewView({
+  customFields,
   document,
   draft,
   onViewAllRecords,
@@ -133,6 +138,7 @@ function WorkflowDataOverviewView({
   refreshVersion,
   repository,
 }: {
+  customFields: readonly CustomFieldItem[];
   document: WorkflowDocument;
   draft: WorkflowDraft;
   onViewAllRecords: () => void;
@@ -161,8 +167,8 @@ function WorkflowDataOverviewView({
   const metrics = useMemo(() => new Map(overview?.nodes.map(item => [item.nodeId, item]) ?? []), [overview]);
   const totals = overview?.summary ?? { completed: 0, current: 0, entered: 0, incomplete: 0 };
   const rendered = useMemo(
-    () => createWorkflowReadOnlyRenderElements(draft.nodes, draft.edges),
-    [draft.edges, draft.nodes],
+    () => createWorkflowReadOnlyRenderElements(draft.nodes, draft.edges, customFields),
+    [customFields, draft.edges, draft.nodes],
   );
   const nodes = useMemo(() => rendered.nodes.map(node => ({
     ...node,

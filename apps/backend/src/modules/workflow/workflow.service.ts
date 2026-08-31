@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
+  getWorkflowCustomFieldVariableIds,
   WORKFLOW_DESCRIPTION_MAX_LENGTH,
   WORKFLOW_NAME_MAX_LENGTH,
 } from "@chatai/contracts";
 import type {
+  CustomFieldItem,
   WorkflowCreateRequest,
   WorkflowDefinition,
   WorkflowDefinitionListItem,
@@ -88,6 +90,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  ServiceUnavailableError,
 } from "../../shared/errors.js";
 import type {
   WorkflowDefinitionListCursor,
@@ -126,6 +129,7 @@ export type WorkflowOperatorScope = {
 
 export type WorkflowServiceOptions = {
   clock?: () => Date;
+  customFieldReader?: WorkflowCustomFieldReader;
   directEntryEndpointPort?: WorkflowDirectEntryEndpointPort;
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
@@ -136,10 +140,15 @@ export type WorkflowServiceOptions = {
   metricReader?: WorkflowMetricReader;
 };
 
+export type WorkflowCustomFieldReader = {
+  listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
+};
+
 export class WorkflowService {
   private static readonly ENTITLEMENT_REFRESH_MIN_INTERVAL_MS = 30_000;
   private static readonly ENTITLEMENT_REFRESH_MAX_ENTRIES = 10_000;
   private readonly clock: () => Date;
+  private readonly customFieldReader: WorkflowCustomFieldReader;
   private readonly directEntryEndpointPort: WorkflowDirectEntryEndpointPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
@@ -158,6 +167,14 @@ export class WorkflowService {
     options: WorkflowServiceOptions = {},
   ) {
     this.clock = options.clock ?? (() => new Date());
+    this.customFieldReader = options.customFieldReader ?? {
+      listActiveFields: async () => {
+        throw new ServiceUnavailableError(
+          "WORKFLOW_CUSTOM_FIELD_RESOURCE_UNAVAILABLE",
+          "暂时无法校验客户自定义属性，请稍后重试",
+        );
+      },
+    };
     this.directEntryEndpointPort = options.directEntryEndpointPort
       ?? new UnavailableWorkflowDirectEntryEndpointPort();
     this.entitlementPort = options.entitlementPort
@@ -582,7 +599,11 @@ export class WorkflowService {
     const subjectType = getWorkflowCapabilityProfile(definition.workflowType).subjectType;
 
     const nextRevision = (definition.publishedRevision ?? 0) + 1;
-    const executionSpec = this.compile(normalizedDefinition, nextRevision);
+    const customFields = await this.listActiveReferencedCustomFields(
+      scope.uid,
+      normalizedDefinition.draft,
+    );
+    const executionSpec = this.compile(normalizedDefinition, nextRevision, customFields);
     this.assertProductionAvailability(executionSpec, entitlement, subjectType);
     const triggerBindings = await this.createTriggerBindings(
       scope.uid,
@@ -741,6 +762,26 @@ export class WorkflowService {
     }
     const entitlement = await this.requireEntitlement(scope.uid, definition.workflowType);
     this.assertProductionAvailability(review.executionSpec, entitlement, review.subjectType);
+    const customFields = await this.listActiveReferencedCustomFields(
+      scope.uid,
+      review.executionSpec,
+    );
+    try {
+      this.compile(
+        { ...definition, draft: review.draft },
+        review.executionSpec.revision,
+        customFields,
+      );
+    } catch (error) {
+      if (error instanceof AppError && error.code === "WORKFLOW_VALIDATION_FAILED") {
+        throw new AppError(
+          "WORKFLOW_REVIEW_RESOURCES_CHANGED",
+          "审核内容依赖的业务资源已变化，请处理后重试发布",
+          409,
+        );
+      }
+      throw error;
+    }
     const currentBindings = await this.createTriggerBindings(scope.uid, review.executionSpec, review.subjectType);
     if (hashCanonicalValue(currentBindings) !== hashCanonicalValue(review.triggerBindings)) {
       throw new AppError(
@@ -867,9 +908,14 @@ export class WorkflowService {
     })));
   }
 
-  private compile(definition: WorkflowDefinitionRecord, revision: number) {
+  private compile(
+    definition: WorkflowDefinitionRecord,
+    revision: number,
+    customFields: readonly CustomFieldItem[] = [],
+  ) {
     try {
       return compileWorkflowDraft({
+        customFields,
         draft: definition.draft,
         revision,
         workflowId: definition.id,
@@ -881,6 +927,11 @@ export class WorkflowService {
       }
       throw error;
     }
+  }
+
+  private async listActiveReferencedCustomFields(uid: number, value: unknown) {
+    if (getWorkflowCustomFieldVariableIds(value).length === 0) return [];
+    return this.customFieldReader.listActiveFields(uid);
   }
 
   private async requireDefinition(uid: number, workflowId: string) {

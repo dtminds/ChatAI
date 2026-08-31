@@ -1,5 +1,6 @@
 import {
   isWorkflowNodeExecutionConfig,
+  type CustomFieldItem,
   type WorkflowDraft,
   type WorkflowNodeKind,
 } from "@chatai/contracts";
@@ -74,13 +75,32 @@ describe("Customer Update compiler validation", () => {
       [unavailableField],
       "Customer Update node references unavailable or changed field data",
     );
+
+    expectCompilationIssue(
+      [{
+        field: { id: 101, key: "remark", title: "客户备注", type: 1 },
+        id: "field-1",
+        value: {
+          kind: "variable",
+          selector: ["subject", "customFields", "42"],
+          valueType: { kind: "string" },
+        },
+      }],
+      "Customer Update node references unavailable or changed field data",
+      [{ id: 42, key: "score", options: [], sort: 1, title: "客户评分", type: 11 }],
+    );
   });
 });
 
-function expectCompilationIssue(fields: Record<string, unknown>[], message: string) {
+function expectCompilationIssue(
+  fields: Record<string, unknown>[],
+  message: string,
+  customFields: readonly CustomFieldItem[] = [],
+) {
   let error: unknown;
   try {
     compileWorkflowDraft({
+      customFields,
       draft: createDraft(fields),
       revision: 1,
       workflowId: "42",

@@ -152,10 +152,6 @@ export type WorkflowCustomFieldReader = {
   listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
 };
 
-export type WorkflowCustomFieldReader = {
-  listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
-};
-
 export class WorkflowService {
   private static readonly ENTITLEMENT_REFRESH_MIN_INTERVAL_MS = 30_000;
   private static readonly ENTITLEMENT_REFRESH_MAX_ENTRIES = 10_000;

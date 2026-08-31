@@ -461,7 +461,7 @@ export function WorkflowListPage({
         onDelete={() => void deleteWorkflow()}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
-
+            setDeleteTarget(null);
           }
         }}
         open={Boolean(deleteTarget)}

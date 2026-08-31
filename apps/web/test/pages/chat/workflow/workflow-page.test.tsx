@@ -1433,6 +1433,23 @@ describe("Agent workflow page", () => {
     });
   });
 
+  it("cancels deleting a workflow from the row menu", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const deleteDocument = vi.fn();
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, deleteDocument });
+
+    await screen.findByText("直播后跟进");
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(deleteDocument).not.toHaveBeenCalled();
+  });
+
   it("reports delete failures through a toast", async () => {
     const user = userEvent.setup();
     const toastError = vi.spyOn(toast, "error");

@@ -480,7 +480,7 @@ function WorkflowSurfaceLayout({ children }: { children: ReactNode }) {
   return <AiHostingLayout title={surface.title}>{children}</AiHostingLayout>;
 }
 
-const workflowCapacitySegmentCount = 12;
+const workflowCapacitySegmentCount = 15;
 
 function WorkflowTenantDataSection({
   capacity,
@@ -588,7 +588,7 @@ function WorkflowCapacityIndicator({
       <section aria-label="SOP 客户容量" className={shellClassName}>
         <WorkflowCapacityLabel className="text-muted-foreground" iconClassName="text-foreground" />
         <div className="mt-5 flex items-center gap-3">
-          <div className="flex min-w-[115px] shrink-0 items-center gap-[5px]" aria-hidden="true">
+          <div className="flex min-w-[145px] shrink-0 items-center gap-[5px]" aria-hidden="true">
             {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
               <span className="h-5 w-[5px] shrink-0 rounded-full bg-muted-foreground/20" key={index} />
             ))}
@@ -623,9 +623,9 @@ function WorkflowCapacityIndicator({
 
   const usagePercent = Math.min(Math.max(overview.usagePercent, 0), 100);
   const availablePercent = 100 - usagePercent;
-  const filledSegments = usagePercent === 0
+  const availableSegments = availablePercent === 0
     ? 0
-    : Math.ceil(usagePercent / 100 * workflowCapacitySegmentCount);
+    : Math.ceil(availablePercent / 100 * workflowCapacitySegmentCount);
   const capacityTone = getWorkflowCapacityTone(usagePercent);
 
   return (
@@ -636,11 +636,11 @@ function WorkflowCapacityIndicator({
       <WorkflowCapacityLabel iconClassName="text-foreground" />
       <div className="mt-5 flex items-center gap-3">
         <div
-          aria-label="SOP 客户容量使用进度"
+          aria-label="SOP 客户剩余用量"
           aria-valuemax={100}
           aria-valuemin={0}
-          aria-valuenow={usagePercent}
-          className="flex min-w-[115px] shrink-0 items-center gap-[5px]"
+          aria-valuenow={availablePercent}
+          className="flex min-w-[145px] shrink-0 items-center gap-[5px]"
           role="progressbar"
         >
           {Array.from({ length: workflowCapacitySegmentCount }, (_, index) => (
@@ -648,7 +648,7 @@ function WorkflowCapacityIndicator({
               aria-hidden="true"
               className={cn(
                 "h-5 w-[5px] shrink-0 rounded-full",
-                index < filledSegments ? capacityTone.segmentClassName : "bg-muted-foreground/20",
+                index < availableSegments ? capacityTone.segmentClassName : "bg-muted-foreground/20",
               )}
               key={index}
             />

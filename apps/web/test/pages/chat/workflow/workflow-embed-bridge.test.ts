@@ -3,7 +3,6 @@ import { clearEmbedAuthHandoff, setEmbedAccessToken } from "@/lib/embed-access-t
 import {
   postSmpBasementChatEmbedLeaveEditor,
   postSmpBasementChatEmbedNavigate,
-  readSmpBasementChatEmbedToken,
 } from "@/pages/chat/workflow/workflow-embed-bridge";
 
 describe("embed workflow parent bridge", () => {
@@ -28,7 +27,7 @@ describe("embed workflow parent bridge", () => {
     );
   });
 
-  it("includes the current access token when notifying the parent", () => {
+  it("does not send the access token to the parent", () => {
     setEmbedAccessToken("handoff-token");
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
 
@@ -39,7 +38,6 @@ describe("embed workflow parent bridge", () => {
         channel: "smp-basement-chat-embed",
         fullscreen: true,
         path: "/embed/workflows/1",
-        token: "handoff-token",
         type: "navigate",
       },
       "*",
@@ -60,34 +58,5 @@ describe("embed workflow parent bridge", () => {
       },
       "*",
     );
-  });
-
-  it("returns the list path with the current access token", () => {
-    setEmbedAccessToken("handoff-token");
-    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
-
-    postSmpBasementChatEmbedLeaveEditor();
-
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: false,
-        path: "/embed/workflows",
-        token: "handoff-token",
-        type: "navigate",
-      },
-      "*",
-    );
-  });
-
-  it("reads a token from a parent embed message", () => {
-    expect(readSmpBasementChatEmbedToken({
-      channel: "smp-basement-chat-embed",
-      token: " parent-token ",
-    })).toBe("parent-token");
-    expect(readSmpBasementChatEmbedToken({
-      channel: "other",
-      token: "parent-token",
-    })).toBeNull();
   });
 });

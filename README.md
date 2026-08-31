@@ -210,7 +210,7 @@ SMP 打开 `/embed/workflows` 时会拼接加密的 `id`、`uid`。ChatAI 用这
 - 浏览器只请求 `POST /api/auth/embed-sso`，不直接调用内部解密接口。
 - 后端分别解密 `id`、`uid`，确认账号存在且属于该租户后签发正常登录。
 - SMP 嵌在跨站 iframe 里时，ChatAI 的登录 cookie 带不过去；换票后的接口用请求头带登录，不依赖 iframe cookie。
-- 嵌在 SMP 里时，点「新建」或进入 `/embed/workflows/编号` 会通知外层全屏；返回列表时退出全屏。登录凭证只放在通知的 `token` 字段里，**不要**写进 iframe 的 `src`。外层用 `path` 打开地址后，再把 `token` 用同样的 channel 回传给 iframe。
+- 嵌在 SMP 里时，点「新建」或进入 `/embed/workflows/编号` 会通知外层全屏；返回列表时退出全屏。登录记在 iframe 自己的会话里，通知外层时不传登录凭证，也不写进 iframe 地址。
 - 没有换票参数且也没有可用登录凭证时回到登录页；只有换票被明确拒绝时才提示账号不可用。连不上服务时会重试，不会误显示账号不可用。
 
 ## 关键文件

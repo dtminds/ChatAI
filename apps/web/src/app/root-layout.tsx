@@ -13,7 +13,6 @@ import {
   consumeEmbedAuthHandoffFromSearch,
   getEmbedAccessToken,
   restoreEmbedAuthHandoff,
-  setEmbedAccessToken,
   stripEmbedAccessTokenFromWindowLocation,
 } from "@/lib/embed-access-token";
 import {
@@ -22,7 +21,6 @@ import {
   loginWithEmbedSso,
 } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
-import { readSmpBasementChatEmbedToken } from "@/pages/chat/workflow/workflow-embed-bridge";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
@@ -68,7 +66,6 @@ export function RootLayout() {
   const lastSubUserIdRef = useRef<string | null>(null);
   const [embedLoginUnavailable, setEmbedLoginUnavailable] = useState(false);
   const [embedRetryNonce, setEmbedRetryNonce] = useState(0);
-  const [embedHandoffVersion, setEmbedHandoffVersion] = useState(0);
   const hasEmbedAccessToken = isEmbedWorkflowPath(location.pathname)
     && Boolean(getEmbedAccessToken());
 
@@ -79,28 +76,6 @@ export function RootLayout() {
   useEffect(() => {
     authSubUserIdRef.current = subUserId;
   }, [subUserId]);
-
-  useEffect(() => {
-    if (!isEmbedWorkflowPath(location.pathname)) {
-      return undefined;
-    }
-
-    const onMessage = (event: MessageEvent) => {
-      const token = readSmpBasementChatEmbedToken(event.data);
-
-      if (!token) {
-        return;
-      }
-
-      setEmbedAccessToken(token);
-      setEmbedHandoffVersion((value) => value + 1);
-    };
-
-    window.addEventListener("message", onMessage);
-    return () => {
-      window.removeEventListener("message", onMessage);
-    };
-  }, [location.pathname]);
 
   useEffect(() => {
     let isActive = true;
@@ -126,9 +101,7 @@ export function RootLayout() {
         return;
       }
 
-      const tokenAtStart = getEmbedAccessToken();
-
-      if (!tokenAtStart) {
+      if (!getEmbedAccessToken()) {
         setChecking();
       }
 
@@ -184,13 +157,6 @@ export function RootLayout() {
           }
         }
 
-        const tokenNow = getEmbedAccessToken();
-
-        if (isActive && tokenNow && tokenNow !== tokenAtStart) {
-          void syncAuthSessionState({ force: true });
-          return;
-        }
-
         if (isActive) {
           resetWorkbenchSession();
           lastSubUserIdRef.current = null;
@@ -215,7 +181,6 @@ export function RootLayout() {
     };
   }, [
     clearSession,
-    embedHandoffVersion,
     embedRetryNonce,
     resetWorkbenchSession,
     setChecking,

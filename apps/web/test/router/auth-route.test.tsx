@@ -280,61 +280,6 @@ describe("auth routes", () => {
     expect(screen.queryByText("登录页占位")).not.toBeInTheDocument();
   });
 
-  it("accepts an embed access token from the parent after the iframe loads", async () => {
-    mock.onGet("/auth/session").reply((config) => {
-      if (config.headers?.Authorization === "Bearer parent-token") {
-        return [
-          200,
-          {
-            data: {
-              subUser: operatorSubUser,
-            },
-            success: true,
-          },
-        ];
-      }
-
-      return new Promise(() => undefined);
-    });
-    const router = createMemoryRouter(
-      [
-        {
-          path: "/",
-          element: <RootLayout />,
-          children: [
-            { path: "embed/workflows", element: <div>外层传入凭证后的画布</div> },
-            { path: "login", element: <div>登录页占位</div> },
-          ],
-        },
-      ],
-      { initialEntries: ["/embed/workflows"] },
-    );
-
-    render(<RouterProvider router={router} />);
-
-    expect(await screen.findByLabelText("正在验证登录状态")).toBeInTheDocument();
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        channel: "smp-basement-chat-embed",
-        token: "parent-token",
-      },
-    }));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("正在验证登录状态")).not.toBeInTheDocument();
-    });
-    expect(screen.getByText("外层传入凭证后的画布")).toBeInTheDocument();
-    expect(getEmbedAccessToken()).toBe("parent-token");
-
-    await waitFor(() => {
-      expect(useAuthStore.getState()).toMatchObject({
-        status: "authenticated",
-        subUser: operatorSubUser,
-      });
-    });
-  });
-
   it("still redirects /chat/workflows to login when the session is missing", async () => {
     mock.onGet("/auth/session").reply(401, {
       error: {

@@ -1196,6 +1196,7 @@ describe("workflow capability reliability", () => {
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         errorCode: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+        errorMessage: "多次执行失败，流程已停止",
         nodeId: "message",
         status: "failed",
       }),

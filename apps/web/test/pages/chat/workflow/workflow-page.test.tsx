@@ -8,7 +8,10 @@ import {
   WorkflowEditorPage,
   WorkflowPage,
 } from "@/pages/chat/workflow/workflow-page";
-import { splitWorkflowTriggers } from "@/pages/chat/workflow/workflow-list-components";
+import {
+  splitWorkflowTriggers,
+  WorkflowListTable,
+} from "@/pages/chat/workflow/workflow-list-components";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
@@ -788,6 +791,40 @@ describe("Agent workflow page", () => {
       "href",
       "/chat/workflows/newcomer-conversion",
     );
+  });
+
+  it("renders WeCom member avatars in the workflow list", () => {
+    const workflow = {
+      ...getWorkflowDocument("newcomer-conversion"),
+      managedAccountCount: 0,
+      managedAccounts: [],
+      wecomMemberCount: 2,
+      wecomMembers: [
+        { avatarUrl: "https://example.com/zhang-san.png", id: 201, name: "张三" },
+        { avatarUrl: "", id: 202, name: "李四" },
+      ],
+      workflowType: "wecom_sop" as const,
+    };
+
+    const router = createMemoryRouter([{
+      path: "/",
+      element: (
+        <WorkflowListTable
+          loading={false}
+          onDelete={vi.fn()}
+          onLifecycleAction={vi.fn()}
+          onRename={vi.fn()}
+          operationPendingId={null}
+          sourceColumnLabel="企微成员"
+          workflows={[workflow]}
+        />
+      ),
+    }]);
+    render(<RouterProvider router={router} />);
+
+    const row = screen.getByRole("row", { name: /新人转化旅程/ });
+    expect(within(row).getAllByLabelText(/^企微成员 /)).toHaveLength(2);
+    expect(within(row).queryByLabelText(/^托管账号 /)).not.toBeInTheDocument();
   });
 
   it("opens the data tab from the workflow row menu", async () => {

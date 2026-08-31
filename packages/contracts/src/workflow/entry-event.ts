@@ -1,7 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowUtcInstantSchema } from "./utc-instant.js";
-import { WorkflowIdSchema } from "./dto.js";
 
 export const WORKFLOW_ENTRY_EVENT_SCHEMA_VERSION = 1;
 export const WORKFLOW_ENTRY_EVENT_MAX_BYTES = 64 * 1024;
@@ -41,14 +40,14 @@ export const WORKFLOW_DIRECT_ENTRY_EVENT_TYPE = "workflow.direct_entry" as const
 export const WorkflowDirectEntryPayloadSchema = Type.Union([
   Type.Object({
     ...WorkflowWeComContactIdentitySchema,
-    workflowId: WorkflowIdSchema,
-  }, { additionalProperties: false }),
+    workflowId: WorkflowPositiveSafeIntegerSchema,
+  }, { additionalProperties: true }),
   Type.Object({
     externalUserId: Type.Optional(WorkflowPositiveSafeIntegerSchema),
     ...WorkflowChatAiContactIdentitySchema,
     workUserId: WorkflowPositiveSafeIntegerSchema,
-    workflowId: WorkflowIdSchema,
-  }, { additionalProperties: false }),
+    workflowId: WorkflowPositiveSafeIntegerSchema,
+  }, { additionalProperties: true }),
 ]);
 
 export const WorkflowContactFriendAddedPayloadSchema = Type.Union([

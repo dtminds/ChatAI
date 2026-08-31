@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
@@ -13,6 +13,7 @@ import {
 } from "@/pages/chat/workflow/nodes/start/fixture-options";
 import { createStartNodeData } from "@/pages/chat/workflow/nodes/start/definition";
 import type { StartNodeData, WorkflowNode } from "@/pages/chat/workflow/types";
+import type { WorkflowWeComMemberResource } from "@/pages/chat/workflow/workflow-wecom-member-resource";
 
 function createStartNode(data: StartNodeData = createDefaultNodeData("start")): WorkflowNode<"start"> {
   return {
@@ -231,7 +232,9 @@ describe("workflow start configuration", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "请选择成员" }));
     await user.click(screen.getByRole("checkbox", { name: "企微成员一" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
 
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({ workUserIds: [201] }));
     await user.click(screen.getByRole("combobox", { name: "选择事件" }));
@@ -239,6 +242,155 @@ describe("workflow start configuration", () => {
     expect(screen.queryByRole("button", { name: "消息发送开始时间" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "优先最早添加的账号" }))
       .not.toBeInTheDocument();
+  });
+
+  it("commits WeCom members only after confirming the picker dialog", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode(createStartNodeData("wecom_sop"));
+    const wecomMembers: WorkflowWeComMemberResource = {
+      memberLimit: 100,
+      reload: vi.fn(),
+      roots: [
+        {
+          children: [
+            {
+              avatarUrl: "https://example.com/zhang-san.png",
+              children: [],
+              id: "1_201",
+              kind: "member",
+              title: "张三",
+              workUserId: 201,
+            },
+            { children: [], id: "1_202", kind: "member", title: "李四", workUserId: 202 },
+          ],
+          id: "2_1",
+          kind: "department",
+          title: "销售部",
+        },
+      ],
+      status: "ready",
+    };
+    const { rerender } = render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+        resources={{ wecomMembers }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "请选择成员" }));
+    await user.click(screen.getByRole("checkbox", { name: "销售部" }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "请选择成员" }));
+    await user.click(screen.getByRole("checkbox", { name: "销售部" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
+      workUserIds: [201, 202],
+    }));
+
+    const selectedNode = createStartNode({
+      ...createStartNodeData("wecom_sop"),
+      workUserIds: [201, 202],
+    });
+    rerender(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={selectedNode}
+        nodes={[selectedNode]}
+        onNodeChange={onNodeChange}
+        resources={{ wecomMembers }}
+      />,
+    );
+
+    const selectedList = screen.getByRole("list", { name: "已选企微成员" });
+    expect(within(selectedList).getByText("张三")).toBeInTheDocument();
+    expect(within(selectedList).getByText("李四")).toBeInTheDocument();
+    expect(within(selectedList).getByRole("img", { name: "张三头像" })).toBeInTheDocument();
+
+    await user.click(within(selectedList).getByRole("button", { name: "移除 张三" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      workUserIds: [202],
+    }));
+  });
+
+  it("keeps unlicensed WeCom members visible but not selectable", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode(createStartNodeData("wecom_sop"));
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+        resources={{
+          wecomMembers: {
+            memberLimit: 100,
+            reload: vi.fn(),
+            roots: [
+              {
+                children: [
+                  { children: [], id: "1_201", kind: "member", title: "张三", workUserId: 201 },
+                  {
+                    children: [],
+                    id: "1_203",
+                    kind: "member",
+                    selectable: false,
+                    title: "未开通许可",
+                    workUserId: 203,
+                  },
+                ],
+                id: "2_1",
+                kind: "department",
+                title: "销售部",
+              },
+            ],
+            status: "ready",
+          },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "请选择成员" }));
+    expect(screen.getByRole("checkbox", { name: "未开通许可" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: "销售部" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
+      workUserIds: [201],
+    }));
+  });
+
+  it("retries WeCom member loading failures", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={createStartNode(createStartNodeData("wecom_sop"))}
+        nodes={[]}
+        onNodeChange={vi.fn()}
+        resources={{
+          wecomMembers: {
+            memberLimit: 100,
+            reload: onRetry,
+            roots: [],
+            status: "error",
+          },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it("only exposes entry events allowed by the Workflow capability profile", async () => {

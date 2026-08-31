@@ -11,11 +11,13 @@ import type {
 import type { WorkflowFriendAddWayResource } from "../workflow-friend-add-way-resource";
 import type { WorkflowManagedAccountResource } from "../workflow-managed-account-resource";
 import type { WorkflowCustomFieldResource } from "../workflow-custom-field-resource";
+import type { WorkflowWeComMemberResource } from "../workflow-wecom-member-resource";
 
 export type WorkflowNodeSettingsResources = {
   customFields?: WorkflowCustomFieldResource;
   friendAddWays?: WorkflowFriendAddWayResource;
   managedAccounts?: WorkflowManagedAccountResource;
+  wecomMembers?: WorkflowWeComMemberResource;
 };
 
 export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {

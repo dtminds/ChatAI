@@ -56,13 +56,13 @@ describe("workflow entry event envelope", () => {
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
-        workflowId: "31",
+        workflowId: 31,
       },
       source: "chatai",
     }))).toBe("9:chatai_contact:chatai-contact-1");
     expect(createWorkflowEntryPartitionKey(event({
       eventType: WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
-      payload: { externalUserId: 3267, workUserId: 201, workflowId: "31" },
+      payload: { externalUserId: 3267, workUserId: 201, workflowId: 31 },
     }))).toBe("9:wecom_contact:3267");
   });
 
@@ -72,18 +72,24 @@ describe("workflow entry event envelope", () => {
       seatId: 101,
       thirdExternalUserId: "chatai-contact-1",
       workUserId: 201,
-      workflowId: "31",
+      workflowId: 31,
     })).toBe(true);
     expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
       externalUserId: 3267,
       workUserId: 201,
-      workflowId: "31",
+      workflowId: 31,
     })).toBe(true);
     expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
       seatId: 101,
       thirdExternalUserId: "chatai-contact-1",
       workUserId: 201,
     })).toBe(false);
+    expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
+      externalUserId: 3267,
+      taskId: 62,
+      workUserId: 201,
+      workflowId: 31,
+    })).toBe(true);
     expect(Value.Check(WorkflowDirectEntryPayloadSchema, {
       subjectId: "chatai-contact-1",
       workflowId: "31",
@@ -167,7 +173,7 @@ describe("workflow entry event envelope", () => {
         seatId: 101,
         thirdExternalUserId: "chatai-contact-1",
         workUserId: 201,
-        workflowId: "31",
+        workflowId: 31,
       },
       source: "chatai",
     },

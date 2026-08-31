@@ -13,7 +13,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -46,9 +45,11 @@ import {
   type FriendAddWaySelectionValue,
 } from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
+import { WecomMemberSelection } from "./wecom-member-selection";
 import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 import { useWorkflowSurface } from "../../workflow-surface";
+import { createWeComMemberRootsFromOptions } from "../../workflow-wecom-member-resource";
 
 export function StartConfig({
   allowedEntryEventTypes = [],
@@ -69,11 +70,13 @@ export function StartConfig({
   const isChatAi = chatAiStartData !== undefined;
   const sourceIds = getStartNodeSourceIds(startData);
   const managedAccounts = resources?.managedAccounts;
+  const wecomMembers = resources?.wecomMembers;
   const messageSendingWindow = chatAiStartData?.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
     : workUsers;
+  const wecomRoots = wecomMembers?.roots ?? createWeComMemberRootsFromOptions(sourceOptions);
   const sourceLabel = isChatAi ? "托管账号" : "企微成员";
   const allowedEventTypes = new Set(allowedEntryEventTypes);
   const updateStartConfig = (patch: {
@@ -117,21 +120,15 @@ export function StartConfig({
               />
             </div>
           ) : (
-            <div className="space-y-2 rounded-[8px] border bg-card p-3">
-              {sourceOptions.length === 0 ? (
-                <p className="py-2 text-center text-[13px] text-muted-foreground">
-                  暂无可用{sourceLabel}
-                </p>
-              ) : sourceOptions.map(option => (
-                <CheckboxRow
-                  checked={sourceIds.includes(option.id)}
-                  key={option.id}
-                  label={option.label}
-                  onCheckedChange={(checked) => updateStartConfig({
-                    workUserIds: toggleValue(sourceIds, option.id, checked),
-                  })}
-                />
-              ))}
+            <div className="px-1 pt-1">
+              <WecomMemberSelection
+                memberLimit={wecomMembers?.memberLimit ?? 100}
+                onChange={(workUserIds) => updateStartConfig({ workUserIds })}
+                onRetry={wecomMembers?.reload}
+                roots={wecomRoots}
+                selectedIds={sourceIds}
+                status={wecomMembers?.status ?? "ready"}
+              />
             </div>
           )}
         </div>
@@ -405,25 +402,6 @@ async function copyDirectEntryEndpoint(endpointUrl: string) {
 function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
   if (mode === "direct-push") return "外部推送";
   return `${triggerCount} 个触发条件`;
-}
-
-function CheckboxRow({ checked, disabled = false, label, onCheckedChange }: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onCheckedChange(checked: boolean): void;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-[13px] text-foreground">
-      <Checkbox
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={value => onCheckedChange(value === true)}
-      />
-      <span>{label}</span>
-    </label>
-  );
 }
 
 function TriggerParameter({ children, label }: {

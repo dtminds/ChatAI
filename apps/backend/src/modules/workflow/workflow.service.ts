@@ -92,6 +92,7 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { noopLogger, type AppLogger, type RequestAwareLogger } from "../../shared/logger.js";
 import type {
   WorkflowDefinitionListCursor,
   WorkflowDefinitionListRecord,
@@ -111,6 +112,11 @@ import {
   type WorkflowMetricReader,
   type WorkflowMetricSummary,
 } from "./workflow-metric-reader.js";
+import {
+  EmptyWorkflowWeComMemberReader,
+  type WorkflowWeComMemberReader,
+  type WorkflowWeComMemberSummary,
+} from "./workflow-wecom-member-reader.js";
 import {
   UnavailableWorkflowSourceIdentityResolver,
   type WorkflowSourceIdentityResolver,
@@ -138,6 +144,8 @@ export type WorkflowServiceOptions = {
   llmTestTtlMs?: number;
   managedAccountReader?: WorkflowManagedAccountReader;
   metricReader?: WorkflowMetricReader;
+  logger?: AppLogger | RequestAwareLogger;
+  wecomMemberReader?: WorkflowWeComMemberReader;
 };
 
 export type WorkflowCustomFieldReader = {
@@ -157,6 +165,8 @@ export class WorkflowService {
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
   private readonly metricReader: WorkflowMetricReader;
+  private readonly logger: AppLogger | RequestAwareLogger;
+  private readonly wecomMemberReader: WorkflowWeComMemberReader;
   private readonly entitlementRefreshes = new Map<string, {
     attemptedAt: number;
     outcome: "denied" | "unavailable";
@@ -187,6 +197,8 @@ export class WorkflowService {
     this.managedAccountReader = options.managedAccountReader
       ?? new EmptyWorkflowManagedAccountReader();
     this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
+    this.logger = options.logger ?? noopLogger;
+    this.wecomMemberReader = options.wecomMemberReader ?? new EmptyWorkflowWeComMemberReader();
   }
 
   async getDirectEntryEndpoint(
@@ -438,12 +450,20 @@ export class WorkflowService {
       record.id,
       getWorkflowListManagedAccountIds(record.draft),
     ]));
+    const wecomMemberIdsByWorkflowId = new Map(page.items.map(record => [
+      record.id,
+      getWorkflowListWeComMemberIds(record.draft),
+    ]));
     const visibleManagedAccountIds = [...new Set(
       [...managedAccountIdsByWorkflowId.values()].flatMap(ids => ids.slice(0, 3)),
     )];
-    const [managedAccountsById, metricsByWorkflowId] = await Promise.all([
+    const visibleWeComMemberIds = [...new Set(
+      [...wecomMemberIdsByWorkflowId.values()].flatMap(ids => ids.slice(0, 3)),
+    )];
+    const [managedAccountsById, metricsByWorkflowId, wecomMembersById] = await Promise.all([
       this.managedAccountReader.findByIds(scope.uid, visibleManagedAccountIds),
       this.metricReader.findByWorkflowIds(scope.uid, page.items.map(record => record.id)),
+      this.findWecomMembersForList(scope.uid, visibleWeComMemberIds),
     ]);
 
     return {
@@ -452,10 +472,28 @@ export class WorkflowService {
         managedAccountIdsByWorkflowId.get(record.id) ?? [],
         managedAccountsById,
         metricsByWorkflowId.get(record.id),
+        wecomMemberIdsByWorkflowId.get(record.id) ?? [],
+        wecomMembersById,
       )),
       nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
       total: page.total,
     };
+  }
+
+  private async findWecomMembersForList(uid: number, workUserIds: number[]) {
+    try {
+      return await this.wecomMemberReader.findByIds(uid, workUserIds);
+    } catch (error) {
+      this.logger.warn(
+        {
+          err: error,
+          operation: "workflow-list-wecom-member-preview",
+          uid,
+        },
+        "企微成员列表预览加载失败，继续返回工作流列表",
+      );
+      return new Map<number, WorkflowWeComMemberSummary>();
+    }
   }
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {
@@ -1159,6 +1197,8 @@ function toDefinitionListItem(
   managedAccountIds: number[],
   managedAccountsById: Map<number, WorkflowManagedAccountSummary>,
   metric: WorkflowMetricSummary | undefined,
+  wecomMemberIds: number[],
+  wecomMembersById: Map<number, WorkflowWeComMemberSummary>,
 ): WorkflowDefinitionListItem {
   return {
     description: record.description,
@@ -1176,6 +1216,9 @@ function toDefinitionListItem(
     trigger: getWorkflowListTrigger(record.draft),
     totalRunCount: metric?.totalRunCount ?? 0,
     updatedAt: record.updatedAt.toISOString(),
+    wecomMemberCount: wecomMemberIds.length,
+    wecomMembers: wecomMemberIds.slice(0, 3)
+      .flatMap(id => wecomMembersById.get(id) ?? []),
     workflowType: record.workflowType,
   };
 }
@@ -1186,6 +1229,14 @@ function getWorkflowListManagedAccountIds(draft: WorkflowDraft) {
   const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
   if (!Value.Check(WorkflowStartDraftConfigSchema, config) || !("seatIds" in config)) return [];
   return (config as WorkflowStartDraftConfig & { seatIds: number[] }).seatIds;
+}
+
+function getWorkflowListWeComMemberIds(draft: WorkflowDraft) {
+  const entryNode = draft.nodes.find(node => node.data.kind === "start");
+  if (!entryNode) return [];
+  const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
+  if (!Value.Check(WorkflowStartDraftConfigSchema, config) || !("workUserIds" in config)) return [];
+  return (config as WorkflowStartDraftConfig & { workUserIds: number[] }).workUserIds;
 }
 
 function getWorkflowListTrigger(draft: WorkflowDraft) {

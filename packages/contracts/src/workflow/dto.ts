@@ -199,6 +199,12 @@ export const WorkflowDefinitionListItemSchema = Type.Object({
   trigger: Type.String(),
   totalRunCount: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 }),
   updatedAt: Type.String(),
+  wecomMemberCount: Type.Integer({ minimum: 0, maximum: 100 }),
+  wecomMembers: Type.Array(Type.Object({
+    avatarUrl: Type.String(),
+    id: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    name: Type.String(),
+  }, { additionalProperties: false }), { maxItems: 3 }),
   workflowType: WorkflowTypeSchema,
 }, { additionalProperties: false });
 

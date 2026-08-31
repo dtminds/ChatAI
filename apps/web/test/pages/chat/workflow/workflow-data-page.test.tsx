@@ -8,6 +8,7 @@ import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { getAiIntentHandleId } from "@/pages/chat/workflow/nodes/ai-intent/config";
 import { WorkflowDataPage } from "@/pages/chat/workflow/workflow-data-page";
+import type { WorkflowCustomFieldResource } from "@/pages/chat/workflow/workflow-custom-field-resource";
 import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
 import {
   getWorkflowDocument,
@@ -26,6 +27,44 @@ vi.mock("@xyflow/react", async () => {
     useViewport: () => ({ zoom: 1 }),
   };
 });
+
+function withPublishedCustomFieldReference(document: WorkflowDocument) {
+  const messageNode = document.publishedDraft!.nodes.find(node => node.data.kind === "message")!;
+  return {
+    document: {
+      ...document,
+      publishedDraft: {
+        ...document.publishedDraft!,
+        nodes: document.publishedDraft!.nodes.map(node => node.id === messageNode.id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                content: [{
+                  selector: ["subject", "customFields", "7"] as [string, string, string],
+                  type: "variable" as const,
+                }],
+                contentMode: "custom" as const,
+              },
+            }
+          : node),
+      },
+    },
+    messageNode,
+  };
+}
+
+function customFieldResource(
+  status: WorkflowCustomFieldResource["status"],
+  overrides: Partial<WorkflowCustomFieldResource> = {},
+): WorkflowCustomFieldResource {
+  return {
+    fields: [],
+    reload: () => undefined,
+    status,
+    ...overrides,
+  };
+}
 
 describe("WorkflowDataPage", () => {
   it("uses current node positions without exposing unpublished graph changes", async () => {
@@ -85,23 +124,7 @@ describe("WorkflowDataPage", () => {
   it("renders active customer custom field references with their current label", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
-    const messageNode = document.publishedDraft!.nodes.find(node => node.data.kind === "message")!;
-    const publishedDraft = {
-      ...document.publishedDraft!,
-      nodes: document.publishedDraft!.nodes.map(node => node.id === messageNode.id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              content: [{
-                selector: ["subject", "customFields", "7"] as [string, string, string],
-                type: "variable" as const,
-              }],
-              contentMode: "custom" as const,
-            },
-          }
-        : node),
-    };
+    const { document: referencedDocument, messageNode } = withPublishedCustomFieldReference(document);
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
@@ -116,15 +139,17 @@ describe("WorkflowDataPage", () => {
     render(
       <ReactFlowProvider>
         <WorkflowDataPage
-          customFields={[{
-            id: 7,
-            key: "level",
-            options: [],
-            sort: 1,
-            title: "会员等级",
-            type: 1,
-          }]}
-          document={{ ...document, publishedDraft }}
+          customFieldResource={customFieldResource("ready", {
+            fields: [{
+              id: 7,
+              key: "level",
+              options: [],
+              sort: 1,
+              title: "会员等级",
+              type: 1,
+            }],
+          })}
+          document={referencedDocument}
           repository={repository}
         />
       </ReactFlowProvider>,
@@ -134,6 +159,73 @@ describe("WorkflowDataPage", () => {
     const renderedMessageNode = within(canvas).getByTestId(`workflow-flow-node-${messageNode.id}`);
     expect(within(renderedMessageNode).getByText("会员等级")).toBeInTheDocument();
     expect(within(renderedMessageNode).queryByText("原变量不可用")).not.toBeInTheDocument();
+  });
+
+  it("does not render custom fields as unavailable while their directory is loading", () => {
+    resetWorkflowDocumentsForTest();
+    const { document } = withPublishedCustomFieldReference(getWorkflowDocument("vip-reactivation"));
+
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage
+          customFieldResource={customFieldResource("loading")}
+          document={document}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByText("原变量不可用")).not.toBeInTheDocument();
+    expect(screen.queryByRole("application")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry action when the custom field directory fails to load", async () => {
+    resetWorkflowDocumentsForTest();
+    const { document } = withPublishedCustomFieldReference(getWorkflowDocument("vip-reactivation"));
+    const reload = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage
+          customFieldResource={customFieldResource("error", { reload })}
+          document={document}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const error = screen.getByRole("alert");
+    await user.click(within(error).getByRole("button", { name: "重试" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("原变量不可用")).not.toBeInTheDocument();
+  });
+
+  it("does not block workflows without custom field references on directory errors", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(),
+    };
+
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage
+          customFieldResource={customFieldResource("error")}
+          document={document}
+          repository={repository}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(await screen.findByRole("application")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("opens all records from the start node metric action", async () => {

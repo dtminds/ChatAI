@@ -4,6 +4,7 @@ import {
   createWorkflowCustomFieldVariableSelector,
   getWorkflowCustomFieldVariableId,
   getWorkflowCustomFieldVariableIds,
+  getWorkflowCustomFieldVariableRequirements,
   getWorkflowCustomFieldVariableValueType,
 } from "../src/index.js";
 
@@ -43,5 +44,22 @@ describe("Workflow custom field variables", () => {
         { selector: ["subject", "customFields", "42"] },
       ],
     })).toEqual([7, 42]);
+  });
+
+  it("derives published value type requirements from typed selector owners", () => {
+    expect(getWorkflowCustomFieldVariableRequirements({
+      branch: {
+        selector: ["subject", "customFields", "42"],
+        valueType: "string",
+      },
+      message: { selector: ["subject", "customFields", "7"] },
+      typedInput: {
+        selector: ["subject", "customFields", "7"],
+        valueType: { kind: "number" },
+      },
+    })).toEqual([
+      { fieldId: 7, valueTypes: ["number"] },
+      { fieldId: 42, valueTypes: ["string"] },
+    ]);
   });
 });

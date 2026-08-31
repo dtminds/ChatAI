@@ -10,6 +10,7 @@ describe("Workflow execution context prepare", () => {
   it("derives direct identity inputs and global context without node declarations", () => {
     expect(deriveWorkflowExecutionContextRequirements(node("message"))).toEqual({
       customFieldIds: [],
+      customFields: [],
       globalContext: false,
       identities: ["thirdExternalUserId"],
     });
@@ -17,6 +18,7 @@ describe("Workflow execution context prepare", () => {
       branchPaths: [{ conditions: [{ selector: ["global", "customer", "name"] }] }],
     }))).toEqual({
       customFieldIds: [],
+      customFields: [],
       globalContext: true,
       identities: ["externalUserId"],
     });
@@ -24,16 +26,19 @@ describe("Workflow execution context prepare", () => {
       value: { selector: ["global", "session", "startedAt"] },
     }))).toEqual({
       customFieldIds: [],
+      customFields: [],
       globalContext: true,
       identities: ["externalUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("order-conversion"))).toEqual({
       customFieldIds: [],
+      customFields: [],
       globalContext: false,
       identities: ["mallUserId"],
     });
     expect(deriveWorkflowExecutionContextRequirements(node("order-bind"))).toEqual({
       customFieldIds: [],
+      customFields: [],
       globalContext: false,
       identities: ["externalUserId"],
     });
@@ -42,8 +47,59 @@ describe("Workflow execution context prepare", () => {
       duplicate: ["subject", "customFields", "42"],
     }))).toEqual({
       customFieldIds: [42],
+      customFields: [{ fieldId: 42, valueTypes: ["number", "string"] }],
       globalContext: false,
       identities: [],
+    });
+  });
+
+  it("derives exact published value types while leaving message references generic", () => {
+    expect(deriveWorkflowExecutionContextRequirements(node("branch", {
+      branchPaths: [{
+        conditions: [{
+          selector: ["subject", "customFields", "42"],
+          valueType: "string",
+        }],
+      }],
+    })).customFields).toEqual([{ fieldId: 42, valueTypes: ["string"] }]);
+
+    expect(deriveWorkflowExecutionContextRequirements(node("llm", {
+      inputs: [{
+        value: {
+          kind: "variable",
+          selector: ["subject", "customFields", "7"],
+          valueType: { kind: "number" },
+        },
+      }],
+    })).customFields).toEqual([{ fieldId: 7, valueTypes: ["number"] }]);
+
+    expect(deriveWorkflowExecutionContextRequirements(node("message", {
+      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+    })).customFields).toEqual([{ fieldId: 42, valueTypes: ["number", "string"] }]);
+  });
+
+  it("fails before Branch execution when the active field type drifted", async () => {
+    await expect(prepareWorkflowExecutionContext({
+      contactCustomFieldPort: {
+        getContactCustomFields: async () => [
+          { fieldId: 42, fieldType: 11, rawValue: "12" },
+        ],
+      },
+      node: node("branch", {
+        branchPaths: [{
+          conditions: [{
+            selector: ["subject", "customFields", "42"],
+            valueType: "string",
+          }],
+        }],
+      }),
+      subjectId: "101",
+      subjectType: "wecom_contact",
+      trigger: {},
+      uid: 9,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_CONTACT_CUSTOM_FIELD_VALUE_INVALID",
+      failureKind: "terminal",
     });
   });
 

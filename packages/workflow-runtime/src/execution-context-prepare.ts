@@ -1,7 +1,9 @@
 import {
   getWorkflowCustomFieldVariableIds,
+  getWorkflowCustomFieldVariableRequirements,
   getWorkflowNodeContract,
   type WorkflowContactIdentity,
+  type WorkflowCustomFieldVariableRequirement,
   type WorkflowExecutionNode,
   type WorkflowIdentityField,
   type WorkflowSubjectType,
@@ -51,6 +53,7 @@ export class WorkflowContactIdentityLookupError extends Error {
 
 export type WorkflowExecutionContextRequirements = {
   customFieldIds: readonly number[];
+  customFields: readonly WorkflowCustomFieldVariableRequirement[];
   globalContext: boolean;
   identities: readonly WorkflowIdentityField[];
 };
@@ -72,6 +75,7 @@ export function deriveWorkflowExecutionContextRequirements(
   }
   return {
     customFieldIds: getWorkflowCustomFieldVariableIds(node.config),
+    customFields: getWorkflowCustomFieldVariableRequirements(node.config),
     globalContext,
     identities: IDENTITY_FIELD_ORDER.filter(identity => identities.has(identity)),
   };
@@ -137,8 +141,8 @@ export async function prepareWorkflowExecutionContext(input: {
 
   const customFields = input.customFieldSnapshot ?? await prepareWorkflowContactCustomFields({
     externalUserId: identities.externalUserId!,
-    fieldIds: requirements.customFieldIds,
     port: input.contactCustomFieldPort,
+    requirements: requirements.customFields,
     signal: input.signal,
     uid: input.uid,
   });

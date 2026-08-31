@@ -6,6 +6,7 @@ import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-rou
 import { toast } from "sonner";
 import {
   getWorkflowCapabilityProfile,
+  getWorkflowCustomFieldVariableIds,
   type WorkflowSurface,
   type WorkflowPublishReview,
 } from "@chatai/contracts";
@@ -203,7 +204,9 @@ function WorkflowWorkspaceContent({
   const surface = useWorkflowSurface();
   const location = useLocation();
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
-  const customFieldResource = useWorkflowCustomFieldResource(true);
+  const shouldLoadCustomFields = mode === "design"
+    || getWorkflowCustomFieldVariableIds(document.publishedDraft).length > 0;
+  const customFieldResource = useWorkflowCustomFieldResource(shouldLoadCustomFields);
   const shouldLoadFriendAddWays = mode === "design"
     && getWorkflowCapabilityProfile(document.workflowType)
     .allowedEntryEventTypes.includes("contact.friend_added");
@@ -361,7 +364,7 @@ function WorkflowWorkspaceContent({
       {mode === "data" ? (
         <div className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden">
           <WorkflowDataPage
-            customFields={customFieldResource.fields}
+            customFieldResource={customFieldResource}
             document={currentDocument}
             refreshVersion={dataRefreshVersion}
           />

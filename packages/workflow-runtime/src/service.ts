@@ -607,7 +607,7 @@ export class WorkflowRuntimeService {
       let preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} };
       const customFieldSnapshot = readWorkflowCustomFieldSnapshot(
         nodeExecutionInput,
-        contextRequirements.customFieldIds,
+        contextRequirements.customFields,
       );
       if (contextRequirements.identities.length > 0
         || contextRequirements.customFieldIds.length > 0) {

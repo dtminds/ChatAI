@@ -16,8 +16,8 @@ describe("Workflow contact custom field preparation", () => {
 
     await expect(prepareWorkflowContactCustomFields({
       externalUserId: 101,
-      fieldIds: [7, 42],
       port: { getContactCustomFields },
+      requirements: [requirement(7), requirement(42)],
       uid: 9,
     })).resolves.toEqual({ "7": 12.5, "42": " VIP " });
     expect(getContactCustomFields).toHaveBeenCalledTimes(1);
@@ -32,8 +32,8 @@ describe("Workflow contact custom field preparation", () => {
     const getContactCustomFields = vi.fn();
     await expect(prepareWorkflowContactCustomFields({
       externalUserId: 101,
-      fieldIds: [],
       port: { getContactCustomFields },
+      requirements: [],
       uid: 9,
     })).resolves.toEqual({});
     expect(getContactCustomFields).not.toHaveBeenCalled();
@@ -56,20 +56,43 @@ describe("Workflow contact custom field preparation", () => {
       code: "WORKFLOW_CONTACT_CUSTOM_FIELD_UNAVAILABLE",
     },
   ])("rejects invalid or unavailable referenced values as $code", ({ fields, fieldIds, code }) => {
-    expect(() => normalizeWorkflowContactCustomFieldValues(fields, fieldIds))
+    expect(() => normalizeWorkflowContactCustomFieldValues(
+      fields,
+      fieldIds.map(fieldId => requirement(fieldId)),
+    ))
       .toThrow(expect.objectContaining({ code, failureKind: "terminal" }));
+  });
+
+  it("rejects a current field type that drifted from the published node requirement", () => {
+    expect(() => normalizeWorkflowContactCustomFieldValues(
+      [{ fieldId: 42, fieldType: 11, rawValue: "12" }],
+      [requirement(42, ["string"])],
+    )).toThrow(expect.objectContaining({
+      code: "WORKFLOW_CONTACT_CUSTOM_FIELD_VALUE_INVALID",
+      failureKind: "terminal",
+    }));
+  });
+
+  it("accepts either supported field type for an untyped message reference", () => {
+    expect(normalizeWorkflowContactCustomFieldValues(
+      [
+        { fieldId: 7, fieldType: 11, rawValue: "12" },
+        { fieldId: 42, fieldType: 1, rawValue: "VIP" },
+      ],
+      [requirement(7), requirement(42)],
+    )).toEqual({ "7": 12, "42": "VIP" });
   });
 
   it("maps port failure kinds into node failures", async () => {
     for (const failureKind of ["retryable", "terminal"] as const) {
       await expect(prepareWorkflowContactCustomFields({
         externalUserId: 101,
-        fieldIds: [7],
         port: {
           getContactCustomFields: async () => {
             throw new WorkflowContactCustomFieldLookupError("lookup failed", { failureKind });
           },
         },
+        requirements: [requirement(7)],
         uid: 9,
       })).rejects.toMatchObject({
         code: failureKind === "terminal"
@@ -81,11 +104,37 @@ describe("Workflow contact custom field preparation", () => {
   });
 
   it("only accepts complete finite snapshots for the current references", () => {
-    expect(readWorkflowCustomFieldSnapshot({ customFields: { "7": 12, "42": "VIP" } }, [7, 42]))
+    expect(readWorkflowCustomFieldSnapshot(
+      { customFields: { "7": 12, "42": "VIP" } },
+      [requirement(7), requirement(42)],
+    ))
       .toEqual({ "7": 12, "42": "VIP" });
-    expect(readWorkflowCustomFieldSnapshot({ customFields: { "7": 12 } }, [7, 42]))
+    expect(readWorkflowCustomFieldSnapshot(
+      { customFields: { "7": 12 } },
+      [requirement(7), requirement(42)],
+    ))
       .toBeNull();
-    expect(readWorkflowCustomFieldSnapshot({ customFields: { "7": Number.NaN } }, [7]))
+    expect(readWorkflowCustomFieldSnapshot(
+      { customFields: { "7": Number.NaN } },
+      [requirement(7)],
+    ))
       .toBeNull();
   });
+
+  it("rejects a snapshot whose value type does not match the published node requirement", () => {
+    expect(() => readWorkflowCustomFieldSnapshot(
+      { customFields: { "42": 12 } },
+      [requirement(42, ["string"])],
+    )).toThrow(expect.objectContaining({
+      code: "WORKFLOW_CONTACT_CUSTOM_FIELD_VALUE_INVALID",
+      failureKind: "terminal",
+    }));
+  });
 });
+
+function requirement(
+  fieldId: number,
+  valueTypes: readonly ("number" | "string")[] = ["number", "string"],
+) {
+  return { fieldId, valueTypes };
+}

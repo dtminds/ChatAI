@@ -10,6 +10,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  getWorkflowCustomFieldVariableIds,
   WORKFLOW_RUN_RETENTION_DAYS,
   type CustomFieldItem,
   type WorkflowDataOverview,
@@ -46,9 +47,16 @@ import {
 import type { WorkflowDraft, WorkflowRenderNode } from "./types";
 import { createWorkflowReadOnlyRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSurface } from "./workflow-surface";
+import type { WorkflowCustomFieldResource } from "./workflow-custom-field-resource";
 
 type WorkflowRecordsSelection = {
   nodeId?: string;
+};
+
+const readyEmptyCustomFieldResource: WorkflowCustomFieldResource = {
+  fields: [],
+  reload: () => undefined,
+  status: "ready",
 };
 
 function resolveWorkflowDataDraft(document: WorkflowDocument) {
@@ -68,12 +76,12 @@ function resolveWorkflowDataDraft(document: WorkflowDocument) {
 }
 
 export function WorkflowDataPage({
-  customFields = [],
+  customFieldResource = readyEmptyCustomFieldResource,
   document,
   refreshVersion = 0,
   repository: repositoryProp,
 }: {
-  customFields?: readonly CustomFieldItem[];
+  customFieldResource?: WorkflowCustomFieldResource;
   document: WorkflowDocument;
   refreshVersion?: number;
   repository?: WorkflowDataRepository;
@@ -85,16 +93,30 @@ export function WorkflowDataPage({
   );
   const [recordsSelection, setRecordsSelection] = useState<WorkflowRecordsSelection | null>(null);
   const draft = useMemo(() => resolveWorkflowDataDraft(document), [document]);
+  const requiresCustomFields = useMemo(
+    () => draft !== null && getWorkflowCustomFieldVariableIds(draft).length > 0,
+    [draft],
+  );
   useEffect(() => setRecordsSelection(null), [document.publishedRevision]);
 
   if (document.publishedRevision === null || !draft) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">发布后可查看运行数据</div>;
   }
 
+  if (requiresCustomFields && customFieldResource.status !== "ready") {
+    return (
+      <div className="relative flex h-full min-h-0 flex-col bg-background">
+        {customFieldResource.status === "error"
+          ? <ErrorState message="变量加载失败" onRetry={customFieldResource.reload} />
+          : <LoadingState />}
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       <WorkflowDataOverviewView
-        customFields={customFields}
+        customFields={customFieldResource.fields}
         document={document}
         draft={draft}
         onViewAllRecords={() => setRecordsSelection({})}
@@ -427,6 +449,6 @@ function LoadingState() {
   return <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><Spinner />正在加载</div>;
 }
 
-function ErrorState({ onRetry }: { onRetry(): void }) {
-  return <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground" role="alert"><span>数据加载失败</span><Button onClick={onRetry} size="sm" type="button" variant="outline">重试</Button></div>;
+function ErrorState({ message = "数据加载失败", onRetry }: { message?: string; onRetry(): void }) {
+  return <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground" role="alert"><span>{message}</span><Button onClick={onRetry} size="sm" type="button" variant="outline">重试</Button></div>;
 }

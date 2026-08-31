@@ -1,4 +1,7 @@
-import { getWorkflowCustomFieldVariableValueType } from "@chatai/contracts";
+import {
+  getWorkflowCustomFieldVariableValueType,
+  type WorkflowCustomFieldVariableRequirement,
+} from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 
 export type WorkflowCustomFieldValue = number | string;
@@ -32,12 +35,12 @@ export class WorkflowContactCustomFieldLookupError extends Error {
 
 export async function prepareWorkflowContactCustomFields(input: {
   externalUserId: number;
-  fieldIds: readonly number[];
   port?: WorkflowContactCustomFieldPort;
+  requirements: readonly WorkflowCustomFieldVariableRequirement[];
   signal?: AbortSignal;
   uid: number;
 }): Promise<Record<string, WorkflowCustomFieldValue>> {
-  if (input.fieldIds.length === 0) return {};
+  if (input.requirements.length === 0) return {};
   if (!input.port) {
     throw customFieldLookupFailure(
       "Workflow contact custom field port is not configured",
@@ -63,12 +66,12 @@ export async function prepareWorkflowContactCustomFields(input: {
     );
   }
 
-  return normalizeWorkflowContactCustomFieldValues(fields, input.fieldIds);
+  return normalizeWorkflowContactCustomFieldValues(fields, input.requirements);
 }
 
 export function normalizeWorkflowContactCustomFieldValues(
   fields: readonly WorkflowContactCustomFieldValue[],
-  fieldIds: readonly number[],
+  requirements: readonly WorkflowCustomFieldVariableRequirement[],
 ): Record<string, WorkflowCustomFieldValue> {
   const byId = new Map<number, WorkflowContactCustomFieldValue>();
   for (const field of fields) {
@@ -79,7 +82,8 @@ export function normalizeWorkflowContactCustomFieldValues(
   }
 
   const values: Record<string, WorkflowCustomFieldValue> = {};
-  for (const fieldId of fieldIds) {
+  for (const requirement of requirements) {
+    const { fieldId } = requirement;
     const field = byId.get(fieldId);
     if (!field) {
       throw new WorkflowCapabilityExecutionError(
@@ -93,6 +97,11 @@ export function normalizeWorkflowContactCustomFieldValues(
     if (!valueType) {
       throw customFieldValueInvalid(
         `Workflow custom field ${fieldId} has unsupported type ${field.fieldType}`,
+      );
+    }
+    if (!requirement.valueTypes.includes(valueType.kind)) {
+      throw customFieldValueInvalid(
+        `Workflow custom field ${fieldId} type ${valueType.kind} does not match published node requirements`,
       );
     }
     if (valueType.kind === "number") {
@@ -112,19 +121,33 @@ export function normalizeWorkflowContactCustomFieldValues(
 
 export function readWorkflowCustomFieldSnapshot(
   input: Record<string, unknown>,
-  fieldIds: readonly number[],
+  requirements: readonly WorkflowCustomFieldVariableRequirement[],
 ): Record<string, WorkflowCustomFieldValue> | null {
-  if (fieldIds.length === 0) return {};
+  if (requirements.length === 0) return {};
   const snapshot = input.customFields;
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
   const record = snapshot as Record<string, unknown>;
   const values: Record<string, WorkflowCustomFieldValue> = {};
-  for (const fieldId of fieldIds) {
+  for (const requirement of requirements) {
+    const { fieldId } = requirement;
     const key = String(fieldId);
     if (!Object.prototype.hasOwnProperty.call(record, key)) return null;
     const value = record[key];
-    if (typeof value !== "string"
-      && (typeof value !== "number" || !Number.isFinite(value))) return null;
+    if (typeof value === "string") {
+      if (!requirement.valueTypes.includes("string")) {
+        throw customFieldValueInvalid(
+          `Workflow custom field ${fieldId} snapshot type string does not match published node requirements`,
+        );
+      }
+      values[key] = value;
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    if (!requirement.valueTypes.includes("number")) {
+      throw customFieldValueInvalid(
+        `Workflow custom field ${fieldId} snapshot type number does not match published node requirements`,
+      );
+    }
     values[key] = value;
   }
   return values;

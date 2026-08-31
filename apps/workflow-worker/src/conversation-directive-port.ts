@@ -117,7 +117,7 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
 export function formatUtc8LocalDateTime(value: Date) {
   const utc8 = new Date(value.getTime() + 8 * 3_600_000);
   const pad = (part: number) => String(part).padStart(2, "0");
-  return `${utc8.getUTCFullYear()}-${pad(utc8.getUTCMonth() + 1)}-${pad(utc8.getUTCDate())} ${pad(utc8.getUTCHours())}:${pad(utc8.getUTCMinutes())}:${pad(utc8.getUTCSeconds())}`;
+  return `${utc8.getUTCFullYear()}-${pad(utc8.getUTCMonth() + 1)}-${pad(utc8.getUTCDate())}T${pad(utc8.getUTCHours())}:${pad(utc8.getUTCMinutes())}:${pad(utc8.getUTCSeconds())}`;
 }
 
 function terminal(code: string, diagnosticMessage: string) {

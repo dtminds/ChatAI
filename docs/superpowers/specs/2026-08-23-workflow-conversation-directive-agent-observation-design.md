@@ -64,7 +64,7 @@ type AddWapEmbedAgentDirective = {
 
 - `bizId = workflow-task:${taskId}`，在 `uid + type + bizId` 下稳定，长度不超过 64。
 - Java 新增或更新接口按该唯一键幂等；已存在时保留指令 ID、`totalRound` 和有效状态，只更新请求中的配置内容。
-- `expiresAt` 使用 UTC+8 wall-clock，格式为 `YYYY-MM-DD HH:mm:ss`。
+- `expiresAt` 使用 UTC+8 wall-clock，按 Java `LocalDateTime` 的 ISO 格式传递：`YYYY-MM-DDTHH:mm:ss`。
 - `limitRound` 来自节点最大辅助轮次。
 - `payload` 是可直接注入 Prompt 的自然语言文本；Java 不解析 JSON、不解释字段结构。
 - `priority` V1 固定为 `0`，不向节点配置开放。

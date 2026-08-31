@@ -50,7 +50,7 @@ describe("Workflow conversation directive port", () => {
           bizId: "workflow-task:88",
           bizInfo: "",
           conversationId: 301,
-          expiresAt: "2026-08-30 09:02:03",
+          expiresAt: "2026-08-30T09:02:03",
           limitRound: 3,
           payload: "请结合当前对话自然确认订单号",
           priority: 0,

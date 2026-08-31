@@ -22,6 +22,7 @@ export class HttpWorkflowContactCustomFieldPort implements WorkflowContactCustom
 
   async getContactCustomFields(input: {
     externalUserId: number;
+    fieldIds: readonly number[];
     signal?: AbortSignal;
     uid: number;
   }): Promise<WorkflowContactCustomFieldValue[]> {
@@ -64,7 +65,7 @@ export class HttpWorkflowContactCustomFieldPort implements WorkflowContactCustom
           "Workflow contact custom field endpoint returned invalid JSON",
         );
       }
-      return decodeJavaContactCustomFieldResponse(body);
+      return decodeJavaContactCustomFieldResponse(body, input.fieldIds);
     } catch (error) {
       if (error instanceof WorkflowContactCustomFieldLookupError) throw error;
       throw new WorkflowContactCustomFieldLookupError(undefined, { cause: error });
@@ -77,6 +78,7 @@ export class HttpWorkflowContactCustomFieldPort implements WorkflowContactCustom
 
 export function decodeJavaContactCustomFieldResponse(
   body: unknown,
+  fieldIds: readonly number[],
 ): WorkflowContactCustomFieldValue[] {
   const envelope = decodeJavaInternalApiEnvelope(body);
   if (envelope.kind === "invalid") {
@@ -95,21 +97,17 @@ export function decodeJavaContactCustomFieldResponse(
     );
   }
 
+  const requiredFieldIds = new Set(fieldIds);
   const seen = new Set<number>();
-  return envelope.payload.data.map((item, index) => {
-    if (!isRecord(item)) {
-      throw terminalCustomFieldError(
-        `Workflow contact custom field endpoint returned invalid item ${index}`,
-      );
-    }
+  const fields: WorkflowContactCustomFieldValue[] = [];
+  envelope.payload.data.forEach((item, index) => {
+    if (!isRecord(item)) return;
     const fieldId = item.fieldid;
+    if (typeof fieldId !== "number"
+      || !Number.isSafeInteger(fieldId)
+      || !requiredFieldIds.has(fieldId)) return;
     const fieldType = item.type;
-    const rawValue = item.optionVal;
-    if (typeof fieldId !== "number" || !Number.isSafeInteger(fieldId) || fieldId <= 0) {
-      throw terminalCustomFieldError(
-        `Workflow contact custom field endpoint returned invalid fieldid at item ${index}`,
-      );
-    }
+    const rawValue = item.value;
     if (typeof fieldType !== "number" || !Number.isSafeInteger(fieldType) || fieldType <= 0) {
       throw terminalCustomFieldError(
         `Workflow contact custom field endpoint returned invalid type at item ${index}`,
@@ -117,7 +115,7 @@ export function decodeJavaContactCustomFieldResponse(
     }
     if (typeof rawValue !== "string") {
       throw terminalCustomFieldError(
-        `Workflow contact custom field endpoint returned invalid optionVal at item ${index}`,
+        `Workflow contact custom field endpoint returned invalid value at item ${index}`,
       );
     }
     if (seen.has(fieldId)) {
@@ -126,8 +124,9 @@ export function decodeJavaContactCustomFieldResponse(
       );
     }
     seen.add(fieldId);
-    return { fieldId, fieldType, rawValue };
+    fields.push({ fieldId, fieldType, rawValue });
   });
+  return fields;
 }
 
 function terminalCustomFieldError(message: string) {

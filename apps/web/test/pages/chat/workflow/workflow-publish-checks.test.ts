@@ -715,6 +715,40 @@ describe("buildPublishChecks", () => {
     ]));
   });
 
+  it.each([
+    { message: "正在校验客户属性", status: "loading" as const },
+    { message: "客户属性加载失败", status: "error" as const },
+  ])("separates custom field resource state from invalid references", ({ message, status }) => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const customFieldMessageNode: WorkflowNode<"message"> = {
+      ...messageNode,
+      data: {
+        ...messageNode.data,
+        content: [{ selector: ["subject", "customFields", "7"], type: "variable" }],
+      },
+    };
+    const nextNodes = nodes.map(node =>
+      node.id === customFieldMessageNode.id ? customFieldMessageNode : node);
+    const checklist = buildPublishChecklistWithPolicy(nextNodes, edges, {
+      ...validationPolicy,
+      resources: {
+        customFields: { fields: [], status },
+      },
+    });
+    const messages = checklist.checks
+      .filter(check => check.nodeId === customFieldMessageNode.id)
+      .flatMap(check => check.messages);
+
+    expect(checklist.canPublish).toBe(false);
+    expect(messages).toContain(message);
+    expect(messages).not.toContain("消息内容引用了不可用变量");
+  });
+
   it("requires message text or attachments and accepts either source", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();

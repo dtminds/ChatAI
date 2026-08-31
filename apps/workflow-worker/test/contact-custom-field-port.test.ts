@@ -5,17 +5,17 @@ import {
 } from "../src/contact-custom-field-port.js";
 
 describe("Workflow contact custom field Java port", () => {
-  it("posts the exact contact lookup DTO and maps optionVal behind the adapter boundary", async () => {
+  it("posts the exact contact lookup DTO and maps value behind the adapter boundary", async () => {
     const fetchMock = vi.fn(async () => response({
       data: [{
         fieldid: 42,
         key: "level",
         limit: 0,
-        optionVal: "VIP",
+        optionVal: "普通,VIP",
         sort: 1,
         title: "客户等级",
         type: 1,
-        value: "ignored-for-now",
+        value: "VIP",
       }],
       error: 0,
       errorMsg: "",
@@ -27,7 +27,11 @@ describe("Workflow contact custom field Java port", () => {
       token: "internal-token",
     });
 
-    await expect(port.getContactCustomFields({ externalUserId: 101, uid: 9 }))
+    await expect(port.getContactCustomFields({
+      externalUserId: 101,
+      fieldIds: [42],
+      uid: 9,
+    }))
       .resolves.toEqual([{ fieldId: 42, fieldType: 1, rawValue: "VIP" }]);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
       "https://java.example.com/third-internal/custom-field/get-contact-custom-field",
@@ -47,8 +51,8 @@ describe("Workflow contact custom field Java port", () => {
     { data: [{ fieldid: 1, type: 1 }], error: 0, errorMsg: "", success: true },
     {
       data: [
-        { fieldid: 1, optionVal: "a", type: 1 },
-        { fieldid: 1, optionVal: "b", type: 1 },
+        { fieldid: 1, type: 1, value: "a" },
+        { fieldid: 1, type: 1, value: "b" },
       ],
       error: 0,
       errorMsg: "",
@@ -56,10 +60,29 @@ describe("Workflow contact custom field Java port", () => {
     },
     { data: [], error: 40001, errorMsg: "参数无效", success: false },
   ])("rejects invalid successful data and Java business failures", (body) => {
-    expect(() => decodeJavaContactCustomFieldResponse(body)).toThrow(expect.objectContaining({
+    expect(() => decodeJavaContactCustomFieldResponse(body, [1])).toThrow(expect.objectContaining({
       failureKind: "terminal",
       name: "WorkflowContactCustomFieldLookupError",
     }));
+  });
+
+  it("validates only fields referenced by the current node", () => {
+    expect(decodeJavaContactCustomFieldResponse({
+      data: [
+        null,
+        { fieldid: 7, optionVal: "unused", type: null, value: null },
+        {
+          fieldid: 24,
+          key: "income",
+          optionVal: "5万以下,5万-15万,15万-30万",
+          type: 2,
+          value: "5万以下",
+        },
+      ],
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }, [24])).toEqual([{ fieldId: 24, fieldType: 2, rawValue: "5万以下" }]);
   });
 
   it("classifies HTTP and network failures as retryable and invalid JSON as terminal", async () => {
@@ -82,7 +105,11 @@ describe("Workflow contact custom field Java port", () => {
         baseUrl: "https://java.example.com",
         fetch: testCase.fetch,
       });
-      await expect(port.getContactCustomFields({ externalUserId: 101, uid: 9 }))
+      await expect(port.getContactCustomFields({
+        externalUserId: 101,
+        fieldIds: [42],
+        uid: 9,
+      }))
         .rejects.toMatchObject({
           failureKind: testCase.expected,
           name: "WorkflowContactCustomFieldLookupError",
@@ -103,7 +130,11 @@ describe("Workflow contact custom field Java port", () => {
           })) as typeof fetch,
         timeoutMs: 50,
       });
-      const pending = expect(port.getContactCustomFields({ externalUserId: 101, uid: 9 }))
+      const pending = expect(port.getContactCustomFields({
+        externalUserId: 101,
+        fieldIds: [42],
+        uid: 9,
+      }))
         .rejects.toMatchObject({ failureKind: "retryable" });
       await vi.advanceTimersByTimeAsync(50);
       await pending;

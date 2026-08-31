@@ -23,6 +23,7 @@ describe("Workflow contact custom field preparation", () => {
     expect(getContactCustomFields).toHaveBeenCalledTimes(1);
     expect(getContactCustomFields).toHaveBeenCalledWith({
       externalUserId: 101,
+      fieldIds: [7, 42],
       signal: undefined,
       uid: 9,
     });

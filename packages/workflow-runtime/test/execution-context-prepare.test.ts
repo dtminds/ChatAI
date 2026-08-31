@@ -164,6 +164,7 @@ describe("Workflow execution context prepare", () => {
     });
     expect(getContactCustomFields).toHaveBeenCalledWith({
       externalUserId: 101,
+      fieldIds: [42],
       signal: undefined,
       uid: 9,
     });

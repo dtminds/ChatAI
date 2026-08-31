@@ -15,6 +15,7 @@ export type WorkflowContactCustomFieldValue = {
 export interface WorkflowContactCustomFieldPort {
   getContactCustomFields(input: {
     externalUserId: number;
+    fieldIds: readonly number[];
     signal?: AbortSignal;
     uid: number;
   }): Promise<WorkflowContactCustomFieldValue[]>;
@@ -51,6 +52,7 @@ export async function prepareWorkflowContactCustomFields(input: {
   try {
     fields = await input.port.getContactCustomFields({
       externalUserId: input.externalUserId,
+      fieldIds: input.requirements.map(requirement => requirement.fieldId),
       signal: input.signal,
       uid: input.uid,
     });

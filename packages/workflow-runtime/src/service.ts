@@ -884,19 +884,8 @@ export class WorkflowRuntimeService {
           const completed = isWorkflowAiCollectComplete(input.node, collected);
           const remainingFieldsChanged = config.fields.some(field =>
             (field.id in state.collected) !== (field.id in collected));
-          const pendingCutoffAfterBatch = completedBatchCutoffAt !== null
-            && !completedBatchHasMore
-            && state.pendingCutoffAt !== null
-            && state.pendingCutoffAt <= completedBatchCutoffAt
-            ? null
-            : state.pendingCutoffAt;
           const expired = state.expiresAt !== null && completedAt >= state.expiresAt;
           const roundLimitReached = state.observedRound >= config.maxFollowUpCount;
-          const finishingIncomplete = !completed
-            && completedBatchCutoffAt !== null
-            && !completedBatchHasMore
-            && pendingCutoffAfterBatch === null
-            && (expired || roundLimitReached);
           if (state.directiveStatus === "active"
             && !completed
             && !expired
@@ -917,7 +906,11 @@ export class WorkflowRuntimeService {
             },
             uid: state.uid,
           });
-          if (finishingIncomplete) {
+          if (!completed
+            && completedBatchCutoffAt !== null
+            && !completedBatchHasMore
+            && state.pendingCutoffAt === null
+            && (expired || roundLimitReached)) {
             state = await this.transitionAiCollectStateOrThrow({
               now: completedAt,
               taskId: state.taskId,

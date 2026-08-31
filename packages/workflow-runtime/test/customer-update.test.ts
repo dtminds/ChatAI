@@ -8,6 +8,7 @@ import {
 import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter.js";
 
 const context = {
+  customFields: { "42": "" },
   currentNodeLifecycle: { enteredAt: "2026-08-17T16:30:00.000Z" },
   identities: { externalUserId: 101 },
   nodeLifecycle: {},
@@ -152,7 +153,7 @@ describe("Workflow Customer Update capability", () => {
     expect(adapter.calls[0]?.request.command).toEqual({ source: "workflow", updates: [] });
   });
 
-  it("skips an empty text value resolved from a variable without failing the batch", async () => {
+  it("skips empty text and number values resolved from variables without failing the batch", async () => {
     const adapter = new FakeWorkflowCapabilityAdapter(async () => ({}));
 
     await expect(executeWorkflowCapability({
@@ -167,6 +168,15 @@ describe("Workflow Customer Update capability", () => {
               kind: "variable",
               selector: ["node", "tag-query", "matchedTagNames"],
               valueType: { kind: "string" },
+            },
+          },
+          {
+            fieldId: 7,
+            fieldType: 11,
+            value: {
+              kind: "variable",
+              selector: ["subject", "customFields", "42"],
+              valueType: { kind: "number" },
             },
           },
           { fieldId: 6, fieldType: 1, value: { kind: "literal", value: "保留地址" } },

@@ -70,6 +70,8 @@ function resolveCustomerFieldValue(
     ? configuredValue.value
     : readVariableValue(configuredValue.selector, context);
 
+  if (configuredValue.kind === "variable" && value === "") return null;
+
   if (fieldType === 11) {
     if (configuredValue.kind === "variable") {
       if (typeof value !== "number" || !Number.isFinite(value)) {

@@ -107,7 +107,7 @@ export function decodeJavaContactCustomFieldResponse(
       || !Number.isSafeInteger(fieldId)
       || !requiredFieldIds.has(fieldId)) return;
     const fieldType = item.type;
-    const rawValue = item.value;
+    const rawValue = item.value ?? "";
     if (typeof fieldType !== "number" || !Number.isSafeInteger(fieldType) || fieldType <= 0) {
       throw terminalCustomFieldError(
         `Workflow contact custom field endpoint returned invalid type at item ${index}`,

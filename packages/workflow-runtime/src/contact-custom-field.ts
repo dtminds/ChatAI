@@ -106,8 +106,12 @@ export function normalizeWorkflowContactCustomFieldValues(
         `Workflow custom field ${fieldId} type ${valueType.kind} does not match published node requirements`,
       );
     }
+    if (field.rawValue.trim() === "") {
+      values[String(fieldId)] = "";
+      continue;
+    }
     if (valueType.kind === "number") {
-      const value = field.rawValue.trim() === "" ? Number.NaN : Number(field.rawValue);
+      const value = Number(field.rawValue);
       if (!Number.isFinite(value)) {
         throw customFieldValueInvalid(
           `Workflow custom field ${fieldId} raw value is not a finite number`,
@@ -135,6 +139,10 @@ export function readWorkflowCustomFieldSnapshot(
     const key = String(fieldId);
     if (!Object.prototype.hasOwnProperty.call(record, key)) return null;
     const value = record[key];
+    if (value === "") {
+      values[key] = value;
+      continue;
+    }
     if (typeof value === "string") {
       if (!requirement.valueTypes.includes("string")) {
         throw customFieldValueInvalid(

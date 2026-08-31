@@ -48,7 +48,7 @@ describe("Workflow contact custom field Java port", () => {
 
   it.each([
     { data: null, error: 0, errorMsg: "", success: true },
-    { data: [{ fieldid: 1, type: 1 }], error: 0, errorMsg: "", success: true },
+    { data: [{ fieldid: 1, type: 1, value: 123 }], error: 0, errorMsg: "", success: true },
     {
       data: [
         { fieldid: 1, type: 1, value: "a" },
@@ -64,6 +64,19 @@ describe("Workflow contact custom field Java port", () => {
       failureKind: "terminal",
       name: "WorkflowContactCustomFieldLookupError",
     }));
+  });
+
+  it.each([
+    { fieldid: 1, type: 1 },
+    { fieldid: 1, type: 1, value: null },
+    { fieldid: 1, type: 1, value: "" },
+  ])("normalizes an unassigned referenced field to an empty value", (item) => {
+    expect(decodeJavaContactCustomFieldResponse({
+      data: [item],
+      error: 0,
+      errorMsg: "",
+      success: true,
+    }, [1])).toEqual([{ fieldId: 1, fieldType: 1, rawValue: "" }]);
   });
 
   it("validates only fields referenced by the current node", () => {

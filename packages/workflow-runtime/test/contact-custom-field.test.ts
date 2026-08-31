@@ -7,7 +7,7 @@ import {
 } from "../src/index.js";
 
 describe("Workflow contact custom field preparation", () => {
-  it("queries once for all references and normalizes optionVal by field type", async () => {
+  it("queries once for all references and normalizes raw values by field type", async () => {
     const getContactCustomFields = vi.fn(async () => [
       { fieldId: 42, fieldType: 1, rawValue: " VIP " },
       { fieldId: 7, fieldType: 11, rawValue: "12.5" },
@@ -42,7 +42,7 @@ describe("Workflow contact custom field preparation", () => {
 
   it.each([
     {
-      fields: [{ fieldId: 7, fieldType: 11, rawValue: "" }],
+      fields: [{ fieldId: 7, fieldType: 11, rawValue: "not-a-number" }],
       fieldIds: [7],
       code: "WORKFLOW_CONTACT_CUSTOM_FIELD_VALUE_INVALID",
     },
@@ -62,6 +62,16 @@ describe("Workflow contact custom field preparation", () => {
       fieldIds.map(fieldId => requirement(fieldId)),
     ))
       .toThrow(expect.objectContaining({ code, failureKind: "terminal" }));
+  });
+
+  it("preserves unassigned string and number fields as empty values", () => {
+    expect(normalizeWorkflowContactCustomFieldValues(
+      [
+        { fieldId: 7, fieldType: 11, rawValue: "  " },
+        { fieldId: 42, fieldType: 1, rawValue: "" },
+      ],
+      [requirement(7, ["number"]), requirement(42, ["string"])],
+    )).toEqual({ "7": "", "42": "" });
   });
 
   it("rejects a current field type that drifted from the published node requirement", () => {
@@ -120,6 +130,13 @@ describe("Workflow contact custom field preparation", () => {
       [requirement(7)],
     ))
       .toBeNull();
+  });
+
+  it("accepts an empty snapshot for a published number requirement", () => {
+    expect(readWorkflowCustomFieldSnapshot(
+      { customFields: { "7": "" } },
+      [requirement(7, ["number"])],
+    )).toEqual({ "7": "" });
   });
 
   it("rejects a snapshot whose value type does not match the published node requirement", () => {

@@ -843,17 +843,20 @@ describe("workflow capability reliability", () => {
     expect(run?.context).not.toHaveProperty("identities");
   });
 
-  it("snapshots referenced custom fields before execution and reuses them across a retry", async () => {
+  it("renders an empty numeric custom field as an empty message segment across a retry", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const spec = actionSpec();
     spec.nodes.find(node => node.kind === "message")!.config = {
       attachments: [],
-      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+      content: [
+        { type: "text", value: "客户评分：" },
+        { selector: ["subject", "customFields", "42"], type: "variable" },
+      ],
       contentMode: "custom",
     };
     const getContactIdentity = vi.fn(async () => ({ externalUserId: 101 }));
     const getContactCustomFields = vi.fn(async () => [
-      { fieldId: 42, fieldType: 1, rawValue: "VIP" },
+      { fieldId: 42, fieldType: 11, rawValue: "" },
     ]);
     const requests: Array<{ command: Record<string, unknown> }> = [];
     let attempt = 0;
@@ -890,12 +893,12 @@ describe("workflow capability reliability", () => {
     expect(getContactIdentity).toHaveBeenCalledTimes(1);
     expect(getContactCustomFields).toHaveBeenCalledTimes(1);
     expect(requests.map(request => request.command)).toEqual([
-      expect.objectContaining({ content: "VIP" }),
-      expect.objectContaining({ content: "VIP" }),
+      expect.objectContaining({ content: "客户评分：" }),
+      expect.objectContaining({ content: "客户评分：" }),
     ]);
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        input: expect.objectContaining({ customFields: { "42": "VIP" } }),
+        input: expect.objectContaining({ customFields: { "42": "" } }),
         nodeId: "message",
         status: "completed",
       }),

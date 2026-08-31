@@ -49,6 +49,16 @@ describe("embed SSO", () => {
     await app.close();
   });
 
+  it("disables embed SSO when no embed hosts are configured", async () => {
+    delete process.env.CHAT_EMBED_HOSTNAMES;
+    const app = await buildApp();
+
+    const response = await injectEmbedSso(app);
+
+    expect(response.statusCode).toBe(404);
+    await app.close();
+  });
+
   it("creates an independent embed session and signs it as embed", async () => {
     const fetchMock = stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
     const app = await buildApp();

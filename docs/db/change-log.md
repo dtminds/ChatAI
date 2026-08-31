@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS xy_wap_embed_sub_user_embed_session (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '子账号ID',
-  refresh_token_hash CHAR(64) NOT NULL COMMENT 'refresh token哈希',
+  refresh_token_hash VARCHAR(64) NOT NULL COMMENT 'refresh token哈希',
   session_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '会话版本',
   expires_at DATETIME NOT NULL COMMENT 'refresh token过期时间',
   revoked_at DATETIME NULL COMMENT '吊销时间',

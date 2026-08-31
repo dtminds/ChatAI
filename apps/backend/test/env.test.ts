@@ -190,6 +190,21 @@ describe("backend env config", () => {
     ).toThrow("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
   });
 
+  it("rejects blank production embed hostnames", () => {
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://prod",
+        CHAT_EMBED_HOSTNAMES: "   ",
+        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
+        JWT_PRIVATE_KEY: "private",
+        JWT_PUBLIC_KEY: "public",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(
+      "Missing required environment variables for production: CHAT_EMBED_HOSTNAMES",
+    );
+  });
+
   it("validates worker observer subjects before backend startup", () => {
     expect(() =>
       validateBackendEnv({

@@ -39,4 +39,17 @@ describe("host page access", () => {
     )).toBe(true);
     expect(isPagePathAllowedForHostname("localhost", "/embed/workflows")).toBe(true);
   });
+
+  it("disables embed pages when no embed hosts are configured", () => {
+    vi.stubEnv("VITE_CHAT_EMBED_HOSTNAMES", "");
+
+    expect(isPagePathAllowedForHostname(
+      "embed.example.com",
+      "/embed/workflows",
+    )).toBe(false);
+    expect(isPagePathAllowedForHostname(
+      "embed.example.com",
+      "/chat/workflows",
+    )).toBe(true);
+  });
 });

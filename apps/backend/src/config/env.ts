@@ -117,7 +117,7 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
-  const missingVariables = requiredVariables.filter((name) => !env[name]);
+  const missingVariables = requiredVariables.filter((name) => !env[name]?.trim());
 
   if (missingVariables.length > 0) {
     const environmentLabel = env.NODE_ENV ? ` for ${env.NODE_ENV}` : "";

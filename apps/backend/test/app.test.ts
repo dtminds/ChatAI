@@ -1295,6 +1295,19 @@ describe("backend app", () => {
     );
   });
 
+  it("requires CHAT_EMBED_HOSTNAMES in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
+    process.env.JWT_PRIVATE_KEY = "test-private-key";
+    process.env.JWT_PUBLIC_KEY = "test-public-key";
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    delete process.env.CHAT_EMBED_HOSTNAMES;
+
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for production: CHAT_EMBED_HOSTNAMES/,
+    );
+  });
+
   it("serves workbench bootstrap resources from backend state", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

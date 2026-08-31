@@ -43,6 +43,8 @@ describe("Workflow tenant capacity", () => {
       });
     });
     for (const capacity of await screen.findAllByRole("region", { name: "SOP 客户容量" })) {
+      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户剩余用量" }))
+        .toHaveAttribute("aria-valuenow", "100");
       expect(within(capacity).getByText("100%")).toBeInTheDocument();
     }
   });
@@ -66,8 +68,8 @@ describe("Workflow tenant capacity", () => {
 
     const capacityRegions = await screen.findAllByRole("region", { name: "SOP 客户容量" });
     for (const capacity of capacityRegions) {
-      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户容量使用进度" }))
-        .toHaveAttribute("aria-valuenow", "100");
+      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户剩余用量" }))
+        .toHaveAttribute("aria-valuenow", "0");
       expect(within(capacity).getByText("0%")).toBeInTheDocument();
       expect(within(capacity).getByText(/12 次/)).toBeInTheDocument();
       expect(within(capacity).queryByText("10,000")).not.toBeInTheDocument();
@@ -121,8 +123,8 @@ describe("Workflow tenant capacity", () => {
     );
 
     for (const capacity of await screen.findAllByRole("region", { name: "SOP 客户容量" })) {
-      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户容量使用进度" }))
-        .toHaveAttribute("aria-valuenow", "80");
+      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户剩余用量" }))
+        .toHaveAttribute("aria-valuenow", "20");
       expect(within(capacity).getByText("20%")).toBeInTheDocument();
     }
   });
@@ -144,6 +146,8 @@ describe("Workflow tenant capacity", () => {
     );
 
     for (const capacity of await screen.findAllByRole("region", { name: "SOP 客户容量" })) {
+      expect(within(capacity).getByRole("progressbar", { name: "SOP 客户剩余用量" }))
+        .toHaveAttribute("aria-valuenow", "44");
       expect(within(capacity).getByText("44%")).toBeInTheDocument();
     }
   });

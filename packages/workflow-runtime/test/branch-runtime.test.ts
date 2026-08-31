@@ -1,4 +1,5 @@
 import type {
+  CustomFieldItem,
   WorkflowBranchCondition,
   WorkflowBranchConditionValue,
   WorkflowBranchLogic,
@@ -10,6 +11,7 @@ import { compileWorkflowDraft } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
+  type WorkflowContactCustomFieldValue,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
@@ -177,6 +179,43 @@ describe("Branch runtime", () => {
       valueType: "string",
     })]), {})).resolves.toBe("fallback");
   });
+
+  it.each([
+    {
+      condition: {
+        id: "empty-score",
+        operator: "is-empty",
+        selector: ["subject", "customFields", "42"],
+        valueType: "number",
+      },
+      expectedNodeId: "matched",
+    },
+    {
+      condition: {
+        id: "positive-score",
+        operator: "greater-than",
+        selector: ["subject", "customFields", "42"],
+        value: 0,
+        valueType: "number",
+      },
+      expectedNodeId: "fallback",
+    },
+  ] satisfies Array<{ condition: WorkflowBranchCondition; expectedNodeId: string }>)(
+    "routes an unassigned numeric custom field to $expectedNodeId",
+    async ({ condition, expectedNodeId }) => {
+      await expect(executeBranch(branchDraft([branchPath(condition)]), {}, {
+        contactCustomFieldValues: [{ fieldId: 42, fieldType: 11, rawValue: "" }],
+        customFields: [{
+          id: 42,
+          key: "score",
+          options: [],
+          sort: 1,
+          title: "客户评分",
+          type: 11,
+        }],
+      })).resolves.toBe(expectedNodeId);
+    },
+  );
 });
 
 function branchCase(
@@ -229,8 +268,13 @@ function conditionFor(
 async function executeBranch(
   draft: WorkflowDraft,
   trigger: Record<string, unknown>,
+  options: {
+    contactCustomFieldValues?: readonly WorkflowContactCustomFieldValue[];
+    customFields?: readonly CustomFieldItem[];
+  } = {},
 ) {
   const spec = compileWorkflowDraft({
+    customFields: options.customFields,
     draft,
     revision: 1,
     workflowId: "31",
@@ -240,6 +284,12 @@ async function executeBranch(
   let runtimeNow = enteredAt;
   const service = new WorkflowRuntimeService(control(spec), runtime, undefined, {
     clock: () => runtimeNow,
+    contactCustomFieldPort: options.contactCustomFieldValues
+      ? { getContactCustomFields: async () => [...options.contactCustomFieldValues!] }
+      : undefined,
+    contactIdentityPort: options.contactCustomFieldValues
+      ? { getContactIdentity: async () => ({ externalUserId: 101 }) }
+      : undefined,
     entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
   });
   const started = await service.startRun({

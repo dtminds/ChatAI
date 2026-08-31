@@ -1,4 +1,7 @@
 import type {
+  CustomFieldItem,
+} from "@chatai/contracts";
+import type {
   WorkflowEdge,
   WorkflowVariableContentSegment,
   WorkflowNode,
@@ -30,8 +33,9 @@ export function getAvailableVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowVariableDefinition[] {
-  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges)
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges, customFields)
     .filter((variable) => supportsUsage(variable, "variable"));
 }
 
@@ -39,8 +43,9 @@ export function getAvailableBranchVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowVariableDefinition[] {
-  return getAvailableVariablesForNode(nodeId, nodes, edges).filter(variable =>
+  return getAvailableVariablesForNode(nodeId, nodes, edges, customFields).filter(variable =>
     variable.valueType.kind !== "array" && variable.valueType.kind !== "object");
 }
 
@@ -48,8 +53,9 @@ export function getAvailableLlmInputVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowVariableDefinition[] {
-  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges);
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges, customFields);
 }
 
 export function getAvailableMessageContentOutputsForNode(
@@ -76,8 +82,9 @@ export function getAvailableTimeReferenceVariablesForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ) {
-  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges).filter((variable) =>
+  return getWorkflowVariableCatalogForNode(nodeId, nodes, edges, customFields).filter((variable) =>
     variable.type === "datetime"
     && (variable.scope !== "node" || variable.usages?.includes("time-reference")),
   );
@@ -87,11 +94,12 @@ export function getWorkflowVariableCatalogForNode(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowVariableDefinition[] {
   const upstreamNodes = getGuaranteedUpstreamNodes(nodeId, nodes, edges);
   const currentNode = nodes.find(node => node.id === nodeId);
   return [
-    ...getWorkflowContextVariables(nodes),
+    ...getWorkflowContextVariables(nodes, customFields),
     ...upstreamNodes.flatMap((sourceNode) => [
       ...getAvailableNodeOutputsFromSource(sourceNode, nodeId, edges),
       createNodeLifecycleVariable(sourceNode, "enteredAt", "进入时间"),

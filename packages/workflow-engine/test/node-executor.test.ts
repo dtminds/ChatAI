@@ -176,6 +176,29 @@ describe("core node executors", () => {
       .resolves.toEqual({ output: {}, sourceOutletId: "else", type: "advance" });
   });
 
+  it("resolves customer custom fields from the prepared node context", async () => {
+    const branch = node("branch", {
+      branchPaths: [
+        {
+          conditions: [{
+            id: "vip-condition",
+            operator: "equals",
+            selector: ["subject", "customFields", "42"],
+            value: "VIP",
+            valueType: "string",
+          }],
+          id: "vip",
+          label: "如果",
+          logic: "all",
+        },
+        { conditions: [], id: "else", isDefault: true, label: "否则", logic: "all" },
+      ],
+    });
+
+    await expect(registry.execute(branch, context({ customFields: { "42": "VIP" } })))
+      .resolves.toEqual({ output: {}, sourceOutletId: "vip", type: "advance" });
+  });
+
   it("routes Ratio Split deterministically against the current allocation", async () => {
     const splitContext = context();
     const bucket = createWorkflowRatioSplitBucket({
@@ -279,6 +302,7 @@ function context(
   overrides: Partial<WorkflowNodeExecutionContext> = {},
 ): WorkflowNodeExecutionContext {
   return {
+    customFields: {},
     now: new Date("2026-07-10T00:00:00.000Z"),
     outputs: {},
     run: {

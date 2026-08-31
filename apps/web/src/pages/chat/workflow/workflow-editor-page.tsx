@@ -6,6 +6,7 @@ import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-rou
 import { toast } from "sonner";
 import {
   getWorkflowCapabilityProfile,
+  getWorkflowCustomFieldVariableIds,
   type WorkflowSurface,
   type WorkflowPublishReview,
 } from "@chatai/contracts";
@@ -45,6 +46,10 @@ import type {
 import { useWorkflowDocumentResource } from "./workflow-resources";
 import { useWorkflowFriendAddWayResource } from "./workflow-friend-add-way-resource";
 import { useWorkflowManagedAccountResource } from "./workflow-managed-account-resource";
+import {
+  WorkflowCustomFieldResourceProvider,
+  useWorkflowCustomFieldResource,
+} from "./workflow-custom-field-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
   WorkflowCreateDialog,
@@ -204,11 +209,18 @@ function WorkflowWorkspaceContent({
   const surface = useWorkflowSurface();
   const location = useLocation();
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const shouldLoadCustomFields = mode === "design"
+    || getWorkflowCustomFieldVariableIds(document.publishedDraft).length > 0;
+  const customFieldResource = useWorkflowCustomFieldResource(shouldLoadCustomFields);
   const shouldLoadFriendAddWays = mode === "design"
     && getWorkflowCapabilityProfile(document.workflowType)
     .allowedEntryEventTypes.includes("contact.friend_added");
   const friendAddWayResource = useWorkflowFriendAddWayResource(shouldLoadFriendAddWays);
   const workspace = useWorkflowWorkspace(document.id, repository, document, {
+    customFields: {
+      fields: customFieldResource.fields,
+      status: customFieldResource.status,
+    },
     friendAddWays: {
       groups: friendAddWayResource.groups,
       status: friendAddWayResource.status,
@@ -243,7 +255,7 @@ function WorkflowWorkspaceContent({
           versionHistory.onSelectVersion(version);
           if (mode === "data") navigate(getWorkflowDocumentPath(surface, document.id));
         } catch {
-          toast.error("操作失败，请稍后重试");
+          toast.error("操作失败，请稍后重试", { position: "top-center" });
         }
       }
   useEffect(() => {
@@ -261,7 +273,7 @@ function WorkflowWorkspaceContent({
   }, [location.pathname, location.search, navigate, review.current, review.onOpen]);
 
   return (
-    <>
+    <WorkflowCustomFieldResourceProvider resource={customFieldResource}>
       <WorkflowTopBar
         canEdit={topBar.canEdit}
         canPublish={topBar.canPublish}
@@ -357,6 +369,7 @@ function WorkflowWorkspaceContent({
       {mode === "data" ? (
         <div className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden">
           <WorkflowDataPage
+            customFieldResource={customFieldResource}
             document={currentDocument}
             refreshVersion={dataRefreshVersion}
           />
@@ -454,6 +467,7 @@ function WorkflowWorkspaceContent({
                 onRenameNode={inspector.onRenameNode}
                 readOnly={inspector.readOnly}
                 resources={{
+                  customFields: customFieldResource,
                   friendAddWays: {
                     groups: friendAddWayResource.groups,
                     reload: () => void friendAddWayResource.reload(),
@@ -494,7 +508,7 @@ function WorkflowWorkspaceContent({
         </div>
       )}
       <WorkflowLeaveGuard enabled={topBar.saveState !== "saved"} />
-    </>
+    </WorkflowCustomFieldResourceProvider>
   );
 }
 

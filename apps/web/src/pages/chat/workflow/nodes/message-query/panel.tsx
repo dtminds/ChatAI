@@ -34,8 +34,14 @@ export function MessageQueryConfig({
   node,
   nodes,
   onNodeChange,
+  resources,
 }: NodeSettingsProps<"message-query">) {
-  const timeVariables = getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges);
+  const timeVariables = getAvailableTimeReferenceVariablesForNode(
+    node.id,
+    nodes,
+    edges,
+    resources?.customFields?.fields,
+  );
   const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
 
   const updateConfig = (patch: Partial<Pick<
@@ -207,6 +213,7 @@ function DynamicTimeField({
       <span className="text-[13px]">{label}</span>
       <WorkflowVariableSelect
         ariaLabel={`${label}时间点`}
+        customFieldVisibility="compatible"
         invalidLabel="时间变量不可用"
         onSelect={(variable) => onChange(variable.selector)}
         value={value}

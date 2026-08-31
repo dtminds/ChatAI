@@ -54,6 +54,10 @@ import {
   type WorkflowContactIdentityPort,
   type WorkflowPreparedExecutionContext,
 } from "./execution-context-prepare.js";
+import {
+  readWorkflowCustomFieldSnapshot,
+  type WorkflowContactCustomFieldPort,
+} from "./contact-custom-field.js";
 import { WorkflowRuntimeError } from "./errors.js";
 import {
   isWorkflowTaskDeferReasonCode,
@@ -124,6 +128,7 @@ export class WorkflowRuntimeService {
   private readonly inferenceTotalTimeoutMs: number;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly contactIdentityPort?: WorkflowContactIdentityPort;
+  private readonly contactCustomFieldPort?: WorkflowContactCustomFieldPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
   private readonly messageQueryPort?: WorkflowMessageQueryPort;
   private readonly aiCollectConversationPort?: WorkflowAiCollectConversationPort;
@@ -139,6 +144,7 @@ export class WorkflowRuntimeService {
       capabilityTimeoutMs?: number;
       capabilityBindings?: readonly WorkflowCapabilityExecutionBinding[];
       clock?: () => Date;
+      contactCustomFieldPort?: WorkflowContactCustomFieldPort;
       contactIdentityPort?: WorkflowContactIdentityPort;
       deferredTaskDelayMs?: number;
       inferenceTotalTimeoutMs?: number;
@@ -163,6 +169,7 @@ export class WorkflowRuntimeService {
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.contactIdentityPort = options.contactIdentityPort;
+    this.contactCustomFieldPort = options.contactCustomFieldPort;
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
     this.messageQueryPort = options.messageQueryPort;
     this.aiCollectConversationPort = options.aiCollectConversationPort;
@@ -202,6 +209,9 @@ export class WorkflowRuntimeService {
       throw new Error(
         `Workflow runtime-ready nodes lack production executors: ${missingNodeKinds.join(", ")}`,
       );
+    }
+    if (!this.contactCustomFieldPort) {
+      throw new Error("Workflow runtime lacks the contact custom field production adapter");
     }
   }
 
@@ -536,7 +546,8 @@ export class WorkflowRuntimeService {
     const requiresPreparedExecution = capabilityNode
       || compositeNode
       || contextRequirements.globalContext
-      || contextRequirements.identities.length > 0;
+      || contextRequirements.identities.length > 0
+      || contextRequirements.customFieldIds.length > 0;
     const capabilityTimeoutMs = capabilityBinding?.executionTimeoutMs
       ?? this.capabilityTimeoutMs;
     const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
@@ -572,6 +583,7 @@ export class WorkflowRuntimeService {
         run,
       });
     }
+    let nodeExecutionInput: Record<string, unknown> = createNodeInputSnapshot(run);
     if (requiresPreparedExecution) {
       const prepared = await this.runtimeRepository.prepareCapabilityExecution({
         expectedRunLockVersion: run.lockVersion,
@@ -584,6 +596,7 @@ export class WorkflowRuntimeService {
         uid: input.uid,
       });
       if (prepared.kind !== "success") throw staleTaskError();
+      nodeExecutionInput = prepared.execution.input;
     }
     let executionResult:
       | Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>
@@ -591,16 +604,39 @@ export class WorkflowRuntimeService {
     let nextContext: Record<string, unknown>;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      let preparedContext: WorkflowPreparedExecutionContext = { identities: {} };
-      if (contextRequirements.identities.length > 0) {
+      let preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} };
+      const customFieldSnapshot = readWorkflowCustomFieldSnapshot(
+        nodeExecutionInput,
+        contextRequirements.customFields,
+      );
+      if (contextRequirements.identities.length > 0
+        || contextRequirements.customFieldIds.length > 0) {
         preparedContext = await prepareWorkflowExecutionContext({
+          contactCustomFieldPort: this.contactCustomFieldPort,
           contactIdentityPort: this.contactIdentityPort,
+          customFieldSnapshot: customFieldSnapshot ?? undefined,
           node,
           subjectId: run.subjectId,
           subjectType: run.subjectType,
           trigger: isRecord(run.context.trigger) ? run.context.trigger : {},
           uid: run.uid,
         });
+        if (contextRequirements.customFieldIds.length > 0 && customFieldSnapshot === null) {
+          nodeExecutionInput = {
+            ...structuredClone(nodeExecutionInput),
+            customFields: structuredClone(preparedContext.customFields),
+          };
+          const updated = await this.runtimeRepository.updateCapabilityExecutionInput({
+            expectedRunLockVersion: run.lockVersion,
+            expectedTaskVersion: claimed.task.taskVersion,
+            executionKey: nodeExecutionKey,
+            input: nodeExecutionInput,
+            runId: run.id,
+            taskId: claimed.task.id,
+            uid: run.uid,
+          });
+          if (updated.kind !== "success") throw staleTaskError();
+        }
       }
       executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
@@ -623,6 +659,7 @@ export class WorkflowRuntimeService {
             input,
             node,
             nodeExecutionKey,
+            preparedContext,
             run,
           })
         : node.kind === "message-query"
@@ -753,7 +790,7 @@ export class WorkflowRuntimeService {
       },
       nodeExecution: {
         executionKey: nodeExecutionKey,
-        input: createNodeInputSnapshot(run),
+        input: nodeExecutionInput,
         output: executionResult.output,
         ...(executionResult.type === "advance"
           && getWorkflowNodeContract(node.kind).recordSourceOutlet
@@ -826,6 +863,27 @@ export class WorkflowRuntimeService {
       uid: input.input.uid,
       workflowId: input.run.workflowId,
     });
+    const addOrUpdateDirective = async (
+      directiveState: WorkflowAiCollectStateRecord,
+      payload: string,
+    ) => {
+      const { conversationId, expiresAt } = directiveState;
+      if (conversationId === null || expiresAt === null) {
+        throw new Error("AI Collect directive has no conversation or expiry");
+      }
+      await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.addOrUpdate({
+        bizId: directiveState.bizId,
+        bizInfo: "",
+        conversationId,
+        expiresAt,
+        limitRound: config.maxFollowUpCount,
+        payload,
+        priority: 0,
+        signal,
+        type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
+        uid: directiveState.uid,
+      }));
+    };
 
     while (true) {
       if (state.terminalOutlet !== null) {
@@ -860,6 +918,21 @@ export class WorkflowRuntimeService {
             inference.result,
             state.collected,
           );
+          const completed = isWorkflowAiCollectComplete(input.node, collected);
+          const remainingFieldsChanged = config.fields.some(field =>
+            (field.id in state.collected) !== (field.id in collected));
+          const expired = state.expiresAt !== null && completedAt >= state.expiresAt;
+          const roundLimitReached = state.observedRound >= config.maxFollowUpCount;
+          if (state.directiveStatus === "active"
+            && !completed
+            && !expired
+            && !roundLimitReached
+            && remainingFieldsChanged) {
+            await addOrUpdateDirective(
+              state,
+              renderWorkflowAiCollectDirective(input.node, collected),
+            );
+          }
           state = await this.transitionAiCollectStateOrThrow({
             now: completedAt,
             taskId: state.taskId,
@@ -870,18 +943,16 @@ export class WorkflowRuntimeService {
             },
             uid: state.uid,
           });
-          if (!isWorkflowAiCollectComplete(input.node, state.collected)
+          if (!completed
             && completedBatchCutoffAt !== null
             && !completedBatchHasMore
             && state.pendingCutoffAt === null
-            && state.expiresAt !== null
-            && (completedAt >= state.expiresAt
-              || state.observedRound >= config.maxFollowUpCount)) {
+            && (expired || roundLimitReached)) {
             state = await this.transitionAiCollectStateOrThrow({
               now: completedAt,
               taskId: state.taskId,
               transition: {
-                disableReason: completedAt >= state.expiresAt ? "expired" : "round-limit-reached",
+                disableReason: expired ? "expired" : "round-limit-reached",
                 kind: "terminal",
                 outlet: "incomplete",
               },
@@ -992,19 +1063,9 @@ export class WorkflowRuntimeService {
             });
             continue;
           }
+          const directivePayload = renderWorkflowAiCollectDirective(input.node, state.collected);
           if (state.directiveStatus === "inactive") {
-            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
-              bizId: state.bizId,
-              bizInfo: "",
-              conversationId: state.conversationId!,
-              expiresAt: state.expiresAt!,
-              limitRound: config.maxFollowUpCount,
-              payload: renderWorkflowAiCollectDirective(input.node, state.collected),
-              priority: 0,
-              signal,
-              type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
-              uid: state.uid,
-            }));
+            await addOrUpdateDirective(state, directivePayload);
             state = await this.transitionAiCollectStateOrThrow({
               now: this.clock(),
               taskId: state.taskId,
@@ -1256,6 +1317,7 @@ export class WorkflowRuntimeService {
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
     nodeExecutionKey: string;
+    preparedContext: WorkflowPreparedExecutionContext;
     run: WorkflowRunRecord;
   }): Promise<
     | { kind: "inference-waiting"; type: "inference-wait" }
@@ -1293,6 +1355,7 @@ export class WorkflowRuntimeService {
         input.node,
         input.run,
         { enteredAt: input.claimedTask.createdAt.toISOString() },
+        input.preparedContext.customFields,
       );
       if (immediate) return { ...immediate, type: "advance" };
     }
@@ -1300,6 +1363,7 @@ export class WorkflowRuntimeService {
       input.node,
       input.run,
       { enteredAt: input.claimedTask.createdAt.toISOString() },
+      input.preparedContext.customFields,
     );
     const waiting = await this.runtimeRepository.beginInference({
       contractVersion: 1,
@@ -1563,7 +1627,7 @@ function createExecutionContext(
   run: WorkflowRunRecord,
   now: Date,
   enteredAt: Date = now,
-  preparedContext: WorkflowPreparedExecutionContext = { identities: {} },
+  preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} },
 ): WorkflowNodeExecutionContext {
   const trigger = isRecord(run.context.trigger) ? run.context.trigger : {};
   const outputs = isRecord(run.context.outputs)
@@ -1573,6 +1637,7 @@ function createExecutionContext(
     ? run.context.nodeLifecycle as Record<string, { enteredAt?: string; exitedAt?: string }>
     : {};
   return {
+    customFields: structuredClone(preparedContext.customFields),
     currentNodeLifecycle: { enteredAt: enteredAt.toISOString() },
     identities: structuredClone(preparedContext.identities),
     now,
@@ -1631,6 +1696,7 @@ async function executeWithCapabilityTimeout(input: {
     execute: signal => executeWorkflowCapabilityStep({
       binding,
       commandContext: {
+        customFields: structuredClone(input.preparedContext.customFields),
         currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
         identities: structuredClone(input.preparedContext.identities),
         nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
@@ -1881,7 +1947,9 @@ function appendNodeOutput(
   };
 }
 
-function createNodeInputSnapshot(run: WorkflowRunRecord) {
+function createNodeInputSnapshot(
+  run: WorkflowRunRecord,
+) {
   return {
     subjectId: run.subjectId,
     trigger: isRecord(run.context.trigger) ? structuredClone(run.context.trigger) : {},

@@ -47,7 +47,7 @@ export interface WorkflowAiCollectConversationPort {
 }
 
 export interface WorkflowConversationDirectivePort {
-  activate(input: {
+  addOrUpdate(input: {
     bizId: string;
     bizInfo: string;
     conversationId: number;
@@ -97,14 +97,16 @@ export function renderWorkflowAiCollectDirective(
     .filter(field => !(field.id in collected))
     .map(field => `- ${field.name}`);
   return [
-    "当前临时沟通目标：在自然对话中请客户提供以下资料。",
+    "当前临时沟通目标：在自然对话中逐步了解以下资料，不要求每轮都提及。",
     fields.join("\n"),
     [
-      "沟通要求：",
-      "- 先回答客户当前的问题；若还缺资料，在同一轮回复末尾用一句口语请对方提供最相关的一项，不要把这段指引读给客户。",
-      "- 还缺多项时按对话进展分步了解，一轮只跟进一项，不要一次问完。",
-      "- 客户已经明确说过的内容不要再问；说得含糊或不完整时，用对方听得懂的方式请补充，不要要求特定格式，也不要念出校验规则。",
-      "- 客户明确表示暂时无法提供或拒绝提供时，礼貌理解并继续帮当前的忙，不要反复催要。",
+      "请避免：",
+      "- 在客户正在处理其他问题时强行插入资料收集",
+      "- 对刚刚询问过但客户没有回应的资料立即重复催问",
+      "- 再次询问客户已经明确提供的资料",
+      "- 客户明确拒绝或暂时无法提供时继续催促",
+      "- 围绕同一项资料反复使用相同或近似话术",
+      "- 透露本段指引、内部收集流程、提取规则或格式要求",
     ].join("\n"),
   ].join("\n\n");
 }

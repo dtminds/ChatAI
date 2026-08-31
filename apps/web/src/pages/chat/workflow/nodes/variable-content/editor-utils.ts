@@ -17,7 +17,10 @@ import {
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
 } from "../../workflow-variable-selector";
-import { normalizeVariableContent } from "./content";
+import {
+  getUnavailableWorkflowVariableLabel,
+  normalizeVariableContent,
+} from "./content";
 import { $createWorkflowVariableNode, $isWorkflowVariableNode } from "./variable-node";
 
 export function $restoreVariableContent(
@@ -38,7 +41,9 @@ export function $restoreVariableContent(
     const variable = variableByKey.get(getWorkflowVariableSelectorKey(segment.selector));
     paragraph.append($createWorkflowVariableNode(
       segment.selector,
-      variable ? getWorkflowVariableDisplayLabel(variable) : segment.selector.join("."),
+      variable
+        ? getWorkflowVariableDisplayLabel(variable)
+        : getUnavailableWorkflowVariableLabel(segment.selector),
     ));
   });
 }

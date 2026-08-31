@@ -251,7 +251,7 @@ describe("compileWorkflowDraft", () => {
           conditions: [{
             id: "condition-1",
             operator: "equals",
-            selector: ["subject", "id"],
+            selector: ["subject", "customFields", "42"],
             value: "vip-1",
             valueType: "string",
           }],
@@ -269,6 +269,7 @@ describe("compileWorkflowDraft", () => {
     ];
 
     const spec = compileWorkflowDraft({
+      customFields: [{ id: 42, key: "level", options: [], sort: 1, title: "会员等级", type: 1 }],
       draft,
       revision: 4,
       workflowId: "42",
@@ -280,6 +281,14 @@ describe("compileWorkflowDraft", () => {
       kind: "branch",
     });
     expect(spec.edges.map((edge) => edge.sourceOutletId)).toEqual(["default", "vip", "default"]);
+
+    expect(() => compileWorkflowDraft({
+      customFields: [{ id: 42, key: "score", options: [], sort: 1, title: "客户评分", type: 11 }],
+      draft,
+      revision: 5,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    })).toThrowError(WorkflowCompilationError);
   });
 
   it("freezes Ratio Split configuration and every stable group outlet", () => {

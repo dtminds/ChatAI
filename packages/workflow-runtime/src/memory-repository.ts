@@ -793,6 +793,28 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { execution: clone(execution), kind: "success" as const };
   }
 
+  async updateCapabilityExecutionInput(
+    input: Parameters<WorkflowRuntimeRepository["updateCapabilityExecutionInput"]>[0],
+  ) {
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running") return conflict();
+    const execution = this.nodeExecutions.find(item => item.uid === input.uid
+      && item.runId === input.runId
+      && item.sequence === task.sequence);
+    if (!execution
+      || execution.executionKey !== input.executionKey
+      || execution.nodeId !== task.nodeId
+      || execution.nodeKind !== task.nodeKind
+      || execution.status !== "running") return conflict();
+    execution.input = clone(input.input);
+    return { execution: clone(execution), kind: "success" as const };
+  }
+
   async beginInference(input: Parameters<WorkflowRuntimeRepository["beginInference"]>[0]) {
     if (this.inbox.some(item => item.consumer === input.inbox.consumer
       && item.messageId === input.inbox.messageId)) return alreadyProcessed();
@@ -1577,7 +1599,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           && item.status === "running");
         if (execution) {
           execution.errorCode = "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED";
-          execution.errorMessage = "Workflow Task attempts exhausted";
+          execution.errorMessage = "多次执行失败，流程已停止";
           execution.failureKind = null;
           execution.status = "failed";
         }

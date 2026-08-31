@@ -1,4 +1,5 @@
 import {
+  getWorkflowCustomFieldVariableId,
   getWorkflowNodeOutputContracts,
   type WorkflowExecutionNode,
   type WorkflowExecutionSpec,
@@ -62,7 +63,10 @@ export function isWorkflowSelectorAvailable(
 ) {
   const [scope, key, ...path] = selector;
   if (!scope || !key) return false;
-  if (scope === "subject") return key === "id" && path.length === 0;
+  if (scope === "subject") {
+    return key === "id" && path.length === 0
+      || getWorkflowCustomFieldVariableId(selector) !== null;
+  }
   if (scope === "trigger") return readPath(context.trigger, [key, ...path]).available;
   if (scope === "node") {
     const outputs = isRecord(context.outputs) ? context.outputs : null;

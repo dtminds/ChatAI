@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
+  customFields: Record<string, number | string>;
   identities: WorkflowContactIdentity;
   now: Date;
   outputs: Record<string, Record<string, unknown>>;
@@ -257,6 +258,9 @@ function resolveBranchSelector(
   if (!scope || !key) return { available: false, value: undefined };
   if (scope === "subject" && key === "id" && path.length === 0) {
     return { available: true, value: context.run.subjectId };
+  }
+  if (scope === "subject" && key === "customFields" && path.length === 1) {
+    return readPath(context.customFields, path);
   }
   if (scope === "trigger") return readPath(context.trigger, [key, ...path]);
   if (scope === "node") {

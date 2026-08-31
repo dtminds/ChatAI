@@ -554,7 +554,7 @@ function createResources() {
         subscription: input.subscription,
         topic: input.topic,
       })),
-      conversationDirectivePort: { activate: vi.fn(), disable: vi.fn() },
+      conversationDirectivePort: { addOrUpdate: vi.fn(), disable: vi.fn() },
       conversationDirectiveRepository: {} as never,
       conversationDirectiveWorker: vi.fn(async () => ({ claimed: 0, disabled: 0, retried: 0 })),
       eventSubscriptionReader: { listMatchingEventSubscriptions: vi.fn(async () => []) },

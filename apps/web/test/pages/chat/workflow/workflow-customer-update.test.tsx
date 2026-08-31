@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   CustomFieldItem,
   WorkflowCustomerUpdateDraftField,
@@ -15,17 +15,12 @@ import {
 } from "@/pages/chat/workflow/nodes/customer-update/config";
 import { CustomerUpdateConfig } from "@/pages/chat/workflow/nodes/customer-update/panel";
 import { customerUpdateNodeUi } from "@/pages/chat/workflow/nodes/customer-update/ui";
-import * as customFieldService from "@/pages/chat/ai-hosting/api/custom-field-service";
 import type {
   WorkflowNode,
   WorkflowNodeConfigPatch,
   WorkflowOutputValueType,
   WorkflowVariableDefinition,
 } from "@/pages/chat/workflow/types";
-
-vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => ({
-  listCustomFields: vi.fn(),
-}));
 
 const customFields: CustomFieldItem[] = [
   { id: 1, key: "remark", options: [], sort: 1, title: "客户备注", type: 1 },
@@ -35,18 +30,11 @@ const customFields: CustomFieldItem[] = [
 ];
 
 describe("workflow Customer Update node", () => {
-  beforeEach(() => {
-    vi.mocked(customFieldService.listCustomFields).mockResolvedValue({ fields: customFields });
-  });
-
-  it("loads active fields, disables unsupported types, and prevents duplicate selection", async () => {
+  it("uses shared active fields, disables unsupported types, and prevents duplicate selection", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(<StatefulCustomerUpdateConfig onNodeChange={onNodeChange} />);
 
-    await waitFor(() => {
-      expect(customFieldService.listCustomFields).toHaveBeenCalledWith({ status: 1 });
-    });
     const addButton = await screen.findByRole("button", { name: "添加客户属性" });
     await waitFor(() => expect(addButton).toBeEnabled());
 
@@ -117,6 +105,13 @@ describe("workflow Customer Update node", () => {
         node={node}
         nodes={[source, node]}
         onNodeChange={vi.fn()}
+        resources={{
+          customFields: {
+            fields: customFields,
+            reload: () => undefined,
+            status: "ready",
+          },
+        }}
       />,
     );
 
@@ -158,16 +153,6 @@ describe("workflow Customer Update node", () => {
 
   it("limits one node to ten fields and summarizes complete configuration", async () => {
     const fields = Array.from({ length: 10 }, (_, index) => completeField(index + 1));
-    vi.mocked(customFieldService.listCustomFields).mockResolvedValue({
-      fields: fields.map(item => ({
-        id: item.field!.id,
-        key: item.field!.key,
-        options: [],
-        sort: item.field!.id,
-        title: item.field!.title,
-        type: item.field!.type,
-      })),
-    });
 
     render(<StatefulCustomerUpdateConfig initialFields={fields} onNodeChange={vi.fn()} />);
     const addButton = await screen.findByRole("button", { name: "添加客户属性" });
@@ -210,6 +195,13 @@ function StatefulCustomerUpdateConfig({
       onNodeChange={(patch) => {
         onNodeChange(patch);
         setNode(current => ({ ...current, data: { ...current.data, ...patch } }));
+      }}
+      resources={{
+        customFields: {
+          fields: customFields,
+          reload: () => undefined,
+          status: "ready",
+        },
       }}
     />
   );

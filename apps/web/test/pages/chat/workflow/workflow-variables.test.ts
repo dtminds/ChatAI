@@ -55,6 +55,40 @@ describe("workflow variables", () => {
     ]));
   });
 
+  it("adds supported customer custom fields to both Workflow Types", () => {
+    const customFields = [
+      { id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 },
+      { id: 8, key: "spend", options: [], sort: 2, title: "累计消费", type: 11 },
+      { id: 9, key: "unknown", options: [], sort: 3, title: "未知类型", type: 999 },
+    ];
+
+    for (const workflowType of ["chatai_sop", "wecom_sop"] as const) {
+      const draft = createNewWorkflowDraft(workflowType);
+      const variables = getAvailableVariablesForNode(
+        "end",
+        draft.nodes,
+        draft.edges,
+        customFields,
+      );
+
+      expect(variables).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          label: "会员等级",
+          selector: ["subject", "customFields", "7"],
+          valueType: { kind: "string" },
+        }),
+        expect.objectContaining({
+          label: "累计消费",
+          selector: ["subject", "customFields", "8"],
+          valueType: { kind: "number" },
+        }),
+      ]));
+      expect(variables).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ selector: ["subject", "customFields", "9"] }),
+      ]));
+    }
+  });
+
   it("exposes projections guaranteed by the selected entry event", () => {
     const draft = createNewWorkflowDraft("chatai_sop");
     Object.assign(draft.nodes.find(node => node.data.kind === "start")!.data, {

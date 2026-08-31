@@ -10,8 +10,10 @@ import type {
 } from "../types";
 import type { WorkflowFriendAddWayResource } from "../workflow-friend-add-way-resource";
 import type { WorkflowManagedAccountResource } from "../workflow-managed-account-resource";
+import type { WorkflowCustomFieldResource } from "../workflow-custom-field-resource";
 
 export type WorkflowNodeSettingsResources = {
+  customFields?: WorkflowCustomFieldResource;
   friendAddWays?: WorkflowFriendAddWayResource;
   managedAccounts?: WorkflowManagedAccountResource;
 };

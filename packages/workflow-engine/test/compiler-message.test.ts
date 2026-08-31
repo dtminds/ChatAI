@@ -52,6 +52,35 @@ describe("Message compiler validation", () => {
       nodeId: "message",
     });
   });
+
+  it("compiles customer custom field references for runtime preparation", () => {
+    const compiled = compileWorkflowDraft({
+      customFields: [{ id: 42, key: "level", options: [], sort: 1, title: "会员等级", type: 1 }],
+      draft: createMessageDraft({
+        attachments: [],
+        content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+        contentMode: "custom",
+      }),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+    expect(compiled.nodes.find(node => node.id === "message")?.config).toMatchObject({
+      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+    });
+  });
+
+  it("rejects customer custom field references missing from the active catalog", () => {
+    expectCompilationIssue(createMessageDraft({
+      attachments: [],
+      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+      contentMode: "custom",
+    }), {
+      code: "invalid-node-config",
+      message: "message node references unavailable customer custom fields",
+      nodeId: "message",
+    });
+  });
 });
 
 function expectCompilationIssue(

@@ -571,6 +571,24 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.trigger).toBe("用户消息");
   });
 
+  it("shows external push for a direct-push Start draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]?.trigger).toBe("外部推送");
+  });
+
   it("loads persisted Run metrics for only the current Workflow page", async () => {
     const repository = new InMemoryWorkflowRepository();
     const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });
@@ -930,6 +948,49 @@ describe("WorkflowService", () => {
     expect(enabled.runtimeStatus).toBe("active");
     expect(enabled.publishedRevision).toBe(1);
     expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
+  });
+
+  it("validates active customer custom fields at review submission and publication", async () => {
+    let activeFields = [{
+      id: 42,
+      key: "level",
+      options: [],
+      sort: 1,
+      title: "会员等级",
+      type: 1,
+    }];
+    const listActiveFields = vi.fn(async () => activeFields);
+    const service = createService(new InMemoryWorkflowRepository(), {
+      customFieldReader: { listActiveFields },
+    });
+    const created = await createConfigured(service);
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withCustomFieldMessageNode(created.draft, 42),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    activeFields = [];
+    await expect(service.submitReview(operator, created.id, {
+      expectedDraftVersion: configured.draftVersion,
+    })).rejects.toMatchObject({ code: "WORKFLOW_VALIDATION_FAILED", statusCode: 400 });
+
+    activeFields = [{
+      id: 42,
+      key: "level",
+      options: [],
+      sort: 1,
+      title: "会员等级",
+      type: 1,
+    }];
+    const review = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: configured.draftVersion,
+    });
+    await service.approveReview(operator, created.id, review.id, {});
+    activeFields = [];
+
+    await expect(service.publish(operator, created.id, { reviewId: review.id }))
+      .rejects.toMatchObject({ code: "WORKFLOW_REVIEW_RESOURCES_CHANGED", statusCode: 409 });
+    expect(listActiveFields).toHaveBeenCalledTimes(3);
   });
 
   it("publishes an approved review after JSON storage reorders object keys", async () => {
@@ -1947,6 +2008,43 @@ function withLlmNode(
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
       llmNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
+  };
+}
+
+function withCustomFieldMessageNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  fieldId: number,
+) {
+  const messageNode = {
+    data: {
+      attachments: [],
+      content: [{
+        selector: ["subject", "customFields", String(fieldId)] as [string, string, string],
+        type: "variable" as const,
+      }],
+      contentMode: "custom" as const,
+      kind: "message" as const,
+      label: "发送消息",
+      metric: "",
+      schemaVersion: 2,
+      status: "ready" as const,
+      title: "发送消息",
+    },
+    id: "message-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      { id: "edge-start-message", source: "start", target: "message-1", type: "workflowEdge" },
+      { id: "edge-message-end", source: "message-1", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      messageNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
   };

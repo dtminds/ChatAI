@@ -4,7 +4,7 @@ import {
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 
-const JAVA_ADD_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/add";
+const JAVA_ADD_OR_UPDATE_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/add-or-update";
 const JAVA_DISABLE_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/disable";
 
 export class HttpWorkflowConversationDirectivePort implements WorkflowConversationDirectivePort {
@@ -18,8 +18,8 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
     this.fetch = options.fetch ?? fetch;
   }
 
-  async activate(input: Parameters<WorkflowConversationDirectivePort["activate"]>[0]) {
-    const data = await this.post(JAVA_ADD_DIRECTIVE_PATH, {
+  async addOrUpdate(input: Parameters<WorkflowConversationDirectivePort["addOrUpdate"]>[0]) {
+    const data = await this.post(JAVA_ADD_OR_UPDATE_DIRECTIVE_PATH, {
       bizId: input.bizId,
       bizInfo: input.bizInfo,
       conversationId: input.conversationId,
@@ -32,7 +32,10 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
     }, input.signal);
     const directiveId = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
     if (!Number.isSafeInteger(directiveId) || directiveId < 0) {
-      throw terminal("WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID", "Directive add response data is invalid");
+      throw terminal(
+        "WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID",
+        "Directive add-or-update response data is invalid",
+      );
     }
   }
 
@@ -114,7 +117,7 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
 export function formatUtc8LocalDateTime(value: Date) {
   const utc8 = new Date(value.getTime() + 8 * 3_600_000);
   const pad = (part: number) => String(part).padStart(2, "0");
-  return `${utc8.getUTCFullYear()}-${pad(utc8.getUTCMonth() + 1)}-${pad(utc8.getUTCDate())} ${pad(utc8.getUTCHours())}:${pad(utc8.getUTCMinutes())}:${pad(utc8.getUTCSeconds())}`;
+  return `${utc8.getUTCFullYear()}-${pad(utc8.getUTCMonth() + 1)}-${pad(utc8.getUTCDate())}T${pad(utc8.getUTCHours())}:${pad(utc8.getUTCMinutes())}:${pad(utc8.getUTCSeconds())}`;
 }
 
 function terminal(code: string, diagnosticMessage: string) {

@@ -254,7 +254,7 @@ export function RootLayout() {
             </Button>
           </div>
         </main>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
       </div>
     );
   }
@@ -281,7 +281,7 @@ export function RootLayout() {
             <span>正在验证登录状态</span>
           </div>
         </main>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
       </div>
     );
   }
@@ -292,7 +292,7 @@ export function RootLayout() {
         <main className="flex min-h-svh items-center justify-center">
           <p className="text-sm text-muted-foreground">当前账号不可用</p>
         </main>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
       </div>
     );
   }
@@ -304,7 +304,7 @@ export function RootLayout() {
   return (
     <div className="min-h-svh bg-background text-foreground">
       <Outlet />
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" />
     </div>
   );
 }

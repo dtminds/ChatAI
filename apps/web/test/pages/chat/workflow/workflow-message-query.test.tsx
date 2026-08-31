@@ -10,6 +10,7 @@ import { messageQueryNodeUi } from "@/pages/chat/workflow/nodes/message-query/ui
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 import { createWorkflowRenderElements } from "@/pages/chat/workflow/use-workflow-render-elements";
 import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
+import { WorkflowCustomFieldResourceProvider } from "@/pages/chat/workflow/workflow-custom-field-resource";
 
 describe("workflow message query", () => {
   it("defines a stable default execution contract and downstream outputs", () => {
@@ -186,6 +187,39 @@ describe("workflow message query", () => {
     await user.hover(currentNodeMenuItem);
     expect(await screen.findByRole("menuitem", { name: /进入时间.*日期时间/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /退出时间.*日期时间/ })).not.toBeInTheDocument();
+  });
+
+  it("hides incompatible custom fields from dynamic time selectors", async () => {
+    const user = userEvent.setup();
+    const queryNode = createMessageQueryNode();
+    const customFieldResource = {
+      fields: [
+        { id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 },
+        { id: 8, key: "spend", options: [], sort: 2, title: "累计消费", type: 11 },
+        { id: 9, key: "unknown", options: [], sort: 3, title: "多选偏好", type: 999 },
+      ],
+      reload: vi.fn(),
+      status: "ready" as const,
+    };
+
+    render(
+      <WorkflowCustomFieldResourceProvider resource={customFieldResource}>
+        <MessageQueryConfig
+          edges={[createEdge("start", queryNode.id)]}
+          node={queryNode}
+          nodes={[createStartNode(), queryNode]}
+          onNodeChange={vi.fn()}
+          resources={{ customFields: customFieldResource }}
+        />
+      </WorkflowCustomFieldResourceProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
+    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
+
+    expect(screen.getByRole("menuitem", { name: "触发时间日期时间" })).toBeInTheDocument();
+    expect(screen.queryByText("客户自定义属性")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂不支持")).not.toBeInTheDocument();
   });
 
   it("switches between fixed and dynamic ranges and keeps query limits bounded", async () => {

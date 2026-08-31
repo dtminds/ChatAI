@@ -17,8 +17,13 @@ import {
 } from "../variable-content/content";
 import { VariableContentEditor } from "../variable-content/editor";
 
-export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"handoff">) {
-  const variables = getAvailableVariablesForNode(node.id, nodes, edges);
+export function HandoffConfig({ edges, node, nodes, onNodeChange, resources }: NodeSettingsProps<"handoff">) {
+  const variables = getAvailableVariablesForNode(
+    node.id,
+    nodes,
+    edges,
+    resources?.customFields?.fields,
+  );
 
   return (
     <>
@@ -99,6 +104,7 @@ function HandoffMessageField({
     >
       <VariableContentEditor
         ariaLabel={ariaLabel}
+        customFieldVisibility="all"
         maxLength={WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}

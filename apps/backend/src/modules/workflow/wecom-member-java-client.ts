@@ -1,16 +1,16 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
   UpstreamHttpError,
 } from "../../shared/errors.js";
 import {
-  getLoggerRequestId,
   noopLogger,
   type AppLogger,
   type RequestAwareLogger,
 } from "../../shared/logger.js";
+import { postJavaInternalApi } from "./java-internal-api-client.js";
 
-const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const JAVA_DEPARTMENT_USER_PATH = "/third-internal/work-party/get-all-department-user";
 
 export const WECOM_MEMBER_INTERNAL_API_FAILED_CODE = "WECOM_MEMBER_INTERNAL_API_FAILED";
@@ -22,16 +22,6 @@ export const JAVA_WECOM_MEMBER_SELECT_TYPE_DEPARTMENT_AND_USER = 2;
 export const JAVA_WECOM_MEMBER_STATUS_ACTIVE = 1;
 export const JAVA_WECOM_MEMBER_EXTERNAL_CONTACT_ONLY = 1;
 export const JAVA_WECOM_MEMBER_LICENSE_UNRESTRICTED = 0;
-
-type JavaApiResponse<T> = {
-  code?: number;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  error_msg?: string;
-  message?: string;
-  success?: boolean;
-};
 
 export type WecomMemberJavaNode = {
   avatar?: string | null;
@@ -61,7 +51,7 @@ export function createWecomMemberJavaClient(
 
   return {
     async listDepartmentUsers(input) {
-      const response = await postJavaRequest<JavaApiResponse<WecomMemberJavaTree>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           isExternal: JAVA_WECOM_MEMBER_EXTERNAL_CONTACT_ONLY,
@@ -78,44 +68,41 @@ export function createWecomMemberJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "wecom-member-tree", logger);
+      const payload = decodeJavaResponse(response, "wecom-member-tree", logger);
 
-      return extractJavaTree(response);
+      return extractJavaTree(payload);
     },
   };
 }
 
-function extractJavaTree(response: JavaApiResponse<WecomMemberJavaTree>): WecomMemberJavaTree {
-  const data = response.data;
+function extractJavaTree(payload: Record<string, unknown>): WecomMemberJavaTree {
+  const data = payload.data;
 
   if (data && typeof data === "object" && !Array.isArray(data)) {
+    const tree = data as Partial<WecomMemberJavaTree>;
     return {
-      roots: Array.isArray(data.roots) ? data.roots : [],
-      userLimit: data.userLimit,
+      roots: Array.isArray(tree.roots) ? tree.roots : [],
+      userLimit: tree.userLimit,
     };
   }
 
   return { roots: [] };
 }
 
-function assertJavaSuccess(
-  response: JavaApiResponse<unknown>,
+function decodeJavaResponse(
+  response: unknown,
   operation: string,
-  logger: AppLogger,
-) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+  logger: AppLogger | RequestAwareLogger,
+): Record<string, unknown> {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
-  logger.error(
-    {
-      code: response.code,
-      error: response.error,
-      hasErrorMessage: Boolean(response.errorMsg ?? response.error_msg ?? response.message),
-      operation,
-    },
-    "内部接口业务失败",
-  );
+  const details = envelope.kind === "rejected"
+    ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+    : { operation, reason: envelope.reason };
+  logger.error(details, "内部接口业务失败");
 
   throw new BadGatewayError(
     WECOM_MEMBER_INTERNAL_API_FAILED_CODE,
@@ -127,7 +114,7 @@ type PostJavaRequestOptions = {
   baseUrl: string | undefined;
   body: string;
   logContext: Record<string, unknown>;
-  logger: AppLogger;
+  logger: AppLogger | RequestAwareLogger;
   operation: string;
   path: string;
   token: string | undefined;
@@ -142,125 +129,28 @@ async function postJavaRequest<T>({
   path,
   token,
 }: PostJavaRequestOptions): Promise<T> {
-  if (!baseUrl) {
-    logger.error(
-      {
-        operation,
-        path,
-        requestId: getLoggerRequestId(logger),
-      },
-      "内部接口未配置",
-    );
-    throw new ServiceUnavailableError(
-      WECOM_MEMBER_INTERNAL_API_NOT_CONFIGURED_CODE,
-      WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
-    );
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
-  const requestId = getLoggerRequestId(logger);
-
-  try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      body,
-      headers: {
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(requestId ? { "x-request-id": requestId } : {}),
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-
-    const text = await response.text();
-    let parsed: unknown;
-
-    try {
-      parsed = text ? JSON.parse(text) : null;
-    } catch {
-      logger.error(
-        {
-          ...logContext,
-          operation,
-          path,
-          requestId,
-          status: response.status,
-        },
-        "内部接口返回非 JSON",
-      );
-      throw new BadGatewayError(
-        WECOM_MEMBER_INTERNAL_API_FAILED_CODE,
-        WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
-      );
-    }
-
-    if (!response.ok) {
-      logger.error(
-        {
-          ...logContext,
-          operation,
-          path,
-          requestId,
-          status: response.status,
-        },
-        "内部接口 HTTP 失败",
-      );
-      throw new UpstreamHttpError(
-        WECOM_MEMBER_INTERNAL_API_FAILED_CODE,
-        WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
-        mapJavaHttpFailureStatus(response.status),
-      );
-    }
-
-    return parsed as T;
-  } catch (error) {
-    if (
-      error instanceof BadGatewayError
-      || error instanceof ServiceUnavailableError
-      || error instanceof UpstreamHttpError
-    ) {
-      throw error;
-    }
-
-    logger.error(
-      {
-        ...logContext,
-        err: error,
-        operation,
-        path,
-        requestId,
-      },
-      "内部接口请求异常",
-    );
-    throw new BadGatewayError(
+  return postJavaInternalApi<T>({
+    baseUrl,
+    body,
+    createFailureError: () => new BadGatewayError(
       WECOM_MEMBER_INTERNAL_API_FAILED_CODE,
       WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
-}
-
-function readJavaApiTimeoutMs() {
-  const raw = Number(process.env.JAVA_INTERNAL_API_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+    ),
+    createHttpFailureError: status => new UpstreamHttpError(
+      WECOM_MEMBER_INTERNAL_API_FAILED_CODE,
+      WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
+      mapJavaHttpFailureStatus(status),
+    ),
+    createNotConfiguredError: () => new ServiceUnavailableError(
+      WECOM_MEMBER_INTERNAL_API_NOT_CONFIGURED_CODE,
+      WECOM_MEMBER_INTERNAL_API_USER_MESSAGE,
+    ),
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
 }
 
 function mapJavaHttpFailureStatus(status: number) {

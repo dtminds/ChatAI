@@ -288,6 +288,38 @@ describe("workflow wecom-member routes", () => {
     });
   });
 
+  it("rejects a Java response without the standard success flag", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        code: 0,
+        data: { roots: [] },
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: {
+        authorization: created.authorization,
+      },
+      method: "GET",
+      url: "/api/server/workflow/wecom-members",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: {
+        code: "WECOM_MEMBER_INTERNAL_API_FAILED",
+        message: "操作失败，请稍后重试",
+      },
+      success: false,
+    });
+  });
+
   it("does not expose Java failure details to the browser", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({

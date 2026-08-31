@@ -1142,7 +1142,9 @@ function getWorkflowListTrigger(draft: WorkflowDraft) {
   if (!entryNode) return "未配置";
   const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
   if (!Value.Check(WorkflowStartDraftConfigSchema, config)) return "未配置";
-  const labels = (config as WorkflowStartDraftConfig).triggers.map((trigger) => {
+  const startConfig = config as WorkflowStartDraftConfig;
+  if (startConfig.entryMode === "direct-push") return "外部推送";
+  const labels = startConfig.triggers.map((trigger) => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";
     return "用户消息";

@@ -1,4 +1,5 @@
 import {
+  Activity01Icon,
   AlertCircleIcon,
   DashboardCircleEditIcon,
   Delete01Icon,
@@ -50,6 +51,12 @@ import {
   TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
@@ -158,13 +165,29 @@ function WorkflowListRow({
   return (
     <TableRow className="border-0 hover:bg-transparent">
       <TableCell className="rounded-l-[8px] border-y border-l border-border/70 bg-surface px-3 py-4">
-        <Link
-          aria-label={`打开 ${workflow.name}`}
-          className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-          to={`${detailBasePath}/${workflow.id}`}
-        >
-          <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
-        </Link>
+        <div className="flex min-w-0 items-center gap-2">
+          {workflow.publishedRevision !== null && workflow.hasUnpublishedChanges ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    aria-label="有未发布的修改"
+                    className="size-2 shrink-0 rounded-full bg-primary"
+                    role="img"
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>有未发布的修改</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+          <Link
+            aria-label={`打开 ${workflow.name}`}
+            className="block min-w-0 flex-1 text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            to={`${detailBasePath}/${workflow.id}`}
+          >
+            <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
+          </Link>
+        </div>
         <div className="mt-1 flex min-w-0 items-center text-xs text-muted-foreground" title={workflow.trigger}>
           <span className="shrink-0">触发条件：</span>
           <TableCellContent>{workflow.trigger || "-"}</TableCellContent>
@@ -305,6 +328,12 @@ function WorkflowRowMenu({
           <Link to={`${detailBasePath}/${workflow.id}`}>
             <HugeiconsIcon icon={DashboardCircleEditIcon} size={16} strokeWidth={1.8} />
             编辑
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to={`${detailBasePath}/${workflow.id}/data`}>
+            <HugeiconsIcon icon={Activity01Icon} size={16} strokeWidth={1.8} />
+            数据
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

@@ -571,6 +571,24 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.trigger).toBe("用户消息");
   });
 
+  it("shows external push for a direct-push Start draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]?.trigger).toBe("外部推送");
+  });
+
   it("loads persisted Run metrics for only the current Workflow page", async () => {
     const repository = new InMemoryWorkflowRepository();
     const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });

@@ -8,6 +8,7 @@ const accessTokenCookiePath = "/api";
 // Embed SSO reuses the current browser Session when its access token expires.
 // The refresh cookie therefore needs to reach both refresh and embed-sso.
 const refreshTokenCookiePath = "/api/auth";
+const legacyRefreshTokenCookiePath = "/api/auth/refresh";
 const sharedAuthCookieOptions = {
   httpOnly: true,
   sameSite: "strict" as const,
@@ -19,6 +20,10 @@ const accessTokenCookieOptions = {
 const refreshTokenCookieOptions = {
   ...sharedAuthCookieOptions,
   path: refreshTokenCookiePath,
+};
+const legacyRefreshTokenCookieOptions = {
+  ...sharedAuthCookieOptions,
+  path: legacyRefreshTokenCookiePath,
 };
 
 type AuthCookieInput = {
@@ -44,6 +49,10 @@ export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
       ...refreshTokenCookieOptions,
       maxAge: input.refreshTokenMaxAgeSeconds,
       secure: isSecureCookieEnabled(),
+    })
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      ...legacyRefreshTokenCookieOptions,
+      secure: isSecureCookieEnabled(),
     });
 }
 
@@ -60,6 +69,10 @@ export function setSupportAuthCookie(
     .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
       ...refreshTokenCookieOptions,
       secure: isSecureCookieEnabled(),
+    })
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      ...legacyRefreshTokenCookieOptions,
+      secure: isSecureCookieEnabled(),
     });
 }
 
@@ -71,6 +84,10 @@ export function clearAuthCookies(reply: FastifyReply) {
     })
     .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
       ...refreshTokenCookieOptions,
+      secure: isSecureCookieEnabled(),
+    })
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      ...legacyRefreshTokenCookieOptions,
       secure: isSecureCookieEnabled(),
     });
 }

@@ -1,6 +1,5 @@
 import type {
   AuthEmbedSsoRequest,
-  AuthEmbedSsoResponse,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthRefreshResponse,
@@ -9,8 +8,11 @@ import type {
   SupportInvestigationStartRequest,
   SupportInvestigationStartResponse,
 } from "@chatai/contracts";
-import { setEmbedAccessToken } from "@/lib/embed-access-token";
-import { http, RequestNormalizedError } from "@/lib/request";
+import {
+  exchangeEmbedSso,
+  http,
+  RequestNormalizedError,
+} from "@/lib/request";
 
 export async function login(payload: AuthLoginRequest) {
   return http.post<{ data: AuthLoginResponse }, AuthLoginRequest>(
@@ -22,36 +24,8 @@ export async function login(payload: AuthLoginRequest) {
   );
 }
 
-let embedSsoInFlight:
-  | Promise<{ data: AuthEmbedSsoResponse }>
-  | null = null;
-let embedSsoInFlightKey: string | null = null;
-
 export async function loginWithEmbedSso(payload: AuthEmbedSsoRequest) {
-  const key = `${payload.id}\0${payload.uid}`;
-
-  if (embedSsoInFlight && embedSsoInFlightKey === key) {
-    return embedSsoInFlight;
-  }
-
-  embedSsoInFlightKey = key;
-  embedSsoInFlight = http.post<{ data: AuthEmbedSsoResponse }, AuthEmbedSsoRequest>(
-    "/auth/embed-sso",
-    payload,
-    {
-      _skipAuthRetry: true,
-    },
-  ).then((response) => {
-    setEmbedAccessToken(response.data.accessToken);
-    return response;
-  }).finally(() => {
-    if (embedSsoInFlightKey === key) {
-      embedSsoInFlight = null;
-      embedSsoInFlightKey = null;
-    }
-  });
-
-  return embedSsoInFlight;
+  return exchangeEmbedSso(payload);
 }
 
 export function isEmbedSsoRejected(error: unknown) {

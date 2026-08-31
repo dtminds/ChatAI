@@ -3,11 +3,20 @@ import axios, {
   AxiosHeaders,
   type AxiosRequestConfig,
   type AxiosResponse,
+  type RawAxiosHeaders,
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
-import { getEmbedAccessToken } from "@/lib/embed-access-token";
-import type { AuthRefreshResponse } from "@chatai/contracts";
+import {
+  getEmbedAccessToken,
+  getRememberedEmbedTickets,
+  setEmbedAccessToken,
+} from "@/lib/embed-access-token";
+import type {
+  AuthEmbedSsoRequest,
+  AuthEmbedSsoResponse,
+  AuthRefreshResponse,
+} from "@chatai/contracts";
 
 export type RequestError = {
   details?: Record<string, unknown>;
@@ -69,6 +78,8 @@ type AuthRetryConfig = AxiosRequestConfig & {
 };
 
 let refreshRequest: Promise<AuthRefreshResponse> | null = null;
+let embedSsoRequest: Promise<{ data: AuthEmbedSsoResponse }> | null = null;
+let embedSsoRequestKey: string | null = null;
 
 requestInstance.interceptors.request.use((config) => {
   const requestConfig = config as typeof config & AuthRetryConfig;
@@ -181,6 +192,32 @@ async function refreshAuth() {
   return refreshRequest;
 }
 
+export async function exchangeEmbedSso(payload: AuthEmbedSsoRequest) {
+  const key = `${payload.id}\0${payload.uid}`;
+
+  if (embedSsoRequest && embedSsoRequestKey === key) {
+    return embedSsoRequest;
+  }
+
+  embedSsoRequestKey = key;
+  embedSsoRequest = request<{ data: AuthEmbedSsoResponse }, AuthEmbedSsoRequest>({
+    method: "POST",
+    _skipAuthRetry: true,
+    data: payload,
+    url: "/auth/embed-sso",
+  }).then((response) => {
+    setEmbedAccessToken(response.data.accessToken);
+    return response;
+  }).finally(() => {
+    if (embedSsoRequestKey === key) {
+      embedSsoRequest = null;
+      embedSsoRequestKey = null;
+    }
+  });
+
+  return embedSsoRequest;
+}
+
 export async function request<TResponse = unknown, TPayload = unknown>(
   config: AuthRetryConfig & AxiosRequestConfig<TPayload>,
 ) {
@@ -197,6 +234,52 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
     return response.data;
   } catch (error) {
+    if (shouldRetryEmbedSso(error, config)) {
+      let embedLogin: { data: AuthEmbedSsoResponse };
+
+      try {
+        const tickets = getRememberedEmbedTickets();
+        if (!tickets) {
+          throw error;
+        }
+
+        embedLogin = await exchangeEmbedSso(tickets);
+        useAuthStore.getState().setSession(embedLogin.data.subUser);
+      } catch (embedSsoError) {
+        notifyAuthSessionChanged();
+        return Promise.reject(toRequestError(normalizeError(embedSsoError), embedSsoError));
+      }
+
+      const headers = AxiosHeaders.from(
+        config.headers as AxiosHeaders | RawAxiosHeaders | undefined,
+      );
+      headers.set("Authorization", `Bearer ${embedLogin.data.accessToken}`);
+      const retryConfig = {
+        ...config,
+        _authRetry: true,
+        headers,
+      };
+
+      try {
+        const retryResponse = await requestInstance.request<
+          TResponse,
+          AxiosResponse<TResponse>,
+          TPayload
+        >(retryConfig);
+
+        if (isApiErrorEnvelope(retryResponse.data)) {
+          throw new ApiEnvelopeError(retryResponse.data, retryResponse.status);
+        }
+
+        return retryResponse.data;
+      } catch (retryError) {
+        if (axios.isAxiosError(retryError) && retryError.response?.status === 401) {
+          notifyAuthSessionChanged();
+        }
+        return Promise.reject(toRequestError(normalizeError(retryError), retryError));
+      }
+    }
+
     if (shouldRefreshAuth(error, config)) {
       try {
         await refreshAuth();
@@ -223,7 +306,7 @@ export async function request<TResponse = unknown, TPayload = unknown>(
       }
     }
 
-    if (shouldEndSupportSession(error, config) || shouldRetryEmbedSso(error, config)) {
+    if (shouldEndSupportSession(error, config)) {
       notifyAuthSessionChanged();
     }
 
@@ -246,6 +329,7 @@ function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {
 
 function shouldRetryEmbedSso(error: unknown, config: AuthRetryConfig) {
   return !config._skipAuthRetry
+    && !config._authRetry
     && Boolean(getEmbedAccessToken())
     && axios.isAxiosError(error)
     && error.response?.status === 401;

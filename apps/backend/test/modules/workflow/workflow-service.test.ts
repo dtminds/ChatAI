@@ -582,6 +582,30 @@ describe("WorkflowService", () => {
       .toEqual([201, 202, 203]);
   });
 
+  it("keeps the workflow list available when WeCom member previews fail", async () => {
+    const findByIds = vi.fn().mockRejectedValue(new Error("member tree timeout"));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      wecomMemberReader: { findByIds },
+    });
+    const created = await service.create(operator, { workflowType: "wecom_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+        workUserIds: [201],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]).toMatchObject({
+      wecomMemberCount: 1,
+      wecomMembers: [],
+    });
+    expect(findByIds).toHaveBeenCalledWith(operator.uid, [201]);
+  });
+
   it("shows a selected trigger for an incomplete Start draft", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });

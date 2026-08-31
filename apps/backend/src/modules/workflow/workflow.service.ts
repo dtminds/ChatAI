@@ -92,6 +92,7 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { noopLogger, type AppLogger, type RequestAwareLogger } from "../../shared/logger.js";
 import type {
   WorkflowDefinitionListCursor,
   WorkflowDefinitionListRecord,
@@ -143,6 +144,7 @@ export type WorkflowServiceOptions = {
   llmTestTtlMs?: number;
   managedAccountReader?: WorkflowManagedAccountReader;
   metricReader?: WorkflowMetricReader;
+  logger?: AppLogger | RequestAwareLogger;
   wecomMemberReader?: WorkflowWeComMemberReader;
 };
 
@@ -163,6 +165,7 @@ export class WorkflowService {
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
   private readonly metricReader: WorkflowMetricReader;
+  private readonly logger: AppLogger | RequestAwareLogger;
   private readonly wecomMemberReader: WorkflowWeComMemberReader;
   private readonly entitlementRefreshes = new Map<string, {
     attemptedAt: number;
@@ -194,6 +197,7 @@ export class WorkflowService {
     this.managedAccountReader = options.managedAccountReader
       ?? new EmptyWorkflowManagedAccountReader();
     this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
+    this.logger = options.logger ?? noopLogger;
     this.wecomMemberReader = options.wecomMemberReader ?? new EmptyWorkflowWeComMemberReader();
   }
 
@@ -459,7 +463,7 @@ export class WorkflowService {
     const [managedAccountsById, metricsByWorkflowId, wecomMembersById] = await Promise.all([
       this.managedAccountReader.findByIds(scope.uid, visibleManagedAccountIds),
       this.metricReader.findByWorkflowIds(scope.uid, page.items.map(record => record.id)),
-      this.wecomMemberReader.findByIds(scope.uid, visibleWeComMemberIds),
+      this.findWecomMembersForList(scope.uid, visibleWeComMemberIds),
     ]);
 
     return {
@@ -474,6 +478,22 @@ export class WorkflowService {
       nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
       total: page.total,
     };
+  }
+
+  private async findWecomMembersForList(uid: number, workUserIds: number[]) {
+    try {
+      return await this.wecomMemberReader.findByIds(uid, workUserIds);
+    } catch (error) {
+      this.logger.warn(
+        {
+          err: error,
+          operation: "workflow-list-wecom-member-preview",
+          uid,
+        },
+        "企微成员列表预览加载失败，继续返回工作流列表",
+      );
+      return new Map<number, WorkflowWeComMemberSummary>();
+    }
   }
 
   async get(scope: WorkflowOperatorScope, workflowId: string) {

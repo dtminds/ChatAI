@@ -121,6 +121,7 @@ export async function registerWorkflowRoutes(
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
+      logger: app.log,
       wecomMemberReader: createWecomMemberService(app.log),
     },
   );

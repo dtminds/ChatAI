@@ -47,7 +47,7 @@ export interface WorkflowAiCollectConversationPort {
 }
 
 export interface WorkflowConversationDirectivePort {
-  activate(input: {
+  addOrUpdate(input: {
     bizId: string;
     bizInfo: string;
     conversationId: number;

@@ -1,7 +1,7 @@
 # Workflow 会话指引与 AI Collect 运行设计
 
 - 日期：2026-08-23
-- 最后更新：2026-08-30
+- 最后更新：2026-08-31
 - 状态：Implemented
 - 适用范围：ChatAI SOP 托管 Agent 会话；`ai-collect` 是首个使用方
 
@@ -21,30 +21,31 @@ Java 不提取字段、不保存收集进度、不判断节点完成。Workflow 
 2. 关闭智能体辅助时，只从配置输入提取一次；全部字段存在走 `completed`，否则走 `incomplete`。
 3. Workflow 先对配置输入执行初次提取；已经收集完成时直接结算，不注册 Agent 指引。
 4. 初次提取后仍缺字段且开启智能体辅助时，Workflow 才注册只包含剩余字段的 Agent 指引。
-5. 开启智能体辅助并配置开场白时，Workflow 在初次提取确认尚未完成后可靠发送一次；无配置输入时可立即进入该阶段。关闭智能体辅助时不发送开场白。
-6. Workflow 不订阅 `message.received` 驱动本节点；`agent.directive` 是智能体辅助提取的常规唤醒信号。
-7. Workflow 不要求 Java 返回客户消息 ID、观察信息、候选字段或是否真正提出问题。
-8. 每个回调重置该 Task 的 30 秒静默窗口；同一 Task 最多一个在途提取批次。
-9. 达到最大辅助轮次或最长等待时，Workflow 仍执行最终客户消息查询，再决定出口。
-10. 最长等待仅支持分钟和小时，默认 30 分钟，配置范围为 10 分钟至 24 小时；从节点开始收集时计时，辅助轮次或最长等待先到者生效。
-11. 节点完成、未完成、失败、取消或超时时，Workflow 使对应指引失效；同步失败由后台任务重试。
+5. 后续提取使剩余字段发生变化时，Workflow 使用同一 `bizId` 更新指引，只保留仍未收集的字段；Java 保留指令 ID、累计轮次和有效状态。
+6. 开启智能体辅助并配置开场白时，Workflow 在初次提取确认尚未完成后可靠发送一次；无配置输入时可立即进入该阶段。关闭智能体辅助时不发送开场白。
+7. Workflow 不订阅 `message.received` 驱动本节点；`agent.directive` 是智能体辅助提取的常规唤醒信号。
+8. Workflow 不要求 Java 返回客户消息 ID、观察信息、候选字段或是否真正提出问题。
+9. 每个回调重置该 Task 的 30 秒静默窗口；同一 Task 最多一个在途提取批次。
+10. 达到最大辅助轮次或最长等待时，Workflow 仍执行最终客户消息查询，再决定出口。
+11. 最长等待仅支持分钟和小时，默认 30 分钟，配置范围为 10 分钟至 24 小时；从节点开始收集时计时，辅助轮次或最长等待先到者生效。
+12. 节点完成、未完成、失败、取消或超时时，Workflow 使对应指引失效；同步失败由后台任务重试。
 
 ## 2. 服务边界
 
 | 模块 | 负责 | 不负责 |
 | --- | --- | --- |
 | Workflow | 生成稳定 `bizId`；渲染指引；发送开场白；排队回调；查询客户消息；调用提取模型；保存字段；判断完成、超时和路由；使指引失效 | 决定 Java 每轮选择几条指引；生成 Agent 客户回复 |
-| Java Agent Runtime | 幂等添加和失效指引；回复前选择有效指引；把 `payload` 原样拼入 Agent Prompt；发送唯一客户回复；通过 Outbox 投递参与回调 | 解析 Workflow 指引结构；提取字段；保存 Workflow 进度；判断节点完成 |
+| Java Agent Runtime | 幂等新增或更新、失效指引；更新时保留累计轮次；回复前选择有效指引；把 `payload` 原样拼入 Agent Prompt；发送唯一客户回复；通过 Outbox 投递参与回调 | 解析 Workflow 指引结构；提取字段；保存 Workflow 进度；判断节点完成 |
 | Agent 模型 | 结合会话语境和临时指引自然回复客户 | 保证每轮追问；输出 Workflow 字段状态或进度 |
 
 Java 选择最新一条、按优先级选择多条或采用其它容量策略，属于 Java 的指令注入策略。Workflow 的持久化、幂等、轮次结算和回调处理不依赖该规则，因此本契约不规定也不探测该策略。
 
 ## 3. Java 指令接口
 
-### 3.1 添加指令
+### 3.1 新增或更新指令
 
 ```http
-POST /third-internal/wap-embed-agent-directive/add
+POST /third-internal/wap-embed-agent-directive/add-or-update
 ```
 
 ```ts
@@ -62,7 +63,7 @@ type AddWapEmbedAgentDirective = {
 ```
 
 - `bizId = workflow-task:${taskId}`，在 `uid + type + bizId` 下稳定，长度不超过 64。
-- Java 添加接口按该唯一键幂等。
+- Java 新增或更新接口按该唯一键幂等；已存在时保留指令 ID、`totalRound` 和有效状态，只更新请求中的配置内容。
 - `expiresAt` 使用 UTC+8 wall-clock，格式为 `YYYY-MM-DD HH:mm:ss`。
 - `limitRound` 来自节点最大辅助轮次。
 - `payload` 是可直接注入 Prompt 的自然语言文本；Java 不解析 JSON、不解释字段结构。
@@ -136,7 +137,7 @@ Java 在指引实际参与 Agent 回复后，通过现有 Entry Topic 可靠投�
 约束：
 
 - `eventId` 全局稳定，Java Outbox 重投不得变化。
-- `bizId` 等于添加指令时的业务 ID。
+- `bizId` 等于新增或更新指令时的业务 ID。
 - `totalRound` 是该指令实际参与 Agent 回复的累计轮次；不表示 Agent 一定提出了问题。
 - Java 不返回客户消息 ID、候选字段、观察信息或提取完成状态。
 - Workflow 验证 `uid + bizId + seatId + thirdExternalUserId` 与活动 Task 一致。
@@ -152,7 +153,7 @@ Java 在指引实际参与 Agent 回复后，通过现有 Entry Topic 可靠投�
 - 席位、客户外部 ID、会话 ID
 - 已收集字段对象
 - 初次输入和开场白状态
-- 指令状态、失效原因、重试次数和租约
+- 指令状态、最近一次成功同步的 payload、失效原因、重试次数和租约
 - 已观察最大 `totalRound`
 - 从节点进入边界开始的客户消息游标
 - 待处理回调截止时间和 30 秒静默截止
@@ -179,6 +180,7 @@ Java 在指引实际参与 Agent 回复后，通过现有 Entry Topic 可靠投�
 5. 若 Task 正在等待且没有在途推理，更新 Task 到新的 `quietUntil`；连续回调既可延后也可提前静默截止。
 6. 静默截止后，查询上次成功游标到 `pendingCutoffAt` 的客户消息并创建一个提取 Job。
 7. 推理期间到达的回调只更新 pending 状态；当前 Job 完成后再决定下一批，任意时刻同一 Task 最多一个在途 Job。
+8. 提取完成后若剩余字段变化，使用同一 `bizId` 调用新增或更新接口；成功后记录已同步 payload，内容未变化时不重复调用。
 
 ### 6.3 轮次与超时结算
 
@@ -212,7 +214,7 @@ AI Collect 使用固定平台 Endpoint 和 `low` 推理深度，每次只请求�
 - 推理失败、Run 失败、取消、停止或过期时，状态记录失效原因。
 - Reconciler 使用 `active/disabling` 状态、租约和指数退避补偿失效调用。
 - Java 同时使用 `expiresAt` 硬过滤，避免 Node 长时间不可用时旧指引永久参与回复。
-- 添加和失效接口按约定视为幂等，Workflow 可安全重试。
+- 新增或更新、失效接口按约定视为幂等。外部更新成功后才记录已同步 payload；若中途失败或宕机，Workflow 会安全重试同一请求。
 - 指令选择或组合失败不由 Workflow 猜测或补偿；Java 按其 Agent 运行策略处理。
 
 ## 9. 非目标
@@ -229,12 +231,13 @@ AI Collect 使用固定平台 Endpoint 和 `low` 推理深度，每次只请求�
 
 1. 配置输入非空时，初次提取 Job 先于会话解析、指引添加和开场白发送。
 2. 初次提取完成全部字段时不添加指引、不发送开场白；未完成时指引只包含剩余字段。
-3. 未配置输入时不会失败，节点直接进入辅助等待。
-4. 连续回调重置 30 秒静默窗口并在同一 Task 内合并。
-5. 推理期间的新回调不创建并发 Job。
-6. 重复 `agent.directive` 不重复轮次、不重复唤醒。
-7. 只查询节点进入后的客户消息，并按稳定游标分批。
-8. 达到轮次或超时时执行最终查询后再路由。
-9. 完成、未完成、失败、取消和超时最终都会使指令失效。
-10. Java 响应信封和 UTC+8 时间格式受测试保护。
-11. 生产 Worker 同时注入会话 Port、指令 Port、推理 Adapter、Entry Consumer 和失效补偿 Worker。
+3. 后续提取减少剩余字段时，使用同一 `bizId` 更新指引；已收集字段不再出现在 payload，累计轮次不重置。
+4. 未配置输入时不会失败，节点直接进入辅助等待。
+5. 连续回调重置 30 秒静默窗口并在同一 Task 内合并。
+6. 推理期间的新回调不创建并发 Job。
+7. 重复 `agent.directive` 不重复轮次、不重复唤醒。
+8. 只查询节点进入后的客户消息，并按稳定游标分批。
+9. 达到轮次或超时时执行最终查询后再路由。
+10. 完成、未完成、失败、取消和超时最终都会使指令失效。
+11. Java 响应信封和 UTC+8 时间格式受测试保护。
+12. 生产 Worker 同时注入会话 Port、指令 Port、推理 Adapter、Entry Consumer 和失效补偿 Worker。

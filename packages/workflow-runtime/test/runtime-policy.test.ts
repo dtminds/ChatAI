@@ -549,7 +549,7 @@ function createHarness(options: {
               sendOpeningMessage: async () => {},
             },
             conversationDirectivePort: {
-              activate: async () => {},
+              addOrUpdate: async () => {},
               disable: async () => {},
             },
           }

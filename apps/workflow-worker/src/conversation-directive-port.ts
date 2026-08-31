@@ -4,7 +4,7 @@ import {
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 
-const JAVA_ADD_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/add";
+const JAVA_ADD_OR_UPDATE_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/add-or-update";
 const JAVA_DISABLE_DIRECTIVE_PATH = "/third-internal/wap-embed-agent-directive/disable";
 
 export class HttpWorkflowConversationDirectivePort implements WorkflowConversationDirectivePort {
@@ -18,8 +18,8 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
     this.fetch = options.fetch ?? fetch;
   }
 
-  async activate(input: Parameters<WorkflowConversationDirectivePort["activate"]>[0]) {
-    const data = await this.post(JAVA_ADD_DIRECTIVE_PATH, {
+  async addOrUpdate(input: Parameters<WorkflowConversationDirectivePort["addOrUpdate"]>[0]) {
+    const data = await this.post(JAVA_ADD_OR_UPDATE_DIRECTIVE_PATH, {
       bizId: input.bizId,
       bizInfo: input.bizInfo,
       conversationId: input.conversationId,
@@ -32,7 +32,10 @@ export class HttpWorkflowConversationDirectivePort implements WorkflowConversati
     }, input.signal);
     const directiveId = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
     if (!Number.isSafeInteger(directiveId) || directiveId < 0) {
-      throw terminal("WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID", "Directive add response data is invalid");
+      throw terminal(
+        "WORKFLOW_AI_COLLECT_DIRECTIVE_RESPONSE_INVALID",
+        "Directive add-or-update response data is invalid",
+      );
     }
   }
 

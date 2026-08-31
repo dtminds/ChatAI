@@ -1,5 +1,16 @@
 # Database Change Log
 
+## 2026-08-31 Workflow AI Collect 指令内容同步
+
+- `xy_wap_embed_workflow_ai_collect_state` 新增 `directive_payload`，记录最近一次已成功同步至 Java 的 Agent 指令内容。后续提取减少剩余字段时，Runtime 可据此判断是否需要调用新增或更新接口；外部调用成功但本地提交前中断时会安全重试。
+- 当前仍处于开发阶段，生产环境尚未创建 Workflow 表；新环境直接执行 `docs/db/schema.sql` 的最终结构。仅同步已经创建 Workflow 表的测试环境时执行以下 DDL。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_ai_collect_state
+  ADD COLUMN directive_payload TEXT NULL COMMENT '最近一次已成功同步至Java的Agent指令内容'
+  AFTER directive_status;
+```
+
 ## 2026-08-30 Workflow AI Collect 复合状态与多批推理
 
 - 新增 `xy_wap_embed_workflow_ai_collect_state`，保存每个 AI Collect Task 的字段进度、Agent Directive 生命周期、回调静默批次、消息游标和单飞推理状态。

@@ -909,6 +909,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_ai_collect_state (
   initial_input_processed TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '是否完成初始输入提取',
   opening_message_sent TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '开场白是否已可靠发送',
   directive_status VARCHAR(32) NOT NULL DEFAULT 'inactive' COMMENT '指令状态：inactive、active、disabling、disabled',
+  directive_payload TEXT NULL COMMENT '最近一次已成功同步至Java的Agent指令内容',
   disable_reason VARCHAR(64) NULL COMMENT '待失效或已失效原因',
   directive_attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '指令失效尝试次数',
   directive_next_attempt_at DATETIME NOT NULL COMMENT '下次允许尝试失效时间',

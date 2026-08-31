@@ -90,7 +90,7 @@ describe("workflow run/task consistency reconciliation", () => {
     await repository.transitionAiCollectState({
       now: admittedAt,
       taskId: created.task.id,
-      transition: { kind: "directive-active" },
+      transition: { kind: "directive-synced", payload: "collect order" },
       uid: created.run.uid,
     });
     const waiting = await repository.beginAiCollectWait({

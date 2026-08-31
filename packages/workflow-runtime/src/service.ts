@@ -992,14 +992,16 @@ export class WorkflowRuntimeService {
             });
             continue;
           }
-          if (state.directiveStatus === "inactive") {
-            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.activate({
+          const directivePayload = renderWorkflowAiCollectDirective(input.node, state.collected);
+          if (state.directiveStatus === "inactive"
+            || (state.directiveStatus === "active" && state.directivePayload !== directivePayload)) {
+            await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.addOrUpdate({
               bizId: state.bizId,
               bizInfo: "",
               conversationId: state.conversationId!,
               expiresAt: state.expiresAt!,
               limitRound: config.maxFollowUpCount,
-              payload: renderWorkflowAiCollectDirective(input.node, state.collected),
+              payload: directivePayload,
               priority: 0,
               signal,
               type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
@@ -1008,7 +1010,7 @@ export class WorkflowRuntimeService {
             state = await this.transitionAiCollectStateOrThrow({
               now: this.clock(),
               taskId: state.taskId,
-              transition: { kind: "directive-active" },
+              transition: { kind: "directive-synced", payload: directivePayload },
               uid: state.uid,
             });
             continue;

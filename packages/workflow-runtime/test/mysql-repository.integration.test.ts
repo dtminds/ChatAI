@@ -178,6 +178,48 @@ describe("MySQL workflow runtime repository contract", () => {
     };
   });
 
+  it("persists the last Agent directive payload across add-or-update transitions", async () => {
+    if (!database) throw new Error("MySQL contract database is not initialized");
+    const repository = new MysqlWorkflowRuntimeRepository(database);
+    const now = new Date("2099-01-01T00:00:00+08:00");
+    const initialized = await repository.initializeAiCollectState({
+      bizId: "workflow-task:3001",
+      expiresAt: new Date("2099-01-01T01:00:00+08:00"),
+      initialMessageCursor: { id: 1, timestamp: now.getTime() - 1 },
+      now,
+      runId: "2001",
+      seatId: 101,
+      taskId: "3001",
+      thirdExternalUserId: "external-1",
+      uid: 9,
+      workflowId: "31",
+    });
+    expect(initialized.directivePayload).toBeNull();
+    await repository.transitionAiCollectState({
+      now,
+      taskId: "3001",
+      transition: { conversationId: 501, kind: "conversation-resolved" },
+      uid: 9,
+    });
+    await repository.transitionAiCollectState({
+      now,
+      taskId: "3001",
+      transition: { kind: "directive-synced", payload: "订单号\n手机号\n收货地址" },
+      uid: 9,
+    });
+    await repository.transitionAiCollectState({
+      now: new Date(now.getTime() + 1_000),
+      taskId: "3001",
+      transition: { kind: "directive-synced", payload: "收货地址" },
+      uid: 9,
+    });
+
+    await expect(repository.findAiCollectStateByTask(9, "3001")).resolves.toMatchObject({
+      directivePayload: "收货地址",
+      directiveStatus: "active",
+    });
+  });
+
   it("claims global due Tasks concurrently without locking their shared Definition", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const dueAt = new Date("2099-01-01T00:01:00+08:00");

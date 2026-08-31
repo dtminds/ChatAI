@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   isWorkflowCustomerFieldTypeSupported,
   WORKFLOW_CUSTOMER_UPDATE_MAX_FIELD_COUNT,
@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { listCustomFields } from "@/pages/chat/ai-hosting/api/custom-field-service";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import type { WorkflowVariableDefinition } from "../../types";
@@ -38,10 +37,17 @@ import {
   normalizeCustomerUpdateFields,
 } from "./config";
 
-export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"customer-update">) {
-  const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+export function CustomerUpdateConfig({
+  edges,
+  node,
+  nodes,
+  onNodeChange,
+  resources,
+}: NodeSettingsProps<"customer-update">) {
+  const customFields = resources?.customFields?.fields ?? [];
+  const customFieldStatus = resources?.customFields?.status ?? "idle";
+  const loading = customFieldStatus === "idle" || customFieldStatus === "loading";
+  const loadError = customFieldStatus === "error";
   const fields = normalizeCustomerUpdateFields(node.data.fields);
   const orderedCustomFields = useMemo(
     () => [
@@ -51,29 +57,9 @@ export function CustomerUpdateConfig({ edges, node, nodes, onNodeChange }: NodeS
     [customFields],
   );
   const availableVariables = useMemo(
-    () => getAvailableVariablesForNode(node.id, nodes, edges),
-    [edges, node.id, nodes],
+    () => getAvailableVariablesForNode(node.id, nodes, edges, customFields),
+    [customFields, edges, node.id, nodes],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadFields() {
-      setLoading(true);
-      setLoadError(false);
-      try {
-        const response = await listCustomFields({ status: 1 });
-        if (!cancelled) setCustomFields(response.fields);
-      } catch {
-        if (!cancelled) setLoadError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadFields();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const updateFields = (nextFields: WorkflowCustomerUpdateDraftField[]) => {
     onNodeChange(getCustomerUpdateNodePatch(nextFields));
@@ -229,6 +215,7 @@ function CustomerUpdateFieldRow({
       <WorkflowLiteralOrVariableInput
         ariaLabel={`${selectedField?.title ?? "客户属性"}的值`}
         className="col-start-2"
+        customFieldVisibility="compatible"
         disabled={!selectedField}
         inputMode={selectedField?.type === 11 ? "decimal" : undefined}
         inputType={getLiteralInputType(selectedField)}

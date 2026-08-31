@@ -105,6 +105,7 @@ export function AiIntentConfig({
         <WorkflowVariableSelect
           ariaLabel="输入"
           buttonClassName="h-10"
+          customFieldVisibility="hidden"
           invalidLabel="原节点输出不可用"
           onSelect={(variable) => updateConfig({ inputSelector: variable.selector })}
           placeholder="请选择前序节点输出"

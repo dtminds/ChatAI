@@ -43,6 +43,9 @@ export function resolveWorkflowVariableSelector(
   if (scope === "subject" && key === "id" && path.length === 0) {
     return { available: true, value: context.subjectId };
   }
+  if (scope === "subject" && key === "customFields" && path.length === 1) {
+    return readPath(context.customFields, path);
+  }
   if (scope === "trigger") return readPath(context.trigger, [key, ...path]);
   if (scope === "node") return readPath(context.outputs[key], path);
   if (scope === "node-lifecycle") return readPath(context.nodeLifecycle[key], path);

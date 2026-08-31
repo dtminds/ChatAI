@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createInMemoryWorkflowDraftRepository,
   WorkflowRepositoryError,
@@ -11,8 +11,33 @@ import {
   useWorkflowDocumentResource,
   useWorkflowListResource,
 } from "@/pages/chat/workflow/workflow-resources";
+import { useWorkflowCustomFieldResource } from "@/pages/chat/workflow/workflow-custom-field-resource";
 
 describe("workflow resources", () => {
+  it("loads the custom field directory once and reloads only on request", async () => {
+    const fields = [
+      { id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 },
+    ];
+    const loader = vi.fn().mockResolvedValue(fields);
+    const { rerender, result } = renderHook(
+      ({ enabled }) => useWorkflowCustomFieldResource(enabled, loader),
+      { initialProps: { enabled: true } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.fields).toEqual(fields);
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.reload();
+    });
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
   it("loads and retries the capacity independently from the Workflow list", async () => {
     const baseRepository = createInMemoryWorkflowDraftRepository();
     let shouldFail = true;

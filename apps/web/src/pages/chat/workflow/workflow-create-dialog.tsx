@@ -80,7 +80,7 @@ export function WorkflowCreateDialog({
         >
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor={nameId}>工作流名称</label>
+              <label className="text-sm font-medium" htmlFor={nameId}>名称</label>
               <span className="text-xs text-muted-foreground">
                 {nameValue.length}/{WORKFLOW_NAME_MAX_LENGTH}
               </span>

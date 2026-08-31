@@ -1412,6 +1412,40 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
+  async updateCapabilityExecutionInput(
+    input: Parameters<WorkflowRuntimeRepository["updateCapabilityExecutionInput"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityExecutionState(trx, input);
+      if (state.kind !== "success") return state;
+      const executionRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("run_id", "=", input.runId)
+        .where("sequence", "=", state.task.sequence)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!executionRow) return { kind: "conflict" as const };
+      const execution = mapNodeExecution(executionRow);
+      if (execution.executionKey !== input.executionKey
+        || execution.nodeId !== state.task.nodeId
+        || execution.nodeKind !== state.task.nodeKind
+        || execution.status !== "running") return { kind: "conflict" as const };
+      const update = await trx.updateTable(EXECUTION_TABLE).set({
+        input_snapshot_json: stringifyJson(input.input),
+      }).where("uid", "=", input.uid)
+        .where("run_id", "=", input.runId)
+        .where("sequence", "=", state.task.sequence)
+        .where("execution_key", "=", input.executionKey)
+        .where("status", "=", "running")
+        .executeTakeFirst();
+      if (Number(update.numUpdatedRows) !== 1) return { kind: "conflict" as const };
+      return {
+        execution: { ...execution, input: structuredClone(input.input) },
+        kind: "success" as const,
+      };
+    });
+  }
+
   async beginInference(input: Parameters<WorkflowRuntimeRepository["beginInference"]>[0]) {
     return this.db.transaction().execute(async (trx) => {
       const processed = await trx.selectFrom(INBOX_TABLE).select("id")

@@ -1,4 +1,7 @@
 import {
+  type CustomFieldItem,
+} from "@chatai/contracts";
+import {
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
   getWorkflowNodeCatalogEntry,
@@ -66,6 +69,7 @@ export type WorkflowValidationResult = {
 export function validateWorkflowDraft(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowValidationResult {
   const startNode = findWorkflowEntryNode(nodes);
   const endNode = findWorkflowTerminalNode(nodes);
@@ -75,7 +79,7 @@ export function validateWorkflowDraft(
   const nodeIssues = nodes
     .map((node) => ({
       issues: [
-        ...validateWorkflowNodeConfig(node, nodes, edges),
+        ...validateWorkflowNodeConfig(node, nodes, edges, customFields),
         ...validateWorkflowNodeGraphState(node, disconnectedNodes, startNode?.id),
       ],
       node,
@@ -98,19 +102,19 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
   node: WorkflowNode<TKind>,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ): WorkflowNodeValidationIssue[] {
   const definition = getWorkflowNodeCatalogEntry(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
   const availableVariables = node.data.kind === "branch"
-    ? getAvailableBranchVariablesForNode(node.id, nodes, edges)
-    : getAvailableVariablesForNode(node.id, nodes, edges);
+    ? getAvailableBranchVariablesForNode(node.id, nodes, edges, customFields)
+    : getAvailableVariablesForNode(node.id, nodes, edges, customFields);
   const definitionIssues = definition.validate?.(node, {
     availableVariables,
     edges,
     nodes,
   }) ?? [];
-  const variableIssues = validateNodeVariableContent(node, nodes, edges);
-
+  const variableIssues = validateNodeVariableContent(node, nodes, edges, customFields);
   return [
     ...configIssues,
     ...definitionIssues,
@@ -122,8 +126,9 @@ function validateNodeVariableContent(
   node: WorkflowNode,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[],
 ): WorkflowNodeValidationIssue[] {
-  const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+  const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges, customFields);
 
   if (node.data.kind === "message") {
     const issues: WorkflowNodeValidationIssue[] = [];
@@ -167,7 +172,12 @@ function validateNodeVariableContent(
 
   if (node.data.kind === "message-query") {
     const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
-    const availableTimeVariables = getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges);
+    const availableTimeVariables = getAvailableTimeReferenceVariablesForNode(
+      node.id,
+      nodes,
+      edges,
+      customFields,
+    );
     const issues = timeRange.mode === "dynamic"
       ? [
           ...validateMessageQueryTimeReference(
@@ -238,7 +248,12 @@ function validateNodeVariableContent(
   }
 
   if (node.data.kind === "llm") {
-    const availableInputs = getAvailableLlmInputVariablesForNode(node.id, nodes, edges);
+    const availableInputs = getAvailableLlmInputVariablesForNode(
+      node.id,
+      nodes,
+      edges,
+      customFields,
+    );
     if (normalizeLlmInputs(node.data.inputs).some((input) => {
       if (input.value.kind !== "variable") return false;
       const variable = resolveWorkflowVariable(availableInputs, input.value.selector);

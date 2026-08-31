@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import type { CustomFieldItem } from "@chatai/contracts";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowEdge,
@@ -50,6 +51,7 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   & WorkflowRenderElementState
   & {
     allowedInsertableNodeKinds: readonly InsertableWorkflowNodeKind[];
+    customFields?: readonly CustomFieldItem[];
     edges: WorkflowEdge[];
     readOnly?: boolean;
     nodes: WorkflowNode[];
@@ -81,6 +83,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
   const edges = useMemo(() => createWorkflowRenderEdges(options), [
     options.activeEdgeInsertMenuId,
     options.allowedInsertableNodeKinds,
+    options.customFields,
     options.edges,
     options.hoveredEdgeIds,
     options.nodes,
@@ -90,6 +93,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.selectedEdgeId,
   ]);
   const nodes = useMemo(() => createWorkflowRenderNodes(options, nodeRenderCacheRef.current), [
+    options.customFields,
     options.edges,
     options.nodes,
     options.onDeleteNode,
@@ -116,10 +120,12 @@ const ignoreWorkflowRenderAction = () => {};
 export function createWorkflowReadOnlyRenderElements(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  customFields: readonly CustomFieldItem[] = [],
 ) {
   return createWorkflowRenderElements({
     activeEdgeInsertMenuId: null,
     allowedInsertableNodeKinds: [],
+    customFields,
     edges,
     nodes,
     onDeleteNode: ignoreWorkflowRenderAction,
@@ -141,6 +147,7 @@ export function createWorkflowReadOnlyRenderElements(
 export function createWorkflowRenderElements({
   activeEdgeInsertMenuId,
   allowedInsertableNodeKinds,
+  customFields,
   edges,
   hoveredEdgeIds,
   nodes,
@@ -185,6 +192,7 @@ export function createWorkflowRenderElements({
     nodes: createWorkflowRenderNodes({
       activeEdgeInsertMenuId,
       allowedInsertableNodeKinds,
+      customFields,
       edges,
       nodes,
       onDeleteNode,
@@ -246,6 +254,7 @@ function createWorkflowRenderEdges({
 }
 
 function createWorkflowRenderNodes({
+  customFields = [],
   edges,
   nodes,
   onDeleteNode,
@@ -262,8 +271,8 @@ function createWorkflowRenderNodes({
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
     const availableVariables = node.data.kind === "branch"
-      ? getAvailableBranchVariablesForNode(node.id, nodes, edges)
-      : getAvailableVariablesForNode(node.id, nodes, edges);
+      ? getAvailableBranchVariablesForNode(node.id, nodes, edges, customFields)
+      : getAvailableVariablesForNode(node.id, nodes, edges, customFields);
     const availableIntentInputs = node.data.kind === "ai-intent"
       ? getAvailableIntentInputOutputsForNode(node.id, nodes, edges)
       : undefined;
@@ -271,7 +280,7 @@ function createWorkflowRenderNodes({
       ? getAvailableMessageContentOutputsForNode(node.id, nodes, edges)
       : undefined;
     const availableTimeReferences = node.data.kind === "message-query"
-      ? getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges)
+      ? getAvailableTimeReferenceVariablesForNode(node.id, nodes, edges, customFields)
       : undefined;
     const availableTimeReferenceKey = availableTimeReferences
       ? availableTimeReferences.map((variable) => [
@@ -305,7 +314,7 @@ function createWorkflowRenderNodes({
       || node.data.kind === "message-query"
       || node.data.kind === "llm";
     const effectiveStatus = derivesStatusFromGraph
-      && validateWorkflowNodeConfig(node, nodes, edges).length > 0
+      && validateWorkflowNodeConfig(node, nodes, edges, customFields).length > 0
       ? "warning" as const
       : node.data.status;
     const insertMenuOpen = !readOnly && node.id === quickInsertTarget?.nodeId;

@@ -233,11 +233,16 @@ describe("createWorkflowRenderElements", () => {
     const rendered = createWorkflowReadOnlyRenderElements(
       [createInitialNodes()[0]!, tagQuery, branch],
       [createEdge("start", tagQuery.id), createEdge(tagQuery.id, branch.id)],
+      [{ id: 7, key: "level", options: [], sort: 1, title: "会员等级", type: 1 }],
     );
     const renderedBranch = rendered.nodes.find((node) => node.id === branch.id);
 
     expect(renderedBranch?.data.readOnly).toBe(true);
     expect(renderedBranch?.data.availableVariables).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "会员等级",
+        selector: ["subject", "customFields", "7"],
+      }),
       expect.objectContaining({
         selector: ["node", tagQuery.id, "matched"],
         sourceNodeTitle: tagQuery.data.title,

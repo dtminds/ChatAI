@@ -13,7 +13,10 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "./types";
-import { WorkflowVariablePicker } from "./workflow-variable-picker";
+import {
+  WorkflowVariablePicker,
+  type WorkflowCustomFieldVisibility,
+} from "./workflow-variable-picker";
 import { WorkflowVariableValueTag } from "./workflow-variable-value-tag";
 import {
   getWorkflowVariableDisplayLabel,
@@ -33,6 +36,7 @@ export function WorkflowLiteralOrVariableInput({
   ariaLabel,
   className,
   clearVariableAriaLabel = "改为固定内容",
+  customFieldVisibility,
   disabled = false,
   inputClassName,
   inputMode,
@@ -48,6 +52,7 @@ export function WorkflowLiteralOrVariableInput({
   ariaLabel: string;
   className?: string;
   clearVariableAriaLabel?: string;
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   disabled?: boolean;
   inputClassName?: string;
   inputMode?: ComponentPropsWithoutRef<"input">["inputMode"];
@@ -128,6 +133,7 @@ export function WorkflowLiteralOrVariableInput({
 
       {showVariablePicker ? (
         <WorkflowVariablePicker
+          customFieldVisibility={customFieldVisibility}
           onOpenChange={setPickerOpen}
           onSelect={(variable) => {
             onChange({

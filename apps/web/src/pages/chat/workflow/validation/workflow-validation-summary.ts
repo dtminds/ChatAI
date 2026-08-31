@@ -1,6 +1,9 @@
-import type {
-  WorkflowEntryEventType,
-  WorkflowNodeKind,
+import {
+  getWorkflowCustomFieldVariableIds,
+  getWorkflowCustomFieldVariableRequirements,
+  type CustomFieldItem,
+  type WorkflowEntryEventType,
+  type WorkflowNodeKind,
 } from "@chatai/contracts";
 import type {
   WorkflowEdge,
@@ -13,6 +16,7 @@ import {
   isFriendAddWaySelectionInvalid,
   type WorkflowFriendAddWayResource,
 } from "../workflow-friend-add-way-resource";
+import type { WorkflowCustomFieldResource } from "../workflow-custom-field-resource";
 import {
   validateWorkflowDraft,
 } from "./workflow-validation";
@@ -44,6 +48,7 @@ export type WorkflowValidationPolicy = {
 };
 
 export type WorkflowValidationResources = {
+  customFields?: Pick<WorkflowCustomFieldResource, "fields" | "status">;
   friendAddWays?: Pick<WorkflowFriendAddWayResource, "groups" | "status">;
 };
 
@@ -52,7 +57,12 @@ export function buildWorkflowValidationSummary(
   edges: WorkflowEdge[],
   policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
-  const validation = validateWorkflowDraft(nodes, edges);
+  const customFields = getCustomFieldsForValidation(nodes, policy.resources?.customFields);
+  const validation = validateWorkflowDraft(
+    nodes,
+    edges,
+    customFields,
+  );
   return buildWorkflowValidationSummaryFromResult(nodes, validation, policy);
 }
 
@@ -61,7 +71,10 @@ export function buildWorkflowValidationSummaryFromResult(
   validation: WorkflowValidationResult,
   policy: WorkflowValidationPolicy,
 ): WorkflowValidationSummary {
-  const effectiveValidation = appendFriendAddWayResourceIssue(validation, policy.resources);
+  const effectiveValidation = appendFriendAddWayResourceIssue(
+    appendCustomFieldResourceIssue(validation, nodes, policy.resources),
+    policy.resources,
+  );
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const startIssue = effectiveValidation.nodeIssues.find(
     (item) => item.node.id === effectiveValidation.startNode?.id,
@@ -228,6 +241,62 @@ export function buildWorkflowValidationSummaryFromResult(
     summary,
     totalSummaryChecks: summary.length,
     validation: effectiveValidation,
+  };
+}
+
+function getCustomFieldsForValidation(
+  nodes: WorkflowNode[],
+  resource: WorkflowValidationResources["customFields"],
+): readonly CustomFieldItem[] {
+  if (!resource || resource.status === "ready") return resource?.fields ?? [];
+  return getWorkflowCustomFieldVariableRequirements(nodes.map(node => node.data))
+    .filter(requirement => requirement.valueTypes.length > 0)
+    .map((requirement, index) => ({
+      id: requirement.fieldId,
+      key: `pending-${requirement.fieldId}`,
+      options: [],
+      sort: index,
+      title: `客户属性 ${requirement.fieldId}`,
+      type: requirement.valueTypes.length === 1
+        && requirement.valueTypes[0] === "number"
+        ? 11
+        : 1,
+    }));
+}
+
+function appendCustomFieldResourceIssue(
+  validation: WorkflowValidationResult,
+  nodes: WorkflowNode[],
+  resources: WorkflowValidationResources | undefined,
+): WorkflowValidationResult {
+  const customFields = resources?.customFields;
+  if (!customFields || customFields.status === "ready") return validation;
+  const affectedNodes = nodes.filter(node =>
+    getWorkflowCustomFieldVariableIds(node.data).length > 0);
+  if (affectedNodes.length === 0) return validation;
+
+  const issue: WorkflowNodeValidationIssue = {
+    code: customFields.status === "error"
+      ? "custom-field-resource-unavailable"
+      : "custom-field-resource-loading",
+    message: customFields.status === "error"
+      ? "客户属性加载失败"
+      : "正在校验客户属性",
+    severity: "warning",
+    source: "catalog",
+  };
+  const affectedNodeIds = new Set(affectedNodes.map(node => node.id));
+  const existingNodeIds = new Set(validation.nodeIssues.map(item => item.node.id));
+  return {
+    ...validation,
+    nodeIssues: [
+      ...validation.nodeIssues.map(item => affectedNodeIds.has(item.node.id)
+        ? { ...item, issues: [...item.issues, issue] }
+        : item),
+      ...affectedNodes
+        .filter(node => !existingNodeIds.has(node.id))
+        .map(node => ({ issues: [issue], node })),
+    ],
   };
 }
 

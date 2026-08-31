@@ -19,7 +19,10 @@ import type {
   WorkflowVariableContentSegment,
   WorkflowVariableDefinition,
 } from "../../types";
-import { WorkflowVariablePicker } from "../../workflow-variable-picker";
+import {
+  WorkflowVariablePicker,
+  type WorkflowCustomFieldVisibility,
+} from "../../workflow-variable-picker";
 import {
   getVariableContentText,
   normalizeVariableContent,
@@ -38,6 +41,7 @@ export function VariableContentEditor({
   ariaLabel,
   className,
   contentEditableClassName,
+  customFieldVisibility,
   editorClassName,
   maxLength,
   onChange,
@@ -49,6 +53,7 @@ export function VariableContentEditor({
   ariaLabel: string;
   className?: string;
   contentEditableClassName?: string;
+  customFieldVisibility: WorkflowCustomFieldVisibility;
   editorClassName?: string;
   maxLength?: number;
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
@@ -107,6 +112,7 @@ export function VariableContentEditor({
       </div>
       <div className="flex h-9 items-center justify-between pl-1 pr-3">
         <WorkflowVariablePicker
+          customFieldVisibility={customFieldVisibility}
           onOpenChange={(nextOpen) => {
             if (!readOnly) setOpen(nextOpen);
           }}

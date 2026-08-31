@@ -130,6 +130,29 @@ describe("workflow inference payloads", () => {
     });
   });
 
+  it("resolves an LLM input from the prepared customer custom field snapshot", () => {
+    const node = llmNode({
+      inputs: [{
+        id: "input-1",
+        name: "level",
+        value: {
+          kind: "variable",
+          selector: ["subject", "customFields", "42"],
+          valueType: { kind: "string" },
+        },
+      }],
+      userPrompt: [{ selector: ["input", "input-1"], type: "variable" }],
+    });
+
+    expect(createWorkflowInferenceRequest(node, run(), {}, { "42": "VIP" }))
+      .toMatchObject({
+        messageList: [
+          expect.anything(),
+          { content: [{ text: "VIP", type: "text" }], role: "user" },
+        ],
+      });
+  });
+
   it("renders AI Intent as a complete direct-endpoint request and maps codes to stable handles", () => {
     const node: WorkflowExecutionNode = {
       config: {
@@ -185,6 +208,27 @@ describe("workflow inference payloads", () => {
       .toEqual({
         output: { matchedIntentDescription: "其他意图", reason: "未命中" },
         sourceOutletId: "fallback",
+      });
+  });
+
+  it("resolves an AI Intent input from the prepared customer custom field snapshot", () => {
+    const node: WorkflowExecutionNode = {
+      config: {
+        fallback: { id: "fallback" },
+        inputSelector: ["subject", "customFields", "42"],
+        intents: [{ description: "VIP 客户", id: "vip", modelCode: "I1" }],
+      },
+      id: "intent-custom-field",
+      kind: "ai-intent",
+      nodeSchemaVersion: 1,
+    };
+
+    expect(createWorkflowInferenceRequest(node, run(), {}, { "42": "VIP" }))
+      .toMatchObject({
+        messageList: [
+          expect.anything(),
+          { content: [{ text: "VIP", type: "text" }], role: "user" },
+        ],
       });
   });
 

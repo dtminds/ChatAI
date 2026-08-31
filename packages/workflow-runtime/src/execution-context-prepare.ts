@@ -1,11 +1,19 @@
 import {
+  getWorkflowCustomFieldVariableIds,
+  getWorkflowCustomFieldVariableRequirements,
   getWorkflowNodeContract,
   type WorkflowContactIdentity,
+  type WorkflowCustomFieldVariableRequirement,
   type WorkflowExecutionNode,
   type WorkflowIdentityField,
   type WorkflowSubjectType,
 } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
+import {
+  prepareWorkflowContactCustomFields,
+  type WorkflowContactCustomFieldPort,
+  type WorkflowCustomFieldValue,
+} from "./contact-custom-field.js";
 
 const GLOBAL_CONTEXT_REQUIRED_IDENTITIES = ["externalUserId"] as const;
 const IDENTITY_FIELD_ORDER: readonly WorkflowIdentityField[] = [
@@ -44,11 +52,14 @@ export class WorkflowContactIdentityLookupError extends Error {
 }
 
 export type WorkflowExecutionContextRequirements = {
+  customFieldIds: readonly number[];
+  customFields: readonly WorkflowCustomFieldVariableRequirement[];
   globalContext: boolean;
   identities: readonly WorkflowIdentityField[];
 };
 
 export type WorkflowPreparedExecutionContext = {
+  customFields: Record<string, WorkflowCustomFieldValue>;
   identities: WorkflowContactIdentity;
 };
 
@@ -63,13 +74,17 @@ export function deriveWorkflowExecutionContextRequirements(
     GLOBAL_CONTEXT_REQUIRED_IDENTITIES.forEach(identity => identities.add(identity));
   }
   return {
+    customFieldIds: getWorkflowCustomFieldVariableIds(node.config),
+    customFields: getWorkflowCustomFieldVariableRequirements(node.config),
     globalContext,
     identities: IDENTITY_FIELD_ORDER.filter(identity => identities.has(identity)),
   };
 }
 
 export async function prepareWorkflowExecutionContext(input: {
+  contactCustomFieldPort?: WorkflowContactCustomFieldPort;
   contactIdentityPort?: WorkflowContactIdentityPort;
+  customFieldSnapshot?: Record<string, WorkflowCustomFieldValue>;
   node: WorkflowExecutionNode;
   signal?: AbortSignal;
   subjectId: string;
@@ -78,39 +93,60 @@ export async function prepareWorkflowExecutionContext(input: {
   uid: number;
 }): Promise<WorkflowPreparedExecutionContext> {
   const requirements = deriveWorkflowExecutionContextRequirements(input.node);
-  if (requirements.identities.length === 0) return { identities: {} };
+  const requiredIdentities = new Set(requirements.identities);
+  if (requirements.customFieldIds.length > 0 && input.customFieldSnapshot === undefined) {
+    requiredIdentities.add("externalUserId");
+  }
+  if (requiredIdentities.size === 0) {
+    return { customFields: input.customFieldSnapshot ?? {}, identities: {} };
+  }
   const identities = createKnownWorkflowContactIdentity({
     subjectId: input.subjectId,
     subjectType: input.subjectType,
     trigger: input.trigger,
   });
-  if (requirements.identities.every(identity => identities[identity] !== undefined)) {
-    return { identities };
-  }
-  if (!input.contactIdentityPort) {
-    throw contactIdentityLookupFailure("Workflow contact identity port is not configured");
-  }
+  if (![...requiredIdentities].every(identity => identities[identity] !== undefined)) {
+    if (!input.contactIdentityPort) {
+      throw contactIdentityLookupFailure("Workflow contact identity port is not configured");
+    }
 
-  let resolved: WorkflowContactIdentity;
-  try {
-    resolved = await input.contactIdentityPort.getContactIdentity({
-      key: createWorkflowContactIdentityLookupKey(input.subjectType, identities),
-      signal: input.signal,
-      uid: input.uid,
-    });
-  } catch (error) {
-    if (error instanceof WorkflowCapabilityExecutionError) throw error;
+    let resolved: WorkflowContactIdentity;
+    try {
+      resolved = await input.contactIdentityPort.getContactIdentity({
+        key: createWorkflowContactIdentityLookupKey(input.subjectType, identities),
+        signal: input.signal,
+        uid: input.uid,
+      });
+    } catch (error) {
+      if (error instanceof WorkflowCapabilityExecutionError) throw error;
+      throw contactIdentityLookupFailure(
+        error instanceof WorkflowContactIdentityLookupError
+          ? error.message
+          : "Workflow contact identity lookup failed",
+        error instanceof WorkflowContactIdentityLookupError
+          ? error.failureKind
+          : "retryable",
+      );
+    }
+    mergeWorkflowContactIdentity(identities, normalizeWorkflowContactIdentity(resolved));
+  }
+  if (requirements.customFieldIds.length > 0
+    && input.customFieldSnapshot === undefined
+    && identities.externalUserId === undefined) {
     throw contactIdentityLookupFailure(
-      error instanceof WorkflowContactIdentityLookupError
-        ? error.message
-        : "Workflow contact identity lookup failed",
-      error instanceof WorkflowContactIdentityLookupError
-        ? error.failureKind
-        : "retryable",
+      "Workflow contact identity lookup did not return externalUserId for custom fields",
+      "terminal",
     );
   }
-  mergeWorkflowContactIdentity(identities, normalizeWorkflowContactIdentity(resolved));
-  return { identities };
+
+  const customFields = input.customFieldSnapshot ?? await prepareWorkflowContactCustomFields({
+    externalUserId: identities.externalUserId!,
+    port: input.contactCustomFieldPort,
+    requirements: requirements.customFields,
+    signal: input.signal,
+    uid: input.uid,
+  });
+  return { customFields, identities };
 }
 
 export function usesWorkflowGlobalContext(value: unknown): boolean {

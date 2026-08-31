@@ -12,6 +12,7 @@ import {
   type WorkflowAudienceGroupSnapshot,
 } from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
+import { getWorkflowCustomFieldVariableId } from "./custom-field-variable.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
@@ -1231,7 +1232,10 @@ function areUniqueNonBlankValues(values: string[]) {
 function isWorkflowInferenceSelectorResolvable(selector: WorkflowVariableSelector) {
   const [scope, key, ...path] = selector;
   if (!scope || !key) return false;
-  if (scope === "subject") return key === "id" && path.length === 0;
+  if (scope === "subject") {
+    return key === "id" && path.length === 0
+      || getWorkflowCustomFieldVariableId(selector) !== null;
+  }
   if (scope === "trigger" || scope === "node") return true;
   if (scope === "current-node-lifecycle") {
     return key === "enteredAt" && path.length === 0;

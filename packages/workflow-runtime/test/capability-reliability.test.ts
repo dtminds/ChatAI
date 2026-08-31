@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type WorkflowCapabilityPort,
   type WorkflowCapabilityExecutionBinding,
+  type WorkflowContactCustomFieldPort,
   type WorkflowContactIdentityPort,
   InMemoryWorkflowRuntimeRepository,
   type WorkflowMessageQueryRequest,
@@ -842,6 +843,124 @@ describe("workflow capability reliability", () => {
     expect(run?.context).not.toHaveProperty("identities");
   });
 
+  it("renders an empty numeric custom field as an empty message segment across a retry", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const spec = actionSpec();
+    spec.nodes.find(node => node.kind === "message")!.config = {
+      attachments: [],
+      content: [
+        { type: "text", value: "客户评分：" },
+        { selector: ["subject", "customFields", "42"], type: "variable" },
+      ],
+      contentMode: "custom",
+    };
+    const getContactIdentity = vi.fn(async () => ({ externalUserId: 101 }));
+    const getContactCustomFields = vi.fn(async () => [
+      { fieldId: 42, fieldType: 11, rawValue: "" },
+    ]);
+    const requests: Array<{ command: Record<string, unknown> }> = [];
+    let attempt = 0;
+    const service = createService(runtime, async (request) => {
+      requests.push(request as { command: Record<string, unknown> });
+      attempt += 1;
+      if (attempt === 1) throw createActionError("retryable", "MESSAGE_SEND_TEMPORARY");
+      return {};
+    }, {
+      capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
+      contactCustomFieldPort: { getContactCustomFields },
+      contactIdentityPort: { getContactIdentity },
+      spec,
+    });
+    const actionTask = await startCapability(runtime, service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "retry-scheduled" });
+    const retryTask = await runtime.findTask(9, actionTask.id);
+    if (!retryTask) throw new Error("Message retry task was not created");
+    await expect(service.executeTask({
+      now: retryTask.dueAt,
+      taskId: retryTask.id,
+      taskVersion: retryTask.taskVersion,
+      uid: 9,
+      workerId: "worker-2",
+    })).resolves.toMatchObject({ kind: "success" });
+
+    expect(getContactIdentity).toHaveBeenCalledTimes(1);
+    expect(getContactCustomFields).toHaveBeenCalledTimes(1);
+    expect(requests.map(request => request.command)).toEqual([
+      expect.objectContaining({ content: "客户评分：" }),
+      expect.objectContaining({ content: "客户评分：" }),
+    ]);
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        input: expect.objectContaining({ customFields: { "42": "" } }),
+        nodeId: "message",
+        status: "completed",
+      }),
+    ]));
+    const run = await runtime.findRun(9, actionTask.runId);
+    expect(run?.context).not.toHaveProperty("customFields");
+  });
+
+  it("queries a fresh custom field snapshot for each downstream node", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const spec = actionSpec();
+    const firstMessage = spec.nodes.find(node => node.kind === "message")!;
+    firstMessage.config = {
+      attachments: [],
+      content: [{ selector: ["subject", "customFields", "42"], type: "variable" }],
+      contentMode: "custom",
+    };
+    spec.nodes.splice(2, 0, { ...structuredClone(firstMessage), id: "message-2" });
+    spec.edges = [
+      { id: "start-message", source: "start", sourceOutletId: "default", target: "message" },
+      { id: "message-message-2", source: "message", sourceOutletId: "default", target: "message-2" },
+      { id: "message-2-end", source: "message-2", sourceOutletId: "default", target: "end" },
+    ];
+    const getContactCustomFields = vi.fn()
+      .mockResolvedValueOnce([{ fieldId: 42, fieldType: 1, rawValue: "first" }])
+      .mockResolvedValueOnce([{ fieldId: 42, fieldType: 1, rawValue: "second" }]);
+    const commands: Record<string, unknown>[] = [];
+    const service = createService(runtime, async (request) => {
+      commands.push((request as { command: Record<string, unknown> }).command);
+      return {};
+    }, {
+      capabilityBindings: [WORKFLOW_MESSAGE_CAPABILITY_BINDING],
+      contactCustomFieldPort: { getContactCustomFields },
+      contactIdentityPort: { getContactIdentity: async () => ({ externalUserId: 101 }) },
+      spec,
+    });
+    const firstTask = await startCapability(runtime, service);
+    const firstResult = await service.executeTask({
+      now,
+      taskId: firstTask.id,
+      taskVersion: firstTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in firstResult) || !firstResult.nextTask) {
+      throw new Error("Second Message Task was not created");
+    }
+    await service.executeTask({
+      now,
+      taskId: firstResult.nextTask.id,
+      taskVersion: firstResult.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    expect(getContactCustomFields).toHaveBeenCalledTimes(2);
+    expect(commands).toEqual([
+      expect.objectContaining({ content: "first" }),
+      expect.objectContaining({ content: "second" }),
+    ]);
+  });
+
   it("executes Handoff as one action and reuses its idempotency key across a retry", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const completedAt = new Date(now.getTime() + 9_000);
@@ -1360,6 +1479,7 @@ function createService(
     capabilityTimeoutMs?: number;
     clock?: () => Date;
     contactIdentityPort?: WorkflowContactIdentityPort;
+    contactCustomFieldPort?: WorkflowContactCustomFieldPort;
     executors?: WorkflowNodeExecutorRegistry;
     inferenceTotalTimeoutMs?: number;
     maxTaskAttempts?: number;
@@ -1381,6 +1501,7 @@ function createService(
     capabilityTimeoutMs: options.capabilityTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
     capabilityBindings: options.capabilityBindings ?? [TEST_MESSAGE_CAPABILITY_BINDING],
+    contactCustomFieldPort: options.contactCustomFieldPort,
     contactIdentityPort: options.contactIdentityPort,
     entitlementPort: {
       check: async () => ({ activeRunLimit: 10_000, entitled: true }),
@@ -1455,7 +1576,7 @@ async function startCapability(
     workerId: "worker-1",
   });
   if (!("nextTask" in advanced) || !advanced.nextTask) {
-    throw new Error("capability task was not created");
+    throw new Error(`capability task was not created: ${JSON.stringify(advanced)}`);
   }
   return advanced.nextTask;
 }

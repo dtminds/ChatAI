@@ -1,8 +1,12 @@
 import {
+  getWorkflowCustomFieldVariableIds,
+  getWorkflowCustomFieldVariableId,
+  getWorkflowCustomFieldVariableValueType,
   getWorkflowContextVariableValueType,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
+  isWorkflowBranchConfigComplete,
   isWorkflowCustomerUpdateExecutionConfigComplete,
   isWorkflowHandoffExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
@@ -11,6 +15,7 @@ import {
   isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
+  type CustomFieldItem,
   type WorkflowExecutionNode,
   type WorkflowExecutionSpec,
   type WorkflowNodeOutputUsage,
@@ -34,11 +39,13 @@ import {
 import { validateWorkflowTypePolicy } from "./type-policy.js";
 
 export function compileWorkflowDraft({
+  customFields = [],
   draft,
   revision,
   workflowId,
   workflowType,
 }: {
+  customFields?: readonly CustomFieldItem[];
   draft: WorkflowDraft;
   revision: number;
   workflowId: string;
@@ -84,6 +91,7 @@ export function compileWorkflowDraft({
     nodes,
     normalizedDraft.edges,
     workflowType,
+    customFields,
   );
   if (referenceIssues.length > 0) {
     throw new WorkflowCompilationError(referenceIssues);
@@ -109,6 +117,7 @@ function validateWorkflowNodeReferences(
   nodes: WorkflowExecutionNode[],
   edges: WorkflowDraft["edges"],
   workflowType: WorkflowType,
+  customFields: readonly CustomFieldItem[],
 ) {
   const issues: Array<{
     code: "invalid-node-config";
@@ -118,8 +127,46 @@ function validateWorkflowNodeReferences(
   const nodeById = new Map(nodes.map(node => [node.id, node]));
   const nodeIds = nodes.map(node => node.id);
   const entryEventTypes = getWorkflowEntryEventTypes(nodes);
+  const customFieldById = new Map(customFields.map(field => [field.id, field]));
 
   for (const node of nodes) {
+    const customFieldReferencesAvailable = getWorkflowCustomFieldVariableIds(node.config)
+      .every((fieldId) => {
+        const field = customFieldById.get(fieldId);
+        return field !== undefined
+          && getWorkflowCustomFieldVariableValueType(field.type) !== null;
+      });
+    if (!customFieldReferencesAvailable) {
+      issues.push({
+        code: "invalid-node-config",
+        message: `${node.kind} node references unavailable customer custom fields`,
+        nodeId: node.id,
+      });
+      continue;
+    }
+
+    if (node.kind === "branch" && isWorkflowBranchConfigComplete(node.config)) {
+      const referencesMatchCurrentTypes = node.config.branchPaths.every(path =>
+        path.conditions.every((condition) => {
+          const fieldId = condition.selector
+            ? getWorkflowCustomFieldVariableId(condition.selector)
+            : null;
+          if (fieldId === null) return true;
+          const field = customFieldById.get(fieldId);
+          const valueType = field
+            ? getWorkflowCustomFieldVariableValueType(field.type)
+            : null;
+          return valueType?.kind === condition.valueType;
+        }));
+      if (!referencesMatchCurrentTypes) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Branch node references changed customer custom field data",
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.kind === "message" && isWorkflowMessageExecutionConfigComplete(node.config)) {
       const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
         node.id,
@@ -140,6 +187,7 @@ function validateWorkflowNodeReferences(
             ? { kind: "string" }
             : undefined,
           guaranteedUpstreamIds,
+          customFieldById,
           nodeById,
           requiredUsage: node.config.contentMode === "node-output"
             ? "message-content"
@@ -171,6 +219,7 @@ function validateWorkflowNodeReferences(
         validateWorkflowVariableSelector({
           edges,
           guaranteedUpstreamIds,
+          customFieldById,
           nodeById,
           requiredUsage: "variable",
           selector,
@@ -199,6 +248,7 @@ function validateWorkflowNodeReferences(
           edges,
           expectedValueType: input.value.valueType,
           guaranteedUpstreamIds,
+          customFieldById,
           nodeById,
           selector: input.value.selector,
           targetNodeId: node.id,
@@ -227,6 +277,7 @@ function validateWorkflowNodeReferences(
           edges,
           expectedValueType: field.value.valueType,
           guaranteedUpstreamIds,
+          customFieldById,
           nodeById,
           selector: field.value.selector,
           targetNodeId: node.id,
@@ -245,6 +296,7 @@ function validateWorkflowNodeReferences(
     if ((node.kind === "order-conversion" || node.kind === "order-bind")
       && Array.isArray(node.config.orderNumberSelector)) {
       const selectorInput = {
+        customFieldById,
         edges,
         guaranteedUpstreamIds: getWorkflowGuaranteedUpstreamNodeIds(
           node.id,
@@ -285,6 +337,7 @@ function validateWorkflowNodeReferences(
           nodeIds,
           edges,
         ),
+        customFieldById,
         nodeById,
         allowedSourceKinds: ["node-output"],
         requiredUsage: "intent-input",
@@ -312,6 +365,7 @@ function validateWorkflowNodeReferences(
           nodeIds,
           edges,
         ),
+        customFieldById,
         nodeById,
         allowedSourceKinds: ["node-output"],
         requiredUsage: "intent-input",
@@ -348,6 +402,7 @@ function validateWorkflowNodeReferences(
           edges,
           expectedValueType: { kind: "datetime" },
           guaranteedUpstreamIds,
+          customFieldById,
           nodeById,
           requiredUsage: "time-reference",
           selector,
@@ -381,6 +436,7 @@ function validateWorkflowVariableSelector(input: {
   edges: WorkflowDraft["edges"];
   expectedValueType?: WorkflowOutputValueType;
   guaranteedUpstreamIds: Set<string>;
+  customFieldById: ReadonlyMap<number, CustomFieldItem>;
   nodeById: Map<string, WorkflowExecutionNode>;
   requiredUsage?: WorkflowNodeOutputUsage;
   selector: WorkflowVariableSelector;
@@ -391,6 +447,18 @@ function validateWorkflowVariableSelector(input: {
   const [scope, sourceId, outputKey, ...rest] = input.selector;
   if (scope === "subject" || scope === "trigger") {
     if (!allowsVariableSource(input.allowedSourceKinds, "context")) return false;
+    const customFieldId = getWorkflowCustomFieldVariableId(input.selector);
+    if (customFieldId !== null) {
+      if (input.requiredUsage && input.requiredUsage !== "variable"
+        && input.requiredUsage !== "message-content") return false;
+      const customField = input.customFieldById.get(customFieldId);
+      const valueType = customField
+        ? getWorkflowCustomFieldVariableValueType(customField.type)
+        : null;
+      if (!valueType) return false;
+      return !input.expectedValueType
+        || isWorkflowOutputValueTypeEqual(valueType, input.expectedValueType);
+    }
     const valueType = getWorkflowContextVariableValueType(
       input.selector,
       input.workflowType,

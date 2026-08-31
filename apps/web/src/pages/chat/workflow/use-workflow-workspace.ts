@@ -425,6 +425,7 @@ export function useWorkflowWorkspace(
   } = useWorkflowRenderElements({
     activeEdgeInsertMenuId,
     allowedInsertableNodeKinds,
+    customFields: validationResources?.customFields?.fields,
     edges: controller.edges,
     hoveredEdgeIds,
     nodes: controller.nodes,

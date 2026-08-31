@@ -4,6 +4,7 @@ export * from "./database-timezone.js";
 export * from "./audience-filter.js";
 export * from "./capability-port.js";
 export * from "./chatai-action-context.js";
+export * from "./contact-custom-field.js";
 export * from "./customer-update.js";
 export * from "./errors.js";
 export * from "./entitlement.js";

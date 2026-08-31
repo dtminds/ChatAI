@@ -14,6 +14,10 @@ import {
   type WecomMemberJavaClient,
   type WecomMemberJavaNode,
 } from "./wecom-member-java-client.js";
+import type {
+  WorkflowWeComMemberReader,
+  WorkflowWeComMemberSummary,
+} from "./workflow-wecom-member-reader.js";
 
 const JAVA_MEMBER_TYPE = 1;
 const JAVA_DEPARTMENT_TYPE = 2;
@@ -22,7 +26,7 @@ type MapBudget = {
   remaining: number;
 };
 
-export class WecomMemberService {
+export class WecomMemberService implements WorkflowWeComMemberReader {
   constructor(
     private readonly javaClient: WecomMemberJavaClient,
     private readonly logger: AppLogger | RequestAwareLogger = noopLogger,
@@ -51,6 +55,29 @@ export class WecomMemberService {
       memberLimit: normalizeMemberLimit(result.userLimit),
       roots,
     };
+  }
+
+  async findByIds(uid: number, workUserIds: number[]) {
+    const requestedIds = new Set(workUserIds);
+    if (requestedIds.size === 0) return new Map<number, WorkflowWeComMemberSummary>();
+
+    const { roots } = await this.listMembers(uid);
+    const summaries = new Map<number, WorkflowWeComMemberSummary>();
+
+    function visit(node: WorkflowWeComMemberNode) {
+      if (node.kind === "member" && node.workUserId && requestedIds.has(node.workUserId)) {
+        summaries.set(node.workUserId, {
+          avatarUrl: node.avatarUrl ?? "",
+          id: node.workUserId,
+          name: node.title,
+        });
+      }
+
+      for (const child of node.children) visit(child);
+    }
+
+    for (const root of roots) visit(root);
+    return summaries;
   }
 }
 

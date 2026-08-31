@@ -52,6 +52,8 @@ describe("workflow contracts", () => {
       trigger: "添加好友",
       totalRunCount: 12_345,
       updatedAt: "2026-08-26T00:00:00.000Z",
+      wecomMemberCount: 0,
+      wecomMembers: [],
       workflowType: "chatai_sop",
     };
 

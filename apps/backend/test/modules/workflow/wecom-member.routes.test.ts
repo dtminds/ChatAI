@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKFLOW_WECOM_MEMBER_MAX_NODES } from "@chatai/contracts";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
+import { WecomMemberService } from "../../../src/modules/workflow/wecom-member.service.js";
 
 async function createAuthenticatedApp() {
   const app = await buildMockedApp();
@@ -168,6 +169,44 @@ describe("workflow wecom-member routes", () => {
       uid: 9001,
       withDefaultRootDepart: true,
     });
+  });
+
+  it("resolves requested member summaries for workflow list previews", async () => {
+    const listDepartmentUsers = vi.fn().mockResolvedValue({
+      roots: [{
+        children: [
+          {
+            avatar: "https://example.com/a.png",
+            children: [],
+            key: "1_201",
+            title: "张三",
+            type: 1,
+            userKey: "201",
+          },
+          {
+            children: [],
+            key: "1_202",
+            title: "李四",
+            type: 1,
+            userKey: "202",
+          },
+        ],
+        key: "2_1",
+        title: "销售部",
+        type: 2,
+      }],
+    });
+    const service = new WecomMemberService({ listDepartmentUsers });
+
+    await expect(service.findByIds(9001, [201, 999])).resolves.toEqual(new Map([
+      [201, {
+        avatarUrl: "https://example.com/a.png",
+        id: 201,
+        name: "张三",
+      }],
+    ]));
+    expect(listDepartmentUsers).toHaveBeenCalledOnce();
+    expect(listDepartmentUsers).toHaveBeenCalledWith({ uid: 9001 });
   });
 
   it("caps the mapped tree at the documented node bound", async () => {

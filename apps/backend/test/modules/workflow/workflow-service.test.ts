@@ -554,6 +554,34 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.managedAccounts.map(account => account.id)).toEqual([101, 102, 103]);
   });
 
+  it("loads only the first three WeCom members for each workflow list row", async () => {
+    const findByIds = vi.fn(async (_uid: number, workUserIds: number[]) => new Map(
+      workUserIds.map(id => [id, {
+        avatarUrl: `https://example.com/wecom-${id}.png`,
+        id,
+        name: `企微成员 ${id}`,
+      }]),
+    ));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      wecomMemberReader: { findByIds },
+    });
+    const created = await service.create(operator, { workflowType: "wecom_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryPolicy: { mode: "never" },
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+        workUserIds: [201, 202, 203, 204, 205],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(findByIds).toHaveBeenCalledWith(operator.uid, [201, 202, 203]);
+    expect((page.items[0] as Record<string, any>).wecomMembers.map((member: { id: number }) => member.id))
+      .toEqual([201, 202, 203]);
+  });
+
   it("shows a selected trigger for an incomplete Start draft", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });

@@ -71,6 +71,7 @@ export function WorkflowListTable({
   onLifecycleAction,
   onRename,
   operationPendingId,
+  sourceColumnLabel,
   workflows,
 }: {
   detailBasePath?: string;
@@ -79,8 +80,14 @@ export function WorkflowListTable({
   onLifecycleAction: (workflow: WorkflowListItem, action: WorkflowLifecycleAction) => void;
   onRename: (workflow: WorkflowListItem) => void;
   operationPendingId: string | null;
+  sourceColumnLabel?: "企微成员" | "托管账号";
   workflows: WorkflowListItem[];
 }) {
+  const resolvedSourceColumnLabel = sourceColumnLabel ?? (workflows.length > 0
+    && workflows.every(workflow => workflow.workflowType === "wecom_sop")
+    ? "企微成员"
+    : "托管账号");
+
   return (
     <div className="overflow-hidden rounded-[10px] border border-border/40 bg-muted px-1 pb-1">
       <Table aria-label="列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
@@ -96,7 +103,7 @@ export function WorkflowListTable({
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-8 px-3">名称</TableHead>
             <TableHead className="h-8 px-3">状态</TableHead>
-            <TableHead className="h-8 whitespace-nowrap px-3">托管账号</TableHead>
+            <TableHead className="h-8 whitespace-nowrap px-3">{resolvedSourceColumnLabel}</TableHead>
             <TableHead className="h-8 whitespace-nowrap px-3">执行概览</TableHead>
             <TableHead className="h-8 whitespace-nowrap px-3">最近一次运行</TableHead>
             <TablePinnedHead className="h-8 whitespace-nowrap bg-muted/50 px-3 text-right">操作</TablePinnedHead>
@@ -264,18 +271,23 @@ function WorkflowRunOverview({ workflow }: { workflow: WorkflowListItem }) {
 }
 
 function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListItem }) {
-  if (workflow.managedAccountCount === 0) {
+  const isWeCom = workflow.workflowType === "wecom_sop";
+  const sourceCount = isWeCom ? workflow.wecomMemberCount : workflow.managedAccountCount;
+  const sources = isWeCom ? workflow.wecomMembers : workflow.managedAccounts;
+  const sourceLabel = isWeCom ? "企微成员" : "托管账号";
+
+  if (sourceCount === 0) {
     return <span className="text-muted-foreground">-</span>;
   }
 
-  const visibleAccounts = workflow.managedAccounts.slice(0, 3);
-  const hiddenCount = Math.max(workflow.managedAccountCount - visibleAccounts.length, 0);
+  const visibleAccounts = sources.slice(0, 3);
+  const hiddenCount = Math.max(sourceCount - visibleAccounts.length, 0);
 
   return (
     <div className="flex items-center">
       {visibleAccounts.map((account, index) => (
         <Avatar
-          aria-label={`托管账号 ${account.name}`}
+          aria-label={`${sourceLabel} ${account.name}`}
           className={cn("size-8 rounded-full border-2 border-surface", index === 0 ? undefined : "-ml-2")}
           key={account.id}
           title={account.name}

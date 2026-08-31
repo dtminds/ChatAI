@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
@@ -50,13 +51,8 @@ export function WecomMemberSelection({
     () => filterWeComMemberTree(roots, query),
     [query, roots],
   );
-  const selectedMembers = draftSelectedIds.map(id => findWeComMemberByWorkUserId(roots, id) ?? {
-    children: [],
-    id: `missing-${id}`,
-    kind: "member" as const,
-    title: status === "ready" ? "已失效的企微成员" : "企微成员",
-    workUserId: id,
-  });
+  const selectedMembers = resolveSelectedMembers(roots, selectedIds, status);
+  const draftSelectedMembers = resolveSelectedMembers(roots, draftSelectedIds, status);
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) {
@@ -127,7 +123,7 @@ export function WecomMemberSelection({
   }
 
   return (
-    <div className="px-0">
+    <div className="space-y-3 px-0">
       {status === "error" ? (
         <div className="flex min-h-10 items-center justify-between gap-2 rounded-[10px] bg-secondary px-3.5 text-[13px] text-muted-foreground">
           <span>操作失败，请稍后重试</span>
@@ -160,6 +156,31 @@ export function WecomMemberSelection({
           </span>
         </Button>
       )}
+
+      {selectedMembers.length > 0 ? (
+        <ScrollArea className="h-[9rem] rounded-[8px] border border-dashed border-border">
+          <ul aria-label="已选企微成员" className="space-y-1 p-2">
+            {selectedMembers.map(member => (
+              <li
+                className="flex h-10 items-center gap-2 rounded-[8px] px-1.5 text-[13px] text-foreground"
+                key={member.workUserId}
+              >
+                <MemberAvatar node={member} />
+                <span className="min-w-0 flex-1 truncate">{member.title}</span>
+                <Button
+                  aria-label={`移除 ${member.title}`}
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  onClick={() => onChange(selectedIds.filter(id => id !== member.workUserId))}
+                  type="button"
+                  variant="ghost"
+                >
+                  移除
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </ScrollArea>
+      ) : null}
 
       <Dialog onOpenChange={handleOpenChange} open={open}>
         <DialogContent className="flex h-[520px] max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0">
@@ -232,7 +253,7 @@ export function WecomMemberSelection({
                 </Button>
               </div>
               <ul aria-label="已选成员" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
-                {selectedMembers.map(member => (
+                {draftSelectedMembers.map(member => (
                   <li
                     className="flex h-10 items-center gap-2 rounded-[8px] px-2 text-[13px] text-foreground"
                     key={member.workUserId}
@@ -273,6 +294,20 @@ export function WecomMemberSelection({
       </Dialog>
     </div>
   );
+}
+
+function resolveSelectedMembers(
+  roots: readonly WorkflowWeComMemberNode[],
+  selectedIds: readonly number[],
+  status: WorkflowWeComMemberResourceStatus,
+) {
+  return selectedIds.map(id => findWeComMemberByWorkUserId(roots, id) ?? {
+    children: [],
+    id: `missing-${id}`,
+    kind: "member" as const,
+    title: status === "ready" ? "已失效的企微成员" : "企微成员",
+    workUserId: id,
+  });
 }
 
 function TreeNodeRow({
@@ -388,7 +423,11 @@ function TreeNodeRow({
 
 function MemberAvatar({ dimmed = false, node }: { dimmed?: boolean; node: WorkflowWeComMemberNode }) {
   return (
-    <Avatar className={cn("size-6 shrink-0", dimmed && "opacity-40")}>
+    <Avatar
+      aria-label={`${node.title}头像`}
+      className={cn("size-6 shrink-0", dimmed && "opacity-40")}
+      role="img"
+    >
       <AvatarImage alt="" src={node.avatarUrl} />
       <AvatarFallback className="text-[11px]">
         {node.title.trim().slice(0, 1) || "?"}

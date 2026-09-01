@@ -357,6 +357,39 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it("keeps the terminal current node in an incomplete trajectory", async () => {
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      draftJson: JSON.stringify({
+        nodes: [
+          { data: { kind: "start", title: "开始" }, id: "start" },
+          { data: { kind: "message", title: "消息发送" }, id: "message-1" },
+          { data: { kind: "wait-event", title: "等待事件" }, id: "wait-event-1" },
+        ],
+      }),
+      executionRows: [
+        { nodeId: "start", nodeKind: "start" },
+        { nodeId: "message-1", nodeKind: "message" },
+      ],
+      runCurrentNodeId: "wait-event-1",
+      runStatus: "cancelled",
+      terminalReason: "workflow_stopped",
+    }) as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([
+      expect.objectContaining({ nodeId: "start", status: "completed" }),
+      expect.objectContaining({ nodeId: "message-1", status: "completed" }),
+      expect.objectContaining({
+        nodeId: "wait-event-1",
+        nodeKind: "wait-event",
+        status: "failed",
+        title: "等待事件",
+        description: "流程已停止运行",
+      }),
+    ]);
+  });
+
   it("aggregates metrics by node in MySQL across revisions while returning only current graph nodes", async () => {
     const db = createOverviewDbMock();
     const reader = new MysqlWorkflowDataReader(db as never);
@@ -814,6 +847,7 @@ function createRecordDbMock(options: {
   draftJson?: unknown;
   executionKind?: string;
   executionStatus?: string;
+  executionRows?: Array<{ nodeId: string; nodeKind: string }>;
   nextExecuteAt?: Date | null;
   runCurrentNodeId?: string;
   runStatus?: string;
@@ -848,15 +882,18 @@ function createRecordDbMock(options: {
         },
         async execute() {
           if (table === "xy_wap_embed_workflow_node_execution") {
-            return [{
+            return (options.executionRows ?? [{
+              nodeId: options.runCurrentNodeId ?? "wait-1",
+              nodeKind: options.executionKind ?? "wait",
+            }]).map(row => ({
               completed_at: now,
               create_time: now,
               error_message: null,
-              node_id: options.runCurrentNodeId ?? "wait-1",
-              node_kind: options.executionKind ?? "wait",
+              node_id: row.nodeId,
+              node_kind: row.nodeKind,
               revision: 3,
               status: options.executionStatus ?? "completed",
-            }];
+            }));
           }
           if (table === "xy_wap_embed_workflow_revision") {
             return [{ draft_json: draftJson, revision: 3 }];

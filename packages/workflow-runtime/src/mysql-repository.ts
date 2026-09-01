@@ -4152,7 +4152,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .executeTakeFirst();
       await cancelEventSubscriptions(trx, runIds);
       await cancelInferenceJobs(trx, runIds);
-      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
+      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
         hasMore: rows.length > selectedRows.length,
@@ -4237,7 +4237,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .executeTakeFirst();
       await cancelEventSubscriptions(trx, runIds);
       await cancelInferenceJobs(trx, runIds);
-      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
+      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
         hasMore: rows.length > selected.length,

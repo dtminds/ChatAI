@@ -424,6 +424,82 @@ describe("WorkflowDataPage", () => {
     expect(repository.getRecord).toHaveBeenCalledWith(document.id, "31");
   });
 
+  it("shows a user-facing reason when a Run is stopped while waiting", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [{ completed: 0, current: 0, entered: 0, incomplete: 1, nodeId: waitNode.id, passed: 0 }],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 0, incomplete: 1 },
+      })),
+      getRecord: vi.fn(async () => ({
+        createdAt: "2026-07-12T09:00:00.000Z",
+        customer: { avatar: null, name: "已停止客户" },
+        recordId: "113",
+        revision: document.publishedRevision!,
+        status: "cancelled" as const,
+        subjectType: "chatai_contact" as const,
+        terminalReason: null,
+        steps: [{
+          description: "流程已停止运行",
+          occurredAt: "2026-07-12T10:00:00.000Z",
+          nodeId: waitNode.id,
+          nodeKind: "wait" as const,
+          revision: document.publishedRevision!,
+          status: "failed" as const,
+          title: waitNode.data.title,
+        }],
+      })),
+      listRecords: vi.fn(async () => ({
+        items: [{
+          createdAt: "2026-07-12T09:00:00.000Z",
+          currentNodeId: waitNode.id,
+          customer: { avatar: null, name: "已停止客户" },
+          nextExecuteAt: null,
+          recordId: "113",
+          revision: document.publishedRevision!,
+          status: "cancelled" as const,
+          subjectType: "chatai_contact" as const,
+          updatedAt: "2026-07-12T10:00:00.000Z",
+        }],
+        nextCursor: null,
+      })),
+    };
+    const user = userEvent.setup();
+    render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
+
+    const canvas = await screen.findByRole("application");
+    await user.click(within(canvas).getByRole("button", { name: /未完成 1/ }));
+    const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
+    await user.click(within(records).getByText("已停止客户"));
+
+    expect(screen.getByText("流程已停止运行")).toBeInTheDocument();
+  });
+
+  it("shows incomplete node entries alongside current and passed counts", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [{ completed: 0, current: 1, entered: 0, incomplete: 9, nodeId: waitNode.id, passed: 0 }],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 1, entered: 10, incomplete: 9 },
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(async () => ({ items: [], nextCursor: null })),
+    };
+
+    render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
+
+    const canvas = await screen.findByRole("application");
+    expect(within(canvas).getByRole("button", { name: /当前停留 1.*已通过 0.*未完成 9/ })).toBeInTheDocument();
+  });
+
   it("shows when a Message step is waiting for its sending window", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");

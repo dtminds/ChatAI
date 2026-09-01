@@ -345,7 +345,8 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         title: metadata?.title ?? fallbackNodeTitle(nodeKind),
       };
     });
-    if (run.status === "queued" || run.status === "running" || run.status === "waiting") {
+    const isActiveRun = run.status === "queued" || run.status === "running" || run.status === "waiting";
+    if (isActiveRun) {
       const metadata = titlesByRevision.get(run.revision)?.get(run.current_node_id);
       const previousStep = steps.at(-1)?.nodeId === run.current_node_id ? steps.at(-1) : undefined;
       const currentKind = metadata?.kind ?? previousStep?.nodeKind ?? "unknown";
@@ -365,6 +366,19 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       } else {
         steps.push(currentStep);
       }
+    } else if ((run.status === "failed" || run.status === "cancelled")
+      && steps.at(-1)?.nodeId !== run.current_node_id) {
+      const metadata = titlesByRevision.get(run.revision)?.get(run.current_node_id);
+      const currentKind = metadata?.kind ?? "unknown";
+      steps.push({
+        ...(run.terminal_reason === "workflow_stopped" ? { description: "流程已停止运行" } : {}),
+        occurredAt: toDate(run.update_time).toISOString(),
+        nodeId: run.current_node_id,
+        nodeKind: currentKind,
+        revision: run.revision,
+        status: "failed",
+        title: metadata?.title ?? fallbackNodeTitle(currentKind),
+      });
     }
     return {
       createdAt: toDate(run.create_time).toISOString(),

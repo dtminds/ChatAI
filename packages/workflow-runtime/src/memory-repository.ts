@@ -671,7 +671,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     this.cancelEventSubscriptions(selectedIds);
     this.cancelInferenceJobs(selectedIds);
-    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
+    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
     return {
       cancelled: selected.length,
       hasMore: candidates.length > selected.length,
@@ -724,7 +724,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     this.cancelEventSubscriptions(selectedIds);
     this.cancelInferenceJobs(selectedIds);
-    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
+    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
     return {
       cancelled: selected.length,
       hasMore: unavailable.length > selected.length,

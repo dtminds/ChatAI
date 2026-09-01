@@ -56,6 +56,12 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>已通过 <strong className="font-semibold text-success">{data.dataMetric.passed}</strong></span>
+                {data.dataMetric.incomplete > 0 ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>未完成 <strong className="font-semibold text-warning">{data.dataMetric.incomplete}</strong></span>
+                  </>
+                ) : null}
               </>
             ) : null}
             {data.kind === "end" ? (

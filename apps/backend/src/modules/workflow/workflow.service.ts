@@ -37,6 +37,11 @@ import type {
   WorkflowLlmInputParameter,
   WorkflowOutputValueType,
   WorkflowVariableSelector,
+  WorkflowTemplateApplicationRequest,
+  WorkflowTemplateConversionRequest,
+  WorkflowTemplateDetail,
+  WorkflowTemplateListPage,
+  WorkflowTemplateConfigurationItem,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -125,6 +130,7 @@ import {
   UnavailableWorkflowDirectEntryEndpointPort,
   type WorkflowDirectEntryEndpointPort,
 } from "./direct-entry-endpoint-port.js";
+import type { WorkflowTemplateRepository } from "./workflow-template-repository-types.js";
 
 export type WorkflowOperatorScope = {
   roles: string[];
@@ -146,7 +152,10 @@ export type WorkflowServiceOptions = {
   metricReader?: WorkflowMetricReader;
   logger?: AppLogger | RequestAwareLogger;
   wecomMemberReader?: WorkflowWeComMemberReader;
+  templateRepository?: WorkflowTemplateRepository;
 };
+
+const WORKFLOW_TEMPLATE_MANAGER_SUBJECTS = new Set(["1:1"]);
 
 export type WorkflowCustomFieldReader = {
   listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
@@ -167,6 +176,7 @@ export class WorkflowService {
   private readonly metricReader: WorkflowMetricReader;
   private readonly logger: AppLogger | RequestAwareLogger;
   private readonly wecomMemberReader: WorkflowWeComMemberReader;
+  private readonly templateRepository?: WorkflowTemplateRepository;
   private readonly entitlementRefreshes = new Map<string, {
     attemptedAt: number;
     outcome: "denied" | "unavailable";
@@ -199,6 +209,7 @@ export class WorkflowService {
     this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
     this.logger = options.logger ?? noopLogger;
     this.wecomMemberReader = options.wecomMemberReader ?? new EmptyWorkflowWeComMemberReader();
+    this.templateRepository = options.templateRepository;
   }
 
   async getDirectEntryEndpoint(
@@ -499,6 +510,70 @@ export class WorkflowService {
   async get(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
     return this.toDefinition(await this.requireVisibleDefinition(scope, workflowId));
+  }
+
+  async listTemplates(scope: WorkflowOperatorScope, input: { cursor?: string; limit: number; query?: string; category?: string; scene?: string; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
+    assertWorkflowAccess(scope);
+    const page = await this.requireTemplateRepository().list({
+      cursor: input.cursor ? decodeTemplateCursor(input.cursor) : undefined,
+      limit: input.featured ? Math.min(input.limit, 4) : input.limit,
+      query: input.query?.trim() || undefined,
+      category: input.category,
+      scene: input.scene,
+      workflowType: input.workflowType,
+      status: "published",
+    });
+    return { items: page.items.map(toTemplateListItem), nextCursor: page.nextCursor ? encodeTemplateCursor(page.nextCursor) : null, total: page.total };
+  }
+
+  async getTemplate(scope: WorkflowOperatorScope, templateId: string): Promise<WorkflowTemplateDetail> {
+    assertWorkflowAccess(scope);
+    const item = await this.requireTemplateRepository().find(templateId, "published");
+    if (!item) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    return toTemplateDetail(item);
+  }
+
+  async applyTemplate(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateApplicationRequest) {
+    assertWorkflowAccess(scope);
+    const template = await this.requireTemplateRepository().find(templateId, "published");
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    assertWorkflowTypeEnabled(template.workflowType);
+    if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(template.workflowType)) throw new ForbiddenError("WORKFLOW_TYPE_FORBIDDEN", "当前入口不支持该类型");
+    await this.requireEntitlement(scope.uid, template.workflowType);
+    const name = (input.name ?? template.name).trim() || "未命名工作流";
+    const description = (input.description ?? template.description).trim();
+    const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, description, draft: normalizeWorkflowDraft(template.draft), draftSemanticHash: hashDraftSemantics(template.draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
+    if (result.kind === "idempotency-conflict") throw new AppError("WORKFLOW_CREATE_REQUEST_CONFLICT", "创建请求与已有类型不一致", 409);
+    return this.toDefinition(result.value);
+  }
+
+  async convertToTemplate(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowTemplateConversionRequest) {
+    assertWorkflowTemplateManage(scope);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
+    if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
+    const draft = sanitizeTemplateDraft(normalizeWorkflowDraft(definition.draft));
+    assertWorkflowDraftNodeContracts(draft);
+    const template = await this.requireTemplateRepository().create({ uid: 0, workflowType: definition.workflowType, name: input.name.trim(), description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(draft), templateVersion: 1, status: "draft" });
+    return toTemplateDetail(template);
+  }
+
+  async publishTemplate(scope: WorkflowOperatorScope, templateId: string) {
+    assertWorkflowTemplateManage(scope);
+    const template = await this.requireTemplateRepository().find(templateId);
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    return toTemplateDetail((await this.requireTemplateRepository().update({ ...template, status: "published" }))!);
+  }
+
+  async setTemplateStatus(scope: WorkflowOperatorScope, templateId: string, status: "offline" | "archived") {
+    assertWorkflowTemplateManage(scope);
+    const template = await this.requireTemplateRepository().find(templateId);
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    return toTemplateDetail((await this.requireTemplateRepository().update({ ...template, status }))!);
+  }
+
+  private requireTemplateRepository() {
+    if (!this.templateRepository) throw new ServiceUnavailableError("WORKFLOW_TEMPLATE_UNAVAILABLE", "模板服务暂不可用");
+    return this.templateRepository;
   }
 
   async create(scope: WorkflowOperatorScope, input: WorkflowCreateRequest) {
@@ -1648,4 +1723,65 @@ function toLlmTestAttempt(record: WorkflowLlmTestAttemptRecord): WorkflowLlmTest
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
+  if (!WORKFLOW_TEMPLATE_MANAGER_SUBJECTS.has(`${scope.uid}:${scope.subUserId}`)) {
+    throw new ForbiddenError("WORKFLOW_TEMPLATE_FORBIDDEN", "无权管理模板");
+  }
+}
+
+function encodeTemplateCursor(cursor: { updatedAt: Date; id: string }) {
+  return Buffer.from(JSON.stringify({ t: cursor.updatedAt.toISOString(), id: cursor.id }), "utf8").toString("base64url");
+}
+
+function decodeTemplateCursor(value: string) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { t?: string; id?: string };
+    const updatedAt = new Date(parsed.t ?? "");
+    if (!parsed.id || Number.isNaN(updatedAt.getTime())) throw new Error("invalid cursor");
+    return { updatedAt, id: parsed.id };
+  } catch {
+    throw new BadRequestError("WORKFLOW_TEMPLATE_CURSOR_INVALID", "分页游标无效");
+  }
+}
+
+function toTemplateListItem(item: any) {
+  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+}
+function toTemplateDetail(item: any) {
+  return { ...toTemplateListItem(item), configurationItems: item.configurationItems, draft: item.draft, status: item.status };
+}
+
+function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
+  const sensitive = new Set(["accountId", "accountIds", "managedAccountId", "managedAccountIds", "memberId", "memberIds", "workUserId", "workUserIds", "tagIds", "audienceId", "audienceIds", "customerFieldId", "customerFieldIds", "materialId", "materialIds", "modelId", "model"]);
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (!value || typeof value !== "object") return value;
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (sensitive.has(key)) continue;
+      result[key] = walk(child);
+    }
+    return result;
+  };
+  return walk(draft) as WorkflowDraft;
+}
+
+function inferTemplateConfigurationItems(draft: WorkflowDraft) {
+  const items: WorkflowTemplateConfigurationItem[] = [];
+  const seen = new Set<string>();
+  const walk = (value: unknown, path: string[] = []) => {
+    if (Array.isArray(value)) return value.forEach((v, i) => walk(v, [...path, String(i)]));
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if ((key === "text" || key === "content" || key === "prompt") && typeof child === "string" && child.includes("{{")) {
+        const id = [...child.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)].map(m => m[1]).find(Boolean);
+        if (id && !seen.has(id)) { seen.add(id); items.push({ id, label: id, description: "应用模板时填写", required: true, type: "text" }); }
+      }
+      walk(child, [...path, key]);
+    }
+  };
+  walk(draft);
+  return items;
 }

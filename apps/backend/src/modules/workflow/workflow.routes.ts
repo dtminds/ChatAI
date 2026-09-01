@@ -23,6 +23,9 @@ import {
   type WorkflowLlmTestAttemptCreateRequest,
   type WorkflowAiIntentTestAttemptCreateRequest,
   type WorkflowSurface,
+  WorkflowTemplateConversionRequestSchema,
+  WorkflowTemplateApplicationRequestSchema,
+  WorkflowTypeSchema,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -46,6 +49,7 @@ import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoi
 import { getWorkflowActiveRunLimit } from "../../config/env.js";
 import { createCustomFieldService } from "../ai-hosting/custom-field.service.js";
 import { createWecomMemberService } from "./wecom-member.service.js";
+import { MysqlWorkflowTemplateRepository } from "./workflow-template-mysql.repository.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -124,6 +128,7 @@ export async function registerWorkflowRoutes(
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
       logger: app.log,
       wecomMemberReader: createWecomMemberService(app.log),
+      templateRepository: new MysqlWorkflowTemplateRepository(workflowDatabase),
     },
   );
   await registerAudienceGroupRoutes(app);
@@ -219,6 +224,15 @@ function registerWorkflowSurfaceRoutes(
       status: request.query.status ?? "all",
     })),
   );
+
+  const WorkflowTemplateParamsSchema = Type.Object({ templateId: Type.String({ pattern: "^[1-9][0-9]*$" }) });
+  const WorkflowTemplateListQuerySchema = Type.Object({ cursor: Type.Optional(Type.String({ maxLength: 512 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), query: Type.Optional(Type.String({ maxLength: 100 })), category: Type.Optional(Type.String({ maxLength: 40 })), scene: Type.Optional(Type.String({ maxLength: 40 })), workflowType: Type.Optional(WorkflowTypeSchema), featured: Type.Optional(Type.Boolean()) });
+  app.get<{ Querystring: Static<typeof WorkflowTemplateListQuerySchema> }>("/workflow-templates", { ...authenticated, schema: { querystring: WorkflowTemplateListQuerySchema } }, async request => apiSuccess(await service.listTemplates(getWorkflowScope(request, surface), { ...request.query, limit: request.query.limit ?? 8 })));
+  app.get<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.getTemplate(getWorkflowScope(request, surface), request.params.templateId)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: import("@chatai/contracts").WorkflowTemplateApplicationRequest }>("/workflow-templates/:templateId/applications", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: WorkflowTemplateApplicationRequestSchema } }, async request => apiSuccess(await service.applyTemplate(getWorkflowScope(request, surface), request.params.templateId, request.body)));
+  app.post<{ Params: WorkflowParams; Body: import("@chatai/contracts").WorkflowTemplateConversionRequest }>("/workflows/:workflowId/template-conversions", { ...authenticated, schema: { params: WorkflowParamsSchema, body: WorkflowTemplateConversionRequestSchema } }, async request => apiSuccess(await service.convertToTemplate(getWorkflowScope(request, surface), request.params.workflowId, request.body)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId/publish", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.publishTemplate(getWorkflowScope(request, surface), request.params.templateId)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: { status: "offline" | "archived" } }>("/workflow-templates/:templateId/status", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: Type.Object({ status: Type.Union([Type.Literal("offline"), Type.Literal("archived")]) }) } }, async request => apiSuccess(await service.setTemplateStatus(getWorkflowScope(request, surface), request.params.templateId, request.body.status)));
 
   app.post<{ Body: WorkflowCreateRequest }>(
     "/workflows",

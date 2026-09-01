@@ -605,6 +605,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id)
 ) COMMENT='营销Workflow定义表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  uid BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '公共模板固定为0',
+  workflow_type TINYINT UNSIGNED NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description VARCHAR(1000) NOT NULL DEFAULT '',
+  category VARCHAR(100) NOT NULL DEFAULT '',
+  scene VARCHAR(100) NOT NULL DEFAULT '',
+  cover_url VARCHAR(512) NULL,
+  draft_json JSON NOT NULL,
+  configuration_json JSON NOT NULL,
+  template_version INT UNSIGNED NOT NULL DEFAULT 1,
+  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT 'draft、published、offline、archived',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_workflow_template_public_status (uid, status, update_time, id),
+  KEY idx_workflow_template_public_filter (uid, status, workflow_type, category, scene, id)
+) COMMENT='Workflow全平台公共模板';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',

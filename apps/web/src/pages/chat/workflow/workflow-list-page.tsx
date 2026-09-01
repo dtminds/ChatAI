@@ -69,6 +69,7 @@ import {
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
+import { WorkflowTemplateSection } from "./workflow-template-section";
 
 export function WorkflowPage({
   repository,
@@ -418,6 +419,8 @@ export function WorkflowListPage({
             totalPages={totalPages}
           />
         ) : null}
+
+        <WorkflowTemplateSection />
       </section>
 
       <WorkflowMetadataDialog

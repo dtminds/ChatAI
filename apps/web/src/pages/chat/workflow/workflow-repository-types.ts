@@ -43,13 +43,12 @@ export type WorkflowListItem = {
 
 export type WorkflowListPage = {
   items: WorkflowListItem[];
-  nextCursor: string | null;
   total: number;
 };
 
 export type WorkflowListInput = {
-  cursor?: string;
   limit?: number;
+  page?: number;
   query?: string;
   status?: WorkflowDefinitionListStatus;
 };

@@ -35,7 +35,6 @@ describe("workflow routes", () => {
     expect(firstPage.statusCode).toBe(200);
     expect(firstPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第二个 Workflow" })],
-      nextCursor: expect.any(String),
       total: 2,
     });
     expect(firstPage.json().data.items[0]).not.toHaveProperty("draft");
@@ -43,11 +42,10 @@ describe("workflow routes", () => {
 
     const secondPage = await app.inject({
       method: "GET",
-      url: `/api/server/workflows?limit=1&cursor=${encodeURIComponent(firstPage.json().data.nextCursor)}`,
+      url: "/api/server/workflows?limit=1&page=2",
     });
     expect(secondPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第一个 Workflow" })],
-      nextCursor: null,
       total: 2,
     });
   });

@@ -48,17 +48,14 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
     if (input.category) q = q.where("category", "=", input.category);
     if (input.scene) q = q.where("scene", "=", input.scene);
     if (input.query) q = q.where(eb => eb.or([eb("name", "like", `%${input.query}%`), eb("description", "like", `%${input.query}%`)]));
-    if (input.cursor) q = q.where(eb => eb.or([eb("update_time", "<", input.cursor!.updatedAt), eb.and([eb("update_time", "=", input.cursor!.updatedAt), eb("id", "<", input.cursor!.id)])]));
-    const rows = await q.orderBy("update_time", "desc").orderBy("id", "desc").limit(input.limit + 1).execute();
+    const rows = await q.orderBy("update_time", "desc").orderBy("id", "desc").offset(input.offset ?? 0).limit(input.limit).execute();
     let countQuery = this.db.selectFrom(TABLE).select(({ fn }) => fn.count<number>("id").as("total")).where("uid", "=", 0).where("status", "=", input.status ?? "published");
     if (input.workflowType) countQuery = countQuery.where("workflow_type", "=", encodeWorkflowType(input.workflowType));
     if (input.category) countQuery = countQuery.where("category", "=", input.category);
     if (input.scene) countQuery = countQuery.where("scene", "=", input.scene);
     if (input.query) countQuery = countQuery.where(eb => eb.or([eb("name", "like", `%${input.query}%`), eb("description", "like", `%${input.query}%`)]));
     const totalRow = await countQuery.executeTakeFirst();
-    const items = rows.slice(0, input.limit).map(map);
-    const last = items.at(-1);
-    return { items, nextCursor: rows.length > items.length && last ? { updatedAt: last.updatedAt, id: last.id } : null, total: Number(totalRow?.total ?? 0) };
+    return { items: rows.map(map), total: Number(totalRow?.total ?? 0) };
   }
 }
 

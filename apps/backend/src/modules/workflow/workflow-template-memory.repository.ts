@@ -34,11 +34,7 @@ export class InMemoryWorkflowTemplateRepository implements WorkflowTemplateRepos
       && (!input.scene || item.scene === input.scene)
       && (!input.workflowType || item.workflowType === input.workflowType),
     ).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || Number(b.id) - Number(a.id));
-    const candidates = filtered.filter(item => !input.cursor
-      || item.updatedAt < input.cursor.updatedAt
-      || (item.updatedAt.getTime() === input.cursor.updatedAt.getTime() && Number(item.id) < Number(input.cursor.id))).slice(0, input.limit + 1);
-    const items = candidates.slice(0, input.limit).map(clone);
-    const last = items.at(-1);
-    return { items, nextCursor: candidates.length > items.length && last ? { updatedAt: last.updatedAt, id: last.id } : null, total: filtered.length };
+    const items = filtered.slice(input.offset ?? 0, (input.offset ?? 0) + input.limit).map(clone);
+    return { items, total: filtered.length };
   }
 }

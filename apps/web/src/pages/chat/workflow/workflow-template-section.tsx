@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
@@ -28,26 +29,23 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
   const [total, setTotal] = useState(0);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const applyRequestIdRef = useRef<string | null>(null);
   const pageSize = 8;
 
-  const load = useCallback(async (input: { featured?: boolean; cursor?: string; page: number; query?: string }) => {
+  const load = useCallback(async (input: { featured?: boolean; page: number; query?: string }) => {
     setLoading(true);
     setError(false);
     try {
       const result = await templateRepository.list({
-        cursor: input.cursor,
         featured: input.featured,
         limit: input.featured ? 4 : pageSize,
+        page: input.featured ? undefined : input.page,
         query: input.featured ? undefined : input.query?.trim() || undefined,
       });
       setItems(result.items);
-      setNextCursor(result.nextCursor);
       setTotal(result.total);
       setPage(input.page);
     } catch {
@@ -63,12 +61,13 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
     setOpen(true);
     setDetail(null);
     setPage(1);
-    setCursors([undefined]);
     void load({ page: 1, query });
   };
-  const goToPage = (nextPage: number, cursor = cursors[nextPage - 1]) => {
-    if (nextPage < 1 || (!cursor && nextPage !== 1)) return;
-    void load({ cursor, page: nextPage, query });
+  const goToPage = (nextPage: number) => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const targetPage = Math.min(Math.max(1, nextPage), totalPages);
+    if (targetPage === page) return;
+    void load({ page: targetPage, query });
   };
   const openDetail = async (item: WorkflowTemplateListItem) => {
     try {
@@ -98,9 +97,16 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       <DialogContent className="max-w-5xl">
         <DialogHeader><DialogTitle>{detail ? detail.name : "模板中心"}</DialogTitle></DialogHeader>
         {detail ? <TemplateDetailView detail={detail} onApply={() => void apply()} onBack={() => setDetail(null)} /> : <div className="space-y-4">
-          <Input aria-label="搜索模板" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { setCursors([undefined]); void load({ page: 1, query: event.currentTarget.value }); } }} placeholder="搜索模板" value={query} />
-          {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ cursor: cursors[page - 1], page, query })} /> : items.length === 0 ? <WorkflowListState title="暂无数据" /> : <div className="grid gap-3 md:grid-cols-2">{items.map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
-          <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">第 {page} 页 / 共 {Math.max(1, Math.ceil(total / pageSize))} 页</span><div className="flex gap-2"><Button disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)} type="button" variant="outline">上一页</Button><Button disabled={!nextCursor || loading} onClick={() => { if (!nextCursor) return; const nextPage = page + 1; setCursors(current => { const next = [...current]; next[page] = nextCursor; return next; }); void load({ cursor: nextCursor, page: nextPage, query }); }} type="button" variant="outline">下一页</Button></div></div>
+          <Input aria-label="搜索模板" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void load({ page: 1, query: event.currentTarget.value }); }} placeholder="搜索模板" value={query} />
+          {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query })} /> : items.length === 0 ? <WorkflowListState title="暂无数据" /> : <div className="grid gap-3 md:grid-cols-2">{items.map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
+          <TablePagination
+            className="border-t-0"
+            onPageChange={goToPage}
+            page={page}
+            showTotal
+            total={total}
+            totalPages={Math.max(1, Math.ceil(total / pageSize))}
+          />
         </div>}
       </DialogContent>
     </Dialog>

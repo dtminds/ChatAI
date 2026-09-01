@@ -458,12 +458,12 @@ POST /api/server/workflows/:workflowId/template-conversions
 
 ```text
 GET /api/server/workflow-templates?surface=workflow-list&featured=true&limit=4
-GET /api/server/workflow-templates?surface=workflow-list&cursor=...&limit=8&workflowType=...&scene=...
+GET /api/server/workflow-templates?surface=workflow-list&page=1&limit=8&workflowType=...&scene=...
 GET /api/server/workflow-templates/:templateId
 POST /api/server/workflow-templates/:templateId/applications
 ```
 
-推荐区块使用 `featured=true&limit=4`；查看更多弹窗使用筛选条件和 `cursor` 分页。后端仍使用稳定游标，前端显示“第 N 页”并保存每一页的 cursor，避免数据库深分页和结果漂移。
+推荐区块使用 `featured=true&limit=4`；查看更多弹窗使用筛选条件和页码分页。接口返回总数，前端首次加载即可确定全部可达页码，并支持直接跳转到目标页，不要求用户逐页翻阅。
 
 应用请求包含用户查看的 Template Version 和 `clientRequestId`。服务端隐藏模板读取、版本校验、资源中立校验、Workflow 创建和来源记录等实现细节。
 
@@ -473,7 +473,7 @@ POST /api/server/workflow-templates/:templateId/applications
 
 ### 8.3 查询规模
 
-- 模板列表使用稳定游标分页，不一次性读取所有模板。
+- 模板列表使用数据库分页，不一次性读取所有模板；单页查询数量固定，页码上限为 1000。
 - 列表接口直接返回卡片需要的元数据、节点数、必配项数和缩略图地址，不逐模板补请求。
 - 详情只发一个模板请求，不在预览阶段逐项请求租户资源。
 - 应用后配置面板沿用现有资源接口；同类资源按页面或面板一次加载，不按配置项 N 次请求。

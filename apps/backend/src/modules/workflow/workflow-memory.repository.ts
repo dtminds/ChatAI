@@ -148,19 +148,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
         const createdAtDifference = second.createdAt.getTime() - first.createdAt.getTime();
         return createdAtDifference || Number(second.id) - Number(first.id);
       });
-    const candidates = filteredDefinitions
-      .filter(item => !input.cursor
-        || item.createdAt < input.cursor.createdAt
-        || (item.createdAt.getTime() === input.cursor.createdAt.getTime()
-          && Number(item.id) < Number(input.cursor.id)))
-      .slice(0, input.limit + 1);
-    const items = candidates.slice(0, input.limit).map(clone);
-    const lastItem = items.at(-1);
+    const items = filteredDefinitions
+      .slice(input.offset ?? 0, (input.offset ?? 0) + input.limit)
+      .map(clone);
     return {
       items,
-      nextCursor: candidates.length > items.length && lastItem
-        ? { createdAt: lastItem.createdAt, id: lastItem.id }
-        : null,
       total: filteredDefinitions.length,
     };
   }

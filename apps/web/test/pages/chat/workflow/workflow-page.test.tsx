@@ -38,6 +38,7 @@ import {
   type WorkflowListPage,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { WorkflowRepositoryError } from "@/pages/chat/workflow/workflow-repository-types";
+import type { WorkflowTemplateRepository } from "@/pages/chat/workflow/workflow-template-repository";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
@@ -341,12 +342,13 @@ function mockSession() {
 function renderWorkflowPage(
   initialEntry = "/chat/workflows/newcomer-conversion",
   repository = getWorkflowDraftRepository(),
+  templateRepository?: WorkflowTemplateRepository,
 ) {
   const router = createMemoryRouter(
     [
       {
         path: "/chat/workflows",
-        element: <WorkflowPage repository={repository} />,
+        element: <WorkflowPage repository={repository} templateRepository={templateRepository} />,
       },
       {
         path: "/chat/workflows/new",
@@ -1035,9 +1037,9 @@ describe("Agent workflow page", () => {
           resolveActiveList = resolve;
         });
       }
-      return input.cursor
-        ? { items: [newcomer], nextCursor: null, total: 11 }
-        : { items: [vip], nextCursor: "page-2", total: 11 };
+      return input.page === 2
+        ? { items: [newcomer], total: 11 }
+        : { items: [vip], total: 11 };
     });
     renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
 
@@ -1048,7 +1050,7 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("tab", { name: "运行中" }));
 
     await waitFor(() => expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({
-      cursor: undefined,
+      page: 1,
       status: "active",
     })));
     expect(within(screen.getByRole("table")).getByRole("status"))
@@ -1058,7 +1060,6 @@ describe("Agent workflow page", () => {
     await act(async () => {
       resolveActiveList?.({
         items: [vip],
-        nextCursor: null,
         total: 1,
       });
     });
@@ -1066,9 +1067,83 @@ describe("Agent workflow page", () => {
 
     await user.click(screen.getByRole("tab", { name: "全部" }));
     await waitFor(() => expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({
-      cursor: undefined,
+      page: 1,
       status: "all",
     })));
+  });
+
+  it("uses the total page range and jumps directly to a later page", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const seed = await baseRepository.getDocument("vip-reactivation");
+    const pageItems = Array.from({ length: 5 }, (_, index) => ({
+      ...seed,
+      name: `第 ${index + 1} 页流程`,
+    }));
+    const listDocuments = vi.fn((input: WorkflowListInput = {}): WorkflowListPage => {
+      const page = input.page ?? 1;
+      return {
+        items: [pageItems[page - 1]],
+        total: 21,
+      };
+    });
+
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
+
+    expect(await screen.findByText("第 1 页流程")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "5" }));
+
+    expect(await screen.findByText("第 5 页流程")).toBeInTheDocument();
+    expect(listDocuments).toHaveBeenCalledTimes(2);
+    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ page: 5 }));
+    expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
+    expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 3 }));
+    expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));
+  });
+
+  it("shows all template pages and requests the selected page directly", async () => {
+    const user = userEvent.setup();
+    const createTemplateItem = (id: string, name: string) => ({
+      category: "通用",
+      coverUrl: null,
+      description: "模板说明",
+      id,
+      name,
+      nodeCount: 3,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      requiredConfigurationCount: 1,
+      scene: "客户运营",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    });
+    const list = vi.fn<WorkflowTemplateRepository["list"]>(async (input = {}) => input.featured
+      ? { items: [createTemplateItem("1", "推荐模板样例")], total: 40 }
+      : {
+          items: [createTemplateItem(String(input.page ?? 1), `第 ${input.page ?? 1} 页模板`)],
+          total: 40,
+        });
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list,
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+
+    expect(await screen.findByText("推荐模板样例")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看更多" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "5" }));
+
+    expect(await within(dialog).findByText("第 5 页模板")).toBeInTheDocument();
+    expect(list).toHaveBeenCalledTimes(3);
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 8, page: 5 }));
+    expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
+    expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 3 }));
+    expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));
   });
 
   it("moves an inactive workflow from draft to ready after publishing", async () => {
@@ -1443,9 +1518,9 @@ describe("Agent workflow page", () => {
     const baseRepository = getWorkflowDraftRepository();
     const newcomer = await baseRepository.getDocument("newcomer-conversion");
     const vip = await baseRepository.getDocument("vip-reactivation");
-    const listDocuments = vi.fn((input: WorkflowListInput = {}) => input.cursor
-      ? { items: [newcomer], nextCursor: null, total: 11 }
-      : { items: [vip], nextCursor: "page-2", total: 11 });
+    const listDocuments = vi.fn((input: WorkflowListInput = {}) => input.page === 2
+      ? { items: [newcomer], total: 11 }
+      : { items: [vip], total: 11 });
     renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
 
     await screen.findByText("会员复购唤醒");
@@ -1457,7 +1532,7 @@ describe("Agent workflow page", () => {
 
     expect(await screen.findByText("会员复购唤醒")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
-    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: undefined }));
+    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
   });
 
   it("renders a named workflow editor route with the dedicated canvas header", async () => {

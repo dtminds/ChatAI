@@ -101,7 +101,6 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
 const workflowListPageSize = 5;
 
 type WorkflowListPaginationState = {
-  cursors: Array<string | undefined>;
   filterKey: string;
   page: number;
 };
@@ -120,29 +119,23 @@ export function WorkflowListPage({
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const listFilterKey = JSON.stringify([debouncedQuery, statusFilter]);
   const [pagination, setPagination] = useState<WorkflowListPaginationState>({
-    cursors: [undefined],
     filterKey: listFilterKey,
     page: 1,
   });
   const paginationMatchesFilter = pagination.filterKey === listFilterKey;
   const page = paginationMatchesFilter ? pagination.page : 1;
-  const cursor = paginationMatchesFilter ? pagination.cursors[page - 1] : undefined;
   const listInput = useMemo(() => ({
-    cursor,
     limit: workflowListPageSize,
+    page,
     query: debouncedQuery || undefined,
     status: statusFilter,
-  }), [cursor, debouncedQuery, statusFilter]);
-  const { items, nextCursor, reload, status, total } = useWorkflowListResource(repository, listInput);
+  }), [debouncedQuery, page, statusFilter]);
+  const { items, reload, status, total } = useWorkflowListResource(repository, listInput);
   const { activePage, totalPages } = resolveTablePagination({
     page,
     pageSize: workflowListPageSize,
     total,
   });
-  const reachablePageCount = Math.min(
-    totalPages,
-    Math.max(pagination.cursors.length, nextCursor ? activePage + 1 : activePage),
-  );
   const capacity = useWorkflowCapacityResource(repository);
   const tenantOverview = useWorkflowTenantOverviewResource(repository);
   const navigate = useNavigate();
@@ -156,40 +149,17 @@ export function WorkflowListPage({
   useEffect(() => {
     setPagination(current => current.filterKey === listFilterKey
       ? current
-      : { cursors: [undefined], filterKey: listFilterKey, page: 1 });
+      : { filterKey: listFilterKey, page: 1 });
   }, [listFilterKey]);
   useEffect(() => {
     if (status !== "ready" || activePage === page) return;
-    setPagination(current => ({
-      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-      filterKey: listFilterKey,
-      page: activePage,
-    }));
+    setPagination({ filterKey: listFilterKey, page: activePage });
   }, [activePage, listFilterKey, page, status]);
 
   const changeWorkflowPage = (nextPage: number) => {
-    if (nextPage === activePage) return;
-    if (nextPage === activePage + 1) {
-      if (!nextCursor) return;
-      setPagination(current => {
-        const cursors = current.filterKey === listFilterKey
-          ? [...current.cursors]
-          : [undefined];
-        cursors[activePage] = nextCursor;
-        return {
-          cursors,
-          filterKey: listFilterKey,
-          page: nextPage,
-        };
-      });
-      return;
-    }
-    if (nextPage !== 1 && pagination.cursors[nextPage - 1] === undefined) return;
-    setPagination(current => ({
-      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-      filterKey: listFilterKey,
-      page: nextPage,
-    }));
+    const targetPage = Math.min(Math.max(1, nextPage), totalPages);
+    if (targetPage === activePage) return;
+    setPagination({ filterKey: listFilterKey, page: targetPage });
   };
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
@@ -253,11 +223,7 @@ export function WorkflowListPage({
       await Promise.resolve(repository.deleteDocument(deleteTarget.id));
       setDeleteTarget(null);
       if (page > 1 && items.length === 1) {
-        setPagination(current => ({
-          cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-          filterKey: listFilterKey,
-          page: page - 1,
-        }));
+        setPagination({ filterKey: listFilterKey, page: page - 1 });
       } else {
         await reload();
       }
@@ -415,7 +381,6 @@ export function WorkflowListPage({
         {status === "ready" ? (
           <TablePagination
             className="border-t-0"
-            maxPage={reachablePageCount}
             onPageChange={changeWorkflowPage}
             page={activePage}
             total={total}

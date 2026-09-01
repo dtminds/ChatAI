@@ -48,13 +48,13 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       .filter(item => matchesListStatus(item, input?.status ?? "all"))
       .filter(item => !normalizedQuery
         || item.name.toLocaleLowerCase().includes(normalizedQuery));
-    const candidates = filteredDocuments
-      .filter(item => !input?.cursor || item.id.localeCompare(input.cursor, undefined, { numeric: true }) < 0)
-      .slice(0, (input?.limit ?? 20) + 1);
-    const items = candidates.slice(0, input?.limit ?? 20).map(cloneWorkflowDocument);
+    const limit = input.limit ?? 20;
+    const offset = input.page ? (input.page - 1) * limit : 0;
+    const items = filteredDocuments
+      .slice(offset, offset + limit)
+      .map(cloneWorkflowDocument);
     return {
       items,
-      nextCursor: candidates.length > items.length ? items.at(-1)?.id ?? null : null,
       total: filteredDocuments.length,
     };
   }

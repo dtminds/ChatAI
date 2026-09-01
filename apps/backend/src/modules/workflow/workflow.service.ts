@@ -100,7 +100,6 @@ import {
 } from "../../shared/errors.js";
 import { noopLogger, type AppLogger, type RequestAwareLogger } from "../../shared/logger.js";
 import type {
-  WorkflowDefinitionListCursor,
   WorkflowDefinitionListRecord,
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
@@ -442,17 +441,17 @@ export class WorkflowService {
   }
 
   async list(scope: WorkflowOperatorScope, input: {
-    cursor?: string;
     limit: number;
+    page?: number;
     query?: string;
     status: WorkflowDefinitionListStatus;
   }): Promise<WorkflowDefinitionListPage> {
     assertWorkflowAccess(scope);
     const workflowTypes = getVisibleWorkflowTypes(scope);
-    if (workflowTypes.length === 0) return { items: [], nextCursor: null, total: 0 };
+    if (workflowTypes.length === 0) return { items: [], total: 0 };
     const page = await this.repository.listDefinitions(scope.uid, {
-      cursor: input.cursor ? decodeWorkflowDefinitionListCursor(input.cursor) : undefined,
       limit: input.limit,
+      offset: ((input.page ?? 1) - 1) * input.limit,
       query: input.query?.trim() || undefined,
       status: input.status,
       workflowTypes,
@@ -486,7 +485,6 @@ export class WorkflowService {
         wecomMemberIdsByWorkflowId.get(record.id) ?? [],
         wecomMembersById,
       )),
-      nextCursor: page.nextCursor ? encodeWorkflowDefinitionListCursor(page.nextCursor) : null,
       total: page.total,
     };
   }
@@ -512,18 +510,19 @@ export class WorkflowService {
     return this.toDefinition(await this.requireVisibleDefinition(scope, workflowId));
   }
 
-  async listTemplates(scope: WorkflowOperatorScope, input: { cursor?: string; limit: number; query?: string; category?: string; scene?: string; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
+  async listTemplates(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; category?: string; scene?: string; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
     assertWorkflowAccess(scope);
+    const limit = input.featured ? Math.min(input.limit, 4) : input.limit;
     const page = await this.requireTemplateRepository().list({
-      cursor: input.cursor ? decodeTemplateCursor(input.cursor) : undefined,
-      limit: input.featured ? Math.min(input.limit, 4) : input.limit,
+      limit,
+      offset: ((input.page ?? 1) - 1) * limit,
       query: input.query?.trim() || undefined,
       category: input.category,
       scene: input.scene,
       workflowType: input.workflowType,
       status: "published",
     });
-    return { items: page.items.map(toTemplateListItem), nextCursor: page.nextCursor ? encodeTemplateCursor(page.nextCursor) : null, total: page.total };
+    return { items: page.items.map(toTemplateListItem), total: page.total };
   }
 
   async getTemplate(scope: WorkflowOperatorScope, templateId: string): Promise<WorkflowTemplateDetail> {
@@ -1408,28 +1407,6 @@ function getWorkflowListTrigger(draft: WorkflowDraft) {
   return [...new Set(labels)].join("、") || "未配置";
 }
 
-function encodeWorkflowDefinitionListCursor(cursor: WorkflowDefinitionListCursor) {
-  return Buffer.from(JSON.stringify({
-    createdAt: cursor.createdAt.toISOString(),
-    id: cursor.id,
-  }), "utf8").toString("base64url");
-}
-
-function decodeWorkflowDefinitionListCursor(value: string): WorkflowDefinitionListCursor {
-  try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
-    if (typeof parsed.id !== "string" || !/^[1-9][0-9]*$/.test(parsed.id)
-      || typeof parsed.createdAt !== "string") {
-      throw new Error("invalid cursor");
-    }
-    const createdAt = new Date(parsed.createdAt);
-    if (Number.isNaN(createdAt.getTime())) throw new Error("invalid cursor");
-    return { createdAt, id: parsed.id };
-  } catch {
-    throw new BadRequestError("WORKFLOW_LIST_CURSOR_INVALID", "分页游标无效");
-  }
-}
-
 function toDefinition(
   record: WorkflowDefinitionRecord,
   currentReview: WorkflowPublishReviewRecord | null,
@@ -1810,20 +1787,6 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
   }
 }
 
-function encodeTemplateCursor(cursor: { updatedAt: Date; id: string }) {
-  return Buffer.from(JSON.stringify({ t: cursor.updatedAt.toISOString(), id: cursor.id }), "utf8").toString("base64url");
-}
-
-function decodeTemplateCursor(value: string) {
-  try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { t?: string; id?: string };
-    const updatedAt = new Date(parsed.t ?? "");
-    if (!parsed.id || Number.isNaN(updatedAt.getTime())) throw new Error("invalid cursor");
-    return { updatedAt, id: parsed.id };
-  } catch {
-    throw new BadRequestError("WORKFLOW_TEMPLATE_CURSOR_INVALID", "分页游标无效");
-  }
-}
 
 function toTemplateListItem(item: any) {
   return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), requiredConfigurationCount: item.configurationItems.filter((configuration: WorkflowTemplateConfigurationItem) => configuration.requirement === "required").length, scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };

@@ -54,7 +54,6 @@ export const WorkflowTemplateListItemSchema = Type.Object({
 
 export const WorkflowTemplateListPageSchema = Type.Object({
   items: Type.Array(WorkflowTemplateListItemSchema, { maxItems: 50 }),
-  nextCursor: Type.Union([Type.String(), Type.Null()]),
   total: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 }, { additionalProperties: false });
 

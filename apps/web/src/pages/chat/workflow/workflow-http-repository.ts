@@ -75,8 +75,8 @@ export function createHttpWorkflowDraftRepository(
       try {
         const requestInput = input ?? {};
         const query = new URLSearchParams();
-        if (requestInput.cursor) query.set("cursor", requestInput.cursor);
         if (requestInput.limit) query.set("limit", String(requestInput.limit));
+        if (requestInput.page) query.set("page", String(requestInput.page));
         if (requestInput.query) query.set("query", requestInput.query);
         if (requestInput.status && requestInput.status !== "all") query.set("status", requestInput.status);
         const page = unwrap<ApiWorkflowDefinitionListPage>(await client.get(
@@ -84,7 +84,6 @@ export function createHttpWorkflowDraftRepository(
         ));
         return {
           items: page.items.map(toListItem),
-          nextCursor: page.nextCursor,
           total: page.total,
         };
       } catch (error) {

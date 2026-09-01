@@ -7,9 +7,9 @@ import { http } from "@/lib/request";
 
 export type WorkflowTemplateListInput = {
   category?: string;
-  cursor?: string;
   featured?: boolean;
   limit?: number;
+  page?: number;
   query?: string;
   scene?: string;
   workflowType?: string;
@@ -57,7 +57,7 @@ export function createWorkflowTemplateRepository(
 export function createEmptyWorkflowTemplateRepository(): WorkflowTemplateRepository {
   return {
     async list() {
-      return { items: [], nextCursor: null, total: 0 };
+      return { items: [], total: 0 };
     },
     async get() {
       throw new Error("模板不存在");

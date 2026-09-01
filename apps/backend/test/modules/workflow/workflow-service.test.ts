@@ -503,7 +503,6 @@ describe("WorkflowService", () => {
           expect.objectContaining({ id: second.id }),
           expect.objectContaining({ id: first.id }),
         ],
-        nextCursor: null,
       });
     } finally {
       vi.useRealTimers();
@@ -679,6 +678,19 @@ describe("WorkflowService", () => {
       .resolves.toMatchObject({ runtimeStatus: "inactive" });
   });
 
+  it("translates a requested Workflow page into one repository offset", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const listDefinitions = vi.spyOn(repository, "listDefinitions");
+    const service = createService(repository);
+
+    await service.list(operator, { limit: 5, page: 5, status: "all" });
+
+    expect(listDefinitions).toHaveBeenCalledWith(operator.uid, expect.objectContaining({
+      limit: 5,
+      offset: 20,
+    }));
+  });
+
   it("rejects the reserved Member SOP type before checking entitlement", async () => {
     const repository = new InMemoryWorkflowRepository();
     const entitlementCheck = vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true as const }));
@@ -691,7 +703,6 @@ describe("WorkflowService", () => {
     expect(entitlementCheck).not.toHaveBeenCalled();
     await expect(repository.listDefinitions(operator.uid, { limit: 20, status: "all" })).resolves.toMatchObject({
       items: [],
-      nextCursor: null,
     });
   });
 
@@ -1902,7 +1913,6 @@ describe("WorkflowService", () => {
     });
     expect(await service.list(operator, { limit: 20, status: "all" })).toMatchObject({
       items: [],
-      nextCursor: null,
     });
   });
 
@@ -2007,6 +2017,19 @@ describe("WorkflowService", () => {
       name: "不应创建",
       scene: "客户运营",
     })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
+  });
+
+  it("translates a requested template page into one repository offset", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const list = vi.spyOn(templateRepository, "list");
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+
+    await service.listTemplates(operator, { limit: 8, page: 5 });
+
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      limit: 8,
+      offset: 32,
+    }));
   });
 });
 

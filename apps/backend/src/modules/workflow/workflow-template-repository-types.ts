@@ -23,8 +23,8 @@ export type WorkflowTemplateRecord = {
 };
 
 export type WorkflowTemplateListInput = {
-  cursor?: { updatedAt: Date; id: string };
   limit: number;
+  offset?: number;
   query?: string;
   category?: string;
   scene?: string;
@@ -36,5 +36,5 @@ export type WorkflowTemplateRepository = {
   create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">): Promise<WorkflowTemplateRecord>;
   update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "category" | "scene" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status">): Promise<WorkflowTemplateRecord | null>;
   find(id: string, status?: WorkflowTemplateStatus): Promise<WorkflowTemplateRecord | null>;
-  list(input: WorkflowTemplateListInput): Promise<{ items: WorkflowTemplateRecord[]; nextCursor: { updatedAt: Date; id: string } | null; total: number }>;
+  list(input: WorkflowTemplateListInput): Promise<{ items: WorkflowTemplateRecord[]; total: number }>;
 };

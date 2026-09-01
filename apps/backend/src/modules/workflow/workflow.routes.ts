@@ -79,8 +79,8 @@ const WorkflowHistoryQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 });
 const WorkflowDefinitionListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ maxLength: 512, minLength: 1 })),
   limit: Type.Optional(Type.Integer({ maximum: 50, minimum: 1 })),
+  page: Type.Optional(Type.Integer({ maximum: 1000, minimum: 1 })),
   query: Type.Optional(Type.String({ maxLength: 100 })),
   status: Type.Optional(WorkflowDefinitionListStatusSchema),
 });
@@ -218,16 +218,16 @@ function registerWorkflowSurfaceRoutes(
     "/workflows",
     { ...authenticated, schema: { querystring: WorkflowDefinitionListQuerySchema } },
     async request => apiSuccess(await service.list(getWorkflowScope(request, surface), {
-      cursor: request.query.cursor,
       limit: request.query.limit ?? 20,
+      page: request.query.page ?? 1,
       query: request.query.query,
       status: request.query.status ?? "all",
     })),
   );
 
   const WorkflowTemplateParamsSchema = Type.Object({ templateId: Type.String({ pattern: "^[1-9][0-9]*$" }) });
-  const WorkflowTemplateListQuerySchema = Type.Object({ cursor: Type.Optional(Type.String({ maxLength: 512 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), query: Type.Optional(Type.String({ maxLength: 100 })), category: Type.Optional(Type.String({ maxLength: 40 })), scene: Type.Optional(Type.String({ maxLength: 40 })), workflowType: Type.Optional(WorkflowTypeSchema), featured: Type.Optional(Type.Boolean()) });
-  app.get<{ Querystring: Static<typeof WorkflowTemplateListQuerySchema> }>("/workflow-templates", { ...authenticated, schema: { querystring: WorkflowTemplateListQuerySchema } }, async request => apiSuccess(await service.listTemplates(getWorkflowScope(request, surface), { ...request.query, limit: request.query.limit ?? 8 })));
+  const WorkflowTemplateListQuerySchema = Type.Object({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), page: Type.Optional(Type.Integer({ maximum: 1000, minimum: 1 })), query: Type.Optional(Type.String({ maxLength: 100 })), category: Type.Optional(Type.String({ maxLength: 40 })), scene: Type.Optional(Type.String({ maxLength: 40 })), workflowType: Type.Optional(WorkflowTypeSchema), featured: Type.Optional(Type.Boolean()) });
+  app.get<{ Querystring: Static<typeof WorkflowTemplateListQuerySchema> }>("/workflow-templates", { ...authenticated, schema: { querystring: WorkflowTemplateListQuerySchema } }, async request => apiSuccess(await service.listTemplates(getWorkflowScope(request, surface), { ...request.query, limit: request.query.limit ?? 8, page: request.query.page ?? 1 })));
   app.get<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.getTemplate(getWorkflowScope(request, surface), request.params.templateId)));
   app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: import("@chatai/contracts").WorkflowTemplateApplicationRequest }>("/workflow-templates/:templateId/applications", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: WorkflowTemplateApplicationRequestSchema } }, async request => apiSuccess(await service.applyTemplate(getWorkflowScope(request, surface), request.params.templateId, request.body)));
   app.post<{ Params: WorkflowParams; Body: import("@chatai/contracts").WorkflowTemplateConversionRequest }>("/workflows/:workflowId/template-conversions", { ...authenticated, schema: { params: WorkflowParamsSchema, body: WorkflowTemplateConversionRequestSchema } }, async request => apiSuccess(await service.convertToTemplate(getWorkflowScope(request, surface), request.params.workflowId, request.body)));

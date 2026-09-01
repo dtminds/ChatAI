@@ -112,7 +112,7 @@ function TemplateLoadErrorState({ onRetry }: { onRetry: () => void }) {
     <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-10 text-center" role="alert">
       <HugeiconsIcon aria-hidden="true" className="text-destructive" icon={AlertCircleIcon} size={28} strokeWidth={1.8} />
       <p className="text-sm text-muted-foreground">模板加载失败</p>
-      <Button onClick={onRetry} type="button" variant="outline">重试</Button>
+      <Button onClick={onRetry} size="sm" type="button" variant="outline">重试</Button>
     </div>
   );
 }

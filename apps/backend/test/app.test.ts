@@ -529,16 +529,8 @@ describe("backend app", () => {
     );
     expect(readSetCookieHeader(response, ACCESS_TOKEN_COOKIE_NAME)).toContain("Path=/api");
     expect(readSetCookieHeader(response, REFRESH_TOKEN_COOKIE_NAME)).toContain(
-      "Path=/api/auth",
+      "Path=/api/auth/refresh",
     );
-    expect(
-      getSetCookieHeaders(response)
-        .filter((header) => header.startsWith(`${REFRESH_TOKEN_COOKIE_NAME}=`))
-        .map((header) => /(?:^|; )Path=([^;]+)/.exec(header)?.[1]),
-    ).toEqual(expect.arrayContaining([
-      "/api/auth",
-      "/api/auth/refresh",
-    ]));
 
     const decoded = app.jwt.verify(readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME));
 
@@ -990,14 +982,9 @@ describe("backend app", () => {
         expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=; Max-Age=0`),
       ]),
     );
-    expect(
-      getSetCookieHeaders(logout)
-        .filter((header) => header.startsWith(`${REFRESH_TOKEN_COOKIE_NAME}=`))
-        .map((header) => /(?:^|; )Path=([^;]+)/.exec(header)?.[1]),
-    ).toEqual(expect.arrayContaining([
-      "/api/auth",
-      "/api/auth/refresh",
-    ]));
+    expect(readSetCookieHeader(logout, REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/auth/refresh",
+    );
     expect(me.statusCode).toBe(401);
 
     await app.close();

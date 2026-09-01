@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../src/app.js";
+import { REFRESH_TOKEN_COOKIE_NAME } from "../../../src/modules/auth/auth-cookies.js";
 import {
-  ACCESS_TOKEN_COOKIE_NAME,
-  REFRESH_TOKEN_COOKIE_NAME,
-} from "../../../src/modules/auth/auth-cookies.js";
+  EMBED_REFRESH_TOKEN_COOKIE_NAME,
+} from "../../../src/modules/auth/embed-auth-cookies.js";
 import { SMP_EMBED_AES_DECRYPT_PATH } from "../../../src/modules/auth/smp-embed-decrypt-port.js";
 
 const EMBED_HOST = "chat-embed.example.com";
@@ -35,7 +35,7 @@ describe("embed SSO", () => {
     const response = await injectEmbedSso(app, undefined, {
       host: "chat-test01.bokr.com.cn",
     });
-    const loginResponse = await app.inject({
+    const appLogin = await app.inject({
       headers: { host: EMBED_HOST },
       method: "POST",
       payload: { account: "operator", altcha: "proof", password: "secret" },
@@ -43,7 +43,7 @@ describe("embed SSO", () => {
     });
 
     expect(response.statusCode).toBe(404);
-    expect(loginResponse.statusCode).toBe(404);
+    expect(appLogin.statusCode).toBe(404);
     await app.close();
   });
 
@@ -69,14 +69,22 @@ describe("embed SSO", () => {
     expect(authDb.embedSessions).toHaveLength(1);
     expect(authDb.selectedTables).not.toContain("xy_wap_embed_sub_user_session");
 
-    const accessToken = readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME);
-    expect(response.json().data.accessToken).toBe(accessToken);
+    const accessToken = response.json().data.accessToken;
     expect(app.jwt.verify(accessToken)).toMatchObject({
       sessionId: "501",
       sessionKind: "embed",
       subUserId: "101",
       uid: 9001,
     });
+    expect(readSetCookieHeader(response, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/embed/auth",
+    );
+    expect(response.headers["set-cookie"]).not.toEqual(expect.arrayContaining([
+      expect.stringContaining("chatai_access_token="),
+    ]));
+    expect(response.headers["set-cookie"]).not.toEqual(expect.arrayContaining([
+      expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=`),
+    ]));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls.map(([url, init]) => ({
       body: JSON.parse(String(init && "body" in init ? init.body : "{}")),
@@ -100,7 +108,9 @@ describe("embed SSO", () => {
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
 
-    const second = await injectEmbedSso(app, cookieHeader(first));
+    const second = await injectEmbedSso(app, cookieHeader(first), {
+      authorization: `Bearer ${first.json().data.accessToken}`,
+    });
 
     expect(second.statusCode).toBe(200);
     expect(second.json().data.accessToken).toBe(first.json().data.accessToken);
@@ -109,7 +119,7 @@ describe("embed SSO", () => {
     await app.close();
   });
 
-  it("refreshes the same embed session when its access cookie is no longer valid", async () => {
+  it("refreshes the same embed session when its access token is no longer valid", async () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
@@ -117,18 +127,15 @@ describe("embed SSO", () => {
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
-    const refreshCookie = [
-      `${ACCESS_TOKEN_COOKIE_NAME}=expired-access-token`,
-      cookieHeader(first, [REFRESH_TOKEN_COOKIE_NAME]),
-    ].join("; ");
-
-    const second = await injectEmbedSso(app, refreshCookie);
+    const second = await injectEmbedSso(app, cookieHeader(first), {
+      authorization: "Bearer expired-access-token",
+    });
 
     expect(second.statusCode).toBe(200);
     expect(authDb.embedSessions).toHaveLength(1);
     expect(authDb.embedSessions[0]?.last_used_at).toBeInstanceOf(Date);
-    expect(readSetCookieValue(second, REFRESH_TOKEN_COOKIE_NAME)).toBe(
-      readSetCookieValue(first, REFRESH_TOKEN_COOKIE_NAME),
+    expect(readSetCookieValue(second, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toBe(
+      readSetCookieValue(first, EMBED_REFRESH_TOKEN_COOKIE_NAME),
     );
     await app.close();
   });
@@ -166,9 +173,12 @@ describe("embed SSO", () => {
       token: "handoff-token-101",
     });
 
-    const second = await injectEmbedSso(app, cookieHeader(first), undefined, {
-      token: "handoff-token-202",
-    });
+    const second = await injectEmbedSso(
+      app,
+      cookieHeader(first),
+      { authorization: `Bearer ${first.json().data.accessToken}` },
+      { token: "handoff-token-202" },
+    );
 
     expect(second.statusCode).toBe(200);
     expect(second.json().data.subUser).toMatchObject({ subUserId: "202", uid: 9002 });
@@ -191,7 +201,7 @@ describe("embed SSO", () => {
     const rejected = await injectEmbedSso(
       app,
       cookieHeader(first),
-      undefined,
+      {},
       { token: "wrong-account-token" },
     );
 
@@ -200,10 +210,9 @@ describe("embed SSO", () => {
       error: { code: "EMBED_SSO_REJECTED" },
       success: false,
     });
-    expect(rejected.headers["set-cookie"]).toEqual(expect.arrayContaining([
-      expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=;`),
-      expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=;`),
-    ]));
+    expect(readSetCookieHeader(rejected, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      `${EMBED_REFRESH_TOKEN_COOKIE_NAME}=;`,
+    );
     expect(authDb.embedSessions).toHaveLength(1);
     await app.close();
   });
@@ -221,7 +230,7 @@ describe("embed SSO", () => {
     app.db = authDb.db;
 
     for (const token of ["malformed-token", "expired-token", "future-token"]) {
-      const response = await injectEmbedSso(app, undefined, undefined, { token });
+      const response = await injectEmbedSso(app, undefined, {}, { token });
 
       expect(response.statusCode).toBe(401);
       expect(response.json()).toMatchObject({
@@ -245,27 +254,107 @@ describe("embed SSO", () => {
 
     const refresh = await app.inject({
       headers: {
-        cookie: cookieHeader(first, [REFRESH_TOKEN_COOKIE_NAME]),
+        cookie: cookieHeader(first),
         host: EMBED_HOST,
       },
       method: "POST",
-      url: "/api/auth/refresh",
+      url: "/api/embed/auth/refresh",
+    });
+    const refreshedAccessToken = refresh.json().data.accessToken;
+    const session = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: EMBED_HOST,
+      },
+      method: "GET",
+      url: "/api/embed/auth/session",
+    });
+    const appSessionOnEmbedHost = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: EMBED_HOST,
+      },
+      method: "GET",
+      url: "/api/auth/session",
+    });
+    const embedSessionOnAppHost = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: "chat.example.com",
+      },
+      method: "GET",
+      url: "/api/embed/auth/session",
     });
     const logout = await app.inject({
       headers: {
-        cookie: cookieHeader(refresh, [ACCESS_TOKEN_COOKIE_NAME]),
+        authorization: `Bearer ${refreshedAccessToken}`,
         host: EMBED_HOST,
         "x-workbench-client": "chat-ai-ui",
       },
       method: "POST",
-      url: "/api/auth/logout",
+      url: "/api/embed/auth/logout",
     });
 
     expect(refresh.statusCode).toBe(200);
+    expect(session.statusCode).toBe(200);
+    expect(session.json().data.subUser).toMatchObject({
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(appSessionOnEmbedHost.statusCode).toBe(404);
+    expect(embedSessionOnAppHost.statusCode).toBe(404);
     expect(logout.statusCode).toBe(200);
     expect(authDb.embedSessions[0]?.revoked_at).toBeInstanceOf(Date);
     expect(authDb.embedSessions[1]?.revoked_at).toBeNull();
-    expect(readSetCookieValue(secondBrowser, ACCESS_TOKEN_COOKIE_NAME)).toBeTruthy();
+    expect(secondBrowser.json().data.accessToken).toBeTruthy();
+    expect(readSetCookieHeader(logout, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/embed/auth",
+    );
+    expect(String(logout.headers["set-cookie"])).not.toContain(
+      `${REFRESH_TOKEN_COOKIE_NAME}=`,
+    );
+    await app.close();
+  });
+
+  it("does not accept app and embed refresh cookies across auth interfaces", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const login = await injectEmbedSso(app);
+    const embedRefreshToken = readSetCookieValue(
+      login,
+      EMBED_REFRESH_TOKEN_COOKIE_NAME,
+    );
+
+    const embedWithAppCookie = await app.inject({
+      headers: {
+        cookie: `${REFRESH_TOKEN_COOKIE_NAME}=${embedRefreshToken}`,
+        host: EMBED_HOST,
+      },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    const appWithEmbedCookie = await app.inject({
+      headers: {
+        cookie: `${EMBED_REFRESH_TOKEN_COOKIE_NAME}=${embedRefreshToken}`,
+        host: "chat.example.com",
+      },
+      method: "POST",
+      url: "/api/auth/refresh",
+    });
+
+    expect(embedWithAppCookie.statusCode).toBe(401);
+    expect(appWithEmbedCookie.statusCode).toBe(401);
+    expect(readSetCookieHeader(
+      embedWithAppCookie,
+      EMBED_REFRESH_TOKEN_COOKIE_NAME,
+    )).toContain("Path=/api/embed/auth");
+    expect(
+      readSetCookieHeader(appWithEmbedCookie, REFRESH_TOKEN_COOKIE_NAME),
+    ).toContain("Path=/api/auth/refresh");
     await app.close();
   });
 });
@@ -442,17 +531,20 @@ function matchesWheres(
 function injectEmbedSso(
   app: Awaited<ReturnType<typeof buildApp>>,
   cookie?: string,
-  headers: { host?: string } = {},
+  headers: { authorization?: string; host?: string } = {},
   payload = { token: "embed-handoff-token" },
 ) {
   return app.inject({
     headers: {
       ...(cookie ? { cookie } : {}),
+      ...(headers.authorization
+        ? { authorization: headers.authorization }
+        : {}),
       host: headers.host ?? EMBED_HOST,
     },
     method: "POST",
     payload,
-    url: "/api/auth/embed-sso",
+    url: "/api/embed/auth/sso",
   });
 }
 
@@ -463,11 +555,27 @@ function validEmbedTicket(subUserId: number, uid: number, offsetSeconds = 0) {
 
 function cookieHeader(
   response: { headers: Record<string, unknown> },
-  names = [ACCESS_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME],
+  names = [EMBED_REFRESH_TOKEN_COOKIE_NAME],
 ) {
   return names
     .map((name) => `${name}=${readSetCookieValue(response, name)}`)
     .join("; ");
+}
+
+function readSetCookieHeader(
+  response: { headers: Record<string, unknown> },
+  name: string,
+) {
+  const cookies = response.headers["set-cookie"];
+  const values = Array.isArray(cookies)
+    ? cookies
+    : typeof cookies === "string"
+      ? [cookies]
+      : [];
+  const header = values.find((item) => item.startsWith(`${name}=`));
+
+  if (!header) throw new Error(`Missing ${name} cookie`);
+  return header;
 }
 
 function readSetCookieValue(

@@ -1,9 +1,7 @@
 import {
   apiError,
   apiSuccess,
-  AuthEmbedSsoRequestSchema,
   AuthLoginRequestSchema,
-  type AuthEmbedSsoRequest,
   type AuthLoginRequest,
   SupportInvestigationStartRequestSchema,
   type SupportInvestigationStartRequest,
@@ -13,23 +11,18 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
 import {
   getCurrentSession,
-  InvalidEmbedHandoffTokenError,
-  InvalidEmbedTicketError,
   loginWithPassword,
-  loginWithSmpEmbed,
   refreshAccessToken,
   revokeSession,
 } from "./auth.service.js";
-import { createJavaSmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import {
   clearAuthCookies,
-  ACCESS_TOKEN_COOKIE_NAME,
   readAuthCookie,
   REFRESH_TOKEN_COOKIE_NAME,
   setAuthCookies,
   setSupportAuthCookie,
 } from "./auth-cookies.js";
-import { getRequestAuthSessionKind, requireAuthHost } from "./auth-host.js";
+import { requireAuthHost } from "./auth-host.js";
 import {
   listSupportInvestigationAccounts,
   startSupportInvestigation,
@@ -94,55 +87,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
     },
   );
-  app.post<{ Body: AuthEmbedSsoRequest }>(
-    "/api/auth/embed-sso",
-    {
-      schema: {
-        body: AuthEmbedSsoRequestSchema,
-      },
-    },
-    async (request, reply) => {
-      requireAuthHost(request, "embed");
-      let login: Awaited<ReturnType<typeof loginWithSmpEmbed>>;
-
-      try {
-        login = await loginWithSmpEmbed(
-          app,
-          request.body,
-          createJavaSmpEmbedDecryptPort(request.log),
-          {
-            ip: getRequestIp(request),
-            userAgent: request.headers["user-agent"],
-          },
-          {
-            accessToken: readAuthCookie(request, ACCESS_TOKEN_COOKIE_NAME),
-            refreshToken: readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME),
-          },
-        );
-      } catch (error) {
-        if (
-          error instanceof InvalidEmbedHandoffTokenError
-          || error instanceof InvalidEmbedTicketError
-        ) {
-          clearAuthCookies(reply);
-        }
-        throw error;
-      }
-
-      if (login.cookiesChanged) {
-        setLoginCookies(reply, login);
-      }
-
-      return apiSuccess({
-        accessToken: login.accessToken,
-        expiresIn: login.expiresIn,
-        subUser: login.subUser,
-      });
-    },
-  );
   app.post(
     "/api/auth/refresh",
     async (request, reply) => {
+      requireAuthHost(request, "app");
       const refreshToken = readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME);
 
       if (!refreshToken) {
@@ -154,11 +102,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }
 
       try {
-        const refresh = await refreshAccessToken(
-          app,
-          refreshToken,
-          getRequestAuthSessionKind(request),
-        );
+        const refresh = await refreshAccessToken(app, refreshToken);
 
         setLoginCookies(reply, refresh);
 
@@ -172,15 +116,17 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }
     },
   );
-  app.get("/api/auth/session", { preHandler: app.authenticate }, async (request) =>
-    apiSuccess({
+  app.get(
+    "/api/auth/session",
+    { preHandler: [requireAppHost, app.authenticate] },
+    async (request) => apiSuccess({
       subUser: await getCurrentSession(app, request.user),
     }),
   );
   app.get<{ Querystring: SupportInvestigationAccountsQuery }>(
     "/api/auth/support-investigation/accounts",
     {
-      preHandler: app.authenticate,
+      preHandler: [requireAppHost, app.authenticate],
       schema: {
         querystring: SupportInvestigationAccountsQuerySchema,
       },
@@ -196,7 +142,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post<{ Body: SupportInvestigationStartRequest }>(
     "/api/auth/support-investigation/start",
     {
-      preHandler: app.authenticate,
+      preHandler: [requireAppHost, app.authenticate],
       schema: {
         body: SupportInvestigationStartRequestSchema,
       },
@@ -219,17 +165,21 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
     },
   );
-  app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request, reply) => {
-    const result = await revokeSession(
-      app,
-      request.user,
-      getRequestAuthSessionKind(request),
-    );
+  app.post(
+    "/api/auth/logout",
+    { preHandler: [requireAppHost, app.authenticate] },
+    async (request, reply) => {
+      const result = await revokeSession(app, request.user);
 
-    clearAuthCookies(reply);
+      clearAuthCookies(reply);
 
-    return apiSuccess(result);
-  });
+      return apiSuccess(result);
+    },
+  );
+}
+
+async function requireAppHost(request: FastifyRequest) {
+  requireAuthHost(request, "app");
 }
 
 function setLoginCookies(

@@ -100,7 +100,14 @@ describe("auth routes", () => {
 
   it("reports missing embed handoff without exposing the authentication flow", async () => {
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
-    mock.onGet("/auth/session").reply(401, {
+    mock.onGet("/embed/auth/session").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/embed/auth/refresh").reply(401, {
       error: {
         code: "UNAUTHORIZED",
         message: "登录已失效",
@@ -124,17 +131,105 @@ describe("auth routes", () => {
       "*",
     );
     expect(router.state.location.pathname).toBe("/embed/workflows");
+    expect(mock.history.post.map(request => request.url)).toEqual([
+      "/embed/auth/refresh",
+    ]);
+  });
+
+  it("refreshes an expired embed access token while initializing the page", async () => {
+    setEmbedAccessToken("expired-embed-access-token");
+    mock.onGet("/embed/auth/session").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/embed/auth/refresh").reply(200, {
+      data: {
+        accessToken: "refreshed-embed-access-token",
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/embed/auth/session").reply(200, {
+      data: { subUser: operatorSubUser },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <EmbedRootLayout />,
+          children: [
+            { path: "embed/workflows", element: <div>嵌入内容</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/embed/workflows"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("嵌入内容")).toBeInTheDocument();
+    expect(mock.history.post.map(request => request.url)).toEqual([
+      "/embed/auth/refresh",
+    ]);
+    expect(getEmbedAccessToken()).toBe("refreshed-embed-access-token");
+  });
+
+  it("restores an embed session from its refresh cookie without an access token", async () => {
+    mock.onGet("/embed/auth/session").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/embed/auth/refresh").reply(200, {
+      data: {
+        accessToken: "refreshed-embed-access-token",
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/embed/auth/session").reply(200, {
+      data: { subUser: operatorSubUser },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <EmbedRootLayout />,
+          children: [
+            { path: "embed/workflows", element: <div>嵌入内容</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/embed/workflows"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("嵌入内容")).toBeInTheDocument();
+    expect(mock.history.post.map(request => request.url)).toEqual([
+      "/embed/auth/refresh",
+    ]);
+    expect(getEmbedAccessToken()).toBe("refreshed-embed-access-token");
   });
 
   it("reports embed session service failures without requesting a new handoff", async () => {
     const user = userEvent.setup();
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
     setEmbedAccessToken("embed-access-token");
-    mock.onGet("/auth/session").replyOnce(503, {
+    mock.onGet("/embed/auth/session").replyOnce(503, {
       error: { code: "SERVICE_UNAVAILABLE", message: "unavailable" },
       success: false,
     });
-    mock.onGet("/auth/session").reply(200, {
+    mock.onGet("/embed/auth/session").reply(200, {
       data: { subUser: operatorSubUser },
       success: true,
     });
@@ -167,7 +262,7 @@ describe("auth routes", () => {
     await user.click(screen.getByRole("button", { name: "重试" }));
 
     expect(await screen.findByText("嵌入内容")).toBeInTheDocument();
-    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(2);
+    expect(mock.history.get.filter((request) => request.url === "/embed/auth/session")).toHaveLength(2);
     expect(useAuthStore.getState().status).toBe("authenticated");
   });
 
@@ -181,7 +276,7 @@ describe("auth routes", () => {
       },
       success: true,
     });
-    mock.onPost("/auth/embed-sso").reply(200, {
+    mock.onPost("/embed/auth/sso").reply(200, {
       data: {
         accessToken: "embed-access-token",
         expiresIn: 1200,
@@ -203,7 +298,7 @@ describe("auth routes", () => {
       subUser: operatorSubUser,
     });
     expect(getEmbedAccessToken()).toBe("embed-access-token");
-    expect(mock.history.post.filter((request) => request.url === "/auth/embed-sso")).toHaveLength(1);
+    expect(mock.history.post.filter((request) => request.url === "/embed/auth/sso")).toHaveLength(1);
     expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       token: "embed-handoff-token",
@@ -213,14 +308,7 @@ describe("auth routes", () => {
   it("does not send embed workflows to login when the handoff token is rejected", async () => {
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
     setEmbedAccessToken("stale-access-token");
-    mock.onGet("/auth/session").reply(401, {
-      error: {
-        code: "UNAUTHORIZED",
-        message: "登录已失效",
-      },
-      success: false,
-    });
-    mock.onPost("/auth/embed-sso").reply(401, {
+    mock.onPost("/embed/auth/sso").reply(401, {
       error: {
         code: "EMBED_SSO_REJECTED",
         message: "当前账号不可用",
@@ -236,7 +324,7 @@ describe("auth routes", () => {
     await waitFor(() => {
       expect(screen.getByText("暂无权限使用此功能")).toBeInTheDocument();
     });
-    expect(mock.history.post.filter((request) => request.url === "/auth/embed-sso")).toHaveLength(1);
+    expect(mock.history.post.filter((request) => request.url === "/embed/auth/sso")).toHaveLength(1);
     expect(postMessage).toHaveBeenCalledWith(
       {
         channel: "smp-basement-chat-embed",
@@ -252,14 +340,7 @@ describe("auth routes", () => {
 
   it("does not automatically retry an embed SSO network failure", async () => {
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
-    mock.onGet("/auth/session").reply(401, {
-      error: {
-        code: "UNAUTHORIZED",
-        message: "登录已失效",
-      },
-      success: false,
-    });
-    mock.onPost("/auth/embed-sso").networkError();
+    mock.onPost("/embed/auth/sso").networkError();
     const router = createMemoryRouter(routerConfig, {
       initialEntries: ["/embed/workflows?token=embed-handoff-token"],
     });
@@ -267,7 +348,7 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("页面加载失败，请稍后重试")).toBeInTheDocument();
-    expect(mock.history.post.filter((request) => request.url === "/auth/embed-sso")).toHaveLength(1);
+    expect(mock.history.post.filter((request) => request.url === "/embed/auth/sso")).toHaveLength(1);
     expect(postMessage).toHaveBeenCalledWith(
       {
         channel: "smp-basement-chat-embed",
@@ -280,7 +361,7 @@ describe("auth routes", () => {
 
   it.each([400, 404])("does not retry embed SSO status %s", async (status) => {
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
-    mock.onPost("/auth/embed-sso").reply(status, {
+    mock.onPost("/embed/auth/sso").reply(status, {
       error: { code: "EMBED_SSO_FAILED", message: "request failed" },
       success: false,
     });
@@ -291,7 +372,7 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("页面加载失败，请稍后重试")).toBeInTheDocument();
-    expect(mock.history.post.filter((request) => request.url === "/auth/embed-sso")).toHaveLength(1);
+    expect(mock.history.post.filter((request) => request.url === "/embed/auth/sso")).toHaveLength(1);
     expect(postMessage).toHaveBeenCalledWith(
       {
         channel: "smp-basement-chat-embed",
@@ -303,7 +384,7 @@ describe("auth routes", () => {
   });
 
   it("uses a neutral loading state for embed session verification", () => {
-    mock.onGet("/auth/session").reply(() => new Promise(() => undefined));
+    mock.onGet("/embed/auth/session").reply(() => new Promise(() => undefined));
     const router = createMemoryRouter(routerConfig, {
       initialEntries: ["/embed/workflows"],
     });
@@ -315,7 +396,7 @@ describe("auth routes", () => {
   });
 
   it("exchanges a query handoff token instead of using it as a bearer token", async () => {
-    mock.onPost("/auth/embed-sso").reply(200, {
+    mock.onPost("/embed/auth/sso").reply(200, {
       data: {
         accessToken: "embed-access-token",
         expiresIn: 1200,
@@ -350,7 +431,7 @@ describe("auth routes", () => {
 
   it("clears a rejected embed handoff token", async () => {
     const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
-    mock.onPost("/auth/embed-sso").reply(401, {
+    mock.onPost("/embed/auth/sso").reply(401, {
       error: {
         code: "EMBED_HANDOFF_REJECTED",
         message: "登录信息已失效",

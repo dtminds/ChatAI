@@ -2,6 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   AuthEmbedSsoRequestSchema,
+  AuthEmbedRefreshResponseSchema,
   AuthEmbedSsoResponseSchema,
   AuthRefreshResponseSchema,
   AuthSessionResponseSchema,
@@ -279,6 +280,32 @@ describe("settings sub-account DTOs", () => {
 
     expect(
       Value.Check(AuthEmbedSsoResponseSchema, {
+        expiresIn: 1200,
+        subUser,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires refreshed embed access token", () => {
+    const subUser = {
+      accountType: "sub",
+      displayName: "营销画布账号",
+      permissions: ["chat.access"],
+      role: "operator",
+      subUserId: "101",
+      uid: 9001,
+    };
+
+    expect(
+      Value.Check(AuthEmbedRefreshResponseSchema, {
+        accessToken: "refreshed-embed-access-token",
+        expiresIn: 1200,
+        subUser,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthEmbedRefreshResponseSchema, {
         expiresIn: 1200,
         subUser,
       }),

@@ -6,15 +6,14 @@ import axios, {
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
+import { getEmbedAccessToken } from "@/lib/embed-access-token";
 import {
-  getEmbedAccessToken,
-  setEmbedAccessToken,
-} from "@/lib/embed-access-token";
-import type {
-  AuthEmbedSsoRequest,
-  AuthEmbedSsoResponse,
-  AuthRefreshResponse,
-} from "@chatai/contracts";
+  getAuthRequestAdapter,
+  getAuthScopeForHostname,
+  type AuthScope,
+  type AuthRefreshPayload,
+} from "@/lib/auth-request-adapter";
+import type { AuthSubUser } from "@chatai/contracts";
 
 export type RequestError = {
   details?: Record<string, unknown>;
@@ -70,14 +69,16 @@ export const requestInstance = axios.create({
 });
 
 type AuthRetryConfig = AxiosRequestConfig & {
+  authScope?: AuthScope;
   _skipAuthRetry?: boolean;
   _authRetry?: boolean;
+  _notifyAuthSessionChanged?: boolean;
   supportReadonlyAllowed?: boolean;
 };
 
-let refreshRequest: Promise<AuthRefreshResponse> | null = null;
-let embedSsoRequest: Promise<{ data: AuthEmbedSsoResponse }> | null = null;
-let embedSsoRequestKey: string | null = null;
+const refreshRequests: Partial<
+  Record<AuthScope, Promise<{ subUser: AuthSubUser }>>
+> = {};
 
 requestInstance.interceptors.request.use((config) => {
   const requestConfig = config as typeof config & AuthRetryConfig;
@@ -175,51 +176,32 @@ function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   return envelope.success === false && envelope.error !== undefined;
 }
 
-async function refreshAuth() {
-  refreshRequest ??= request<{ data: AuthRefreshResponse }>({
+async function refreshAuth(scope: AuthScope) {
+  const adapter = getAuthRequestAdapter(scope);
+  const existingRequest = refreshRequests[scope];
+
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const refreshRequest = request<{ data: AuthRefreshPayload }>({
+    authScope: scope,
     method: "POST",
     _skipAuthRetry: true,
-    url: "/auth/refresh",
+    url: adapter.refreshUrl,
   })
     .then((refresh) => refresh.data)
     .then((refresh) => {
-      if (getEmbedAccessToken()) {
-        setEmbedAccessToken(null);
-      }
-      useAuthStore.getState().setSession(refresh.subUser);
-      return refresh;
+      const subUser = adapter.applyRefresh(refresh);
+      useAuthStore.getState().setSession(subUser);
+      return { subUser };
     })
     .finally(() => {
-      refreshRequest = null;
+      delete refreshRequests[scope];
     });
+  refreshRequests[scope] = refreshRequest;
 
   return refreshRequest;
-}
-
-export async function exchangeEmbedSso(payload: AuthEmbedSsoRequest) {
-  const key = payload.token;
-
-  if (embedSsoRequest && embedSsoRequestKey === key) {
-    return embedSsoRequest;
-  }
-
-  embedSsoRequestKey = key;
-  embedSsoRequest = request<{ data: AuthEmbedSsoResponse }, AuthEmbedSsoRequest>({
-    method: "POST",
-    _skipAuthRetry: true,
-    data: payload,
-    url: "/auth/embed-sso",
-  }).then((response) => {
-    setEmbedAccessToken(response.data.accessToken);
-    return response;
-  }).finally(() => {
-    if (embedSsoRequestKey === key) {
-      embedSsoRequest = null;
-      embedSsoRequestKey = null;
-    }
-  });
-
-  return embedSsoRequest;
 }
 
 export async function request<TResponse = unknown, TPayload = unknown>(
@@ -240,7 +222,7 @@ export async function request<TResponse = unknown, TPayload = unknown>(
   } catch (error) {
     if (shouldRefreshAuth(error, config)) {
       try {
-        await refreshAuth();
+        await refreshAuth(resolveAuthScope(config.authScope));
 
         const retryConfig = {
           ...config,
@@ -259,7 +241,9 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
         return retryResponse.data;
       } catch (refreshError) {
-        notifyAuthSessionChanged();
+        if (config._notifyAuthSessionChanged !== false) {
+          notifyAuthSessionChanged();
+        }
         return Promise.reject(toRequestError(normalizeError(refreshError), refreshError));
       }
     }
@@ -270,6 +254,16 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
     return Promise.reject(toRequestError(normalizeError(error), error));
   }
+}
+
+function resolveAuthScope(scope: AuthScope | undefined): AuthScope {
+  if (scope) {
+    return scope;
+  }
+
+  return getAuthScopeForHostname(
+    typeof window === "undefined" ? "" : window.location.hostname,
+  );
 }
 
 function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {

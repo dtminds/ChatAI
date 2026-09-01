@@ -81,6 +81,8 @@ export const AuthEmbedSsoResponseSchema = Type.Object({
   subUser: AuthSubUserSchema,
 });
 
+export const AuthEmbedRefreshResponseSchema = AuthEmbedSsoResponseSchema;
+
 export const AuthRefreshRequestSchema = Type.Object({});
 
 export const AuthRefreshResponseSchema = Type.Object({
@@ -136,6 +138,9 @@ export type AuthLoginRequest = Static<typeof AuthLoginRequestSchema>;
 export type AuthEmbedSsoRequest = Static<typeof AuthEmbedSsoRequestSchema>;
 export type AuthLoginResponse = Static<typeof AuthLoginResponseSchema>;
 export type AuthEmbedSsoResponse = Static<typeof AuthEmbedSsoResponseSchema>;
+export type AuthEmbedRefreshResponse = Static<
+  typeof AuthEmbedRefreshResponseSchema
+>;
 export type AuthRefreshRequest = Static<typeof AuthRefreshRequestSchema>;
 export type AuthRefreshResponse = Static<typeof AuthRefreshResponseSchema>;
 export type AuthSessionResponse = Static<typeof AuthSessionResponseSchema>;

@@ -24,7 +24,7 @@ import {
   type ChatEmbedLoadErrorCode,
 } from "@/lib/embed-parent-bridge";
 import {
-  getAuthSession,
+  getEmbedAuthSession,
   isAuthSessionRejected,
   isEmbedHandoffRejected,
   isEmbedSsoRejected,
@@ -126,7 +126,9 @@ export function EmbedRootLayout() {
     };
 
     const applySession = (
-      nextSubUser: Awaited<ReturnType<typeof getAuthSession>>["data"]["subUser"],
+      nextSubUser: Awaited<
+        ReturnType<typeof getEmbedAuthSession>
+      >["data"]["subUser"],
     ) => {
       if (!isActive) return;
 
@@ -181,7 +183,7 @@ export function EmbedRootLayout() {
       }
 
       try {
-        const response = await getAuthSession();
+        const response = await getEmbedAuthSession();
         applySession(response.data.subUser);
       } catch (error) {
         if (isAuthSessionRejected(error)) {

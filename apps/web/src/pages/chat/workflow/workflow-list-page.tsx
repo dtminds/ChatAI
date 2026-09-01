@@ -70,17 +70,20 @@ import {
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
 import { WorkflowTemplateSection } from "./workflow-template-section";
+import type { WorkflowTemplateRepository } from "./workflow-template-repository";
 
 export function WorkflowPage({
   repository,
+  templateRepository,
   surface = "chatai",
 }: {
   repository?: WorkflowDraftRepository;
+  templateRepository?: WorkflowTemplateRepository;
   surface?: WorkflowSurface;
 } = {}) {
   return (
     <WorkflowSurfaceProvider surface={surface}>
-      <WorkflowListPage repository={repository} />
+      <WorkflowListPage repository={repository} templateRepository={templateRepository} />
     </WorkflowSurfaceProvider>
   );
 }
@@ -105,8 +108,10 @@ type WorkflowListPaginationState = {
 
 export function WorkflowListPage({
   repository: repositoryProp,
+  templateRepository,
 }: {
   repository?: WorkflowDraftRepository;
+  templateRepository?: WorkflowTemplateRepository;
 }) {
   const surface = useWorkflowSurface();
   const repository = repositoryProp ?? getWorkflowDraftRepository(surface.surface);
@@ -420,7 +425,7 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        <WorkflowTemplateSection />
+        <WorkflowTemplateSection repository={templateRepository} />
       </section>
 
       <WorkflowMetadataDialog

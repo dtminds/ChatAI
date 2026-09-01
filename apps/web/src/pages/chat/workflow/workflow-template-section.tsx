@@ -1,25 +1,114 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactFlowProvider } from "@xyflow/react";
+import type { WorkflowTemplateDetail, WorkflowTemplateListItem } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { createWorkflowTemplateRepository } from "./workflow-template-repository";
+import { WorkflowCanvas } from "./canvas/workflow-canvas";
+import { createWorkflowReadOnlyRenderElements } from "./use-workflow-render-elements";
+import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { useWorkflowSurface } from "./workflow-surface";
-import type { WorkflowTemplateDetail, WorkflowTemplateListItem } from "@chatai/contracts";
+import type { WorkflowDraft } from "./types";
 
-export function WorkflowTemplateSection() {
+export function WorkflowTemplateSection({ repository }: { repository?: WorkflowTemplateRepository } = {}) {
   const surface = useWorkflowSurface();
-  const repo = createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""));
   const navigate = useNavigate();
+  const templateRepository = useMemo(() => repository
+    ?? (import.meta.env.MODE === "test"
+      ? createEmptyWorkflowTemplateRepository()
+      : createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""))), [repository, surface.apiBasePath]);
   const [items, setItems] = useState<WorkflowTemplateListItem[]>([]);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
+  const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const load = async (featured = true, next?: string) => { setLoading(true); try { const page = await repo.list({ featured, limit: featured ? 4 : 8, query: featured ? undefined : query, cursor: next }); setItems(page.items); setNextCursor(page.nextCursor); } catch { toast.error("操作失败，请稍后重试"); } finally { setLoading(false); } };
-  useEffect(() => { void load(true); }, [surface.apiBasePath]);
-  return <section aria-label="推荐模板" className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><Button variant="ghost" onClick={() => { setOpen(true); void load(false); }}>查看更多</Button></div>{loading ? <div role="status"><Spinner /></div> : <div className="grid gap-3 md:grid-cols-4">{items.map(item => <button className="rounded-lg border p-4 text-left hover:bg-muted" key={item.id} onClick={() => void repo.get(item.id).then(setDetail)}><div className="font-medium">{item.name}</div><div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</div><div className="mt-2 text-xs text-muted-foreground">{item.category}</div></button>)}</div>}<Dialog onOpenChange={v => { setOpen(v); if (!v) setDetail(null); }} open={open}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>{detail ? detail.name : "模板中心"}</DialogTitle></DialogHeader>{detail ? <div className="space-y-4"><p className="text-sm text-muted-foreground">{detail.description}</p><div className="rounded border p-3 text-sm">节点数：{detail.nodeCount}</div><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDetail(null)}>返回</Button><Button onClick={async () => { try { const result = await repo.apply(detail.id); setOpen(false); navigate(`/chat/workflows/${result.id}`); } catch { toast.error("操作失败，请稍后重试"); } }}>一键应用</Button></div></div> : <div className="space-y-4"><Input aria-label="搜索模板" onChange={e => setQuery(e.target.value)} value={query} /><div className="grid gap-3 md:grid-cols-2">{items.map(item => <button className="rounded-lg border p-3 text-left" key={item.id} onClick={() => void repo.get(item.id).then(setDetail)}><div className="font-medium">{item.name}</div><div className="text-sm text-muted-foreground">{item.description}</div></button>)}</div><div className="flex justify-end"><Button disabled={!nextCursor} onClick={() => { void load(false, nextCursor ?? undefined); }}>下一页</Button></div></div>}</DialogContent></Dialog></section>;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const applyRequestIdRef = useRef<string | null>(null);
+  const pageSize = 8;
+
+  const load = useCallback(async (input: { featured?: boolean; cursor?: string; page: number; query?: string }) => {
+    setLoading(true);
+    setError(false);
+    try {
+      const result = await templateRepository.list({
+        cursor: input.cursor,
+        featured: input.featured,
+        limit: input.featured ? 4 : pageSize,
+        query: input.featured ? undefined : input.query?.trim() || undefined,
+      });
+      setItems(result.items);
+      setNextCursor(result.nextCursor);
+      setTotal(result.total);
+      setPage(input.page);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [templateRepository]);
+
+  useEffect(() => { void load({ featured: true, page: 1 }); }, [load]);
+
+  const openBrowser = () => {
+    setOpen(true);
+    setDetail(null);
+    setPage(1);
+    setCursors([undefined]);
+    void load({ page: 1, query });
+  };
+  const goToPage = (nextPage: number, cursor = cursors[nextPage - 1]) => {
+    if (nextPage < 1 || (!cursor && nextPage !== 1)) return;
+    void load({ cursor, page: nextPage, query });
+  };
+  const openDetail = async (item: WorkflowTemplateListItem) => {
+    try {
+      setDetail(await templateRepository.get(item.id));
+    } catch {
+      toast.error("操作失败，请稍后重试");
+    }
+  };
+  const apply = async () => {
+    if (!detail) return;
+    const requestId = applyRequestIdRef.current ?? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    applyRequestIdRef.current = requestId;
+    try {
+      const result = await templateRepository.apply(detail.id, { clientRequestId: requestId });
+      setOpen(false);
+      applyRequestIdRef.current = null;
+      navigate(`${surface.webBasePath}/${result.id}`);
+    } catch {
+      toast.error("操作失败，请稍后重试");
+    }
+  };
+
+  return <section aria-label="推荐模板" className="space-y-3">
+    <div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
+    {loading && items.length === 0 ? <div role="status"><Spinner /></div> : error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">模板加载失败</p><Button onClick={() => void load({ featured: true, page: 1 })} type="button" variant="outline">重试</Button></div> : items.length === 0 ? <p className="text-sm text-muted-foreground">暂无数据</p> : <div className="grid gap-3 md:grid-cols-4">{items.slice(0, 4).map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
+    <Dialog onOpenChange={value => { setOpen(value); if (!value) { setDetail(null); applyRequestIdRef.current = null; } }} open={open}>
+      <DialogContent className="max-w-5xl">
+        <DialogHeader><DialogTitle>{detail ? detail.name : "模板中心"}</DialogTitle></DialogHeader>
+        {detail ? <TemplateDetailView detail={detail} onApply={() => void apply()} onBack={() => setDetail(null)} /> : <div className="space-y-4">
+          <Input aria-label="搜索模板" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { setCursors([undefined]); void load({ page: 1, query: event.currentTarget.value }); } }} placeholder="搜索模板" value={query} />
+          {loading ? <div role="status"><Spinner /></div> : error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">模板加载失败</p><Button onClick={() => void load({ cursor: cursors[page - 1], page, query })} type="button" variant="outline">重试</Button></div> : items.length === 0 ? <p className="text-sm text-muted-foreground">暂无数据</p> : <div className="grid gap-3 md:grid-cols-2">{items.map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
+          <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">第 {page} 页 / 共 {Math.max(1, Math.ceil(total / pageSize))} 页</span><div className="flex gap-2"><Button disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)} type="button" variant="outline">上一页</Button><Button disabled={!nextCursor || loading} onClick={() => { if (!nextCursor) return; const nextPage = page + 1; setCursors(current => { const next = [...current]; next[page] = nextCursor; return next; }); void load({ cursor: nextCursor, page: nextPage, query }); }} type="button" variant="outline">下一页</Button></div></div>
+        </div>}
+      </DialogContent>
+    </Dialog>
+  </section>;
+}
+
+function TemplateCard({ item, onClick }: { item: WorkflowTemplateListItem; onClick: () => void }) {
+  return <button className="rounded-lg border p-4 text-left hover:bg-muted" onClick={onClick} type="button"><div className="font-medium">{item.name}</div><div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description || "暂无描述"}</div><div className="mt-2 flex gap-2 text-xs text-muted-foreground"><span>{item.category || "通用"}</span><span>{item.nodeCount} 个节点</span></div></button>;
+}
+
+function TemplateDetailView({ detail, onApply, onBack }: { detail: WorkflowTemplateDetail; onApply: () => void; onBack: () => void }) {
+  const rendered = useMemo(() => createWorkflowReadOnlyRenderElements(detail.draft.nodes as WorkflowDraft["nodes"], detail.draft.edges as WorkflowDraft["edges"]), [detail.draft]);
+  return <div className="space-y-4"><p className="text-sm text-muted-foreground">{detail.description || "暂无描述"}</p><div className="h-[420px] overflow-hidden rounded-lg border"><ReactFlowProvider><WorkflowCanvas allowedInsertableNodeKinds={[]} canRedo={false} canUndo={false} edges={rendered.edges} isReadOnly nodes={rendered.nodes} onAddNode={() => undefined} onArrange={() => undefined} onConnect={() => undefined} onEdgesChange={() => undefined} onIsValidConnection={() => false} onNodeDrag={() => undefined} onNodeDragStart={() => undefined} onNodeDragStop={() => undefined} onNodeHoverEnd={() => undefined} onNodeHoverStart={() => undefined} onNodesChange={() => undefined} onPaletteOpenChange={() => undefined} onPaneClick={() => undefined} onRedo={() => undefined} onSelectEdge={() => undefined} onSelectNode={() => undefined} onUndo={() => undefined} onViewportChangeEnd={() => undefined} paletteOpen={false} viewport={detail.draft.viewport} /></ReactFlowProvider></div><div className="flex justify-end gap-2"><Button onClick={onBack} type="button" variant="outline">返回</Button><Button onClick={onApply} type="button">一键应用</Button></div></div>;
 }

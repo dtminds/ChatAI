@@ -65,6 +65,10 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         status_reason: null,
         uid: input.uid,
         workflow_type: encodeWorkflowType(input.workflowType),
+        creation_source: input.creationSource ?? "manual",
+        source_template_id: input.sourceTemplateId ?? null,
+        source_template_version: input.sourceTemplateVersion ?? null,
+        source_configuration_json: input.sourceConfigurationItems ? stringifyJson(input.sourceConfigurationItems) : null,
       }).executeTakeFirstOrThrow();
 
       return {
@@ -702,6 +706,10 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
     uid: Number(row.uid),
     updatedAt: toDate(row.update_time),
     workflowType: decodeWorkflowType(row.workflow_type),
+    creationSource: row.creation_source === "template" ? "template" : "manual",
+    sourceTemplateId: row.source_template_id == null ? null : normalizeId(row.source_template_id),
+    sourceTemplateVersion: row.source_template_version == null ? null : Number(row.source_template_version),
+    sourceConfigurationItems: row.source_configuration_json == null ? null : parseJson<unknown[]>(row.source_configuration_json),
   };
 }
 

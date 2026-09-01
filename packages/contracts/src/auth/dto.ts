@@ -15,6 +15,7 @@ export const AccountPermissionSchema = Type.Union([
   Type.Literal("settings.subAccounts.manage"),
   Type.Literal("settings.managedAccounts.manage"),
   Type.Literal("settings.sidebar.manage"),
+  Type.Literal("workflow_template_manage"),
 ]);
 
 export const AccountTypeSchema = Type.Union([

@@ -29,6 +29,10 @@ export type WorkflowDefinitionRecord = {
   uid: number;
   updatedAt: Date;
   workflowType: WorkflowType;
+  creationSource?: "manual" | "template";
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  sourceConfigurationItems?: unknown[] | null;
 };
 
 export type WorkflowDefinitionListRecord = Pick<WorkflowDefinitionRecord,
@@ -141,6 +145,10 @@ export type WorkflowRepository = {
     opSubUserId: string;
     uid: number;
     workflowType: WorkflowType;
+    creationSource?: "manual" | "template";
+    sourceTemplateId?: string | null;
+    sourceTemplateVersion?: number | null;
+    sourceConfigurationItems?: unknown[] | null;
   }): Promise<WorkflowCreateResult>;
   findDefinition(uid: number, workflowId: string): Promise<WorkflowDefinitionRecord | null>;
   findReview(uid: number, workflowId: string, reviewId: string): Promise<WorkflowPublishReviewRecord | null>;

@@ -73,6 +73,7 @@ export function WorkflowTopBar({
   onUpdateMetadata,
   onRetrySave,
   onRestoreVersion,
+  onConvertToTemplate,
   previewVersionLabel,
   previewVersionMeta,
   publishReady = true,
@@ -112,6 +113,7 @@ export function WorkflowTopBar({
   onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
   onRetrySave?: () => void;
   onRestoreVersion?: () => void;
+  onConvertToTemplate?: () => void;
   previewVersionLabel?: string;
   previewVersionMeta?: string;
   publishedAt: string | null;
@@ -371,7 +373,7 @@ export function WorkflowTopBar({
                 {publishAction.label}
               </TopBarActionButton>
             ) : null}
-            {runtimeMenuItem && runtimeMenuHandler ? (
+            {((runtimeMenuItem && runtimeMenuHandler) || onConvertToTemplate) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -386,12 +388,17 @@ export function WorkflowTopBar({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-44">
-                  <DropdownMenuItem
-                    disabled={lifecycleActionState !== "idle"}
-                    onSelect={() => void runtimeMenuHandler()}
-                  >
-                    {runtimeMenuItem.label}
-                  </DropdownMenuItem>
+                  {onConvertToTemplate ? (
+                    <DropdownMenuItem onSelect={onConvertToTemplate}>转换为模板</DropdownMenuItem>
+                  ) : null}
+                  {runtimeMenuItem && runtimeMenuHandler ? (
+                    <DropdownMenuItem
+                      disabled={lifecycleActionState !== "idle"}
+                      onSelect={() => void runtimeMenuHandler()}
+                    >
+                      {runtimeMenuItem.label}
+                    </DropdownMenuItem>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}

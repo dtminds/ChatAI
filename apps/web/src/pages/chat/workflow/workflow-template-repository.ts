@@ -1,16 +1,69 @@
-import type { WorkflowTemplateDetail, WorkflowTemplateListPage, WorkflowTemplateApplicationRequest } from "@chatai/contracts";
+import type {
+  WorkflowTemplateApplicationRequest,
+  WorkflowTemplateDetail,
+  WorkflowTemplateListPage,
+} from "@chatai/contracts";
 import { http } from "@/lib/request";
 
-export type WorkflowTemplateListInput = { cursor?: string; limit?: number; query?: string; category?: string; scene?: string; workflowType?: string; featured?: boolean };
-export function createWorkflowTemplateRepository(client: { get(url: string): Promise<unknown>; post(url: string, data?: unknown): Promise<unknown> } = http, apiBasePath = "/server") {
-  const unwrap = <T>(value: any): T => value?.data as T;
+export type WorkflowTemplateListInput = {
+  category?: string;
+  cursor?: string;
+  featured?: boolean;
+  limit?: number;
+  query?: string;
+  scene?: string;
+  workflowType?: string;
+};
+
+export type WorkflowTemplateRepository = {
+  apply: (id: string, body?: WorkflowTemplateApplicationRequest) => Promise<{ id: string }>;
+  get: (id: string) => Promise<WorkflowTemplateDetail>;
+  list: (input?: WorkflowTemplateListInput) => Promise<WorkflowTemplateListPage>;
+  publish?: (id: string) => Promise<WorkflowTemplateDetail>;
+};
+
+export function createWorkflowTemplateRepository(
+  client: { get(url: string): Promise<unknown>; post(url: string, data?: unknown): Promise<unknown> } = http,
+  apiBasePath = "/server",
+): WorkflowTemplateRepository {
+  const unwrap = <T>(value: unknown): T => {
+    if (!value || typeof value !== "object" || !("data" in value)) {
+      throw new Error("模板服务返回无效数据");
+    }
+    return (value as { data: T }).data;
+  };
   return {
-    async list(input: WorkflowTemplateListInput = {}) {
+    async list(input = {}) {
       const params = new URLSearchParams();
-      Object.entries(input).forEach(([k, v]) => { if (v !== undefined) params.set(k, String(v)); });
-      return unwrap<WorkflowTemplateListPage>(await client.get(`${apiBasePath}/workflow-templates${params.size ? `?${params}` : ""}`));
+      for (const [key, value] of Object.entries(input)) {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      }
+      return unwrap<WorkflowTemplateListPage>(await client.get(
+        `${apiBasePath}/workflow-templates${params.size ? `?${params}` : ""}`,
+      ));
     },
-    async get(id: string) { return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-templates/${id}`)); },
-    async apply(id: string, body: WorkflowTemplateApplicationRequest = {}) { return unwrap<any>(await client.post(`${apiBasePath}/workflow-templates/${id}/applications`, body)); },
+    async get(id) {
+      return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-templates/${id}`));
+    },
+    async apply(id, body = {}) {
+      return unwrap<{ id: string }>(await client.post(`${apiBasePath}/workflow-templates/${id}/applications`, body));
+    },
+    async publish(id) {
+      return unwrap<WorkflowTemplateDetail>(await client.post(`${apiBasePath}/workflow-templates/${id}/publish`));
+    },
+  };
+}
+
+export function createEmptyWorkflowTemplateRepository(): WorkflowTemplateRepository {
+  return {
+    async list() {
+      return { items: [], nextCursor: null, total: 0 };
+    },
+    async get() {
+      throw new Error("模板不存在");
+    },
+    async apply() {
+      throw new Error("模板不存在");
+    },
   };
 }

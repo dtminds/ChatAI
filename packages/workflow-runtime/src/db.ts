@@ -25,6 +25,10 @@ export interface WorkflowDefinitionTable {
   uid: number;
   update_time: GeneratedDate;
   workflow_type: number;
+  creation_source: string;
+  source_template_id: DatabaseId | null;
+  source_template_version: number | null;
+  source_configuration_json: JsonText | null;
 }
 
 export interface WorkflowTemplateTable {

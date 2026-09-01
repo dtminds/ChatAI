@@ -9,21 +9,33 @@ export const WorkflowTemplateStatusSchema = Type.Union([
   Type.Literal("archived"),
 ]);
 
-export const WorkflowTemplateConfigurationItemSchema = Type.Object({
-  description: Type.String({ maxLength: 200 }),
-  id: Type.String({ minLength: 1, maxLength: 64 }),
-  label: Type.String({ minLength: 1, maxLength: 80 }),
-  required: Type.Boolean(),
-  type: Type.Union([
-    Type.Literal("text"),
-    Type.Literal("number"),
-    Type.Literal("select"),
-  ]),
-  options: Type.Optional(Type.Array(Type.Object({
-    label: Type.String({ maxLength: 80 }),
-    value: Type.String({ maxLength: 200 }),
-  }, { additionalProperties: false }), { maxItems: 50 })),
-}, { additionalProperties: false });
+export const WorkflowTemplateConfigurationItemSchema = Type.Union([
+  Type.Object({
+    bindingKey: Type.String({ minLength: 1, maxLength: 80 }),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    kind: Type.Literal("resource"),
+    nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+    requirement: Type.Union([Type.Literal("required"), Type.Literal("recommended")]),
+    resourceKind: Type.Union([
+      Type.Literal("managed-account"),
+      Type.Literal("friend-add-way"),
+      Type.Literal("tag"),
+      Type.Literal("audience-group"),
+      Type.Literal("model"),
+      Type.Literal("customer-field"),
+      Type.Literal("material"),
+    ]),
+    title: Type.String({ minLength: 1, maxLength: 80 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    fieldKey: Type.String({ minLength: 1, maxLength: 80 }),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    kind: Type.Literal("review"),
+    nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+    requirement: Type.Union([Type.Literal("required"), Type.Literal("recommended")]),
+    title: Type.String({ minLength: 1, maxLength: 80 }),
+  }, { additionalProperties: false }),
+]);
 
 export const WorkflowTemplateListItemSchema = Type.Object({
   category: Type.String({ maxLength: 40 }),

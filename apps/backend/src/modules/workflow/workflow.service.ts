@@ -64,6 +64,7 @@ import {
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
+  validateWorkflowGraph,
   evaluateWorkflowProductionAvailability,
   getWorkflowTriggerBindings,
   getWorkflowGuaranteedUpstreamNodeIds,
@@ -131,6 +132,7 @@ import {
   type WorkflowDirectEntryEndpointPort,
 } from "./direct-entry-endpoint-port.js";
 import type { WorkflowTemplateRepository } from "./workflow-template-repository-types.js";
+import { canManageWorkflowTemplates } from "../auth/permissions.js";
 
 export type WorkflowOperatorScope = {
   roles: string[];
@@ -154,8 +156,6 @@ export type WorkflowServiceOptions = {
   wecomMemberReader?: WorkflowWeComMemberReader;
   templateRepository?: WorkflowTemplateRepository;
 };
-
-const WORKFLOW_TEMPLATE_MANAGER_SUBJECTS = new Set(["1:1"]);
 
 export type WorkflowCustomFieldReader = {
   listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
@@ -544,18 +544,21 @@ export class WorkflowService {
     const description = (input.description ?? template.description).trim();
     const draft = normalizeWorkflowDraft(template.draft);
     assertWorkflowDraftNodeContracts(draft);
-    const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, description, draft, draftSemanticHash: hashDraftSemantics(draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
+    const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, creationSource: "template", sourceTemplateId: template.id, sourceTemplateVersion: template.templateVersion, sourceConfigurationItems: template.configurationItems, description, draft, draftSemanticHash: hashDraftSemantics(draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
     if (result.kind === "idempotency-conflict") throw new AppError("WORKFLOW_CREATE_REQUEST_CONFLICT", "创建请求与已有类型不一致", 409);
     return this.toDefinition(result.value);
   }
 
   async convertToTemplate(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowTemplateConversionRequest) {
     assertWorkflowTemplateManage(scope);
+    const name = input.name.trim();
+    if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
-    const draft = sanitizeTemplateDraft(normalizeWorkflowDraft(definition.draft));
+    const sourceDraft = normalizeWorkflowDraft(definition.draft);
+    const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
-    const template = await this.requireTemplateRepository().create({ uid: 0, workflowType: definition.workflowType, name: input.name.trim(), description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(draft), templateVersion: 1, status: "draft" });
+    const template = await this.requireTemplateRepository().create({ uid: 0, workflowType: definition.workflowType, name, description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
     return toTemplateDetail(template);
   }
 
@@ -563,7 +566,17 @@ export class WorkflowService {
     assertWorkflowTemplateManage(scope);
     const template = await this.requireTemplateRepository().find(templateId);
     if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
-    return toTemplateDetail((await this.requireTemplateRepository().update({ ...template, status: "published" }))!);
+    if (template.status === "archived") {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_ARCHIVED", "归档模板不能发布");
+    }
+    validateTemplateForPublish(template);
+    return toTemplateDetail((await this.requireTemplateRepository().update({
+      ...template,
+      status: "published",
+      templateVersion: template.status === "draft"
+        ? template.templateVersion
+        : template.templateVersion + 1,
+    }))!);
   }
 
   async setTemplateStatus(scope: WorkflowOperatorScope, templateId: string, status: "offline" | "archived") {
@@ -1269,6 +1282,30 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
   }
 }
 
+function validateTemplateForPublish(template: {
+  draft: WorkflowDraft;
+  workflowType: WorkflowType;
+  configurationItems: WorkflowTemplateConfigurationItem[];
+}) {
+  const draft = normalizeWorkflowDraft(template.draft);
+  assertWorkflowDraftNodeContracts(draft);
+  const supported = new Set<string>(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS);
+  const unsupported = draft.nodes.filter(node => !supported.has(node.data.kind));
+  if (unsupported.length > 0) {
+    throw new BadRequestError("WORKFLOW_TEMPLATE_UNSUPPORTED_NODE", "模板包含暂不支持运行的节点");
+  }
+  const configured = new Set(template.configurationItems.map(item => `${item.nodeId}:${"bindingKey" in item ? item.bindingKey : item.fieldKey}`));
+  for (const item of inferTemplateConfigurationItems(draft)) {
+    if (item.requirement === "required" && !configured.has(`${item.nodeId}:${"bindingKey" in item ? item.bindingKey : item.fieldKey}`)) {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_CONFIGURATION_INCOMPLETE", "模板配置项不完整");
+    }
+  }
+  const graph = validateWorkflowGraph(draft);
+  if (graph.issues.length > 0) {
+    throw new BadRequestError("WORKFLOW_TEMPLATE_VALIDATION_FAILED", "模板校验未通过", { issues: graph.issues });
+  }
+}
+
 function toDefinitionListItem(
   record: WorkflowDefinitionListRecord,
   managedAccountIds: number[],
@@ -1728,7 +1765,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
-  if (!WORKFLOW_TEMPLATE_MANAGER_SUBJECTS.has(`${scope.uid}:${scope.subUserId}`)) {
+  if (!canManageWorkflowTemplates({ uid: scope.uid, subUserId: scope.subUserId })) {
     throw new ForbiddenError("WORKFLOW_TEMPLATE_FORBIDDEN", "无权管理模板");
   }
 }
@@ -1756,7 +1793,13 @@ function toTemplateDetail(item: any) {
 }
 
 function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
-  const sensitive = new Set(["accountId", "accountIds", "managedAccountId", "managedAccountIds", "memberId", "memberIds", "workUserId", "workUserIds", "tagIds", "audienceId", "audienceIds", "customerFieldId", "customerFieldIds", "materialId", "materialIds", "modelId", "model"]);
+  const sensitive = new Set([
+    "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
+    "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
+    "tagId", "tagIds", "audienceId", "audienceIds", "audienceGroupId", "audienceGroupIds", "groupId",
+    "customerFieldId", "customerFieldIds", "fieldId", "fieldIds", "materialId", "materialIds",
+    "materialCollectionId", "materialCollectionIds", "modelId", "modelIds", "model",
+  ]);
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(walk);
     if (!value || typeof value !== "object") return value;
@@ -1773,13 +1816,46 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
 function inferTemplateConfigurationItems(draft: WorkflowDraft) {
   const items: WorkflowTemplateConfigurationItem[] = [];
   const seen = new Set<string>();
+  const addResource = (nodeId: string, resourceKind: Extract<WorkflowTemplateConfigurationItem, { kind: "resource" }>["resourceKind"], bindingKey: string, title: string) => {
+    const id = `${nodeId}:${bindingKey}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    items.push({ bindingKey, id, kind: "resource", nodeId, requirement: "required", resourceKind, title });
+  };
+  for (const node of draft.nodes) {
+    const data = node.data as Record<string, unknown>;
+    if (node.data.kind === "start") {
+      if (Array.isArray(data.seatIds)) addResource(node.id, "managed-account", "seatIds", "选择托管账号");
+      if (Array.isArray(data.workUserIds)) addResource(node.id, "managed-account", "workUserIds", "选择企微成员");
+      if (Array.isArray(data.friendAddWayIds)) addResource(node.id, "friend-add-way", "friendAddWayIds", "选择添加方式");
+    }
+    if (node.data.kind === "tag" || node.data.kind === "tag-query") {
+      if (Array.isArray(data.tagIds)) addResource(node.id, "tag", "tagIds", "选择标签");
+    }
+    if (node.data.kind === "audience-filter") {
+      if (data.audienceGroupId || data.audienceId || Array.isArray(data.audienceIds)) addResource(node.id, "audience-group", "audienceGroupId", "选择人群");
+    }
+    if (node.data.kind === "llm" && typeof data.modelId === "string") {
+      addResource(node.id, "model", "modelId", "选择模型");
+    }
+    if (node.data.kind === "message" && Array.isArray(data.attachments) && data.attachments.length > 0) {
+      addResource(node.id, "material", "attachments", "确认素材");
+    }
+    if (node.data.kind === "customer-update" && (Array.isArray(data.fields) || Array.isArray(data.updates))) {
+      addResource(node.id, "customer-field", "fields", "选择客户字段");
+    }
+  }
   const walk = (value: unknown, path: string[] = []) => {
     if (Array.isArray(value)) return value.forEach((v, i) => walk(v, [...path, String(i)]));
     if (!value || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
       if ((key === "text" || key === "content" || key === "prompt") && typeof child === "string" && child.includes("{{")) {
         const id = [...child.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)].map(m => m[1]).find(Boolean);
-        if (id && !seen.has(id)) { seen.add(id); items.push({ id, label: id, description: "应用模板时填写", required: true, type: "text" }); }
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          const nodeId = path[1] ?? "workflow";
+          items.push({ fieldKey: id, id, kind: "review", nodeId, requirement: "recommended", title: id });
+        }
       }
       walk(child, [...path, key]);
     }

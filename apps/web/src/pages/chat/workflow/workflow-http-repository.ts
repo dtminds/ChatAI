@@ -9,6 +9,8 @@ import type {
   WorkflowRevision as ApiWorkflowRevision,
   WorkflowRevisionPage,
   WorkflowTenantOverview,
+  WorkflowTemplateConversionRequest,
+  WorkflowTemplateDetail,
 } from "@chatai/contracts";
 import { http, RequestNormalizedError } from "@/lib/request";
 import { hydrateWorkflowDraft } from "./workflow-draft-normalizer";
@@ -123,6 +125,27 @@ export function createHttpWorkflowDraftRepository(
         revisions.set(definition.id, []);
         revisionCursors.set(definition.id, null);
         return toDocument(definition, [], null);
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async convertToTemplate(workflowId, input: WorkflowTemplateConversionRequest) {
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(
+          `${apiBasePath.replace(/\/workflows$/, "")}/workflows/${workflowId}/template-conversions`,
+          input,
+        ));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async publishTemplate(templateId) {
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(
+          `${apiBasePath.replace(/\/workflows$/, "")}/workflow-templates/${templateId}/publish`,
+        ));
       } catch (error) {
         throw normalizeHttpError(error);
       }

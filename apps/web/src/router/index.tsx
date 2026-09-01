@@ -6,10 +6,12 @@ import {
   useRouteError,
 } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
+import { EmbedRootLayout } from "@/app/embed-root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
 import { isPagePathAllowedForHostname } from "@/lib/host-page-access";
+import { isEmbedPath } from "@/pages/auth/auth-redirect";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -222,7 +224,7 @@ function HostRestrictedRoot() {
     return withRouteSuspense(<NotFoundPage />);
   }
 
-  return <RootLayout />;
+  return isEmbedPath(location.pathname) ? <EmbedRootLayout /> : <RootLayout />;
 }
 
 export const routerConfig = [

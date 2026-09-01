@@ -1,3 +1,4 @@
+import type { WorkflowEntitlementDeactivationObservation } from "@chatai/workflow-runtime";
 import { isWorkflowReady, type WorkflowReadiness } from "./health.js";
 import type { WorkflowEntryConsumeResult } from "./entry-consumer.js";
 
@@ -10,6 +11,16 @@ export type WorkflowWorkerLogger = {
 
 const MESSAGE_SUMMARY_INTERVAL_MS = 60_000;
 const MESSAGE_ERROR_SAMPLE_LIMIT = 3;
+
+export function logWorkflowEntitlementDeactivated(
+  logger: WorkflowWorkerLogger,
+  observation: WorkflowEntitlementDeactivationObservation,
+) {
+  logger.info({
+    ...observation,
+    event: "workflow.entitlement.deactivated",
+  }, "workflow deactivated after entitlement denial");
+}
 
 type MessageMetadata = {
   id: string;

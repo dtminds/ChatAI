@@ -259,7 +259,11 @@ export function EmbedRootLayout() {
     );
   }
 
-  if (!handoffReady || (status === "checking" && !hasAccessToken)) {
+  if (
+    !handoffReady
+    || handoffTokenRef.current
+    || (status === "checking" && !hasAccessToken)
+  ) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">

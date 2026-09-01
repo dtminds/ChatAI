@@ -542,7 +542,9 @@ export class WorkflowService {
     await this.requireEntitlement(scope.uid, template.workflowType);
     const name = (input.name ?? template.name).trim() || "未命名工作流";
     const description = (input.description ?? template.description).trim();
-    const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, description, draft: normalizeWorkflowDraft(template.draft), draftSemanticHash: hashDraftSemantics(template.draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
+    const draft = normalizeWorkflowDraft(template.draft);
+    assertWorkflowDraftNodeContracts(draft);
+    const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, description, draft, draftSemanticHash: hashDraftSemantics(draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
     if (result.kind === "idempotency-conflict") throw new AppError("WORKFLOW_CREATE_REQUEST_CONFLICT", "创建请求与已有类型不一致", 409);
     return this.toDefinition(result.value);
   }

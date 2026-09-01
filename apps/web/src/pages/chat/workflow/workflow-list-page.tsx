@@ -349,39 +349,38 @@ export function WorkflowListPage({
               ))}
             </TabsList>
           </Tabs>
-        </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
+            <div className="relative w-[280px] max-w-full">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索工作流"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索工作流"
+                value={query}
+              />
+            </div>
+            <Button
+              className="h-10 px-4"
+              onClick={() => {
+                if (surface.embedded) {
+                  navigate(getWorkflowCreatePath(surface));
+                  return;
+                }
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-[280px] max-w-full">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={17}
-              strokeWidth={1.8}
-            />
-            <Input
-              aria-label="搜索工作流"
-              className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索工作流"
-              value={query}
-            />
+                setCreateDialogOpen(true);
+              }}
+              type="button"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
+              新建工作流
+            </Button>
           </div>
-          <Button
-            className="h-10 px-4"
-            onClick={() => {
-              if (surface.embedded) {
-                navigate(getWorkflowCreatePath(surface));
-                return;
-              }
-
-              setCreateDialogOpen(true);
-            }}
-            type="button"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
-            新建工作流
-          </Button>
         </div>
 
         {status === "error" ? (

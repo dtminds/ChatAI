@@ -337,10 +337,10 @@ export function WorkflowListPage({
             onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
             value={statusFilter}
           >
-            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+            <TabsList aria-label="Workflow 状态" className="w-fit">
               {workflowStatusFilters.map(filter => (
                 <TabsTrigger
-                  className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm"
+                  className="min-w-24 px-4"
                   key={filter.value}
                   value={filter.value}
                 >

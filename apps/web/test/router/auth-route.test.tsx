@@ -694,6 +694,25 @@ describe("auth routes", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps app navigation available when an embed path is opened on an app host", async () => {
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      hostname: "chat.example.com",
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/embed/workflows/missing"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "页面不存在" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "返回首页" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps following the system theme without the account rail mounted", async () => {
     const mediaQuery = setSystemColorScheme(true);
     window.localStorage.setItem("chat-ai-theme", "system");

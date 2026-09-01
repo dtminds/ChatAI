@@ -24,6 +24,7 @@ import type { SmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import { canStartSupportInvestigation } from "./support-investigation-access.js";
 import {
   createAuthSessionStore,
+  type ActiveSessionRow,
   type AuthSessionKind,
   type AuthSessionStore,
 } from "./auth-session-store.js";
@@ -173,6 +174,7 @@ export async function loginWithSmpEmbed(
       "embed",
       store,
       { subUserId: subUser.id, uid: subUser.uid },
+      currentRefreshSession,
     );
 
     if (
@@ -403,12 +405,13 @@ async function refreshSession(
   kind: AuthSessionKind,
   store = createAuthSessionStore(app, kind),
   expectedIdentity?: { subUserId: number; uid: number },
+  knownSession?: ActiveSessionRow,
 ): Promise<AuthSessionTokens | undefined> {
   if (!refreshToken.trim()) {
     return undefined;
   }
 
-  const session = await store.findActiveByRefreshTokenHash(
+  const session = knownSession ?? await store.findActiveByRefreshTokenHash(
     hashRefreshToken(refreshToken),
   );
 

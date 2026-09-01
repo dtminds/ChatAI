@@ -12,6 +12,7 @@ import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
 import { isPagePathAllowedForHostname } from "@/lib/host-page-access";
 import { isEmbedPath } from "@/pages/auth/auth-redirect";
+import { isChatEmbedHostname } from "@chatai/contracts";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -221,7 +222,9 @@ function HostRestrictedRoot() {
   const hostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
 
   if (!isPagePathAllowedForHostname(hostname, location.pathname)) {
-    return withRouteSuspense(<NotFoundPage showHomeLink={false} />);
+    return withRouteSuspense(
+      <NotFoundPage showHomeLink={!isChatEmbedHostname(hostname)} />,
+    );
   }
 
   return isEmbedPath(location.pathname) ? <EmbedRootLayout /> : <RootLayout />;

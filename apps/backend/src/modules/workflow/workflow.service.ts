@@ -1289,6 +1289,7 @@ function validateTemplateForPublish(template: {
 }) {
   const draft = normalizeWorkflowDraft(template.draft);
   assertWorkflowDraftNodeContracts(draft);
+  assertTemplateResourceNeutral(draft);
   const supported = new Set<string>(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS);
   const unsupported = draft.nodes.filter(node => !supported.has(node.data.kind));
   if (unsupported.length > 0) {
@@ -1304,6 +1305,45 @@ function validateTemplateForPublish(template: {
   if (graph.issues.length > 0) {
     throw new BadRequestError("WORKFLOW_TEMPLATE_VALIDATION_FAILED", "模板校验未通过", { issues: graph.issues });
   }
+  const typePolicyIssues = validateWorkflowTypePolicy(template.workflowType, draft);
+  if (typePolicyIssues.length > 0) {
+    throw new BadRequestError("WORKFLOW_TEMPLATE_TYPE_POLICY_INVALID", "模板不适用于当前 Workflow 类型", { issues: typePolicyIssues });
+  }
+}
+
+function assertTemplateResourceNeutral(draft: WorkflowDraft) {
+  const sensitive = new Set([
+    "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
+    "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
+    "sourceId", "sourceIds", "addWayKey", "tagId", "tagIds", "audienceId", "audienceIds",
+    "audienceGroupId", "audienceGroupIds", "customerFieldId", "customerFieldIds", "fieldId", "fieldIds",
+    "materialId", "materialIds", "materialCollectionId", "materialCollectionIds", "msgInfoId", "msgid",
+    "modelId", "modelIds", "model",
+  ]);
+  const visit = (value: unknown): string | null => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const path = visit(item);
+        if (path) return path;
+      }
+      return null;
+    }
+    if (!isRecord(value)) return null;
+    for (const [key, child] of Object.entries(value)) {
+      if (sensitive.has(key)) {
+        const isEmptyPlaceholder = child === ""
+          || (Array.isArray(child) && child.length === 0)
+          || child === null;
+        if (!isEmptyPlaceholder) return key;
+        continue;
+      }
+      const path = visit(child);
+      if (path) return `${key}.${path}`;
+    }
+    return null;
+  };
+  const path = visit(draft);
+  if (path) throw new BadRequestError("WORKFLOW_TEMPLATE_RESOURCE_LEAK", "模板包含租户资源信息", { path });
 }
 
 function toDefinitionListItem(
@@ -1786,7 +1826,7 @@ function decodeTemplateCursor(value: string) {
 }
 
 function toTemplateListItem(item: any) {
-  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), requiredConfigurationCount: item.configurationItems.filter((configuration: WorkflowTemplateConfigurationItem) => configuration.requirement === "required").length, scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
 }
 function toTemplateDetail(item: any) {
   return { ...toTemplateListItem(item), configurationItems: item.configurationItems, draft: item.draft, status: item.status };
@@ -1801,11 +1841,20 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
     "customerFieldId", "customerFieldIds", "fieldId", "fieldIds", "materialId", "materialIds",
     "materialCollectionId", "materialCollectionIds", "modelId", "modelIds", "model",
   ]);
+  const emptyArrayKeys = new Set(["accountIds", "managedAccountIds", "seatIds", "workUserIds", "friendAddWayIds", "sourceIds", "tagIds", "audienceIds", "audienceGroupIds", "customerFieldIds", "fieldIds", "materialIds", "materialCollectionIds", "modelIds"]);
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(walk);
     if (!value || typeof value !== "object") return value;
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
+      if (emptyArrayKeys.has(key)) {
+        result[key] = [];
+        continue;
+      }
+      if (key === "modelId") {
+        result[key] = "";
+        continue;
+      }
       if (sensitive.has(key)) continue;
       result[key] = walk(child);
     }

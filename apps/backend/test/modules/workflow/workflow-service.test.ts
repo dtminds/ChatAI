@@ -6,6 +6,7 @@ import {
   InMemoryWorkflowRepository,
   WorkflowService,
 } from "../../../src/modules/workflow/index.js";
+import { InMemoryWorkflowTemplateRepository } from "../../../src/modules/workflow/workflow-template-memory.repository.js";
 
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
@@ -1950,6 +1951,62 @@ describe("WorkflowService", () => {
     expect(restored.draftVersion).toBe(created.draftVersion + 1);
     expect(restored.hasUnpublishedChanges).toBe(false);
     expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
+  });
+
+  it("converts a saved draft into a neutral public template and applies it idempotently", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(repository, { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(manager, source.id, {
+      draft: withStartConfig(source.draft, {
+        entryPolicy: { mode: "never" },
+        seatIds: [123],
+        triggers: [{ sourceIds: ["private-source"], type: "contact.friend_added" }],
+      }),
+      expectedDraftVersion: source.draftVersion,
+    });
+
+    const createdTemplate = await service.convertToTemplate(manager, source.id, {
+      category: "通用",
+      description: "公共模板",
+      expectedDraftVersion: saved.draftVersion,
+      name: "新客欢迎",
+      scene: "客户运营",
+    });
+    expect(createdTemplate.status).toBe("draft");
+    expect(createdTemplate.configurationItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ bindingKey: "seatIds", resourceKind: "managed-account" }),
+      expect.objectContaining({ bindingKey: "triggers.sourceIds", resourceKind: "friend-add-way" }),
+    ]));
+    expect(JSON.stringify(createdTemplate.draft)).not.toContain("private-source");
+    expect(JSON.stringify(createdTemplate.draft)).not.toContain("123");
+
+    const published = await service.publishTemplate(manager, createdTemplate.id);
+    expect(published.status).toBe("published");
+    const first = await service.applyTemplate({ roles: ["owner"], subUserId: "9", uid: 9 }, published.id, {
+      clientRequestId: "template-apply-1",
+    });
+    const second = await service.applyTemplate({ roles: ["owner"], subUserId: "9", uid: 9 }, published.id, {
+      clientRequestId: "template-apply-1",
+    });
+    expect(second.id).toBe(first.id);
+    expect(first.draft.nodes.find(node => node.id === "start")?.data).toMatchObject({ seatIds: [] });
+  });
+
+  it("rejects template management for non-allowlisted identities", async () => {
+    const service = createService(new InMemoryWorkflowRepository(), {
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+    });
+    const source = await service.create(operator, { workflowType: "chatai_sop" });
+    await expect(service.convertToTemplate(operator, source.id, {
+      category: "通用",
+      description: "公共模板",
+      expectedDraftVersion: source.draftVersion,
+      name: "不应创建",
+      scene: "客户运营",
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
   });
 });
 

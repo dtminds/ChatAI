@@ -105,7 +105,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
 }
 
 function TemplateCard({ item, onClick }: { item: WorkflowTemplateListItem; onClick: () => void }) {
-  return <button className="rounded-lg border p-4 text-left hover:bg-muted" onClick={onClick} type="button"><div className="font-medium">{item.name}</div><div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description || "暂无描述"}</div><div className="mt-2 flex gap-2 text-xs text-muted-foreground"><span>{item.category || "通用"}</span><span>{item.nodeCount} 个节点</span></div></button>;
+  return <button className="rounded-lg border p-4 text-left hover:bg-muted" onClick={onClick} type="button"><div className="font-medium">{item.name}</div><div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description || "暂无描述"}</div><div className="mt-2 flex gap-2 text-xs text-muted-foreground"><span>{item.category || "通用"}</span><span>{item.nodeCount} 个节点</span><span>{item.requiredConfigurationCount} 项待配置</span></div></button>;
 }
 
 function TemplateDetailView({ detail, onApply, onBack }: { detail: WorkflowTemplateDetail; onApply: () => void; onBack: () => void }) {

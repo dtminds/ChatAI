@@ -45,6 +45,7 @@ export const WorkflowTemplateListItemSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 40 }),
   nodeCount: Type.Integer({ minimum: 0, maximum: 200 }),
   publishedAt: Type.String(),
+  requiredConfigurationCount: Type.Integer({ minimum: 0, maximum: 100 }),
   scene: Type.String({ maxLength: 40 }),
   updatedAt: Type.String(),
   version: Type.Integer({ minimum: 1 }),

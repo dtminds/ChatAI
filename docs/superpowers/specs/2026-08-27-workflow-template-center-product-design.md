@@ -432,16 +432,9 @@ Template Draft --发布--> 不可变 Template Version
 
 - `id` / `name` / `sort` / `status`
 
-**Workflow 来源**
+**Workflow 应用**
 
-在 Workflow Definition 创建记录中保存：
-
-- `creation_source = blank | template`
-- `source_template_id`
-- `source_template_version`
-- `source_configuration_items_json`
-
-`source_configuration_items_json` 是应用时复制的配置清单快照，用于应用后的本地导航，不回读 Template Version。其余来源信息只用于产品提示、审计和效果分析，不代表持续关联。应用次数可以从来源字段聚合，避免为了正确创建 Workflow 引入额外的跨表写入。
+应用模板时直接按模板草稿创建普通 Workflow Definition，不在营销 Workflow 定义表中保存模板来源或配置快照。模板与应用后的 Workflow 相互独立，后续编辑和发布不产生持续关联。
 
 ### 8.2 用户侧接口
 

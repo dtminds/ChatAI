@@ -60,10 +60,6 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       uid: input.uid,
       updatedAt: now,
       workflowType: input.workflowType,
-      creationSource: input.creationSource ?? "manual",
-      sourceTemplateId: input.sourceTemplateId ?? null,
-      sourceTemplateVersion: input.sourceTemplateVersion ?? null,
-      sourceConfigurationItems: input.sourceConfigurationItems ? clone(input.sourceConfigurationItems) : null,
     };
     this.definitions.push(definition);
     return { kind: "success" as const, value: clone(definition) };

@@ -603,26 +603,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   UNIQUE KEY uk_workflow_definition_uid_request (uid, client_request_id),
   KEY idx_workflow_definition_uid_status_create (uid, biz_status, create_time, id),
   KEY idx_workflow_definition_uid_type_status (uid, workflow_type, biz_status, runtime_status, id)
-) COMMENT='营销Workflow定义表';
+) COMMENT='Workflow定义表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  workflow_type TINYINT UNSIGNED NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  description VARCHAR(1000) NOT NULL DEFAULT '',
-  category VARCHAR(100) NOT NULL DEFAULT '',
-  scene VARCHAR(100) NOT NULL DEFAULT '',
-  cover_url VARCHAR(512) NULL,
-  draft_json JSON NOT NULL,
-  configuration_json JSON NOT NULL,
-  template_version INT UNSIGNED NOT NULL DEFAULT 1,
-  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT 'draft、published、offline、archived',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
+  name VARCHAR(100) NOT NULL COMMENT '模板名称',
+  description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '模板描述',
+  category VARCHAR(100) NOT NULL DEFAULT '' COMMENT '模板分类',
+  scene VARCHAR(100) NOT NULL DEFAULT '' COMMENT '适用场景',
+  cover_url VARCHAR(512) NULL COMMENT '模板封面图地址',
+  draft_json JSON NOT NULL COMMENT '模板画布草稿JSON',
+  configuration_json JSON NOT NULL COMMENT '应用模板时的待配置项JSON',
+  template_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '模板版本',
+  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT '模板状态：draft、published、offline、archived',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_workflow_template_public_status (status, update_time, id),
   KEY idx_workflow_template_public_filter (status, workflow_type, category, scene, id)
-) COMMENT='Workflow全平台公共模板';
+) COMMENT='Workflow模板';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -643,7 +643,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_revision_uid_workflow_revision (uid, workflow_id, revision),
   KEY idx_workflow_revision_uid_workflow_time (uid, workflow_id, publish_time, id)
-) COMMENT='营销Workflow不可变Revision表';
+) COMMENT='Workflow版本记录表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -681,7 +681,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_publish_review (
     id
   ),
   KEY idx_workflow_publish_review_current (uid, workflow_id, id)
-) COMMENT='营销Workflow发布审核表';
+) COMMENT='Workflow发布审核表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -697,7 +697,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, subject_type, event_type),
   KEY idx_workflow_trigger_binding_interest (uid, event_type, status, workflow_id, revision, id)
-) COMMENT='营销Workflow触发绑定表';
+) COMMENT='Workflow触发绑定表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -711,7 +711,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_type, subject_id)
-) COMMENT='营销Workflow客户进入串行化守卫表';
+) COMMENT='Workflow客户进入串行化守卫表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -719,7 +719,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_guard (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (uid)
-) COMMENT='营销Workflow租户活跃Run容量计数表';
+) COMMENT='Workflow租户容量计数表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -730,7 +730,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_capacity_daily_metric (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)
-) COMMENT='营销Workflow租户容量每日指标表';
+) COMMENT='Workflow租户容量每日指标表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -758,7 +758,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),
   KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),
   KEY idx_workflow_run_lifecycle (completed_at, id)
-) COMMENT='营销Workflow运行实例表';
+) COMMENT='Workflow运行实例表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -788,7 +788,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   KEY idx_workflow_task_run_status_sequence (run_id, status, sequence, id),
   KEY idx_workflow_task_status_reconcile (status, id),
   KEY idx_workflow_task_lease (status, lease_expires_at, id)
-) COMMENT='营销Workflow执行任务表';
+) COMMENT='Workflow执行任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -808,7 +808,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition (
   UNIQUE KEY uk_workflow_task_transition_workflow (uid, workflow_id),
   KEY idx_workflow_task_transition_pending (status, next_attempt_at, id),
   KEY idx_workflow_task_transition_lease (status, lease_expires_at, id)
-) COMMENT='营销Workflow Task暂停恢复迁移请求表';
+) COMMENT='Workflow Task暂停恢复迁移请求表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state (
   role VARCHAR(32) NOT NULL COMMENT 'Worker角色：scheduler、task-consumer、entry-consumer、inference、outbox、reconciler',
@@ -822,7 +822,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state (
   create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   PRIMARY KEY (role)
-) COMMENT='营销Workflow Worker角色运行状态表';
+) COMMENT='Workflow Worker角色运行状态表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -851,7 +851,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_event_subscription (
     (uid, subject_type, event_type, subject_id, status, expires_at, id),
   KEY idx_workflow_event_subscription_run (run_id, status, id),
   KEY idx_workflow_event_subscription_reconcile (status, id)
-) COMMENT='营销Workflow动态事件等待订阅表';
+) COMMENT='Workflow动态事件等待订阅表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -878,7 +878,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   UNIQUE KEY uk_workflow_node_execution_key (uid, execution_key),
   KEY idx_workflow_node_execution_run_time (uid, run_id, create_time, id),
   KEY idx_workflow_node_execution_run_cleanup (run_id, id)
-) COMMENT='营销Workflow节点执行账本表';
+) COMMENT='Workflow节点执行账本表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -912,7 +912,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
   KEY idx_workflow_inference_claim (status, next_attempt_at, deadline_at, id),
   KEY idx_workflow_inference_lease (status, lease_expires_at, id),
   KEY idx_workflow_inference_run_cleanup (run_id, id)
-) COMMENT='营销Workflow异步推理任务表';
+) COMMENT='Workflow异步推理任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_ai_collect_state (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -953,7 +953,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_ai_collect_state (
   UNIQUE KEY uk_workflow_ai_collect_biz (uid, biz_id),
   KEY idx_workflow_ai_collect_disable (directive_status, directive_next_attempt_at, directive_lease_expires_at, id),
   KEY idx_workflow_ai_collect_run_cleanup (run_id, id)
-) COMMENT='营销Workflow AI资料收集复合状态表';
+) COMMENT='Workflow AI资料收集复合状态表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_llm_test_attempt (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -985,7 +985,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_llm_test_attempt (
   KEY idx_workflow_llm_test_lookup (uid, workflow_id, id),
   KEY idx_workflow_llm_test_claim (status, deadline_at, lease_expires_at, id),
   KEY idx_workflow_llm_test_cleanup (expires_at, id)
-) COMMENT='营销Workflow大模型节点试运行记录表';
+) COMMENT='Workflow大模型节点试运行记录表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1009,7 +1009,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id),
   KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id),
   KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)
-) COMMENT='营销Workflow事务Outbox表';
+) COMMENT='Workflow事务Outbox表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inbox (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1024,7 +1024,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inbox (
   UNIQUE KEY uk_workflow_inbox_consumer_message (consumer, message_id),
   KEY idx_workflow_inbox_expiry (expires_at, id),
   KEY idx_workflow_inbox_uid_time (uid, processed_at, id)
-) COMMENT='营销Workflow消费Inbox表';
+) COMMENT='Workflow消费Inbox表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1040,7 +1040,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date),
   KEY idx_workflow_daily_metric_tenant_date (uid, metric_date, workflow_id)
-) COMMENT='营销Workflow每日指标表';
+) COMMENT='Workflow每日指标表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_metric (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -1053,7 +1053,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_metric (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (uid, workflow_id)
-) COMMENT='营销Workflow累计指标表';
+) COMMENT='Workflow累计指标表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1075,7 +1075,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_node_metric_event_key (uid, event_key),
   KEY idx_workflow_node_metric_event_pending (processed_at, id)
-) COMMENT='营销Workflow节点统计增量事件表';
+) COMMENT='Workflow节点统计增量事件表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1094,7 +1094,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
   KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id)
-) COMMENT='营销Workflow节点分片统计表';
+) COMMENT='Workflow节点分片统计表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision_cleanup (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1115,7 +1115,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision_cleanup (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_revision_cleanup_node (uid, workflow_id, revision, node_id),
   KEY idx_workflow_revision_cleanup_claim (status, next_attempt_at, lease_expires_at, id)
-) COMMENT='营销Workflow发布节点清退请求表';
+) COMMENT='Workflow发布节点清退请求表';
 
 CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',

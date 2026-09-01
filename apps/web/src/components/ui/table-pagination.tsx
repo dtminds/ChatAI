@@ -169,7 +169,13 @@ function PageButtons({
 
     return Array.from(visiblePages)
       .filter((value) => value >= 1 && value <= safeTotalPages)
-      .sort((left, right) => left - right);
+      .sort((left, right) => left - right)
+      .flatMap((value, index, sortedPages) => {
+        const previousPage = sortedPages[index - 1];
+        return previousPage !== undefined && value - previousPage === 2
+          ? [value - 1, value]
+          : [value];
+      });
   }, [safePage, safeTotalPages]);
 
   return (

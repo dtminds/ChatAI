@@ -442,7 +442,7 @@ export function WorkflowStopDialog({
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>确认要停止该 SOP 吗？</AlertDialogTitle>
-          <AlertDialogDescription>停止后将无法恢复，未完成的审核也会失效</AlertDialogDescription>
+          <AlertDialogDescription>停止后将无法恢复</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>

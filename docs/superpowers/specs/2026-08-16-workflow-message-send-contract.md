@@ -66,11 +66,11 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
 - `seatId` 由 Entry 事件确定，并随 `trigger.projection` 持久化到 Run Context
 - 同一个 Run 的所有 Message 节点和所有重试始终使用同一个 `seatId`
 - Worker 只把该 `seatId` 解析为 Java 请求所需的账号标识；账号不可用时终止节点，不得替换为其他账号
-- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时映射为自动执行来源
+- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时明确映射为 Workflow 来源 `source = 4`
 - `content` 已完成变量解析，最长 1000 字符；Java 不解析 selector
 - `attachments` 最多 5 个，支持 `image`、`file`、`h5`、`weapp`、`sphfeed`
 - 文本为空时必须至少有一个附件
-- `execution` 只用于排障，不参与业务判断
+- `execution.workflowId` 用作 Java 请求的 `sourceId`；其余 `execution` 字段只用于排障
 - Message 节点共享 60 秒执行 deadline；Task claim 使用至少 120 秒 lease，给最多 6 次串行发送和结果提交留出完整预算
 
 ## 3. Java 接口

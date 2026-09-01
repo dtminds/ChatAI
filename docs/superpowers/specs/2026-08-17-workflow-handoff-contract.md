@@ -31,6 +31,13 @@ Runtime 在调用 Worker Port 前生成以下类型化命令：
   "contractVersion": 1,
   "uid": 9,
   "idempotencyKey": "9:run-id:handoff-node-id:3",
+  "execution": {
+    "workflowId": "123",
+    "revision": 2,
+    "runId": "run-id",
+    "nodeId": "handoff-node-id",
+    "sequence": 3
+  },
   "command": {
     "seatId": 101,
     "recipient": {
@@ -52,7 +59,8 @@ Runtime 在调用 Worker Port 前生成以下类型化命令：
 - `operatorMessage` 只保存用户填写并完成变量解析的内容，不含固定前缀；必填且最长 100 字符
 - `customerMessage` 可为空，最长 100 字符
 - 两段消息已经完成变量解析，Java 不解析 selector
-- `source` 是语义枚举 `workflow`，Java 自行映射平台内部来源值
+- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时明确映射为 Workflow 来源 `source = 4`
+- `execution.workflowId` 用作 Java 请求的 `sourceId` 和客服提示中的 Workflow 标识；其余 `execution` 字段只用于排障
 
 ## 3. Java HTTP 请求
 

@@ -2,11 +2,34 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createWorkflowEntryConsumeObserver,
   createWorkflowTaskConsumeObserver,
+  logWorkflowEntitlementDeactivated,
   logWorkflowReadinessTransition,
   logWorkflowRoleHeartbeat,
 } from "../src/observability.js";
 
 describe("workflow worker observability", () => {
+  it("logs an actual entitlement deactivation at info with stable identifiers", () => {
+    const logger = createLogger();
+
+    logWorkflowEntitlementDeactivated(logger, {
+      affectedDefinitions: 1,
+      source: "task-execution",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    });
+
+    expect(logger.info).toHaveBeenCalledWith({
+      affectedDefinitions: 1,
+      event: "workflow.entitlement.deactivated",
+      source: "task-execution",
+      uid: 9,
+      workflowId: "31",
+      workflowType: "chatai_sop",
+    }, "workflow deactivated after entitlement denial");
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("summarizes Entry outcomes and limits rejected message samples", () => {
     const logger = createLogger();
     const observer = createWorkflowEntryConsumeObserver({

@@ -34,6 +34,7 @@ import { createWorkflowEntitlementCache } from "./entitlement-cache.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
 import { createWorkflowWorkerLogger } from "./logger.js";
+import { logWorkflowEntitlementDeactivated } from "./observability.js";
 import { publishWorkflowOutbox } from "./outbox-publisher.js";
 import { reconcileWorkflowRuntime } from "./reconciler.js";
 import { startRoleLoop } from "./role-loop.js";
@@ -183,6 +184,8 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       messageQueryPort: new MysqlWorkflowMessageQueryPort(database),
+      onEntitlementDeactivated: observation =>
+        logWorkflowEntitlementDeactivated(logger, observation),
       inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
       taskLeaseDurationMs: config.runtime.leaseDurationMs,
     },

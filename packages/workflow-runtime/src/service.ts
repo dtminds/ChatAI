@@ -116,6 +116,14 @@ type WorkflowExecuteTaskInput = {
   workerId: string;
 };
 
+export type WorkflowEntitlementDeactivationObservation = {
+  affectedDefinitions: number;
+  source: "entry-admission" | "task-execution";
+  uid: number;
+  workflowId: string;
+  workflowType: WorkflowType;
+};
+
 export class WorkflowRuntimeService {
   private readonly capabilityMaxRetryDelayMs: number;
   private readonly capabilityRetryDelayMs: number;
@@ -133,6 +141,9 @@ export class WorkflowRuntimeService {
   private readonly messageQueryPort?: WorkflowMessageQueryPort;
   private readonly aiCollectConversationPort?: WorkflowAiCollectConversationPort;
   private readonly conversationDirectivePort?: WorkflowConversationDirectivePort;
+  private readonly onEntitlementDeactivated?: (
+    observation: WorkflowEntitlementDeactivationObservation,
+  ) => void;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
@@ -152,6 +163,9 @@ export class WorkflowRuntimeService {
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
       messageQueryPort?: WorkflowMessageQueryPort;
+      onEntitlementDeactivated?: (
+        observation: WorkflowEntitlementDeactivationObservation,
+      ) => void;
       aiCollectConversationPort?: WorkflowAiCollectConversationPort;
       conversationDirectivePort?: WorkflowConversationDirectivePort;
       taskLeaseDurationMs?: number;
@@ -174,6 +188,7 @@ export class WorkflowRuntimeService {
     this.messageQueryPort = options.messageQueryPort;
     this.aiCollectConversationPort = options.aiCollectConversationPort;
     this.conversationDirectivePort = options.conversationDirectivePort;
+    this.onEntitlementDeactivated = options.onEntitlementDeactivated;
     this.runtimeRepository.configurePublishedRevisionResolver?.(async ({ uid, workflowId }) => {
       const definition = await this.controlRepository.findDefinition(uid, workflowId);
       if (definition?.publishedRevision === null || definition?.publishedRevision === undefined) {
@@ -366,6 +381,7 @@ export class WorkflowRuntimeService {
       input.uid,
       input.workflowId,
       revision.workflowType,
+      "entry-admission",
     );
     this.assertSpecExecutable(revision.executionSpec);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
@@ -510,7 +526,12 @@ export class WorkflowRuntimeService {
     }
 
     try {
-      await this.requireEntitlement(input.uid, run.workflowId, revision.workflowType);
+      await this.requireEntitlement(
+        input.uid,
+        run.workflowId,
+        revision.workflowType,
+        "task-execution",
+      );
       this.assertNodeExecutable(node);
     } catch (error) {
       if (error instanceof WorkflowRuntimeError
@@ -1558,7 +1579,12 @@ export class WorkflowRuntimeService {
     };
   }
 
-  private async requireEntitlement(uid: number, workflowId: string, workflowType: WorkflowType) {
+  private async requireEntitlement(
+    uid: number,
+    workflowId: string,
+    workflowType: WorkflowType,
+    source: WorkflowEntitlementDeactivationObservation["source"],
+  ) {
     try {
       const decision = await decideWorkflowEntitlement(this.entitlementPort, {
         uid,
@@ -1573,12 +1599,21 @@ export class WorkflowRuntimeService {
         workflowType,
       });
       if (confirmation.action === "allow") return confirmation.result;
-      await this.controlRepository.deactivateWorkflowForEntitlementLoss({
+      const deactivation = await this.controlRepository.deactivateWorkflowForEntitlementLoss({
         opSubUserId: "0",
         uid,
         workflowId,
         workflowType,
       });
+      if (deactivation.affectedDefinitions > 0) {
+        this.observeEntitlementDeactivation({
+          affectedDefinitions: deactivation.affectedDefinitions,
+          source,
+          uid,
+          workflowId,
+          workflowType,
+        });
+      }
       throw runtimeStatusError("inactive");
     } catch (error) {
       if (error instanceof WorkflowEntitlementUnavailableError) {
@@ -1589,6 +1624,16 @@ export class WorkflowRuntimeService {
         );
       }
       throw error;
+    }
+  }
+
+  private observeEntitlementDeactivation(
+    observation: WorkflowEntitlementDeactivationObservation,
+  ) {
+    try {
+      this.onEntitlementDeactivated?.(observation);
+    } catch {
+      // Observability must not change the committed entitlement transition.
     }
   }
 

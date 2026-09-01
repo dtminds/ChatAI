@@ -135,6 +135,14 @@ describe("Workflow runtime policy", () => {
       workflowType: "chatai_sop",
     });
     expect(entitlement).toHaveBeenNthCalledWith(2, expect.objectContaining({ forceRefresh: true }));
+    expect(harness.onEntitlementDeactivated).toHaveBeenCalledWith({
+      affectedDefinitions: 1,
+      source: "entry-admission",
+      uid: 9,
+      workflowId: "chatai-workflow",
+      workflowType: "chatai_sop",
+    });
+    expect(harness.onEntitlementDeactivated).toHaveBeenCalledTimes(1);
     expect(harness.runtime.runs).toHaveLength(0);
   });
 
@@ -169,10 +177,45 @@ describe("Workflow runtime policy", () => {
       workflowId: "chatai-workflow",
       workflowType: "chatai_sop",
     });
+    expect(harness.onEntitlementDeactivated).toHaveBeenCalledWith({
+      affectedDefinitions: 1,
+      source: "task-execution",
+      uid: 9,
+      workflowId: "chatai-workflow",
+      workflowType: "chatai_sop",
+    });
+    expect(harness.onEntitlementDeactivated).toHaveBeenCalledTimes(1);
     await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
       status: "dispatched",
       taskVersion: 1,
     });
+  });
+
+  it("does not observe a denial when another caller already deactivated the Workflow", async () => {
+    const entitlement = vi.fn(async () => ({ entitled: false as const }));
+    const harness = createHarness({ deactivationResult: 0, entitlement });
+
+    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
+      code: "WORKFLOW_RUNTIME_INACTIVE",
+    });
+
+    expect(harness.deactivateWorkflowForEntitlementLoss).toHaveBeenCalledTimes(1);
+    expect(harness.onEntitlementDeactivated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the inactive boundary when the deactivation observer fails", async () => {
+    const entitlement = vi.fn(async () => ({ entitled: false as const }));
+    const harness = createHarness({ entitlement });
+    harness.onEntitlementDeactivated.mockImplementationOnce(() => {
+      throw new Error("logger unavailable");
+    });
+
+    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
+      code: "WORKFLOW_RUNTIME_INACTIVE",
+    });
+
+    expect(harness.deactivateWorkflowForEntitlementLoss).toHaveBeenCalledTimes(1);
+    expect(harness.onEntitlementDeactivated).toHaveBeenCalledTimes(1);
   });
 
   it("skips entitlement confirmation for a Task whose Workflow is already inactive", async () => {
@@ -497,12 +540,16 @@ function createHarness(options: {
   capabilityPort?: boolean;
   capabilityResult?: unknown;
   contactCustomFieldPort?: boolean;
+  deactivationResult?: number;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
   messageQueryPort?: boolean;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
-  const deactivateWorkflowForEntitlementLoss = vi.fn(async () => ({ affectedDefinitions: 1 }));
+  const deactivateWorkflowForEntitlementLoss = vi.fn(async () => ({
+    affectedDefinitions: options.deactivationResult ?? 1,
+  }));
+  const onEntitlementDeactivated = vi.fn();
   const control = {
     deactivateWorkflowForEntitlementLoss,
     findDefinition: vi.fn(async (
@@ -575,12 +622,20 @@ function createHarness(options: {
         ? { contactCustomFieldPort: { getContactCustomFields: async () => [] } }
         : {}),
       entitlementPort: { check: options.entitlement },
+      onEntitlementDeactivated,
       ...(options.messageQueryPort
         ? { messageQueryPort: { execute: async () => ({}) } }
         : {}),
     },
   );
-  return { deactivateWorkflowForEntitlementLoss, capabilityCalls, control, runtime, service };
+  return {
+    deactivateWorkflowForEntitlementLoss,
+    onEntitlementDeactivated,
+    capabilityCalls,
+    control,
+    runtime,
+    service,
+  };
 }
 
 function getWorkflowIdentity(workflowId: string): {

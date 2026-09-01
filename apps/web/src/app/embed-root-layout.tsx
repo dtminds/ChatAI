@@ -116,6 +116,7 @@ export function EmbedRootLayout() {
 
     if (!handoffInitializedRef.current) {
       handoffInitializedRef.current = true;
+      if (!getEmbedAccessToken()) setChecking();
       setHandoffReady(true);
       return;
     }

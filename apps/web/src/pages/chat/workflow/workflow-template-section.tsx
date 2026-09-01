@@ -11,6 +11,7 @@ import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { createWorkflowReadOnlyRenderElements } from "./use-workflow-render-elements";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { useWorkflowSurface } from "./workflow-surface";
+import { WorkflowListState } from "./workflow-list-components";
 import type { WorkflowDraft } from "./types";
 
 export function WorkflowTemplateSection({ repository }: { repository?: WorkflowTemplateRepository } = {}) {
@@ -90,13 +91,13 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
 
   return <section aria-label="推荐模板" className="space-y-3">
     <div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
-    {loading && items.length === 0 ? <div role="status"><Spinner /></div> : error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">模板加载失败</p><Button onClick={() => void load({ featured: true, page: 1 })} type="button" variant="outline">重试</Button></div> : items.length === 0 ? <p className="text-sm text-muted-foreground">暂无数据</p> : <div className="grid gap-3 md:grid-cols-4">{items.slice(0, 4).map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
+    {loading && items.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <WorkflowListState onRetry={() => void load({ featured: true, page: 1 })} title="模板加载失败" /> : items.length === 0 ? <WorkflowListState title="暂无数据" /> : <div className="grid gap-3 md:grid-cols-4">{items.slice(0, 4).map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
     <Dialog onOpenChange={value => { setOpen(value); if (!value) { setDetail(null); applyRequestIdRef.current = null; } }} open={open}>
       <DialogContent className="max-w-5xl">
         <DialogHeader><DialogTitle>{detail ? detail.name : "模板中心"}</DialogTitle></DialogHeader>
         {detail ? <TemplateDetailView detail={detail} onApply={() => void apply()} onBack={() => setDetail(null)} /> : <div className="space-y-4">
           <Input aria-label="搜索模板" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { setCursors([undefined]); void load({ page: 1, query: event.currentTarget.value }); } }} placeholder="搜索模板" value={query} />
-          {loading ? <div role="status"><Spinner /></div> : error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">模板加载失败</p><Button onClick={() => void load({ cursor: cursors[page - 1], page, query })} type="button" variant="outline">重试</Button></div> : items.length === 0 ? <p className="text-sm text-muted-foreground">暂无数据</p> : <div className="grid gap-3 md:grid-cols-2">{items.map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
+          {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <WorkflowListState onRetry={() => void load({ cursor: cursors[page - 1], page, query })} title="模板加载失败" /> : items.length === 0 ? <WorkflowListState title="暂无数据" /> : <div className="grid gap-3 md:grid-cols-2">{items.map(item => <TemplateCard item={item} key={item.id} onClick={() => void openDetail(item)} />)}</div>}
           <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">第 {page} 页 / 共 {Math.max(1, Math.ceil(total / pageSize))} 页</span><div className="flex gap-2"><Button disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)} type="button" variant="outline">上一页</Button><Button disabled={!nextCursor || loading} onClick={() => { if (!nextCursor) return; const nextPage = page + 1; setCursors(current => { const next = [...current]; next[page] = nextCursor; return next; }); void load({ cursor: nextCursor, page: nextPage, query }); }} type="button" variant="outline">下一页</Button></div></div>
         </div>}
       </DialogContent>

@@ -10,7 +10,6 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
   async create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">) {
     const result = await this.db.insertInto(TABLE).values({
-      uid: 0,
       workflow_type: encodeWorkflowType(input.workflowType),
       name: input.name,
       description: input.description,
@@ -36,20 +35,20 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
     return row ? map(row) : null;
   }
   async find(id: string, status?: WorkflowTemplateRecord["status"]) {
-    let q = this.db.selectFrom(TABLE).selectAll().where("id", "=", id).where("uid", "=", 0);
+    let q = this.db.selectFrom(TABLE).selectAll().where("id", "=", id);
     if (status) q = q.where("status", "=", status);
     const row = await q.executeTakeFirst();
     return row ? map(row) : null;
   }
   async list(input: Parameters<WorkflowTemplateRepository["list"]>[0]) {
-    let q = this.db.selectFrom(TABLE).selectAll().where("uid", "=", 0);
+    let q = this.db.selectFrom(TABLE).selectAll();
     q = input.status ? q.where("status", "=", input.status) : q.where("status", "=", "published");
     if (input.workflowType) q = q.where("workflow_type", "=", encodeWorkflowType(input.workflowType));
     if (input.category) q = q.where("category", "=", input.category);
     if (input.scene) q = q.where("scene", "=", input.scene);
     if (input.query) q = q.where(eb => eb.or([eb("name", "like", `%${input.query}%`), eb("description", "like", `%${input.query}%`)]));
     const rows = await q.orderBy("update_time", "desc").orderBy("id", "desc").offset(input.offset ?? 0).limit(input.limit).execute();
-    let countQuery = this.db.selectFrom(TABLE).select(({ fn }) => fn.count<number>("id").as("total")).where("uid", "=", 0).where("status", "=", input.status ?? "published");
+    let countQuery = this.db.selectFrom(TABLE).select(({ fn }) => fn.count<number>("id").as("total")).where("status", "=", input.status ?? "published");
     if (input.workflowType) countQuery = countQuery.where("workflow_type", "=", encodeWorkflowType(input.workflowType));
     if (input.category) countQuery = countQuery.where("category", "=", input.category);
     if (input.scene) countQuery = countQuery.where("scene", "=", input.scene);
@@ -60,5 +59,5 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
 }
 
 function map(row: any): WorkflowTemplateRecord {
-  return { id: String(row.id), uid: Number(row.uid), workflowType: decodeWorkflowType(Number(row.workflow_type)), name: row.name, description: row.description, category: row.category, scene: row.scene, coverUrl: row.cover_url, draft: parse(row.draft_json), configurationItems: parse(row.configuration_json), templateVersion: Number(row.template_version), status: row.status, createdAt: new Date(row.create_time), updatedAt: new Date(row.update_time) };
+  return { id: String(row.id), workflowType: decodeWorkflowType(Number(row.workflow_type)), name: row.name, description: row.description, category: row.category, scene: row.scene, coverUrl: row.cover_url, draft: parse(row.draft_json), configurationItems: parse(row.configuration_json), templateVersion: Number(row.template_version), status: row.status, createdAt: new Date(row.create_time), updatedAt: new Date(row.update_time) };
 }

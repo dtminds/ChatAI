@@ -7,7 +7,6 @@ import type {
 
 export type WorkflowTemplateRecord = {
   id: string;
-  uid: number;
   workflowType: WorkflowType;
   name: string;
   description: string;

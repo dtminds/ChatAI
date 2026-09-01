@@ -39,7 +39,6 @@ export interface WorkflowTemplateTable {
   scene: string;
   status: string;
   template_version: number;
-  uid: number;
   update_time: GeneratedDate;
   workflow_type: number;
 }

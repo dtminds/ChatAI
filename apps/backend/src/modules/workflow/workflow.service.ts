@@ -557,7 +557,7 @@ export class WorkflowService {
     const sourceDraft = normalizeWorkflowDraft(definition.draft);
     const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
-    const template = await this.requireTemplateRepository().create({ uid: 0, workflowType: definition.workflowType, name, description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
+    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
     return toTemplateDetail(template);
   }
 

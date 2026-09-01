@@ -607,7 +607,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  uid BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '公共模板固定为0',
   workflow_type TINYINT UNSIGNED NOT NULL,
   name VARCHAR(100) NOT NULL,
   description VARCHAR(1000) NOT NULL DEFAULT '',
@@ -621,8 +620,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_workflow_template_public_status (uid, status, update_time, id),
-  KEY idx_workflow_template_public_filter (uid, status, workflow_type, category, scene, id)
+  KEY idx_workflow_template_public_status (status, update_time, id),
+  KEY idx_workflow_template_public_filter (status, workflow_type, category, scene, id)
 ) COMMENT='Workflow全平台公共模板';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (

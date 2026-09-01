@@ -19,6 +19,7 @@ import {
   type WorkflowEntryRecordPage,
   type WorkflowFlowChangedReason,
 } from "@chatai/contracts";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -346,7 +347,9 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
               <thead className="text-foreground"><tr><th className="h-11 px-4 text-left font-semibold">客户</th><th className="h-11 px-4 text-left font-semibold">当前进度</th><th className="h-11 px-4 text-left font-semibold">状态</th><th className="h-11 px-4 text-left font-semibold">进入时间</th><th className="h-11 px-4 text-left font-semibold">最近更新</th></tr></thead>
               <tbody>{page?.items.map(record => (
                 <tr className="cursor-pointer border-t hover:bg-muted/30" key={record.recordId} onClick={() => openDetail(record)}>
-                  <td className="px-4 py-3 font-medium">{record.customer.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <RecordCustomer customer={record.customer} />
+                  </td>
                   <td className="px-4 py-3">{nodeTitle(document, record.revision, record.currentNodeId)}</td>
                   <td className="px-4 py-3"><RecordStatus record={record} /></td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDate(record.createdAt)}</td>
@@ -376,7 +379,9 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
         {detail ? (
           <>
             <SheetHeader>
-              <SheetTitle>{detail.customer.name}</SheetTitle>
+              <SheetTitle>
+                <RecordCustomer customer={detail.customer} />
+              </SheetTitle>
               <SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription>
               {detail.terminalReason ? (
                 <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">
@@ -433,6 +438,22 @@ function flowChangedReasonLabel(reason: WorkflowFlowChangedReason) {
     flow_changed_node_kind_changed: "流程配置已更新，当前节点类型已变更",
     flow_changed_outlet_deleted: "流程配置已更新，当前节点出口已删除",
   } as const)[reason];
+}
+
+function RecordCustomer({
+  customer,
+}: {
+  customer: WorkflowEntryRecord["customer"];
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <Avatar className="size-8 rounded-full">
+        {customer.avatar ? <AvatarImage alt="" src={customer.avatar} /> : null}
+        <AvatarFallback>{customer.name.trim().slice(0, 1) || undefined}</AvatarFallback>
+      </Avatar>
+      <span className="min-w-0 truncate">{customer.name}</span>
+    </span>
+  );
 }
 
 function nodeTitle(document: WorkflowDocument, revision: number, nodeId: string) {

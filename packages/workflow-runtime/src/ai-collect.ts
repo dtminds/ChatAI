@@ -43,6 +43,7 @@ export interface WorkflowAiCollectConversationPort {
     signal: AbortSignal;
     thirdExternalUserId: string;
     uid: number;
+    workflowId: string;
   }): Promise<void>;
 }
 

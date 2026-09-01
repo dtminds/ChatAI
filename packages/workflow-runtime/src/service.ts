@@ -1110,6 +1110,7 @@ export class WorkflowRuntimeService {
             signal,
             thirdExternalUserId,
             uid: input.input.uid,
+            workflowId: state.workflowId,
           }));
         state = await this.transitionAiCollectStateOrThrow({
           now: this.clock(),

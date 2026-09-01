@@ -81,7 +81,25 @@ Worker 复用现有接口：
 POST /third-internal/wap-embed/conversation/send-message?idempotentKey=<key>
 ```
 
-请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为冻结 `seatId` 对应的托管账号，`source = 3` 表示自动执行来源。
+请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为冻结 `seatId` 对应的托管账号，`source = 4` 表示 Workflow 来源，`sourceId` 为原始 `workflowId`。
+
+```json
+{
+  "msgData": {
+    "msgtype": "text",
+    "text": "已经完成变量渲染的消息文本"
+  },
+  "platform": 5,
+  "sendType": 1,
+  "source": 4,
+  "sourceId": "31",
+  "thirdExternalUserid": "third-external-user-id",
+  "thirdUserId": "third-user-id",
+  "uid": 9
+}
+```
+
+同一 Workflow 的文本、附件和幂等重试始终使用相同的 `sourceId`。普通工作台和非 Workflow 自动发送不补传该字段。
 
 Message 节点的非空文本先发送，随后按配置顺序发送附件。每次调用使用 `${idempotencyKey}:<index>` 作为 query 参数；重试完整节点时各条消息复用原子键，已经成功的消息由 Java 幂等返回，不重复发送。
 

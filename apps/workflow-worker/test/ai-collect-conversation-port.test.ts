@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DummyDriver,
   Kysely,
@@ -10,10 +10,40 @@ import {
   type Driver,
   type QueryResult,
 } from "kysely";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import { MysqlWorkflowAiCollectConversationPort } from "../src/ai-collect-conversation-port.js";
 
 describe("MysqlWorkflowAiCollectConversationPort", () => {
+  it("marks the opening message with its Workflow source", async () => {
+    const { database } = createRecordingDatabase(() => ({
+      rows: [{ id: 101, platform: 5, third_userid: "work-user-1" }],
+    }));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      data: { optNo: "opt-1" },
+      success: true,
+    }), { status: 200 }));
+    const port = new MysqlWorkflowAiCollectConversationPort(database, {
+      baseUrl: "https://java.example.com",
+      fetch: fetchImpl as typeof fetch,
+    });
+
+    await port.sendOpeningMessage({
+      idempotencyKey: "9:run-1:collect-1:1:opening",
+      message: "请提供订单号",
+      seatId: 101,
+      signal: new AbortController().signal,
+      thirdExternalUserId: "external-1",
+      uid: 9,
+      workflowId: "31",
+    });
+
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+      sourceId: "31",
+    });
+  });
+
   it("resolves only the active direct conversation scoped to the tenant and seat", async () => {
     const { database, queries } = createRecordingDatabase(query => query.sql.includes("user_seat")
       ? { rows: [{ id: 101, platform: 5, third_userid: "work-user-1" }] }

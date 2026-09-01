@@ -10,7 +10,10 @@ import {
   type Driver,
   type QueryResult,
 } from "kysely";
-import type { WorkflowMessageCommand } from "@chatai/contracts";
+import {
+  WORKBENCH_MESSAGE_SOURCE,
+  type WorkflowMessageCommand,
+} from "@chatai/contracts";
 import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   type WorkflowDatabase,
@@ -80,6 +83,7 @@ describe("Workflow Message capability port", () => {
       signal: new AbortController().signal,
       token: "internal-token",
       uid: 9,
+      workflowId: "31",
     })).resolves.toEqual({});
 
     expect(queries).toHaveLength(1);
@@ -97,7 +101,8 @@ describe("Workflow Message capability port", () => {
         msgData: { msgtype: "text", text: "欢迎咨询" },
         platform: 5,
         sendType: 1,
-        source: 3,
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        sourceId: "31",
         thirdExternalUserid: "customer-1",
         thirdUserId: "work-user-1",
         uid: 9,
@@ -106,7 +111,8 @@ describe("Workflow Message capability port", () => {
         msgData: { fileUrl: "https://cdn.example.com/image.png", msgtype: "image" },
         platform: 5,
         sendType: 1,
-        source: 3,
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        sourceId: "31",
         thirdExternalUserid: "customer-1",
         thirdUserId: "work-user-1",
         uid: 9,
@@ -146,6 +152,8 @@ describe("Workflow Message capability port", () => {
     })).resolves.toEqual({});
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+      sourceId: "workflow-1",
       thirdExternalUserid: "customer-1",
     });
   });
@@ -175,6 +183,7 @@ describe("Workflow Message capability port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
+      workflowId: "31",
     };
 
     await expect(executeWorkflowMessage(database, {
@@ -248,6 +257,7 @@ describe("Workflow Message capability port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
+      workflowId: "31",
     };
     const fetches: Array<typeof fetch> = [
       vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch,

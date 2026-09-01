@@ -194,6 +194,7 @@ export class MysqlWorkflowAiCollectConversationPort implements WorkflowAiCollect
       signal: input.signal,
       token: this.options.token ?? null,
       uid: input.uid,
+      workflowId: input.workflowId,
     });
   }
 }

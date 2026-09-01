@@ -4,7 +4,6 @@ import type { AccountPermission } from "@chatai/contracts";
 import {
   clearEmbedAuthHandoff,
   getEmbedAccessToken,
-  rememberEmbedTickets,
   setEmbedAccessToken,
 } from "@/lib/embed-access-token";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
@@ -399,10 +398,9 @@ describe("request", () => {
     });
   });
 
-  it("exchanges an expired embed token and retries the failed request", async () => {
+  it("refreshes an expired embed session and retries without the stale bearer", async () => {
     const sessionChanged = vi.fn();
     window.addEventListener("chatai:auth-session-changed", sessionChanged);
-    rememberEmbedTickets({ id: "enc-id", uid: "enc-uid" });
     setEmbedAccessToken("expired-embed-access-token");
     mock.onGet("/server/embed/workflows").replyOnce(401, {
       error: {
@@ -411,9 +409,8 @@ describe("request", () => {
       },
       success: false,
     });
-    mock.onPost("/auth/embed-sso").reply(200, {
+    mock.onPost("/auth/refresh").reply(200, {
       data: {
-        accessToken: "refreshed-embed-access-token",
         expiresIn: 1200,
         subUser: operatorSubUser,
       },
@@ -425,24 +422,19 @@ describe("request", () => {
     ]);
 
     await expect(http.get("/server/embed/workflows")).resolves.toEqual({
-      authorization: "Bearer refreshed-embed-access-token",
+      authorization: undefined,
     });
     expect(mock.history.post).toHaveLength(1);
-    expect(mock.history.post[0]?.url).toBe("/auth/embed-sso");
-    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
-      id: "enc-id",
-      uid: "enc-uid",
-    });
-    expect(getEmbedAccessToken()).toBe("refreshed-embed-access-token");
+    expect(mock.history.post[0]?.url).toBe("/auth/refresh");
+    expect(getEmbedAccessToken()).toBeNull();
     expect(useAuthStore.getState().subUser).toEqual(operatorSubUser);
     expect(sessionChanged).not.toHaveBeenCalled();
     window.removeEventListener("chatai:auth-session-changed", sessionChanged);
   });
 
-  it("ends the embed session when exchanging an expired token fails", async () => {
+  it("ends the embed session when refreshing an expired session fails", async () => {
     const sessionChanged = vi.fn();
     window.addEventListener("chatai:auth-session-changed", sessionChanged);
-    rememberEmbedTickets({ id: "enc-id", uid: "enc-uid" });
     setEmbedAccessToken("expired-embed-access-token");
     mock.onGet("/server/embed/workflows").reply(401, {
       error: {
@@ -451,16 +443,16 @@ describe("request", () => {
       },
       success: false,
     });
-    mock.onPost("/auth/embed-sso").reply(401, {
+    mock.onPost("/auth/refresh").reply(401, {
       error: {
-        code: "EMBED_SSO_REJECTED",
-        message: "当前账号不可用",
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
       },
       success: false,
     });
 
     await expect(http.get("/server/embed/workflows")).rejects.toMatchObject({
-      code: "EMBED_SSO_REJECTED",
+      code: "UNAUTHORIZED",
       status: 401,
     });
     expect(mock.history.get).toHaveLength(1);

@@ -34,6 +34,7 @@ export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
   REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
 const SESSION_CACHE_TTL_SECONDS = 5 * 60;
 const NEGATIVE_SESSION_CACHE_TTL_SECONDS = 60;
+const EMBED_HANDOFF_TOKEN_MAX_AGE_SECONDS = 10 * 60;
 
 type SubUserCredentialRow = {
   id: number;
@@ -58,6 +59,12 @@ export class InvalidCredentialsError extends AppError {
 export class InvalidEmbedTicketError extends AppError {
   constructor() {
     super("EMBED_SSO_REJECTED", "当前账号不可用", 401);
+  }
+}
+
+export class InvalidEmbedHandoffTokenError extends AppError {
+  constructor() {
+    super("EMBED_HANDOFF_REJECTED", "登录信息已失效", 401);
   }
 }
 
@@ -105,16 +112,14 @@ export async function loginWithSmpEmbed(
     refreshToken?: string;
   } = {},
 ): Promise<AuthSessionTokens> {
-  const [decryptedId, decryptedUid] = await Promise.all([
-    decryptPort.decrypt(payload.id),
-    decryptPort.decrypt(payload.uid),
-  ]);
-  const subUserId = parsePositiveInteger(decryptedId);
-  const uid = parsePositiveInteger(decryptedUid);
+  const decryptedToken = await decryptPort.decrypt(payload.token);
+  const identity = parseEmbedHandoffToken(decryptedToken);
 
-  if (subUserId === undefined || uid === undefined) {
-    throw new InvalidEmbedTicketError();
+  if (!identity) {
+    throw new InvalidEmbedHandoffTokenError();
   }
+
+  const { subUserId, uid } = identity;
 
   const subUser = await findActiveSubUser(app.db, subUserId);
 
@@ -672,4 +677,32 @@ function parsePositiveInteger(value: string) {
   }
 
   return parsed;
+}
+
+function parseEmbedHandoffToken(value: string) {
+  const parts = value.trim().split("_");
+
+  if (parts.length !== 3) {
+    return undefined;
+  }
+
+  const subUserId = parsePositiveInteger(parts[0] ?? "");
+  const uid = parsePositiveInteger(parts[1] ?? "");
+  const issuedAtSeconds = parsePositiveInteger(parts[2] ?? "");
+
+  if (
+    subUserId === undefined
+    || uid === undefined
+    || issuedAtSeconds === undefined
+  ) {
+    return undefined;
+  }
+
+  const ageSeconds = Math.floor(Date.now() / 1000) - issuedAtSeconds;
+
+  if (ageSeconds < 0 || ageSeconds > EMBED_HANDOFF_TOKEN_MAX_AGE_SECONDS) {
+    return undefined;
+  }
+
+  return { subUserId, uid };
 }

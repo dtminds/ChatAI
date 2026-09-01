@@ -13,6 +13,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
 import {
   getCurrentSession,
+  InvalidEmbedHandoffTokenError,
   InvalidEmbedTicketError,
   loginWithPassword,
   loginWithSmpEmbed,
@@ -119,7 +120,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
           },
         );
       } catch (error) {
-        if (error instanceof InvalidEmbedTicketError) {
+        if (
+          error instanceof InvalidEmbedHandoffTokenError
+          || error instanceof InvalidEmbedTicketError
+        ) {
           clearAuthCookies(reply);
         }
         throw error;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearEmbedAuthHandoff,
-  rememberEmbedTickets,
+  rememberEmbedHandoffToken,
 } from "@/lib/embed-access-token";
 import {
   buildLoginRedirectPath,
@@ -28,14 +28,14 @@ describe("auth redirect", () => {
     );
   });
 
-  it("strips an embed access token from the login redirect", () => {
+  it("strips an embed handoff token from the login redirect", () => {
     expect(
       buildLoginRedirectPath({
         pathname: "/embed/workflows/31",
-        search: "?id=enc-id&uid=enc-uid&token=secret-token",
+        search: "?tab=overview&token=secret-token",
       }),
     ).toBe(
-      "/login?redirect=%2Fembed%2Fworkflows%2F31%3Fid%3Denc-id%26uid%3Denc-uid",
+      "/login?redirect=%2Fembed%2Fworkflows%2F31%3Ftab%3Doverview",
     );
   });
 
@@ -65,36 +65,35 @@ describe("auth redirect", () => {
     ).toBe("/chat");
   });
 
-  it("reads encrypted embed workflow tickets from the query string", () => {
+  it("reads the encrypted embed handoff token from the query string", () => {
     expect(isEmbedPath("/embed/workflows")).toBe(true);
     expect(isEmbedPath("/embed/future-module/31")).toBe(true);
     expect(isEmbedPath("/chat/workflows")).toBe(false);
-    expect(readEmbedSsoParams("?id=enc-id&uid=enc-uid")).toEqual({
-      id: "enc-id",
-      uid: "enc-uid",
+    expect(readEmbedSsoParams("?token=embed-handoff-token")).toEqual({
+      token: "embed-handoff-token",
     });
-    expect(readEmbedSsoParams("?id=enc-id")).toBeNull();
+    expect(readEmbedSsoParams("?id=enc-id&uid=enc-uid")).toBeNull();
     expect(
       readEmbedSsoAttempt({
         pathname: "/login",
-        search: "?redirect=%2Fembed%2Fworkflows%3Fid%3Denc-id%26uid%3Denc-uid",
+        search: "?redirect=%2Fembed%2Fworkflows%3Ftoken%3Dembed-handoff-token",
       }),
     ).toEqual({
-      params: { id: "enc-id", uid: "enc-uid" },
-      returnPath: "/embed/workflows?id=enc-id&uid=enc-uid",
+      params: { token: "embed-handoff-token" },
+      returnPath: "/embed/workflows",
     });
   });
 
-  it("reuses remembered embed tickets when the editor path has no query", () => {
-    rememberEmbedTickets({ id: "enc-id", uid: "enc-uid" });
+  it("uses the captured handoff token once the URL has been cleaned", () => {
+    rememberEmbedHandoffToken("embed-handoff-token");
 
     expect(
       readEmbedSsoAttempt({
         pathname: "/embed/workflows/31",
-        search: "?token=secret-token",
+        search: "",
       }),
     ).toEqual({
-      params: { id: "enc-id", uid: "enc-uid" },
+      params: { token: "embed-handoff-token" },
       returnPath: "/embed/workflows/31",
     });
   });

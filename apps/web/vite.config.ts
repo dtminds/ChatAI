@@ -45,10 +45,17 @@ function readEnv(input: ViteDevEnv, mode: string, envDir: string) {
   };
 }
 
+function parseConfiguredHostnames(value: string | undefined) {
+  return [...new Set(
+    (value ?? "")
+      .split(",")
+      .map((hostname) => hostname.trim().toLowerCase().replace(/\.$/, ""))
+      .filter(Boolean),
+  )];
+}
+
 function hasConfiguredHostname(value: string | undefined) {
-  return (value ?? "")
-    .split(",")
-    .some((hostname) => hostname.trim().replace(/\.$/, "") !== "");
+  return parseConfiguredHostnames(value).length > 0;
 }
 
 export { parseCosDevProxyRequest, resolveCosDevProxyTarget, rewriteCosDevProxyPath };
@@ -75,7 +82,10 @@ export function getViteDevServerConfig(
   const env = readEnv(input, mode, envDir);
 
   return {
-    allowedHosts: ["chat-dev.bokr.com.cn"],
+    allowedHosts: [
+      "chat-dev.bokr.com.cn",
+      ...parseConfiguredHostnames(env.VITE_CHAT_EMBED_HOSTNAMES),
+    ],
     host: env.VITE_DEV_SERVER_HOST ?? "127.0.0.1",
     port: parsePort(env.VITE_DEV_SERVER_PORT, 8086),
     proxy: buildDevProxyConfig(env),

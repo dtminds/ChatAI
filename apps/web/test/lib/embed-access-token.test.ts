@@ -3,11 +3,10 @@ import {
   clearEmbedAuthHandoff,
   consumeEmbedAuthHandoffFromSearch,
   getEmbedAccessToken,
-  getRememberedEmbedTickets,
+  getRememberedEmbedHandoffToken,
   restoreEmbedAuthHandoff,
   setEmbedAccessToken,
-  stripEmbedAccessTokenFromSearch,
-  withEmbedAuthHandoff,
+  stripEmbedHandoffTokenFromSearch,
 } from "@/lib/embed-access-token";
 
 describe("embed access token handoff", () => {
@@ -15,40 +14,29 @@ describe("embed access token handoff", () => {
     clearEmbedAuthHandoff();
   });
 
-  it("consumes the token and tickets from the query string", () => {
+  it("captures the handoff token without treating it as an access token", () => {
     const search = consumeEmbedAuthHandoffFromSearch(
-      "?id=enc-id&uid=enc-uid&token=handoff-token",
+      "?tab=overview&token=handoff-token",
     );
 
-    expect(search).toBe("?id=enc-id&uid=enc-uid");
-    expect(getEmbedAccessToken()).toBe("handoff-token");
-    expect(getRememberedEmbedTickets()).toEqual({
-      id: "enc-id",
-      uid: "enc-uid",
-    });
-  });
-
-  it("appends remembered tickets onto an embed path without the access token", () => {
-    consumeEmbedAuthHandoffFromSearch("?id=enc-id&uid=enc-uid&token=handoff-token");
-
-    expect(withEmbedAuthHandoff("/embed/workflows/31")).toBe(
-      "/embed/workflows/31?id=enc-id&uid=enc-uid",
-    );
-    expect(getEmbedAccessToken()).toBe("handoff-token");
+    expect(search).toBe("?tab=overview");
+    expect(getEmbedAccessToken()).toBeNull();
+    expect(getRememberedEmbedHandoffToken()).toBe("handoff-token");
   });
 
   it("strips the token from a search string", () => {
-    expect(stripEmbedAccessTokenFromSearch("?id=enc-id&token=secret&uid=enc-uid")).toBe(
-      "?id=enc-id&uid=enc-uid",
+    expect(stripEmbedHandoffTokenFromSearch("?tab=overview&token=secret")).toBe(
+      "?tab=overview",
     );
   });
 
-  it("restores a previously stored handoff", () => {
+  it("persists the access token without persisting the short-lived handoff token", () => {
     setEmbedAccessToken("stored-token");
-    consumeEmbedAuthHandoffFromSearch("?id=enc-id&uid=enc-uid");
+    consumeEmbedAuthHandoffFromSearch("?token=handoff-token");
 
     const stored = sessionStorage.getItem("chatai.embed-auth-handoff");
     expect(stored).toBeTruthy();
+    expect(stored).not.toContain("handoff-token");
 
     clearEmbedAuthHandoff();
     sessionStorage.setItem("chatai.embed-auth-handoff", stored ?? "");
@@ -56,9 +44,6 @@ describe("embed access token handoff", () => {
     restoreEmbedAuthHandoff();
 
     expect(getEmbedAccessToken()).toBe("stored-token");
-    expect(getRememberedEmbedTickets()).toEqual({
-      id: "enc-id",
-      uid: "enc-uid",
-    });
+    expect(getRememberedEmbedHandoffToken()).toBeNull();
   });
 });

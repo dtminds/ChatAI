@@ -238,17 +238,22 @@ describe("settings sub-account DTOs", () => {
     ).toBe(true);
   });
 
-  it("accepts encrypted embed SSO tickets", () => {
+  it("accepts only an encrypted embed SSO handoff token", () => {
     expect(
       Value.Check(AuthEmbedSsoRequestSchema, {
-        id: "enc-id",
-        uid: "enc-uid",
+        token: "embed-handoff-token",
       }),
     ).toBe(true);
 
     expect(
       Value.Check(AuthEmbedSsoRequestSchema, {
-        id: "",
+        token: "",
+      }),
+    ).toBe(false);
+
+    expect(
+      Value.Check(AuthEmbedSsoRequestSchema, {
+        id: "enc-id",
         uid: "enc-uid",
       }),
     ).toBe(false);

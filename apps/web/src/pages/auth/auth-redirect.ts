@@ -1,6 +1,6 @@
 import {
-  getRememberedEmbedTickets,
-  stripEmbedAccessTokenFromSearch,
+  getRememberedEmbedHandoffToken,
+  stripEmbedHandoffTokenFromSearch,
 } from "@/lib/embed-access-token";
 
 const DEFAULT_AUTH_REDIRECT = "/chat";
@@ -13,8 +13,7 @@ type RedirectLocation = {
 };
 
 export type EmbedSsoParams = {
-  id: string;
-  uid: string;
+  token: string;
 };
 
 export function isEmbedPath(pathname: string) {
@@ -23,28 +22,26 @@ export function isEmbedPath(pathname: string) {
 
 export function readEmbedSsoParams(search: string): EmbedSsoParams | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const id = params.get("id")?.trim() ?? "";
-  const uid = params.get("uid")?.trim() ?? "";
+  const token = params.get("token")?.trim() ?? "";
 
-  if (!id || !uid) {
+  if (!token) {
     return null;
   }
 
-  return { id, uid };
+  return { token };
 }
 
 export function readEmbedSsoAttempt(location: RedirectLocation) {
   if (isEmbedPath(location.pathname)) {
-    const params = readEmbedSsoParams(location.search ?? "")
-      ?? getRememberedEmbedTickets();
+    const token = getRememberedEmbedHandoffToken();
 
-    if (!params) {
+    if (!token) {
       return null;
     }
 
     return {
-      params,
-      returnPath: `${location.pathname}${stripEmbedAccessTokenFromSearch(location.search ?? "")}`,
+      params: { token },
+      returnPath: `${location.pathname}${stripEmbedHandoffTokenFromSearch(location.search ?? "")}`,
     };
   }
 
@@ -69,7 +66,7 @@ export function readEmbedSsoAttempt(location: RedirectLocation) {
 
     return {
       params,
-      returnPath: `${redirectUrl.pathname}${stripEmbedAccessTokenFromSearch(redirectUrl.search)}`,
+      returnPath: `${redirectUrl.pathname}${stripEmbedHandoffTokenFromSearch(redirectUrl.search)}`,
     };
   } catch {
     return null;
@@ -77,7 +74,7 @@ export function readEmbedSsoAttempt(location: RedirectLocation) {
 }
 
 export function buildLoginRedirectPath(location: RedirectLocation) {
-  const search = stripEmbedAccessTokenFromSearch(location.search ?? "");
+  const search = stripEmbedHandoffTokenFromSearch(location.search ?? "");
   const redirect = `${location.pathname}${search}${location.hash ?? ""}`;
   const searchParams = new URLSearchParams({ redirect });
 

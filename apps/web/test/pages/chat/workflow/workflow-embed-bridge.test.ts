@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearEmbedAuthHandoff, setEmbedAccessToken } from "@/lib/embed-access-token";
+import { postChatEmbedLoadError } from "@/lib/embed-parent-bridge";
 import {
   postSmpBasementChatEmbedLeaveEditor,
   postSmpBasementChatEmbedNavigate,
@@ -55,6 +56,21 @@ describe("embed workflow parent bridge", () => {
         fullscreen: false,
         path: "/embed/workflows",
         type: "navigate",
+      },
+      "*",
+    );
+  });
+
+  it("notifies the parent about a terminal load error without auth details", () => {
+    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
+
+    postChatEmbedLoadError("EMBED_SSO_UNAVAILABLE");
+
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        channel: "smp-basement-chat-embed",
+        code: "EMBED_SSO_UNAVAILABLE",
+        type: "load-error",
       },
       "*",
     );

@@ -1,17 +1,11 @@
-import { withEmbedAuthHandoff } from "@/lib/embed-access-token";
-
-export const SMP_BASEMENT_CHAT_EMBED_CHANNEL = "smp-basement-chat-embed";
+import { postChatEmbedParentMessage } from "@/lib/embed-parent-bridge";
 
 export function postSmpBasementChatEmbedNavigate(path: string, fullscreen: boolean) {
-  window.parent.postMessage(
-    {
-      channel: SMP_BASEMENT_CHAT_EMBED_CHANNEL,
-      type: "navigate",
-      path: withEmbedAuthHandoff(path),
-      fullscreen,
-    },
-    "*",
-  );
+  postChatEmbedParentMessage({
+    fullscreen,
+    path,
+    type: "navigate",
+  });
 }
 
 export function postSmpBasementChatEmbedLeaveEditor() {

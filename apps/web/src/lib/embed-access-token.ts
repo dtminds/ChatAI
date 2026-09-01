@@ -1,12 +1,7 @@
 const EMBED_AUTH_HANDOFF_STORAGE_KEY = "chatai.embed-auth-handoff";
 
-export type EmbedTickets = {
-  id: string;
-  uid: string;
-};
-
 let embedAccessToken: string | null = null;
-let embedTickets: EmbedTickets | null = null;
+let embedHandoffToken: string | null = null;
 
 export function setEmbedAccessToken(token: string | null) {
   embedAccessToken = token && token.trim() ? token : null;
@@ -17,51 +12,42 @@ export function getEmbedAccessToken() {
   return embedAccessToken;
 }
 
-export function rememberEmbedTickets(tickets: EmbedTickets | null) {
-  embedTickets = tickets && tickets.id.trim() && tickets.uid.trim()
-    ? { id: tickets.id.trim(), uid: tickets.uid.trim() }
-    : null;
-  persistEmbedAuthHandoff();
+export function rememberEmbedHandoffToken(token: string | null) {
+  embedHandoffToken = token && token.trim() ? token.trim() : null;
 }
 
-export function getRememberedEmbedTickets() {
-  return embedTickets;
+export function getRememberedEmbedHandoffToken() {
+  return embedHandoffToken;
+}
+
+export function clearEmbedHandoffToken() {
+  embedHandoffToken = null;
 }
 
 export function clearEmbedAuthHandoff() {
   embedAccessToken = null;
-  embedTickets = null;
+  embedHandoffToken = null;
   persistEmbedAuthHandoff();
 }
 
 export function restoreEmbedAuthHandoff() {
-  if (embedAccessToken && embedTickets) {
+  if (embedAccessToken) {
     return;
   }
 
   const stored = readStoredEmbedAuthHandoff();
 
-  if (!embedAccessToken && stored.accessToken) {
+  if (stored.accessToken) {
     embedAccessToken = stored.accessToken;
-  }
-
-  if (!embedTickets && stored.tickets) {
-    embedTickets = stored.tickets;
   }
 }
 
 export function consumeEmbedAuthHandoffFromSearch(search: string) {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const token = params.get("token")?.trim() ?? "";
-  const id = params.get("id")?.trim() ?? "";
-  const uid = params.get("uid")?.trim() ?? "";
 
   if (token) {
-    setEmbedAccessToken(token);
-  }
-
-  if (id && uid) {
-    rememberEmbedTickets({ id, uid });
+    rememberEmbedHandoffToken(token);
   }
 
   params.delete("token");
@@ -69,14 +55,14 @@ export function consumeEmbedAuthHandoffFromSearch(search: string) {
   return next ? `?${next}` : "";
 }
 
-export function stripEmbedAccessTokenFromSearch(search: string) {
+export function stripEmbedHandoffTokenFromSearch(search: string) {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   params.delete("token");
   const next = params.toString();
   return next ? `?${next}` : "";
 }
 
-export function stripEmbedAccessTokenFromWindowLocation() {
+export function stripEmbedHandoffTokenFromWindowLocation() {
   if (typeof window === "undefined") {
     return;
   }
@@ -95,25 +81,9 @@ export function stripEmbedAccessTokenFromWindowLocation() {
   );
 }
 
-export function withEmbedAuthHandoff(path: string) {
-  const url = new URL(path, "https://chatai.local");
-
-  if (embedTickets) {
-    if (!url.searchParams.get("id")) {
-      url.searchParams.set("id", embedTickets.id);
-    }
-
-    if (!url.searchParams.get("uid")) {
-      url.searchParams.set("uid", embedTickets.uid);
-    }
-  }
-
-  return `${url.pathname}${url.search}`;
-}
-
 function persistEmbedAuthHandoff() {
   try {
-    if (!embedAccessToken && !embedTickets) {
+    if (!embedAccessToken) {
       sessionStorage.removeItem(EMBED_AUTH_HANDOFF_STORAGE_KEY);
       return;
     }
@@ -122,7 +92,6 @@ function persistEmbedAuthHandoff() {
       EMBED_AUTH_HANDOFF_STORAGE_KEY,
       JSON.stringify({
         accessToken: embedAccessToken,
-        tickets: embedTickets,
       }),
     );
   } catch {
@@ -132,41 +101,27 @@ function persistEmbedAuthHandoff() {
 
 function readStoredEmbedAuthHandoff(): {
   accessToken: string | null;
-  tickets: EmbedTickets | null;
 } {
   try {
     const raw = sessionStorage.getItem(EMBED_AUTH_HANDOFF_STORAGE_KEY);
 
     if (!raw) {
-      return { accessToken: null, tickets: null };
+      return { accessToken: null };
     }
 
     const parsed: unknown = JSON.parse(raw);
 
     if (!parsed || typeof parsed !== "object") {
-      return { accessToken: null, tickets: null };
+      return { accessToken: null };
     }
 
-    const record = parsed as {
-      accessToken?: unknown;
-      tickets?: unknown;
-    };
+    const record = parsed as { accessToken?: unknown };
     const accessToken =
       typeof record.accessToken === "string" && record.accessToken.trim()
         ? record.accessToken.trim()
         : null;
-    const ticketsRecord =
-      record.tickets && typeof record.tickets === "object"
-        ? record.tickets as { id?: unknown; uid?: unknown }
-        : null;
-    const id = typeof ticketsRecord?.id === "string" ? ticketsRecord.id.trim() : "";
-    const uid = typeof ticketsRecord?.uid === "string" ? ticketsRecord.uid.trim() : "";
-
-    return {
-      accessToken,
-      tickets: id && uid ? { id, uid } : null,
-    };
+    return { accessToken };
   } catch {
-    return { accessToken: null, tickets: null };
+    return { accessToken: null };
   }
 }

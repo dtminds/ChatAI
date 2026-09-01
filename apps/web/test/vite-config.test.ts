@@ -50,6 +50,14 @@ describe("vite config env", () => {
     expect(config.proxy?.["/__cos"]).toBeUndefined();
   });
 
+  it("allows configured embed hostnames in development", () => {
+    const config = getViteDevServerConfig({
+      VITE_CHAT_EMBED_HOSTNAMES: "embed-dev.example.com",
+    }, "development", createEnvDir());
+
+    expect(config.allowedHosts).toContain("embed-dev.example.com");
+  });
+
   it("can disable TLS verification for self-signed API targets", () => {
     const proxy = buildDevProxyConfig({
       VITE_DEV_API_PROXY_SECURE: "false",

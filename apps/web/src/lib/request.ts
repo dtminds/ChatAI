@@ -3,13 +3,11 @@ import axios, {
   AxiosHeaders,
   type AxiosRequestConfig,
   type AxiosResponse,
-  type RawAxiosHeaders,
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 import {
   getEmbedAccessToken,
-  getRememberedEmbedTickets,
   setEmbedAccessToken,
 } from "@/lib/embed-access-token";
 import type {
@@ -123,7 +121,10 @@ function normalizeError(error: unknown): RequestError {
         axiosError.message ??
         "Request failed",
       status: axiosError.response?.status,
-      code: apiError?.code ?? axiosError.code,
+      code:
+        apiError?.code
+        ?? axiosError.code
+        ?? (axiosError.response ? undefined : "ERR_NETWORK"),
       details: apiError?.details,
     };
   }
@@ -182,6 +183,9 @@ async function refreshAuth() {
   })
     .then((refresh) => refresh.data)
     .then((refresh) => {
+      if (getEmbedAccessToken()) {
+        setEmbedAccessToken(null);
+      }
       useAuthStore.getState().setSession(refresh.subUser);
       return refresh;
     })
@@ -193,7 +197,7 @@ async function refreshAuth() {
 }
 
 export async function exchangeEmbedSso(payload: AuthEmbedSsoRequest) {
-  const key = `${payload.id}\0${payload.uid}`;
+  const key = payload.token;
 
   if (embedSsoRequest && embedSsoRequestKey === key) {
     return embedSsoRequest;
@@ -234,52 +238,6 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
     return response.data;
   } catch (error) {
-    if (shouldRetryEmbedSso(error, config)) {
-      let embedLogin: { data: AuthEmbedSsoResponse };
-
-      try {
-        const tickets = getRememberedEmbedTickets();
-        if (!tickets) {
-          throw error;
-        }
-
-        embedLogin = await exchangeEmbedSso(tickets);
-        useAuthStore.getState().setSession(embedLogin.data.subUser);
-      } catch (embedSsoError) {
-        notifyAuthSessionChanged();
-        return Promise.reject(toRequestError(normalizeError(embedSsoError), embedSsoError));
-      }
-
-      const headers = AxiosHeaders.from(
-        config.headers as AxiosHeaders | RawAxiosHeaders | undefined,
-      );
-      headers.set("Authorization", `Bearer ${embedLogin.data.accessToken}`);
-      const retryConfig = {
-        ...config,
-        _authRetry: true,
-        headers,
-      };
-
-      try {
-        const retryResponse = await requestInstance.request<
-          TResponse,
-          AxiosResponse<TResponse>,
-          TPayload
-        >(retryConfig);
-
-        if (isApiErrorEnvelope(retryResponse.data)) {
-          throw new ApiEnvelopeError(retryResponse.data, retryResponse.status);
-        }
-
-        return retryResponse.data;
-      } catch (retryError) {
-        if (axios.isAxiosError(retryError) && retryError.response?.status === 401) {
-          notifyAuthSessionChanged();
-        }
-        return Promise.reject(toRequestError(normalizeError(retryError), retryError));
-      }
-    }
-
     if (shouldRefreshAuth(error, config)) {
       try {
         await refreshAuth();
@@ -319,20 +277,11 @@ function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {
     config._skipAuthRetry
     || config._authRetry
     || isSupportReadOnlySession()
-    || getEmbedAccessToken()
   ) {
     return false;
   }
 
   return axios.isAxiosError(error) && error.response?.status === 401;
-}
-
-function shouldRetryEmbedSso(error: unknown, config: AuthRetryConfig) {
-  return !config._skipAuthRetry
-    && !config._authRetry
-    && Boolean(getEmbedAccessToken())
-    && axios.isAxiosError(error)
-    && error.response?.status === 401;
 }
 
 function shouldEndSupportSession(error: unknown, config: AuthRetryConfig) {

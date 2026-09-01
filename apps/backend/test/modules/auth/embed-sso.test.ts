@@ -31,7 +31,7 @@ describe("embed SSO", () => {
   });
 
   it("only exposes embed SSO on an embed host", async () => {
-    stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    stubDecrypt();
     const app = await buildApp();
 
     const response = await injectEmbedSso(app, undefined, {
@@ -60,7 +60,7 @@ describe("embed SSO", () => {
   });
 
   it("creates an independent embed session and signs it as embed", async () => {
-    const fetchMock = stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    const fetchMock = stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
       { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
@@ -89,26 +89,22 @@ describe("embed SSO", () => {
       subUserId: "101",
       uid: 9001,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls.map(([url, init]) => ({
       body: JSON.parse(String(init && "body" in init ? init.body : "{}")),
       url,
-    }))).toEqual(expect.arrayContaining([
+    }))).toEqual([
       {
-        body: { content: "enc-id" },
+        body: { content: "embed-handoff-token" },
         url: `https://java.internal${SMP_EMBED_AES_DECRYPT_PATH}`,
       },
-      {
-        body: { content: "enc-uid" },
-        url: `https://java.internal${SMP_EMBED_AES_DECRYPT_PATH}`,
-      },
-    ]));
+    ]);
 
     await app.close();
   });
 
   it("reuses the current browser session for matching tickets", async () => {
-    stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
       { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
@@ -126,7 +122,7 @@ describe("embed SSO", () => {
   });
 
   it("refreshes the same embed session when its access cookie is no longer valid", async () => {
-    stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
       { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
@@ -150,7 +146,7 @@ describe("embed SSO", () => {
   });
 
   it("keeps separate sessions for separate browsers of the same account", async () => {
-    stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
       { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
@@ -169,10 +165,8 @@ describe("embed SSO", () => {
 
   it("switches identity when valid tickets target another embed account", async () => {
     stubDecrypt({
-      "enc-id-101": "101",
-      "enc-id-202": "202",
-      "enc-uid-9001": "9001",
-      "enc-uid-9002": "9002",
+      "handoff-token-101": validEmbedTicket(101, 9001),
+      "handoff-token-202": validEmbedTicket(202, 9002),
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
@@ -181,13 +175,11 @@ describe("embed SSO", () => {
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app, undefined, undefined, {
-      id: "enc-id-101",
-      uid: "enc-uid-9001",
+      token: "handoff-token-101",
     });
 
     const second = await injectEmbedSso(app, cookieHeader(first), undefined, {
-      id: "enc-id-202",
-      uid: "enc-uid-9002",
+      token: "handoff-token-202",
     });
 
     expect(second.statusCode).toBe(200);
@@ -198,9 +190,8 @@ describe("embed SSO", () => {
 
   it("rejects invalid tickets instead of falling back to the current cookie", async () => {
     stubDecrypt({
-      "enc-id": "101",
-      "enc-uid": "9001",
-      "wrong-uid": "9002",
+      "embed-handoff-token": validEmbedTicket(101, 9001),
+      "wrong-account-token": validEmbedTicket(101, 9002),
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
@@ -213,7 +204,7 @@ describe("embed SSO", () => {
       app,
       cookieHeader(first),
       undefined,
-      { id: "enc-id", uid: "wrong-uid" },
+      { token: "wrong-account-token" },
     );
 
     expect(rejected.statusCode).toBe(401);
@@ -229,8 +220,33 @@ describe("embed SSO", () => {
     await app.close();
   });
 
+  it("rejects malformed, expired, and future-dated handoff tokens", async () => {
+    stubDecrypt({
+      "expired-token": validEmbedTicket(101, 9001, -601),
+      "future-token": validEmbedTicket(101, 9001, 60),
+      "malformed-token": "101_9001",
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+
+    for (const token of ["malformed-token", "expired-token", "future-token"]) {
+      const response = await injectEmbedSso(app, undefined, undefined, { token });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({
+        error: { code: "EMBED_HANDOFF_REJECTED" },
+        success: false,
+      });
+    }
+    expect(authDb.embedSessions).toHaveLength(0);
+    await app.close();
+  });
+
   it("refreshes and revokes only the current embed session", async () => {
-    stubDecrypt({ "enc-id": "101", "enc-uid": "9001" });
+    stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
       { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
@@ -285,7 +301,11 @@ type EmbedSessionRow = {
   user_agent: string | null;
 };
 
-function stubDecrypt(values: Record<string, string>) {
+function stubDecrypt(
+  values: Record<string, string> = {
+    "embed-handoff-token": validEmbedTicket(101, 9001),
+  },
+) {
   const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as { content?: string };
     const data = body.content ? values[body.content] : undefined;
@@ -435,7 +455,7 @@ function injectEmbedSso(
   app: Awaited<ReturnType<typeof buildApp>>,
   cookie?: string,
   headers: { host?: string } = {},
-  payload = { id: "enc-id", uid: "enc-uid" },
+  payload = { token: "embed-handoff-token" },
 ) {
   return app.inject({
     headers: {
@@ -446,6 +466,11 @@ function injectEmbedSso(
     payload,
     url: "/api/auth/embed-sso",
   });
+}
+
+function validEmbedTicket(subUserId: number, uid: number, offsetSeconds = 0) {
+  const issuedAtSeconds = Math.floor(Date.now() / 1000) + offsetSeconds;
+  return `${subUserId}_${uid}_${issuedAtSeconds}`;
 }
 
 function cookieHeader(

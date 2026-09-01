@@ -67,8 +67,7 @@ export const AuthLoginRequestSchema = Type.Object({
 });
 
 export const AuthEmbedSsoRequestSchema = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 2048 }),
-  uid: Type.String({ minLength: 1, maxLength: 2048 }),
+  token: Type.String({ minLength: 1, maxLength: 4096 }),
 });
 
 export const AuthLoginResponseSchema = Type.Object({

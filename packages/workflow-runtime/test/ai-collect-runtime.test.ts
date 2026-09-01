@@ -107,6 +107,9 @@ describe("AI Collect runtime", () => {
     ))).resolves.toMatchObject({ kind: "inference-waiting" });
 
     expect(order).toEqual(["inference", "activate", "opening"]);
+    expect(harness.conversationPort.sendOpeningMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ workflowId: "31" }),
+    );
     expect(harness.directivePort.addOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.stringContaining("订单号"),
     }));

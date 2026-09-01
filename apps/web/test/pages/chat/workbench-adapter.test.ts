@@ -310,13 +310,16 @@ describe("adaptMessage", () => {
     });
   });
 
-  it("marks messages sent by Agent source", () => {
+  it.each([
+    WORKBENCH_MESSAGE_SOURCE.AGENT,
+    WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+  ])("marks messages sent by automated source %s", (source) => {
     expect(
       adaptMessage(
         {
           ...messageDto,
           senderType: "agent",
-          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+          source,
         } as WorkbenchMessageDto,
         customerProfilesById,
         accountsById,
@@ -324,9 +327,11 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       isAgentMessage: true,
-      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+      source,
     });
+  });
 
+  it("does not mark workbench messages as Agent messages", () => {
     expect(
       adaptMessage(
         {

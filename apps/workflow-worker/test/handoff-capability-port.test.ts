@@ -10,7 +10,10 @@ import {
   type Driver,
   type QueryResult,
 } from "kysely";
-import type { WorkflowHandoffCommand } from "@chatai/contracts";
+import {
+  WORKBENCH_MESSAGE_SOURCE,
+  type WorkflowHandoffCommand,
+} from "@chatai/contracts";
 import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   type WorkflowDatabase,
@@ -53,6 +56,8 @@ describe("Workflow Handoff Java port", () => {
       body: JSON.stringify({
         externalMessage: "正在转接",
         platform: 5,
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        sourceId: "workflow-1",
         systemMessage: "#workflow-1 SOP 转人工处理：客户需要人工处理",
         thirdExternalUserid: "customer-1",
         thirdUserid: "work-user-1",
@@ -90,6 +95,8 @@ describe("Workflow Handoff Java port", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       platform: 5,
+      source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+      sourceId: "workflow-1",
       systemMessage: "#workflow-1 SOP 转人工处理：客户需要人工处理",
       thirdExternalUserid: "customer-1",
       thirdUserid: "work-user-1",

@@ -31,6 +31,13 @@ Runtime 在调用 Worker Port 前生成以下类型化命令：
   "contractVersion": 1,
   "uid": 9,
   "idempotencyKey": "9:run-id:handoff-node-id:3",
+  "execution": {
+    "workflowId": "123",
+    "revision": 2,
+    "runId": "run-id",
+    "nodeId": "handoff-node-id",
+    "sequence": 3
+  },
   "command": {
     "seatId": 101,
     "recipient": {
@@ -52,7 +59,8 @@ Runtime 在调用 Worker Port 前生成以下类型化命令：
 - `operatorMessage` 只保存用户填写并完成变量解析的内容，不含固定前缀；必填且最长 100 字符
 - `customerMessage` 可为空，最长 100 字符
 - 两段消息已经完成变量解析，Java 不解析 selector
-- `source` 是语义枚举 `workflow`，Java 自行映射平台内部来源值
+- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时明确映射为 Workflow 来源 `source = 4`
+- `execution.workflowId` 用作 Java 请求的 `sourceId` 和客服提示中的 Workflow 标识；其余 `execution` 字段只用于排障
 
 ## 3. Java HTTP 请求
 
@@ -64,6 +72,8 @@ POST /third-internal/wap-embed/conversation/close-full-auto-with-message?idempot
 {
   "externalMessage": "正在为你转接人工，请稍等",
   "platform": 5,
+  "source": 4,
+  "sourceId": "123",
   "systemMessage": "#123 SOP 转人工处理：客户咨询退款，请及时接待",
   "thirdExternalUserid": "third-external-user-id",
   "thirdUserid": "third-user-id",
@@ -75,6 +85,7 @@ POST /third-internal/wap-embed/conversation/close-full-auto-with-message?idempot
 
 - `platform`、`thirdUserid` 来自 `xy_wap_embed_user_seat`
 - `thirdExternalUserid` 来自 Prepared Identity
+- `source = 4` 表示 Workflow 来源，`sourceId` 为原始 `workflowId`
 - `systemMessage` 由 Worker 按 `#{workflowId} SOP 转人工处理：{operatorMessage}` 拼接，必传非空；其中 `operatorMessage` 是 Runtime 已完成变量解析的用户内容
 - 只有 `customerMessage` 非空时才传 `externalMessage`；未配置时字段完全省略
 - `idempotentKey` 使用 Runtime 稳定 Execution Key，放在 GET query 参数中

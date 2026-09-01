@@ -90,6 +90,7 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
       signal: request.signal,
       token: this.options.token ?? null,
       uid: request.uid,
+      workflowId: request.execution.workflowId,
     });
   }
 }
@@ -104,6 +105,7 @@ export async function executeWorkflowMessage(
     signal: AbortSignal;
     token: string | null;
     uid: number;
+    workflowId: string;
   },
 ) {
   throwIfAborted(input.signal);
@@ -127,6 +129,7 @@ export async function executeWorkflowMessage(
       thirdUserId: seat.thirdUserId,
       token: input.token,
       uid: input.uid,
+      workflowId: input.workflowId,
     });
   }
 
@@ -219,6 +222,7 @@ async function sendWorkflowJavaMessage(input: {
   thirdUserId: string;
   token: string | null;
   uid: number;
+  workflowId: string;
 }) {
   const endpoint = new URL(JAVA_SEND_MESSAGE_PATH, `${input.baseUrl}/`);
   endpoint.searchParams.set("idempotentKey", input.idempotencyKey);
@@ -229,7 +233,8 @@ async function sendWorkflowJavaMessage(input: {
         msgData: input.msgData,
         platform: input.platform,
         sendType: JAVA_SEND_TYPE_SINGLE,
-        source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        sourceId: input.workflowId,
         thirdExternalUserid: input.thirdExternalUserId,
         thirdUserId: input.thirdUserId,
         uid: input.uid,

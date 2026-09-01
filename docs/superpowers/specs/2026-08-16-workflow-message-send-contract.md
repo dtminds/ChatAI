@@ -66,11 +66,11 @@ Runtime 交给 Worker Adapter 的逻辑结构如下：
 - `seatId` 由 Entry 事件确定，并随 `trigger.projection` 持久化到 Run Context
 - 同一个 Run 的所有 Message 节点和所有重试始终使用同一个 `seatId`
 - Worker 只把该 `seatId` 解析为 Java 请求所需的账号标识；账号不可用时终止节点，不得替换为其他账号
-- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时映射为自动执行来源
+- `source` 是 Runtime 内部语义枚举 `workflow`；Worker 调用 Java 时明确映射为 Workflow 来源 `source = 4`
 - `content` 已完成变量解析，最长 1000 字符；Java 不解析 selector
 - `attachments` 最多 5 个，支持 `image`、`file`、`h5`、`weapp`、`sphfeed`
 - 文本为空时必须至少有一个附件
-- `execution` 只用于排障，不参与业务判断
+- `execution.workflowId` 用作 Java 请求的 `sourceId`；其余 `execution` 字段只用于排障
 - Message 节点共享 60 秒执行 deadline；Task claim 使用至少 120 秒 lease，给最多 6 次串行发送和结果提交留出完整预算
 
 ## 3. Java 接口
@@ -81,7 +81,25 @@ Worker 复用现有接口：
 POST /third-internal/wap-embed/conversation/send-message?idempotentKey=<key>
 ```
 
-请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为冻结 `seatId` 对应的托管账号，`source = 3` 表示自动执行来源。
+请求体继续使用现有 `send-message` 契约。单聊固定使用 `sendType = 1`，`thirdExternalUserid` 为 Workflow Subject，`thirdUserId` 为冻结 `seatId` 对应的托管账号，`source = 4` 表示 Workflow 来源，`sourceId` 为原始 `workflowId`。
+
+```json
+{
+  "msgData": {
+    "msgtype": "text",
+    "text": "已经完成变量渲染的消息文本"
+  },
+  "platform": 5,
+  "sendType": 1,
+  "source": 4,
+  "sourceId": "31",
+  "thirdExternalUserid": "third-external-user-id",
+  "thirdUserId": "third-user-id",
+  "uid": 9
+}
+```
+
+同一 Workflow 的文本、附件和幂等重试始终使用相同的 `sourceId`。普通工作台和非 Workflow 自动发送不补传该字段。
 
 Message 节点的非空文本先发送，随后按配置顺序发送附件。每次调用使用 `${idempotencyKey}:<index>` 作为 query 参数；重试完整节点时各条消息复用原子键，已经成功的消息由 Java 幂等返回，不重复发送。
 

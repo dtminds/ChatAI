@@ -1,5 +1,6 @@
 import {
   decodeJavaInternalApiEnvelope,
+  WORKBENCH_MESSAGE_SOURCE,
   WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX,
   WorkflowHandoffCommandSchema,
   type WorkflowHandoffCommand,
@@ -122,6 +123,8 @@ export async function executeWorkflowHandoff(
           ? { externalMessage: input.command.customerMessage }
           : {}),
         platform: seat.platform,
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        sourceId: input.workflowId,
         systemMessage:
           `#${input.workflowId} ${WORKFLOW_HANDOFF_OPERATOR_MESSAGE_PREFIX}${input.command.operatorMessage}`,
         thirdExternalUserid: input.command.recipient.thirdExternalUserId,

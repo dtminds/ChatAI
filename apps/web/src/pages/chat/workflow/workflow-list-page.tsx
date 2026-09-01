@@ -98,7 +98,7 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
   { label: "已停止", value: "stopped" },
 ];
 
-const workflowListPageSize = 10;
+const workflowListPageSize = 5;
 
 type WorkflowListPaginationState = {
   cursors: Array<string | undefined>;

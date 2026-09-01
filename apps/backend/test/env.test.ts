@@ -10,7 +10,6 @@ import {
 } from "../src/config/env";
 
 const ENV_KEYS = [
-  "CHAT_EMBED_HOSTNAMES",
   "DATABASE_URL",
   "INSIGHTS_WORKER_OBSERVER_SUBJECTS",
   "INSIGHTS_WORKER_UID_ALLOWLIST",
@@ -111,7 +110,7 @@ describe("backend env config", () => {
         NODE_ENV: "production",
       }),
     ).toThrow(
-      "Missing required environment variables for production: DATABASE_URL, CHAT_EMBED_HOSTNAMES, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
+      "Missing required environment variables for production: DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
     );
 
     expect(() =>
@@ -120,7 +119,7 @@ describe("backend env config", () => {
         NODE_ENV: "production",
       }),
     ).toThrow(
-      "Missing required environment variables for production: CHAT_EMBED_HOSTNAMES, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
+      "Missing required environment variables for production: JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
     );
 
     expect(() =>
@@ -131,13 +130,12 @@ describe("backend env config", () => {
         NODE_ENV: "production",
       }),
     ).toThrow(
-      "Missing required environment variables for production: CHAT_EMBED_HOSTNAMES, JAVA_INTERNAL_API_BASE_URL",
+      "Missing required environment variables for production: JAVA_INTERNAL_API_BASE_URL",
     );
 
     expect(() =>
       validateBackendEnv({
         DATABASE_URL: "mysql://prod",
-        CHAT_EMBED_HOSTNAMES: "embed.example.com",
         JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
         JWT_PRIVATE_KEY: "private",
         JWT_PUBLIC_KEY: "public",
@@ -157,7 +155,6 @@ describe("backend env config", () => {
   it("uses the default Workflow capacity when no override is configured", () => {
     const productionEnv = {
       DATABASE_URL: "mysql://prod",
-      CHAT_EMBED_HOSTNAMES: "embed.example.com",
       JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
       JWT_PRIVATE_KEY: "private",
       JWT_PUBLIC_KEY: "public",
@@ -180,7 +177,6 @@ describe("backend env config", () => {
     expect(() =>
       validateBackendEnv({
         DATABASE_URL: "mysql://prod",
-        CHAT_EMBED_HOSTNAMES: "embed.example.com",
         JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
         JWT_PRIVATE_KEY: "private",
         JWT_PUBLIC_KEY: "public",
@@ -188,21 +184,6 @@ describe("backend env config", () => {
         WORKFLOW_ACTIVE_RUN_LIMIT: "1.5",
       }),
     ).toThrow("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
-  });
-
-  it("rejects blank production embed hostnames", () => {
-    expect(() =>
-      validateBackendEnv({
-        DATABASE_URL: "mysql://prod",
-        CHAT_EMBED_HOSTNAMES: "   ",
-        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
-        JWT_PRIVATE_KEY: "private",
-        JWT_PUBLIC_KEY: "public",
-        NODE_ENV: "production",
-      }),
-    ).toThrow(
-      "Missing required environment variables for production: CHAT_EMBED_HOSTNAMES",
-    );
   });
 
   it("validates worker observer subjects before backend startup", () => {

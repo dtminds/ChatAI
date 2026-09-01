@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
-  readonly VITE_CHAT_EMBED_HOSTNAMES?: string;
   readonly VITE_DEV_API_PROXY_SECURE?: string;
   readonly VITE_DEV_API_PROXY_TARGET?: string;
   readonly VITE_DEV_SERVER_HOST?: string;

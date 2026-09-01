@@ -50,14 +50,6 @@ describe("vite config env", () => {
     expect(config.proxy?.["/__cos"]).toBeUndefined();
   });
 
-  it("allows configured embed hostnames in development", () => {
-    const config = getViteDevServerConfig({
-      VITE_CHAT_EMBED_HOSTNAMES: "embed-dev.example.com",
-    }, "development", createEnvDir());
-
-    expect(config.allowedHosts).toContain("embed-dev.example.com");
-  });
-
   it("can disable TLS verification for self-signed API targets", () => {
     const proxy = buildDevProxyConfig({
       VITE_DEV_API_PROXY_SECURE: "false",
@@ -108,9 +100,7 @@ describe("vite config env", () => {
   });
 
   it("loads PaddleOCR runtime from the versioned CDN module in production builds", () => {
-    const config = createViteConfig("production", {
-      VITE_CHAT_EMBED_HOSTNAMES: "embed.example.com",
-    });
+    const config = createViteConfig("production");
     const rolldownOptions = config.build?.rolldownOptions;
 
     expect(rolldownOptions?.external).toContain("@paddleocr/paddleocr-js");
@@ -119,19 +109,6 @@ describe("vite config env", () => {
         "@paddleocr/paddleocr-js": getDefaultOcrCdnUrls().paddleModuleUrl,
       },
     });
-  });
-
-  it("requires embed hostnames for production builds", () => {
-    expect(() => createViteConfig("production", {
-      VITE_CHAT_EMBED_HOSTNAMES: "",
-    })).toThrow(
-      "Missing required environment variable for production build: VITE_CHAT_EMBED_HOSTNAMES",
-    );
-    expect(() => createViteConfig("production", {
-      VITE_CHAT_EMBED_HOSTNAMES: "   ",
-    })).toThrow(
-      "Missing required environment variable for production build: VITE_CHAT_EMBED_HOSTNAMES",
-    );
   });
 
   it("rejects malformed dev server ports", () => {

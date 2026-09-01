@@ -45,19 +45,6 @@ function readEnv(input: ViteDevEnv, mode: string, envDir: string) {
   };
 }
 
-function parseConfiguredHostnames(value: string | undefined) {
-  return [...new Set(
-    (value ?? "")
-      .split(",")
-      .map((hostname) => hostname.trim().toLowerCase().replace(/\.$/, ""))
-      .filter(Boolean),
-  )];
-}
-
-function hasConfiguredHostname(value: string | undefined) {
-  return parseConfiguredHostnames(value).length > 0;
-}
-
 export { parseCosDevProxyRequest, resolveCosDevProxyTarget, rewriteCosDevProxyPath };
 
 export function buildDevProxyConfig(env: ViteDevEnv = {}) {
@@ -82,10 +69,7 @@ export function getViteDevServerConfig(
   const env = readEnv(input, mode, envDir);
 
   return {
-    allowedHosts: [
-      "chat-dev.bokr.com.cn",
-      ...parseConfiguredHostnames(env.VITE_CHAT_EMBED_HOSTNAMES),
-    ],
+    allowedHosts: ["chat-dev.bokr.com.cn"],
     host: env.VITE_DEV_SERVER_HOST ?? "127.0.0.1",
     port: parsePort(env.VITE_DEV_SERVER_PORT, 8086),
     proxy: buildDevProxyConfig(env),
@@ -98,7 +82,6 @@ export function createViteConfig(
 ): UserConfig {
   const repoRoot = getRepoRoot();
   const env = readEnv(input, mode, repoRoot);
-  validateViteBuildEnv(env, mode);
   const paddleOcrModuleUrl = resolveOcrRuntimeUrls({
     paddleModuleUrl: env.VITE_OCR_PADDLE_MODULE_URL,
     paddleWorkerUrl: env.VITE_OCR_PADDLE_WORKER_URL,
@@ -139,17 +122,6 @@ export function createViteConfig(
       },
     },
   };
-}
-
-export function validateViteBuildEnv(env: ViteDevEnv, mode: string) {
-  if (
-    mode === "production"
-    && !hasConfiguredHostname(env.VITE_CHAT_EMBED_HOSTNAMES)
-  ) {
-    throw new Error(
-      "Missing required environment variable for production build: VITE_CHAT_EMBED_HOSTNAMES",
-    );
-  }
 }
 
 export default defineConfig(({ mode }) => createViteConfig(mode));

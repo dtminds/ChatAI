@@ -1,7 +1,4 @@
-import {
-  isChatEmbedHostname,
-  parseChatEmbedHostnames,
-} from "@chatai/contracts";
+import { isChatEmbedHostname } from "@chatai/contracts";
 
 export function isPagePathAllowedForHostname(
   hostname: string,
@@ -9,11 +6,7 @@ export function isPagePathAllowedForHostname(
 ) {
   const embedPath = pathname === "/embed" || pathname.startsWith("/embed/");
 
-  const configuredHostnames = parseChatEmbedHostnames(
-    import.meta.env.VITE_CHAT_EMBED_HOSTNAMES,
-  );
-
-  if (isChatEmbedHostname(hostname, configuredHostnames)) {
+  if (isChatEmbedHostname(hostname)) {
     return embedPath;
   }
 

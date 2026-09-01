@@ -1,17 +1,8 @@
-export function parseChatEmbedHostnames(value: string | undefined) {
-  return new Set(
-    (value ?? "")
-      .split(",")
-      .map(normalizeHostname)
-      .filter(Boolean),
-  );
-}
+export function isChatEmbedHostname(hostname: string) {
+  const serviceLabel = normalizeHostname(hostname).split(".", 1)[0] ?? "";
+  const serviceSegments = serviceLabel.split("-");
 
-export function isChatEmbedHostname(
-  hostname: string,
-  configuredHostnames: ReadonlySet<string>,
-) {
-  return configuredHostnames.has(normalizeHostname(hostname));
+  return serviceSegments.slice(1).includes("embed");
 }
 
 function normalizeHostname(hostname: string) {

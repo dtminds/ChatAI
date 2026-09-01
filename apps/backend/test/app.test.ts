@@ -93,7 +93,6 @@ async function createAuthenticatedSettingsApp(
 
 describe("backend app", () => {
   beforeEach(() => {
-    process.env.CHAT_EMBED_HOSTNAMES = "embed.example.com";
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
     process.env.NODE_ENV = "development";
   });
@@ -108,7 +107,6 @@ describe("backend app", () => {
     delete process.env.ALTCHA_PARALLELISM;
     delete process.env.AUTH_COOKIE_SECURE;
     delete process.env.AUTH_DEV_BYPASS;
-    delete process.env.CHAT_EMBED_HOSTNAMES;
     delete process.env.DATABASE_URL;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
@@ -1292,19 +1290,6 @@ describe("backend app", () => {
 
     await expect(buildApp()).rejects.toThrow(
       /Missing required environment variables for production: JAVA_INTERNAL_API_BASE_URL/,
-    );
-  });
-
-  it("requires CHAT_EMBED_HOSTNAMES in production", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
-    process.env.JWT_PRIVATE_KEY = "test-private-key";
-    process.env.JWT_PUBLIC_KEY = "test-public-key";
-    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
-    delete process.env.CHAT_EMBED_HOSTNAMES;
-
-    await expect(buildApp()).rejects.toThrow(
-      /Missing required environment variables for production: CHAT_EMBED_HOSTNAMES/,
     );
   });
 

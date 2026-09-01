@@ -113,8 +113,6 @@ jobs:
 
       - name: Build frontend
         run: pnpm --filter @chatai/web build
-        env:
-          VITE_CHAT_EMBED_HOSTNAMES: embed.example.com
 
   frontend:
     name: Frontend

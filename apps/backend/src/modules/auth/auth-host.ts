@@ -1,7 +1,4 @@
-import {
-  isChatEmbedHostname,
-  parseChatEmbedHostnames,
-} from "@chatai/contracts";
+import { isChatEmbedHostname } from "@chatai/contracts";
 import type { FastifyRequest } from "fastify";
 import { NotFoundError } from "../../shared/errors.js";
 import type { AuthSessionKind } from "./auth-session-store.js";
@@ -9,11 +6,7 @@ import type { AuthSessionKind } from "./auth-session-store.js";
 export function getRequestAuthSessionKind(
   request: Pick<FastifyRequest, "hostname">,
 ): AuthSessionKind {
-  const configuredHostnames = parseChatEmbedHostnames(
-    process.env.CHAT_EMBED_HOSTNAMES,
-  );
-
-  return isChatEmbedHostname(request.hostname, configuredHostnames)
+  return isChatEmbedHostname(request.hostname)
     ? "embed"
     : "app";
 }

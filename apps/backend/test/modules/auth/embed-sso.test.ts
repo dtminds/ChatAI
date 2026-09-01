@@ -6,11 +6,10 @@ import {
 } from "../../../src/modules/auth/auth-cookies.js";
 import { SMP_EMBED_AES_DECRYPT_PATH } from "../../../src/modules/auth/smp-embed-decrypt-port.js";
 
-const EMBED_HOST = "embed.example.com";
+const EMBED_HOST = "chat-embed.example.com";
 
 describe("embed SSO", () => {
   beforeEach(() => {
-    process.env.CHAT_EMBED_HOSTNAMES = EMBED_HOST;
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
@@ -23,7 +22,6 @@ describe("embed SSO", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     delete process.env.DATABASE_URL;
-    delete process.env.CHAT_EMBED_HOSTNAMES;
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
     delete process.env.JWT_DEV_SECRET;
@@ -46,16 +44,6 @@ describe("embed SSO", () => {
 
     expect(response.statusCode).toBe(404);
     expect(loginResponse.statusCode).toBe(404);
-    await app.close();
-  });
-
-  it("disables embed SSO when no embed hosts are configured", async () => {
-    delete process.env.CHAT_EMBED_HOSTNAMES;
-    const app = await buildApp();
-
-    const response = await injectEmbedSso(app);
-
-    expect(response.statusCode).toBe(404);
     await app.close();
   });
 

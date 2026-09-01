@@ -1796,6 +1796,7 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
   const sensitive = new Set([
     "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
     "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
+    "sourceId", "sourceIds", "addWayKey",
     "tagId", "tagIds", "audienceId", "audienceIds", "audienceGroupId", "audienceGroupIds", "groupId",
     "customerFieldId", "customerFieldIds", "fieldId", "fieldIds", "materialId", "materialIds",
     "materialCollectionId", "materialCollectionIds", "modelId", "modelIds", "model",
@@ -1810,7 +1811,22 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
     }
     return result;
   };
-  return walk(draft) as WorkflowDraft;
+  const sanitized = structuredClone(draft);
+  sanitized.nodes = sanitized.nodes.map(node => {
+    const data = node.data as Record<string, unknown>;
+    if (data.kind === "customer-update" && Array.isArray(data.fields)) {
+      data.fields = data.fields.map(field => {
+        if (!isRecord(field)) return field;
+        const next = { ...field };
+        delete next.field;
+        return next;
+      });
+    }
+    if (data.kind === "audience-filter") data.groups = [];
+    if (data.kind === "message") data.attachments = [];
+    return { ...node, data: walk(data) as typeof node.data };
+  });
+  return sanitized;
 }
 
 function inferTemplateConfigurationItems(draft: WorkflowDraft) {
@@ -1828,12 +1844,15 @@ function inferTemplateConfigurationItems(draft: WorkflowDraft) {
       if (Array.isArray(data.seatIds)) addResource(node.id, "managed-account", "seatIds", "选择托管账号");
       if (Array.isArray(data.workUserIds)) addResource(node.id, "managed-account", "workUserIds", "选择企微成员");
       if (Array.isArray(data.friendAddWayIds)) addResource(node.id, "friend-add-way", "friendAddWayIds", "选择添加方式");
+      if (Array.isArray(data.triggers) && data.triggers.some(trigger => isRecord(trigger) && trigger.type === "contact.friend_added" && Array.isArray(trigger.sourceIds))) {
+        addResource(node.id, "friend-add-way", "triggers.sourceIds", "选择添加方式");
+      }
     }
     if (node.data.kind === "tag" || node.data.kind === "tag-query") {
       if (Array.isArray(data.tagIds)) addResource(node.id, "tag", "tagIds", "选择标签");
     }
     if (node.data.kind === "audience-filter") {
-      if (data.audienceGroupId || data.audienceId || Array.isArray(data.audienceIds)) addResource(node.id, "audience-group", "audienceGroupId", "选择人群");
+      if (Array.isArray(data.groups) && data.groups.length > 0) addResource(node.id, "audience-group", "groups", "选择人群");
     }
     if (node.data.kind === "llm" && typeof data.modelId === "string") {
       addResource(node.id, "model", "modelId", "选择模型");

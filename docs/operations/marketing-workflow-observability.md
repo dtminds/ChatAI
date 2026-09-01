@@ -31,6 +31,7 @@ Entry and Task error details are sampled independently by failure category, with
 | `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
 | `workflow.worker.readiness.failed` | `error` | `role`, `err` |
+| `workflow.entitlement.deactivated` | `info` | `uid`, `workflowId`, `workflowType`, `source`, `affectedDefinitions` |
 | `workflow.entry.consume.summary` | `info` | `received`, `admitted`, `noMatch`, `deduplicated`, `rejected`, `runtimeRejected`, `nacked` |
 | `workflow.entry.consume.rejected` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
 | `workflow.entry.consume.failed` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
@@ -41,7 +42,7 @@ Entry and Task error details are sampled independently by failure category, with
 | `workflow.capability.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
 | `workflow.node.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
-Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `taskStatusesReconciled`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
+Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `uid`, `workflowId`, `workflowType`, `source`, `affectedDefinitions`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `taskStatusesReconciled`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
 
 ## History Retention
 

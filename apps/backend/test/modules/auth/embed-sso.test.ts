@@ -183,6 +183,41 @@ describe("embed SSO", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().data.subUser).toMatchObject({ subUserId: "202", uid: 9002 });
     expect(authDb.embedSessions.map((session) => session.sub_user_id)).toEqual([101, 202]);
+    expect(authDb.embedSessions.map((session) => session.revoked_at === null)).toEqual([false, true]);
+    await app.close();
+  });
+
+  it("revokes the old embed refresh session when switching after access expiry", async () => {
+    stubDecrypt({
+      "handoff-token-101": validEmbedTicket(101, 9001),
+      "handoff-token-202": validEmbedTicket(202, 9002),
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "账号一", type: 0, uid: 9001 },
+      { id: 202, name: "账号二", type: 0, uid: 9002 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app, undefined, undefined, {
+      token: "handoff-token-101",
+    });
+
+    const second = await injectEmbedSso(
+      app,
+      cookieHeader(first),
+      { authorization: "Bearer expired-access-token" },
+      { token: "handoff-token-202" },
+    );
+
+    expect(second.statusCode).toBe(200);
+    expect(authDb.embedSessions.map((session) => session.revoked_at === null)).toEqual([false, true]);
+
+    const oldRefresh = await app.inject({
+      headers: { cookie: cookieHeader(first), host: EMBED_HOST },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    expect(oldRefresh.statusCode).toBe(401);
     await app.close();
   });
 

@@ -149,7 +149,21 @@ export async function loginWithSmpEmbed(
       };
     }
 
+    await store.revoke(currentAccess.user);
     return issueAuthSession(app, subUser, metadata, "embed", store);
+  }
+
+  const currentRefreshSession = currentCredentials.refreshToken
+    ? await store.findActiveByRefreshTokenHash(
+      hashRefreshToken(currentCredentials.refreshToken),
+    )
+    : undefined;
+
+  if (
+    currentRefreshSession
+    && currentRefreshSession.sub_user_id !== subUser.id
+  ) {
+    await store.revokeById(currentRefreshSession);
   }
 
   if (currentCredentials.refreshToken) {

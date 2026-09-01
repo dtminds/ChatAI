@@ -29,3 +29,14 @@ export function postChatEmbedParentMessage(message: ChatEmbedParentMessage) {
 export function postChatEmbedLoadError(code: ChatEmbedLoadErrorCode) {
   postChatEmbedParentMessage({ code, type: "load-error" });
 }
+
+export function postChatEmbedNavigate(path: string) {
+  const workflowListPath = path === "/embed/workflows"
+    || path === "/embed/workflows/";
+
+  postChatEmbedParentMessage({
+    fullscreen: path.startsWith("/embed/workflows/") && !workflowListPath,
+    path,
+    type: "navigate",
+  });
+}

@@ -69,7 +69,6 @@ import {
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
-import { postSmpBasementChatEmbedNavigate } from "./workflow-embed-bridge";
 
 export function WorkflowPage({
   repository,
@@ -205,9 +204,6 @@ export function WorkflowListPage({
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
       const path = getWorkflowDocumentPath(surface, document.id);
-      if (surface.embedded) {
-        postSmpBasementChatEmbedNavigate(path, true);
-      }
       navigate(path);
       return true;
     }
@@ -369,9 +365,7 @@ export function WorkflowListPage({
             className="h-10 px-4"
             onClick={() => {
               if (surface.embedded) {
-                const path = getWorkflowCreatePath(surface);
-                postSmpBasementChatEmbedNavigate(path, true);
-                navigate(path);
+                navigate(getWorkflowCreatePath(surface));
                 return;
               }
 
@@ -395,7 +389,6 @@ export function WorkflowListPage({
           <WorkflowListTable
             detailBasePath={surface.webBasePath}
             loading={status === "loading" && items.length === 0}
-            notifyParentOnOpen={surface.embedded}
             onDelete={(workflow) => {
               setDeleteTarget(workflow);
             }}

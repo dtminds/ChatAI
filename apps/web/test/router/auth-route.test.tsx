@@ -240,6 +240,7 @@ describe("auth routes", () => {
           element: <EmbedRootLayout />,
           children: [
             { path: "embed/workflows", element: <div>嵌入内容</div> },
+            { path: "embed/workflows/31", element: <div>嵌入编辑器</div> },
           ],
         },
       ],
@@ -264,6 +265,72 @@ describe("auth routes", () => {
     expect(await screen.findByText("嵌入内容")).toBeInTheDocument();
     expect(mock.history.get.filter((request) => request.url === "/embed/auth/session")).toHaveLength(2);
     expect(useAuthStore.getState().status).toBe("authenticated");
+
+    await router.navigate("/embed/workflows/31");
+
+    expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === "/embed/auth/session")).toHaveLength(2);
+  });
+
+  it("derives parent fullscreen state from the current embed route", async () => {
+    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
+    setEmbedAccessToken("embed-access-token");
+    useAuthStore.getState().setSession(operatorSubUser);
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <EmbedRootLayout />,
+          children: [
+            { path: "embed/workflows", element: <div>嵌入列表</div> },
+            { path: "embed/workflows/31", element: <div>嵌入编辑器</div> },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/embed/workflows", "/embed/workflows/31"],
+        initialIndex: 1,
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        channel: "smp-basement-chat-embed",
+        fullscreen: true,
+        path: "/embed/workflows/31",
+        type: "navigate",
+      },
+      "*",
+    );
+
+    await router.navigate(-1);
+
+    expect(await screen.findByText("嵌入列表")).toBeInTheDocument();
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        channel: "smp-basement-chat-embed",
+        fullscreen: false,
+        path: "/embed/workflows",
+        type: "navigate",
+      },
+      "*",
+    );
+
+    await router.navigate(1);
+
+    expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
+    expect(postMessage).toHaveBeenLastCalledWith(
+      {
+        channel: "smp-basement-chat-embed",
+        fullscreen: true,
+        path: "/embed/workflows/31",
+        type: "navigate",
+      },
+      "*",
+    );
   });
 
   it("logs in embed workflows with an encrypted handoff token", async () => {

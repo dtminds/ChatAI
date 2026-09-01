@@ -186,6 +186,24 @@ export class AuthSessionStore {
     );
   }
 
+  async revokeById(session: Pick<ActiveSessionRow, "id" | "session_version" | "sub_user_id">) {
+    await this.db
+      .updateTable(this.table)
+      .set({ revoked_at: new Date() })
+      .where("id", "=", session.id)
+      .where("sub_user_id", "=", session.sub_user_id)
+      .where("session_version", "=", session.session_version)
+      .where("revoked_at", "is", null)
+      .execute();
+
+    await invalidateSession(
+      this.cache,
+      this.cacheKeys,
+      String(session.id),
+      this.logger,
+    );
+  }
+
   async revokeSubUserSessions(subUserId: number) {
     await this.db
       .updateTable(this.table)

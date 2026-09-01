@@ -60,7 +60,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
-import { postSmpBasementChatEmbedNavigate } from "./workflow-embed-bridge";
 import { WorkflowStatusBadge } from "./workflow-status-badge";
 
 export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
@@ -68,7 +67,6 @@ export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 export function WorkflowListTable({
   detailBasePath = "/chat/workflows",
   loading,
-  notifyParentOnOpen = false,
   onDelete,
   onLifecycleAction,
   onRename,
@@ -78,7 +76,6 @@ export function WorkflowListTable({
 }: {
   detailBasePath?: string;
   loading: boolean;
-  notifyParentOnOpen?: boolean;
   onDelete: (workflow: WorkflowListItem) => void;
   onLifecycleAction: (workflow: WorkflowListItem, action: WorkflowLifecycleAction) => void;
   onRename: (workflow: WorkflowListItem) => void;
@@ -142,7 +139,6 @@ export function WorkflowListTable({
             <WorkflowListRow
               detailBasePath={detailBasePath}
               key={workflow.id}
-              notifyParentOnOpen={notifyParentOnOpen}
               onDelete={() => onDelete(workflow)}
               onLifecycleAction={action => onLifecycleAction(workflow, action)}
               onRename={() => onRename(workflow)}
@@ -158,7 +154,6 @@ export function WorkflowListTable({
 
 function WorkflowListRow({
   detailBasePath,
-  notifyParentOnOpen,
   onDelete,
   onLifecycleAction,
   onRename,
@@ -166,7 +161,6 @@ function WorkflowListRow({
   workflow,
 }: {
   detailBasePath: string;
-  notifyParentOnOpen: boolean;
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
@@ -197,9 +191,6 @@ function WorkflowListRow({
           <Link
             aria-label={`打开 ${workflow.name}`}
             className="block min-w-0 flex-1 text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-            onClick={() => {
-              notifyParentWorkflowEditor(editorPath, notifyParentOnOpen);
-            }}
             to={editorPath}
           >
             <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
@@ -225,7 +216,6 @@ function WorkflowListRow({
       <TablePinnedCell className="whitespace-nowrap rounded-r-[8px] border-y border-r border-border/70 px-3 py-4 text-right">
         <WorkflowRowMenu
           editorPath={editorPath}
-          notifyParentOnOpen={notifyParentOnOpen}
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
           onRename={onRename}
@@ -318,15 +308,8 @@ function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListIt
   );
 }
 
-function notifyParentWorkflowEditor(path: string, enabled: boolean) {
-  if (enabled) {
-    postSmpBasementChatEmbedNavigate(path, true);
-  }
-}
-
 function WorkflowRowMenu({
   editorPath,
-  notifyParentOnOpen,
   onDelete,
   onLifecycleAction,
   onRename,
@@ -334,7 +317,6 @@ function WorkflowRowMenu({
   workflow,
 }: {
   editorPath: string;
-  notifyParentOnOpen: boolean;
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
@@ -356,23 +338,13 @@ function WorkflowRowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link
-            onClick={() => {
-              notifyParentWorkflowEditor(editorPath, notifyParentOnOpen);
-            }}
-            to={editorPath}
-          >
+          <Link to={editorPath}>
             <HugeiconsIcon icon={DashboardCircleEditIcon} size={16} strokeWidth={1.8} />
             编辑
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link
-            onClick={() => {
-              notifyParentWorkflowEditor(`${editorPath}/data`, notifyParentOnOpen);
-            }}
-            to={`${editorPath}/data`}
-          >
+          <Link to={`${editorPath}/data`}>
             <HugeiconsIcon icon={Activity01Icon} size={16} strokeWidth={1.8} />
             数据
           </Link>

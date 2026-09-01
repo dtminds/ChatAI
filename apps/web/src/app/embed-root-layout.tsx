@@ -21,6 +21,7 @@ import {
 } from "@/lib/embed-access-token";
 import {
   postChatEmbedLoadError,
+  postChatEmbedNavigate,
   type ChatEmbedLoadErrorCode,
 } from "@/lib/embed-parent-bridge";
 import {
@@ -82,15 +83,9 @@ export function EmbedRootLayout() {
 
   const location = useLocation();
   const appliedHandoffLocationRef = useRef<string | null>(null);
+  const handoffInitializedRef = useRef(false);
   const handoffTokenRef = useRef<string | null>(null);
-
-  if (appliedHandoffLocationRef.current !== location.key) {
-    applyEmbedAuthHandoff(location.search);
-    handoffTokenRef.current = getRememberedEmbedHandoffToken();
-    appliedHandoffLocationRef.current = location.key;
-  }
-
-  const handoffToken = handoffTokenRef.current;
+  const forceNextSyncRef = useRef(false);
   const clearSession = useAuthStore((state) => state.clearSession);
   const setChecking = useAuthStore((state) => state.setChecking);
   const setSession = useAuthStore((state) => state.setSession);
@@ -104,8 +99,35 @@ export function EmbedRootLayout() {
   const lastSubUserIdRef = useRef<string | null>(null);
   const [loadFailure, setLoadFailure] =
     useState<ChatEmbedLoadErrorCode | null>(null);
-  const [retryNonce, setRetryNonce] = useState(0);
-  const hasAccessToken = !handoffToken && Boolean(getEmbedAccessToken());
+  const [handoffReady, setHandoffReady] = useState(false);
+  const [syncNonce, setSyncNonce] = useState(0);
+  const hasAccessToken = handoffReady
+    && !handoffTokenRef.current
+    && Boolean(getEmbedAccessToken());
+
+  useEffect(() => {
+    if (appliedHandoffLocationRef.current === location.key) {
+      return;
+    }
+
+    appliedHandoffLocationRef.current = location.key;
+    applyEmbedAuthHandoff(location.search);
+    handoffTokenRef.current = getRememberedEmbedHandoffToken();
+
+    if (!handoffInitializedRef.current) {
+      handoffInitializedRef.current = true;
+      setHandoffReady(true);
+      return;
+    }
+
+    if (handoffTokenRef.current) {
+      setSyncNonce((value) => value + 1);
+    }
+  }, [location.key, location.search]);
+
+  useEffect(() => {
+    postChatEmbedNavigate(location.pathname);
+  }, [location.pathname]);
 
   useEffect(() => {
     authStatusRef.current = status;
@@ -116,6 +138,8 @@ export function EmbedRootLayout() {
   }, [subUserId]);
 
   useEffect(() => {
+    if (!handoffReady) return;
+
     let isActive = true;
     setLoadFailure(null);
 
@@ -154,11 +178,18 @@ export function EmbedRootLayout() {
       resetWorkbenchSession();
       lastSubUserIdRef.current = null;
       reportFailure(code);
-      clearSession(location.pathname);
+      clearSession();
     };
 
     const syncSession = async (force = false) => {
-      if (!force && authStatusRef.current === "authenticated" && hasAccessToken) {
+      const handoffToken = handoffTokenRef.current;
+
+      if (
+        !force
+        && authStatusRef.current === "authenticated"
+        && !handoffToken
+        && Boolean(getEmbedAccessToken())
+      ) {
         return;
       }
 
@@ -194,7 +225,9 @@ export function EmbedRootLayout() {
       }
     };
 
-    void syncSession(retryNonce > 0);
+    const force = forceNextSyncRef.current;
+    forceNextSyncRef.current = false;
+    void syncSession(force);
     const unsubscribe = subscribeAuthSessionChanged(() => {
       void syncSession(true);
     });
@@ -205,20 +238,23 @@ export function EmbedRootLayout() {
     };
   }, [
     clearSession,
-    hasAccessToken,
-    location.key,
-    location.pathname,
+    handoffReady,
     resetWorkbenchSession,
-    retryNonce,
     setChecking,
     setSession,
+    syncNonce,
   ]);
+
+  const retrySession = () => {
+    forceNextSyncRef.current = true;
+    setSyncNonce((value) => value + 1);
+  };
 
   if (loadFailure) {
     return (
       <EmbedLoadFailureView
         code={loadFailure}
-        onRetry={() => setRetryNonce((value) => value + 1)}
+        onRetry={retrySession}
       />
     );
   }
@@ -250,7 +286,7 @@ export function EmbedRootLayout() {
     return (
       <EmbedLoadFailureView
         code="EMBED_HANDOFF_REQUIRED"
-        onRetry={() => setRetryNonce((value) => value + 1)}
+        onRetry={retrySession}
       />
     );
   }

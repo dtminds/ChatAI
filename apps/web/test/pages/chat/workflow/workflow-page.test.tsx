@@ -644,7 +644,6 @@ describe("Agent workflow page", () => {
 
     render(<RouterProvider router={router} />);
 
-    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
     const row = await screen.findByRole("row", { name: new RegExp(document.name) });
     expect(within(row).queryByRole("link", { name: "编辑" })).not.toBeInTheDocument();
 
@@ -654,18 +653,8 @@ describe("Agent workflow page", () => {
 
     await user.click(editLink);
 
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: `/embed/workflows/${document.id}`,
-        type: "navigate",
-      },
-      "*",
-    );
     expect(router.state.location.pathname).toBe(`/embed/workflows/${document.id}`);
     expect(await screen.findByRole("heading", { name: document.name })).toBeInTheDocument();
-    postMessage.mockRestore();
   });
 
   it("opens data from the embedded Workflow list in fullscreen", async () => {
@@ -692,7 +681,6 @@ describe("Agent workflow page", () => {
 
     render(<RouterProvider router={router} />);
 
-    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
     const row = await screen.findByRole("row", { name: new RegExp(document.name) });
 
     await user.click(within(row).getByRole("button", { name: `操作 ${document.name}` }));
@@ -701,18 +689,8 @@ describe("Agent workflow page", () => {
 
     await user.click(dataLink);
 
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: `/embed/workflows/${document.id}/data`,
-        type: "navigate",
-      },
-      "*",
-    );
     expect(router.state.location.pathname).toBe(`/embed/workflows/${document.id}/data`);
     expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
-    postMessage.mockRestore();
   });
 
   it("creates WeCom SOPs without showing a type selector from the embedded Workflow list", async () => {
@@ -735,18 +713,8 @@ describe("Agent workflow page", () => {
     ], { initialEntries: ["/embed/workflows"] });
 
     render(<RouterProvider router={router} />);
-    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
     await user.click(getWorkflowCreateButton());
 
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: "/embed/workflows/new",
-        type: "navigate",
-      },
-      "*",
-    );
     expect(router.state.location.pathname).toBe("/embed/workflows/new");
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     await user.type(getWorkflowMetadataInputs().nameInput, "企微新客旅程");
@@ -755,7 +723,6 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
       workflowType: "wecom_sop",
     })));
-    postMessage.mockRestore();
   });
 
   it("collects workflow metadata before creating and opens the new canvas", async () => {

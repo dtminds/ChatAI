@@ -6281,7 +6281,7 @@ describe("MysqlWorkbenchService", () => {
       createMaterialCollection: vi.fn().mockResolvedValue(undefined),
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({
-          coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+          coverUrl: "https://media.example.com/static/image/default-redpacket.png",
           desc: "恭喜发财，大吉大利",
           href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
           title: "红包来啦",

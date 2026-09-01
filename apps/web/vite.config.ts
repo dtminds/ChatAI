@@ -50,10 +50,11 @@ export { parseCosDevProxyRequest, resolveCosDevProxyTarget, rewriteCosDevProxyPa
 export function buildDevProxyConfig(env: ViteDevEnv = {}) {
   const target = env.VITE_DEV_API_PROXY_TARGET ?? "http://127.0.0.1:3001";
   const secure = env.VITE_DEV_API_PROXY_SECURE !== "false";
+  const changeOrigin = env.VITE_DEV_API_PROXY_CHANGE_ORIGIN === "true";
 
   return {
     "/api": {
-      changeOrigin: true,
+      changeOrigin,
       secure,
       target,
     } satisfies ProxyOptions,
@@ -75,9 +76,12 @@ export function getViteDevServerConfig(
   };
 }
 
-export function createViteConfig(mode = "development"): UserConfig {
+export function createViteConfig(
+  mode = "development",
+  input: ViteDevEnv = {},
+): UserConfig {
   const repoRoot = getRepoRoot();
-  const env = readEnv({}, mode, repoRoot);
+  const env = readEnv(input, mode, repoRoot);
   const paddleOcrModuleUrl = resolveOcrRuntimeUrls({
     paddleModuleUrl: env.VITE_OCR_PADDLE_MODULE_URL,
     paddleWorkerUrl: env.VITE_OCR_PADDLE_WORKER_URL,

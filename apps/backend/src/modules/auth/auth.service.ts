@@ -1,5 +1,6 @@
 import type {
   AccountRole,
+  AuthEmbedSsoRequest,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthSubUser,
@@ -9,10 +10,6 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { CachePort } from "../../cache/cache-port.js";
-import {
-  invalidateSession,
-  invalidateSubUserSessions,
-} from "../../cache/invalidation.js";
 import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { AppError, UnauthorizedError } from "../../shared/errors.js";
@@ -23,7 +20,14 @@ import {
   deriveAccountType,
   getRolePermissions,
 } from "./permissions.js";
+import type { SmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
 import { canStartSupportInvestigation } from "./support-investigation-access.js";
+import {
+  createAuthSessionStore,
+  type ActiveSessionRow,
+  type AuthSessionKind,
+  type AuthSessionStore,
+} from "./auth-session-store.js";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
@@ -31,6 +35,7 @@ export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
   REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
 const SESSION_CACHE_TTL_SECONDS = 5 * 60;
 const NEGATIVE_SESSION_CACHE_TTL_SECONDS = 60;
+const EMBED_HANDOFF_TOKEN_MAX_AGE_SECONDS = 10 * 60;
 
 type SubUserCredentialRow = {
   id: number;
@@ -39,15 +44,6 @@ type SubUserCredentialRow = {
   role: string;
   type: number;
   uid: number;
-};
-
-type SessionRow = {
-  expires_at: Date;
-  id: number;
-  refresh_token_hash: string;
-  revoked_at: Date | null;
-  session_version: number;
-  sub_user_id: number;
 };
 
 export type LoginRequestMetadata = {
@@ -61,10 +57,23 @@ export class InvalidCredentialsError extends AppError {
   }
 }
 
+export class InvalidEmbedTicketError extends AppError {
+  constructor() {
+    super("EMBED_SSO_REJECTED", "当前账号不可用", 401);
+  }
+}
+
+export class InvalidEmbedHandoffTokenError extends AppError {
+  constructor() {
+    super("EMBED_HANDOFF_REJECTED", "登录信息已失效", 401);
+  }
+}
+
 export type AuthSessionTokens = {
   accessToken: string;
+  cookiesChanged: boolean;
   expiresIn: number;
-  refreshToken: string;
+  refreshToken?: string;
   refreshTokenExpiresIn: number;
   subUser?: AuthSubUser;
   tokenType: "Bearer";
@@ -91,15 +100,123 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
-  const session = await createOrReplaceSession(app.db, subUser.id, {
-    ip: metadata.ip,
-    userAgent: metadata.userAgent,
-  });
+  return issueAuthSession(app, subUser, metadata, "app");
+}
+
+export async function loginWithSmpEmbed(
+  app: FastifyInstance,
+  payload: AuthEmbedSsoRequest,
+  decryptPort: SmpEmbedDecryptPort,
+  metadata: LoginRequestMetadata = {},
+  currentCredentials: {
+    accessToken?: string;
+    refreshToken?: string;
+  } = {},
+): Promise<AuthSessionTokens> {
+  const decryptedToken = await decryptPort.decrypt(payload.token);
+  const identity = parseEmbedHandoffToken(decryptedToken);
+
+  if (!identity) {
+    throw new InvalidEmbedHandoffTokenError();
+  }
+
+  const { subUserId, uid } = identity;
+
+  const subUser = await findActiveSubUser(app.db, subUserId);
+
+  if (!subUser || subUser.uid !== uid) {
+    throw new InvalidEmbedTicketError();
+  }
+
+  const store = createAuthSessionStore(app, "embed");
+  const currentAccess = await readValidCurrentAccess(
+    app,
+    currentCredentials.accessToken,
+    "embed",
+  );
+
+  if (currentAccess) {
+    if (
+      currentAccess.user.subUserId === String(subUser.id)
+      && currentAccess.user.uid === subUser.uid
+    ) {
+      return {
+        accessToken: currentAccess.accessToken,
+        cookiesChanged: false,
+        expiresIn: currentAccess.expiresIn,
+        refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
+        subUser: mapAuthSubUser(subUser),
+        tokenType: "Bearer",
+      };
+    }
+
+    await store.revoke(currentAccess.user);
+    return issueAuthSession(app, subUser, metadata, "embed", store);
+  }
+
+  const currentRefreshSession = currentCredentials.refreshToken
+    ? await store.findActiveByRefreshTokenHash(
+      hashRefreshToken(currentCredentials.refreshToken),
+    )
+    : undefined;
+
+  if (
+    currentRefreshSession
+    && currentRefreshSession.sub_user_id !== subUser.id
+  ) {
+    await store.revokeById(currentRefreshSession);
+  }
+
+  if (currentCredentials.refreshToken) {
+    const refreshed = await refreshSession(
+      app,
+      currentCredentials.refreshToken,
+      "embed",
+      store,
+      { subUserId: subUser.id, uid: subUser.uid },
+      currentRefreshSession,
+    );
+
+    if (
+      refreshed
+      && refreshed.subUser?.subUserId === String(subUser.id)
+      && refreshed.subUser.uid === subUser.uid
+    ) {
+      return refreshed;
+    }
+  }
+
+  return issueAuthSession(app, subUser, metadata, "embed", store);
+}
+
+async function issueAuthSession(
+  app: FastifyInstance,
+  subUser: {
+    id: number;
+    name: string;
+    role?: string | null;
+    type?: number | null;
+    uid: number;
+  },
+  metadata: LoginRequestMetadata,
+  kind: AuthSessionKind,
+  store = createAuthSessionStore(app, kind),
+): Promise<AuthSessionTokens> {
+  const refreshToken = createRefreshToken();
+  const session = await store.create(
+    subUser.id,
+    hashRefreshToken(refreshToken),
+    createRefreshExpiry(),
+    {
+      ip: metadata.ip,
+      userAgent: metadata.userAgent,
+    },
+  );
   const subUserId = String(subUser.id);
-  await invalidateSubUserSessions(app.cache, app.cacheKeys, subUserId, app.log);
+  await store.invalidateSubUserSessions(subUserId);
   await writeSessionCache(
     app.cache,
-    app.cacheKeys,
+    store.cacheKeys,
     {
       expiresAt: session.expiresAt,
       sessionId: String(session.id),
@@ -108,12 +225,20 @@ export async function loginWithPassword(
     },
   );
   const accountRole = deriveAccountRole(subUser);
-  const accessToken = signAccessToken(app, subUserId, subUser.uid, session, accountRole);
+  const accessToken = signAccessToken(
+    app,
+    subUserId,
+    subUser.uid,
+    session,
+    accountRole,
+    kind,
+  );
 
   return {
     accessToken,
+    cookiesChanged: true,
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
-    refreshToken: session.refreshToken,
+    refreshToken,
     refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
     subUser: mapAuthSubUser(subUser),
     tokenType: "Bearer",
@@ -123,38 +248,15 @@ export async function loginWithPassword(
 export async function refreshAccessToken(
   app: FastifyInstance,
   refreshToken: string,
+  kind: AuthSessionKind = "app",
 ): Promise<AuthSessionTokens> {
-  const session = await findActiveSessionByRefreshToken(app.db, refreshToken);
+  const refreshed = await refreshSession(app, refreshToken, kind);
 
-  if (!session) {
+  if (!refreshed) {
     throw new UnauthorizedError();
   }
 
-  await touchSession(app.db, session.id);
-
-  const subUser = await findActiveSubUser(app.db, session.sub_user_id);
-
-  if (!subUser) {
-    throw new UnauthorizedError();
-  }
-
-  return {
-    accessToken: signAccessToken(
-      app,
-      String(session.sub_user_id),
-      subUser.uid,
-      {
-        id: session.id,
-        sessionVersion: session.session_version,
-      },
-      deriveAccountRole(subUser),
-    ),
-    expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
-    refreshToken,
-    refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
-    subUser: mapAuthSubUser(subUser),
-    tokenType: "Bearer",
-  };
+  return refreshed;
 }
 
 export async function getCurrentSession(
@@ -179,23 +281,16 @@ export async function getCurrentSession(
   return mapAuthSubUser(subUser, user.accessMode === "support_readonly");
 }
 
-export async function revokeSession(app: FastifyInstance, user: JwtUser) {
+export async function revokeSession(
+  app: FastifyInstance,
+  user: JwtUser,
+  kind: AuthSessionKind = "app",
+) {
   if (user.accessMode === "support_readonly") {
     return { revoked: true };
   }
 
-  await app.db
-    .updateTable("xy_wap_embed_sub_user_session")
-    .set({
-      revoked_at: new Date(),
-    })
-    .where("id", "=", Number(user.sessionId))
-    .where("sub_user_id", "=", user.subUserId as never)
-    .where("session_version", "=", user.sessionVersion)
-    .where("revoked_at", "is", null)
-    .execute();
-
-  await invalidateSession(app.cache, app.cacheKeys, user.sessionId, app.log);
+  await createAuthSessionStore(app, kind).revoke(user);
 
   return { revoked: true };
 }
@@ -205,6 +300,7 @@ export async function verifyAccessSession(
   user: JwtUser,
   cache?: CachePort,
   cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
+  kind: AuthSessionKind = "app",
 ): Promise<boolean> {
   const sessionId = Number(user.sessionId);
 
@@ -214,11 +310,13 @@ export async function verifyAccessSession(
     !Number.isSafeInteger(user.sessionVersion) ||
     !Number.isSafeInteger(user.uid) ||
     user.uid <= 0
+    || !isSessionKindAllowed(user, kind)
   ) {
     return false;
   }
 
-  const sessionKey = cacheKeys.authSession(user.sessionId);
+  const store = createAuthSessionStore({ cache, cacheKeys, db }, kind);
+  const sessionKey = store.cacheKeys.authSession(user.sessionId);
   const cachedSession = await readSessionCache(cache, sessionKey);
 
   if (
@@ -237,15 +335,7 @@ export async function verifyAccessSession(
     return true;
   }
 
-  const session = await db
-    .selectFrom("xy_wap_embed_sub_user_session")
-    .select(["id", "expires_at"])
-    .where("id", "=", sessionId)
-    .where("sub_user_id", "=", user.subUserId as never)
-    .where("session_version", "=", user.sessionVersion)
-    .where("revoked_at", "is", null)
-    .where("expires_at", ">", new Date())
-    .executeTakeFirst();
+  const session = await store.findActiveAccessSession(user);
 
   if (!session) {
     await cache?.set(
@@ -269,7 +359,7 @@ export async function verifyAccessSession(
   );
   await writeSessionCache(
     cache,
-    cacheKeys,
+    store.cacheKeys,
     {
       expiresAt: new Date(session.expires_at),
       sessionId: user.sessionId,
@@ -309,84 +399,89 @@ async function findActiveSubUser(db: Kysely<Database>, subUserId: number) {
     .executeTakeFirst();
 }
 
-async function createOrReplaceSession(
-  db: Kysely<Database>,
-  subUserId: number,
-  metadata: { ip?: string; userAgent?: string },
-) {
-  const refreshToken = createRefreshToken();
-  const expiresAt = createRefreshExpiry();
-
-  await db
-    .insertInto("xy_wap_embed_sub_user_session")
-    .values({
-      expires_at: expiresAt,
-      ip: metadata.ip ?? null,
-      last_used_at: null,
-      refresh_token_hash: hashRefreshToken(refreshToken),
-      revoked_at: null,
-      session_version: 1,
-      sub_user_id: subUserId,
-      user_agent: metadata.userAgent ?? null,
-    })
-    .onDuplicateKeyUpdate((expressionBuilder) => ({
-      expires_at: expiresAt,
-      ip: metadata.ip ?? null,
-      last_used_at: null,
-      refresh_token_hash: hashRefreshToken(refreshToken),
-      revoked_at: null,
-      session_version: expressionBuilder("session_version", "+", 1),
-      user_agent: metadata.userAgent ?? null,
-    }))
-    .execute();
-
-  const session = await db
-    .selectFrom("xy_wap_embed_sub_user_session")
-    .select(["id", "session_version", "expires_at"])
-    .where("sub_user_id", "=", subUserId)
-    .orderBy("id", "desc")
-    .executeTakeFirstOrThrow();
-
-  return {
-    id: session.id,
-    expiresAt: session.expires_at,
-    refreshToken,
-    sessionVersion: session.session_version,
-  };
-}
-
-async function findActiveSessionByRefreshToken(
-  db: Kysely<Database>,
+async function refreshSession(
+  app: FastifyInstance,
   refreshToken: string,
-): Promise<SessionRow | undefined> {
+  kind: AuthSessionKind,
+  store = createAuthSessionStore(app, kind),
+  expectedIdentity?: { subUserId: number; uid: number },
+  knownSession?: ActiveSessionRow,
+): Promise<AuthSessionTokens | undefined> {
   if (!refreshToken.trim()) {
     return undefined;
   }
 
-  return db
-    .selectFrom("xy_wap_embed_sub_user_session")
-    .select([
-      "expires_at",
-      "id",
-      "refresh_token_hash",
-      "revoked_at",
-      "session_version",
-      "sub_user_id",
-    ])
-    .where("refresh_token_hash", "=", hashRefreshToken(refreshToken))
-    .where("revoked_at", "is", null)
-    .where("expires_at", ">", new Date())
-    .executeTakeFirst();
+  const session = knownSession ?? await store.findActiveByRefreshTokenHash(
+    hashRefreshToken(refreshToken),
+  );
+
+  if (
+    !session
+    || (expectedIdentity && session.sub_user_id !== expectedIdentity.subUserId)
+  ) {
+    return undefined;
+  }
+
+  const subUser = await findActiveSubUser(app.db, session.sub_user_id);
+
+  if (!subUser || (expectedIdentity && subUser.uid !== expectedIdentity.uid)) {
+    return undefined;
+  }
+
+  await store.touch(session.id);
+
+  return {
+    accessToken: signAccessToken(
+      app,
+      String(session.sub_user_id),
+      subUser.uid,
+      {
+        id: session.id,
+        sessionVersion: session.session_version,
+      },
+      deriveAccountRole(subUser),
+      kind,
+    ),
+    cookiesChanged: true,
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+    refreshToken,
+    refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
+    subUser: mapAuthSubUser(subUser),
+    tokenType: "Bearer",
+  };
 }
 
-async function touchSession(db: Kysely<Database>, sessionId: number) {
-  await db
-    .updateTable("xy_wap_embed_sub_user_session")
-    .set({
-      last_used_at: new Date(),
-    })
-    .where("id", "=", sessionId)
-    .execute();
+async function readValidCurrentAccess(
+  app: FastifyInstance,
+  accessToken: string | undefined,
+  kind: AuthSessionKind,
+) {
+  if (!accessToken) {
+    return undefined;
+  }
+
+  try {
+    const user = app.jwt.verify<JwtUser & { exp?: number }>(accessToken);
+    const valid = await verifyAccessSession(
+      app.db,
+      user,
+      app.cache,
+      app.cacheKeys,
+      kind,
+    );
+
+    if (!valid) {
+      return undefined;
+    }
+
+    const expiresIn = typeof user.exp === "number"
+      ? Math.max(1, user.exp - Math.floor(Date.now() / 1000))
+      : ACCESS_TOKEN_EXPIRES_IN_SECONDS;
+
+    return { accessToken, expiresIn, user };
+  } catch {
+    return undefined;
+  }
 }
 
 function signAccessToken(
@@ -395,14 +490,24 @@ function signAccessToken(
   uid: number,
   session: { id: number; sessionVersion: number },
   role: AccountRole = "operator",
+  kind: AuthSessionKind = "app",
 ) {
   return app.jwt.sign({
     roles: [role],
+    sessionKind: kind,
     sessionId: String(session.id),
     sessionVersion: session.sessionVersion,
     subUserId,
     uid,
   });
+}
+
+function isSessionKindAllowed(user: JwtUser, kind: AuthSessionKind) {
+  if (kind === "embed") {
+    return user.sessionKind === "embed";
+  }
+
+  return user.sessionKind === undefined || user.sessionKind === "app";
 }
 
 async function writeSessionCache(
@@ -573,4 +678,48 @@ function hashRefreshToken(refreshToken: string) {
 
 function createRefreshExpiry() {
   return new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function parsePositiveInteger(value: string) {
+  const normalized = value.trim();
+
+  if (!/^[1-9]\d*$/.test(normalized)) {
+    return undefined;
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isSafeInteger(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+function parseEmbedHandoffToken(value: string) {
+  const parts = value.trim().split("_");
+
+  if (parts.length !== 3) {
+    return undefined;
+  }
+
+  const subUserId = parsePositiveInteger(parts[0] ?? "");
+  const uid = parsePositiveInteger(parts[1] ?? "");
+  const issuedAtSeconds = parsePositiveInteger(parts[2] ?? "");
+
+  if (
+    subUserId === undefined
+    || uid === undefined
+    || issuedAtSeconds === undefined
+  ) {
+    return undefined;
+  }
+
+  const ageSeconds = Math.floor(Date.now() / 1000) - issuedAtSeconds;
+
+  if (ageSeconds < 0 || ageSeconds > EMBED_HANDOFF_TOKEN_MAX_AGE_SECONDS) {
+    return undefined;
+  }
+
+  return { subUserId, uid };
 }

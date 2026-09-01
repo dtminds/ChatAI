@@ -1,10 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  clearEmbedAuthHandoff,
+  rememberEmbedHandoffToken,
+} from "@/lib/embed-access-token";
 import {
   buildLoginRedirectPath,
+  isEmbedPath,
+  readEmbedSsoAttempt,
+  readEmbedSsoParams,
   resolveLoginRedirect,
 } from "@/pages/auth/auth-redirect";
 
 describe("auth redirect", () => {
+  afterEach(() => {
+    clearEmbedAuthHandoff();
+  });
+
   it("preserves the private pathname, search, and hash in the login URL", () => {
     expect(
       buildLoginRedirectPath({
@@ -14,6 +25,17 @@ describe("auth redirect", () => {
       }),
     ).toBe(
       "/login?redirect=%2Fchat%2Fsettings%2Froles%3Ftab%3Dpermissions%23matrix",
+    );
+  });
+
+  it("strips an embed handoff token from the login redirect", () => {
+    expect(
+      buildLoginRedirectPath({
+        pathname: "/embed/workflows/31",
+        search: "?tab=overview&token=secret-token",
+      }),
+    ).toBe(
+      "/login?redirect=%2Fembed%2Fworkflows%2F31%3Ftab%3Doverview",
     );
   });
 
@@ -41,5 +63,38 @@ describe("auth redirect", () => {
     expect(
       resolveLoginRedirect(`?redirect=${encodeURIComponent(redirect)}`),
     ).toBe("/chat");
+  });
+
+  it("reads the encrypted embed handoff token from the query string", () => {
+    expect(isEmbedPath("/embed/workflows")).toBe(true);
+    expect(isEmbedPath("/embed/future-module/31")).toBe(true);
+    expect(isEmbedPath("/chat/workflows")).toBe(false);
+    expect(readEmbedSsoParams("?token=embed-handoff-token")).toEqual({
+      token: "embed-handoff-token",
+    });
+    expect(readEmbedSsoParams("?id=enc-id&uid=enc-uid")).toBeNull();
+    expect(
+      readEmbedSsoAttempt({
+        pathname: "/login",
+        search: "?redirect=%2Fembed%2Fworkflows%3Ftoken%3Dembed-handoff-token",
+      }),
+    ).toEqual({
+      params: { token: "embed-handoff-token" },
+      returnPath: "/embed/workflows",
+    });
+  });
+
+  it("uses the captured handoff token once the URL has been cleaned", () => {
+    rememberEmbedHandoffToken("embed-handoff-token");
+
+    expect(
+      readEmbedSsoAttempt({
+        pathname: "/embed/workflows/31",
+        search: "",
+      }),
+    ).toEqual({
+      params: { token: "embed-handoff-token" },
+      returnPath: "/embed/workflows/31",
+    });
   });
 });

@@ -64,6 +64,7 @@ import {
 } from "./workflow-error-messages";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 import {
+  getWorkflowCreatePath,
   getWorkflowDocumentPath,
   useWorkflowSurface,
   WorkflowSurfaceProvider,
@@ -202,7 +203,8 @@ export function WorkflowListPage({
       }));
       setCreateDialogOpen(false);
       createRequestIdRef.current = null;
-      navigate(getWorkflowDocumentPath(surface, document.id));
+      const path = getWorkflowDocumentPath(surface, document.id);
+      navigate(path);
       return true;
     }
     catch (error) {
@@ -362,6 +364,11 @@ export function WorkflowListPage({
           <Button
             className="h-10 px-4"
             onClick={() => {
+              if (surface.embedded) {
+                navigate(getWorkflowCreatePath(surface));
+                return;
+              }
+
               setCreateDialogOpen(true);
             }}
             type="button"

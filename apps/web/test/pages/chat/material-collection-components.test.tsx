@@ -484,7 +484,7 @@ describe("material collection components", () => {
         item={createItem({
           bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
           content: {
-            coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+            coverUrl: "https://media.example.com/static/image/default-redpacket.png",
             desc: "恭喜发财，大吉大利",
             href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
             title: "红包来啦",
@@ -502,7 +502,7 @@ describe("material collection components", () => {
     expect(screen.queryByRole("link", { name: /红包来啦/ })).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "红包来啦" })).toHaveAttribute(
       "src",
-      "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+      "https://media.example.com/static/image/default-redpacket.png",
     );
   });
 

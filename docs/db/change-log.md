@@ -1,5 +1,31 @@
 # Database Change Log
 
+## 2026-08-31 Embed 独立登录会话
+
+- 新增 `xy_wap_embed_sub_user_embed_session`，为嵌入页面的每个浏览器登录保存独立 access/refresh Session。
+- 普通 ChatAI 继续使用 `xy_wap_embed_sub_user_session` 的单会话约束，不修改原表结构或登录语义。
+- Embed 换票优先复用当前 Host Cookie 对应的有效 Session；仅新浏览器或失效会话创建新记录，同一子账号再次换票时清理其已过期或已撤销记录。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_sub_user_embed_session (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '子账号ID',
+  refresh_token_hash VARCHAR(64) NOT NULL COMMENT 'refresh token哈希',
+  session_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '会话版本',
+  expires_at DATETIME NOT NULL COMMENT 'refresh token过期时间',
+  revoked_at DATETIME NULL COMMENT '吊销时间',
+  last_used_at DATETIME NULL COMMENT '最近刷新时间',
+  ip VARCHAR(45) NULL COMMENT '登录IP',
+  user_agent VARCHAR(512) NULL COMMENT '登录设备UA',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_sub_user_embed_session_refresh (refresh_token_hash),
+  KEY idx_sub_user_embed_session_sub_user_expiry (sub_user_id, expires_at, id)
+) COMMENT='嵌入页面子账号登录会话';
+```
+
 ## 2026-08-30 Workflow AI Collect 复合状态与多批推理
 
 - 新增 `xy_wap_embed_workflow_ai_collect_state`，保存每个 AI Collect Task 的字段进度、Agent Directive 生命周期、回调静默批次、消息游标和单飞推理状态。

@@ -14,6 +14,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_agent_user_memory_run_item",
   "xy_wap_embed_user_memory_worker_state",
   "xy_wap_embed_sub_user",
+  "xy_wap_embed_sub_user_embed_session",
   "xy_wap_embed_sub_user_session",
   "xy_wap_embed_user_seat",
   "xy_wap_embed_user_seat_agent",

@@ -45,7 +45,7 @@ chatai-prod
 
 三类环境的 Java 内部接口约定如下：
 
-- 开发环境：`JAVA_INTERNAL_API_BASE_URL=https://scrm-api-test01.st.iyouke.com/`
+- 开发环境：在不提交的 `apps/backend/.env.local` 中配置 `JAVA_INTERNAL_API_BASE_URL=<平台内部 API 地址>`；提交的 `.env.development` 不写该变量，避免覆盖私有配置
 - 测试环境：使用测试 Java 内部地址，由测试 namespace 的 Secret / ConfigMap 提供
 - 生产环境：使用生产 Java 内部地址，由生产 namespace 的 Secret / ConfigMap 提供
 
@@ -78,7 +78,8 @@ deploy/nginx.conf
 四个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
 
 ```bash
-docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
+docker build -f deploy/web.Dockerfile \
+  -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
 docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag> .
 docker build -f deploy/backend-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag> .
 docker build -f deploy/workflow-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag> .
@@ -107,7 +108,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 
 - 所有镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml` 和根 `package.json`，并按各自 Dockerfile 复制所需的 `apps/*`、`packages/*`；不要在子目录内单独执行上述 `docker build`。
 - 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
-- `deploy/web.Dockerfile` 不复制根目录 `.env.*` 文件。Workflow 临时账号/标签 fixture 仅通过 `VITE_WORKFLOW_FIXTURES_ENABLED` build arg 控制；其它自定义 `VITE_*` 变量仍需按需增加 `ARG`。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
+- `deploy/web.Dockerfile` 不复制根目录 `.env.*` 文件。Workflow 临时账号/标签 fixture 通过 `VITE_WORKFLOW_FIXTURES_ENABLED` build arg 控制。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
 
 ## Web 容器要求
 
@@ -119,7 +120,7 @@ VITE_WECHAT_EMOJI_BASE_URL=
 VITE_WORKFLOW_FIXTURES_ENABLED=false
 ```
 
-`VITE_*` 是构建时变量。test 尚未接入真实托管账号和标签数据源，构建时必须传入 `--build-arg VITE_WORKFLOW_FIXTURES_ENABLED=true`；production 必须保持默认 `false`。因此 Phase 3 的 test 与 production Web 镜像不能复用同一构建产物。
+`VITE_*` 是构建时变量。Embed Host 由前后端统一按主机名第一段中的独立 `-embed` 连字符段识别，不需要构建时 Host 名单，因此 Web 镜像不再因 Embed Host 不同而分别构建。Ingress 仍须只绑定并转发当前环境认可的 Host。test 尚未接入真实托管账号和标签数据源，构建时必须传入 `--build-arg VITE_WORKFLOW_FIXTURES_ENABLED=true`；production 必须保持默认 `false`。
 
 静态服务需要支持 React Router fallback：
 
@@ -478,7 +479,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - 已使用 `deploy/web.Dockerfile` 和 `deploy/backend.Dockerfile` 从仓库根目录构建镜像。
 - 已使用 `deploy/workflow-worker.Dockerfile` 构建 Debian/glibc Workflow Worker 镜像。
 - 镜像 tag 使用不可变版本号或 commit SHA。
-- Web 构建变量为 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
+- Web 构建变量包含 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
 - Web 镜像内的 `deploy/nginx.conf` 支持前端路由 fallback，且不会把 `/api/*` 回退到 `index.html`。
 - Backend `NODE_ENV=production`。
 - Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`JAVA_INTERNAL_API_BASE_URL`、`ALTCHA_HMAC_SECRET`。

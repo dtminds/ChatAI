@@ -55,9 +55,7 @@ export function RootLayout() {
     if (isDirectEndpointPath(location.pathname, location.search)) return undefined;
 
     const syncAuthSessionState = async (options: { force?: boolean } = {}) => {
-      if (!options.force && authStatusRef.current === "authenticated") {
-        return;
-      }
+      if (!options.force && authStatusRef.current === "authenticated") return;
 
       setChecking();
 
@@ -66,15 +64,10 @@ export function RootLayout() {
 
         if (isActive) {
           const nextSubUserId = response.data.subUser.subUserId;
-          // RootLayout may mount after login already populated auth-store, so
-          // compare the last synced session first and fall back to auth-store.
           const currentSubUserId =
             lastSubUserIdRef.current ?? authSubUserIdRef.current;
 
-          if (
-            currentSubUserId !== null &&
-            currentSubUserId !== nextSubUserId
-          ) {
+          if (currentSubUserId !== null && currentSubUserId !== nextSubUserId) {
             resetWorkbenchSession();
           }
 
@@ -90,9 +83,7 @@ export function RootLayout() {
       }
     };
 
-    if (isActive) {
-      void syncAuthSessionState();
-    }
+    void syncAuthSessionState();
     const unsubscribe = subscribeAuthSessionChanged(() => {
       void syncAuthSessionState({ force: true });
     });
@@ -115,10 +106,7 @@ export function RootLayout() {
     status !== "authenticated" &&
     checkedPath !== location.pathname;
 
-  if (
-    !publicPath &&
-    (status === "checking" || shouldVerifyPrivatePath)
-  ) {
+  if (!publicPath && (status === "checking" || shouldVerifyPrivatePath)) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">

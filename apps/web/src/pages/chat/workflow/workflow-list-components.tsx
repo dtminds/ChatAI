@@ -168,6 +168,7 @@ function WorkflowListRow({
   workflow: WorkflowListItem;
 }) {
   const status = getWorkflowStatus(workflow);
+  const editorPath = `${detailBasePath}/${workflow.id}`;
 
   return (
     <TableRow className="border-0 hover:bg-transparent">
@@ -190,7 +191,7 @@ function WorkflowListRow({
           <Link
             aria-label={`打开 ${workflow.name}`}
             className="block min-w-0 flex-1 text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-            to={`${detailBasePath}/${workflow.id}`}
+            to={editorPath}
           >
             <TableCellContent className="font-medium text-foreground">{workflow.name}</TableCellContent>
           </Link>
@@ -214,7 +215,7 @@ function WorkflowListRow({
       </TableCell>
       <TablePinnedCell className="whitespace-nowrap rounded-r-[8px] border-y border-r border-border/70 px-3 py-4 text-right">
         <WorkflowRowMenu
-          detailBasePath={detailBasePath}
+          editorPath={editorPath}
           onDelete={onDelete}
           onLifecycleAction={onLifecycleAction}
           onRename={onRename}
@@ -308,14 +309,14 @@ function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListIt
 }
 
 function WorkflowRowMenu({
-  detailBasePath,
+  editorPath,
   onDelete,
   onLifecycleAction,
   onRename,
   operationPending,
   workflow,
 }: {
-  detailBasePath: string;
+  editorPath: string;
   onDelete: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
@@ -337,13 +338,13 @@ function WorkflowRowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link to={`${detailBasePath}/${workflow.id}`}>
+          <Link to={editorPath}>
             <HugeiconsIcon icon={DashboardCircleEditIcon} size={16} strokeWidth={1.8} />
             编辑
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to={`${detailBasePath}/${workflow.id}/data`}>
+          <Link to={`${editorPath}/data`}>
             <HugeiconsIcon icon={Activity01Icon} size={16} strokeWidth={1.8} />
             数据
           </Link>

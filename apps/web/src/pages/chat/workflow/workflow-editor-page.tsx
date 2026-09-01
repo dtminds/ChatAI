@@ -143,7 +143,8 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
         clientRequestId: createRequestIdRef.current,
         ...input,
       }));
-      navigate(getWorkflowDocumentPath(surface, document.id), { replace: true });
+      const path = getWorkflowDocumentPath(surface, document.id);
+      navigate(path, { replace: true });
       return true;
     }
     catch (error) {
@@ -160,7 +161,7 @@ function WorkflowNewDocumentPage({ repository }: { repository: WorkflowDraftRepo
       <WorkflowCreateDialog
         onCreate={createDocument}
         onOpenChange={(open) => {
-          if (!open && !createPending) navigate(surface.webBasePath, { replace: true });
+          if (!open && !createPending) leaveWorkflowEditor(navigate, surface.webBasePath, { replace: true });
         }}
         open
         pending={createPending}
@@ -285,7 +286,7 @@ function WorkflowWorkspaceContent({
         lastSavedAt={topBar.lastSavedAt}
         metadataUpdating={topBar.metadataUpdating}
         mode={mode}
-        onBack={() => navigate(surface.webBasePath)}
+        onBack={() => leaveWorkflowEditor(navigate, surface.webBasePath)}
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
@@ -590,13 +591,23 @@ function WorkflowEditorResourceState({
           <div className="flex gap-2">
             {onRetry ? <Button onClick={onRetry} type="button">重试</Button> : null}
             <Button asChild variant="outline">
-              <Link to={surface.webBasePath}>返回列表</Link>
+              <Link to={surface.webBasePath}>
+                返回列表
+              </Link>
             </Button>
           </div>
         </EmptyContent>
       </Empty>
     </main>
   );
+}
+
+function leaveWorkflowEditor(
+  navigate: ReturnType<typeof useNavigate>,
+  path: string,
+  options?: { replace?: boolean },
+) {
+  navigate(path, options);
 }
 
 function createWorkflowCreateRequestId() {

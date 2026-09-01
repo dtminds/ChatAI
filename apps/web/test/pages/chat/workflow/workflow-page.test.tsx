@@ -624,18 +624,98 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
   });
 
+  it("opens the editor from the embedded Workflow list", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository("sop_embed");
+    const document = await repository.createDocument({
+      name: "营销画布编辑跳转",
+      workflowType: "wecom_sop",
+    });
+    const router = createMemoryRouter([
+      {
+        path: "/embed/workflows",
+        element: <WorkflowPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+    ], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+
+    const row = await screen.findByRole("row", { name: new RegExp(document.name) });
+    expect(within(row).queryByRole("link", { name: "编辑" })).not.toBeInTheDocument();
+
+    await user.click(within(row).getByRole("button", { name: `操作 ${document.name}` }));
+    const editLink = screen.getAllByRole("menuitem")[0];
+    expect(editLink).toHaveAttribute("href", `/embed/workflows/${document.id}`);
+
+    await user.click(editLink);
+
+    expect(router.state.location.pathname).toBe(`/embed/workflows/${document.id}`);
+    expect(await screen.findByRole("heading", { name: document.name })).toBeInTheDocument();
+  });
+
+  it("opens data from the embedded Workflow list in fullscreen", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository("sop_embed");
+    const document = await repository.createDocument({
+      name: "营销画布数据跳转",
+      workflowType: "wecom_sop",
+    });
+    const router = createMemoryRouter([
+      {
+        path: "/embed/workflows",
+        element: <WorkflowPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId/data",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+    ], { initialEntries: ["/embed/workflows"] });
+
+    render(<RouterProvider router={router} />);
+
+    const row = await screen.findByRole("row", { name: new RegExp(document.name) });
+
+    await user.click(within(row).getByRole("button", { name: `操作 ${document.name}` }));
+    const dataLink = screen.getByRole("menuitem", { name: "数据" });
+    expect(dataLink).toHaveAttribute("href", `/embed/workflows/${document.id}/data`);
+
+    await user.click(dataLink);
+
+    expect(router.state.location.pathname).toBe(`/embed/workflows/${document.id}/data`);
+    expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("creates WeCom SOPs without showing a type selector from the embedded Workflow list", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository("sop_embed");
     const createDocumentSpy = vi.spyOn(repository, "createDocument");
-    const router = createMemoryRouter([{
-      path: "/embed/workflows",
-      element: <WorkflowPage repository={repository} surface="sop_embed" />,
-    }], { initialEntries: ["/embed/workflows"] });
+    const router = createMemoryRouter([
+      {
+        path: "/embed/workflows",
+        element: <WorkflowPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/new",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+      {
+        path: "/embed/workflows/:workflowId",
+        element: <WorkflowEditorPage repository={repository} surface="sop_embed" />,
+      },
+    ], { initialEntries: ["/embed/workflows"] });
 
     render(<RouterProvider router={router} />);
     await user.click(getWorkflowCreateButton());
 
+    expect(router.state.location.pathname).toBe("/embed/workflows/new");
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     await user.type(getWorkflowMetadataInputs().nameInput, "企微新客旅程");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -832,6 +912,7 @@ describe("Agent workflow page", () => {
     const { router } = renderWorkflowPage("/chat/workflows");
     const table = await screen.findByRole("table");
     const row = within(table).getByRole("row", { name: /新人转化旅程/ });
+    const postMessage = vi.spyOn(window.parent, "postMessage").mockImplementation(() => undefined);
 
     await user.click(within(row).getByRole("button", { name: "操作 新人转化旅程" }));
     const menuItems = screen.getAllByRole("menuitem");
@@ -844,6 +925,8 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(router.state.location.pathname)
       .toBe("/chat/workflows/newcomer-conversion/data"));
     expect(await screen.findByRole("tab", { name: "数据" })).toHaveAttribute("aria-selected", "true");
+    expect(postMessage).not.toHaveBeenCalled();
+    postMessage.mockRestore();
   });
 
   it("marks published workflows that have unpublished changes", async () => {
@@ -1315,6 +1398,23 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
     });
+  });
+
+  it("cancels deleting a workflow from the row menu", async () => {
+    const user = userEvent.setup();
+    const baseRepository = getWorkflowDraftRepository();
+    const deleteDocument = vi.fn();
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, deleteDocument });
+
+    await screen.findByText("直播后跟进");
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(deleteDocument).not.toHaveBeenCalled();
   });
 
   it("reports delete failures through a toast", async () => {

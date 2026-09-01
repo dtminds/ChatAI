@@ -982,6 +982,9 @@ describe("backend app", () => {
         expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=; Max-Age=0`),
       ]),
     );
+    expect(readSetCookieHeader(logout, REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/auth/refresh",
+    );
     expect(me.statusCode).toBe(401);
 
     await app.close();

@@ -1292,3 +1292,22 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_support_investigation_log (
     target_uid, target_sub_user_id, started_at
   )
 ) COMMENT='问题排查启动记录';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_sub_user_embed_session (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '子账号ID',
+  refresh_token_hash VARCHAR(64) NOT NULL COMMENT 'refresh token哈希',
+  session_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '会话版本',
+  expires_at DATETIME NOT NULL COMMENT 'refresh token过期时间',
+  revoked_at DATETIME NULL COMMENT '吊销时间',
+  last_used_at DATETIME NULL COMMENT '最近刷新时间',
+  ip VARCHAR(45) NULL COMMENT '登录IP',
+  user_agent VARCHAR(512) NULL COMMENT '登录设备UA',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_sub_user_embed_session_refresh (refresh_token_hash),
+  KEY idx_sub_user_embed_session_sub_user_expiry (sub_user_id, expires_at, id)
+) COMMENT='嵌入页面子账号登录会话';

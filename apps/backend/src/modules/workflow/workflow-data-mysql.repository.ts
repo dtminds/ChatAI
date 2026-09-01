@@ -20,16 +20,36 @@ import {
 } from "@chatai/workflow-runtime";
 import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
+import { noopLogger, type AppLogger, type RequestAwareLogger } from "../../shared/logger.js";
 import { CURRENT_WORKBENCH_PLATFORM } from "../workbench-platform-scope.js";
 import type { WorkflowDataReader } from "./workflow-data.service.js";
+import type {
+  WecomContactDirectory,
+  WecomContactProfile,
+} from "./wecom-contact-java-client.js";
 
 type DataDatabase = Database & WorkflowDatabase;
+type WorkflowSubjectType = ReturnType<typeof decodeWorkflowSubjectType>;
+type WorkflowCustomerProfile = { avatar: string | null; name: string };
+
+const WORKFLOW_RECORD_WECOM_CONTACT_BATCH_LIMIT = 100;
+const UNKNOWN_CUSTOMER: WorkflowCustomerProfile = { avatar: null, name: "未知客户" };
 
 export class MysqlWorkflowDataReader implements WorkflowDataReader {
   private readonly db: Kysely<DataDatabase>;
+  private readonly logger: AppLogger | RequestAwareLogger;
+  private readonly wecomContactDirectory: WecomContactDirectory | undefined;
 
-  constructor(db: Kysely<Database>) {
+  constructor(
+    db: Kysely<Database>,
+    options: {
+      logger?: AppLogger | RequestAwareLogger;
+      wecomContactDirectory?: WecomContactDirectory;
+    } = {},
+  ) {
     this.db = db as unknown as Kysely<DataDatabase>;
+    this.logger = options.logger ?? noopLogger;
+    this.wecomContactDirectory = options.wecomContactDirectory;
   }
 
   async getCapacityUsage(input: { date: string; uid: number }) {
@@ -252,7 +272,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         customer: subjects.get(subjectKey(
           decodeWorkflowSubjectType(row.subject_type),
           row.subject_id,
-        )) ?? { avatar: null, name: "未知客户" },
+        )) ?? UNKNOWN_CUSTOMER,
         nextExecuteAt: row.next_execute_at ? toDate(row.next_execute_at).toISOString() : null,
         recordId: String(row.id),
         revision: row.revision,
@@ -351,7 +371,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       customer: customers.get(subjectKey(
         decodeWorkflowSubjectType(run.subject_type),
         run.subject_id,
-      )) ?? { avatar: null, name: "未知客户" },
+      )) ?? UNKNOWN_CUSTOMER,
       recordId: String(run.id),
       revision: run.revision,
       status: parseStatus(run.status),
@@ -383,14 +403,20 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     uid: number,
     subjects: Array<{
       subjectId: string;
-      subjectType: ReturnType<typeof decodeWorkflowSubjectType>;
+      subjectType: WorkflowSubjectType;
     }>,
   ) {
-    // TODO: Resolve wecom_contact through the Java subject resolver once that contract is available.
-    const ids = [...new Set(subjects
-      .filter((subject) => subject.subjectType === "chatai_contact")
-      .map((subject) => subject.subjectId))];
-    if (ids.length === 0) return new Map<string, { avatar: string | null; name: string }>();
+    const chataiIds = uniqueIds(subjects, "chatai_contact");
+    const wecomIds = uniqueWecomExternalUserIds(subjects);
+    const [chataiProfiles, wecomProfiles] = await Promise.all([
+      this.loadChatAiSubjects(uid, chataiIds),
+      this.loadWecomSubjects(uid, wecomIds),
+    ]);
+    return new Map([...chataiProfiles, ...wecomProfiles]);
+  }
+
+  private async loadChatAiSubjects(uid: number, ids: string[]) {
+    if (ids.length === 0) return new Map<string, WorkflowCustomerProfile>();
     const rows = await this.db.selectFrom("xy_wap_embed_contact")
       .select(["avatar", "name", "real_name", "third_external_userid"])
       .where("uid", "=", uid)
@@ -400,8 +426,31 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .execute();
     return new Map(rows.map(row => [subjectKey("chatai_contact", row.third_external_userid), {
       avatar: row.avatar?.trim() || null,
-      name: row.real_name?.trim() || row.name?.trim() || "未知客户",
+      name: row.real_name?.trim() || row.name?.trim() || UNKNOWN_CUSTOMER.name,
     }]));
+  }
+
+  private async loadWecomSubjects(uid: number, externalUserIds: number[]) {
+    if (externalUserIds.length === 0 || !this.wecomContactDirectory) {
+      return new Map<string, WorkflowCustomerProfile>();
+    }
+    try {
+      const contacts = await this.wecomContactDirectory.listByExternalUserIds({
+        externalUserIds,
+        uid,
+      });
+      return mapWecomContacts(contacts);
+    } catch (error) {
+      this.logger.error(
+        {
+          err: error,
+          externalUserIdCount: externalUserIds.length,
+          uid,
+        },
+        "企微客户资料补全失败",
+      );
+      return new Map<string, WorkflowCustomerProfile>();
+    }
   }
 }
 
@@ -409,8 +458,46 @@ function toWorkflowMetricDate(value: string) {
   return new Date(`${value}T00:00:00+08:00`);
 }
 
-function subjectKey(subjectType: ReturnType<typeof decodeWorkflowSubjectType>, subjectId: string) {
+function subjectKey(subjectType: WorkflowSubjectType, subjectId: string) {
   return `${subjectType}:${subjectId}`;
+}
+
+function uniqueIds(subjects: Array<{ subjectId: string; subjectType: WorkflowSubjectType }>, subjectType: WorkflowSubjectType) {
+  return [...new Set(subjects
+    .filter((subject) => subject.subjectType === subjectType)
+    .map((subject) => subject.subjectId))];
+}
+
+function uniqueWecomExternalUserIds(
+  subjects: Array<{ subjectId: string; subjectType: WorkflowSubjectType }>,
+) {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const subject of subjects) {
+    if (subject.subjectType !== "wecom_contact") continue;
+    const id = parseWecomExternalUserId(subject.subjectId);
+    if (id === null || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= WORKFLOW_RECORD_WECOM_CONTACT_BATCH_LIMIT) break;
+  }
+  return ids;
+}
+
+function parseWecomExternalUserId(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function mapWecomContacts(contacts: Map<number, WecomContactProfile>) {
+  return new Map([...contacts.entries()].map(([id, profile]) => [
+    subjectKey("wecom_contact", String(id)),
+    {
+      avatar: profile.avatar?.trim() || null,
+      name: profile.name.trim() || UNKNOWN_CUSTOMER.name,
+    },
+  ]));
 }
 
 function parseStatus(value: string): WorkflowEntryRecordStatus {

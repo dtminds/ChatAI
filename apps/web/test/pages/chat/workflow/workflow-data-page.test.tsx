@@ -1,8 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
+import MockAdapter from "axios-mock-adapter";
 import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkflowEntryRecordPage } from "@chatai/contracts";
+import { requestInstance } from "@/lib/request";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
@@ -15,6 +18,7 @@ import {
   resetWorkflowDocumentsForTest,
   type WorkflowDocument,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import { WorkflowSurfaceProvider } from "@/pages/chat/workflow/workflow-surface";
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -308,6 +312,64 @@ describe("WorkflowDataPage", () => {
     });
   });
 
+  it("opens all records with one HTTP request under StrictMode", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const startNode = document.publishedDraft!.nodes.find(node => node.data.kind === "start")!;
+    const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    const mock = new MockAdapter(requestInstance);
+    mock.onGet(`/server/embed/workflows/${document.id}/data`).reply(200, {
+      data: {
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [
+          { completed: 0, current: 0, entered: 9, incomplete: 0, nodeId: startNode.id, passed: 0 },
+        ],
+        publishedRevision: document.publishedRevision!,
+        summary: { completed: 0, current: 0, entered: 9, incomplete: 0 },
+      },
+      success: true,
+    });
+    mock.onGet(`/server/embed/workflows/${document.id}/records`).reply(200, {
+      data: {
+        items: [{
+          createdAt: "2026-07-12T09:00:00.000Z",
+          currentNodeId: waitNode.id,
+          customer: { avatar: null, name: "全部记录客户" },
+          nextExecuteAt: null,
+          recordId: "31",
+          revision: document.publishedRevision!,
+          status: "waiting",
+          subjectType: "wecom_contact",
+          updatedAt: "2026-07-12T10:00:00.000Z",
+        }],
+        nextCursor: null,
+      },
+      success: true,
+    });
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <StrictMode>
+          <WorkflowSurfaceProvider surface="sop_embed">
+            <ReactFlowProvider>
+              <WorkflowDataPage document={document} />
+            </ReactFlowProvider>
+          </WorkflowSurfaceProvider>
+        </StrictMode>,
+      );
+
+      const summary = await screen.findByRole("region", { name: "运行汇总" });
+      await user.click(within(summary).getByRole("button", { name: "查看全部记录" }));
+      expect(await screen.findByText("全部记录客户")).toBeInTheDocument();
+      expect(
+        mock.history.get.filter((request) => request.url === `/server/embed/workflows/${document.id}/records`),
+      ).toHaveLength(1);
+    } finally {
+      mock.restore();
+    }
+  });
+
   it("shows node metrics and opens filtered records with a customer trajectory", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
@@ -333,7 +395,7 @@ describe("WorkflowDataPage", () => {
         items: [{
           createdAt: "2026-07-12T09:00:00.000Z",
           currentNodeId: waitNode.id,
-          customer: { avatar: null, name: "张三" },
+          customer: { avatar: "https://cdn.example.com/zhang.png", name: "张三" },
           nextExecuteAt: "2026-07-13T10:00:00.000Z",
           recordId: "31",
           revision: document.publishedRevision!,

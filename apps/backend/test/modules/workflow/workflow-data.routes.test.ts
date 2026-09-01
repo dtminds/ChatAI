@@ -520,6 +520,83 @@ describe("workflow data routes", () => {
     ]);
   });
 
+  it("hydrates WeCom record customers from the Java contact list in one page batch", async () => {
+    const directory = {
+      listByExternalUserIds: vi.fn(async () => new Map([
+        [3267, { avatar: "https://cdn.example.com/a.png", name: "张三" }],
+        [3268, { avatar: null, name: "李四" }],
+      ])),
+    };
+    const reader = new MysqlWorkflowDataReader(createWecomRecordListDbMock([
+      { id: "41", subjectId: "3267", subjectType: 2 },
+      { id: "40", subjectId: "3268", subjectType: 2 },
+      { id: "39", subjectId: "3267", subjectType: 2 },
+    ]) as never, { wecomContactDirectory: directory });
+
+    const page = await reader.listRecords({ limit: 50, uid: 9, workflowId: "12" });
+
+    expect(directory.listByExternalUserIds).toHaveBeenCalledTimes(1);
+    expect(directory.listByExternalUserIds).toHaveBeenCalledWith({
+      externalUserIds: [3267, 3268],
+      uid: 9,
+    });
+    expect(page.items.map(item => item.customer)).toEqual([
+      { avatar: "https://cdn.example.com/a.png", name: "张三" },
+      { avatar: null, name: "李四" },
+      { avatar: "https://cdn.example.com/a.png", name: "张三" },
+    ]);
+  });
+
+  it("keeps one Java contact lookup at the records page bound", async () => {
+    const directory = {
+      listByExternalUserIds: vi.fn(async (input: { externalUserIds: number[] }) =>
+        new Map(input.externalUserIds.map(id => [id, { avatar: null, name: `客户${id}` }]))),
+    };
+    const reader = new MysqlWorkflowDataReader(createWecomRecordListDbMock(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: String(200 - index),
+        subjectId: String(3000 + index),
+        subjectType: 2,
+      })),
+    ) as never, { wecomContactDirectory: directory });
+
+    const page = await reader.listRecords({ limit: 100, uid: 9, workflowId: "12" });
+
+    expect(directory.listByExternalUserIds).toHaveBeenCalledTimes(1);
+    expect(directory.listByExternalUserIds.mock.calls[0]?.[0].externalUserIds).toHaveLength(100);
+    expect(page.items).toHaveLength(100);
+    expect(page.items[0]?.customer.name).toBe("客户3000");
+    expect(page.items[99]?.customer.name).toBe("客户3099");
+  });
+
+  it("does not query Java for ChatAI record customers", async () => {
+    const directory = { listByExternalUserIds: vi.fn() };
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock() as never, {
+      wecomContactDirectory: directory,
+    });
+
+    await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(directory.listByExternalUserIds).not.toHaveBeenCalled();
+  });
+
+  it("keeps WeCom records available when Java contact lookup fails", async () => {
+    const directory = {
+      listByExternalUserIds: vi.fn(async () => {
+        throw new Error("java unavailable");
+      }),
+    };
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      subjectId: "3267",
+      subjectType: 2,
+    }) as never, { wecomContactDirectory: directory });
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.customer).toEqual({ avatar: null, name: "未知客户" });
+    expect(detail.recordId).toBe("31");
+  });
+
   it("rejects data access for users without workflow administration permission", async () => {
     const reader = {
       getCapacityUsage: vi.fn(),
@@ -740,6 +817,8 @@ function createRecordDbMock(options: {
   nextExecuteAt?: Date | null;
   runCurrentNodeId?: string;
   runStatus?: string;
+  subjectId?: string;
+  subjectType?: number;
   terminalReason?: string | null;
 } = {}) {
   const draftJson = options.draftJson ?? JSON.stringify({
@@ -793,8 +872,8 @@ function createRecordDbMock(options: {
               next_execute_at: options.nextExecuteAt ?? null,
               revision: 3,
               status: options.runStatus ?? "waiting",
-              subject_id: "customer-1",
-              subject_type: 1,
+              subject_id: options.subjectId ?? "customer-1",
+              subject_type: options.subjectType ?? 1,
               terminal_reason: options.terminalReason ?? null,
               update_time: now,
             };
@@ -808,6 +887,39 @@ function createRecordDbMock(options: {
     },
   };
   return db;
+}
+
+function createWecomRecordListDbMock(runs: Array<{
+  id: string;
+  subjectId: string;
+  subjectType: number;
+}>) {
+  const now = new Date("2026-07-12T10:00:00.000Z");
+  return {
+    selectFrom(table: string) {
+      const builder = {
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table !== "xy_wap_embed_workflow_run") return [];
+          return runs.map(run => ({
+            create_time: now,
+            current_node_id: "wait-1",
+            id: run.id,
+            next_execute_at: null,
+            revision: 3,
+            status: "waiting",
+            subject_id: run.subjectId,
+            subject_type: run.subjectType,
+            update_time: now,
+          }));
+        },
+      };
+      return builder;
+    },
+  };
 }
 
 function createRecordListDbMock() {

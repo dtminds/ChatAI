@@ -314,9 +314,8 @@ export function WorkflowListPage({
         <AiHostingPageHeader
           actions={surface.surface === "chatai"
             && tenantOverview.overview?.canViewWorkflowObservability ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="secondary">
                 <Link to="/chat/workflows/observability">
-                  <HugeiconsIcon icon={ChartAreaIcon} size={17} strokeWidth={1.8} />
                   运行观测
                 </Link>
               </Button>
@@ -333,7 +332,7 @@ export function WorkflowListPage({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
-            className="w-auto"
+            className="w-auto shrink-0"
             onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
             value={statusFilter}
           >
@@ -350,7 +349,7 @@ export function WorkflowListPage({
             </TabsList>
           </Tabs>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
-            <div className="relative w-[280px] max-w-full">
+            <div className="relative w-48 max-w-full">
               <HugeiconsIcon
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 icon={Search01Icon}
@@ -366,7 +365,7 @@ export function WorkflowListPage({
               />
             </div>
             <Button
-              className="h-10 px-4"
+              className="h-10 shrink-0 px-4"
               onClick={() => {
                 if (surface.embedded) {
                   navigate(getWorkflowCreatePath(surface));

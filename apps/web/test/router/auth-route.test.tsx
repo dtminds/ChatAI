@@ -608,6 +608,25 @@ describe("auth routes", () => {
     });
   });
 
+  it("does not offer app navigation when an app path is opened on the embed host", async () => {
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      hostname: "chat-embed.localhost",
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/chat"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "页面不存在" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "返回首页" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps following the system theme without the account rail mounted", async () => {
     const mediaQuery = setSystemColorScheme(true);
     window.localStorage.setItem("chat-ai-theme", "system");

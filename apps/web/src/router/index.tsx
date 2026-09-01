@@ -221,7 +221,7 @@ function HostRestrictedRoot() {
   const hostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
 
   if (!isPagePathAllowedForHostname(hostname, location.pathname)) {
-    return withRouteSuspense(<NotFoundPage />);
+    return withRouteSuspense(<NotFoundPage showHomeLink={false} />);
   }
 
   return isEmbedPath(location.pathname) ? <EmbedRootLayout /> : <RootLayout />;

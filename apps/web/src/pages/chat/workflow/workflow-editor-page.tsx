@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/auth-store";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { WorkflowChecks } from "./canvas/workflow-checks";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
@@ -57,16 +56,12 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
-import "@xyflow/react/dist/style.css";
-import "./workflow-page.css";
 import {
   getWorkflowDocumentPath,
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
 import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
-import { canManageWorkflowTemplates } from "./workflow-template-access";
-import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
 export function WorkflowEditorPage({
   repository,
@@ -227,10 +222,6 @@ function WorkflowWorkspaceContent({
     },
   });
   const { canvas, checks, document: currentDocument, inspector, review, topBar, versionHistory } = workspace;
-  const templateManagerSubject = useAuthStore(state => state.subUser);
-  const canConvertToTemplate = Boolean(repository.convertToTemplate)
-    && canManageWorkflowTemplates(templateManagerSubject)
-    && currentDocument.permissions.canEdit;
   const shouldLoadManagedAccounts = inspector.isOpen
     && inspector.node?.data.kind === "start"
     && "seatIds" in inspector.node.data;
@@ -245,7 +236,6 @@ function WorkflowWorkspaceContent({
     && currentDocument.currentReview?.status !== "pending";
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   const [historyReview, setHistoryReview] = useState<WorkflowPublishReview | null>(null);
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const displayedReview = historyReview ?? (review.isOpen ? review.current : null);
   const displayedReviewVersion = displayedReview?.resultingRevision == null
     ? null
@@ -300,9 +290,6 @@ function WorkflowWorkspaceContent({
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onSubmitReview={topBar.onSubmitReview}
-        onEnable={topBar.onEnable}
-        onPause={topBar.onPause}
-        onResume={topBar.onResume}
         onModeChange={(nextMode) => navigate(getWorkflowDocumentPath(
           surface,
           document.id,
@@ -313,7 +300,6 @@ function WorkflowWorkspaceContent({
         onRestoreVersion={canRestoreVersion && versionHistory.previewVersion
           ? () => versionHistory.onRestoreVersion(versionHistory.previewVersion!)
           : undefined}
-        onConvertToTemplate={canConvertToTemplate ? () => setTemplateDialogOpen(true) : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
         previewVersionMeta={versionHistory.previewVersion
           ? versionHistory.previewVersion.publishedAt
@@ -323,7 +309,6 @@ function WorkflowWorkspaceContent({
         publishState={topBar.publishState}
         currentReview={topBar.currentReview}
         reviewActionState={topBar.reviewActionState}
-        lifecycleActionState={topBar.lifecycleActionState}
         publishedRevision={topBar.publishedRevision}
         restoreState={versionHistory.restoreState}
         runtimeStatus={topBar.runtimeStatus}
@@ -355,18 +340,6 @@ function WorkflowWorkspaceContent({
           />
         )}
       />
-      {canConvertToTemplate && repository.convertToTemplate ? (
-        <WorkflowTemplateConversionDialog
-          draftVersion={currentDocument.draftVersion ?? 1}
-          onConvert={input => Promise.resolve(repository.convertToTemplate!(currentDocument.id, input))}
-          onPublish={repository.publishTemplate
-            ? templateId => Promise.resolve(repository.publishTemplate!(templateId))
-            : undefined}
-          onOpenChange={setTemplateDialogOpen}
-          open={templateDialogOpen}
-          workflowName={currentDocument.name}
-        />
-      ) : null}
       {currentDocument.currentReview?.status === "rejected"
         && currentDocument.currentReview.reviewComment ? (
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-sm">

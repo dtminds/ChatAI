@@ -7,6 +7,7 @@ import type {
   OnNodesChange,
   Viewport,
 } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   applyNodeChanges,
   Background,
@@ -57,6 +58,7 @@ import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowBezierEdge } from "./workflow-edge";
 import { WorkflowNodePicker } from "./workflow-palette";
 import type { WorkflowNodePickerAddContext } from "./workflow-palette";
+import "../workflow-page.css";
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPE]: WorkflowNodeCard,
@@ -78,9 +80,13 @@ export function WorkflowCanvas({
   canUndo,
   edges,
   focusRequest,
+  fitViewOnInit = false,
+  hideAttribution = false,
   isReadOnly = false,
+  preview = false,
   canMoveNodes = !isReadOnly,
   showEditingTools = !isReadOnly,
+  showToolbar = true,
   nodes,
   nextRedoLabel,
   nextUndoLabel,
@@ -111,8 +117,12 @@ export function WorkflowCanvas({
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
   focusRequest?: WorkflowCanvasFocusRequest;
+  fitViewOnInit?: boolean;
+  hideAttribution?: boolean;
   isReadOnly?: boolean;
+  preview?: boolean;
   showEditingTools?: boolean;
+  showToolbar?: boolean;
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
@@ -234,8 +244,9 @@ export function WorkflowCanvas({
 
   return (
     <section
-      aria-label="工作流"
+      aria-label={preview ? "工作流预览" : "工作流"}
       className="agent-workflow-canvas absolute inset-0"
+      data-preview={preview ? "true" : undefined}
       ref={canvasRef}
       role="application"
     >
@@ -246,6 +257,8 @@ export function WorkflowCanvas({
         deleteKeyCode={null}
         edges={edges}
         edgeTypes={edgeTypes}
+        fitView={fitViewOnInit}
+        fitViewOptions={{ padding: 0.2 }}
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
         multiSelectionKeyCode={null}
@@ -256,8 +269,9 @@ export function WorkflowCanvas({
         nodes={flowNodes}
         nodesConnectable={!isReadOnly}
         nodesDraggable={canMoveNodes}
-        nodesFocusable={canMoveNodes || !isReadOnly}
-        edgesFocusable={!isReadOnly}
+        nodesFocusable={!preview && (canMoveNodes || !isReadOnly)}
+        proOptions={{ hideAttribution }}
+        edgesFocusable={!preview && !isReadOnly}
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}
         onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
@@ -277,6 +291,8 @@ export function WorkflowCanvas({
         panOnScroll={false}
         isValidConnection={onIsValidConnection}
         selectionOnDrag={false}
+        zoomOnDoubleClick
+        zoomOnPinch
         zoomOnScroll
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
@@ -286,29 +302,31 @@ export function WorkflowCanvas({
             node={activeInsertNode}
           />
         ) : null}
-        <WorkflowBottomToolbar
-          canRedo={canRedo}
-          canUndo={canUndo}
-          insertableNodeKinds={allowedInsertableNodeKinds}
-          disabled={isReadOnly}
-          fitView={() => fitView({ duration: 160, padding: 0.2 })}
-          nextRedoLabel={nextRedoLabel}
-          nextUndoLabel={nextUndoLabel}
-          onAddNode={onAddNode}
-          screenToFlowPosition={screenToFlowPosition}
-          onArrange={onArrange}
-          onPaletteOpenChange={onPaletteOpenChange}
-          onRedo={onRedo}
-          onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
-          onUndo={onUndo}
-          paletteOpen={paletteOpen}
-          showMiniMap={showMiniMap}
-          showEditingTools={showEditingTools}
-          zoom={zoom}
-          zoomIn={zoomIn}
-          zoomOut={zoomOut}
-          zoomTo={zoomTo}
-        />
+        {showToolbar ? (
+          <WorkflowBottomToolbar
+            canRedo={canRedo}
+            canUndo={canUndo}
+            insertableNodeKinds={allowedInsertableNodeKinds}
+            disabled={isReadOnly}
+            fitView={() => fitView({ duration: 160, padding: 0.2 })}
+            nextRedoLabel={nextRedoLabel}
+            nextUndoLabel={nextUndoLabel}
+            onAddNode={onAddNode}
+            screenToFlowPosition={screenToFlowPosition}
+            onArrange={onArrange}
+            onPaletteOpenChange={onPaletteOpenChange}
+            onRedo={onRedo}
+            onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
+            onUndo={onUndo}
+            paletteOpen={paletteOpen}
+            showMiniMap={showMiniMap}
+            showEditingTools={showEditingTools}
+            zoom={zoom}
+            zoomIn={zoomIn}
+            zoomOut={zoomOut}
+            zoomTo={zoomTo}
+          />
+        ) : null}
       </ReactFlow>
     </section>
   );

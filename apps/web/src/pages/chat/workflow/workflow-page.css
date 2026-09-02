@@ -55,6 +55,11 @@
   cursor: grabbing;
 }
 
+.agent-workflow-canvas[data-preview="true"] {
+  --workflow-grid: color-mix(in oklch, var(--foreground) 14%, transparent);
+  --workflow-edge: color-mix(in oklch, var(--foreground) 56%, var(--workflow-canvas-bg));
+}
+
 .agent-workflow-canvas .react-flow__node {
   border-radius: 16px;
 }

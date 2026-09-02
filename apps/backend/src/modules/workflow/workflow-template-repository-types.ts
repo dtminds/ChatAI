@@ -33,6 +33,7 @@ export type WorkflowTemplateListInput = {
 
 export type WorkflowTemplateRepository = {
   create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">): Promise<WorkflowTemplateRecord>;
+  deleteDraft(id: string): Promise<boolean>;
   update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "category" | "scene" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status">): Promise<WorkflowTemplateRecord | null>;
   find(id: string, status?: WorkflowTemplateStatus): Promise<WorkflowTemplateRecord | null>;
   list(input: WorkflowTemplateListInput): Promise<{ items: WorkflowTemplateRecord[]; total: number }>;

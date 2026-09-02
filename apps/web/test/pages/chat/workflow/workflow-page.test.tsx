@@ -110,6 +110,7 @@ vi.mock("@xyflow/react", async () => {
       edgeTypes,
       edges = [],
       deleteKeyCode,
+      fitView,
       maxZoom,
       minZoom,
       multiSelectionKeyCode,
@@ -117,6 +118,9 @@ vi.mock("@xyflow/react", async () => {
       nodes,
       nodesConnectable,
       nodesDraggable,
+      panOnDrag,
+      proOptions,
+      zoomOnScroll,
       onConnect,
       onEdgeClick,
       onNodeClick,
@@ -141,6 +145,7 @@ vi.mock("@xyflow/react", async () => {
       }>;
       edgeTypes?: Record<string, (props: any) => React.ReactNode>;
       deleteKeyCode?: unknown;
+      fitView?: boolean;
       maxZoom?: number;
       minZoom?: number;
       multiSelectionKeyCode?: unknown;
@@ -155,6 +160,9 @@ vi.mock("@xyflow/react", async () => {
       }>;
       nodesConnectable?: boolean;
       nodesDraggable?: boolean;
+      panOnDrag?: boolean;
+      proOptions?: { hideAttribution?: boolean };
+      zoomOnScroll?: boolean;
       onConnect?: (connection: { source: string; target: string }) => void;
       onEdgeClick?: (_event: unknown, edge: { id: string }) => void;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
@@ -175,10 +183,14 @@ vi.mock("@xyflow/react", async () => {
     }) => (
       <div
         data-delete-key-code={deleteKeyCode === null ? "disabled" : String(deleteKeyCode)}
+        data-fit-view={fitView ? "true" : "false"}
+        data-hide-attribution={proOptions?.hideAttribution ? "true" : "false"}
         data-max-zoom={maxZoom}
         data-min-zoom={minZoom}
         data-multi-selection-key-code={multiSelectionKeyCode === null ? "disabled" : String(multiSelectionKeyCode)}
+        data-pan-on-drag={panOnDrag ? "true" : "false"}
         data-testid="workflow-react-flow"
+        data-zoom-on-scroll={zoomOnScroll ? "true" : "false"}
       >
         <button
           onClick={() => onPaneClick?.()}
@@ -1113,7 +1125,6 @@ describe("Agent workflow page", () => {
       name,
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      requiredConfigurationCount: 1,
       scene: "客户运营",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1144,6 +1155,185 @@ describe("Agent workflow page", () => {
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 3 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));
+  });
+
+  it("previews and applies a published template from its card without changing the recommended list", async () => {
+    const user = userEvent.setup();
+    const recommendedTemplate = {
+      category: "通用",
+      coverUrl: null,
+      description: "推荐模板说明",
+      id: "featured-1",
+      name: "推荐模板样例",
+      nodeCount: 2,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      scene: "客户运营",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const browserTemplate = {
+      ...recommendedTemplate,
+      id: "browser-1",
+      name: "模板中心样例",
+    };
+    const get = vi.fn().mockResolvedValue({
+      ...recommendedTemplate,
+      configurationItems: [],
+      draft: createInitialDraft(),
+      status: "published" as const,
+    });
+    const apply = vi.fn().mockResolvedValue({ id: "applied-workflow" });
+    const withdraw = vi.fn();
+    const templateRepository: WorkflowTemplateRepository = {
+      apply,
+      get,
+      list: vi.fn(async input => input.featured
+        ? { items: [recommendedTemplate], total: 1 }
+        : { items: [browserTemplate], total: 1 }),
+      withdraw,
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+
+    const recommendationSection = await screen.findByRole("region", { name: "推荐模板" });
+    const templateCard = within(recommendationSection).getByRole("button", { name: /推荐模板样例/ });
+    expect(within(recommendationSection).queryByRole("button", { name: "预览 推荐模板样例" })).not.toBeInTheDocument();
+    expect(within(recommendationSection).queryByRole("button", { name: "一键应用 推荐模板样例" })).not.toBeInTheDocument();
+    await user.click(templateCard);
+
+    const previewDialog = await screen.findByRole("dialog");
+    expect(get).toHaveBeenCalledWith("featured-1");
+    expect(await within(previewDialog).findByRole("application", { name: "工作流预览" })).toHaveAttribute("data-preview", "true");
+    expect(within(previewDialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-pan-on-drag", "true");
+    expect(within(previewDialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-zoom-on-scroll", "true");
+    expect(within(previewDialog).getAllByTestId(/workflow-handle-/).length).toBeGreaterThan(0);
+    const previewActions = within(previewDialog).getByRole("group", { name: "模板操作" });
+    expect(within(previewActions).getByRole("button", { name: "使用模板" })).toBeInTheDocument();
+    expect(within(previewActions).queryByRole("button", { name: "更多模板操作" })).not.toBeInTheDocument();
+    await user.click(within(previewDialog).getByRole("button", { name: "关闭" }));
+
+    expect(within(recommendationSection).getByText("推荐模板样例")).toBeInTheDocument();
+    expect(within(recommendationSection).queryByText("模板中心样例")).not.toBeInTheDocument();
+    await user.click(templateCard);
+    const reopenedPreview = await screen.findByRole("dialog");
+    await user.click(within(within(reopenedPreview).getByRole("group", { name: "模板操作" })).getByRole("button", { name: "使用模板" }));
+
+    await waitFor(() => expect(apply).toHaveBeenCalledWith("featured-1", expect.objectContaining({
+      clientRequestId: expect.any(String),
+    })));
+  });
+
+  it("shows a clean template draft preview and lets template managers delete the draft", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "模板运营",
+      permissions: ["chat.access", "chat.send", "chat.takeover", "workflow_template_manage"],
+      role: "admin",
+      subUserId: "2",
+      uid: 101,
+    });
+    const draftTemplate = {
+      category: "通用",
+      coverUrl: null,
+      description: "尚未发布的模板",
+      id: "8",
+      name: "待发布模板",
+      nodeCount: 3,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      scene: "客户运营",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const templateDetail = {
+      ...draftTemplate,
+      configurationItems: [],
+      draft: createInitialDraft(),
+      status: "draft" as const,
+    };
+    const listDrafts = vi.fn()
+      .mockResolvedValueOnce({ items: [draftTemplate], total: 1 })
+      .mockResolvedValue({ items: [], total: 0 });
+    const deleteDraft = vi.fn().mockResolvedValue(undefined);
+    const templateRepository = {
+      apply: vi.fn(),
+      deleteDraft,
+      get: vi.fn(),
+      getDraft: vi.fn().mockResolvedValue(templateDetail),
+      list: vi.fn(async () => ({ items: [], total: 0 })),
+      listDrafts,
+      publish: vi.fn(),
+    } as WorkflowTemplateRepository & {
+      listDrafts: WorkflowTemplateRepository["list"];
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+
+    await user.click(await screen.findByRole("button", { name: "草稿箱" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("button", { name: /待发布模板/ }));
+
+    expect(await within(dialog).findByRole("heading", { name: "待发布模板" })).toBeInTheDocument();
+    expect(await within(dialog).findByRole("application", { name: "工作流预览" })).toHaveAttribute("data-preview", "true");
+    const draftActions = within(dialog).getByRole("group", { name: "模板操作" });
+    expect(within(draftActions).getByRole("button", { name: "更多模板操作" })).toBeInTheDocument();
+    expect(within(draftActions).getByRole("button", { name: "发布模板" })).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("画布工具")).not.toBeInTheDocument();
+    expect(within(dialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-fit-view", "true");
+    expect(within(dialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-hide-attribution", "true");
+    await user.click(within(draftActions).getByRole("button", { name: "更多模板操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "删除草稿" }));
+    const confirmDialog = await screen.findByRole("alertdialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: "删除" }));
+
+    expect(deleteDraft).toHaveBeenCalledWith("8");
+    expect(await within(dialog).findByText("暂无数据")).toBeInTheDocument();
+    expect(listDrafts).toHaveBeenCalledWith(expect.objectContaining({ limit: 8, page: 1 }));
+  });
+
+  it("lets template managers withdraw a published template from the overflow menu", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "模板运营",
+      permissions: ["chat.access", "chat.send", "chat.takeover", "workflow_template_manage"],
+      role: "admin",
+      subUserId: "2",
+      uid: 101,
+    });
+    const template = {
+      category: "通用",
+      coverUrl: null,
+      description: "已发布模板",
+      id: "9",
+      name: "可撤回模板",
+      nodeCount: 2,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      scene: "客户运营",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const withdraw = vi.fn().mockResolvedValue({ ...template, status: "draft" });
+    const repository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn().mockResolvedValue({ ...template, configurationItems: [], draft: createInitialDraft(), status: "published" }),
+      list: vi.fn(async input => input.featured ? { items: [template], total: 1 } : { items: [], total: 0 }),
+      withdraw,
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), repository);
+    await user.click(await screen.findByRole("button", { name: /可撤回模板/ }));
+    const dialog = await screen.findByRole("dialog");
+    const actions = within(dialog).getByRole("group", { name: "模板操作" });
+    await user.click(within(actions).getByRole("button", { name: "更多模板操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "撤回为草稿" }));
+    const confirmDialog = await screen.findByRole("alertdialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: "撤回" }));
+
+    await waitFor(() => expect(withdraw).toHaveBeenCalledWith("9"));
   });
 
   it("moves an inactive workflow from draft to ready after publishing", async () => {
@@ -1326,6 +1516,32 @@ describe("Agent workflow page", () => {
     await waitFor(() => {
       expect(getWorkflowDocument("newcomer-conversion").runtimeStatus).toBe("active");
     });
+  });
+
+  it("opens template conversion from the workflow row menu for template managers", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "模板运营",
+      permissions: ["chat.access", "chat.send", "chat.takeover", "workflow_template_manage"],
+      role: "admin",
+      subUserId: "2",
+      uid: 101,
+    });
+    const baseRepository = getWorkflowDraftRepository();
+    const repository = {
+      ...baseRepository,
+      convertToTemplate: vi.fn(),
+    };
+
+    renderWorkflowPage("/chat/workflows", repository);
+
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "转换为模板" }));
+
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("转换为模板");
+    expect(screen.getByRole("textbox", { name: "模板名称" })).toHaveValue("新人转化旅程");
   });
 
   it("does not offer activation for an unpublished draft", async () => {

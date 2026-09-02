@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import {
   resolveTablePagination,
   TablePagination,
@@ -40,6 +41,7 @@ import {
 } from "./workflow-draft-service";
 import type {
   WorkflowDraftRepository,
+  WorkflowDocument,
   WorkflowListItem,
 } from "./workflow-draft-service";
 import {
@@ -71,6 +73,8 @@ import {
 } from "./workflow-surface";
 import { WorkflowTemplateSection } from "./workflow-template-section";
 import type { WorkflowTemplateRepository } from "./workflow-template-repository";
+import { canManageWorkflowTemplates } from "./workflow-template-access";
+import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
 export function WorkflowPage({
   repository,
@@ -146,6 +150,11 @@ export function WorkflowListPage({
   const [stopTarget, setStopTarget] = useState<WorkflowListItem | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
+  const [conversionLoadingId, setConversionLoadingId] = useState<string | null>(null);
+  const [conversionTarget, setConversionTarget] = useState<WorkflowDocument | null>(null);
+  const templateManagerSubject = useAuthStore(state => state.subUser);
+  const canConvertToTemplate = Boolean(repository.convertToTemplate)
+    && canManageWorkflowTemplates(templateManagerSubject);
   useEffect(() => {
     setPagination(current => current.filterKey === listFilterKey
       ? current
@@ -274,6 +283,23 @@ export function WorkflowListPage({
     }
   };
 
+  const openTemplateConversion = async (workflow: WorkflowListItem) => {
+    if (!repository.convertToTemplate || conversionLoadingId) return;
+    setConversionLoadingId(workflow.id);
+    try {
+      const document = await Promise.resolve(repository.getDocument(workflow.id));
+      if (!document.permissions.canEdit) {
+        toast.error("操作失败，请稍后重试");
+        return;
+      }
+      setConversionTarget(document);
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
+    } finally {
+      setConversionLoadingId(null);
+    }
+  };
+
   return (
     <WorkflowSurfaceLayout>
       <section className="space-y-5">
@@ -362,6 +388,9 @@ export function WorkflowListPage({
             onDelete={(workflow) => {
               setDeleteTarget(workflow);
             }}
+            onConvertToTemplate={canConvertToTemplate
+              ? workflow => void openTemplateConversion(workflow)
+              : undefined}
             onLifecycleAction={(workflow, action) => {
               if (action === "stop") {
                 setStopTarget(workflow);
@@ -370,7 +399,7 @@ export function WorkflowListPage({
               void changeWorkflowLifecycle(workflow, action);
             }}
             onRename={openMetadataDialog}
-            operationPendingId={lifecyclePendingId}
+            operationPendingId={lifecyclePendingId ?? conversionLoadingId}
             sourceColumnLabel={surface.createWorkflowType === "wecom_sop"
               ? "企微成员"
               : "托管账号"}
@@ -405,6 +434,21 @@ export function WorkflowListPage({
         open={Boolean(metadataTarget)}
         pending={operationPending}
       />
+
+      {conversionTarget && repository.convertToTemplate ? (
+        <WorkflowTemplateConversionDialog
+          draftVersion={conversionTarget.draftVersion ?? 1}
+          onConvert={input => Promise.resolve(repository.convertToTemplate!(conversionTarget.id, input))}
+          onPublish={repository.publishTemplate
+            ? templateId => Promise.resolve(repository.publishTemplate!(templateId))
+            : undefined}
+          onOpenChange={(open) => {
+            if (!open) setConversionTarget(null);
+          }}
+          open
+          workflowName={conversionTarget.name}
+        />
+      ) : null}
 
       <WorkflowCreateDialog
         onCreate={createWorkflow}

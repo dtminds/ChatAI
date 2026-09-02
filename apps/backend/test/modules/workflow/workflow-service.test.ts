@@ -2019,6 +2019,67 @@ describe("WorkflowService", () => {
     })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
   });
 
+  it("lists unpublished template drafts for template managers", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(repository, { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const draft = await service.convertToTemplate(manager, source.id, {
+      category: "通用",
+      description: "稍后发布",
+      expectedDraftVersion: source.draftVersion,
+      name: "未发布模板",
+      scene: "客户运营",
+    });
+
+    const page = await service.listTemplateDrafts(manager, { limit: 8, page: 1 });
+
+    expect(page).toMatchObject({
+      items: [expect.objectContaining({ id: draft.id, name: "未发布模板" })],
+      total: 1,
+    });
+    await expect(service.getTemplateDraft(manager, draft.id)).resolves.toMatchObject({
+      id: draft.id,
+      status: "draft",
+    });
+    await expect(service.deleteTemplateDraft(operator, draft.id))
+      .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
+    await expect(service.deleteTemplateDraft(manager, draft.id)).resolves.toEqual({ id: draft.id });
+    await expect(service.getTemplateDraft(manager, draft.id))
+      .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_NOT_FOUND", statusCode: 404 });
+    await expect(service.listTemplateDrafts(operator, { limit: 8, page: 1 }))
+      .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
+  });
+
+  it("withdraws a published template back to the draft box without changing its version", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const draft = await service.convertToTemplate(manager, source.id, {
+      category: "通用",
+      description: "可撤回模板",
+      expectedDraftVersion: source.draftVersion,
+      name: "可撤回模板",
+      scene: "客户运营",
+    });
+    const published = await service.publishTemplate(manager, draft.id);
+
+    const withdrawn = await service.withdrawTemplate(manager, published.id);
+
+    expect(withdrawn).toMatchObject({ id: published.id, status: "draft", version: published.version });
+    await expect(service.getTemplate(manager, published.id)).rejects.toMatchObject({
+      code: "WORKFLOW_TEMPLATE_NOT_FOUND",
+      statusCode: 404,
+    });
+    await expect(service.getTemplateDraft(manager, published.id)).resolves.toMatchObject({
+      id: published.id,
+      status: "draft",
+      version: published.version,
+    });
+  });
+
   it("translates a requested template page into one repository offset", async () => {
     const templateRepository = new InMemoryWorkflowTemplateRepository();
     const list = vi.spyOn(templateRepository, "list");

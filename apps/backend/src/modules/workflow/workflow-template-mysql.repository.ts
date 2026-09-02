@@ -24,6 +24,13 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
     const row = await this.db.selectFrom(TABLE).selectAll().where("id", "=", String(result.insertId)).executeTakeFirstOrThrow();
     return map(row);
   }
+  async deleteDraft(id: string) {
+    const result = await this.db.deleteFrom(TABLE)
+      .where("id", "=", id)
+      .where("status", "=", "draft")
+      .executeTakeFirst();
+    return result.numDeletedRows > 0n;
+  }
   async update(input: Parameters<WorkflowTemplateRepository["update"]>[0]) {
     const result = await this.db.updateTable(TABLE).set({
       name: input.name, description: input.description, category: input.category, scene: input.scene,

@@ -39,9 +39,9 @@ import type {
   WorkflowVariableSelector,
   WorkflowTemplateApplicationRequest,
   WorkflowTemplateConversionRequest,
+  WorkflowTemplateConfigurationItem,
   WorkflowTemplateDetail,
   WorkflowTemplateListPage,
-  WorkflowTemplateConfigurationItem,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -525,11 +525,37 @@ export class WorkflowService {
     return { items: page.items.map(toTemplateListItem), total: page.total };
   }
 
+  async listTemplateDrafts(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string }): Promise<WorkflowTemplateListPage> {
+    assertWorkflowTemplateManage(scope);
+    const page = await this.requireTemplateRepository().list({
+      limit: input.limit,
+      offset: ((input.page ?? 1) - 1) * input.limit,
+      query: input.query?.trim() || undefined,
+      status: "draft",
+    });
+    return { items: page.items.map(toTemplateListItem), total: page.total };
+  }
+
   async getTemplate(scope: WorkflowOperatorScope, templateId: string): Promise<WorkflowTemplateDetail> {
     assertWorkflowAccess(scope);
     const item = await this.requireTemplateRepository().find(templateId, "published");
     if (!item) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
     return toTemplateDetail(item);
+  }
+
+  async getTemplateDraft(scope: WorkflowOperatorScope, templateId: string): Promise<WorkflowTemplateDetail> {
+    assertWorkflowTemplateManage(scope);
+    const item = await this.requireTemplateRepository().find(templateId, "draft");
+    if (!item) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    return toTemplateDetail(item);
+  }
+
+  async deleteTemplateDraft(scope: WorkflowOperatorScope, templateId: string) {
+    assertWorkflowTemplateManage(scope);
+    if (!await this.requireTemplateRepository().deleteDraft(templateId)) {
+      throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    }
+    return { id: templateId };
   }
 
   async applyTemplate(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateApplicationRequest) {
@@ -575,6 +601,19 @@ export class WorkflowService {
       templateVersion: template.status === "draft"
         ? template.templateVersion
         : template.templateVersion + 1,
+    }))!);
+  }
+
+  async withdrawTemplate(scope: WorkflowOperatorScope, templateId: string) {
+    assertWorkflowTemplateManage(scope);
+    const template = await this.requireTemplateRepository().find(templateId);
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    if (template.status !== "published") {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_NOT_PUBLISHED", "只有已发布模板可以撤回");
+    }
+    return toTemplateDetail((await this.requireTemplateRepository().update({
+      ...template,
+      status: "draft",
     }))!);
   }
 
@@ -1789,7 +1828,7 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
 
 
 function toTemplateListItem(item: any) {
-  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), requiredConfigurationCount: item.configurationItems.filter((configuration: WorkflowTemplateConfigurationItem) => configuration.requirement === "required").length, scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
 }
 function toTemplateDetail(item: any) {
   return { ...toTemplateListItem(item), configurationItems: item.configurationItems, draft: item.draft, status: item.status };

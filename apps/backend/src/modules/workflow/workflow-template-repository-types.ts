@@ -10,8 +10,7 @@ export type WorkflowTemplateRecord = {
   workflowType: WorkflowType;
   name: string;
   description: string;
-  category: string;
-  scene: string;
+  tags?: string[];
   coverUrl: string | null;
   draft: WorkflowDraft;
   configurationItems: WorkflowTemplateConfigurationItem[];
@@ -25,16 +24,15 @@ export type WorkflowTemplateListInput = {
   limit: number;
   offset?: number;
   query?: string;
-  category?: string;
-  scene?: string;
   workflowType?: WorkflowType;
   status?: WorkflowTemplateStatus;
+  tags?: string[];
 };
 
 export type WorkflowTemplateRepository = {
   create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">): Promise<WorkflowTemplateRecord>;
   deleteDraft(id: string): Promise<boolean>;
-  update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "category" | "scene" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status">): Promise<WorkflowTemplateRecord | null>;
+  update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "tags" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status">): Promise<WorkflowTemplateRecord | null>;
   find(id: string, status?: WorkflowTemplateStatus): Promise<WorkflowTemplateRecord | null>;
   list(input: WorkflowTemplateListInput): Promise<{ items: WorkflowTemplateRecord[]; total: number }>;
 };

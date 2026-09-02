@@ -28,7 +28,6 @@ export interface WorkflowDefinitionTable {
 }
 
 export interface WorkflowTemplateTable {
-  category: string;
   configuration_json: JsonText;
   cover_url: string | null;
   create_time: GeneratedDate;
@@ -36,7 +35,7 @@ export interface WorkflowTemplateTable {
   draft_json: JsonText;
   id: Generated<DatabaseId>;
   name: string;
-  scene: string;
+  tags_json: JsonText;
   status: string;
   template_version: number;
   update_time: GeneratedDate;

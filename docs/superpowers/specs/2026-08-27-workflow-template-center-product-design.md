@@ -111,13 +111,13 @@ Workflow Template 的不可变发布快照。用户每次查看和应用的都�
 - Workflow Type。
 - 节点数。
 - 必配项数量。
-- 场景标签。
+- 模板标签。
 
 点击卡片打开模板详情弹窗；点击「查看更多」打开模板浏览弹窗。区块本身不提供独立分页，也不在卡片上直接应用。
 
 区块放在 Workflow 列表分页之后，作为列表页的底部内容，不插入表格行，也不跟随某个 Workflow。这样用户完成列表浏览后自然进入“从模板开始”的下一条路径；列表请求失败时不阻塞模板区块请求。
 
-推荐区块只请求一页 `limit=4` 的精选模板，不读取全部模板。模板区块与模板浏览弹窗共用同一张卡片适配器，确保标题、描述、Workflow Type、场景和必配项数量的含义一致。
+推荐区块只请求一页 `limit=4` 的精选模板，不读取全部模板。模板区块与模板浏览弹窗共用同一张卡片适配器，确保标题、描述、Workflow Type、标签和必配项数量的含义一致。
 
 Workflow 列表为空时，模板区块仍然显示，并与「空白创建」并列承担首个行动入口：用户可以选择空白创建，也可以从推荐模板开始。
 
@@ -127,7 +127,7 @@ Workflow 列表为空时，模板区块仍然显示，并与「空白创建」�
 
 - 名称搜索，仅匹配模板名称。
 - Workflow Type 筛选：全部、ChatAI SOP、WeCom SOP。
-- 场景筛选：全部、客户接待、销售转化、客户运营、效率与 AI。场景由运营配置，首期每个模板只有一个主场景。
+- 标签筛选：按标签维度展示，支持同一维度多选，筛选条件之间使用 AND 匹配。
 - 默认按运营排序值倒序，再按 Template ID 倒序稳定排序。
 - 每页展示 8 个模板，底部使用上一页、页码和下一页；具体页大小可按弹窗高度调整，但接口 `pageSize` 必须有明确上限。
 - 搜索只匹配模板名称；筛选条件变化时回到第一页并清空旧列表，保持 loading、empty、error 三态区分。
@@ -231,7 +231,7 @@ Workflow 列表为空时，模板区块仍然显示，并与「空白创建」�
 - 通用消息文本、Prompt、字段收集说明等平台编写内容。
 - 变量选择器和节点间引用。
 - Workflow Type。
-- 模板名称、结果描述、场景、流程说明和前置条件。
+- 模板名称、标签、结果描述、流程说明和前置条件。
 
 ### 6.2 必须留空的租户内容
 
@@ -320,13 +320,13 @@ Template Draft --发布--> 不可变 Template Version
 
 - 模板名称。
 - Workflow Type。
-- 主场景。
+- 模板标签。
 - 当前发布版本。
 - 状态。
 - 最近更新时间和操作人。
 - 累计应用次数。
 
-支持按名称搜索、Workflow Type、状态和场景筛选。支持从 Workflow Draft 转换、补充元数据、预览、发布、下线和归档。
+支持按名称搜索、Workflow Type、状态和标签筛选。支持从 Workflow Draft 转换、补充元数据、预览、发布、下线和归档。
 
 管理列表的主操作顺序固定为「查看转换结果 -> 补充元数据 -> 预览 -> 提交发布」。已发布版本不能直接编辑；需要更新内容时，从新的 Workflow Draft 重新执行「转换为模板」。当前线上版本、Template Draft 和历史版本在列表中分栏显示，避免运营误以为修改会立即影响租户侧模板。
 
@@ -352,7 +352,7 @@ Template Draft --发布--> 不可变 Template Version
 
 转换后的模板只需要补充两类信息：
 
-1. **模板元数据**：模板名称、主场景、结果描述、流程说明、使用前准备、排序。
+1. **模板元数据**：模板名称、标签、结果描述、流程说明、使用前准备、排序。
 2. **模板配置项**：对已被清理的租户资源字段声明“必须配置”或“建议确认”，填写用户能理解的标题和引导说明。
 
 典型映射示例：
@@ -411,7 +411,7 @@ Template Draft --发布--> 不可变 Template Version
 
 - `template_id` / `version`
 - `workflow_type`
-- 名称、描述、场景、标签、流程说明、前置条件
+- 名称、描述、标签、流程说明、前置条件
 - `draft_schema_version`
 - `draft_json`
 - `configuration_items_json`
@@ -427,10 +427,6 @@ Template Draft --发布--> 不可变 Template Version
 - `conversion_report_json`
 
 这些字段只用于审计和问题定位，不表示模板会跟随源 Workflow 自动更新。
-
-**Template Category**
-
-- `id` / `name` / `sort` / `status`
 
 **Workflow 应用**
 
@@ -458,7 +454,7 @@ POST /api/server/workflows/:workflowId/template-conversions
 
 ```text
 GET /api/server/workflow-templates?surface=workflow-list&featured=true&limit=4
-GET /api/server/workflow-templates?surface=workflow-list&page=1&limit=8&workflowType=...&scene=...
+GET /api/server/workflow-templates?surface=workflow-list&page=1&limit=8&workflowType=...&tags=...
 GET /api/server/workflow-templates/:templateId
 POST /api/server/workflow-templates/:templateId/applications
 ```

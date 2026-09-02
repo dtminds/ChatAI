@@ -1126,7 +1126,6 @@ describe("Agent workflow page", () => {
   it("shows all template pages and requests the selected page directly", async () => {
     const user = userEvent.setup();
     const createTemplateItem = (id: string, name: string) => ({
-      category: "通用",
       coverUrl: null,
       description: "模板说明",
       id,
@@ -1134,7 +1133,6 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      scene: "客户运营",
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1168,10 +1166,49 @@ describe("Agent workflow page", () => {
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));
   });
 
+  it("filters templates by every selected tag", async () => {
+    const user = userEvent.setup();
+    const template = {
+      coverUrl: null,
+      description: "模板说明",
+      id: "tagged-template",
+      name: "标签模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 1,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      tags: ["lifecycle:potential_conversion", "lifecycle:new_customer_repurchase"],
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const list = vi.fn<WorkflowTemplateRepository["list"]>(async (input = {}) => input.featured
+      ? { items: [template], total: 1 }
+      : { items: [template], total: 1 });
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list,
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+    await screen.findByText("标签模板");
+    await user.click(screen.getByRole("button", { name: "查看更多" }));
+    await screen.findByRole("heading", { name: "模板中心" });
+
+    await user.click(screen.getByRole("button", { name: "潜客转化" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      tags: ["lifecycle:potential_conversion"],
+    })));
+    await user.click(screen.getByRole("button", { name: "新客二回" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      tags: ["lifecycle:potential_conversion", "lifecycle:new_customer_repurchase"],
+    })));
+  });
+
   it("previews and applies a published template from its card without changing the recommended list", async () => {
     const user = userEvent.setup();
     const recommendedTemplate = {
-      category: "通用",
       coverUrl: null,
       description: "推荐模板说明",
       id: "featured-1",
@@ -1179,7 +1216,6 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      scene: "客户运营",
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1240,7 +1276,6 @@ describe("Agent workflow page", () => {
 
   it("fills endpoint node icons when a template has fewer than three business node kinds", async () => {
     const template = {
-      category: "通用",
       coverUrl: null,
       description: "",
       id: "featured-endpoints",
@@ -1248,7 +1283,6 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      scene: "客户运营",
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1281,7 +1315,6 @@ describe("Agent workflow page", () => {
       uid: 101,
     });
     const draftTemplate = {
-      category: "通用",
       coverUrl: null,
       description: "尚未发布的模板",
       id: "8",
@@ -1289,7 +1322,6 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      scene: "客户运营",
       trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1352,7 +1384,6 @@ describe("Agent workflow page", () => {
       uid: 101,
     });
     const template = {
-      category: "通用",
       coverUrl: null,
       description: "已发布模板",
       id: "9",
@@ -1360,7 +1391,6 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
-      scene: "客户运营",
       trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,

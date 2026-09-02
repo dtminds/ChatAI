@@ -6,12 +6,11 @@ import type {
 import { http } from "@/lib/request";
 
 export type WorkflowTemplateListInput = {
-  category?: string;
   featured?: boolean;
   limit?: number;
   page?: number;
   query?: string;
-  scene?: string;
+  tags?: string[];
   workflowType?: string;
 };
 
@@ -40,7 +39,9 @@ export function createWorkflowTemplateRepository(
     async list(input = {}) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) {
-        if (value !== undefined && value !== "") params.set(key, String(value));
+        if (value === undefined || value === "") continue;
+        if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
+        else params.set(key, String(value));
       }
       return unwrap<WorkflowTemplateListPage>(await client.get(
         `${apiBasePath}/workflow-templates${params.size ? `?${params}` : ""}`,
@@ -58,7 +59,9 @@ export function createWorkflowTemplateRepository(
     async listDrafts(input = {}) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) {
-        if (value !== undefined && value !== "") params.set(key, String(value));
+        if (value === undefined || value === "") continue;
+        if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
+        else params.set(key, String(value));
       }
       return unwrap<WorkflowTemplateListPage>(await client.get(
         `${apiBasePath}/workflow-template-drafts${params.size ? `?${params}` : ""}`,

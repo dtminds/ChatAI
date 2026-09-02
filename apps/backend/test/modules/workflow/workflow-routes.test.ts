@@ -65,11 +65,9 @@ describe("workflow routes", () => {
     const draft = (await app.inject({
       method: "POST",
       payload: {
-        category: "通用",
         description: "稍后发布",
         expectedDraftVersion: workflow.draftVersion,
         name: "未发布模板",
-        scene: "客户运营",
       },
       url: `/api/server/workflows/${workflow.id}/template-conversions`,
     })).json().data;
@@ -118,11 +116,9 @@ describe("workflow routes", () => {
     const draft = (await app.inject({
       method: "POST",
       payload: {
-        category: "通用",
         description: "可撤回模板",
         expectedDraftVersion: workflow.draftVersion,
         name: "可撤回模板",
-        scene: "客户运营",
       },
       url: `/api/server/workflows/${workflow.id}/template-conversions`,
     })).json().data;

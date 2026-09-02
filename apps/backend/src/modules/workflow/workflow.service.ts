@@ -44,6 +44,7 @@ import type {
   WorkflowTemplateListPage,
 } from "@chatai/contracts";
 import type { WorkflowNodeKind } from "@chatai/contracts";
+import { isWorkflowTemplateTagId, normalizeWorkflowTemplateTagIds } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
   extractWorkflowNodeDraftConfig,
@@ -511,15 +512,14 @@ export class WorkflowService {
     return this.toDefinition(await this.requireVisibleDefinition(scope, workflowId));
   }
 
-  async listTemplates(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; category?: string; scene?: string; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
+  async listTemplates(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; tags?: string[]; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
     assertWorkflowAccess(scope);
     const limit = input.featured ? Math.min(input.limit, 4) : input.limit;
     const page = await this.requireTemplateRepository().list({
       limit,
       offset: ((input.page ?? 1) - 1) * limit,
       query: input.query?.trim() || undefined,
-      category: input.category,
-      scene: input.scene,
+      tags: normalizeWorkflowTemplateTagIds(input.tags),
       workflowType: input.workflowType,
       status: "published",
     });
@@ -584,7 +584,8 @@ export class WorkflowService {
     const sourceDraft = normalizeWorkflowDraft(definition.draft);
     const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
-    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description: input.description.trim(), category: input.category.trim(), scene: input.scene.trim(), coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
+    const tags = assertWorkflowTemplateTagIds(input.tags);
+    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description: input.description.trim(), tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
     return toTemplateDetail(template);
   }
 
@@ -596,6 +597,7 @@ export class WorkflowService {
       throw new BadRequestError("WORKFLOW_TEMPLATE_ARCHIVED", "归档模板不能发布");
     }
     validateTemplateForPublish(template);
+    assertWorkflowTemplateTagIds(template.tags);
     return toTemplateDetail((await this.requireTemplateRepository().update({
       ...template,
       status: "published",
@@ -1829,7 +1831,14 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
 
 
 function toTemplateListItem(item: any) {
-  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), tags: normalizeWorkflowTemplateTagIds(item.tags), trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+}
+
+function assertWorkflowTemplateTagIds(tags: readonly string[] | null | undefined) {
+  const normalized = [...new Set(tags ?? [])];
+  const invalid = normalized.find(tag => !isWorkflowTemplateTagId(tag));
+  if (invalid) throw new BadRequestError("WORKFLOW_TEMPLATE_TAG_INVALID", "模板标签无效");
+  return normalized;
 }
 
 function getTemplateNodeKinds(draft: WorkflowDraft): WorkflowNodeKind[] {

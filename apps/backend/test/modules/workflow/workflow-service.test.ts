@@ -1979,13 +1979,13 @@ describe("WorkflowService", () => {
     });
 
     const createdTemplate = await service.convertToTemplate(manager, source.id, {
-      category: "通用",
       description: "公共模板",
       expectedDraftVersion: saved.draftVersion,
       name: "新客欢迎",
-      scene: "客户运营",
+      tags: ["lifecycle:potential_conversion", "scene:customer_care"],
     });
     expect(createdTemplate.status).toBe("draft");
+    expect(createdTemplate.tags).toEqual(["lifecycle:potential_conversion", "scene:customer_care"]);
     expect(createdTemplate.configurationItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ bindingKey: "seatIds", resourceKind: "managed-account" }),
       expect.objectContaining({ bindingKey: "triggers.sourceIds", resourceKind: "friend-add-way" }),
@@ -2002,6 +2002,16 @@ describe("WorkflowService", () => {
         trigger: "添加好友",
       }),
     ]);
+    expect((await service.listTemplates(manager, {
+      limit: 8,
+      page: 1,
+      tags: ["lifecycle:potential_conversion", "scene:customer_care"],
+    })).total).toBe(1);
+    expect((await service.listTemplates(manager, {
+      limit: 8,
+      page: 1,
+      tags: ["lifecycle:potential_conversion", "scene:customer_care", "industry:beauty"],
+    })).total).toBe(0);
     const first = await service.applyTemplate({ roles: ["owner"], subUserId: "9", uid: 9 }, published.id, {
       clientRequestId: "template-apply-1",
     });
@@ -2018,12 +2028,35 @@ describe("WorkflowService", () => {
     });
     const source = await service.create(operator, { workflowType: "chatai_sop" });
     await expect(service.convertToTemplate(operator, source.id, {
-      category: "通用",
       description: "公共模板",
       expectedDraftVersion: source.draftVersion,
       name: "不应创建",
-      scene: "客户运营",
     })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
+  });
+
+  it("hides unknown historical template tags without breaking reads", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const draft = await service.convertToTemplate(manager, source.id, {
+      description: "历史标签兼容",
+      expectedDraftVersion: source.draftVersion,
+      name: "历史标签模板",
+      tags: ["lifecycle:potential_conversion"],
+    });
+    const record = await templateRepository.find(draft.id);
+    await templateRepository.update({ ...record!, tags: ["lifecycle:potential_conversion", "legacy:removed_tag"] });
+
+    await expect(service.getTemplateDraft(manager, draft.id)).resolves.toMatchObject({
+      tags: ["lifecycle:potential_conversion"],
+    });
+    await expect(service.convertToTemplate(manager, source.id, {
+      description: "非法标签",
+      expectedDraftVersion: source.draftVersion,
+      name: "非法标签模板",
+      tags: ["legacy:removed_tag"],
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_TAG_INVALID", statusCode: 400 });
   });
 
   it("lists unpublished template drafts for template managers", async () => {
@@ -2033,11 +2066,9 @@ describe("WorkflowService", () => {
     const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
     const source = await service.create(manager, { workflowType: "chatai_sop" });
     const draft = await service.convertToTemplate(manager, source.id, {
-      category: "通用",
       description: "稍后发布",
       expectedDraftVersion: source.draftVersion,
       name: "未发布模板",
-      scene: "客户运营",
     });
 
     const page = await service.listTemplateDrafts(manager, { limit: 8, page: 1 });
@@ -2065,11 +2096,9 @@ describe("WorkflowService", () => {
     const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
     const source = await service.create(manager, { workflowType: "chatai_sop" });
     const draft = await service.convertToTemplate(manager, source.id, {
-      category: "通用",
       description: "可撤回模板",
       expectedDraftVersion: source.draftVersion,
       name: "可撤回模板",
-      scene: "客户运营",
     });
     const published = await service.publishTemplate(manager, draft.id);
 

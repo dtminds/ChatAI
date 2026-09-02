@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { WorkflowTemplateDetail, WorkflowTemplateListItem } from "@chatai/contracts";
+import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateListItem } from "@chatai/contracts";
 import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -229,6 +229,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       : createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""))), [repository, surface.apiBasePath]);
   const [items, setItems] = useState<WorkflowTemplateListItem[]>([]);
   const [query, setQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -243,7 +244,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const pageSize = 8;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const load = useCallback(async (input: { page: number; query?: string }) => {
+  const load = useCallback(async (input: { page: number; query?: string; tags?: string[] }) => {
     setLoading(true);
     setError(false);
     try {
@@ -251,6 +252,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         limit: pageSize,
         page: input.page,
         query: input.query?.trim() || undefined,
+        tags: input.tags ?? selectedTags,
       });
       setItems(result.items);
       setTotal(result.total);
@@ -260,9 +262,9 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
     } finally {
       setLoading(false);
     }
-  }, [templateRepository]);
+  }, [selectedTags, templateRepository]);
 
-  useEffect(() => { void load({ page: 1 }); }, [load]);
+  useEffect(() => { void load({ page: 1, tags: selectedTags }); }, [load, selectedTags]);
 
   const openDetail = async (item: WorkflowTemplateListItem) => {
     setDetail(null);
@@ -302,7 +304,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       toast.success("模板已撤回");
       setWithdrawConfirmOpen(false);
       setDetail(null);
-      await load({ page: Math.min(page, totalPages), query });
+      await load({ page: Math.min(page, totalPages), query, tags: selectedTags });
     } catch {
       toast.error("操作失败，请稍后重试");
     } finally {
@@ -312,7 +314,19 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const goToPage = (nextPage: number) => {
     const targetPage = Math.min(Math.max(1, nextPage), totalPages);
     if (targetPage === page) return;
-    void load({ page: targetPage, query });
+    void load({ page: targetPage, query, tags: selectedTags });
+  };
+  const toggleTag = (tagId: string) => {
+    const nextTags = selectedTags.includes(tagId)
+      ? selectedTags.filter(id => id !== tagId)
+      : [...selectedTags, tagId];
+    setSelectedTags(nextTags);
+  };
+  const clearDimension = (dimensionId: string) => {
+    const dimensionTagIds = new Set<string>(workflowTemplateTagDimensions.find(item => item.id === dimensionId)?.tags.map(tag => tag.id));
+    const nextTags = selectedTags.filter(tagId => !dimensionTagIds.has(tagId));
+    if (nextTags.length === selectedTags.length) return;
+    setSelectedTags(nextTags);
   };
 
   const content = (
@@ -333,15 +347,25 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         <h1 className="text-[22px] font-semibold leading-tight">模板中心</h1>
       </header>
       <div className="space-y-4">
+        <div aria-label="模板筛选" className="space-y-2">
+          {workflowTemplateTagDimensions.map(dimension => {
+            const selectedInDimension = selectedTags.filter(tagId => dimension.tags.some(tag => tag.id === tagId));
+            return <div className="flex flex-wrap items-center gap-2" key={dimension.id}>
+              <span className="w-24 shrink-0 text-sm text-muted-foreground">{dimension.label}</span>
+              <Button aria-pressed={selectedInDimension.length === 0} className="h-8" onClick={() => clearDimension(dimension.id)} size="sm" type="button" variant={selectedInDimension.length === 0 ? "secondary" : "ghost"}>全部</Button>
+              {dimension.tags.map(tag => <Button aria-pressed={selectedTags.includes(tag.id)} className="h-8" key={tag.id} onClick={() => toggleTag(tag.id)} size="sm" type="button" variant={selectedTags.includes(tag.id) ? "secondary" : "ghost"}>{tag.label}</Button>)}
+            </div>;
+          })}
+        </div>
         <Input
           aria-label="搜索模板"
           className="w-[260px] max-w-full"
           onChange={event => setQuery(event.target.value)}
-          onKeyDown={event => { if (event.key === "Enter") void load({ page: 1, query: event.currentTarget.value }); }}
+          onKeyDown={event => { if (event.key === "Enter") void load({ page: 1, query: event.currentTarget.value, tags: selectedTags }); }}
           placeholder="搜索模板"
           value={query}
         />
-        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => { setDetailLoading(true); void openDetail(item); }} />)}</div>}
+        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => { setDetailLoading(true); void openDetail(item); }} />)}</div>}
         <TablePagination className="border-t-0" onPageChange={goToPage} page={page} showTotal total={total} totalPages={totalPages} />
       </div>
       <Dialog onOpenChange={value => { if (!withdrawing) { if (!value) { setDetail(null); setDetailLoading(false); } } }} open={Boolean(detail) || detailLoading}>
@@ -591,6 +615,7 @@ function TemplateCard({ item, onPreview }: { item: WorkflowTemplateListItem; onP
           <HugeiconsIcon aria-hidden="true" icon={WorkflowSquare06Icon} size={14} strokeWidth={1.8} />
           <span className="shrink-0">{item.nodeCount} 个节点</span>
         </div>
+        <TemplateTags tags={item.tags} />
       </div>
       <div className="mt-auto flex items-center justify-between gap-3 pt-3">
         <TemplateNodeKinds nodeKinds={item.nodeKinds} />
@@ -609,6 +634,17 @@ function TemplateCard({ item, onPreview }: { item: WorkflowTemplateListItem; onP
       </div>
     </article>
   );
+}
+
+function TemplateTags({ max, tags }: { max?: number; tags?: readonly string[] }) {
+  const visibleTags = normalizeWorkflowTemplateTagIds(tags);
+  if (visibleTags.length === 0) return null;
+  const shown = max === undefined ? visibleTags : visibleTags.slice(0, max);
+  const remaining = visibleTags.length - shown.length;
+  return <div aria-label="模板标签" className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+    {shown.map(tagId => <span className="max-w-32 truncate rounded border border-border/70 px-1.5 py-0.5 text-xs text-muted-foreground" key={tagId} title={getWorkflowTemplateTagLabel(tagId)}>{getWorkflowTemplateTagLabel(tagId)}</span>)}
+    {remaining > 0 ? <span className="rounded border border-border/70 px-1.5 py-0.5 text-xs text-muted-foreground">+{remaining}</span> : null}
+  </div>;
 }
 
 function TemplateNodeKinds({ nodeKinds }: { nodeKinds: WorkflowTemplateListItem["nodeKinds"] }) {
@@ -699,6 +735,7 @@ function TemplateDetailView({ canvasClassName = "h-[420px]", detail }: { canvasC
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {detail.description ? <p className="text-sm text-muted-foreground">{detail.description}</p> : null}
+      <TemplateTags max={Number.POSITIVE_INFINITY} tags={detail.tags} />
       <Suspense fallback={<div className={cn("flex items-center justify-center rounded-lg border", canvasClassName)} role="status"><Spinner /></div>}>
         <WorkflowGraphPreview className={canvasClassName} draft={detail.draft as WorkflowDraft} />
       </Suspense>

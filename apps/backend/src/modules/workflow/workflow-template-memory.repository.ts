@@ -37,9 +37,8 @@ export class InMemoryWorkflowTemplateRepository implements WorkflowTemplateRepos
     const filtered = this.records.filter(item =>
       (input.status ? item.status === input.status : item.status === "published")
       && (!query || item.name.toLocaleLowerCase().includes(query) || item.description.toLocaleLowerCase().includes(query))
-      && (!input.category || item.category === input.category)
-      && (!input.scene || item.scene === input.scene)
-      && (!input.workflowType || item.workflowType === input.workflowType),
+      && (!input.workflowType || item.workflowType === input.workflowType)
+      && (!input.tags?.length || input.tags.every(tag => (item.tags ?? []).includes(tag))),
     ).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || Number(b.id) - Number(a.id));
     const items = filtered.slice(input.offset ?? 0, (input.offset ?? 0) + input.limit).map(clone);
     return { items, total: filtered.length };

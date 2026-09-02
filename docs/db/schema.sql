@@ -610,8 +610,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
   workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
   name VARCHAR(100) NOT NULL COMMENT '模板名称',
   description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '模板描述',
-  category VARCHAR(100) NOT NULL DEFAULT '' COMMENT '模板分类',
-  scene VARCHAR(100) NOT NULL DEFAULT '' COMMENT '适用场景',
+  tags_json JSON NOT NULL COMMENT '模板标签ID JSON数组，未知历史标签读取时忽略',
   cover_url VARCHAR(512) NULL COMMENT '模板封面图地址',
   draft_json JSON NOT NULL COMMENT '模板画布草稿JSON',
   configuration_json JSON NOT NULL COMMENT '应用模板时的待配置项JSON',
@@ -620,8 +619,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_workflow_template_public_status (status, update_time, id),
-  KEY idx_workflow_template_public_filter (status, workflow_type, category, scene, id)
+  KEY idx_workflow_template_public_status (status, update_time, id)
 ) COMMENT='Workflow模板';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (

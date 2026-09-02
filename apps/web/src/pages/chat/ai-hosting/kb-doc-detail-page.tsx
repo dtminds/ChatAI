@@ -43,6 +43,8 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
@@ -86,6 +88,8 @@ function resolveChunkSearchField(docType: KbDocType | undefined) {
 
 export function KbDocDetailPage() {
   const { docId = "", kbId = "" } = useParams();
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [searchParams, setSearchParams] = useSearchParams();
   const targetChunkId = searchParams.get("chunkId")?.trim() || undefined;
   const targetEntryId = searchParams.get("entryId")?.trim() || undefined;
@@ -350,7 +354,7 @@ export function KbDocDetailPage() {
   }
 
   async function handleCreateQaChunk(values: { answer: string; question: string }) {
-    if (!doc) {
+    if (!canManage || !doc) {
       return;
     }
 
@@ -373,7 +377,7 @@ export function KbDocDetailPage() {
   }
 
   async function handleCreateDocChunk(values: { content: string; title: string }) {
-    if (!doc) {
+    if (!canManage || !doc) {
       return;
     }
 
@@ -401,7 +405,7 @@ export function KbDocDetailPage() {
   ) {
     const chunk = chunks.find((item) => item.id === chunkId);
 
-    if (!chunk) {
+    if (!canManage || !chunk) {
       return;
     }
 
@@ -429,7 +433,7 @@ export function KbDocDetailPage() {
   }
 
   async function handleConfirmDelete() {
-    if (!deleteChunk) {
+    if (!canManage || !deleteChunk) {
       return;
     }
 
@@ -557,6 +561,7 @@ export function KbDocDetailPage() {
 
                 {doc && doc.status === "completed" ? (
                   <AddChunkActions
+                    disabled={!canManage}
                     doc={doc}
                     onAddDoc={() => setAddDocDialogOpen(true)}
                     onAddQa={() => setAddQaDialogOpen(true)}
@@ -567,6 +572,7 @@ export function KbDocDetailPage() {
               <div className="space-y-4">
                 {doc?.type === "qa" ? (
                   <KnowledgeChunksTable
+                    canManage={canManage}
                     chunks={chunks}
                     loading={loadingPage || loadingChunks}
                     onDelete={setDeleteChunk}
@@ -576,6 +582,7 @@ export function KbDocDetailPage() {
                   />
                 ) : (
                   <KnowledgeDocumentChunkCards
+                    canManage={canManage}
                     chunks={chunks}
                     itemStartIndex={(activePage - 1) * pageSize}
                     loading={loadingPage || loadingChunks}
@@ -685,10 +692,12 @@ function getKnowledgeDocTitleTypeLabel(doc: KbDocViewItem) {
 }
 
 function AddChunkActions({
+  disabled = false,
   doc,
   onAddDoc,
   onAddQa,
 }: {
+  disabled?: boolean;
   doc: KbDocViewItem;
   onAddDoc: () => void;
   onAddQa: () => void;
@@ -699,7 +708,7 @@ function AddChunkActions({
 
   if (doc.type === "qa") {
     return (
-      <Button className="h-10 px-4" onClick={onAddQa} type="button">
+      <Button className="h-10 px-4" disabled={disabled} onClick={onAddQa} type="button">
         <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
         <span>添加问答</span>
       </Button>
@@ -707,7 +716,7 @@ function AddChunkActions({
   }
 
   return (
-    <Button className="h-10 px-4" onClick={onAddDoc} type="button">
+    <Button className="h-10 px-4" disabled={disabled} onClick={onAddDoc} type="button">
       <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
       <span>添加切片</span>
     </Button>
@@ -723,6 +732,7 @@ function resolveVolcChunkIdTail(volcChunkId?: string) {
 }
 
 function KnowledgeChunksTable({
+  canManage,
   chunks,
   loading,
   onDelete,
@@ -730,6 +740,7 @@ function KnowledgeChunksTable({
   targetEntryId,
   targetChunkId,
 }: {
+  canManage: boolean;
   chunks: KbDocChunkViewItem[];
   loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
@@ -798,6 +809,7 @@ function KnowledgeChunksTable({
                 <div className="flex items-center justify-end gap-3">
                   <Button
                     className="h-auto p-0 text-primary"
+                    disabled={!canManage}
                     onClick={() => onEdit(chunk)}
                     type="button"
                     variant="link"
@@ -806,6 +818,7 @@ function KnowledgeChunksTable({
                   </Button>
                   <Button
                     className="h-auto p-0 text-primary"
+                    disabled={!canManage}
                     onClick={() => onDelete(chunk)}
                     type="button"
                     variant="link"
@@ -830,12 +843,14 @@ function KnowledgeChunksTable({
 }
 
 function KnowledgeDocumentChunkCards({
+  canManage,
   chunks,
   itemStartIndex,
   loading,
   onDelete,
   onEdit,
 }: {
+  canManage: boolean;
   chunks: KbDocChunkViewItem[];
   itemStartIndex: number;
   loading: boolean;
@@ -866,6 +881,7 @@ function KnowledgeDocumentChunkCards({
     <ul aria-label="切片列表" className="grid gap-4 lg:grid-cols-2" role="list">
       {chunks.map((chunk, index) => (
         <KnowledgeDocumentChunkCard
+          canManage={canManage}
           chunk={chunk}
           displayIndex={itemStartIndex + index + 1}
           key={chunk.id}
@@ -878,11 +894,13 @@ function KnowledgeDocumentChunkCards({
 }
 
 function KnowledgeDocumentChunkCard({
+  canManage,
   chunk,
   displayIndex,
   onDelete,
   onEdit,
 }: {
+  canManage: boolean;
   chunk: KbDocChunkViewItem;
   displayIndex: number;
   onDelete: (chunk: KbDocChunkViewItem) => void;
@@ -907,10 +925,18 @@ function KnowledgeDocumentChunkCard({
             ID {displayChunkId}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            canManage
+              ? "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              : undefined,
+          )}
+        >
           <Button
             aria-label={`编辑 ${chunk.id}`}
             className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            disabled={!canManage}
             onClick={() => onEdit(chunk)}
             type="button"
             variant="ghost"
@@ -920,6 +946,7 @@ function KnowledgeDocumentChunkCard({
           <Button
             aria-label={`删除 ${chunk.id}`}
             className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-destructive"
+            disabled={!canManage}
             onClick={() => onDelete(chunk)}
             type="button"
             variant="ghost"
@@ -942,13 +969,19 @@ function KnowledgeDocumentChunkCard({
         ) : null}
         <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
           {title ? (
-            <button
-              className="line-clamp-1 block max-h-5 w-full break-words text-left text-[13px] font-medium leading-5 text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15"
-              onClick={() => onEdit(chunk)}
-              type="button"
-            >
-              {title}
-            </button>
+            canManage ? (
+              <button
+                className="line-clamp-1 block max-h-5 w-full break-words text-left text-[13px] font-medium leading-5 text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15"
+                onClick={() => onEdit(chunk)}
+                type="button"
+              >
+                {title}
+              </button>
+            ) : (
+              <p className="line-clamp-1 max-h-5 break-words text-[13px] font-medium leading-5 text-foreground">
+                {title}
+              </p>
+            )
           ) : null}
           <ChunkContentPreview
             clampClassName={title ? "line-clamp-3" : "line-clamp-4"}
@@ -957,7 +990,7 @@ function KnowledgeDocumentChunkCard({
               title ? "max-h-[72px]" : "max-h-24",
             )}
             content={content}
-            onClick={() => onEdit(chunk)}
+            onClick={canManage ? () => onEdit(chunk) : undefined}
           />
         </div>
       </div>
@@ -982,18 +1015,31 @@ function ChunkContentPreview({
   clampClassName?: string;
   className?: string;
   content?: string;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
   if (!content) {
     return <span className="text-muted-foreground">-</span>;
   }
 
+  const previewClassName = cn(
+    "w-full whitespace-pre-line break-words text-left text-muted-foreground",
+    clampClassName,
+    className,
+  );
+
+  if (!onClick) {
+    return (
+      <p className={previewClassName} data-slot="chunk-content-preview">
+        {content}
+      </p>
+    );
+  }
+
   return (
     <button
       className={cn(
-        "w-full whitespace-pre-line break-words text-left text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15",
-        clampClassName,
-        className,
+        previewClassName,
+        "hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15",
       )}
       data-slot="chunk-content-preview"
       onClick={onClick}

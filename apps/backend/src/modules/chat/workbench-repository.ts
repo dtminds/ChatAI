@@ -90,6 +90,8 @@ const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const DEFAULT_CUSTOMER_LIST_LIMIT = 50;
 const MAX_CUSTOMER_LIST_LIMIT = 100;
 const QUICK_REPLY_SORT_UPDATE_BATCH_SIZE = 500;
+const SEAT_CONVERSATION_AGGREGATE_BATCH_SIZE = 8;
+const SEAT_CONVERSATION_AGGREGATE_CONCURRENCY = 3;
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
@@ -5244,25 +5246,33 @@ export class WorkbenchRepository {
 
     const aggregateRowsByTenant = await Promise.all(
       groupSeatAggregateKeysByTenant(seats).map(
-        ({ platform, thirdUserIds, uid }) =>
-          this.db
-            .selectFrom("xy_wap_embed_conversation")
-            .select(["uid", "platform", "third_userid", "chat_type"])
-            .select((expressionBuilder) => [
-              expressionBuilder.fn
-                .coalesce(
-                  expressionBuilder.fn.sum<number>("unread_cnt"),
-                  expressionBuilder.val(0),
-                )
-                .as("unread_cnt"),
-              expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
-            ])
-            .where("uid", "=", uid)
-            .where("platform", "=", platform)
-            .where("third_userid", "in", thirdUserIds)
-            .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-            .groupBy(["uid", "platform", "third_userid", "chat_type"])
-            .execute() as Promise<SeatConversationAggregateRow[]>,
+        async ({ platform, thirdUserIds, uid }) => {
+          const batchRows = await mapWithConcurrency(
+            chunkItems(thirdUserIds, SEAT_CONVERSATION_AGGREGATE_BATCH_SIZE),
+            SEAT_CONVERSATION_AGGREGATE_CONCURRENCY,
+            (batchThirdUserIds) =>
+              this.db
+                .selectFrom("xy_wap_embed_conversation")
+                .select(["uid", "platform", "third_userid", "chat_type"])
+                .select((expressionBuilder) => [
+                  expressionBuilder.fn
+                    .coalesce(
+                      expressionBuilder.fn.sum<number>("unread_cnt"),
+                      expressionBuilder.val(0),
+                    )
+                    .as("unread_cnt"),
+                  expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
+                ])
+                .where("uid", "=", uid)
+                .where("platform", "=", platform)
+                .where("third_userid", "in", batchThirdUserIds)
+                .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+                .groupBy(["uid", "platform", "third_userid", "chat_type"])
+                .execute() as Promise<SeatConversationAggregateRow[]>,
+          );
+
+          return batchRows.flat();
+        },
       ),
     );
 
@@ -5923,6 +5933,47 @@ function withSeatConversationAggregate(
 
 function getSeatAggregateKey(seat: SeatAggregateKeyRow) {
   return `${seat.uid}:${seat.platform}:${seat.third_userid}`;
+}
+
+function chunkItems<T>(items: T[], batchSize: number) {
+  const batches: T[][] = [];
+
+  for (let start = 0; start < items.length; start += batchSize) {
+    batches.push(items.slice(start, start + batchSize));
+  }
+
+  return batches;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+) {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        if (index >= items.length) {
+          return;
+        }
+
+        results[index] = await mapper(items[index] as T);
+      }
+    }),
+  );
+
+  return results;
 }
 
 function groupSeatAggregateKeysByTenant(seats: SeatAggregateKeyRow[]) {

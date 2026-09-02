@@ -72,6 +72,8 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
+import { useAuthStore } from "@/store/auth-store";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
@@ -178,6 +180,8 @@ const statusMeta: Record<
 
 export function KbDetailPage() {
   const { kbId = "" } = useParams();
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [searchParams, setSearchParams] = useSearchParams();
   const detailTab: KbDetailTab =
     searchParams.get(KB_DETAIL_TAB_PARAM) === "attachments" ? "attachments" : "knowledge";
@@ -225,14 +229,17 @@ export function KbDetailPage() {
       return;
     }
 
-    setQaDialogDefaultAddMethod("new");
-    setImportQaDialogOpen(true);
+    if (canManage) {
+      setQaDialogDefaultAddMethod("new");
+      setImportQaDialogOpen(true);
+    }
+
     setSearchParams((currentSearchParams) => {
       const nextSearchParams = new URLSearchParams(currentSearchParams);
       nextSearchParams.delete("addKnowledge");
       return nextSearchParams;
     }, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [canManage, searchParams, setSearchParams]);
 
   useEffect(() => {
     const normalizedSearchParams = normalizeKbDetailViewSearchParams(searchParams);
@@ -438,7 +445,7 @@ export function KbDetailPage() {
     recordsLoading || total > 0 || debouncedSearchQuery.length > 0;
 
   async function handleConfirmDelete() {
-    if (!deleteRecord || deleting) {
+    if (!canManage || !deleteRecord || deleting) {
       return;
     }
 
@@ -467,7 +474,7 @@ export function KbDetailPage() {
   }
 
   async function handleRetryDoc(docId: string) {
-    if (retryingDocId) {
+    if (!canManage || retryingDocId) {
       return;
     }
 
@@ -494,6 +501,10 @@ export function KbDetailPage() {
   }
 
   function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
+    if (!canManage) {
+      return;
+    }
+
     if (optionType === "qa") {
       setQaDialogDefaultAddMethod("file");
       setImportQaDialogOpen(true);
@@ -578,13 +589,14 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <AddKnowledgeMenu onSelect={handleAddKnowledgeSelect} />
+              <AddKnowledgeMenu disabled={!canManage} onSelect={handleAddKnowledgeSelect} />
             </div>
           </div>
 
           {showKnowledgeList ? (
             <div>
               <KnowledgeRecordsTable
+                canManage={canManage}
                 kbId={knowledgeBase?.id ?? kbId}
                 loading={recordsLoading}
                 onDelete={setDeleteRecord}
@@ -818,6 +830,7 @@ function KbKnowledgeEmptyState({
 }
 
 function KnowledgeRecordsTable({
+  canManage,
   kbId,
   loading,
   onDelete,
@@ -826,6 +839,7 @@ function KnowledgeRecordsTable({
   records,
   retryingDocId,
 }: {
+  canManage: boolean;
   kbId: string;
   loading: boolean;
   onDelete: (record: KbDocViewItem) => void;
@@ -885,7 +899,7 @@ function KnowledgeRecordsTable({
                     <Button
                       aria-label={`重试 ${record.name}`}
                       className="h-auto p-0 text-primary"
-                      disabled={retryingDocId !== null}
+                      disabled={!canManage || retryingDocId !== null}
                       onClick={() => {
                         void onRetry(record.id);
                       }}
@@ -939,6 +953,7 @@ function KnowledgeRecordsTable({
                     )}
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
+                      disabled={!canManage}
                       onSelect={() => onDelete(record)}
                     >
                       删除

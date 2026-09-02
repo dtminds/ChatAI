@@ -63,6 +63,29 @@ describe("KB read routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("rejects kb create for operator role", async () => {
+    const context = await createAuthenticatedKbApp({}, ["operator"]);
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        name: "新品培训知识",
+      },
+      url: "/api/server/ai-hosting/kbs",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "FORBIDDEN",
+        message: "当前账号无操作权限",
+      },
+      success: false,
+    });
+  });
+
   it("updates a kb for the current tenant", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -608,11 +631,12 @@ describe("KB read routes", () => {
 
 async function createAuthenticatedKbApp(
   options: Parameters<typeof createKbReadDbMock>[0] = {},
+  roles: string[] = ["admin"],
 ) {
   process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
   const app = await buildMockedApp();
   const token = app.jwt.sign({
-    roles: ["admin"],
+    roles,
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",

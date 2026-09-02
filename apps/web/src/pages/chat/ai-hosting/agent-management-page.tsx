@@ -360,17 +360,15 @@ export function AgentManagementPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {canManage ? (
-                <Button
-                  className="h-10 px-4"
-                  disabled={checkingQuota}
-                  onClick={() => void handleAddAgent()}
-                  type="button"
-                >
-                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>添加 Agent</span>
-                </Button>
-              ) : null}
+              <Button
+                className="h-10 px-4"
+                disabled={!canManage || checkingQuota}
+                onClick={() => void handleAddAgent()}
+                type="button"
+              >
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                <span>添加 Agent</span>
+              </Button>
             </div>
           </div>
 
@@ -712,11 +710,13 @@ function AgentCard({
                   {canManage ? "编辑" : "查看"}
                 </Link>
               </DropdownMenuItem>
-              {canManage ? (
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onRemove(agent)}>
-                  删除
-                </DropdownMenuItem>
-              ) : null}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                disabled={!canManage}
+                onSelect={() => onRemove(agent)}
+              >
+                删除
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

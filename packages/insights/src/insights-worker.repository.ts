@@ -1390,19 +1390,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       const baselineAuditId = parseNumber(globalCursor.cursor_audit_id);
       const uids = Array.from(new Set(messages.map((message) => parseNumber(message.uid))));
 
-      await trx
-        .insertInto("xy_wap_embed_insight_sync_cursor")
-        .values(
-          uids.map((uid) => ({
-            create_time: globalCursor.create_time,
-            cursor_audit_id: baselineAuditId,
-            cursor_msgtime: baselineMsgtime as number,
-            source: cursorSource,
-            uid,
-          })),
-        )
-        .ignore()
-        .executeTakeFirst();
+      // UID workers lock sessionization job rows first and then upsert cursors.
+      // Keep discovery in the same order to avoid an InnoDB lock-order deadlock.
       await trx
         .insertInto("xy_wap_embed_insight_job")
         .values(
@@ -1426,6 +1415,19 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           end`,
           update_time: input.now,
         })
+        .executeTakeFirst();
+      await trx
+        .insertInto("xy_wap_embed_insight_sync_cursor")
+        .values(
+          uids.map((uid) => ({
+            create_time: globalCursor.create_time,
+            cursor_audit_id: baselineAuditId,
+            cursor_msgtime: baselineMsgtime as number,
+            source: cursorSource,
+            uid,
+          })),
+        )
+        .ignore()
         .executeTakeFirst();
 
       const cursorAuditId = parseNumber(messages.at(-1)?.id);

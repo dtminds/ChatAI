@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
+import type { AccountRole } from "@chatai/contracts";
 import {
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
@@ -21,6 +22,7 @@ import {
 import { createKbChunk } from "@/pages/chat/ai-hosting/api/kb-chunk-service";
 import { listKbDocs, listKbs } from "@/pages/chat/ai-hosting/api/kb-service";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { useAuthStore } from "@/store/auth-store";
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -91,6 +93,10 @@ function createDeferred<T = void>() {
 }
 
 describe("SmartReplyCard", () => {
+  beforeEach(() => {
+    mockSession();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.mocked(createKbChunk).mockReset();
@@ -844,6 +850,33 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("button", { name: "添加到FAQ" })).toBeInTheDocument();
   });
 
+  it("disables adding a smart reply to FAQ for operator accounts", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      uiMessageKey: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+
+    expect(screen.getByRole("button", { name: "添加到FAQ" })).toBeDisabled();
+    expect(screen.queryByTestId("smart-reply-add-to-faq-dialog")).not.toBeInTheDocument();
+    expect(createKbChunk).not.toHaveBeenCalled();
+  });
+
   it("opens add to faq dialog from edit dialog", async () => {
     const user = userEvent.setup();
     vi.mocked(listKbs).mockResolvedValue({
@@ -1520,3 +1553,15 @@ describe("SmartReplyCard", () => {
     expect(screen.queryByRole("button", { name: "查看智能回复" })).not.toBeInTheDocument();
   });
 });
+
+function mockSession(role: AccountRole = "admin") {
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: role === "operator" ? "一线客服" : "客服主管",
+    permissions: ["chat.access", "chat.send", "chat.takeover"],
+    role,
+    subUserId: "101",
+    uid: 1,
+  });
+}

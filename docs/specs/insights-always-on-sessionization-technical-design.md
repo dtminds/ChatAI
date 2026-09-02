@@ -143,14 +143,16 @@ KEY idx_insight_job_expired_lease (status, lease_until, id)
 
 全局行的 `create_time` 记录本次 always-on 切换时间，并作为没有具体 UID 水位时的统一消息时间基线。发布前受控 SQL 必须新建或显式重新初始化该行，不能沿用来源不明的旧 `uid = 0` 行。
 
-首次发现一个没有具体水位的 UID 时，发现事务先写入：
+首次发现一个没有具体水位的 UID 时，发现事务在同一事务内写入切换基线并合并 `sessionize_uid` 任务：
 
 ```text
 cursor_msgtime = cutover_at 对应的毫秒时间戳
 cursor_audit_id = 本发现批次开始时的全局 cursor_audit_id
 ```
 
-然后再合并 `sessionize_uid` 任务。这样 UID Worker 不会触发现有的 3 天默认回看，也不会自动扫描上线前消息。
+提交前这两步对其它事务不可见，因此 UID Worker 不会在缺少水位时领到任务，也不会触发现有的 3 天默认回看或自动扫描上线前消息。
+
+InnoDB 对已有唯一键执行 `INSERT IGNORE` 会给该记录加共享锁。UID Worker 的 `withSessionizationClaim` 先锁定 `sessionize_uid` 任务行，再 upsert 具体 UID 水位。发现事务必须使用相同加锁顺序：先合并任务，再插入缺失的 UID 水位；否则会与正在处理该 UID 的 Worker 形成死锁。
 
 `cutover_at` 的时间转换必须与现有数据库连接保持一致：
 
@@ -228,10 +230,12 @@ LIMIT :batch_size;
 ```
 
 4. 在应用内按 UID 去重。
-5. 对没有具体水位的 UID 插入切换基线，已有行不更新。
-6. 以固定幂等键批量合并 `sessionize_uid` 任务。
+5. 以固定幂等键批量合并 `sessionize_uid` 任务。
+6. 对没有具体水位的 UID 插入切换基线，已有行不更新。
 7. 将全局 `cursor_audit_id` 更新为本批最后一条记录的 `id`，`cursor_msgtime` 继续写 `0`。
 8. 提交事务。
+
+第 5、6 步的顺序不可对调。UID Worker 先锁任务行再写水位；发现事务若先对已有 UID 水位 `INSERT IGNORE`，会与正在运行的 UID Worker 互相等待，形成死锁。两者仍在同一事务内提交，其它事务看不到“有任务无水位”的中间态。
 
 空批次不创建任务，也不必更新全局水位行。全局水位必须在全部任务合并成功后才能推进，任一语句失败时整个事务回滚。
 

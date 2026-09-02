@@ -41,6 +41,7 @@ const LINKABLE_TEXT_CLASS =
 
 type KbAttachmentsTableProps = {
   activeType: KbAttachmentType;
+  canManage?: boolean;
   items: KbAttachmentItem[];
   loading?: boolean;
   onDelete: (id: string) => void;
@@ -52,6 +53,7 @@ type KbAttachmentsTableProps = {
 
 export function KbAttachmentsTable({
   activeType,
+  canManage = true,
   items,
   loading = false,
   onDelete,
@@ -79,6 +81,7 @@ export function KbAttachmentsTable({
               <Checkbox
                 aria-label="全选附件"
                 checked={allSelected}
+                disabled={!canManage}
                 onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
               />
             </TableHead>
@@ -112,6 +115,7 @@ export function KbAttachmentsTable({
                 <Checkbox
                   aria-label={`选择附件 ${item.title}`}
                   checked={selectedIdSet.has(item.id)}
+                  disabled={!canManage}
                   onCheckedChange={(checked) =>
                     onToggleSelectItem(item.id, checked === true)
                   }
@@ -140,6 +144,7 @@ export function KbAttachmentsTable({
                 <div className="inline-flex items-center gap-4">
                   <Button
                     className="h-auto p-0 text-sm text-primary"
+                    disabled={!canManage}
                     onClick={() => onEdit(item)}
                     type="button"
                     variant="link"
@@ -148,6 +153,7 @@ export function KbAttachmentsTable({
                   </Button>
                   <Button
                     className="h-auto p-0 text-sm text-primary"
+                    disabled={!canManage}
                     onClick={() => onDelete(item.id)}
                     type="button"
                     variant="link"

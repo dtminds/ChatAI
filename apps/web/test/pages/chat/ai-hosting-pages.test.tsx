@@ -2062,7 +2062,7 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(screen.queryByRole("button", { name: "添加技能" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加技能" })).toBeDisabled();
     await screen.findByRole("link", { name: "订单与物流场景查询" });
 
     await user.click(
@@ -2070,8 +2070,8 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "停用" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "停用" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
 
     await user.click(screen.getByRole("menuitem", { name: "查看" }));
 
@@ -4188,11 +4188,11 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });
     await user.click(moreActions[0]);
     expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("removes agents from the management page after confirmation", async () => {
@@ -5989,6 +5989,27 @@ describe("AI hosting pages", () => {
     expect(
       await screen.findByRole("dialog", { name: "添加图片附件" }),
     ).toBeInTheDocument();
+  });
+
+  it("disables knowledge write actions for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "切片详情" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("shows knowledge list load failures in a toast", async () => {

@@ -32,6 +32,7 @@ export type SmartReplyFaqOption = {
 };
 
 export type SmartReplyAddToFaqDialogProps = {
+  canManage: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialQuestion?: string;
@@ -40,6 +41,7 @@ export type SmartReplyAddToFaqDialogProps = {
 };
 
 export function SmartReplyAddToFaqDialog({
+  canManage,
   open,
   onOpenChange,
   initialQuestion = "",
@@ -160,7 +162,7 @@ export function SmartReplyAddToFaqDialog({
     const trimmedQuestion = question.trim();
     const trimmedAnswer = answer.trim();
 
-    if (!docId || !trimmedQuestion || !trimmedAnswer || isSaving) {
+    if (!canManage || !docId || !trimmedQuestion || !trimmedAnswer || isSaving) {
       return;
     }
 
@@ -196,6 +198,7 @@ export function SmartReplyAddToFaqDialog({
   };
 
   const canSave =
+    canManage &&
     Boolean(docId) &&
     Boolean(question.trim()) &&
     Boolean(answer.trim()) &&

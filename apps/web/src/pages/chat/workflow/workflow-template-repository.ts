@@ -1,6 +1,7 @@
 import type {
   WorkflowTemplateApplicationRequest,
   WorkflowTemplateDetail,
+  WorkflowTemplateDraftUpdateRequest,
   WorkflowTemplateListPage,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
@@ -22,11 +23,13 @@ export type WorkflowTemplateRepository = {
   list: (input?: WorkflowTemplateListInput) => Promise<WorkflowTemplateListPage>;
   listDrafts?: (input?: WorkflowTemplateListInput) => Promise<WorkflowTemplateListPage>;
   publish?: (id: string) => Promise<WorkflowTemplateDetail>;
+  updateInfo?: (id: string, input: WorkflowTemplateDraftUpdateRequest) => Promise<WorkflowTemplateDetail>;
+  updateDraft?: (id: string, input: WorkflowTemplateDraftUpdateRequest) => Promise<WorkflowTemplateDetail>;
   withdraw?: (id: string) => Promise<WorkflowTemplateDetail>;
 };
 
 export function createWorkflowTemplateRepository(
-  client: { delete(url: string): Promise<unknown>; get(url: string): Promise<unknown>; post(url: string, data?: unknown): Promise<unknown> } = http,
+  client: { delete(url: string): Promise<unknown>; get(url: string): Promise<unknown>; patch?: (url: string, data?: unknown) => Promise<unknown>; post(url: string, data?: unknown): Promise<unknown> } = http,
   apiBasePath = "/server",
 ): WorkflowTemplateRepository {
   const unwrap = <T>(value: unknown): T => {
@@ -50,11 +53,19 @@ export function createWorkflowTemplateRepository(
     async get(id) {
       return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-templates/${id}`));
     },
+    async updateInfo(id, input) {
+      if (!client.patch) throw new Error("模板信息编辑不可用");
+      return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-templates/${id}`, input));
+    },
     async getDraft(id) {
       return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-template-drafts/${id}`));
     },
     async deleteDraft(id) {
       await client.delete(`${apiBasePath}/workflow-template-drafts/${id}`);
+    },
+    async updateDraft(id, input) {
+      if (!client.patch) throw new Error("模板草稿编辑不可用");
+      return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-template-drafts/${id}`, input));
     },
     async listDrafts(input = {}) {
       const params = new URLSearchParams();

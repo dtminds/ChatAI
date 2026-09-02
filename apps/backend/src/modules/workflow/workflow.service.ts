@@ -41,6 +41,7 @@ import type {
   WorkflowTemplateConversionRequest,
   WorkflowTemplateConfigurationItem,
   WorkflowTemplateDetail,
+  WorkflowTemplateDraftUpdateRequest,
   WorkflowTemplateListPage,
 } from "@chatai/contracts";
 import type { WorkflowNodeKind } from "@chatai/contracts";
@@ -544,6 +545,27 @@ export class WorkflowService {
     return toTemplateDetail(item);
   }
 
+  async updateTemplateInfo(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateDraftUpdateRequest) {
+    assertWorkflowTemplateManage(scope);
+    const template = await this.requireTemplateRepository().find(templateId);
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    if (template.status === "archived") {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_ARCHIVED", "归档模板不能编辑");
+    }
+    const name = input.name.trim();
+    if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
+    const description = assertWorkflowTemplateDescription(input.description);
+    const tags = assertWorkflowTemplateTagIds(input.tags);
+    return toTemplateDetail((await this.requireTemplateRepository().update({
+      ...template,
+      name,
+      description,
+      tags,
+      coverUrl: input.coverUrl?.trim() || null,
+      sortOrder: input.sortOrder ?? template.sortOrder,
+    }))!);
+  }
+
   async getTemplateDraft(scope: WorkflowOperatorScope, templateId: string): Promise<WorkflowTemplateDetail> {
     assertWorkflowTemplateManage(scope);
     const item = await this.requireTemplateRepository().find(templateId, "draft");
@@ -557,6 +579,24 @@ export class WorkflowService {
       throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
     }
     return { id: templateId };
+  }
+
+  async updateTemplateDraft(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateDraftUpdateRequest) {
+    assertWorkflowTemplateManage(scope);
+    const template = await this.requireTemplateRepository().find(templateId, "draft");
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    const name = input.name.trim();
+    if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
+    const description = assertWorkflowTemplateDescription(input.description);
+    const tags = assertWorkflowTemplateTagIds(input.tags);
+    return toTemplateDetail((await this.requireTemplateRepository().update({
+      ...template,
+      name,
+      description,
+      tags,
+      coverUrl: input.coverUrl?.trim() || null,
+      sortOrder: input.sortOrder ?? template.sortOrder,
+    }))!);
   }
 
   async applyTemplate(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateApplicationRequest) {
@@ -579,13 +619,14 @@ export class WorkflowService {
     assertWorkflowTemplateManage(scope);
     const name = input.name.trim();
     if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
+    const description = assertWorkflowTemplateDescription(input.description);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
     const sourceDraft = normalizeWorkflowDraft(definition.draft);
     const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
     const tags = assertWorkflowTemplateTagIds(input.tags);
-    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description: input.description.trim(), tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft" });
+    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description, tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft", sortOrder: input.sortOrder ?? 0 });
     return toTemplateDetail(template);
   }
 
@@ -1325,9 +1366,11 @@ function assertWorkflowDraftNodeContracts(draft: WorkflowDraft) {
 
 function validateTemplateForPublish(template: {
   draft: WorkflowDraft;
+  description: string;
   workflowType: WorkflowType;
   configurationItems: WorkflowTemplateConfigurationItem[];
 }) {
+  assertWorkflowTemplateDescription(template.description);
   const draft = normalizeWorkflowDraft(template.draft);
   assertWorkflowDraftNodeContracts(draft);
   assertTemplateResourceNeutral(draft);
@@ -1831,13 +1874,19 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
 
 
 function toTemplateListItem(item: any) {
-  return { coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), tags: normalizeWorkflowTemplateTagIds(item.tags), trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), sortOrder: item.sortOrder ?? 0, tags: normalizeWorkflowTemplateTagIds(item.tags), trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
 }
 
 function assertWorkflowTemplateTagIds(tags: readonly string[] | null | undefined) {
   const normalized = [...new Set(tags ?? [])];
   const invalid = normalized.find(tag => !isWorkflowTemplateTagId(tag));
   if (invalid) throw new BadRequestError("WORKFLOW_TEMPLATE_TAG_INVALID", "模板标签无效");
+  return normalized;
+}
+
+function assertWorkflowTemplateDescription(description: string) {
+  const normalized = description.trim();
+  if (!normalized) throw new BadRequestError("WORKFLOW_TEMPLATE_DESCRIPTION_REQUIRED", "模板描述不能为空");
   return normalized;
 }
 

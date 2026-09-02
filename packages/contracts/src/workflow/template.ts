@@ -46,6 +46,7 @@ export const WorkflowTemplateListItemSchema = Type.Object({
   nodeKinds: Type.Array(WorkflowNodeKindSchema, { maxItems: 200, uniqueItems: true }),
   nodeCount: Type.Integer({ minimum: 0, maximum: 200 }),
   publishedAt: Type.String(),
+  sortOrder: Type.Integer(),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
   trigger: Type.String({ maxLength: 128 }),
   updatedAt: Type.String(),
@@ -69,9 +70,18 @@ export const WorkflowTemplateDetailSchema = Type.Intersect([
 
 export const WorkflowTemplateConversionRequestSchema = Type.Object({
   coverUrl: Type.Optional(Type.String({ maxLength: 512 })),
-  description: Type.String({ maxLength: 200 }),
+  description: Type.String({ minLength: 1, maxLength: 200 }),
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
   name: Type.String({ minLength: 1, maxLength: 40 }),
+  sortOrder: Type.Optional(Type.Integer()),
+  tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
+});
+
+export const WorkflowTemplateDraftUpdateRequestSchema = Type.Object({
+  coverUrl: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
+  description: Type.String({ minLength: 1, maxLength: 200 }),
+  name: Type.String({ minLength: 1, maxLength: 40 }),
+  sortOrder: Type.Optional(Type.Integer()),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
 });
 
@@ -87,4 +97,5 @@ export type WorkflowTemplateListItem = Static<typeof WorkflowTemplateListItemSch
 export type WorkflowTemplateListPage = Static<typeof WorkflowTemplateListPageSchema>;
 export type WorkflowTemplateDetail = Static<typeof WorkflowTemplateDetailSchema>;
 export type WorkflowTemplateConversionRequest = Static<typeof WorkflowTemplateConversionRequestSchema>;
+export type WorkflowTemplateDraftUpdateRequest = Static<typeof WorkflowTemplateDraftUpdateRequestSchema>;
 export type WorkflowTemplateApplicationRequest = Static<typeof WorkflowTemplateApplicationRequestSchema>;

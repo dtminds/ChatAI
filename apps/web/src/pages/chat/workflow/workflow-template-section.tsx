@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateListItem } from "@chatai/contracts";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateDraftUpdateRequest, type WorkflowTemplateListItem } from "@chatai/contracts";
 import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -13,10 +13,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
@@ -29,10 +31,55 @@ import { canManageWorkflowTemplates } from "./workflow-template-access";
 import { useWorkflowSurface, WorkflowSurfaceProvider } from "./workflow-surface";
 import { nodeVisuals } from "./node-definitions";
 import type { WorkflowDraft } from "./types";
+import "./workflow-page.css";
 
 const WorkflowGraphPreview = lazy(() => import("./workflow-graph-preview").then(module => ({
   default: module.WorkflowGraphPreview,
 })));
+
+const WORKFLOW_TEMPLATE_BACKGROUND_COUNT = 22;
+const WORKFLOW_TEMPLATE_BACKGROUND_BASE_URL = "https://b5.bokr.com.cn/dist/backgrounds";
+const WORKFLOW_TEMPLATE_BACKGROUND_TONES = [
+  "light",
+  "light",
+  "light",
+  "dark",
+  "light",
+  "light",
+  "dark",
+  "dark",
+  "light",
+  "light",
+  "dark",
+  "light",
+  "light",
+  "dark",
+  "light",
+  "light",
+  "dark",
+  "light",
+  "light",
+  "light",
+  "dark",
+  "dark",
+] as const;
+
+function getWorkflowTemplateBackgroundId(templateId: string) {
+  const numericId = Number(templateId);
+  const stableId = Number.isSafeInteger(numericId) && numericId >= 0
+    ? numericId
+    : [...templateId].reduce((hash, character) => ((hash * 31) + character.charCodeAt(0)) >>> 0, 0);
+  return stableId % WORKFLOW_TEMPLATE_BACKGROUND_COUNT || WORKFLOW_TEMPLATE_BACKGROUND_COUNT;
+}
+
+function getWorkflowTemplateBackgroundUrl(templateId: string) {
+  return `${WORKFLOW_TEMPLATE_BACKGROUND_BASE_URL}/${getWorkflowTemplateBackgroundId(templateId)}.png!w800.webp`;
+}
+
+function getWorkflowTemplateCoverTone(item: Pick<WorkflowTemplateListItem, "coverUrl" | "id">) {
+  if (item.coverUrl) return "light";
+  return WORKFLOW_TEMPLATE_BACKGROUND_TONES[getWorkflowTemplateBackgroundId(item.id) - 1] ?? "light";
+}
 
 export function WorkflowTemplateSection({ repository }: { repository?: WorkflowTemplateRepository } = {}) {
   const surface = useWorkflowSurface();
@@ -56,9 +103,9 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
-  const canOpenDraftBox = canManageTemplates
-    && Boolean(templateRepository.deleteDraft && templateRepository.listDrafts && templateRepository.getDraft && templateRepository.publish);
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
   const pageSize = 8;
 
@@ -156,10 +203,25 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       setWithdrawing(false);
     }
   };
+  const updateTemplateInfo = async (input: WorkflowTemplateDraftUpdateRequest) => {
+    if (!detail || !templateRepository.updateInfo || editing) return;
+    setEditing(true);
+    try {
+      const updated = await templateRepository.updateInfo(detail.id, input);
+      setDetail(updated);
+      setEditOpen(false);
+      toast.success("模板信息已更新");
+      await loadFeatured();
+    } catch {
+      toast.error("操作失败，请稍后重试");
+    } finally {
+      setEditing(false);
+    }
+  };
 
   return <section aria-label="推荐模板" className="space-y-3">
-    <div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><div className="flex items-center gap-1">{canOpenDraftBox ? <TemplateDraftBox onPublished={loadFeatured} repository={templateRepository} /> : null}<Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div></div>
-    {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
+    <div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
+    {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-featured-container"><div className="workflow-template-featured-grid">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div></div>}
     <Dialog onOpenChange={value => { if (!withdrawing) { setOpen(value); if (!value) { setDetail(null); setDetailLoading(false); } } }} open={open}>
       <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail}>
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
@@ -168,16 +230,17 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
             actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
             actionClassName="bg-black text-white hover:bg-black/85"
             actionIcon={DashboardCircleAddIcon}
-            actionPending={applyingTemplateId === detail.id || withdrawing}
+            actionPending={applyingTemplateId === detail.id || withdrawing || editing}
             onAction={() => void applyTemplate(detail.id)}
-            overflowLabel="撤回为草稿"
-            onOverflow={() => setWithdrawConfirmOpen(true)}
-            showOverflow={canManageTemplates && detail.status === "published" && Boolean(templateRepository.withdraw)}
+            overflowItems={canManageTemplates && detail.status === "published" ? [
+              ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
+              ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),
+            ] : undefined}
           /> : null}
         </DialogHeader>
         {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-1">
           <Input aria-label="搜索模板" className="w-[260px] max-w-full" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void loadBrowser({ page: 1, query: event.currentTarget.value }); }} placeholder="搜索模板" value={query} />
-          {browserLoading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : browserError ? <TemplateLoadErrorState onRetry={() => void loadBrowser({ page, query })} /> : browserItems.length === 0 ? <TemplateEmptyState /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">{browserItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
+          {browserLoading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : browserError ? <TemplateLoadErrorState onRetry={() => void loadBrowser({ page, query })} /> : browserItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{browserItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
           <TablePagination
             className="border-t-0"
             onPageChange={goToPage}
@@ -189,6 +252,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
         </div>}
       </DialogContent>
     </Dialog>
+    {detail ? <TemplateMetadataDialog detail={detail} onOpenChange={setEditOpen} onSubmit={updateTemplateInfo} open={editOpen} pending={editing} submitLabel="保存" title="编辑模板信息" /> : null}
     <AlertDialog onOpenChange={value => { if (!withdrawing) setWithdrawConfirmOpen(value); }} open={withdrawConfirmOpen}>
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
@@ -239,7 +303,11 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
+  const canOpenDraftBox = canManageTemplates
+    && Boolean(templateRepository.deleteDraft && templateRepository.listDrafts && templateRepository.getDraft && templateRepository.publish);
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
   const pageSize = 8;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -311,6 +379,21 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       setWithdrawing(false);
     }
   };
+  const updateTemplateInfo = async (input: WorkflowTemplateDraftUpdateRequest) => {
+    if (!detail || !templateRepository.updateInfo || editing) return;
+    setEditing(true);
+    try {
+      const updated = await templateRepository.updateInfo(detail.id, input);
+      setDetail(updated);
+      setEditOpen(false);
+      toast.success("模板信息已更新");
+      await load({ page, query, tags: selectedTags });
+    } catch {
+      toast.error("操作失败，请稍后重试");
+    } finally {
+      setEditing(false);
+    }
+  };
   const goToPage = (nextPage: number) => {
     const targetPage = Math.min(Math.max(1, nextPage), totalPages);
     if (targetPage === page) return;
@@ -322,13 +405,6 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       : [...selectedTags, tagId];
     setSelectedTags(nextTags);
   };
-  const clearDimension = (dimensionId: string) => {
-    const dimensionTagIds = new Set<string>(workflowTemplateTagDimensions.find(item => item.id === dimensionId)?.tags.map(tag => tag.id));
-    const nextTags = selectedTags.filter(tagId => !dimensionTagIds.has(tagId));
-    if (nextTags.length === selectedTags.length) return;
-    setSelectedTags(nextTags);
-  };
-
   const content = (
     <div className="space-y-6">
       <header className="flex items-center gap-3">
@@ -345,14 +421,13 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
           </Link>
         </Button>
         <h1 className="text-[22px] font-semibold leading-tight">模板中心</h1>
+        {canOpenDraftBox ? <div className="ml-auto"><TemplateDraftBox onPublished={() => void load({ page: 1, query, tags: selectedTags })} repository={templateRepository} /></div> : null}
       </header>
       <div className="space-y-4">
         <div aria-label="模板筛选" className="space-y-2">
           {workflowTemplateTagDimensions.map(dimension => {
-            const selectedInDimension = selectedTags.filter(tagId => dimension.tags.some(tag => tag.id === tagId));
             return <div className="flex flex-wrap items-center gap-2" key={dimension.id}>
               <span className="w-24 shrink-0 text-sm text-muted-foreground">{dimension.label}</span>
-              <Button aria-pressed={selectedInDimension.length === 0} className="h-8" onClick={() => clearDimension(dimension.id)} size="sm" type="button" variant={selectedInDimension.length === 0 ? "secondary" : "ghost"}>全部</Button>
               {dimension.tags.map(tag => <Button aria-pressed={selectedTags.includes(tag.id)} className="h-8" key={tag.id} onClick={() => toggleTag(tag.id)} size="sm" type="button" variant={selectedTags.includes(tag.id) ? "secondary" : "ghost"}>{tag.label}</Button>)}
             </div>;
           })}
@@ -365,27 +440,29 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
           placeholder="搜索模板"
           value={query}
         />
-        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => { setDetailLoading(true); void openDetail(item); }} />)}</div>}
+        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => { setDetailLoading(true); void openDetail(item); }} />)}</div>}
         <TablePagination className="border-t-0" onPageChange={goToPage} page={page} showTotal total={total} totalPages={totalPages} />
       </div>
       <Dialog onOpenChange={value => { if (!withdrawing) { if (!value) { setDetail(null); setDetailLoading(false); } } }} open={Boolean(detail) || detailLoading}>
-        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detailLoading}>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
             {detail ? <TemplateDetailActions
               actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
               actionClassName="bg-black text-white hover:bg-black/85"
               actionIcon={DashboardCircleAddIcon}
-              actionPending={applyingTemplateId === detail.id || withdrawing}
+              actionPending={applyingTemplateId === detail.id || withdrawing || editing}
               onAction={() => void applyTemplate(detail.id)}
-              overflowLabel="撤回为草稿"
-              onOverflow={() => setWithdrawConfirmOpen(true)}
-              showOverflow={canManageTemplates && detail.status === "published" && Boolean(templateRepository.withdraw)}
-            /> : null}
+              overflowItems={canManageTemplates && detail.status === "published" ? [
+                ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
+                ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),
+              ] : undefined}
+          /> : null}
           </DialogHeader>
           {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : null}
         </DialogContent>
       </Dialog>
+      {detail ? <TemplateMetadataDialog detail={detail} onOpenChange={setEditOpen} onSubmit={updateTemplateInfo} open={editOpen} pending={editing} submitLabel="保存" title="编辑模板信息" /> : null}
       <AlertDialog onOpenChange={value => { if (!withdrawing) setWithdrawConfirmOpen(value); }} open={withdrawConfirmOpen}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader><AlertDialogTitle>撤回模板</AlertDialogTitle><AlertDialogDescription>撤回后模板将回到草稿箱，普通用户将无法继续使用</AlertDialogDescription></AlertDialogHeader>
@@ -408,6 +485,7 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const pageSize = 8;
@@ -451,10 +529,11 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
       toast.error("操作失败，请稍后重试");
     }
   };
-  const publish = async () => {
+  const publish = async (input?: WorkflowTemplateDraftUpdateRequest) => {
     if (!detail || !repository.publish || publishing) return;
     setPublishing(true);
     try {
+      if (input && repository.updateDraft) await repository.updateDraft(detail.id, input);
       await repository.publish(detail.id);
       toast.success("模板已发布");
       setDetail(null);
@@ -486,19 +565,16 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
 
   return (
     <>
-      <Button onClick={openDraftBox} type="button" variant="ghost">草稿箱</Button>
+      <Button onClick={openDraftBox} type="button" variant="secondary">草稿箱</Button>
       <Dialog onOpenChange={value => { if (!deleting) { setOpen(value); if (!value) setDetail(null); } }} open={open}>
         <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh]" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板草稿"}</DialogTitle>
-            {detail ? <TemplateDetailActions
+          {detail ? <TemplateDetailActions
               actionLabel={publishing ? "发布中" : "发布模板"}
               actionPending={publishing || deleting}
-              onAction={() => void publish()}
-              overflowLabel="删除草稿"
-              onOverflow={() => setDeleteConfirmOpen(true)}
-              showOverflow
-              destructiveOverflow
+              onAction={() => setEditOpen(true)}
+              overflowItems={[{ destructive: true, icon: Delete01Icon, label: "删除草稿", onSelect: () => setDeleteConfirmOpen(true) }]}
             /> : null}
           </DialogHeader>
           {detail ? (
@@ -520,7 +596,7 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
               ) : items.length === 0 ? (
                 <TemplateEmptyState />
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,_280px),_1fr))] gap-3">
+                <div className="workflow-template-grid">
                   {items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}
                 </div>
               )}
@@ -536,6 +612,7 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
           )}
         </DialogContent>
       </Dialog>
+      {detail ? <TemplateMetadataDialog detail={detail} onOpenChange={setEditOpen} onSubmit={publish} open={editOpen} pending={publishing} submitLabel="发布模板" title="发布模板" /> : null}
       <AlertDialog onOpenChange={value => { if (!deleting) setDeleteConfirmOpen(value); }} open={deleteConfirmOpen}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
@@ -558,6 +635,61 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function TemplateMetadataDialog({ detail, onOpenChange, onSubmit, open, pending, submitLabel, title }: { detail: WorkflowTemplateDetail; onOpenChange: (open: boolean) => void; onSubmit: (input: WorkflowTemplateDraftUpdateRequest) => Promise<void>; open: boolean; pending: boolean; submitLabel: string; title: string }) {
+  const [name, setName] = useState(detail.name);
+  const [description, setDescription] = useState(detail.description);
+  const [coverUrl, setCoverUrl] = useState(detail.coverUrl ?? "");
+  const [sortOrder, setSortOrder] = useState(String(detail.sortOrder ?? 0));
+  const [tags, setTags] = useState<string[]>(detail.tags ?? []);
+  useEffect(() => {
+    if (!open) return;
+    setName(detail.name); setDescription(detail.description); setCoverUrl(detail.coverUrl ?? ""); setSortOrder(String(detail.sortOrder ?? 0)); setTags(detail.tags ?? []);
+  }, [detail, open]);
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+            <Label className="pt-2" htmlFor="workflow-template-name">模板名称</Label>
+            <Input id="workflow-template-name" aria-label="模板名称" onChange={e => setName(e.target.value)} placeholder="请输入模板名称" value={name} />
+          </div>
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+            <Label className="pt-2" htmlFor="workflow-template-description">模板描述</Label>
+            <Textarea id="workflow-template-description" aria-label="模板描述" onChange={e => setDescription(e.target.value)} placeholder="请输入模板描述" required value={description} />
+          </div>
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+            <Label className="pt-2" htmlFor="workflow-template-cover-url">封面图片</Label>
+            <Input id="workflow-template-cover-url" aria-label="封面图片" onChange={e => setCoverUrl(e.target.value)} placeholder="请输入封面图片 URL（可选）" value={coverUrl} />
+          </div>
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+            <Label className="pt-2" htmlFor="workflow-template-sort-order">排序权重</Label>
+            <div className="space-y-1.5">
+              <Input id="workflow-template-sort-order" aria-label="模板排序值" inputMode="numeric" onChange={e => setSortOrder(e.target.value)} placeholder="请输入排序权重" type="number" value={sortOrder} />
+              <p className="text-xs text-muted-foreground">数值越大越靠前，默认为 0</p>
+            </div>
+          </div>
+          <div aria-label="模板标签" className="space-y-3">
+            {workflowTemplateTagDimensions.map(dimension => <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4" key={dimension.id}>
+              <div className="pt-1.5 text-sm font-medium">{dimension.label}</div>
+              <div className="flex flex-wrap gap-2">{dimension.tags.map(tag => {
+                const selected = tags.includes(tag.id);
+                return <Button aria-pressed={selected} className="h-8" key={tag.id} onClick={() => setTags(current => selected ? current.filter(id => id !== tag.id) : [...current, tag.id])} size="sm" type="button" variant={selected ? "secondary" : "outline"}>{tag.label}</Button>;
+              })}</div>
+            </div>)}
+          </div>
+        </div>
+        <DialogFooter className="shrink-0 pt-2">
+          <Button disabled={pending} onClick={() => onOpenChange(false)} variant="outline">关闭</Button>
+          <Button disabled={pending || !name.trim() || !description.trim() || !Number.isInteger(Number(sortOrder))} onClick={() => void onSubmit({ coverUrl: coverUrl.trim() || null, description: description.trim(), name: name.trim(), sortOrder: Number(sortOrder), tags })}>{pending ? `${submitLabel}中` : submitLabel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -598,39 +730,32 @@ function TemplateCard({ item, onPreview }: { item: WorkflowTemplateListItem; onP
       tabIndex={0}
     >
       <div className="relative aspect-[1.8] overflow-hidden rounded-lg bg-muted">
-        {item.coverUrl ? <img alt="" className="h-full w-full object-cover" src={item.coverUrl} /> : (
-          <div className="flex h-full items-center justify-center">
-            <IconStack aria-hidden="true" className="h-16 w-14" variant="primary">
-              <HugeiconsIcon aria-hidden="true" icon={WorkflowSquare06Icon} size={15} strokeWidth={1.8} />
-            </IconStack>
-          </div>
-        )}
-      </div>
-      <div className="mt-3 min-w-0">
-        <h3 className="truncate font-medium" title={item.name}>{item.name}</h3>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <HugeiconsIcon aria-hidden="true" icon={FlashIcon} size={14} strokeWidth={1.8} />
-          <span className="truncate" title={item.trigger || "未配置"}>{item.trigger || "未配置"}</span>
-          <span aria-hidden="true">/</span>
-          <HugeiconsIcon aria-hidden="true" icon={WorkflowSquare06Icon} size={14} strokeWidth={1.8} />
-          <span className="shrink-0">{item.nodeCount} 个节点</span>
+        <img alt="" className="h-full w-full object-cover" src={item.coverUrl || getWorkflowTemplateBackgroundUrl(item.id)} />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <TemplateNodeKinds nodeKinds={item.nodeKinds} tone={getWorkflowTemplateCoverTone(item)} />
         </div>
-        <TemplateTags tags={item.tags} />
       </div>
-      <div className="mt-auto flex items-center justify-between gap-3 pt-3">
-        <TemplateNodeKinds nodeKinds={item.nodeKinds} />
-        <Button
-          aria-label={`查看模板 ${item.name}`}
-          onClick={event => {
-            event.stopPropagation();
-            onPreview();
-          }}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          查看模板
-        </Button>
+      <div className="mt-3 flex min-h-0 flex-1 min-w-0 flex-col">
+        <h3 className="truncate text-[15px] font-medium" title={item.name}>{item.name}</h3>
+        {item.description ? <p className="mt-1 truncate text-[13px] text-muted-foreground" title={item.description}>{item.description}</p> : null}
+        <div className="mt-auto flex min-w-0 items-center justify-between gap-3 pt-3">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <HugeiconsIcon aria-hidden="true" icon={FlashIcon} size={14} strokeWidth={1.8} />
+            <span className="truncate" title={item.trigger || "未配置"}>{item.trigger || "未配置"}</span>
+          </div>
+          <Button
+            aria-label={`查看模板 ${item.name}`}
+            onClick={event => {
+              event.stopPropagation();
+              onPreview();
+            }}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            查看模板
+          </Button>
+        </div>
       </div>
     </article>
   );
@@ -647,28 +772,33 @@ function TemplateTags({ max, tags }: { max?: number; tags?: readonly string[] })
   </div>;
 }
 
-function TemplateNodeKinds({ nodeKinds }: { nodeKinds: WorkflowTemplateListItem["nodeKinds"] }) {
+function TemplateNodeKinds({
+  nodeKinds,
+  tone,
+}: {
+  nodeKinds: WorkflowTemplateListItem["nodeKinds"];
+  tone: "light" | "dark";
+}) {
   const businessKinds = nodeKinds.filter(kind => kind !== "start" && kind !== "end");
   const allKinds = ["start" as const, ...businessKinds, "end" as const];
   const displayKinds = businessKinds.length < 3 ? allKinds : businessKinds;
   const visibleKinds = displayKinds.slice(0, 3);
   const remainingCount = allKinds.length - visibleKinds.length;
   return (
-    <div aria-label="模板节点类型" className="flex min-w-0 items-center -space-x-2">
+    <div aria-label="模板节点类型" className="workflow-template-cover-overlay" data-tone={tone}>
       {visibleKinds.map(kind => {
         const visual = nodeVisuals[kind];
-        return visual ? <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background" key={kind} title={visual.label}>
+        return visual ? <span className="flex size-5 shrink-0 items-center justify-center" key={kind} title={visual.label}>
           <HugeiconsIcon
             aria-hidden="true"
             className="workflow-template-node-icon"
             icon={visual.icon}
-            size={15}
+            size={17}
             strokeWidth={1.8}
-            style={{ "--workflow-template-node-accent-rgb": visual.accentRgb } as CSSProperties}
           />
         </span> : null;
       })}
-      {remainingCount > 0 ? <span className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-xs text-muted-foreground">+{remainingCount}</span> : null}
+      {remainingCount > 0 ? <span className="workflow-template-cover-overlay-count">+{remainingCount}</span> : null}
     </div>
   );
 }
@@ -678,21 +808,15 @@ function TemplateDetailActions({
   actionClassName,
   actionIcon,
   actionPending = false,
-  destructiveOverflow = false,
   onAction,
-  onOverflow,
-  overflowLabel,
-  showOverflow = false,
+  overflowItems = [],
 }: {
   actionLabel: string;
   actionClassName?: string;
   actionIcon?: IconSvgElement;
   actionPending?: boolean;
-  destructiveOverflow?: boolean;
   onAction: () => void;
-  onOverflow?: () => void;
-  overflowLabel?: string;
-  showOverflow?: boolean;
+  overflowItems?: readonly { destructive?: boolean; icon?: IconSvgElement; label: string; onSelect: () => void }[];
 }) {
   return (
     <div aria-label="模板操作" className="flex shrink-0 items-center gap-2" role="group">
@@ -700,7 +824,7 @@ function TemplateDetailActions({
         {actionIcon ? <HugeiconsIcon aria-hidden="true" icon={actionIcon} size={16} strokeWidth={1.8} /> : null}
         {actionLabel}
       </Button>
-      {showOverflow && onOverflow && overflowLabel ? (
+      {overflowItems.length > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button aria-label="更多模板操作" className="size-10 rounded-[10px] p-0" disabled={actionPending} size="icon" type="button" variant="secondary">
@@ -708,10 +832,10 @@ function TemplateDetailActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem className={destructiveOverflow ? "text-destructive focus:text-destructive" : undefined} onSelect={onOverflow}>
-              {destructiveOverflow ? <HugeiconsIcon aria-hidden="true" icon={Delete01Icon} size={16} strokeWidth={1.8} /> : null}
-              {overflowLabel}
-            </DropdownMenuItem>
+            {overflowItems.map(item => <DropdownMenuItem className={item.destructive ? "text-destructive focus:text-destructive" : undefined} key={item.label} onSelect={item.onSelect}>
+              {item.icon ? <HugeiconsIcon aria-hidden="true" icon={item.icon} size={16} strokeWidth={1.8} /> : null}
+              {item.label}
+            </DropdownMenuItem>)}
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}

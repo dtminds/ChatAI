@@ -37,6 +37,7 @@ export interface WorkflowTemplateTable {
   name: string;
   tags_json: JsonText;
   status: string;
+  sort_order: number;
   template_version: number;
   update_time: GeneratedDate;
   workflow_type: number;

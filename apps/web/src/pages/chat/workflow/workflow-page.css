@@ -51,6 +51,118 @@
   color: rgb(var(--workflow-template-node-accent-rgb, 37 99 235));
 }
 
+.workflow-template-cover-overlay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 40%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 36%);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+
+.workflow-template-cover-overlay[data-tone="dark"] {
+  border-color: rgb(255 255 255 / 10%);
+  background: rgb(255 255 255 / 12%);
+}
+
+.workflow-template-cover-overlay .workflow-template-node-icon {
+  color: rgb(0 0 0 / 72%);
+}
+
+.workflow-template-cover-overlay[data-tone="dark"] .workflow-template-node-icon {
+  color: rgb(255 255 255 / 90%);
+}
+
+.workflow-template-cover-overlay-count {
+  min-width: 1.25rem;
+  color: rgb(0 0 0 / 55%);
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+}
+
+.workflow-template-cover-overlay[data-tone="dark"] .workflow-template-cover-overlay-count {
+  color: rgb(255 255 255 / 78%);
+}
+
+.workflow-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 265px), 1fr));
+  gap: 12px;
+}
+
+.workflow-template-grid > [data-testid^="workflow-template-card-"] {
+  min-width: 0;
+}
+
+.workflow-template-featured-container {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workflow-template-featured-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 2) {
+  display: none;
+}
+
+@container (min-width: 542px) {
+  .workflow-template-featured-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 2) {
+    display: flex;
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 3) {
+    display: none;
+  }
+}
+
+@container (min-width: 819px) {
+  .workflow-template-featured-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 3) {
+    display: flex;
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 4) {
+    display: none;
+  }
+}
+
+@container (min-width: 1096px) {
+  .workflow-template-featured-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 4) {
+    display: flex;
+  }
+
+  .workflow-template-featured-grid > [data-testid^="workflow-template-card-"]:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .workflow-template-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .dark .workflow-graph-preview {
   --workflow-canvas-bg: color-mix(in oklch, var(--background) 90%, black);
 }

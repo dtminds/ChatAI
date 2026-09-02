@@ -8,7 +8,7 @@ export class InMemoryWorkflowTemplateRepository implements WorkflowTemplateRepos
 
   async create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">) {
     const now = new Date();
-    const record = { ...clone(input), id: String(this.nextId++), createdAt: now, updatedAt: now };
+    const record = { ...clone(input), sortOrder: input.sortOrder ?? 0, id: String(this.nextId++), createdAt: now, updatedAt: now };
     this.records.push(record);
     return clone(record);
   }
@@ -39,7 +39,7 @@ export class InMemoryWorkflowTemplateRepository implements WorkflowTemplateRepos
       && (!query || item.name.toLocaleLowerCase().includes(query) || item.description.toLocaleLowerCase().includes(query))
       && (!input.workflowType || item.workflowType === input.workflowType)
       && (!input.tags?.length || input.tags.every(tag => (item.tags ?? []).includes(tag))),
-    ).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || Number(b.id) - Number(a.id));
+    ).sort((a, b) => b.sortOrder - a.sortOrder || b.updatedAt.getTime() - a.updatedAt.getTime() || Number(b.id) - Number(a.id));
     const items = filtered.slice(input.offset ?? 0, (input.offset ?? 0) + input.limit).map(clone);
     return { items, total: filtered.length };
   }

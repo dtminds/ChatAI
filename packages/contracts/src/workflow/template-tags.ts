@@ -8,23 +8,12 @@ export const WorkflowTemplateTagIdSchema = Type.String({
 export const workflowTemplateTagDimensions = [
   {
     id: "lifecycle",
-    label: "客户生命周期",
+    label: "生命周期",
     tags: [
       { id: "lifecycle:potential_conversion", label: "潜客转化" },
       { id: "lifecycle:new_customer_repurchase", label: "新客二回" },
       { id: "lifecycle:old_customer_repurchase", label: "老客复购" },
       { id: "lifecycle:dormant_reactivation", label: "沉睡唤醒" },
-    ],
-  },
-  {
-    id: "private_domain",
-    label: "私域沉淀",
-    tags: [
-      { id: "private_domain:public_to_private", label: "公转私" },
-      { id: "private_domain:add_wecom", label: "加企微" },
-      { id: "private_domain:add_group", label: "加社群" },
-      { id: "private_domain:register_member", label: "注册会员" },
-      { id: "private_domain:official_account_follow", label: "公众号加粉" },
     ],
   },
   {

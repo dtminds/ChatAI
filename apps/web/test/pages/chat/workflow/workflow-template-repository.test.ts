@@ -35,4 +35,42 @@ describe("HTTP Workflow template repository", () => {
 
     expect(post).toHaveBeenCalledWith("/server/workflow-templates/18/withdraw");
   });
+
+  it("updates draft metadata through the management endpoint", async () => {
+    const patch = vi.fn().mockResolvedValue({ data: { id: "18", status: "draft" } });
+    const repository = createWorkflowTemplateRepository({ delete: vi.fn(), get: vi.fn(), patch, post: vi.fn() });
+
+    await repository.updateDraft?.("18", {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      tags: ["scene:customer_care"],
+    });
+
+    expect(patch).toHaveBeenCalledWith("/server/workflow-template-drafts/18", {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      tags: ["scene:customer_care"],
+    });
+  });
+
+  it("updates published template metadata through the management endpoint", async () => {
+    const patch = vi.fn().mockResolvedValue({ data: { id: "18", status: "published" } });
+    const repository = createWorkflowTemplateRepository({ delete: vi.fn(), get: vi.fn(), patch, post: vi.fn() });
+
+    await repository.updateInfo?.("18", {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      tags: ["scene:customer_care"],
+    });
+
+    expect(patch).toHaveBeenCalledWith("/server/workflow-templates/18", {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      tags: ["scene:customer_care"],
+    });
+  });
 });

@@ -19,6 +19,7 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
       configuration_json: json(input.configurationItems),
       template_version: input.templateVersion,
       status: input.status,
+      sort_order: input.sortOrder,
     }).executeTakeFirstOrThrow();
     const row = await this.db.selectFrom(TABLE).selectAll().where("id", "=", String(result.insertId)).executeTakeFirstOrThrow();
     return map(row);
@@ -35,7 +36,7 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
       name: input.name, description: input.description,
       cover_url: input.coverUrl, draft_json: json(input.draft), configuration_json: json(input.configurationItems),
       tags_json: json(input.tags ?? []),
-      template_version: input.templateVersion, status: input.status,
+      template_version: input.templateVersion, status: input.status, sort_order: input.sortOrder,
     }).where("id", "=", input.id).executeTakeFirst();
     if (!result.numUpdatedRows) return null;
     const row = await this.db.selectFrom(TABLE).selectAll().where("id", "=", input.id).executeTakeFirst();
@@ -55,7 +56,7 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
       q = q.where(sql<boolean>`JSON_CONTAINS(tags_json, ${JSON.stringify(tag)}) = 1`);
     }
     if (input.query) q = q.where(eb => eb.or([eb("name", "like", `%${input.query}%`), eb("description", "like", `%${input.query}%`)]));
-    const rows = await q.orderBy("update_time", "desc").orderBy("id", "desc").offset(input.offset ?? 0).limit(input.limit).execute();
+    const rows = await q.orderBy("sort_order", "desc").orderBy("update_time", "desc").orderBy("id", "desc").offset(input.offset ?? 0).limit(input.limit).execute();
     let countQuery = this.db.selectFrom(TABLE).select(({ fn }) => fn.count<number>("id").as("total")).where("status", "=", input.status ?? "published");
     if (input.workflowType) countQuery = countQuery.where("workflow_type", "=", encodeWorkflowType(input.workflowType));
     for (const tag of input.tags ?? []) {
@@ -68,5 +69,5 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
 }
 
 function map(row: any): WorkflowTemplateRecord {
-  return { id: String(row.id), workflowType: decodeWorkflowType(Number(row.workflow_type)), name: row.name, description: row.description, tags: parse<string[]>(row.tags_json ?? "[]"), coverUrl: row.cover_url, draft: parse(row.draft_json), configurationItems: parse(row.configuration_json), templateVersion: Number(row.template_version), status: row.status, createdAt: new Date(row.create_time), updatedAt: new Date(row.update_time) };
+  return { id: String(row.id), workflowType: decodeWorkflowType(Number(row.workflow_type)), name: row.name, description: row.description, tags: parse<string[]>(row.tags_json ?? "[]"), coverUrl: row.cover_url, draft: parse(row.draft_json), configurationItems: parse(row.configuration_json), templateVersion: Number(row.template_version), status: row.status, sortOrder: Number(row.sort_order ?? 0), createdAt: new Date(row.create_time), updatedAt: new Date(row.update_time) };
 }

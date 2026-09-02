@@ -1985,6 +1985,7 @@ describe("WorkflowService", () => {
       tags: ["lifecycle:potential_conversion", "scene:customer_care"],
     });
     expect(createdTemplate.status).toBe("draft");
+    expect(createdTemplate.sortOrder).toBe(0);
     expect(createdTemplate.tags).toEqual(["lifecycle:potential_conversion", "scene:customer_care"]);
     expect(createdTemplate.configurationItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ bindingKey: "seatIds", resourceKind: "managed-account" }),
@@ -2090,6 +2091,101 @@ describe("WorkflowService", () => {
       .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
   });
 
+  it("updates template draft metadata before publishing", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const draft = await service.convertToTemplate(manager, source.id, {
+      description: "旧描述",
+      expectedDraftVersion: source.draftVersion,
+      name: "旧名称",
+      tags: ["scene:customer_care"],
+    });
+
+    const updated = await service.updateTemplateDraft(manager, draft.id, {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      tags: ["industry:beauty", "scene:customer_care"],
+    });
+
+    expect(updated).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      status: "draft",
+      tags: ["industry:beauty", "scene:customer_care"],
+    });
+    await expect(service.publishTemplate(manager, draft.id)).resolves.toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      name: "新名称",
+      status: "published",
+    });
+  });
+
+  it("requires a non-empty description throughout template management", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+
+    await expect(service.convertToTemplate(manager, source.id, {
+      description: "  ",
+      expectedDraftVersion: source.draftVersion,
+      name: "空描述模板",
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_DESCRIPTION_REQUIRED", statusCode: 400 });
+
+    const draft = await service.convertToTemplate(manager, source.id, {
+      description: "有效描述",
+      expectedDraftVersion: source.draftVersion,
+      name: "有效模板",
+    });
+    await expect(service.updateTemplateDraft(manager, draft.id, {
+      coverUrl: null,
+      description: "\n\t",
+      name: "有效模板",
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_DESCRIPTION_REQUIRED", statusCode: 400 });
+
+    const published = await service.publishTemplate(manager, draft.id);
+    await expect(service.updateTemplateInfo(manager, published.id, {
+      coverUrl: null,
+      description: " ",
+      name: "有效模板",
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_DESCRIPTION_REQUIRED", statusCode: 400 });
+  });
+
+  it("updates published template metadata without withdrawing it", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const draft = await service.convertToTemplate(manager, source.id, {
+      description: "旧描述",
+      expectedDraftVersion: source.draftVersion,
+      name: "旧名称",
+    });
+    const published = await service.publishTemplate(manager, draft.id);
+
+    const updated = await service.updateTemplateInfo(manager, published.id, {
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      sortOrder: 20,
+      tags: ["industry:beauty"],
+    });
+
+    expect(updated).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      sortOrder: 20,
+      status: "published",
+      tags: ["industry:beauty"],
+      version: published.version,
+    });
+  });
+
   it("withdraws a published template back to the draft box without changing its version", async () => {
     const templateRepository = new InMemoryWorkflowTemplateRepository();
     const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
@@ -2127,6 +2223,34 @@ describe("WorkflowService", () => {
       limit: 8,
       offset: 32,
     }));
+  });
+
+  it("orders published templates by descending operational sort value", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(repository, { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const firstWorkflow = await service.create(manager, { workflowType: "chatai_sop" });
+    const secondWorkflow = await service.create(manager, { workflowType: "chatai_sop" });
+    const first = await service.convertToTemplate(manager, firstWorkflow.id, {
+      description: "排序模板1",
+      expectedDraftVersion: firstWorkflow.draftVersion,
+      name: "排序模板1",
+      sortOrder: 10,
+    });
+    const second = await service.convertToTemplate(manager, secondWorkflow.id, {
+      description: "排序模板2",
+      expectedDraftVersion: secondWorkflow.draftVersion,
+      name: "排序模板2",
+      sortOrder: 20,
+    });
+    await service.publishTemplate(manager, first.id);
+    await service.publishTemplate(manager, second.id);
+
+    const page = await service.listTemplates(manager, { limit: 8, page: 1 });
+
+    expect(page.items.map(item => item.name)).toEqual(["排序模板2", "排序模板1"]);
+    expect(page.items.map(item => item.sortOrder)).toEqual([20, 10]);
   });
 });
 

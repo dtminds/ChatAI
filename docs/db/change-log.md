@@ -1,5 +1,17 @@
 # Database Change Log
 
+## 2026-09-02 Workflow模板运营排序
+
+- `xy_wap_embed_workflow_template` 新增 `sort_order`，默认值为 `0`；公开模板列表按排序值降序展示，数值越大越靠前。
+- 新环境直接执行 `docs/db/schema.sql` 的最终结构；已经创建模板表的测试环境执行以下变更语句。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_template
+  ADD COLUMN sort_order INT NOT NULL DEFAULT 0 COMMENT '运营排序值，数值越大越靠前' AFTER status,
+  DROP KEY idx_workflow_template_public_status,
+  ADD KEY idx_workflow_template_public_status (status, sort_order, update_time, id);
+```
+
 ## 2026-08-31 Embed 独立登录会话
 
 - 新增 `xy_wap_embed_sub_user_embed_session`，为嵌入页面的每个浏览器登录保存独立 access/refresh Session。

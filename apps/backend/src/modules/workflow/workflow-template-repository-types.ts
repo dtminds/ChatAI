@@ -16,6 +16,7 @@ export type WorkflowTemplateRecord = {
   configurationItems: WorkflowTemplateConfigurationItem[];
   templateVersion: number;
   status: WorkflowTemplateStatus;
+  sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -32,7 +33,7 @@ export type WorkflowTemplateListInput = {
 export type WorkflowTemplateRepository = {
   create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">): Promise<WorkflowTemplateRecord>;
   deleteDraft(id: string): Promise<boolean>;
-  update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "tags" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status">): Promise<WorkflowTemplateRecord | null>;
+  update(input: Pick<WorkflowTemplateRecord, "id" | "name" | "description" | "tags" | "coverUrl" | "draft" | "configurationItems" | "templateVersion" | "status" | "sortOrder">): Promise<WorkflowTemplateRecord | null>;
   find(id: string, status?: WorkflowTemplateStatus): Promise<WorkflowTemplateRecord | null>;
   list(input: WorkflowTemplateListInput): Promise<{ items: WorkflowTemplateRecord[]; total: number }>;
 };

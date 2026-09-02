@@ -1096,7 +1096,7 @@ describe("Agent workflow page", () => {
     const user = userEvent.setup();
     const baseRepository = getWorkflowDraftRepository();
     const seed = await baseRepository.getDocument("vip-reactivation");
-    const pageItems = Array.from({ length: 5 }, (_, index) => ({
+    const pageItems = Array.from({ length: 6 }, (_, index) => ({
       ...seed,
       name: `第 ${index + 1} 页流程`,
     }));
@@ -1104,23 +1104,24 @@ describe("Agent workflow page", () => {
       const page = input.page ?? 1;
       return {
         items: [pageItems[page - 1]],
-        total: 21,
+        total: 51,
       };
     });
 
     renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments });
 
     expect(await screen.findByText("第 1 页流程")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "6" })).toBeInTheDocument();
 
-    await user.click(await screen.findByRole("button", { name: "5" }));
+    await user.click(await screen.findByRole("button", { name: "6" }));
 
-    expect(await screen.findByText("第 5 页流程")).toBeInTheDocument();
+    expect(await screen.findByText("第 6 页流程")).toBeInTheDocument();
     expect(listDocuments).toHaveBeenCalledTimes(2);
-    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ page: 5 }));
+    expect(listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ page: 6 }));
     expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
     expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 3 }));
     expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));
+    expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 5 }));
   });
 
   it("shows all template pages and requests the selected page directly", async () => {
@@ -1133,6 +1134,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1176,6 +1178,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 1,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       tags: ["lifecycle:potential_conversion", "lifecycle:new_customer_repurchase"],
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
@@ -1216,6 +1219,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1247,6 +1251,8 @@ describe("Agent workflow page", () => {
 
     const recommendationSection = await screen.findByRole("region", { name: "推荐模板" });
     const templateCard = within(recommendationSection).getByTestId("workflow-template-card-featured-1");
+    expect(templateCard.querySelector("img")).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/backgrounds/10.png!w800.webp");
+    expect(within(templateCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "light");
     expect(within(templateCard).getByLabelText("模板节点类型")).toHaveTextContent("+1");
     expect(within(recommendationSection).queryByRole("button", { name: "预览 推荐模板样例" })).not.toBeInTheDocument();
     expect(within(recommendationSection).queryByRole("button", { name: "一键应用 推荐模板样例" })).not.toBeInTheDocument();
@@ -1283,6 +1289,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1304,6 +1311,42 @@ describe("Agent workflow page", () => {
     expect(within(nodeKinds).queryByText(/\+/)).not.toBeInTheDocument();
   });
 
+  it("picks overlay icon tone from the preset cover brightness", async () => {
+    const lightTemplate = {
+      coverUrl: null,
+      description: "",
+      id: "1",
+      name: "浅色封面",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 3,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const darkTemplate = {
+      ...lightTemplate,
+      id: "4",
+      name: "深色封面",
+    };
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(async input => input.featured
+        ? { items: [lightTemplate, darkTemplate], total: 2 }
+        : { items: [], total: 0 }),
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+
+    const lightCard = await screen.findByTestId("workflow-template-card-1");
+    const darkCard = screen.getByTestId("workflow-template-card-4");
+    expect(within(lightCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "light");
+    expect(within(darkCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "dark");
+  });
+
   it("shows a clean template draft preview and lets template managers delete the draft", async () => {
     const user = userEvent.setup();
     useAuthStore.getState().setSession({
@@ -1322,6 +1365,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1349,7 +1393,7 @@ describe("Agent workflow page", () => {
       listDrafts: WorkflowTemplateRepository["list"];
     };
 
-    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+    renderWorkflowPage("/chat/workflows/templates", getWorkflowDraftRepository(), templateRepository);
 
     await user.click(await screen.findByRole("button", { name: "草稿箱" }));
     const dialog = await screen.findByRole("dialog");
@@ -1391,6 +1435,7 @@ describe("Agent workflow page", () => {
       nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
       trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1414,6 +1459,68 @@ describe("Agent workflow page", () => {
     await user.click(within(confirmDialog).getByRole("button", { name: "撤回" }));
 
     await waitFor(() => expect(withdraw).toHaveBeenCalledWith("9"));
+  });
+
+  it("lets template managers edit published template metadata without withdrawing it", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "模板运营",
+      permissions: ["chat.access", "chat.send", "chat.takeover", "workflow_template_manage"],
+      role: "admin",
+      subUserId: "2",
+      uid: 101,
+    });
+    const template = {
+      coverUrl: null,
+      description: "旧描述",
+      id: "10",
+      name: "待编辑模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 2,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
+      trigger: "用户消息",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const updateInfo = vi.fn().mockImplementation(async (_id: string, input: Parameters<NonNullable<WorkflowTemplateRepository["updateInfo"]>>[1]) => ({
+      ...template,
+      ...input,
+      configurationItems: [],
+      draft: createInitialDraft(),
+      status: "published" as const,
+    }));
+    const repository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn().mockResolvedValue({ ...template, configurationItems: [], draft: createInitialDraft(), status: "published" }),
+      list: vi.fn(async input => input.featured ? { items: [template], total: 1 } : { items: [template], total: 1 }),
+      updateInfo,
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), repository);
+    await user.click(await screen.findByRole("button", { name: /待编辑模板/ }));
+    const detailDialog = await screen.findByRole("dialog");
+    await user.click(within(detailDialog).getByRole("button", { name: "更多模板操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "编辑信息" }));
+
+    const editDialog = await screen.findByRole("heading", { name: "编辑模板信息" }).then(heading => heading.closest<HTMLElement>('[role="dialog"]'));
+    if (!editDialog) throw new Error("Template metadata dialog was not rendered");
+    expect(within(editDialog).getByText("模板名称")).toBeInTheDocument();
+    expect(within(editDialog).getByText("模板描述")).toBeInTheDocument();
+    expect(within(editDialog).getByText("封面图片")).toBeInTheDocument();
+    expect(within(editDialog).getByText("排序权重")).toBeInTheDocument();
+    const nameInput = within(editDialog).getByRole("textbox", { name: "模板名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "更新后的模板");
+    await user.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(updateInfo).toHaveBeenCalledWith("10", expect.objectContaining({
+      name: "更新后的模板",
+      description: "旧描述",
+    })));
+    expect(await within(detailDialog).findByRole("heading", { name: "更新后的模板" })).toBeInTheDocument();
   });
 
   it("moves an inactive workflow from draft to ready after publishing", async () => {

@@ -133,6 +133,94 @@ describe("workflow routes", () => {
     expect(response.json().data).toMatchObject({ id: draft.id, status: "draft" });
   });
 
+  it("updates template draft metadata before publishing", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "旧描述",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "旧名称",
+        tags: ["scene:customer_care"],
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "PATCH",
+      payload: {
+        coverUrl: "https://example.com/template.png",
+        description: "新描述",
+        name: "新名称",
+        tags: ["industry:beauty", "scene:customer_care"],
+      },
+      url: `/api/server/workflow-template-drafts/${draft.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      status: "draft",
+      tags: ["industry:beauty", "scene:customer_care"],
+    });
+  });
+
+  it("updates published template metadata without changing its status", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "旧描述",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "旧名称",
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+    await app.inject({ method: "POST", url: `/api/server/workflow-templates/${draft.id}/publish` });
+
+    const response = await app.inject({
+      method: "PATCH",
+      payload: {
+        coverUrl: "https://example.com/template.png",
+        description: "新描述",
+        name: "新名称",
+        sortOrder: 20,
+        tags: ["industry:beauty"],
+      },
+      url: `/api/server/workflow-templates/${draft.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      sortOrder: 20,
+      status: "published",
+      tags: ["industry:beauty"],
+    });
+  });
+
   it("returns only the direct-entry endpoint key for an accessible Workflow", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({

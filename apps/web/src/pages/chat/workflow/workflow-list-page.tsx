@@ -72,7 +72,7 @@ import {
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
 import { WorkflowTemplateSection } from "./workflow-template-section";
-import type { WorkflowTemplateRepository } from "./workflow-template-repository";
+import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { canManageWorkflowTemplates } from "./workflow-template-access";
 import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
@@ -102,7 +102,7 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
   { label: "已停止", value: "stopped" },
 ];
 
-const workflowListPageSize = 5;
+const workflowListPageSize = 10;
 
 type WorkflowListPaginationState = {
   filterKey: string;
@@ -118,6 +118,10 @@ export function WorkflowListPage({
 }) {
   const surface = useWorkflowSurface();
   const repository = repositoryProp ?? getWorkflowDraftRepository(surface.surface);
+  const resolvedTemplateRepository = useMemo(() => templateRepository
+    ?? (import.meta.env.MODE === "test"
+      ? createEmptyWorkflowTemplateRepository()
+      : createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""))), [surface.apiBasePath, templateRepository]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
@@ -417,7 +421,7 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        <WorkflowTemplateSection repository={templateRepository} />
+        <WorkflowTemplateSection repository={resolvedTemplateRepository} />
       </section>
 
       <WorkflowMetadataDialog
@@ -441,6 +445,9 @@ export function WorkflowListPage({
           onConvert={input => Promise.resolve(repository.convertToTemplate!(conversionTarget.id, input))}
           onPublish={repository.publishTemplate
             ? templateId => Promise.resolve(repository.publishTemplate!(templateId))
+            : undefined}
+          onUpdateDraft={resolvedTemplateRepository.updateDraft
+            ? (templateId, input) => Promise.resolve(resolvedTemplateRepository.updateDraft!(templateId, input))
             : undefined}
           onOpenChange={(open) => {
             if (!open) setConversionTarget(null);

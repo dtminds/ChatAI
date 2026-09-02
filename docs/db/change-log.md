@@ -1,5 +1,57 @@
 # Database Change Log
 
+## 2026-09-02 Workflow模板软删除状态
+
+- 模板状态收敛为 `draft`、`published`、`deleted`；删除草稿改为软删除，保留记录但不再对外展示或操作。
+- 已创建模板表的环境执行以下变更语句；如果历史数据存在 `offline` 或 `archived` 状态，统一转为 `deleted`。
+
+```sql
+UPDATE xy_wap_embed_workflow_template
+SET status = 'deleted'
+WHERE status IN ('offline', 'archived');
+
+ALTER TABLE xy_wap_embed_workflow_template
+  MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'draft'
+    COMMENT '模板状态：draft、published、deleted；删除采用软删除';
+```
+
+## 2026-09-02 Workflow模板运营排序
+
+- `xy_wap_embed_workflow_template` 新增 `sort_order`，默认值为 `0`；公开模板列表按排序值降序展示，数值越大越靠前。
+- 新环境直接执行 `docs/db/schema.sql` 的最终结构；已经创建模板表的测试环境执行以下变更语句。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_template
+  ADD COLUMN sort_order INT NOT NULL DEFAULT 0 COMMENT '运营排序值，数值越大越靠前' AFTER status,
+  DROP KEY idx_workflow_template_public_status,
+  ADD KEY idx_workflow_template_public_status (status, sort_order, update_time, id);
+```
+
+## 2026-08-27 Workflow模板中心
+
+- 新增全平台公共 Workflow 模板表，模板内容、待配置项、标签、封面和运营排序均由 Node 管理。
+- 新环境执行 `docs/db/schema.sql`；尚未创建该表的环境也可单独执行以下语句。
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '模板主键ID',
+  workflow_type TINYINT UNSIGNED NOT NULL COMMENT 'Workflow类型：1 ChatAI SOP，2 WeCom SOP，3 Member SOP',
+  name VARCHAR(100) NOT NULL COMMENT '模板名称',
+  description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '模板描述',
+  tags_json JSON NOT NULL COMMENT '模板标签ID JSON数组，未知历史标签读取时忽略',
+  cover_url VARCHAR(512) NULL COMMENT '模板封面图地址',
+  draft_json JSON NOT NULL COMMENT '模板画布草稿JSON',
+  configuration_json JSON NOT NULL COMMENT '应用模板时的待配置项JSON',
+  template_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '模板版本',
+  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT '模板状态：draft、published、deleted；删除采用软删除',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '运营排序值，数值越大越靠前',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_workflow_template_public_status (status, sort_order, update_time, id)
+) COMMENT='Workflow模板';
+```
+
 ## 2026-08-31 Embed 独立登录会话
 
 - 新增 `xy_wap_embed_sub_user_embed_session`，为嵌入页面的每个浏览器登录保存独立 access/refresh Session。

@@ -63,6 +63,15 @@ describe("HTTP workflow repository", () => {
     expect(client.get).toHaveBeenCalledWith("/server/workflows/overview");
   });
 
+  it("requests a Workflow page directly", async () => {
+    const client = createClient({ definition: createDefinition(), revisions: [] });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await repository.listDocuments({ limit: 5, page: 5, status: "all" });
+
+    expect(client.get).toHaveBeenCalledWith("/server/workflows?limit=5&page=5");
+  });
+
   it("updates workflow metadata through the metadata endpoint", async () => {
     const definition = createDefinition({ description: "引导新客完成首购" });
     const client = createClient({ definition, revisions: [] });
@@ -440,7 +449,7 @@ function createClient({
     get: vi.fn(async (url: string): Promise<unknown> => {
       if (url.includes("/revisions?")) return envelope({ items: revisions, nextCursor: null });
       if (url === "/server/workflows" || url.startsWith("/server/workflows?")) {
-        return envelope({ items: [toListDefinition(definition)], nextCursor: null, total: 1 });
+        return envelope({ items: [toListDefinition(definition)], total: 1 });
       }
       return envelope<WorkflowDefinition>(definition);
     }),

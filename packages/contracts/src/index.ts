@@ -50,5 +50,7 @@ export * from "./workflow/tag.js";
 export * from "./workflow/tag-query.js";
 export * from "./workflow/test-attempt.js";
 export * from "./workflow/trigger.js";
+export * from "./workflow/template.js";
+export * from "./workflow/template-tags.js";
 export * from "./workflow/utc-instant.js";
 export * from "./workflow/wecom-member.js";

@@ -1128,6 +1128,7 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/agents",
     );
+    expect(screen.queryByRole("link", { name: "工作流" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb",

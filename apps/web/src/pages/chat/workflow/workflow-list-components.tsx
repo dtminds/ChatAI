@@ -68,6 +68,7 @@ export function WorkflowListTable({
   detailBasePath = "/chat/workflows",
   loading,
   onDelete,
+  onConvertToTemplate,
   onLifecycleAction,
   onRename,
   operationPendingId,
@@ -77,6 +78,7 @@ export function WorkflowListTable({
   detailBasePath?: string;
   loading: boolean;
   onDelete: (workflow: WorkflowListItem) => void;
+  onConvertToTemplate?: (workflow: WorkflowListItem) => void;
   onLifecycleAction: (workflow: WorkflowListItem, action: WorkflowLifecycleAction) => void;
   onRename: (workflow: WorkflowListItem) => void;
   operationPendingId: string | null;
@@ -140,6 +142,7 @@ export function WorkflowListTable({
               detailBasePath={detailBasePath}
               key={workflow.id}
               onDelete={() => onDelete(workflow)}
+              onConvertToTemplate={onConvertToTemplate ? () => onConvertToTemplate(workflow) : undefined}
               onLifecycleAction={action => onLifecycleAction(workflow, action)}
               onRename={() => onRename(workflow)}
               operationPending={operationPendingId === workflow.id}
@@ -155,6 +158,7 @@ export function WorkflowListTable({
 function WorkflowListRow({
   detailBasePath,
   onDelete,
+  onConvertToTemplate,
   onLifecycleAction,
   onRename,
   operationPending,
@@ -162,6 +166,7 @@ function WorkflowListRow({
 }: {
   detailBasePath: string;
   onDelete: () => void;
+  onConvertToTemplate?: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
   operationPending: boolean;
@@ -217,6 +222,7 @@ function WorkflowListRow({
         <WorkflowRowMenu
           editorPath={editorPath}
           onDelete={onDelete}
+          onConvertToTemplate={onConvertToTemplate}
           onLifecycleAction={onLifecycleAction}
           onRename={onRename}
           operationPending={operationPending}
@@ -311,6 +317,7 @@ function WorkflowManagedAccountsPreview({ workflow }: { workflow: WorkflowListIt
 function WorkflowRowMenu({
   editorPath,
   onDelete,
+  onConvertToTemplate,
   onLifecycleAction,
   onRename,
   operationPending,
@@ -318,6 +325,7 @@ function WorkflowRowMenu({
 }: {
   editorPath: string;
   onDelete: () => void;
+  onConvertToTemplate?: () => void;
   onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
   operationPending: boolean;
@@ -349,6 +357,15 @@ function WorkflowRowMenu({
             数据
           </Link>
         </DropdownMenuItem>
+        {onConvertToTemplate ? (
+          <DropdownMenuItem
+            disabled={operationPending || workflow.runtimeStatus === "stopped"}
+            onSelect={onConvertToTemplate}
+          >
+            <HugeiconsIcon icon={WorkflowSquare06Icon} size={16} strokeWidth={1.8} />
+            转换为模板
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={workflow.runtimeStatus !== "active" || operationPending}
@@ -442,7 +459,7 @@ export function WorkflowStopDialog({
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>确认要停止该 SOP 吗？</AlertDialogTitle>
-          <AlertDialogDescription>停止后将无法恢复，未完成的审核也会失效</AlertDialogDescription>
+          <AlertDialogDescription>停止后将无法恢复</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>

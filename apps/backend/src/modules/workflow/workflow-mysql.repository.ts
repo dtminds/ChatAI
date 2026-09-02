@@ -126,7 +126,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     input: Parameters<WorkflowRepository["listDefinitions"]>[1],
   ) {
     if (input.workflowTypes?.length === 0) {
-      return { items: [], nextCursor: null, total: 0 };
+      return { items: [], total: 0 };
     }
     let query = this.db.selectFrom(DEFINITION_TABLE)
       .where("uid", "=", uid)
@@ -169,30 +169,17 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       "update_time",
       "workflow_type",
     ]);
-    if (input.cursor) {
-      pageQuery = pageQuery.where(eb => eb.or([
-        eb("create_time", "<", input.cursor!.createdAt),
-        eb.and([
-          eb("create_time", "=", input.cursor!.createdAt),
-          eb("id", "<", input.cursor!.id),
-        ]),
-      ]));
-    }
     const [rows, totalRow] = await Promise.all([
       pageQuery
         .orderBy("create_time", "desc")
         .orderBy("id", "desc")
-        .limit(input.limit + 1)
+        .offset(input.offset ?? 0)
+        .limit(input.limit)
         .execute(),
       totalPromise,
     ]);
-    const items = rows.slice(0, input.limit).map(mapDefinitionListRecord);
-    const lastItem = items.at(-1);
     return {
-      items,
-      nextCursor: rows.length > items.length && lastItem
-        ? { createdAt: lastItem.createdAt, id: lastItem.id }
-        : null,
+      items: rows.map(mapDefinitionListRecord),
       total: Number(totalRow?.total ?? 0),
     };
   }

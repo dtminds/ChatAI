@@ -23,6 +23,10 @@ import {
   type WorkflowLlmTestAttemptCreateRequest,
   type WorkflowAiIntentTestAttemptCreateRequest,
   type WorkflowSurface,
+  WorkflowTemplateConversionRequestSchema,
+  WorkflowTemplateDraftUpdateRequestSchema,
+  WorkflowTemplateApplicationRequestSchema,
+  WorkflowTypeSchema,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -46,6 +50,7 @@ import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoi
 import { getWorkflowActiveRunLimit } from "../../config/env.js";
 import { createCustomFieldService } from "../ai-hosting/custom-field.service.js";
 import { createWecomMemberService } from "./wecom-member.service.js";
+import { MysqlWorkflowTemplateRepository } from "./workflow-template-mysql.repository.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -75,8 +80,8 @@ const WorkflowHistoryQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 });
 const WorkflowDefinitionListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ maxLength: 512, minLength: 1 })),
   limit: Type.Optional(Type.Integer({ maximum: 50, minimum: 1 })),
+  page: Type.Optional(Type.Integer({ maximum: 1000, minimum: 1 })),
   query: Type.Optional(Type.String({ maxLength: 100 })),
   status: Type.Optional(WorkflowDefinitionListStatusSchema),
 });
@@ -124,6 +129,7 @@ export async function registerWorkflowRoutes(
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
       logger: app.log,
       wecomMemberReader: createWecomMemberService(app.log),
+      templateRepository: new MysqlWorkflowTemplateRepository(workflowDatabase),
     },
   );
   await registerAudienceGroupRoutes(app);
@@ -213,12 +219,27 @@ function registerWorkflowSurfaceRoutes(
     "/workflows",
     { ...authenticated, schema: { querystring: WorkflowDefinitionListQuerySchema } },
     async request => apiSuccess(await service.list(getWorkflowScope(request, surface), {
-      cursor: request.query.cursor,
       limit: request.query.limit ?? 20,
+      page: request.query.page ?? 1,
       query: request.query.query,
       status: request.query.status ?? "all",
     })),
   );
+
+  const WorkflowTemplateParamsSchema = Type.Object({ templateId: Type.String({ pattern: "^[1-9][0-9]*$" }) });
+  const WorkflowTemplateListQuerySchema = Type.Object({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), page: Type.Optional(Type.Integer({ maximum: 1000, minimum: 1 })), query: Type.Optional(Type.String({ maxLength: 100 })), tags: Type.Optional(Type.Array(Type.String({ maxLength: 80 }), { maxItems: 40 })), workflowType: Type.Optional(WorkflowTypeSchema), featured: Type.Optional(Type.Boolean()) });
+  const WorkflowTemplateDraftListQuerySchema = Type.Object({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), page: Type.Optional(Type.Integer({ maximum: 1000, minimum: 1 })), query: Type.Optional(Type.String({ maxLength: 100 })) });
+  app.get<{ Querystring: Static<typeof WorkflowTemplateListQuerySchema> }>("/workflow-templates", { ...authenticated, schema: { querystring: WorkflowTemplateListQuerySchema } }, async request => apiSuccess(await service.listTemplates(getWorkflowScope(request, surface), { ...request.query, limit: request.query.limit ?? 8, page: request.query.page ?? 1 })));
+  app.get<{ Querystring: Static<typeof WorkflowTemplateDraftListQuerySchema> }>("/workflow-template-drafts", { ...authenticated, schema: { querystring: WorkflowTemplateDraftListQuerySchema } }, async request => apiSuccess(await service.listTemplateDrafts(getWorkflowScope(request, surface), { ...request.query, limit: request.query.limit ?? 8, page: request.query.page ?? 1 })));
+  app.get<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-template-drafts/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.getTemplateDraft(getWorkflowScope(request, surface), request.params.templateId)));
+  app.delete<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-template-drafts/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.deleteTemplateDraft(getWorkflowScope(request, surface), request.params.templateId)));
+  app.patch<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: import("@chatai/contracts").WorkflowTemplateDraftUpdateRequest }>("/workflow-template-drafts/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: WorkflowTemplateDraftUpdateRequestSchema } }, async request => apiSuccess(await service.updateTemplateDraft(getWorkflowScope(request, surface), request.params.templateId, request.body)));
+  app.get<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.getTemplate(getWorkflowScope(request, surface), request.params.templateId)));
+  app.patch<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: import("@chatai/contracts").WorkflowTemplateDraftUpdateRequest }>("/workflow-templates/:templateId", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: WorkflowTemplateDraftUpdateRequestSchema } }, async request => apiSuccess(await service.updateTemplateInfo(getWorkflowScope(request, surface), request.params.templateId, request.body)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema>; Body: import("@chatai/contracts").WorkflowTemplateApplicationRequest }>("/workflow-templates/:templateId/applications", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema, body: WorkflowTemplateApplicationRequestSchema } }, async request => apiSuccess(await service.applyTemplate(getWorkflowScope(request, surface), request.params.templateId, request.body)));
+  app.post<{ Params: WorkflowParams; Body: import("@chatai/contracts").WorkflowTemplateConversionRequest }>("/workflows/:workflowId/template-conversions", { ...authenticated, schema: { params: WorkflowParamsSchema, body: WorkflowTemplateConversionRequestSchema } }, async request => apiSuccess(await service.convertToTemplate(getWorkflowScope(request, surface), request.params.workflowId, request.body)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId/publish", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.publishTemplate(getWorkflowScope(request, surface), request.params.templateId)));
+  app.post<{ Params: Static<typeof WorkflowTemplateParamsSchema> }>("/workflow-templates/:templateId/withdraw", { ...authenticated, schema: { params: WorkflowTemplateParamsSchema } }, async request => apiSuccess(await service.withdrawTemplate(getWorkflowScope(request, surface), request.params.templateId)));
 
   app.post<{ Body: WorkflowCreateRequest }>(
     "/workflows",

@@ -64,7 +64,6 @@ describe("workflow contracts", () => {
     })).toBe(false);
     expect(Value.Check(WorkflowDefinitionListPageSchema, {
       items: [item],
-      nextCursor: null,
       total: 1,
     })).toBe(true);
   });

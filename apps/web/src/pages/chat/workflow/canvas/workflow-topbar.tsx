@@ -5,7 +5,6 @@ import {
   Edit02Icon,
   HistoryIcon,
   InformationCircleIcon,
-  MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ReactNode, useState } from "react";
@@ -21,12 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
@@ -45,7 +38,6 @@ import { WorkflowStatusBadge } from "../workflow-status-badge";
 import {
   getWorkflowPrimaryReleaseAction,
   getWorkflowPublishAction,
-  getWorkflowRuntimeMenuItem,
   getWorkflowSubmitReviewAction,
 } from "./workflow-design-actions";
 
@@ -66,9 +58,6 @@ export function WorkflowTopBar({
   onOpenVersionHistory,
   onPublish,
   onSubmitReview = () => undefined,
-  onEnable,
-  onPause,
-  onResume,
   onModeChange,
   onUpdateMetadata,
   onRetrySave,
@@ -79,7 +68,6 @@ export function WorkflowTopBar({
   publishState,
   currentReview,
   reviewActionState = "idle",
-  lifecycleActionState = "idle",
   publishedRevision,
   restoreState,
   runtimeStatus = "inactive",
@@ -105,9 +93,6 @@ export function WorkflowTopBar({
   onOpenVersionHistory: () => void;
   onPublish: () => void;
   onSubmitReview?: () => void;
-  onEnable?: () => Promise<boolean>;
-  onPause?: () => Promise<boolean>;
-  onResume?: () => Promise<boolean>;
   onModeChange?: (mode: "data" | "design") => void;
   onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
   onRetrySave?: () => void;
@@ -119,7 +104,6 @@ export function WorkflowTopBar({
   publishState: WorkflowDraftPublishStatus;
   currentReview?: WorkflowPublishReview | null;
   reviewActionState?: "idle" | "submitting" | "approving" | "rejecting" | "withdrawing";
-  lifecycleActionState?: "enabling" | "idle" | "pausing" | "resuming";
   publishedRevision?: number | null;
   restoreState?: WorkflowDraftRestoreStatus;
   runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
@@ -156,18 +140,6 @@ export function WorkflowTopBar({
     hasUnpublishedChanges,
     runtimeStatus,
   });
-  const runtimeMenuItem = getWorkflowRuntimeMenuItem({
-    hasUnpublishedChanges,
-    lifecycleActionState,
-    publishedRevision,
-    runtimeStatus,
-  });
-  const runtimeMenuHandler = runtimeMenuItem?.action === "pause"
-    ? onPause
-    : runtimeMenuItem?.action === "resume"
-      ? onResume
-      : onEnable;
-
   return (
     <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
       <div className="flex min-w-0 items-center gap-2.5 max-sm:w-full">
@@ -370,30 +342,6 @@ export function WorkflowTopBar({
               >
                 {publishAction.label}
               </TopBarActionButton>
-            ) : null}
-            {runtimeMenuItem && runtimeMenuHandler ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    aria-label="更多操作"
-                    className="size-9 rounded-lg bg-muted text-muted-foreground"
-                    size="icon"
-                    title="更多操作"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-44">
-                  <DropdownMenuItem
-                    disabled={lifecycleActionState !== "idle"}
-                    onSelect={() => void runtimeMenuHandler()}
-                  >
-                    {runtimeMenuItem.label}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             ) : null}
           </>
         )}

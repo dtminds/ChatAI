@@ -10,6 +10,7 @@ import {
   WorkflowDataService,
   WorkflowService,
 } from "../../../src/modules/workflow/index.js";
+import { InMemoryWorkflowTemplateRepository } from "../../../src/modules/workflow/workflow-template-memory.repository.js";
 
 describe("workflow routes", () => {
   const apps: Array<ReturnType<typeof Fastify>> = [];
@@ -35,7 +36,6 @@ describe("workflow routes", () => {
     expect(firstPage.statusCode).toBe(200);
     expect(firstPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第二个 Workflow" })],
-      nextCursor: expect.any(String),
       total: 2,
     });
     expect(firstPage.json().data.items[0]).not.toHaveProperty("draft");
@@ -43,13 +43,208 @@ describe("workflow routes", () => {
 
     const secondPage = await app.inject({
       method: "GET",
-      url: `/api/server/workflows?limit=1&cursor=${encodeURIComponent(firstPage.json().data.nextCursor)}`,
+      url: "/api/server/workflows?limit=1&page=2",
     });
     expect(secondPage.json().data).toMatchObject({
       items: [expect.objectContaining({ name: "第一个 Workflow" })],
-      nextCursor: null,
       total: 2,
     });
+  });
+
+  it("returns saved template drafts from the draft box endpoints", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "稍后发布",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "未发布模板",
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/server/workflow-template-drafts?limit=8&page=1",
+    });
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: `/api/server/workflow-template-drafts/${draft.id}`,
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().data).toMatchObject({
+      items: [expect.objectContaining({ id: draft.id, name: "未发布模板" })],
+      total: 1,
+    });
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json().data).toMatchObject({ id: draft.id, status: "draft" });
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/server/workflow-template-drafts/${draft.id}`,
+    });
+    const emptyListResponse = await app.inject({
+      method: "GET",
+      url: "/api/server/workflow-template-drafts?limit=8&page=1",
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json().data).toEqual({ id: draft.id });
+    expect(emptyListResponse.json().data).toEqual({ items: [], total: 0 });
+  });
+
+  it("withdraws a published template to the draft box", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "可撤回模板",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "可撤回模板",
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+    await app.inject({ method: "POST", url: `/api/server/workflow-templates/${draft.id}/publish` });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/server/workflow-templates/${draft.id}/withdraw`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ id: draft.id, status: "draft" });
+  });
+
+  it("updates template draft metadata before publishing", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "旧描述",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "旧名称",
+        tags: ["scene:customer_care"],
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "PATCH",
+      payload: {
+        coverUrl: "https://example.com/template.png",
+        description: "新描述",
+        name: "新名称",
+        tags: ["industry:beauty", "scene:customer_care"],
+      },
+      url: `/api/server/workflow-template-drafts/${draft.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      status: "draft",
+      tags: ["industry:beauty", "scene:customer_care"],
+    });
+  });
+
+  it("updates published template metadata without changing its status", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const draft = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "旧描述",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "旧名称",
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    })).json().data;
+    await app.inject({ method: "POST", url: `/api/server/workflow-templates/${draft.id}/publish` });
+
+    const response = await app.inject({
+      method: "PATCH",
+      payload: {
+        coverUrl: "https://example.com/template.png",
+        description: "新描述",
+        name: "新名称",
+        sortOrder: 20,
+        tags: ["industry:beauty"],
+      },
+      url: `/api/server/workflow-templates/${draft.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      coverUrl: "https://example.com/template.png",
+      description: "新描述",
+      name: "新名称",
+      sortOrder: 20,
+      status: "published",
+      tags: ["industry:beauty"],
+    });
+  });
+
+  it("rejects template sort orders outside the MySQL INT range", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        description: "排序边界",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "排序边界模板",
+        sortOrder: 2_147_483_648,
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 
   it("returns only the direct-entry endpoint key for an accessible Workflow", async () => {
@@ -594,7 +789,11 @@ describe("workflow routes", () => {
     }
   });
 
-  async function createApp(role: string, dataService?: WorkflowDataService) {
+  async function createApp(role: string, dataService?: WorkflowDataService, options: {
+    subUserId?: string;
+    templateRepository?: InMemoryWorkflowTemplateRepository;
+    uid?: number;
+  } = {}) {
     const app = Fastify({ logger: false });
     apps.push(app);
     await registerErrorHandler(app);
@@ -603,8 +802,8 @@ describe("workflow routes", () => {
         roles: [role],
         sessionId: "session-1",
         sessionVersion: 1,
-        subUserId: "17",
-        uid: 9,
+        subUserId: options.subUserId ?? "17",
+        uid: options.uid ?? 9,
       };
     });
     await registerWorkflowRoutes(app, {
@@ -622,6 +821,7 @@ describe("workflow routes", () => {
           },
         },
         llmTestAttemptRepository: new InMemoryWorkflowLlmTestAttemptRepository(),
+        templateRepository: options.templateRepository,
       }),
     });
     return app;

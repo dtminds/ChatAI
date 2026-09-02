@@ -7,11 +7,13 @@ import type {
   OnNodesChange,
   Viewport,
 } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   applyNodeChanges,
   Background,
   MiniMap,
   ReactFlow,
+  useNodesInitialized,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
@@ -40,6 +42,8 @@ import {
   WORKFLOW_MAX_ZOOM,
   WORKFLOW_MIN_ZOOM,
   WORKFLOW_NODE_TYPE,
+  WORKFLOW_PREVIEW_MAX_ZOOM,
+  WORKFLOW_PREVIEW_MIN_ZOOM,
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
@@ -57,6 +61,7 @@ import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowBezierEdge } from "./workflow-edge";
 import { WorkflowNodePicker } from "./workflow-palette";
 import type { WorkflowNodePickerAddContext } from "./workflow-palette";
+import "../workflow-page.css";
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPE]: WorkflowNodeCard,
@@ -71,6 +76,8 @@ const workflowPanOnDrag = true;
 const workflowPaneClickDistance = 8;
 const workflowNodePointerThreshold = 4;
 const workflowPaletteNodeGap = 24;
+const workflowPreviewPaddingX = 48;
+const workflowPreviewPaddingY = 32;
 
 export function WorkflowCanvas({
   allowedInsertableNodeKinds,
@@ -78,9 +85,13 @@ export function WorkflowCanvas({
   canUndo,
   edges,
   focusRequest,
+  fitViewOnInit = false,
+  hideAttribution = false,
   isReadOnly = false,
+  preview = false,
   canMoveNodes = !isReadOnly,
   showEditingTools = !isReadOnly,
+  showToolbar = true,
   nodes,
   nextRedoLabel,
   nextUndoLabel,
@@ -111,8 +122,12 @@ export function WorkflowCanvas({
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
   focusRequest?: WorkflowCanvasFocusRequest;
+  fitViewOnInit?: boolean;
+  hideAttribution?: boolean;
   isReadOnly?: boolean;
+  preview?: boolean;
   showEditingTools?: boolean;
+  showToolbar?: boolean;
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
@@ -138,10 +153,11 @@ export function WorkflowCanvas({
   viewport: Viewport;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
-  const { fitView, screenToFlowPosition, setCenter, zoomIn, zoomOut, zoomTo } = useReactFlow<
+  const { fitView, getNodesBounds, screenToFlowPosition, setCenter, setViewport, zoomIn, zoomOut, zoomTo } = useReactFlow<
     WorkflowRenderNode,
     WorkflowRenderEdge
   >();
+  const nodesInitialized = useNodesInitialized();
   const { zoom } = useViewport();
   const colorMode = useAppearanceStore((state) =>
     state.themePreference === "dark" ||
@@ -154,7 +170,42 @@ export function WorkflowCanvas({
   const canvasRef = useRef<HTMLElement | null>(null);
   const handledFocusSequenceRef = useRef<number | undefined>(undefined);
   const isNodeDraggingRef = useRef(false);
+  const previewViewportAppliedRef = useRef(false);
   const activeInsertNode = flowNodes.find((node) => node.data.insertMenuOpen);
+
+  useEffect(() => {
+    if (!preview) {
+      previewViewportAppliedRef.current = false;
+    }
+  }, [preview]);
+
+  useEffect(() => {
+    if (!preview || !nodesInitialized || previewViewportAppliedRef.current || flowNodes.length === 0) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const { height, width } = canvas.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+
+      const bounds = getNodesBounds(flowNodes);
+      const startNode = flowNodes.find((node) => node.data.kind === "start");
+      const nextViewport = getWorkflowPreviewViewport({
+        bounds,
+        height,
+        startX: startNode?.position.x,
+        width,
+      });
+
+      previewViewportAppliedRef.current = true;
+      void setViewport(nextViewport);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [flowNodes, getNodesBounds, nodesInitialized, preview, setViewport]);
 
   useEffect(() => {
     if (!isNodeDraggingRef.current) {
@@ -234,18 +285,21 @@ export function WorkflowCanvas({
 
   return (
     <section
-      aria-label="工作流"
+      aria-label={preview ? "工作流预览" : "工作流"}
       className="agent-workflow-canvas absolute inset-0"
+      data-preview={preview ? "true" : undefined}
       ref={canvasRef}
       role="application"
     >
       <ReactFlow
         colorMode={colorMode}
         connectionRadius={32}
-        defaultViewport={initialViewport}
+        defaultViewport={preview ? { x: 0, y: 0, zoom: WORKFLOW_PREVIEW_MAX_ZOOM } : initialViewport}
         deleteKeyCode={null}
         edges={edges}
         edgeTypes={edgeTypes}
+        fitView={fitViewOnInit && !preview}
+        fitViewOptions={{ padding: 0.2 }}
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
         multiSelectionKeyCode={null}
@@ -256,8 +310,9 @@ export function WorkflowCanvas({
         nodes={flowNodes}
         nodesConnectable={!isReadOnly}
         nodesDraggable={canMoveNodes}
-        nodesFocusable={canMoveNodes || !isReadOnly}
-        edgesFocusable={!isReadOnly}
+        nodesFocusable={!preview && (canMoveNodes || !isReadOnly)}
+        proOptions={{ hideAttribution }}
+        edgesFocusable={!preview && !isReadOnly}
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}
         onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
@@ -277,6 +332,8 @@ export function WorkflowCanvas({
         panOnScroll={false}
         isValidConnection={onIsValidConnection}
         selectionOnDrag={false}
+        zoomOnDoubleClick
+        zoomOnPinch
         zoomOnScroll
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
@@ -286,29 +343,31 @@ export function WorkflowCanvas({
             node={activeInsertNode}
           />
         ) : null}
-        <WorkflowBottomToolbar
-          canRedo={canRedo}
-          canUndo={canUndo}
-          insertableNodeKinds={allowedInsertableNodeKinds}
-          disabled={isReadOnly}
-          fitView={() => fitView({ duration: 160, padding: 0.2 })}
-          nextRedoLabel={nextRedoLabel}
-          nextUndoLabel={nextUndoLabel}
-          onAddNode={onAddNode}
-          screenToFlowPosition={screenToFlowPosition}
-          onArrange={onArrange}
-          onPaletteOpenChange={onPaletteOpenChange}
-          onRedo={onRedo}
-          onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
-          onUndo={onUndo}
-          paletteOpen={paletteOpen}
-          showMiniMap={showMiniMap}
-          showEditingTools={showEditingTools}
-          zoom={zoom}
-          zoomIn={zoomIn}
-          zoomOut={zoomOut}
-          zoomTo={zoomTo}
-        />
+        {showToolbar ? (
+          <WorkflowBottomToolbar
+            canRedo={canRedo}
+            canUndo={canUndo}
+            insertableNodeKinds={allowedInsertableNodeKinds}
+            disabled={isReadOnly}
+            fitView={() => fitView({ duration: 160, padding: 0.2 })}
+            nextRedoLabel={nextRedoLabel}
+            nextUndoLabel={nextUndoLabel}
+            onAddNode={onAddNode}
+            screenToFlowPosition={screenToFlowPosition}
+            onArrange={onArrange}
+            onPaletteOpenChange={onPaletteOpenChange}
+            onRedo={onRedo}
+            onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
+            onUndo={onUndo}
+            paletteOpen={paletteOpen}
+            showMiniMap={showMiniMap}
+            showEditingTools={showEditingTools}
+            zoom={zoom}
+            zoomIn={zoomIn}
+            zoomOut={zoomOut}
+            zoomTo={zoomTo}
+          />
+        ) : null}
       </ReactFlow>
     </section>
   );
@@ -682,6 +741,44 @@ function WorkflowToolbarTooltip({
       </TooltipContent>
     </Tooltip>
   );
+}
+
+type WorkflowPreviewBounds = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+export function getWorkflowPreviewViewport({
+  bounds,
+  height,
+  startX,
+  width,
+}: {
+  bounds: WorkflowPreviewBounds;
+  height: number;
+  startX?: number;
+  width: number;
+}): Viewport {
+  const availableWidth = Math.max(width - workflowPreviewPaddingX * 2, 1);
+  const availableHeight = Math.max(height - workflowPreviewPaddingY * 2, 1);
+  const widthZoom = bounds.width > 0 ? availableWidth / bounds.width : WORKFLOW_PREVIEW_MAX_ZOOM;
+  const heightZoom = bounds.height > 0 ? availableHeight / bounds.height : WORKFLOW_PREVIEW_MAX_ZOOM;
+  const zoom = Math.min(
+    WORKFLOW_PREVIEW_MAX_ZOOM,
+    Math.max(WORKFLOW_PREVIEW_MIN_ZOOM, Math.min(widthZoom, heightZoom)),
+  );
+  const scaledHeight = bounds.height * zoom;
+  const y = scaledHeight <= availableHeight
+    ? workflowPreviewPaddingY + (availableHeight - scaledHeight) / 2 - bounds.y * zoom
+    : workflowPreviewPaddingY - bounds.y * zoom;
+
+  return {
+    x: workflowPreviewPaddingX - (startX ?? bounds.x) * zoom,
+    y,
+    zoom,
+  };
 }
 
 function getInitialWorkflowViewport(viewport: Viewport) {

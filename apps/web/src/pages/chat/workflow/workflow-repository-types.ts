@@ -4,6 +4,8 @@ import type {
   WorkflowDefinitionListStatus,
   WorkflowPublishReview,
   WorkflowTenantOverview,
+  WorkflowTemplateConversionRequest,
+  WorkflowTemplateDetail,
   WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowDraft } from "./types";
@@ -41,13 +43,12 @@ export type WorkflowListItem = {
 
 export type WorkflowListPage = {
   items: WorkflowListItem[];
-  nextCursor: string | null;
   total: number;
 };
 
 export type WorkflowListInput = {
-  cursor?: string;
   limit?: number;
+  page?: number;
   query?: string;
   status?: WorkflowDefinitionListStatus;
 };
@@ -171,6 +172,11 @@ export type WorkflowDraftReader = {
 };
 
 export type WorkflowDraftWriter = {
+  convertToTemplate?: (
+    workflowId: string,
+    input: WorkflowTemplateConversionRequest,
+  ) => Promise<WorkflowTemplateDetail> | WorkflowTemplateDetail;
+  publishTemplate?: (templateId: string) => Promise<WorkflowTemplateDetail> | WorkflowTemplateDetail;
   approveReview: (
     workflowId: string,
     reviewId: string,

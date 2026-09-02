@@ -56,8 +56,6 @@ import {
   WorkflowCreateDialog,
   type WorkflowCreateInput,
 } from "./workflow-create-dialog";
-import "@xyflow/react/dist/style.css";
-import "./workflow-page.css";
 import {
   getWorkflowDocumentPath,
   useWorkflowSurface,
@@ -292,9 +290,6 @@ function WorkflowWorkspaceContent({
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onSubmitReview={topBar.onSubmitReview}
-        onEnable={topBar.onEnable}
-        onPause={topBar.onPause}
-        onResume={topBar.onResume}
         onModeChange={(nextMode) => navigate(getWorkflowDocumentPath(
           surface,
           document.id,
@@ -314,7 +309,6 @@ function WorkflowWorkspaceContent({
         publishState={topBar.publishState}
         currentReview={topBar.currentReview}
         reviewActionState={topBar.reviewActionState}
-        lifecycleActionState={topBar.lifecycleActionState}
         publishedRevision={topBar.publishedRevision}
         restoreState={versionHistory.restoreState}
         runtimeStatus={topBar.runtimeStatus}

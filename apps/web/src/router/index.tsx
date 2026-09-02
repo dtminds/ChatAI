@@ -60,6 +60,13 @@ const WorkflowPage = lazy(() =>
     }),
   ),
 );
+const WorkflowTemplateCenterPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-template-section").then(
+    ({ WorkflowTemplateCenterPage }) => ({
+      default: WorkflowTemplateCenterPage,
+    }),
+  ),
+);
 const WorkflowObservabilityPage = lazy(() =>
   import("@/pages/chat/workflow/workflow-observability-page").then(
     ({ WorkflowObservabilityPage }) => ({
@@ -329,6 +336,10 @@ export const routerConfig = [
         element: withRouteSuspense(<WorkflowObservabilityPage />),
       },
       {
+        path: "chat/workflows/templates",
+        element: withRouteSuspense(<WorkflowTemplateCenterPage surface="chatai" />),
+      },
+      {
         path: "chat/workflows/:workflowId",
         element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
       },
@@ -343,6 +354,10 @@ export const routerConfig = [
       {
         path: "embed/workflows/new",
         element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/templates",
+        element: withRouteSuspense(<WorkflowTemplateCenterPage surface="sop_embed" />),
       },
       {
         path: "embed/workflows/:workflowId",

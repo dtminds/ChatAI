@@ -9,6 +9,8 @@ import type {
   WorkflowRevision as ApiWorkflowRevision,
   WorkflowRevisionPage,
   WorkflowTenantOverview,
+  WorkflowTemplateConversionRequest,
+  WorkflowTemplateDetail,
 } from "@chatai/contracts";
 import { http, RequestNormalizedError } from "@/lib/request";
 import { hydrateWorkflowDraft } from "./workflow-draft-normalizer";
@@ -73,8 +75,8 @@ export function createHttpWorkflowDraftRepository(
       try {
         const requestInput = input ?? {};
         const query = new URLSearchParams();
-        if (requestInput.cursor) query.set("cursor", requestInput.cursor);
         if (requestInput.limit) query.set("limit", String(requestInput.limit));
+        if (requestInput.page) query.set("page", String(requestInput.page));
         if (requestInput.query) query.set("query", requestInput.query);
         if (requestInput.status && requestInput.status !== "all") query.set("status", requestInput.status);
         const page = unwrap<ApiWorkflowDefinitionListPage>(await client.get(
@@ -82,7 +84,6 @@ export function createHttpWorkflowDraftRepository(
         ));
         return {
           items: page.items.map(toListItem),
-          nextCursor: page.nextCursor,
           total: page.total,
         };
       } catch (error) {
@@ -123,6 +124,27 @@ export function createHttpWorkflowDraftRepository(
         revisions.set(definition.id, []);
         revisionCursors.set(definition.id, null);
         return toDocument(definition, [], null);
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async convertToTemplate(workflowId, input: WorkflowTemplateConversionRequest) {
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(
+          `${apiBasePath.replace(/\/workflows$/, "")}/workflows/${workflowId}/template-conversions`,
+          input,
+        ));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
+    },
+
+    async publishTemplate(templateId) {
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(
+          `${apiBasePath.replace(/\/workflows$/, "")}/workflow-templates/${templateId}/publish`,
+        ));
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -611,7 +633,7 @@ function unwrap<T>(response: unknown): T {
   return (response as ApiSuccessEnvelope<T>).data;
 }
 
-function normalizeHttpError(error: unknown) {
+export function normalizeHttpError(error: unknown) {
   if (error instanceof WorkflowRepositoryError) return error;
   if (error instanceof RequestNormalizedError) {
     const code = error.status === 401

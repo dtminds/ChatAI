@@ -84,8 +84,8 @@ export function useWorkflowListResource(
 ) {
   const loadRequestRef = useRef(0);
   const inputKey = JSON.stringify([
-    input.cursor ?? null,
     input.limit ?? null,
+    input.page ?? null,
     input.query ?? null,
     input.status ?? null,
   ]);
@@ -132,7 +132,7 @@ export function useWorkflowListResource(
         });
       }
     }
-  }, [input.cursor, input.limit, input.query, input.status, inputKey, repository]);
+  }, [input.limit, input.page, input.query, input.status, inputKey, repository]);
 
   useEffect(() => {
     void reload();
@@ -145,7 +145,6 @@ export function useWorkflowListResource(
   return {
     error: stateMatchesInput ? state.error : null,
     items: stateMatchesInput ? state.data?.items ?? [] : [],
-    nextCursor: stateMatchesInput ? state.data?.nextCursor ?? null : null,
     reload,
     status: stateMatchesInput ? state.status : "loading",
     total: stateMatchesInput ? state.data?.total ?? 0 : 0,

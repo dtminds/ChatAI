@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import {
   resolveTablePagination,
   TablePagination,
@@ -40,6 +41,7 @@ import {
 } from "./workflow-draft-service";
 import type {
   WorkflowDraftRepository,
+  WorkflowDocument,
   WorkflowListItem,
 } from "./workflow-draft-service";
 import {
@@ -69,17 +71,23 @@ import {
   useWorkflowSurface,
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
+import { WorkflowTemplateSection } from "./workflow-template-section";
+import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
+import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
+import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
 export function WorkflowPage({
   repository,
+  templateRepository,
   surface = "chatai",
 }: {
   repository?: WorkflowDraftRepository;
+  templateRepository?: WorkflowTemplateRepository;
   surface?: WorkflowSurface;
 } = {}) {
   return (
     <WorkflowSurfaceProvider surface={surface}>
-      <WorkflowListPage repository={repository} />
+      <WorkflowListPage repository={repository} templateRepository={templateRepository} />
     </WorkflowSurfaceProvider>
   );
 }
@@ -97,46 +105,45 @@ const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter 
 const workflowListPageSize = 10;
 
 type WorkflowListPaginationState = {
-  cursors: Array<string | undefined>;
   filterKey: string;
   page: number;
 };
 
 export function WorkflowListPage({
   repository: repositoryProp,
+  templateRepository,
 }: {
   repository?: WorkflowDraftRepository;
+  templateRepository?: WorkflowTemplateRepository;
 }) {
   const surface = useWorkflowSurface();
   const repository = repositoryProp ?? getWorkflowDraftRepository(surface.surface);
+  const resolvedTemplateRepository = useMemo(() => templateRepository
+    ?? (import.meta.env.MODE === "test"
+      ? createEmptyWorkflowTemplateRepository()
+      : createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""))), [surface.apiBasePath, templateRepository]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const listFilterKey = JSON.stringify([debouncedQuery, statusFilter]);
   const [pagination, setPagination] = useState<WorkflowListPaginationState>({
-    cursors: [undefined],
     filterKey: listFilterKey,
     page: 1,
   });
   const paginationMatchesFilter = pagination.filterKey === listFilterKey;
   const page = paginationMatchesFilter ? pagination.page : 1;
-  const cursor = paginationMatchesFilter ? pagination.cursors[page - 1] : undefined;
   const listInput = useMemo(() => ({
-    cursor,
     limit: workflowListPageSize,
+    page,
     query: debouncedQuery || undefined,
     status: statusFilter,
-  }), [cursor, debouncedQuery, statusFilter]);
-  const { items, nextCursor, reload, status, total } = useWorkflowListResource(repository, listInput);
+  }), [debouncedQuery, page, statusFilter]);
+  const { items, reload, status, total } = useWorkflowListResource(repository, listInput);
   const { activePage, totalPages } = resolveTablePagination({
     page,
     pageSize: workflowListPageSize,
     total,
   });
-  const reachablePageCount = Math.min(
-    totalPages,
-    Math.max(pagination.cursors.length, nextCursor ? activePage + 1 : activePage),
-  );
   const capacity = useWorkflowCapacityResource(repository);
   const tenantOverview = useWorkflowTenantOverviewResource(repository);
   const navigate = useNavigate();
@@ -147,43 +154,26 @@ export function WorkflowListPage({
   const [stopTarget, setStopTarget] = useState<WorkflowListItem | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
+  const [conversionLoadingId, setConversionLoadingId] = useState<string | null>(null);
+  const [conversionTarget, setConversionTarget] = useState<WorkflowDocument | null>(null);
+  const templateManagerSubject = useAuthStore(state => state.subUser);
+  const canCreateWorkflow = canCreateWorkflows(templateManagerSubject);
+  const canConvertToTemplate = Boolean(repository.convertToTemplate)
+    && canManageWorkflowTemplates(templateManagerSubject);
   useEffect(() => {
     setPagination(current => current.filterKey === listFilterKey
       ? current
-      : { cursors: [undefined], filterKey: listFilterKey, page: 1 });
+      : { filterKey: listFilterKey, page: 1 });
   }, [listFilterKey]);
   useEffect(() => {
     if (status !== "ready" || activePage === page) return;
-    setPagination(current => ({
-      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-      filterKey: listFilterKey,
-      page: activePage,
-    }));
+    setPagination({ filterKey: listFilterKey, page: activePage });
   }, [activePage, listFilterKey, page, status]);
 
   const changeWorkflowPage = (nextPage: number) => {
-    if (nextPage === activePage) return;
-    if (nextPage === activePage + 1) {
-      if (!nextCursor) return;
-      setPagination(current => {
-        const cursors = current.filterKey === listFilterKey
-          ? [...current.cursors]
-          : [undefined];
-        cursors[activePage] = nextCursor;
-        return {
-          cursors,
-          filterKey: listFilterKey,
-          page: nextPage,
-        };
-      });
-      return;
-    }
-    if (nextPage !== 1 && pagination.cursors[nextPage - 1] === undefined) return;
-    setPagination(current => ({
-      cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-      filterKey: listFilterKey,
-      page: nextPage,
-    }));
+    const targetPage = Math.min(Math.max(1, nextPage), totalPages);
+    if (targetPage === activePage) return;
+    setPagination({ filterKey: listFilterKey, page: targetPage });
   };
 
   const openMetadataDialog = (workflow: WorkflowListItem) => {
@@ -247,11 +237,7 @@ export function WorkflowListPage({
       await Promise.resolve(repository.deleteDocument(deleteTarget.id));
       setDeleteTarget(null);
       if (page > 1 && items.length === 1) {
-        setPagination(current => ({
-          cursors: current.filterKey === listFilterKey ? current.cursors : [undefined],
-          filterKey: listFilterKey,
-          page: page - 1,
-        }));
+        setPagination({ filterKey: listFilterKey, page: page - 1 });
       } else {
         await reload();
       }
@@ -302,15 +288,31 @@ export function WorkflowListPage({
     }
   };
 
+  const openTemplateConversion = async (workflow: WorkflowListItem) => {
+    if (!repository.convertToTemplate || conversionLoadingId) return;
+    setConversionLoadingId(workflow.id);
+    try {
+      const document = await Promise.resolve(repository.getDocument(workflow.id));
+      if (!document.permissions.canEdit) {
+        toast.error("操作失败，请稍后重试");
+        return;
+      }
+      setConversionTarget(document);
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
+    } finally {
+      setConversionLoadingId(null);
+    }
+  };
+
   return (
     <WorkflowSurfaceLayout>
       <section className="space-y-5">
         <AiHostingPageHeader
           actions={surface.surface === "chatai"
             && tenantOverview.overview?.canViewWorkflowObservability ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="secondary">
                 <Link to="/chat/workflows/observability">
-                  <HugeiconsIcon icon={ChartAreaIcon} size={17} strokeWidth={1.8} />
                   运行观测
                 </Link>
               </Button>
@@ -327,14 +329,14 @@ export function WorkflowListPage({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
-            className="w-auto"
+            className="w-auto shrink-0"
             onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
             value={statusFilter}
           >
-            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+            <TabsList aria-label="Workflow 状态" className="w-fit">
               {workflowStatusFilters.map(filter => (
                 <TabsTrigger
-                  className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm"
+                  className="min-w-24 px-4"
                   key={filter.value}
                   value={filter.value}
                 >
@@ -343,39 +345,40 @@ export function WorkflowListPage({
               ))}
             </TabsList>
           </Tabs>
-        </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
+            <div className="relative w-48 max-w-full">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索工作流"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索工作流"
+                value={query}
+              />
+            </div>
+            {canCreateWorkflow ? (
+              <Button
+                className="h-10 shrink-0 px-4"
+                onClick={() => {
+                  if (surface.embedded) {
+                    navigate(getWorkflowCreatePath(surface));
+                    return;
+                  }
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-[280px] max-w-full">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={17}
-              strokeWidth={1.8}
-            />
-            <Input
-              aria-label="搜索工作流"
-              className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索工作流"
-              value={query}
-            />
+                  setCreateDialogOpen(true);
+                }}
+                type="button"
+              >
+                <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
+                新建工作流
+              </Button>
+            ) : null}
           </div>
-          <Button
-            className="h-10 px-4"
-            onClick={() => {
-              if (surface.embedded) {
-                navigate(getWorkflowCreatePath(surface));
-                return;
-              }
-
-              setCreateDialogOpen(true);
-            }}
-            type="button"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
-            新建工作流
-          </Button>
         </div>
 
         {status === "error" ? (
@@ -392,6 +395,9 @@ export function WorkflowListPage({
             onDelete={(workflow) => {
               setDeleteTarget(workflow);
             }}
+            onConvertToTemplate={canConvertToTemplate
+              ? workflow => void openTemplateConversion(workflow)
+              : undefined}
             onLifecycleAction={(workflow, action) => {
               if (action === "stop") {
                 setStopTarget(workflow);
@@ -400,7 +406,7 @@ export function WorkflowListPage({
               void changeWorkflowLifecycle(workflow, action);
             }}
             onRename={openMetadataDialog}
-            operationPendingId={lifecyclePendingId}
+            operationPendingId={lifecyclePendingId ?? conversionLoadingId}
             sourceColumnLabel={surface.createWorkflowType === "wecom_sop"
               ? "企微成员"
               : "托管账号"}
@@ -411,13 +417,14 @@ export function WorkflowListPage({
         {status === "ready" ? (
           <TablePagination
             className="border-t-0"
-            maxPage={reachablePageCount}
             onPageChange={changeWorkflowPage}
             page={activePage}
             total={total}
             totalPages={totalPages}
           />
         ) : null}
+
+        <WorkflowTemplateSection repository={resolvedTemplateRepository} />
       </section>
 
       <WorkflowMetadataDialog
@@ -434,6 +441,24 @@ export function WorkflowListPage({
         open={Boolean(metadataTarget)}
         pending={operationPending}
       />
+
+      {conversionTarget && repository.convertToTemplate ? (
+        <WorkflowTemplateConversionDialog
+          draftVersion={conversionTarget.draftVersion ?? 1}
+          onConvert={input => Promise.resolve(repository.convertToTemplate!(conversionTarget.id, input))}
+          onPublish={repository.publishTemplate
+            ? templateId => Promise.resolve(repository.publishTemplate!(templateId))
+            : undefined}
+          onUpdateDraft={resolvedTemplateRepository.updateDraft
+            ? (templateId, input) => Promise.resolve(resolvedTemplateRepository.updateDraft!(templateId, input))
+            : undefined}
+          onOpenChange={(open) => {
+            if (!open) setConversionTarget(null);
+          }}
+          open
+          workflowName={conversionTarget.name}
+        />
+      ) : null}
 
       <WorkflowCreateDialog
         onCreate={createWorkflow}

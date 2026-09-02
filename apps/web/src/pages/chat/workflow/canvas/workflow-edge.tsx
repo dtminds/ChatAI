@@ -45,18 +45,26 @@ export function WorkflowBezierEdge({
   const isConnectedHighlight = data?.highlightState === "connected";
   const isDimmed = data?.highlightState === "dimmed";
   const stroke = selected || isConnectedHighlight ? "var(--workflow-blue)" : "var(--workflow-edge)";
+  const edge = (
+    <BaseEdge
+      id={id}
+      interactionWidth={24}
+      path={edgePath}
+      style={{
+        opacity: selected || isConnectedHighlight ? 1 : isDimmed ? 0.32 : 0.72,
+        stroke,
+        strokeWidth: selected || isConnectedHighlight ? 2.5 : 2,
+      }}
+    />
+  );
+
+  if (!data?.onToggleInsertMenu) {
+    return edge;
+  }
+
   return (
     <>
-      <BaseEdge
-        id={id}
-        interactionWidth={24}
-        path={edgePath}
-        style={{
-          opacity: selected || isConnectedHighlight ? 1 : isDimmed ? 0.32 : 0.72,
-          stroke,
-          strokeWidth: selected || isConnectedHighlight ? 2.5 : 2,
-        }}
-      />
+      {edge}
       <EdgeLabelRenderer>
         <div
           className={cn(

@@ -112,14 +112,9 @@ export type WorkflowHistoryPageInput = {
   limit: number;
 };
 
-export type WorkflowDefinitionListCursor = {
-  createdAt: Date;
-  id: string;
-};
-
 export type WorkflowDefinitionListInput = {
-  cursor?: WorkflowDefinitionListCursor;
   limit: number;
+  offset?: number;
   query?: string;
   status: WorkflowDefinitionListStatus;
   workflowTypes?: WorkflowType[];
@@ -127,7 +122,6 @@ export type WorkflowDefinitionListInput = {
 
 export type WorkflowDefinitionRecordPage = {
   items: WorkflowDefinitionListRecord[];
-  nextCursor: WorkflowDefinitionListCursor | null;
   total: number;
 };
 

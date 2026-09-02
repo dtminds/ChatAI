@@ -92,97 +92,24 @@ describe("WorkflowTopBar review lifecycle", () => {
     expect(onPublish).toHaveBeenCalledOnce();
   });
 
-  it("moves activation into the overflow menu while review occupies the primary actions", async () => {
-    const user = userEvent.setup();
-    const onEnable = vi.fn(async () => true);
+  it("does not render an overflow menu for runtime or template actions", () => {
     const { rerender } = renderTopBar({
       currentReview: createReview(),
       hasUnpublishedChanges: true,
-      onEnable,
       publishedRevision: 1,
       runtimeStatus: "inactive",
     });
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "启用已发布版本" }));
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
 
     rerender(createTopBar({
       currentReview: createReview({ status: "approved" }),
       hasUnpublishedChanges: true,
-      onEnable,
       publishedRevision: 1,
-      runtimeStatus: "inactive",
+      runtimeStatus: "active",
     }));
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "启用已发布版本" }));
-
-    expect(onEnable).toHaveBeenCalledTimes(2);
-  });
-
-  it("offers enable only after a formal version has been published", async () => {
-    const user = userEvent.setup();
-    const onEnable = vi.fn(async () => true);
-    renderTopBar({
-      hasUnpublishedChanges: false,
-      onEnable,
-      publishedRevision: 1,
-      runtimeStatus: "inactive",
-    });
-
-    expect(screen.getByText("未启用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "提交审核" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "启用" }));
-    expect(onEnable).toHaveBeenCalledOnce();
-  });
-
-  it("shows only the runtime status when the active workflow has no pending version", async () => {
-    const user = userEvent.setup();
-    const onPause = vi.fn(async () => true);
-    renderTopBar({
-      hasUnpublishedChanges: false,
-      onPause,
-      publishedRevision: 1,
-      runtimeStatus: "active",
-    });
-
-    expect(screen.getByText("运行中")).toBeInTheDocument();
-    expect(screen.queryByText(/已是最新版本/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    expect(screen.getByRole("menuitem", { name: "暂停" })).toBeInTheDocument();
-  });
-
-  it("keeps runtime controls available while review actions are shown", async () => {
-    const user = userEvent.setup();
-    renderTopBar({
-      currentReview: createReview({ status: "approved" }),
-      hasUnpublishedChanges: true,
-      onPause: vi.fn(async () => true),
-      publishedRevision: 1,
-      runtimeStatus: "active",
-    });
-
     expect(screen.getByRole("button", { name: "发布" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    expect(screen.getByRole("menuitem", { name: "暂停" })).toBeInTheDocument();
-  });
-
-  it("offers resume for a paused published workflow", async () => {
-    const user = userEvent.setup();
-    const onResume = vi.fn(async () => true);
-    renderTopBar({
-      hasUnpublishedChanges: false,
-      onResume,
-      publishedRevision: 1,
-      runtimeStatus: "paused",
-    });
-
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "启用" }));
-    expect(onResume).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
   });
 
   it("keeps release and runtime actions hidden for a stopped workflow", () => {

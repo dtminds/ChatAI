@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
-  it("lists definitions by creation time for cursor pagination", async () => {
+  it("lists definitions by creation time for page pagination", async () => {
     const db = createWorkflowDbMock({ definitionTotal: 38 });
     const repository = new MysqlWorkflowRepository(db as never);
 
@@ -43,6 +43,15 @@ describe("MysqlWorkflowRepository", () => {
     expect(db.selectBuilders[0].wheres.some(where => where[0] === "description")).toBe(false);
   });
 
+  it("applies an offset for direct page navigation", async () => {
+    const db = createWorkflowDbMock({ definitionTotal: 38 });
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.listDefinitions(8, { limit: 5, offset: 20, status: "all" });
+
+    expect(db.selectBuilders[0].offset).toBe(20);
+  });
+
   it("returns an empty page without querying MySQL when no Workflow type is visible", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -51,7 +60,7 @@ describe("MysqlWorkflowRepository", () => {
       limit: 20,
       status: "all",
       workflowTypes: [],
-    })).resolves.toEqual({ items: [], nextCursor: null, total: 0 });
+    })).resolves.toEqual({ items: [], total: 0 });
     expect(db.selectBuilders).toHaveLength(0);
   });
 
@@ -485,6 +494,7 @@ function createWorkflowDbMock(options: {
     taskTransitionInserts: [] as Array<Record<string, unknown>>,
     selectBuilders: [] as Array<{
       forUpdate: boolean;
+      offset: number;
       orderBys: unknown[][];
       selectAll: boolean;
       selects: unknown[][];
@@ -520,6 +530,7 @@ function createWorkflowDbMock(options: {
     selectFrom(table: string) {
       const state = {
         forUpdate: false,
+        offset: 0,
         orderBys: [] as unknown[][],
         selectAll: false,
         selects: [] as unknown[][],
@@ -531,6 +542,7 @@ function createWorkflowDbMock(options: {
         select(...args: unknown[]) { state.selects.push(args); return builder; },
         selectAll() { state.selectAll = true; return builder; },
         limit() { return builder; },
+        offset(value: number) { state.offset = value; return builder; },
         where(...args: unknown[]) { state.wheres.push(args); return builder; },
         orderBy(...args: unknown[]) { state.orderBys.push(args); return builder; },
         forUpdate() { state.forUpdate = true; return builder; },

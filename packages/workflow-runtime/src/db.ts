@@ -27,6 +27,22 @@ export interface WorkflowDefinitionTable {
   workflow_type: number;
 }
 
+export interface WorkflowTemplateTable {
+  configuration_json: JsonText;
+  cover_url: string | null;
+  create_time: GeneratedDate;
+  description: string;
+  draft_json: JsonText;
+  id: Generated<DatabaseId>;
+  name: string;
+  tags_json: JsonText;
+  status: string;
+  sort_order: number;
+  template_version: number;
+  update_time: GeneratedDate;
+  workflow_type: number;
+}
+
 export interface WorkflowRevisionTable {
   create_time: GeneratedDate;
   draft_json: JsonText;
@@ -435,6 +451,7 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_capacity_daily_metric: WorkflowCapacityDailyMetricTable;
   xy_wap_embed_workflow_capacity_guard: WorkflowCapacityGuardTable;
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
+  xy_wap_embed_workflow_template: WorkflowTemplateTable;
   xy_wap_embed_workflow_daily_metric: WorkflowDailyMetricTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_event_subscription: WorkflowEventSubscriptionTable;

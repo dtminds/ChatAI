@@ -18,6 +18,7 @@ import { verifyPassword } from "./password.service.js";
 import {
   deriveAccountRole,
   deriveAccountType,
+  canManageWorkflowTemplates,
   getRolePermissions,
 } from "./permissions.js";
 import type { SmpEmbedDecryptPort } from "./smp-embed-decrypt-port.js";
@@ -655,13 +656,17 @@ function mapAuthSubUser(row: {
     subUserId: String(row.id),
     uid: row.uid,
   });
+  const permissions = getRolePermissions(role);
+  if (canManageWorkflowTemplates({ subUserId: String(row.id), uid: row.uid })) {
+    permissions.push("workflow_template_manage");
+  }
 
   return {
     ...(supportReadOnly ? { accessMode: "support_readonly" as const } : {}),
     accountType: deriveAccountType(row.type),
     ...(supportInvestigationAllowed ? { canStartSupportInvestigation: true } : {}),
     displayName: row.name,
-    permissions: getRolePermissions(role),
+    permissions,
     role,
     subUserId: String(row.id),
     uid: row.uid,

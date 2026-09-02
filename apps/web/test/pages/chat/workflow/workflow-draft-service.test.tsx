@@ -839,8 +839,9 @@ describe("workflow draft service", () => {
       { initialProps: { workflowId: "vip-reactivation" } },
     );
 
+    let restorePromise: ReturnType<typeof result.current.restoreVersion>;
     await act(async () => {
-      void result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
+      restorePromise = result.current.restoreVersion(requireCurrentVersionSnapshot(publishedDocument));
     });
 
     expect(repository.pendingRestores).toHaveLength(1);
@@ -852,6 +853,7 @@ describe("workflow draft service", () => {
       await Promise.resolve();
     });
 
+    await expect(restorePromise!).resolves.toEqual({ kind: "stale" });
     expect(result.current.document.id).toBe("newcomer-conversion");
     expect(result.current.document.trigger).toBe("近 30 天新入会且未首购客户");
     expect(getStartTagIds(repository.getDocument("vip-reactivation").draft)).toEqual([203]);

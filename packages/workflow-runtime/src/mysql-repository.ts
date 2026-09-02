@@ -2187,7 +2187,9 @@ export class MysqlWorkflowRuntimeRepository implements
         const executeTasks = waking.filter(item => item.decision === "execute");
         const suspendedTasks = waking.filter(item => item.decision === "defer");
         const cancelledTasks = waking.filter(item => item.decision === "cancel");
-        const wakingRunIds = [...new Set(waking.map(item => item.runId))];
+        const executeRunIds = [...new Set(executeTasks.map(item => item.runId))];
+        const suspendedRunIds = [...new Set(suspendedTasks.map(item => item.runId))];
+        const cancelledRunIds = [...new Set(cancelledTasks.map(item => item.runId))];
         if (executeTasks.length > 0) {
           await trx.updateTable(TASK_TABLE).set({
             bucket_time: floorToMinute(input.now),
@@ -2228,14 +2230,39 @@ export class MysqlWorkflowRuntimeRepository implements
             .where("status", "=", "waiting_external")
             .executeTakeFirstOrThrow();
         }
-        if (wakingRunIds.length > 0) {
+        if (executeRunIds.length > 0 || suspendedRunIds.length > 0) {
           await trx.updateTable(RUN_TABLE).set({
             lock_version: sql<number>`lock_version + 1`,
             next_execute_at: input.now,
             status: "running",
-          }).where("id", "in", wakingRunIds)
+          }).where("id", "in", [...new Set([...executeRunIds, ...suspendedRunIds])])
             .where("status", "=", "waiting")
             .executeTakeFirstOrThrow();
+        }
+        if (cancelledRunIds.length > 0) {
+          const cancelledRunRows = cancelledRunIds
+            .map(runId => runById.get(normalizeId(runId)))
+            .filter((run): run is NonNullable<typeof run> => Boolean(run));
+          const runUpdate = await trx.updateTable(RUN_TABLE).set({
+            completed_at: input.now,
+            lock_version: sql<number>`lock_version + 1`,
+            next_execute_at: null,
+            status: "cancelled",
+            terminal_reason: "workflow_stopped",
+          }).where("id", "in", cancelledRunIds)
+            .where("status", "=", "waiting")
+            .executeTakeFirstOrThrow();
+          if (Number(runUpdate.numUpdatedRows) === cancelledRunRows.length) {
+            await releaseTenantCapacityForRuns(trx, cancelledRunRows.map(run => ({
+              uid: normalizeTenantId(run.uid),
+            })));
+            await recordWorkflowRunMetrics(trx, cancelledRunRows.map(run => ({
+              kind: "cancelled" as const,
+              occurredAt: input.now,
+              uid: normalizeTenantId(run.uid),
+              workflowId: normalizeId(run.workflow_id),
+            })));
+          }
         }
       }
       return { expired: toFail.length, recovered: toRecover.length };

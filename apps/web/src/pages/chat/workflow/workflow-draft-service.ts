@@ -20,6 +20,7 @@ import type {
   WorkflowDraftImportStatus,
   WorkflowDraftPublishStatus,
   WorkflowDraftRepository,
+  WorkflowDraftRestoreResult,
   WorkflowDraftRestoreStatus,
   WorkflowDraftSaveResult,
   WorkflowDraftSaveStatus,
@@ -34,6 +35,7 @@ export { createWorkflowDraftHash, createWorkflowPublishHash } from "./workflow-d
 export { createInMemoryWorkflowDraftRepository } from "./workflow-in-memory-repository";
 
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
+type WorkflowDraftRestoreOutcome = WorkflowDraftRestoreResult | { kind: "stale" } | undefined;
 const workflowDraftTestRepository = createInMemoryWorkflowDraftRepository();
 const workflowDraftRepositories = new Map<WorkflowSurface, WorkflowDraftRepository>();
 
@@ -562,7 +564,9 @@ export function useWorkflowDocument(
     }
   }, [repository]);
 
-  const restoreVersion = useCallback(async (version: WorkflowVersionHistoryItem) => {
+  const restoreVersion = useCallback(async (
+    version: WorkflowVersionHistoryItem,
+  ): Promise<WorkflowDraftRestoreOutcome> => {
     const restoreRequestId = restoreRequestRef.current + 1;
     restoreRequestRef.current = restoreRequestId;
     publishRequestRef.current += 1;
@@ -578,7 +582,7 @@ export function useWorkflowDocument(
         restoreRequestRef.current !== restoreRequestId
         || workflowIdRef.current !== workflowIdToRestore
       ) {
-        return undefined;
+        return { kind: "stale" };
       }
 
       const saveRequestId = saveRequestRef.current + 1;
@@ -594,7 +598,7 @@ export function useWorkflowDocument(
         || saveRequestRef.current !== saveRequestId
         || workflowIdRef.current !== workflowIdToRestore
       ) {
-        return normalizedRestoreResult;
+        return { kind: "stale" };
       }
 
       setRestoreState("restored");

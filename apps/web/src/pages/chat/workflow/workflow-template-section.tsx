@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { WorkflowTemplateDetail, WorkflowTemplateListItem } from "@chatai/contracts";
 import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
@@ -622,7 +622,14 @@ function TemplateNodeKinds({ nodeKinds }: { nodeKinds: WorkflowTemplateListItem[
       {visibleKinds.map(kind => {
         const visual = nodeVisuals[kind];
         return visual ? <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background" key={kind} title={visual.label}>
-          <HugeiconsIcon aria-hidden="true" color={`rgb(${visual.accentRgb})`} icon={visual.icon} size={15} strokeWidth={1.8} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="workflow-template-node-icon"
+            icon={visual.icon}
+            size={15}
+            strokeWidth={1.8}
+            style={{ "--workflow-template-node-accent-rgb": visual.accentRgb } as CSSProperties}
+          />
         </span> : null;
       })}
       {remainingCount > 0 ? <span className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-xs text-muted-foreground">+{remainingCount}</span> : null}

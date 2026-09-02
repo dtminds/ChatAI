@@ -47,6 +47,10 @@
   --workflow-canvas-bg: color-mix(in oklch, var(--background) 97%, var(--foreground));
 }
 
+.workflow-template-node-icon {
+  color: rgb(var(--workflow-template-node-accent-rgb, 37 99 235));
+}
+
 .dark .workflow-graph-preview {
   --workflow-canvas-bg: color-mix(in oklch, var(--background) 90%, black);
 }

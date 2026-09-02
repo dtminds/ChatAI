@@ -98,7 +98,7 @@ type WeComWorkflowStartConfig = {
 - `message.received` 必须配置至少一个 `keyword`；正文包含任意关键词时命中。
 - ChatAI SOP 的企微事件把 `seatId` 权威解析为 `workUserId` 后编译 Match。
 - WeCom SOP 的企微事件直接编译 `workUserId` Match。
-- `contact.friend_added` 支持可选 `sourceIds`；空数组表示任意来源，否则按 `sourceId` 精确命中。
+- `contact.friend_added` 事件携带可选的层级 `sourceIds`；binding 的 `sourceIds` 非空时，事件与 binding 的来源 ID 存在精确交集即命中。
 - `contact.tag_added` 额外编译 `tagId` Match。
 - 发布时生成唯一的结构化 `WorkflowTriggerBindingFilter`；`filter_spec_json` 保存归一化后的 `workUserIds / seatIds / tagIds / sourceIds / keywords`，不直接保存未经编译的 Draft Config。
 - Java Interest Reader 与 Node 最终匹配读取同一份 Filter，避免两套规则来源。

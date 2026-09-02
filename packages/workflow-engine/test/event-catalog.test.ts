@@ -100,6 +100,18 @@ describe("workflow event catalog", () => {
     }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
   });
 
+  it("rejects the obsolete singular friend-added source field", () => {
+    expect(WORKFLOW_EVENT_CATALOG.project(event({
+      eventType: "contact.friend_added",
+      payload: {
+        externalUserId: 3267,
+        sourceId: "1_1_10132",
+        workUserId: 35954,
+      },
+      source: "wecom",
+    }))).toMatchObject({ code: "payload_invalid", kind: "rejected" });
+  });
+
   it.each([
     {
       eventType: "contact.friend_added",

@@ -22,23 +22,28 @@ describe("workflow trigger matching", () => {
     }))).toBe(false);
   });
 
-  it("matches friend-added events by member and exact source", () => {
-    const selectedSources = friendBinding(["qr-code-1", "store-2"]);
+  it("matches friend-added events by member and any exact source in the hierarchy", () => {
+    const selectedSources = friendBinding(["1_1_10132", "1_1_10098", "1_1_10096"]);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
-      match: { sourceId: "qr-code-1", workUserId: 201 },
+      match: { sourceIds: ["1", "1_1", "1_1_10132"], workUserId: 201 },
     }))).toBe(true);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
-      match: { sourceId: "other", workUserId: 201 },
+      match: { sourceIds: ["1", "1_1"], workUserId: 201 },
     }))).toBe(false);
+    const parentSource = friendBinding(["1_1"]);
+    expect(matchWorkflowTrigger(parentSource.filter, projection({
+      eventType: "contact.friend_added",
+      match: { sourceIds: ["1", "1_1", "1_1_10132"], workUserId: 201 },
+    }))).toBe(true);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
       match: { workUserId: 201 },
     }))).toBe(false);
     expect(matchWorkflowTrigger(selectedSources.filter, projection({
       eventType: "contact.friend_added",
-      match: { sourceId: "qr-code-1", workUserId: 999 },
+      match: { sourceIds: ["1", "1_1", "1_1_10132"], workUserId: 999 },
     }))).toBe(false);
   });
 

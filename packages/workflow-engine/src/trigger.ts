@@ -86,8 +86,11 @@ export function matchWorkflowTrigger(
   if (typeof workUserId !== "number" || !filter.workUserIds.includes(workUserId)) return false;
   if (filter.eventType === "contact.friend_added") {
     if (filter.sourceIds.length === 0) return false;
-    const sourceId = projection.match.sourceId;
-    return typeof sourceId === "string" && filter.sourceIds.includes(sourceId);
+    const sourceIds = projection.match.sourceIds;
+    return Array.isArray(sourceIds)
+      && sourceIds.length > 0
+      && sourceIds.some(sourceId =>
+        typeof sourceId === "string" && filter.sourceIds.includes(sourceId));
   }
   const tagId = projection.match.tagId;
   return typeof tagId === "number" && filter.tagIds.includes(tagId);

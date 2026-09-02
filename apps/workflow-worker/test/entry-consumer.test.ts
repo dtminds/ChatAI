@@ -328,7 +328,7 @@ describe("workflow entry consumer", () => {
         projection: {
           externalUserId: 3267,
           seatId: 101,
-          sourceId: "qr-code-1",
+          sourceIds: ["1", "1_1", "1_1_10132"],
           thirdExternalUserId: "chatai_external_456",
           workUserId: 201,
         },
@@ -597,7 +597,7 @@ describe("workflow entry consumer", () => {
       payload: {
         externalUserId: 3267,
         seatId: 101,
-        sourceId: "qr-code-1",
+        sourceIds: ["1", "1_1", "1_1_10132"],
         thirdExternalUserId: "chatai_external_456",
         workUserId: 202,
       },
@@ -1136,7 +1136,7 @@ function event(overrides: Partial<WorkflowEntryEvent> = {}): WorkflowEntryEvent 
     payload: {
       externalUserId: 3267,
       seatId: 101,
-      sourceId: "qr-code-1",
+      sourceIds: ["1", "1_1", "1_1_10132"],
       thirdExternalUserId: "chatai_external_456",
       workUserId: 201,
     },
@@ -1207,7 +1207,7 @@ function binding(
     filter: {
       entryPolicy: { mode: "never" },
       eventType: "contact.friend_added",
-      sourceIds: ["qr-code-1"],
+      sourceIds: ["1_1_10132"],
       workUserIds,
     },
     id: workflowId,

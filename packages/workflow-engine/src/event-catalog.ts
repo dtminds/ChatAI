@@ -75,7 +75,7 @@ export const WORKFLOW_EVENT_CATALOG = createWorkflowEventCatalog([
     payloadVersion: 1,
     project: event => ({
       match: {
-        ...(event.payload.sourceId === undefined ? {} : { sourceId: event.payload.sourceId }),
+        ...(event.payload.sourceIds === undefined ? {} : { sourceIds: event.payload.sourceIds }),
         workUserId: event.payload.workUserId,
       },
       subjects: createContactSubjectCandidates(event.payload),

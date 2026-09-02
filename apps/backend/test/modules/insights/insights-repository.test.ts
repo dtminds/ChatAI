@@ -3811,7 +3811,11 @@ describe("MysqlInsightWorkerRepository", () => {
         update_time: now,
       }),
     });
-    expect(operations.at(-1)).toBe("update:xy_wap_embed_insight_sync_cursor");
+    expect(operations).toEqual([
+      "insert:xy_wap_embed_insight_job",
+      "insert:xy_wap_embed_insight_sync_cursor",
+      "update:xy_wap_embed_insight_sync_cursor",
+    ]);
   });
 
   it("distinguishes global cursor lock contention from missing initialization", async () => {

@@ -1390,19 +1390,10 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       const baselineAuditId = parseNumber(globalCursor.cursor_audit_id);
       const uids = Array.from(new Set(messages.map((message) => parseNumber(message.uid))));
 
-      await trx
-        .insertInto("xy_wap_embed_insight_sync_cursor")
-        .values(
-          uids.map((uid) => ({
-            create_time: globalCursor.create_time,
-            cursor_audit_id: baselineAuditId,
-            cursor_msgtime: baselineMsgtime as number,
-            source: cursorSource,
-            uid,
-          })),
-        )
-        .ignore()
-        .executeTakeFirst();
+      // UID workers lock sessionize_uid job rows first (claim / withSessionizationClaim)
+      // and then upsert xy_wap_embed_insight_sync_cursor. Discovery must use the same
+      // order: InnoDB INSERT IGNORE takes a shared lock on an existing unique key, so
+      // inserting UID cursors before merging jobs deadlocks with a running UID worker.
       await trx
         .insertInto("xy_wap_embed_insight_job")
         .values(
@@ -1426,6 +1417,19 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           end`,
           update_time: input.now,
         })
+        .executeTakeFirst();
+      await trx
+        .insertInto("xy_wap_embed_insight_sync_cursor")
+        .values(
+          uids.map((uid) => ({
+            create_time: globalCursor.create_time,
+            cursor_audit_id: baselineAuditId,
+            cursor_msgtime: baselineMsgtime as number,
+            source: cursorSource,
+            uid,
+          })),
+        )
+        .ignore()
         .executeTakeFirst();
 
       const cursorAuditId = parseNumber(messages.at(-1)?.id);

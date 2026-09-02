@@ -2252,6 +2252,31 @@ describe("WorkflowService", () => {
     expect(page.items.map(item => item.name)).toEqual(["排序模板2", "排序模板1"]);
     expect(page.items.map(item => item.sortOrder)).toEqual([20, 10]);
   });
+
+  it("searches templates by name without matching descriptions", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(repository, { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const firstWorkflow = await service.create(manager, { workflowType: "chatai_sop" });
+    const secondWorkflow = await service.create(manager, { workflowType: "chatai_sop" });
+    const first = await service.convertToTemplate(manager, firstWorkflow.id, {
+      description: "只出现在描述中",
+      expectedDraftVersion: firstWorkflow.draftVersion,
+      name: "模板甲",
+    });
+    const second = await service.convertToTemplate(manager, secondWorkflow.id, {
+      description: "另一条描述",
+      expectedDraftVersion: secondWorkflow.draftVersion,
+      name: "描述不应命中",
+    });
+    await service.publishTemplate(manager, first.id);
+    await service.publishTemplate(manager, second.id);
+
+    const page = await service.listTemplates(manager, { limit: 8, page: 1, query: "只出现在描述中" });
+
+    expect(page.total).toBe(0);
+  });
 });
 
 function createService(

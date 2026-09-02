@@ -217,6 +217,14 @@ describe("database schema document", () => {
     expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_metric");
   });
 
+  it("documents the Workflow template table as writable by Node", () => {
+    const templateTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_template");
+
+    expect(templateTable).toContain("COMMENT");
+    expect(templateTable).toContain("sort_order INT NOT NULL DEFAULT 0");
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_template");
+  });
+
   it("keeps only workflow run indexes required by current query paths", () => {
     const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
 

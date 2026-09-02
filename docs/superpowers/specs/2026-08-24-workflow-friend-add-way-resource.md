@@ -16,7 +16,7 @@
    - 草稿未选：不写 `addWayKey`，`sourceIds=[]`，发布时拦截
    - 无二级，或二级且满足全部：`addWayKey` 为叶子 key（有子级时存子级），`sourceIds=[该 key]`
    - 二级且满足任意一个：`sourceMatchMode="any"`，`sourceIds` 为所选活动 `addWayId`，最多 5 个
-8. 事件匹配仍按已有契约：`sourceIds` 非空则精确命中 `payload.sourceId`。发布后不应再出现空 `sourceIds`。
+8. 事件匹配按层级来源契约：binding 的 `sourceIds` 非空时，与 `payload.sourceIds` 存在一个精确 ID 命中即可。发布后不应再出现空 `sourceIds`。
 
 ## Java 目录响应
 

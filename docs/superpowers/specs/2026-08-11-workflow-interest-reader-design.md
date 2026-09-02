@@ -41,7 +41,7 @@ workflow.direct_entry
 | 企微好友 | `externalUserId` | JavaScript 安全整数范围内的正整数 | WeCom SOP Subject ID；Node 投影为 Runtime `subjectId` 时转成十进制字符串 |
 | ChatAI 席位好友 | `thirdExternalUserId` | non-empty string，最长 128 | ChatAI SOP Subject ID |
 | 企微标签 | `tagId` | positive safe integer | 打标签精确匹配维度 |
-| 好友来源 | `sourceId` | non-empty string，最长 128 | 添加好友来源筛选 |
+| 好友来源路径 | `sourceIds` | string[]，每项 non-empty，最长 128 | 添加好友来源筛选；按父级到叶子级携带 |
 | 消息 | `messageId` | positive safe integer | 新消息业务事实标识 |
 
 公共 JSON payload、Java DTO 和 TypeScript 类型使用 camelCase；只有 MySQL 物理列使用 snake_case。
@@ -112,14 +112,14 @@ subjectType = chatai_contact -> subjectId = thirdExternalUserId
   "payload": {
     "workUserId": 201,
     "externalUserId": 3267,
-    "sourceId": "qr-code-1",
+    "sourceIds": ["1", "1_1", "1_1_10132"],
     "seatId": 101,
     "thirdExternalUserId": "chatai_external_456"
   }
 }
 ```
 
-必填：`workUserId`、`externalUserId`。可选：`sourceId`、`seatId`、`thirdExternalUserId`。
+必填：`workUserId`、`externalUserId`。可选：`sourceIds`、`seatId`、`thirdExternalUserId`。`sourceIds` 按来源层级从父级到叶子级排列。
 
 ### 3.3 打标签
 
@@ -325,12 +325,12 @@ Java 不在 SQL 中拆解 JSON。查询返回后逐条解析 Filter 并在内存
 workUserIds contains payload.workUserId
 AND
 (
-  sourceIds is empty
-  OR sourceIds contains payload.sourceId
+binding sourceIds 非空
+AND binding sourceIds 与 payload sourceIds 存在交集
 )
 ```
 
-`sourceIds=[]` 表示任意来源。`sourceIds` 非空而事件缺少 `sourceId` 时不匹配。
+草稿中的 `sourceIds=[]` 表示尚未选择来源，发布时必须拦截。运行时 binding 的 `sourceIds` 非空；事件缺少或没有命中的 `sourceIds` 时不匹配。
 
 ### 6.2 打标签
 
@@ -578,16 +578,16 @@ workflow_event_outbox_created_total{eventType}
 
 ```text
 Filter：workUserIds=[201], sourceIds=[qr-code-1]
-事件：workUserId=201, sourceId=qr-code-1
+事件：workUserId=201, sourceIds=[1, 1_1, qr-code-1]
 结果：INTERESTED
 ```
 
-### 场景 B：添加好友任意来源
+### 场景 B：添加好友来源不匹配
 
 ```text
-Filter：workUserIds=[201], sourceIds=[]
-事件：workUserId=201, sourceId 缺失
-结果：INTERESTED
+Filter：workUserIds=[201], sourceIds=[qr-code-1]
+事件：workUserId=201, sourceIds=[1, 1_1, other]
+结果：NOT_INTERESTED
 ```
 
 ### 场景 C：标签不匹配
@@ -629,7 +629,7 @@ Java 查询 `uid + workflow.direct_entry` 的有效 Binding。只有同一条 Bi
 
 ## 14. 联合评审需确认的实施事实
 
-1. Java 业务域中 `workUserId`、`seatId`、`externalUserId`、`thirdExternalUserId`、`sourceId` 的权威来源。
+1. Java 业务域中 `workUserId`、`seatId`、`externalUserId`、`thirdExternalUserId`、`sourceIds` 的权威来源。
 2. 四类入口事件各自生成稳定 `eventId` 的主键。
 3. Java 当前可复用的 Transactional Outbox 实现及事务边界。
 4. Java 数据库账号、Schema 名称和三张表的只读授权。

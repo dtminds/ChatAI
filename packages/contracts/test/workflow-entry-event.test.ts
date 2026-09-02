@@ -149,6 +149,25 @@ describe("workflow entry event envelope", () => {
     });
   });
 
+  it("accepts the Java v1 friend-added source hierarchy", () => {
+    expect(validateWorkflowEntryEvent(event({
+      payload: {
+        externalUserId: 3267,
+        seatId: 1,
+        sourceIds: ["1", "1_1", "1_1_10132"],
+        thirdExternalUserId: "chatai-contact-1",
+        workUserId: 35954,
+      },
+    }))).toMatchObject({
+      event: {
+        payload: {
+          sourceIds: ["1", "1_1", "1_1_10132"],
+        },
+      },
+      kind: "accepted",
+    });
+  });
+
   it.each([
     {
       eventType: "message.received",

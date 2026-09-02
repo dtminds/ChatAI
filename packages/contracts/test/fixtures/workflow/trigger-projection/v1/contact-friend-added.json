@@ -1,7 +1,7 @@
 {
   "eventType": "contact.friend_added",
   "match": {
-    "sourceId": "qr-code-1",
+    "sourceIds": ["1", "1_1", "1_1_10132"],
     "workUserId": 201
   },
   "subjects": {
@@ -11,7 +11,7 @@
   },
   "variables": {
     "externalUserId": 3267,
-    "sourceId": "qr-code-1",
+    "sourceIds": ["1", "1_1", "1_1_10132"],
     "workUserId": 201
   }
 }

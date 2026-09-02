@@ -615,7 +615,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_template (
   draft_json JSON NOT NULL COMMENT '模板画布草稿JSON',
   configuration_json JSON NOT NULL COMMENT '应用模板时的待配置项JSON',
   template_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '模板版本',
-  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT '模板状态：draft、published、offline、archived',
+  status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT '模板状态：draft、published、deleted；删除采用软删除',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '运营排序值，数值越大越靠前',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

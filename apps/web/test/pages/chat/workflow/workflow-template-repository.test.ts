@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { RequestNormalizedError } from "@/lib/request";
 import { createWorkflowTemplateRepository } from "@/pages/chat/workflow/workflow-template-repository";
 
 describe("HTTP Workflow template repository", () => {
@@ -11,6 +12,21 @@ describe("HTTP Workflow template repository", () => {
     await repository.list({ limit: 8, page: 5 });
 
     expect(get).toHaveBeenCalledWith("/server/workflow-templates?limit=8&page=5");
+  });
+
+  it("preserves actionable API errors from template operations", async () => {
+    const get = vi.fn().mockRejectedValue(new RequestNormalizedError({
+      code: "WORKFLOW_ENTITLEMENT_REQUIRED",
+      message: "当前无对应产品权益",
+      status: 403,
+    }));
+    const repository = createWorkflowTemplateRepository({ delete: vi.fn(), get, post: vi.fn() });
+
+    await expect(repository.get("18")).rejects.toMatchObject({
+      apiCode: "WORKFLOW_ENTITLEMENT_REQUIRED",
+      code: "forbidden",
+      message: "当前无对应产品权益",
+    });
   });
 
   it("requests unpublished template drafts from the management endpoint", async () => {

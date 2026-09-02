@@ -6,8 +6,7 @@ import { WorkflowTemplateTagIdSchema } from "./template-tags.js";
 export const WorkflowTemplateStatusSchema = Type.Union([
   Type.Literal("draft"),
   Type.Literal("published"),
-  Type.Literal("offline"),
-  Type.Literal("archived"),
+  Type.Literal("deleted"),
 ]);
 
 export const WorkflowTemplateConfigurationItemSchema = Type.Union([

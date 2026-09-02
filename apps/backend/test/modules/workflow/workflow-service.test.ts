@@ -1993,6 +1993,7 @@ describe("WorkflowService", () => {
     ]));
     expect(JSON.stringify(createdTemplate.draft)).not.toContain("private-source");
     expect(JSON.stringify(createdTemplate.draft)).not.toContain("123");
+    expect(JSON.stringify(createdTemplate.draft)).not.toContain("456");
 
     const published = await service.publishTemplate(manager, createdTemplate.id);
     expect(published.status).toBe("published");
@@ -2013,6 +2014,13 @@ describe("WorkflowService", () => {
       page: 1,
       tags: ["lifecycle:potential_conversion", "scene:customer_care", "industry:beauty"],
     })).total).toBe(0);
+    await expect(service.listTemplates(manager, {
+      limit: 8,
+      page: 1,
+      tags: ["legacy:removed_tag"],
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_TAG_INVALID", statusCode: 400 });
+    const persistedPublished = await templateRepository.find(published.id);
+    await templateRepository.update({ ...persistedPublished!, draft: saved.draft });
     const first = await service.applyTemplate({ roles: ["owner"], subUserId: "9", uid: 9 }, published.id, {
       clientRequestId: "template-apply-1",
     });
@@ -2021,6 +2029,9 @@ describe("WorkflowService", () => {
     });
     expect(second.id).toBe(first.id);
     expect(first.draft.nodes.find(node => node.id === "start")?.data).toMatchObject({ seatIds: [] });
+    expect(JSON.stringify(first.draft)).not.toContain("456");
+    expect(JSON.stringify(first.draft)).not.toContain("private-source");
+    expect(JSON.stringify(first.draft)).not.toContain("123");
   });
 
   it("rejects template management for non-allowlisted identities", async () => {
@@ -2085,8 +2096,11 @@ describe("WorkflowService", () => {
     await expect(service.deleteTemplateDraft(operator, draft.id))
       .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
     await expect(service.deleteTemplateDraft(manager, draft.id)).resolves.toEqual({ id: draft.id });
+    await expect(templateRepository.find(draft.id)).resolves.toMatchObject({ status: "deleted" });
     await expect(service.getTemplateDraft(manager, draft.id))
       .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_NOT_FOUND", statusCode: 404 });
+    await expect(service.publishTemplate(manager, draft.id))
+      .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_NOT_DRAFT", statusCode: 400 });
     await expect(service.listTemplateDrafts(operator, { limit: 8, page: 1 }))
       .rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_FORBIDDEN", statusCode: 403 });
   });

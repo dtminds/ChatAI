@@ -5,6 +5,7 @@ import type {
   WorkflowTemplateListPage,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
+import { normalizeHttpError } from "./workflow-http-repository";
 
 export type WorkflowTemplateListInput = {
   featured?: boolean;
@@ -40,52 +41,92 @@ export function createWorkflowTemplateRepository(
   };
   return {
     async list(input = {}) {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(input)) {
-        if (value === undefined || value === "") continue;
-        if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
-        else params.set(key, String(value));
+      try {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(input)) {
+          if (value === undefined || value === "") continue;
+          if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
+          else params.set(key, String(value));
+        }
+        return unwrap<WorkflowTemplateListPage>(await client.get(
+          `${apiBasePath}/workflow-templates${params.size ? `?${params}` : ""}`,
+        ));
+      } catch (error) {
+        throw normalizeHttpError(error);
       }
-      return unwrap<WorkflowTemplateListPage>(await client.get(
-        `${apiBasePath}/workflow-templates${params.size ? `?${params}` : ""}`,
-      ));
     },
     async get(id) {
-      return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-templates/${id}`));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-templates/${id}`));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async updateInfo(id, input) {
       if (!client.patch) throw new Error("模板信息编辑不可用");
-      return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-templates/${id}`, input));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-templates/${id}`, input));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async getDraft(id) {
-      return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-template-drafts/${id}`));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.get(`${apiBasePath}/workflow-template-drafts/${id}`));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async deleteDraft(id) {
-      await client.delete(`${apiBasePath}/workflow-template-drafts/${id}`);
+      try {
+        await client.delete(`${apiBasePath}/workflow-template-drafts/${id}`);
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async updateDraft(id, input) {
       if (!client.patch) throw new Error("模板草稿编辑不可用");
-      return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-template-drafts/${id}`, input));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.patch(`${apiBasePath}/workflow-template-drafts/${id}`, input));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async listDrafts(input = {}) {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(input)) {
-        if (value === undefined || value === "") continue;
-        if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
-        else params.set(key, String(value));
+      try {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(input)) {
+          if (value === undefined || value === "") continue;
+          if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
+          else params.set(key, String(value));
+        }
+        return unwrap<WorkflowTemplateListPage>(await client.get(
+          `${apiBasePath}/workflow-template-drafts${params.size ? `?${params}` : ""}`,
+        ));
+      } catch (error) {
+        throw normalizeHttpError(error);
       }
-      return unwrap<WorkflowTemplateListPage>(await client.get(
-        `${apiBasePath}/workflow-template-drafts${params.size ? `?${params}` : ""}`,
-      ));
     },
     async apply(id, body = {}) {
-      return unwrap<{ id: string }>(await client.post(`${apiBasePath}/workflow-templates/${id}/applications`, body));
+      try {
+        return unwrap<{ id: string }>(await client.post(`${apiBasePath}/workflow-templates/${id}/applications`, body));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async publish(id) {
-      return unwrap<WorkflowTemplateDetail>(await client.post(`${apiBasePath}/workflow-templates/${id}/publish`));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(`${apiBasePath}/workflow-templates/${id}/publish`));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
     async withdraw(id) {
-      return unwrap<WorkflowTemplateDetail>(await client.post(`${apiBasePath}/workflow-templates/${id}/withdraw`));
+      try {
+        return unwrap<WorkflowTemplateDetail>(await client.post(`${apiBasePath}/workflow-templates/${id}/withdraw`));
+      } catch (error) {
+        throw normalizeHttpError(error);
+      }
     },
   };
 }

@@ -515,6 +515,7 @@ export class WorkflowService {
 
   async listTemplates(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; tags?: string[]; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
     assertWorkflowAccess(scope);
+    assertWorkflowTemplateTagIds(input.tags);
     const limit = input.featured ? Math.min(input.limit, 4) : input.limit;
     const page = await this.requireTemplateRepository().list({
       limit,
@@ -548,10 +549,7 @@ export class WorkflowService {
   async updateTemplateInfo(scope: WorkflowOperatorScope, templateId: string, input: WorkflowTemplateDraftUpdateRequest) {
     assertWorkflowTemplateManage(scope);
     const template = await this.requireTemplateRepository().find(templateId);
-    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
-    if (template.status === "archived") {
-      throw new BadRequestError("WORKFLOW_TEMPLATE_ARCHIVED", "归档模板不能编辑");
-    }
+    if (!template || template.status !== "published") throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
     const name = input.name.trim();
     if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
     const description = assertWorkflowTemplateDescription(input.description);
@@ -608,8 +606,12 @@ export class WorkflowService {
     await this.requireEntitlement(scope.uid, template.workflowType);
     const name = (input.name ?? template.name).trim() || "未命名工作流";
     const description = (input.description ?? template.description).trim();
-    const draft = normalizeWorkflowDraft(template.draft);
+    // Templates created before the resource-neutrality guard may still contain
+    // tenant-owned values. Sanitize again at the tenant boundary so applying a
+    // historical template cannot copy those values into a new Workflow draft.
+    const draft = sanitizeTemplateDraft(normalizeWorkflowDraft(template.draft));
     assertWorkflowDraftNodeContracts(draft);
+    assertTemplateResourceNeutral(draft);
     const result = await this.repository.createDefinition({ clientRequestId: input.clientRequestId, description, draft, draftSemanticHash: hashDraftSemantics(draft), name, opSubUserId: scope.subUserId, uid: scope.uid, workflowType: template.workflowType });
     if (result.kind === "idempotency-conflict") throw new AppError("WORKFLOW_CREATE_REQUEST_CONFLICT", "创建请求与已有类型不一致", 409);
     return this.toDefinition(result.value);
@@ -625,6 +627,7 @@ export class WorkflowService {
     const sourceDraft = normalizeWorkflowDraft(definition.draft);
     const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
+    assertTemplateResourceNeutral(draft);
     const tags = assertWorkflowTemplateTagIds(input.tags);
     const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description, tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft", sortOrder: input.sortOrder ?? 0 });
     return toTemplateDetail(template);
@@ -634,17 +637,15 @@ export class WorkflowService {
     assertWorkflowTemplateManage(scope);
     const template = await this.requireTemplateRepository().find(templateId);
     if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
-    if (template.status === "archived") {
-      throw new BadRequestError("WORKFLOW_TEMPLATE_ARCHIVED", "归档模板不能发布");
+    if (template.status !== "draft") {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_NOT_DRAFT", "只有草稿模板可以发布");
     }
     validateTemplateForPublish(template);
     assertWorkflowTemplateTagIds(template.tags);
     return toTemplateDetail((await this.requireTemplateRepository().update({
       ...template,
       status: "published",
-      templateVersion: template.status === "draft"
-        ? template.templateVersion
-        : template.templateVersion + 1,
+      templateVersion: template.templateVersion,
     }))!);
   }
 
@@ -659,13 +660,6 @@ export class WorkflowService {
       ...template,
       status: "draft",
     }))!);
-  }
-
-  async setTemplateStatus(scope: WorkflowOperatorScope, templateId: string, status: "offline" | "archived") {
-    assertWorkflowTemplateManage(scope);
-    const template = await this.requireTemplateRepository().find(templateId);
-    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
-    return toTemplateDetail((await this.requireTemplateRepository().update({ ...template, status }))!);
   }
 
   private requireTemplateRepository() {
@@ -1406,6 +1400,9 @@ function assertTemplateResourceNeutral(draft: WorkflowDraft) {
   ]);
   const visit = (value: unknown): string | null => {
     if (Array.isArray(value)) {
+      if (value.every(item => typeof item === "string") && getWorkflowCustomFieldVariableIds(value).length > 0) {
+        return "selector";
+      }
       for (const item of value) {
         const path = visit(item);
         if (path) return path;
@@ -1911,7 +1908,12 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
   ]);
   const emptyArrayKeys = new Set(["accountIds", "managedAccountIds", "seatIds", "workUserIds", "friendAddWayIds", "sourceIds", "tagIds", "audienceIds", "audienceGroupIds", "customerFieldIds", "fieldIds", "materialIds", "materialCollectionIds", "modelIds"]);
   const walk = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(walk);
+    if (Array.isArray(value)) {
+      if (value.every(item => typeof item === "string") && getWorkflowCustomFieldVariableIds(value).length > 0) {
+        return ["subject", "customFields", "0"];
+      }
+      return value.map(walk);
+    }
     if (!value || typeof value !== "object") return value;
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {

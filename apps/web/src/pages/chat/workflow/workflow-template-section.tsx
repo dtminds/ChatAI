@@ -28,6 +28,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { canManageWorkflowTemplates } from "./workflow-template-access";
+import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
 import { useWorkflowSurface, WorkflowSurfaceProvider } from "./workflow-surface";
 import { nodeVisuals } from "./node-definitions";
 import type { WorkflowDraft } from "./types";
@@ -95,6 +96,8 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailItem, setDetailItem] = useState<WorkflowTemplateListItem | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -157,12 +160,14 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   };
   const openDetail = async (item: WorkflowTemplateListItem) => {
     setOpen(true);
+    setDetailItem(item);
     setDetail(null);
+    setDetailError(false);
     setDetailLoading(true);
     try {
       setDetail(await templateRepository.get(item.id));
     } catch {
-      toast.error("操作失败，请稍后重试");
+      setDetailError(true);
     } finally {
       setDetailLoading(false);
     }
@@ -180,8 +185,8 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       setOpen(false);
       applyRequestRef.current = null;
       navigate(`${surface.webBasePath}/${result.id}`);
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setApplyingTemplateId(null);
     }
@@ -197,8 +202,8 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       setDetail(null);
       setOpen(false);
       await loadFeatured();
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setWithdrawing(false);
     }
@@ -212,17 +217,17 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       setEditOpen(false);
       toast.success("模板信息已更新");
       await loadFeatured();
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setEditing(false);
     }
   };
 
   return <section aria-label="推荐模板" className="space-y-3">
-    <div className="flex items-center justify-between"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
+    <div className="flex items-center justify-between px-1.5"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
     {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-featured-container"><div className="workflow-template-featured-grid">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div></div>}
-    <Dialog onOpenChange={value => { if (!withdrawing) { setOpen(value); if (!value) { setDetail(null); setDetailLoading(false); } } }} open={open}>
+    <Dialog onOpenChange={value => { if (!withdrawing) { setOpen(value); if (!value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } } }} open={open}>
       <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail}>
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
           <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
@@ -238,7 +243,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
             ] : undefined}
           /> : null}
         </DialogHeader>
-        {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-1">
+        {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : detailError ? <TemplateLoadErrorState onRetry={() => { if (detailItem) void openDetail(detailItem); }} /> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-1">
           <Input aria-label="搜索模板" className="w-[260px] max-w-full" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void loadBrowser({ page: 1, query: event.currentTarget.value }); }} placeholder="搜索模板" value={query} />
           {browserLoading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : browserError ? <TemplateLoadErrorState onRetry={() => void loadBrowser({ page, query })} /> : browserItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{browserItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
           <TablePagination
@@ -293,6 +298,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       : createWorkflowTemplateRepository(undefined, surface.apiBasePath.replace(/\/workflows$/, ""))), [repository, surface.apiBasePath]);
   const [items, setItems] = useState<WorkflowTemplateListItem[]>([]);
   const [query, setQuery] = useState("");
+  const [committedQuery, setCommittedQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -300,6 +306,8 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const [error, setError] = useState(false);
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailItem, setDetailItem] = useState<WorkflowTemplateListItem | null>(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -320,7 +328,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         limit: pageSize,
         page: input.page,
         query: input.query?.trim() || undefined,
-        tags: input.tags ?? selectedTags,
+        tags: input.tags ?? [],
       });
       setItems(result.items);
       setTotal(result.total);
@@ -330,17 +338,19 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
     } finally {
       setLoading(false);
     }
-  }, [selectedTags, templateRepository]);
+  }, [templateRepository]);
 
-  useEffect(() => { void load({ page: 1, tags: selectedTags }); }, [load, selectedTags]);
+  useEffect(() => { void load({ page: 1, query: committedQuery, tags: selectedTags }); }, [committedQuery, load, selectedTags]);
 
   const openDetail = async (item: WorkflowTemplateListItem) => {
+    setDetailItem(item);
     setDetail(null);
+    setDetailError(false);
     setDetailLoading(true);
     try {
       setDetail(await templateRepository.get(item.id));
     } catch {
-      toast.error("操作失败，请稍后重试");
+      setDetailError(true);
     } finally {
       setDetailLoading(false);
     }
@@ -358,8 +368,8 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       setDetail(null);
       applyRequestRef.current = null;
       navigate(`${surface.webBasePath}/${result.id}`);
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setApplyingTemplateId(null);
     }
@@ -372,9 +382,9 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       toast.success("模板已撤回");
       setWithdrawConfirmOpen(false);
       setDetail(null);
-      await load({ page: Math.min(page, totalPages), query, tags: selectedTags });
-    } catch {
-      toast.error("操作失败，请稍后重试");
+      await load({ page: Math.min(page, totalPages), query: committedQuery, tags: selectedTags });
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setWithdrawing(false);
     }
@@ -387,9 +397,9 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       setDetail(updated);
       setEditOpen(false);
       toast.success("模板信息已更新");
-      await load({ page, query, tags: selectedTags });
-    } catch {
-      toast.error("操作失败，请稍后重试");
+      await load({ page, query: committedQuery, tags: selectedTags });
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setEditing(false);
     }
@@ -397,7 +407,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const goToPage = (nextPage: number) => {
     const targetPage = Math.min(Math.max(1, nextPage), totalPages);
     if (targetPage === page) return;
-    void load({ page: targetPage, query, tags: selectedTags });
+    void load({ page: targetPage, query: committedQuery, tags: selectedTags });
   };
   const toggleTag = (tagId: string) => {
     const nextTags = selectedTags.includes(tagId)
@@ -421,7 +431,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
           </Link>
         </Button>
         <h1 className="text-[22px] font-semibold leading-tight">模板中心</h1>
-        {canOpenDraftBox ? <div className="ml-auto"><TemplateDraftBox onPublished={() => void load({ page: 1, query, tags: selectedTags })} repository={templateRepository} /></div> : null}
+        {canOpenDraftBox ? <div className="ml-auto"><TemplateDraftBox onPublished={() => void load({ page: 1, query: committedQuery, tags: selectedTags })} repository={templateRepository} /></div> : null}
       </header>
       <div className="space-y-4">
         <div aria-label="模板筛选" className="space-y-2">
@@ -436,14 +446,14 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
           aria-label="搜索模板"
           className="w-[260px] max-w-full"
           onChange={event => setQuery(event.target.value)}
-          onKeyDown={event => { if (event.key === "Enter") void load({ page: 1, query: event.currentTarget.value, tags: selectedTags }); }}
+          onKeyDown={event => { if (event.key === "Enter") setCommittedQuery(event.currentTarget.value); }}
           placeholder="搜索模板"
           value={query}
         />
-        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => { setDetailLoading(true); void openDetail(item); }} />)}</div>}
+        {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query: committedQuery, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
         <TablePagination className="border-t-0" onPageChange={goToPage} page={page} showTotal total={total} totalPages={totalPages} />
       </div>
-      <Dialog onOpenChange={value => { if (!withdrawing) { if (!value) { setDetail(null); setDetailLoading(false); } } }} open={Boolean(detail) || detailLoading}>
+      <Dialog onOpenChange={value => { if (!withdrawing && !value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } }} open={Boolean(detail) || detailLoading || detailError}>
         <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
@@ -459,7 +469,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
               ] : undefined}
           /> : null}
           </DialogHeader>
-          {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : null}
+          {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : detailError ? <TemplateLoadErrorState onRetry={() => { if (detailItem) void openDetail(detailItem); }} /> : null}
         </DialogContent>
       </Dialog>
       {detail ? <TemplateMetadataDialog detail={detail} onOpenChange={setEditOpen} onSubmit={updateTemplateInfo} open={editOpen} pending={editing} submitLabel="保存" title="编辑模板信息" /> : null}
@@ -479,6 +489,9 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<WorkflowTemplateListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailItem, setDetailItem] = useState<WorkflowTemplateListItem | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -513,6 +526,8 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   const openDraftBox = () => {
     setOpen(true);
     setDetail(null);
+    setDetailItem(null);
+    setDetailError(false);
     void load({ page: 1, query });
   };
   const goToPage = (nextPage: number) => {
@@ -523,10 +538,16 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   };
   const openDetail = async (item: WorkflowTemplateListItem) => {
     if (!repository.getDraft) return;
+    setDetailItem(item);
+    setDetail(null);
+    setDetailError(false);
+    setDetailLoading(true);
     try {
       setDetail(await repository.getDraft(item.id));
     } catch {
-      toast.error("操作失败，请稍后重试");
+      setDetailError(true);
+    } finally {
+      setDetailLoading(false);
     }
   };
   const publish = async (input?: WorkflowTemplateDraftUpdateRequest) => {
@@ -540,8 +561,8 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
       const nextPage = page > 1 && items.length === 1 ? page - 1 : page;
       await load({ page: nextPage, query });
       await onPublished();
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setPublishing(false);
     }
@@ -556,8 +577,8 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
       setDetail(null);
       const nextPage = page > 1 && items.length === 1 ? page - 1 : page;
       await load({ page: nextPage, query });
-    } catch {
-      toast.error("操作失败，请稍后重试");
+    } catch (error) {
+      toast.error(getWorkflowOperationErrorMessage(error));
     } finally {
       setDeleting(false);
     }
@@ -566,7 +587,7 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   return (
     <>
       <Button onClick={openDraftBox} type="button" variant="secondary">草稿箱</Button>
-      <Dialog onOpenChange={value => { if (!deleting) { setOpen(value); if (!value) setDetail(null); } }} open={open}>
+      <Dialog onOpenChange={value => { if (!deleting) { setOpen(value); if (!value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } } }} open={open}>
         <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh]" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板草稿"}</DialogTitle>
@@ -577,8 +598,12 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
               overflowItems={[{ destructive: true, icon: Delete01Icon, label: "删除草稿", onSelect: () => setDeleteConfirmOpen(true) }]}
             /> : null}
           </DialogHeader>
-          {detail ? (
+          {detailLoading ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div>
+          ) : detail ? (
             <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} />
+          ) : detailError ? (
+            <TemplateLoadErrorState onRetry={() => { if (detailItem) void openDetail(detailItem); }} />
           ) : (
             <div className="min-h-0 space-y-4 overflow-y-auto p-1">
               <Input

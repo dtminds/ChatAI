@@ -633,7 +633,7 @@ function unwrap<T>(response: unknown): T {
   return (response as ApiSuccessEnvelope<T>).data;
 }
 
-function normalizeHttpError(error: unknown) {
+export function normalizeHttpError(error: unknown) {
   if (error instanceof WorkflowRepositoryError) return error;
   if (error instanceof RequestNormalizedError) {
     const code = error.status === 401

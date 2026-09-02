@@ -1280,6 +1280,46 @@ describe("Agent workflow page", () => {
     })));
   });
 
+  it("keeps template detail failures actionable and retries the same template", async () => {
+    const user = userEvent.setup();
+    const item = {
+      coverUrl: null,
+      description: "模板说明",
+      id: "template-detail-error",
+      name: "详情失败模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 1,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const get = vi.fn()
+      .mockRejectedValueOnce(new WorkflowRepositoryError("server", "模板服务暂不可用"))
+      .mockResolvedValue({
+        ...item,
+        configurationItems: [],
+        draft: createInitialDraft(),
+        status: "published" as const,
+      });
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get,
+      list: vi.fn(async () => ({ items: [item], total: 1 })),
+    };
+
+    renderWorkflowPage("/chat/workflows/templates", getWorkflowDraftRepository(), templateRepository);
+    await user.click(await screen.findByTestId("workflow-template-card-template-detail-error"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试" }));
+
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("application", { name: "工作流预览" })).toBeInTheDocument();
+  });
+
   it("fills endpoint node icons when a template has fewer than three business node kinds", async () => {
     const template = {
       coverUrl: null,

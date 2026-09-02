@@ -14,9 +14,10 @@ export class InMemoryWorkflowTemplateRepository implements WorkflowTemplateRepos
   }
 
   async deleteDraft(id: string) {
-    const index = this.records.findIndex(item => item.id === id && item.status === "draft");
-    if (index < 0) return false;
-    this.records.splice(index, 1);
+    const record = this.records.find(item => item.id === id && item.status === "draft");
+    if (!record) return false;
+    record.status = "deleted";
+    record.updatedAt = new Date();
     return true;
   }
 

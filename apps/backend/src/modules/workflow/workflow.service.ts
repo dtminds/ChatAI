@@ -43,6 +43,7 @@ import type {
   WorkflowTemplateDetail,
   WorkflowTemplateListPage,
 } from "@chatai/contracts";
+import type { WorkflowNodeKind } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import {
   extractWorkflowNodeDraftConfig,
@@ -1828,8 +1829,15 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
 
 
 function toTemplateListItem(item: any) {
-  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { category: item.category, coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), scene: item.scene, trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
 }
+
+function getTemplateNodeKinds(draft: WorkflowDraft): WorkflowNodeKind[] {
+  return [...new Set(draft.nodes
+    .filter(node => node.data.kind !== "start" && node.data.kind !== "end")
+    .map(node => node.data.kind))];
+}
+
 function toTemplateDetail(item: any) {
   return { ...toTemplateListItem(item), configurationItems: item.configurationItems, draft: item.draft, status: item.status };
 }

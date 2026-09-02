@@ -1970,11 +1970,11 @@ describe("WorkflowService", () => {
     const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
     const source = await service.create(manager, { workflowType: "chatai_sop" });
     const saved = await service.saveDraft(manager, source.id, {
-      draft: withStartConfig(source.draft, {
+      draft: withCustomFieldMessageNode(withStartConfig(source.draft, {
         entryPolicy: { mode: "never" },
         seatIds: [123],
         triggers: [{ sourceIds: ["private-source"], type: "contact.friend_added" }],
-      }),
+      }), 456),
       expectedDraftVersion: source.draftVersion,
     });
 
@@ -1995,6 +1995,13 @@ describe("WorkflowService", () => {
 
     const published = await service.publishTemplate(manager, createdTemplate.id);
     expect(published.status).toBe("published");
+    const listed = await service.listTemplates(manager, { limit: 8, page: 1 });
+    expect(listed.items).toEqual([
+      expect.objectContaining({
+        nodeKinds: ["message"],
+        trigger: "添加好友",
+      }),
+    ]);
     const first = await service.applyTemplate({ roles: ["owner"], subUserId: "9", uid: 9 }, published.id, {
       clientRequestId: "template-apply-1",
     });

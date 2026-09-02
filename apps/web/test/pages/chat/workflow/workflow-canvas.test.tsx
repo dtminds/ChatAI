@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createInitialNodes,
 } from "@/pages/chat/workflow/graph";
-import { WorkflowCanvas } from "@/pages/chat/workflow/canvas/workflow-canvas";
+import { getWorkflowPreviewViewport, WorkflowCanvas } from "@/pages/chat/workflow/canvas/workflow-canvas";
 import {
   canInsertNodeKind,
   insertableNodeKinds,
@@ -14,7 +14,9 @@ import { useAppearanceStore } from "@/store/appearance-store";
 
 const reactFlowProps = vi.hoisted(() => ({
   latest: undefined as Record<string, unknown> | undefined,
+  getNodesBounds: vi.fn(),
   screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x: x - 10, y: y - 20 })),
+  setViewport: vi.fn(),
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -28,9 +30,12 @@ vi.mock("@xyflow/react", async () => {
       reactFlowProps.latest = props;
       return <div data-testid="workflow-react-flow">{children}</div>;
     },
+    useNodesInitialized: () => false,
     useReactFlow: () => ({
       fitView: vi.fn(),
+      getNodesBounds: reactFlowProps.getNodesBounds,
       screenToFlowPosition: reactFlowProps.screenToFlowPosition,
+      setViewport: reactFlowProps.setViewport,
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
       zoomTo: vi.fn(),
@@ -111,6 +116,36 @@ describe("WorkflowCanvas", () => {
     expect(reactFlowProps.latest?.paneClickDistance).toBe(8);
     expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
     expect(reactFlowProps.latest?.selectionOnDrag).toBe(false);
+  });
+
+  it("uses the shared interactive zoom range while preview initialization remains custom", () => {
+    renderWorkflowCanvas({ fitViewOnInit: true, preview: true });
+
+    expect(reactFlowProps.latest?.fitView).toBe(false);
+    expect(reactFlowProps.latest?.minZoom).toBe(0.25);
+    expect(reactFlowProps.latest?.maxZoom).toBe(2);
+  });
+
+  it("clamps preview zoom and anchors the start node to the left edge", () => {
+    const viewport = getWorkflowPreviewViewport({
+      bounds: { height: 400, width: 2_000, x: 100, y: 80 },
+      height: 800,
+      startX: 100,
+      width: 1_000,
+    });
+
+    expect(viewport.zoom).toBe(0.7);
+    expect(viewport.x).toBe(-22);
+
+    const smallGraphViewport = getWorkflowPreviewViewport({
+      bounds: { height: 120, width: 240, x: 20, y: 40 },
+      height: 800,
+      startX: 20,
+      width: 1_000,
+    });
+
+    expect(smallGraphViewport.zoom).toBe(1);
+    expect(smallGraphViewport.x).toBe(28);
   });
 
   it("keeps viewport navigation enabled while graph editing is read-only", () => {

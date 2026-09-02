@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { WorkflowDraftSchema, WorkflowIdSchema } from "./dto.js";
+import { WorkflowDraftSchema, WorkflowIdSchema, WorkflowNodeKindSchema } from "./dto.js";
 import { WorkflowTypeSchema } from "./policy.js";
 
 export const WorkflowTemplateStatusSchema = Type.Union([
@@ -43,9 +43,11 @@ export const WorkflowTemplateListItemSchema = Type.Object({
   description: Type.String({ maxLength: 200 }),
   id: WorkflowIdSchema,
   name: Type.String({ minLength: 1, maxLength: 40 }),
+  nodeKinds: Type.Array(WorkflowNodeKindSchema, { maxItems: 200, uniqueItems: true }),
   nodeCount: Type.Integer({ minimum: 0, maximum: 200 }),
   publishedAt: Type.String(),
   scene: Type.String({ maxLength: 40 }),
+  trigger: Type.String({ maxLength: 128 }),
   updatedAt: Type.String(),
   version: Type.Integer({ minimum: 1 }),
   workflowType: WorkflowTypeSchema,

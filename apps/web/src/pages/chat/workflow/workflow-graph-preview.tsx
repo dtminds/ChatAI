@@ -22,7 +22,7 @@ export function WorkflowGraphPreview({
   );
 
   return (
-    <div className={cn("workflow-page relative isolate overflow-hidden rounded-lg border bg-[var(--workflow-canvas-bg)]", className)}>
+    <div className={cn("workflow-page workflow-graph-preview relative isolate overflow-hidden rounded-xl border bg-[var(--workflow-canvas-bg)]", className)}>
       <ReactFlowProvider>
         <WorkflowCanvas
           allowedInsertableNodeKinds={[]}

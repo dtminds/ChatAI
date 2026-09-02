@@ -13,6 +13,7 @@ import {
   Background,
   MiniMap,
   ReactFlow,
+  useNodesInitialized,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
@@ -41,6 +42,8 @@ import {
   WORKFLOW_MAX_ZOOM,
   WORKFLOW_MIN_ZOOM,
   WORKFLOW_NODE_TYPE,
+  WORKFLOW_PREVIEW_MAX_ZOOM,
+  WORKFLOW_PREVIEW_MIN_ZOOM,
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
@@ -73,6 +76,8 @@ const workflowPanOnDrag = true;
 const workflowPaneClickDistance = 8;
 const workflowNodePointerThreshold = 4;
 const workflowPaletteNodeGap = 24;
+const workflowPreviewPaddingX = 48;
+const workflowPreviewPaddingY = 32;
 
 export function WorkflowCanvas({
   allowedInsertableNodeKinds,
@@ -148,10 +153,11 @@ export function WorkflowCanvas({
   viewport: Viewport;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
-  const { fitView, screenToFlowPosition, setCenter, zoomIn, zoomOut, zoomTo } = useReactFlow<
+  const { fitView, getNodesBounds, screenToFlowPosition, setCenter, setViewport, zoomIn, zoomOut, zoomTo } = useReactFlow<
     WorkflowRenderNode,
     WorkflowRenderEdge
   >();
+  const nodesInitialized = useNodesInitialized();
   const { zoom } = useViewport();
   const colorMode = useAppearanceStore((state) =>
     state.themePreference === "dark" ||
@@ -164,7 +170,42 @@ export function WorkflowCanvas({
   const canvasRef = useRef<HTMLElement | null>(null);
   const handledFocusSequenceRef = useRef<number | undefined>(undefined);
   const isNodeDraggingRef = useRef(false);
+  const previewViewportAppliedRef = useRef(false);
   const activeInsertNode = flowNodes.find((node) => node.data.insertMenuOpen);
+
+  useEffect(() => {
+    if (!preview) {
+      previewViewportAppliedRef.current = false;
+    }
+  }, [preview]);
+
+  useEffect(() => {
+    if (!preview || !nodesInitialized || previewViewportAppliedRef.current || flowNodes.length === 0) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const { height, width } = canvas.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+
+      const bounds = getNodesBounds(flowNodes);
+      const startNode = flowNodes.find((node) => node.data.kind === "start");
+      const nextViewport = getWorkflowPreviewViewport({
+        bounds,
+        height,
+        startX: startNode?.position.x,
+        width,
+      });
+
+      previewViewportAppliedRef.current = true;
+      void setViewport(nextViewport);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [flowNodes, getNodesBounds, nodesInitialized, preview, setViewport]);
 
   useEffect(() => {
     if (!isNodeDraggingRef.current) {
@@ -253,11 +294,11 @@ export function WorkflowCanvas({
       <ReactFlow
         colorMode={colorMode}
         connectionRadius={32}
-        defaultViewport={initialViewport}
+        defaultViewport={preview ? { x: 0, y: 0, zoom: WORKFLOW_PREVIEW_MAX_ZOOM } : initialViewport}
         deleteKeyCode={null}
         edges={edges}
         edgeTypes={edgeTypes}
-        fitView={fitViewOnInit}
+        fitView={fitViewOnInit && !preview}
         fitViewOptions={{ padding: 0.2 }}
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
@@ -700,6 +741,44 @@ function WorkflowToolbarTooltip({
       </TooltipContent>
     </Tooltip>
   );
+}
+
+type WorkflowPreviewBounds = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+export function getWorkflowPreviewViewport({
+  bounds,
+  height,
+  startX,
+  width,
+}: {
+  bounds: WorkflowPreviewBounds;
+  height: number;
+  startX?: number;
+  width: number;
+}): Viewport {
+  const availableWidth = Math.max(width - workflowPreviewPaddingX * 2, 1);
+  const availableHeight = Math.max(height - workflowPreviewPaddingY * 2, 1);
+  const widthZoom = bounds.width > 0 ? availableWidth / bounds.width : WORKFLOW_PREVIEW_MAX_ZOOM;
+  const heightZoom = bounds.height > 0 ? availableHeight / bounds.height : WORKFLOW_PREVIEW_MAX_ZOOM;
+  const zoom = Math.min(
+    WORKFLOW_PREVIEW_MAX_ZOOM,
+    Math.max(WORKFLOW_PREVIEW_MIN_ZOOM, Math.min(widthZoom, heightZoom)),
+  );
+  const scaledHeight = bounds.height * zoom;
+  const y = scaledHeight <= availableHeight
+    ? workflowPreviewPaddingY + (availableHeight - scaledHeight) / 2 - bounds.y * zoom
+    : workflowPreviewPaddingY - bounds.y * zoom;
+
+  return {
+    x: workflowPreviewPaddingX - (startX ?? bounds.x) * zoom,
+    y,
+    zoom,
+  };
 }
 
 function getInitialWorkflowViewport(viewport: Viewport) {

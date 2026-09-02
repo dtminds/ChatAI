@@ -8,6 +8,7 @@ import {
   WorkflowEditorPage,
   WorkflowPage,
 } from "@/pages/chat/workflow/workflow-page";
+import { WorkflowTemplateCenterPage } from "@/pages/chat/workflow/workflow-template-section";
 import {
   splitWorkflowTriggers,
   WorkflowListTable,
@@ -54,8 +55,10 @@ const agentServiceMock = vi.hoisted(() => ({
 
 const reactFlowControlMock = vi.hoisted(() => ({
   fitView: vi.fn(),
+  getNodesBounds: vi.fn(),
   screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y })),
   setCenter: vi.fn(),
+  setViewport: vi.fn(),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
   zoomTo: vi.fn(),
@@ -330,6 +333,7 @@ vi.mock("@xyflow/react", async () => {
           : node;
       }),
     getBezierPath: () => ["M 0 0 C 40 0 80 40 120 40", 120, 80],
+    useNodesInitialized: () => false,
     useReactFlow: () => reactFlowControlMock,
     useViewport: () => ({
       x: 0,
@@ -369,6 +373,10 @@ function renderWorkflowPage(
       {
         path: "/chat/workflows/observability",
         element: <div>运行观测页</div>,
+      },
+      {
+        path: "/chat/workflows/templates",
+        element: <WorkflowTemplateCenterPage repository={templateRepository} />,
       },
       {
         path: "/chat/workflows/:workflowId",
@@ -1105,7 +1113,7 @@ describe("Agent workflow page", () => {
     expect(await screen.findByText("第 1 页流程")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(await screen.findByRole("button", { name: "5" }));
 
     expect(await screen.findByText("第 5 页流程")).toBeInTheDocument();
     expect(listDocuments).toHaveBeenCalledTimes(2);
@@ -1123,9 +1131,11 @@ describe("Agent workflow page", () => {
       description: "模板说明",
       id,
       name,
+      nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
       scene: "客户运营",
+      trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
       workflowType: "chatai_sop" as const,
@@ -1146,10 +1156,11 @@ describe("Agent workflow page", () => {
 
     expect(await screen.findByText("推荐模板样例")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查看更多" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "5" }));
+    expect(await screen.findByRole("heading", { name: "模板中心" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回工作流列表" })).toHaveAttribute("href", "/chat/workflows");
+    await user.click(await screen.findByRole("button", { name: "5" }));
 
-    expect(await within(dialog).findByText("第 5 页模板")).toBeInTheDocument();
+    expect(await screen.findByText("第 5 页模板")).toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(3);
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 8, page: 5 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
@@ -1165,9 +1176,11 @@ describe("Agent workflow page", () => {
       description: "推荐模板说明",
       id: "featured-1",
       name: "推荐模板样例",
+      nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
       scene: "客户运营",
+      trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
       workflowType: "chatai_sop" as const,
@@ -1197,7 +1210,8 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
 
     const recommendationSection = await screen.findByRole("region", { name: "推荐模板" });
-    const templateCard = within(recommendationSection).getByRole("button", { name: /推荐模板样例/ });
+    const templateCard = within(recommendationSection).getByTestId("workflow-template-card-featured-1");
+    expect(within(templateCard).getByLabelText("模板节点类型")).toHaveTextContent("+1");
     expect(within(recommendationSection).queryByRole("button", { name: "预览 推荐模板样例" })).not.toBeInTheDocument();
     expect(within(recommendationSection).queryByRole("button", { name: "一键应用 推荐模板样例" })).not.toBeInTheDocument();
     await user.click(templateCard);
@@ -1224,6 +1238,38 @@ describe("Agent workflow page", () => {
     })));
   });
 
+  it("fills endpoint node icons when a template has fewer than three business node kinds", async () => {
+    const template = {
+      category: "通用",
+      coverUrl: null,
+      description: "",
+      id: "featured-endpoints",
+      name: "仅有一个业务节点",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 3,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      scene: "客户运营",
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(async input => input.featured ? { items: [template], total: 1 } : { items: [], total: 0 }),
+    };
+
+    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
+
+    const card = await screen.findByTestId("workflow-template-card-featured-endpoints");
+    const nodeKinds = within(card).getByLabelText("模板节点类型");
+    expect(within(nodeKinds).getByTitle("开始")).toBeInTheDocument();
+    expect(within(nodeKinds).getByTitle("消息发送")).toBeInTheDocument();
+    expect(within(nodeKinds).getByTitle("结束")).toBeInTheDocument();
+    expect(within(nodeKinds).queryByText(/\+/)).not.toBeInTheDocument();
+  });
+
   it("shows a clean template draft preview and lets template managers delete the draft", async () => {
     const user = userEvent.setup();
     useAuthStore.getState().setSession({
@@ -1240,9 +1286,11 @@ describe("Agent workflow page", () => {
       description: "尚未发布的模板",
       id: "8",
       name: "待发布模板",
+      nodeKinds: ["message", "tag"] as WorkflowNodeKind[],
       nodeCount: 3,
       publishedAt: "2026-09-01T00:00:00.000Z",
       scene: "客户运营",
+      trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
       workflowType: "chatai_sop" as const,
@@ -1281,7 +1329,7 @@ describe("Agent workflow page", () => {
     expect(within(draftActions).getByRole("button", { name: "更多模板操作" })).toBeInTheDocument();
     expect(within(draftActions).getByRole("button", { name: "发布模板" })).toBeInTheDocument();
     expect(within(dialog).queryByLabelText("画布工具")).not.toBeInTheDocument();
-    expect(within(dialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-fit-view", "true");
+    expect(within(dialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-fit-view", "false");
     expect(within(dialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-hide-attribution", "true");
     await user.click(within(draftActions).getByRole("button", { name: "更多模板操作" }));
     await user.click(await screen.findByRole("menuitem", { name: "删除草稿" }));
@@ -1309,9 +1357,11 @@ describe("Agent workflow page", () => {
       description: "已发布模板",
       id: "9",
       name: "可撤回模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
       scene: "客户运营",
+      trigger: "用户消息",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
       workflowType: "chatai_sop" as const,

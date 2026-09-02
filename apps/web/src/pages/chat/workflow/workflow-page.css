@@ -43,6 +43,14 @@
   --workflow-divider: color-mix(in oklch, var(--foreground) 14%, transparent);
 }
 
+.workflow-graph-preview {
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 97%, var(--foreground));
+}
+
+.dark .workflow-graph-preview {
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 90%, black);
+}
+
 .workflow-page .react-flow {
   background: var(--workflow-canvas-bg);
 }

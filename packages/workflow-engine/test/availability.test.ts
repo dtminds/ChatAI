@@ -98,6 +98,36 @@ describe("workflow production availability", () => {
     }]);
   });
 
+  it("rejects external push entry for WeCom Workflows", () => {
+    const draft = {
+      edges: [],
+      nodes: [{
+        data: {
+          entryMode: "direct-push",
+          entryPolicy: { mode: "never" },
+          kind: "start" as const,
+          label: "开始",
+          metric: "",
+          schemaVersion: 1,
+          status: "ready" as const,
+          title: "开始",
+          triggers: [],
+          workUserIds: [201],
+        },
+        id: "start",
+        position: { x: 0, y: 0 },
+        type: "workflowNode",
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    expect(validateWorkflowTypePolicy("wecom_sop", draft)).toEqual([{
+      code: "entry-mode-not-allowed",
+      nodeId: "start",
+      nodeKind: "start",
+    }]);
+  });
+
 });
 
 function executionSpec(): WorkflowExecutionSpec {

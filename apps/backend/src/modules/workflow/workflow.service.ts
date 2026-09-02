@@ -234,7 +234,8 @@ export class WorkflowService {
     const entryConfig = entryNode
       ? extractWorkflowNodeDraftConfig("start", entryNode.data)
       : null;
-    if (!entryConfig
+    if (definition.workflowType !== "chatai_sop"
+      || !entryConfig
       || !Value.Check(WorkflowStartDraftConfigSchema, entryConfig)
       || entryConfig.entryMode !== "direct-push") {
       throw new BadRequestError("WORKFLOW_DIRECT_ENTRY_UNAVAILABLE", "工作流尚未发布外部推送入口");

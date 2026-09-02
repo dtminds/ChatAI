@@ -7,6 +7,7 @@ import {
 
 export type WorkflowTypePolicyIssue = {
   code:
+    | "entry-mode-not-allowed"
     | "workflow-type-unavailable"
     | "node-kind-not-allowed"
     | "entry-event-not-allowed"
@@ -50,6 +51,15 @@ export function validateWorkflowTypePolicy(
     if (!sourceMatchesType) {
       issues.push({
         code: "start-source-not-allowed",
+        nodeId: node.id,
+        nodeKind: node.data.kind,
+      });
+    }
+
+    if (workflowType === "wecom_sop"
+      && (node.data as Record<string, unknown>).entryMode === "direct-push") {
+      issues.push({
+        code: "entry-mode-not-allowed",
         nodeId: node.id,
         nodeKind: node.data.kind,
       });

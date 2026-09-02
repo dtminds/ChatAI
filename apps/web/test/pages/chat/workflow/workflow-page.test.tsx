@@ -45,7 +45,7 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { MATERIAL_COLLECTION_BIZ_TYPE, type WorkflowTemplateListPage } from "@chatai/contracts";
 import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
@@ -351,7 +351,7 @@ function mockSession() {
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role: "admin",
     subUserId: "101",
-    uid: 1,
+    uid: 101,
   });
 }
 
@@ -1207,6 +1207,48 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
       tags: ["lifecycle:potential_conversion", "lifecycle:new_customer_repurchase"],
     })));
+  });
+
+  it("keeps a slower previous template-center request from replacing the latest result", async () => {
+    const user = userEvent.setup();
+    const initialTemplate = {
+      coverUrl: null,
+      description: "初始结果",
+      id: "initial-template",
+      name: "初始模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 1,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 0,
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      workflowType: "chatai_sop" as const,
+    };
+    const filteredTemplate = { ...initialTemplate, description: "筛选结果", id: "filtered-template", name: "筛选模板" };
+    let resolveInitial!: (page: WorkflowTemplateListPage) => void;
+    let resolveFiltered!: (page: WorkflowTemplateListPage) => void;
+    const initial = new Promise<WorkflowTemplateListPage>(resolve => { resolveInitial = resolve; });
+    const filtered = new Promise<WorkflowTemplateListPage>(resolve => { resolveFiltered = resolve; });
+    const list = vi.fn<WorkflowTemplateRepository["list"]>(async (input = {}) => input.tags?.length ? filtered : initial);
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list,
+    };
+
+    renderWorkflowPage("/chat/workflows/templates", getWorkflowDraftRepository(), templateRepository);
+    expect(await screen.findByRole("heading", { name: "模板中心" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "潜客转化" }));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+
+    resolveFiltered({ items: [filteredTemplate], total: 1 });
+    expect(await screen.findByText("筛选模板")).toBeInTheDocument();
+    resolveInitial({ items: [initialTemplate], total: 1 });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.queryByText("初始模板")).not.toBeInTheDocument();
+    expect(screen.getByText("筛选模板")).toBeInTheDocument();
   });
 
   it("previews and applies a published template from its card without changing the recommended list", async () => {

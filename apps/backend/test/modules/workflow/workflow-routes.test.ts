@@ -221,6 +221,32 @@ describe("workflow routes", () => {
     });
   });
 
+  it("rejects template sort orders outside the MySQL INT range", async () => {
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository: new InMemoryWorkflowTemplateRepository(),
+      uid: 101,
+    });
+    const workflow = (await app.inject({
+      method: "POST",
+      payload: { name: "模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        description: "排序边界",
+        expectedDraftVersion: workflow.draftVersion,
+        name: "排序边界模板",
+        sortOrder: 2_147_483_648,
+      },
+      url: `/api/server/workflows/${workflow.id}/template-conversions`,
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("returns only the direct-entry endpoint key for an accessible Workflow", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({

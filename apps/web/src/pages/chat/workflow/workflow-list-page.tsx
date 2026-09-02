@@ -73,7 +73,7 @@ import {
 } from "./workflow-surface";
 import { WorkflowTemplateSection } from "./workflow-template-section";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
-import { canManageWorkflowTemplates } from "./workflow-template-access";
+import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
 import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
 export function WorkflowPage({
@@ -157,6 +157,7 @@ export function WorkflowListPage({
   const [conversionLoadingId, setConversionLoadingId] = useState<string | null>(null);
   const [conversionTarget, setConversionTarget] = useState<WorkflowDocument | null>(null);
   const templateManagerSubject = useAuthStore(state => state.subUser);
+  const canCreateWorkflow = canCreateWorkflows(templateManagerSubject);
   const canConvertToTemplate = Boolean(repository.convertToTemplate)
     && canManageWorkflowTemplates(templateManagerSubject);
   useEffect(() => {
@@ -360,21 +361,23 @@ export function WorkflowListPage({
                 value={query}
               />
             </div>
-            <Button
-              className="h-10 shrink-0 px-4"
-              onClick={() => {
-                if (surface.embedded) {
-                  navigate(getWorkflowCreatePath(surface));
-                  return;
-                }
+            {canCreateWorkflow ? (
+              <Button
+                className="h-10 shrink-0 px-4"
+                onClick={() => {
+                  if (surface.embedded) {
+                    navigate(getWorkflowCreatePath(surface));
+                    return;
+                  }
 
-                setCreateDialogOpen(true);
-              }}
-              type="button"
-            >
-              <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
-              新建工作流
-            </Button>
+                  setCreateDialogOpen(true);
+                }}
+                type="button"
+              >
+                <HugeiconsIcon icon={Add01Icon} size={17} strokeWidth={1.8} />
+                新建工作流
+              </Button>
+            ) : null}
           </div>
         </div>
 

@@ -163,6 +163,15 @@ export type WorkflowCustomFieldReader = {
   listActiveFields(uid: number): Promise<readonly CustomFieldItem[]>;
 };
 
+const WORKFLOW_TEMPLATE_TENANT_RESOURCE_KEYS = new Set([
+  "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
+  "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
+  "sourceId", "sourceIds", "addWayKey", "groupId", "tagId", "tagIds", "audienceId", "audienceIds",
+  "audienceGroupId", "audienceGroupIds", "customerFieldId", "customerFieldIds", "fieldId", "fieldIds",
+  "materialId", "materialIds", "materialCollectionId", "materialCollectionIds", "msgInfoId", "msgid",
+  "modelId", "modelIds", "model",
+]);
+
 export class WorkflowService {
   private static readonly ENTITLEMENT_REFRESH_MIN_INTERVAL_MS = 30_000;
   private static readonly ENTITLEMENT_REFRESH_MAX_ENTRIES = 10_000;
@@ -1390,17 +1399,9 @@ function validateTemplateForPublish(template: {
 }
 
 function assertTemplateResourceNeutral(draft: WorkflowDraft) {
-  const sensitive = new Set([
-    "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
-    "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
-    "sourceId", "sourceIds", "addWayKey", "tagId", "tagIds", "audienceId", "audienceIds",
-    "audienceGroupId", "audienceGroupIds", "customerFieldId", "customerFieldIds", "fieldId", "fieldIds",
-    "materialId", "materialIds", "materialCollectionId", "materialCollectionIds", "msgInfoId", "msgid",
-    "modelId", "modelIds", "model",
-  ]);
   const visit = (value: unknown): string | null => {
     if (Array.isArray(value)) {
-      if (value.every(item => typeof item === "string") && getWorkflowCustomFieldVariableIds(value).length > 0) {
+      if (isWorkflowCustomFieldSelector(value)) {
         return "selector";
       }
       for (const item of value) {
@@ -1411,7 +1412,7 @@ function assertTemplateResourceNeutral(draft: WorkflowDraft) {
     }
     if (!isRecord(value)) return null;
     for (const [key, child] of Object.entries(value)) {
-      if (sensitive.has(key)) {
+      if (WORKFLOW_TEMPLATE_TENANT_RESOURCE_KEYS.has(key)) {
         const isEmptyPlaceholder = child === ""
           || (Array.isArray(child) && child.length === 0)
           || child === null;
@@ -1898,23 +1899,18 @@ function toTemplateDetail(item: any) {
 }
 
 function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
-  const sensitive = new Set([
-    "accountId", "accountIds", "managedAccountId", "managedAccountIds", "seatId", "seatIds",
-    "memberId", "memberIds", "workUserId", "workUserIds", "friendAddWayId", "friendAddWayIds",
-    "sourceId", "sourceIds", "addWayKey",
-    "tagId", "tagIds", "audienceId", "audienceIds", "audienceGroupId", "audienceGroupIds", "groupId",
-    "customerFieldId", "customerFieldIds", "fieldId", "fieldIds", "materialId", "materialIds",
-    "materialCollectionId", "materialCollectionIds", "modelId", "modelIds", "model",
-  ]);
   const emptyArrayKeys = new Set(["accountIds", "managedAccountIds", "seatIds", "workUserIds", "friendAddWayIds", "sourceIds", "tagIds", "audienceIds", "audienceGroupIds", "customerFieldIds", "fieldIds", "materialIds", "materialCollectionIds", "modelIds"]);
+  const DROP = Symbol("drop-template-value");
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) {
-      if (value.every(item => typeof item === "string") && getWorkflowCustomFieldVariableIds(value).length > 0) {
-        return ["subject", "customFields", "0"];
-      }
-      return value.map(walk);
+      return value.map(walk).filter(item => item !== DROP);
     }
     if (!value || typeof value !== "object") return value;
+    if (isRecord(value)
+      && value.type === "variable"
+      && isWorkflowCustomFieldSelector(value.selector)) {
+      return DROP;
+    }
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
       if (emptyArrayKeys.has(key)) {
@@ -1925,8 +1921,9 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
         result[key] = "";
         continue;
       }
-      if (sensitive.has(key)) continue;
-      result[key] = walk(child);
+      if (WORKFLOW_TEMPLATE_TENANT_RESOURCE_KEYS.has(key)) continue;
+      const sanitized = walk(child);
+      if (sanitized !== DROP) result[key] = sanitized;
     }
     return result;
   };
@@ -1937,15 +1934,53 @@ function sanitizeTemplateDraft(draft: WorkflowDraft): WorkflowDraft {
       data.fields = data.fields.map(field => {
         if (!isRecord(field)) return field;
         const next = { ...field };
+        if (isWorkflowCustomFieldVariable(next.value)) {
+          next.value = { kind: "literal", value: "" };
+        }
         delete next.field;
         return next;
       });
+    }
+    if (data.kind === "llm" && Array.isArray(data.inputs)) {
+      const removedInputIds = new Set<string>();
+      data.inputs = data.inputs.filter(input => {
+        if (!isRecord(input) || typeof input.id !== "string") return true;
+        if (!isWorkflowCustomFieldVariable(input.value)) return true;
+        removedInputIds.add(input.id);
+        return false;
+      });
+      if (removedInputIds.size > 0) {
+        for (const key of ["systemPrompt", "userPrompt"]) {
+          const segments = data[key];
+          if (!Array.isArray(segments)) continue;
+          data[key] = segments.filter(segment => {
+            if (!isRecord(segment) || segment.type !== "variable" || !Array.isArray(segment.selector)) return true;
+            return segment.selector[0] !== "input"
+              || typeof segment.selector[1] !== "string"
+              || !removedInputIds.has(segment.selector[1]);
+          });
+        }
+      }
     }
     if (data.kind === "audience-filter") data.groups = [];
     if (data.kind === "message") data.attachments = [];
     return { ...node, data: walk(data) as typeof node.data };
   });
   return sanitized;
+}
+
+function isWorkflowCustomFieldSelector(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length === 3
+    && value[0] === "subject"
+    && value[1] === "customFields"
+    && typeof value[2] === "string";
+}
+
+function isWorkflowCustomFieldVariable(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && (value.type === "variable" || value.kind === "variable")
+    && isWorkflowCustomFieldSelector(value.selector);
 }
 
 function inferTemplateConfigurationItems(draft: WorkflowDraft) {
@@ -1983,21 +2018,21 @@ function inferTemplateConfigurationItems(draft: WorkflowDraft) {
       addResource(node.id, "customer-field", "fields", "选择客户字段");
     }
   }
-  const walk = (value: unknown, path: string[] = []) => {
-    if (Array.isArray(value)) return value.forEach((v, i) => walk(v, [...path, String(i)]));
+  const walk = (value: unknown, nodeId: string) => {
+    if (Array.isArray(value)) return value.forEach(v => walk(v, nodeId));
     if (!value || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
       if ((key === "text" || key === "content" || key === "prompt") && typeof child === "string" && child.includes("{{")) {
-        const id = [...child.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)].map(m => m[1]).find(Boolean);
-        if (id && !seen.has(id)) {
+        for (const match of child.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)) {
+          const id = match[1];
+          if (!id || seen.has(id)) continue;
           seen.add(id);
-          const nodeId = path[1] ?? "workflow";
           items.push({ fieldKey: id, id, kind: "review", nodeId, requirement: "recommended", title: id });
         }
       }
-      walk(child, [...path, key]);
+      walk(child, nodeId);
     }
   };
-  walk(draft);
+  for (const node of draft.nodes) walk(node.data, node.id);
   return items;
 }

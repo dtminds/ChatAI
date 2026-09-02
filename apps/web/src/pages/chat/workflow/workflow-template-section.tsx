@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
 import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateDraftUpdateRequest, type WorkflowTemplateListItem } from "@chatai/contracts";
 import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
-import { canManageWorkflowTemplates } from "./workflow-template-access";
+import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
 import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
 import { useWorkflowSurface, WorkflowSurfaceProvider } from "./workflow-surface";
 import { nodeVisuals } from "./node-definitions";
@@ -92,26 +92,25 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   const [featuredItems, setFeaturedItems] = useState<WorkflowTemplateListItem[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(false);
   const [featuredError, setFeaturedError] = useState(false);
-  const [browserItems, setBrowserItems] = useState<WorkflowTemplateListItem[]>([]);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<WorkflowTemplateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
   const [detailItem, setDetailItem] = useState<WorkflowTemplateListItem | null>(null);
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [browserLoading, setBrowserLoading] = useState(false);
-  const [browserError, setBrowserError] = useState(false);
   const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
+  const canCreateWorkflow = canCreateWorkflows(useAuthStore(state => state.subUser));
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
-  const pageSize = 8;
-
+  const clearDetail = () => {
+    setDetail(null);
+    setDetailItem(null);
+    setDetailError(false);
+    setDetailLoading(false);
+  };
   const loadFeatured = useCallback(async () => {
     setFeaturedLoading(true);
     setFeaturedError(false);
@@ -128,35 +127,10 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
     }
   }, [templateRepository]);
 
-  const loadBrowser = useCallback(async (input: { page: number; query?: string }) => {
-    setBrowserLoading(true);
-    setBrowserError(false);
-    try {
-      const result = await templateRepository.list({
-        limit: pageSize,
-        page: input.page,
-        query: input.query?.trim() || undefined,
-      });
-      setBrowserItems(result.items);
-      setTotal(result.total);
-      setPage(input.page);
-    } catch {
-      setBrowserError(true);
-    } finally {
-      setBrowserLoading(false);
-    }
-  }, [templateRepository]);
-
   useEffect(() => { void loadFeatured(); }, [loadFeatured]);
 
   const openBrowser = () => {
     navigate(`${surface.webBasePath}/templates`);
-  };
-  const goToPage = (nextPage: number) => {
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const targetPage = Math.min(Math.max(1, nextPage), totalPages);
-    if (targetPage === page) return;
-    void loadBrowser({ page: targetPage, query });
   };
   const openDetail = async (item: WorkflowTemplateListItem) => {
     setOpen(true);
@@ -199,7 +173,6 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
       await templateRepository.withdraw(detail.id);
       toast.success("模板已撤回");
       setWithdrawConfirmOpen(false);
-      setDetail(null);
       setOpen(false);
       await loadFeatured();
     } catch (error) {
@@ -227,34 +200,23 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   return <section aria-label="推荐模板" className="space-y-3">
     <div className="flex items-center justify-between px-1.5"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
     {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-featured-container"><div className="workflow-template-featured-grid">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div></div>}
-    <Dialog onOpenChange={value => { if (!withdrawing) { setOpen(value); if (!value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } } }} open={open}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail}>
+    <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
+      <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
           <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
           {detail ? <TemplateDetailActions
-            actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
+            actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
             actionClassName="bg-black text-white hover:bg-black/85"
             actionIcon={DashboardCircleAddIcon}
             actionPending={applyingTemplateId === detail.id || withdrawing || editing}
-            onAction={() => void applyTemplate(detail.id)}
+            onAction={canCreateWorkflow ? () => void applyTemplate(detail.id) : undefined}
             overflowItems={canManageTemplates && detail.status === "published" ? [
               ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
               ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),
             ] : undefined}
           /> : null}
         </DialogHeader>
-        {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : detailError ? <TemplateLoadErrorState onRetry={() => { if (detailItem) void openDetail(detailItem); }} /> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-1">
-          <Input aria-label="搜索模板" className="w-[260px] max-w-full" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void loadBrowser({ page: 1, query: event.currentTarget.value }); }} placeholder="搜索模板" value={query} />
-          {browserLoading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : browserError ? <TemplateLoadErrorState onRetry={() => void loadBrowser({ page, query })} /> : browserItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{browserItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
-          <TablePagination
-            className="border-t-0"
-            onPageChange={goToPage}
-            page={page}
-            showTotal
-            total={total}
-            totalPages={Math.max(1, Math.ceil(total / pageSize))}
-          />
-        </div>}
+        {detailLoading ? <div className="flex min-h-0 flex-1 items-center justify-center" role="status"><Spinner /></div> : detail ? <TemplateDetailView canvasClassName="min-h-0 flex-1" detail={detail} /> : detailError ? <TemplateLoadErrorState onRetry={() => { if (detailItem) void openDetail(detailItem); }} /> : null}
       </DialogContent>
     </Dialog>
     {detail ? <TemplateMetadataDialog detail={detail} onOpenChange={setEditOpen} onSubmit={updateTemplateInfo} open={editOpen} pending={editing} submitLabel="保存" title="编辑模板信息" /> : null}
@@ -314,13 +276,24 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
+  const canCreateWorkflow = canCreateWorkflows(useAuthStore(state => state.subUser));
+  const [open, setOpen] = useState(false);
+  const clearDetail = () => {
+    setDetail(null);
+    setDetailItem(null);
+    setDetailError(false);
+    setDetailLoading(false);
+  };
   const canOpenDraftBox = canManageTemplates
     && Boolean(templateRepository.deleteDraft && templateRepository.listDrafts && templateRepository.getDraft && templateRepository.publish);
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
+  const loadRequestRef = useRef(0);
   const pageSize = 8;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const load = useCallback(async (input: { page: number; query?: string; tags?: string[] }) => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     setError(false);
     try {
@@ -330,19 +303,27 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         query: input.query?.trim() || undefined,
         tags: input.tags ?? [],
       });
+      if (loadRequestRef.current !== requestId) return;
       setItems(result.items);
       setTotal(result.total);
       setPage(input.page);
     } catch {
+      if (loadRequestRef.current !== requestId) return;
       setError(true);
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [templateRepository]);
 
-  useEffect(() => { void load({ page: 1, query: committedQuery, tags: selectedTags }); }, [committedQuery, load, selectedTags]);
+  useEffect(() => {
+    void load({ page: 1, query: committedQuery, tags: selectedTags });
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [committedQuery, load, selectedTags]);
 
   const openDetail = async (item: WorkflowTemplateListItem) => {
+    setOpen(true);
     setDetailItem(item);
     setDetail(null);
     setDetailError(false);
@@ -365,7 +346,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
     setApplyingTemplateId(templateId);
     try {
       const result = await templateRepository.apply(templateId, { clientRequestId: requestId });
-      setDetail(null);
+      setOpen(false);
       applyRequestRef.current = null;
       navigate(`${surface.webBasePath}/${result.id}`);
     } catch (error) {
@@ -381,7 +362,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       await templateRepository.withdraw(detail.id);
       toast.success("模板已撤回");
       setWithdrawConfirmOpen(false);
-      setDetail(null);
+      setOpen(false);
       await load({ page: Math.min(page, totalPages), query: committedQuery, tags: selectedTags });
     } catch (error) {
       toast.error(getWorkflowOperationErrorMessage(error));
@@ -453,16 +434,16 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         {loading ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : error ? <TemplateLoadErrorState onRetry={() => void load({ page, query: committedQuery, tags: selectedTags })} /> : items.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-grid">{items.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div>}
         <TablePagination className="border-t-0" onPageChange={goToPage} page={page} showTotal total={total} totalPages={totalPages} />
       </div>
-      <Dialog onOpenChange={value => { if (!withdrawing && !value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } }} open={Boolean(detail) || detailLoading || detailError}>
-        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail}>
+      <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
             {detail ? <TemplateDetailActions
-              actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
+              actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
               actionClassName="bg-black text-white hover:bg-black/85"
               actionIcon={DashboardCircleAddIcon}
               actionPending={applyingTemplateId === detail.id || withdrawing || editing}
-              onAction={() => void applyTemplate(detail.id)}
+              onAction={canCreateWorkflow ? () => void applyTemplate(detail.id) : undefined}
               overflowItems={canManageTemplates && detail.status === "published" ? [
                 ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
                 ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),
@@ -587,8 +568,8 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
   return (
     <>
       <Button onClick={openDraftBox} type="button" variant="secondary">草稿箱</Button>
-      <Dialog onOpenChange={value => { if (!deleting) { setOpen(value); if (!value) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } } }} open={open}>
-        <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh]" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail}>
+      <Dialog onOpenChange={value => { if (!deleting) setOpen(value); }} open={open}>
+        <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh]" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } }}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板草稿"}</DialogTitle>
           {detail ? <TemplateDetailActions
@@ -729,6 +710,10 @@ function TemplateEmptyState() {
   );
 }
 
+function isTemplateDialogCloseAnimation(event: AnimationEvent<HTMLDivElement>) {
+  return event.target === event.currentTarget && event.currentTarget.dataset.state === "closed";
+}
+
 function TemplateLoadErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-10 text-center" role="alert">
@@ -836,19 +821,21 @@ function TemplateDetailActions({
   onAction,
   overflowItems = [],
 }: {
-  actionLabel: string;
+  actionLabel?: string;
   actionClassName?: string;
   actionIcon?: IconSvgElement;
   actionPending?: boolean;
-  onAction: () => void;
+  onAction?: () => void;
   overflowItems?: readonly { destructive?: boolean; icon?: IconSvgElement; label: string; onSelect: () => void }[];
 }) {
   return (
     <div aria-label="模板操作" className="flex shrink-0 items-center gap-2" role="group">
-      <Button className={actionClassName} disabled={actionPending} onClick={onAction} type="button">
-        {actionIcon ? <HugeiconsIcon aria-hidden="true" icon={actionIcon} size={16} strokeWidth={1.8} /> : null}
-        {actionLabel}
-      </Button>
+      {onAction && actionLabel ? (
+        <Button className={actionClassName} disabled={actionPending} onClick={onAction} type="button">
+          {actionIcon ? <HugeiconsIcon aria-hidden="true" icon={actionIcon} size={16} strokeWidth={1.8} /> : null}
+          {actionLabel}
+        </Button>
+      ) : null}
       {overflowItems.length > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

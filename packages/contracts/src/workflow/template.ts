@@ -9,6 +9,9 @@ export const WorkflowTemplateStatusSchema = Type.Union([
   Type.Literal("deleted"),
 ]);
 
+export const WORKFLOW_TEMPLATE_SORT_ORDER_MIN = 0;
+export const WORKFLOW_TEMPLATE_SORT_ORDER_MAX = 2_147_483_647;
+
 export const WorkflowTemplateConfigurationItemSchema = Type.Union([
   Type.Object({
     bindingKey: Type.String({ minLength: 1, maxLength: 80 }),
@@ -45,7 +48,10 @@ export const WorkflowTemplateListItemSchema = Type.Object({
   nodeKinds: Type.Array(WorkflowNodeKindSchema, { maxItems: 200, uniqueItems: true }),
   nodeCount: Type.Integer({ minimum: 0, maximum: 200 }),
   publishedAt: Type.String(),
-  sortOrder: Type.Integer(),
+  sortOrder: Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  }),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
   trigger: Type.String({ maxLength: 128 }),
   updatedAt: Type.String(),
@@ -72,7 +78,10 @@ export const WorkflowTemplateConversionRequestSchema = Type.Object({
   description: Type.String({ minLength: 1, maxLength: 200 }),
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
   name: Type.String({ minLength: 1, maxLength: 40 }),
-  sortOrder: Type.Optional(Type.Integer()),
+  sortOrder: Type.Optional(Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  })),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
 });
 
@@ -80,7 +89,10 @@ export const WorkflowTemplateDraftUpdateRequestSchema = Type.Object({
   coverUrl: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
   description: Type.String({ minLength: 1, maxLength: 200 }),
   name: Type.String({ minLength: 1, maxLength: 40 }),
-  sortOrder: Type.Optional(Type.Integer()),
+  sortOrder: Type.Optional(Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  })),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
 });
 

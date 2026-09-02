@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { RequestNormalizedError } from "@/lib/request";
+import { toast } from "sonner";
 import { useSettingWorkspace } from "../panels/setting-workspace";
 
 const TEST_ATTEMPT_POLL_INTERVAL_MS = 500;
@@ -173,7 +174,7 @@ export function useWorkflowTestAttemptController({
           clearCurrentAttempt();
           continueClose?.();
         } else {
-          setRequestError(getRequestErrorMessage(error));
+          toast.error(getRequestErrorMessage(error));
           setPollRevision(current => current + 1);
         }
       }
@@ -207,7 +208,7 @@ export function useWorkflowTestAttemptController({
         setStarting(false);
         setStopping(false);
         confirmedCloseActionRef.current = null;
-        setRequestError(getRequestErrorMessage(error));
+        toast.error(getRequestErrorMessage(error));
       }
     } finally {
       if (mountedRef.current && requestVersionRef.current === requestVersion) setStarting(false);

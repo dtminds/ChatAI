@@ -724,6 +724,7 @@ export function useWorkflowWorkspace(
     const result = await restoreVersion(version);
 
     if (!result) {
+      toast.error("操作失败，请稍后重试", workflowToastOptions);
       return;
     }
 

@@ -2326,11 +2326,22 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
         .where("status", "=", "waiting_external").executeTakeFirstOrThrow();
       await trx.updateTable(RUN_TABLE).set({
+        completed_at: decision === "cancel" ? input.completedAt : null,
         lock_version: run.lockVersion + 1,
-        next_execute_at: input.completedAt,
-        status: "running",
+        next_execute_at: decision === "cancel" ? null : input.completedAt,
+        status: decision === "cancel" ? "cancelled" : "running",
+        terminal_reason: decision === "cancel" ? "workflow_stopped" : null,
       }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
         .where("status", "=", "waiting").executeTakeFirstOrThrow();
+      if (decision === "cancel") {
+        await releaseTenantCapacity(trx, normalizeTenantId(run.uid), 1);
+        await recordWorkflowRunMetrics(trx, [{
+          kind: "cancelled",
+          occurredAt: input.completedAt,
+          uid: normalizeTenantId(run.uid),
+          workflowId: run.workflowId,
+        }]);
+      }
       if (decision === "execute") {
         await insertTaskOutbox(trx, {
           ...task,

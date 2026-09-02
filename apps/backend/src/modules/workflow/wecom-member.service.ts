@@ -21,18 +21,33 @@ import type {
 
 const JAVA_MEMBER_TYPE = 1;
 const JAVA_DEPARTMENT_TYPE = 2;
+const MEMBER_CACHE_TTL_MS = 30_000;
+const MEMBER_CACHE_MAX_ENTRIES = 100;
 
 type MapBudget = {
   remaining: number;
 };
 
+type CachedMemberList = {
+  expiresAt: number;
+  value: WorkflowWeComMemberListResponse;
+};
+
 export class WecomMemberService implements WorkflowWeComMemberReader {
+  private readonly memberCache = new Map<number, CachedMemberList>();
+
   constructor(
     private readonly javaClient: WecomMemberJavaClient,
     private readonly logger: AppLogger | RequestAwareLogger = noopLogger,
   ) {}
 
   async listMembers(uid: number): Promise<WorkflowWeComMemberListResponse> {
+    const cached = this.memberCache.get(uid);
+    if (cached && cached.expiresAt > Date.now()) {
+      return structuredClone(cached.value);
+    }
+    if (cached) this.memberCache.delete(uid);
+
     const result = await this.javaClient.listDepartmentUsers({ uid });
     const budget: MapBudget = { remaining: WORKFLOW_WECOM_MEMBER_MAX_NODES };
     const seenKeys = new Set<string>();
@@ -51,10 +66,17 @@ export class WecomMemberService implements WorkflowWeComMemberReader {
       );
     }
 
-    return {
+    const response = {
       memberLimit: normalizeMemberLimit(result.userLimit),
       roots,
     };
+    this.memberCache.set(uid, { expiresAt: Date.now() + MEMBER_CACHE_TTL_MS, value: response });
+    while (this.memberCache.size > MEMBER_CACHE_MAX_ENTRIES) {
+      const oldestUid = this.memberCache.keys().next().value;
+      if (oldestUid === undefined) break;
+      this.memberCache.delete(oldestUid);
+    }
+    return structuredClone(response);
   }
 
   async findByIds(uid: number, workUserIds: number[]) {

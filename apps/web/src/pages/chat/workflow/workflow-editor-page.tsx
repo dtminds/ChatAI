@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { stripEmbedHandoffTokenFromSearch } from "@/lib/embed-access-token";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { WorkflowChecks } from "./canvas/workflow-checks";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
@@ -261,7 +262,7 @@ function WorkflowWorkspaceContent({
     previousInspectorOpenRef.current = inspector.isOpen;
   }, [inspector.isOpen]);
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
+    const searchParams = new URLSearchParams(stripEmbedHandoffTokenFromSearch(location.search));
     if (searchParams.get("panel") !== "review" || !review.current) return;
     review.onOpen();
     searchParams.delete("panel");

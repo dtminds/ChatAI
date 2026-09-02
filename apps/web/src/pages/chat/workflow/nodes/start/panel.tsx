@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Spinner } from "@/components/ui/spinner";
+import { getWorkflowDirectEntryOrigin } from "@/lib/host-page-access";
 import {
   Tooltip,
   TooltipContent,
@@ -341,7 +342,9 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
     setState({ kind: "loading" });
     void getWorkflowDirectEntryEndpoint(workflowId, surface.apiBasePath).then(({ endpointKey }) => {
       if (!active) return;
-      const endpointUrl = new URL("/workflow/endpoint", window.location.origin);
+      const origin = getWorkflowDirectEntryOrigin();
+      if (!origin) throw new Error("Workflow direct entry origin is unavailable");
+      const endpointUrl = new URL("/workflow/endpoint", origin);
       endpointUrl.searchParams.set("key", endpointKey);
       setState({ endpointUrl: endpointUrl.toString(), kind: "ready" });
     }).catch(() => {

@@ -134,6 +134,7 @@ describe("workflow runtime repository", () => {
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new Order Conversion target needs unavailable context", flowChangedSpec("order-conversion-context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new AI Collect target needs unavailable context", flowChangedSpec("ai-collect-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Handoff target lacks its frozen seat", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
@@ -1065,6 +1066,7 @@ function repositoryWithLatestSpec(executionSpec: WorkflowExecutionSpec) {
 function flowChangedSpec(
   scenario:
     | "branch-context-incompatible"
+    | "ai-collect-context-incompatible"
     | "context-incompatible"
     | "current-node-deleted"
     | "handoff-context-incompatible"
@@ -1199,6 +1201,31 @@ function flowChangedSpec(
           },
           id: "branch-1",
           kind: "branch",
+          nodeSchemaVersion: 1,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
+  if (scenario === "ai-collect-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-ai-collect", source: "start", sourceOutletId: "default", target: "ai-collect-1" },
+        { id: "ai-collect-end", source: "ai-collect-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            fields: [{ id: "field-1", instruction: "收集姓名", name: "姓名", type: "text" }],
+            inputSelector: ["trigger", "text"],
+            maxFollowUpCount: 1,
+            openingMessage: "请告诉我您的姓名",
+            timeout: { duration: 10, unit: "minute" },
+          },
+          id: "ai-collect-1",
+          kind: "ai-collect",
           nodeSchemaVersion: 1,
         },
         spec.nodes[1]!,

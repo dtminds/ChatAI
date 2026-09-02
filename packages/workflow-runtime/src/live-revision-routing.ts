@@ -105,6 +105,7 @@ function getRequiredContextSelectors(
     });
   }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
+  if (node.kind === "ai-collect") return selectorFrom(config.inputSelector);
   if (node.kind === "order-bind") return selectorFrom(config.orderNumberSelector);
   if (node.kind === "order-conversion") {
     return selectorFrom(config.orderNumberSelector);

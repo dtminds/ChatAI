@@ -203,7 +203,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
     <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
       <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
-          <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
+          <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
           {detail ? <TemplateDetailActions
             actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
             actionClassName="bg-black text-white hover:bg-black/85"
@@ -437,7 +437,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
       <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
         <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
-            <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板中心"}</DialogTitle>
+            <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
             {detail ? <TemplateDetailActions
               actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
               actionClassName="bg-black text-white hover:bg-black/85"

@@ -2265,9 +2265,18 @@ describe("WorkflowService", () => {
       status: "draft",
       tags: ["industry:beauty", "scene:customer_care"],
     });
+    await expect(service.updateTemplateDraft(manager, draft.id, {
+      coverUrl: "https://example.com/template.png",
+      description: "再次更新",
+      name: "再次更新",
+    })).resolves.toMatchObject({
+      description: "再次更新",
+      name: "再次更新",
+      tags: ["industry:beauty", "scene:customer_care"],
+    });
     await expect(service.publishTemplate(manager, draft.id)).resolves.toMatchObject({
       coverUrl: "https://example.com/template.png",
-      name: "新名称",
+      name: "再次更新",
       status: "published",
     });
   });
@@ -2331,6 +2340,16 @@ describe("WorkflowService", () => {
       status: "published",
       tags: ["industry:beauty"],
       version: published.version,
+    });
+    await expect(service.updateTemplateInfo(manager, published.id, {
+      coverUrl: "https://example.com/template.png",
+      description: "再次更新",
+      name: "再次更新",
+      sortOrder: 20,
+    })).resolves.toMatchObject({
+      description: "再次更新",
+      name: "再次更新",
+      tags: ["industry:beauty"],
     });
   });
 

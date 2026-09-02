@@ -1355,7 +1355,9 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/workflows/templates", getWorkflowDraftRepository(), templateRepository);
     await user.click(await screen.findByTestId("workflow-template-card-template-detail-error"));
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    const detailDialog = await screen.findByRole("dialog");
+    expect(within(detailDialog).getByRole("heading", { name: "详情失败模板" })).toBeInTheDocument();
+    expect(await within(detailDialog).findByRole("alert")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
 
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));

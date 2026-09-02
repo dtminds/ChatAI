@@ -562,7 +562,9 @@ export class WorkflowService {
     const name = input.name.trim();
     if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
     const description = assertWorkflowTemplateDescription(input.description);
-    const tags = assertWorkflowTemplateTagIds(input.tags);
+    const tags = input.tags === undefined
+      ? template.tags
+      : assertWorkflowTemplateTagIds(input.tags);
     return toTemplateDetail((await this.requireTemplateRepository().update({
       ...template,
       name,
@@ -595,7 +597,9 @@ export class WorkflowService {
     const name = input.name.trim();
     if (!name) throw new BadRequestError("WORKFLOW_TEMPLATE_NAME_REQUIRED", "模板名称不能为空");
     const description = assertWorkflowTemplateDescription(input.description);
-    const tags = assertWorkflowTemplateTagIds(input.tags);
+    const tags = input.tags === undefined
+      ? template.tags
+      : assertWorkflowTemplateTagIds(input.tags);
     return toTemplateDetail((await this.requireTemplateRepository().update({
       ...template,
       name,

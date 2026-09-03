@@ -547,7 +547,7 @@ function ExecutionLogPanel({
           <Button onClick={onRetry} size="sm" type="button" variant="outline">重试</Button>
         </div>
       ) : log ? (
-        <div className="mt-4 space-y-4 text-sm">
+        <div className="space-y-4 text-sm">
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
             <span>状态：{executionStatusLabel(log.status)}</span>
             {log.startedAt ? <span>开始：{formatDateTime(log.startedAt)}</span> : null}
@@ -578,7 +578,7 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
   return (
     <div>
       <h5 className="mb-1 text-xs font-medium">{label}</h5>
-      <pre className="max-h-72 overflow-auto rounded-[8px] bg-muted/50 p-3 text-xs leading-5">
+      <pre className="max-h-72 overflow-auto rounded-[8px] bg-muted/80 p-3 text-xs leading-5">
         {JSON.stringify(value, null, 2)}
       </pre>
     </div>
@@ -589,7 +589,7 @@ function ExecutionIdBlock({ value }: { value: string }) {
   return (
     <div>
       <h5 className="mb-1 text-xs font-medium">执行ID</h5>
-      <code className="block rounded-[8px] bg-muted/50 p-3 text-xs leading-5">{value}</code>
+      <code className="block rounded-[8px] bg-muted/80 p-3 text-xs leading-5">{value}</code>
     </div>
   );
 }

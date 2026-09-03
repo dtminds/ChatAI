@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
 import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateDraftUpdateRequest, type WorkflowTemplateListItem } from "@chatai/contracts";
-import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, ToolCaseIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   AlertDialog,
@@ -198,7 +198,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   };
 
   return <section aria-label="推荐模板" className="space-y-3">
-    <div className="flex items-center justify-between px-1.5"><h2 className="text-base font-semibold">推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
+    <div className="flex items-center justify-between px-1.5"><h2 className="flex items-center gap-2 text-base font-semibold"><HugeiconsIcon aria-hidden="true" icon={ToolCaseIcon} size={17} strokeWidth={1.8} />推荐模板</h2><Button onClick={openBrowser} type="button" variant="ghost">查看更多</Button></div>
     {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-featured-container"><div className="workflow-template-featured-grid">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div></div>}
     <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
       <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>

@@ -184,7 +184,7 @@ describe("workflow worker config", () => {
       inboxCleanupBatchSize: 1_000,
       historyCleanupBatchSize: 1_000,
       historyCleanupIntervalMs: 3_600_000,
-      inferenceConcurrency: 10,
+      inferenceConcurrency: 5,
       inferenceHeartbeatIntervalMs: 15_000,
       inferenceIntervalMs: 1_000,
       inferenceLeaseDurationMs: 60_000,

@@ -251,7 +251,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       ),
       inferenceConcurrency: parseInteger(
         env.WORKFLOW_INFERENCE_CONCURRENCY,
-        10,
+        5,
         "WORKFLOW_INFERENCE_CONCURRENCY",
         100,
       ),

@@ -6,7 +6,7 @@ export function createWorkflowDatabase(databaseUrl: string) {
   const pool = mysql.createPool({
     uri: databaseUrl,
     bigNumberStrings: true,
-    connectionLimit: 10,
+    connectionLimit: 30,
     connectTimeout: 3_000,
     queueLimit: 200,
     supportBigNumbers: true,

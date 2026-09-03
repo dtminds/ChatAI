@@ -501,7 +501,7 @@ function RecordDetailSheet({
           className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[min(680px,calc(100vw-48px))]"
         >
           <DialogHeader>
-            <DialogTitle>{selectedStep ? `${selectedStep.title}日志` : "执行日志"}</DialogTitle>
+            <DialogTitle>执行日志</DialogTitle>
           </DialogHeader>
           {selectedStep ? (
             <ExecutionLogPanel

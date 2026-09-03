@@ -1292,7 +1292,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
 
     const recommendationSection = await screen.findByRole("region", { name: "推荐模板" });
-    const templateCard = within(recommendationSection).getByTestId("workflow-template-card-featured-1");
+    const templateCard = await within(recommendationSection).findByTestId("workflow-template-card-featured-1");
     expect(templateCard.querySelector("img")).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/backgrounds/10.png!w800.webp");
     expect(within(templateCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "light");
     expect(within(templateCard).getByLabelText("模板节点类型")).toHaveTextContent("+1");

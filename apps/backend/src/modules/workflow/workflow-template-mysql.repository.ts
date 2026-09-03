@@ -1,5 +1,6 @@
 import { sql, type Kysely } from "kysely";
 import { decodeWorkflowType, encodeWorkflowType, type WorkflowDatabase } from "@chatai/workflow-runtime";
+import { escapeLikePattern } from "../ai-hosting/sql-like-utils.js";
 import type { WorkflowTemplateRepository, WorkflowTemplateRecord } from "./workflow-template-repository-types.js";
 
 const TABLE = "xy_wap_embed_workflow_template" as const;
@@ -67,10 +68,6 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
     const totalRow = await countQuery.executeTakeFirst();
     return { items: rows.map(map), total: Number(totalRow?.total ?? 0) };
   }
-}
-
-function escapeLikePattern(value: string) {
-  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function map(row: any): WorkflowTemplateRecord {

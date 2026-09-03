@@ -12,7 +12,12 @@ import type {
 type RepositoryContractHarness = {
   repository: WorkflowRuntimeRepository;
   setRunStatus(runId: string, status: WorkflowRunStatus): Promise<void>;
-  setWorkflowRuntimeStatus(status: WorkflowRuntimeStatus, transitionedAt?: Date): Promise<void>;
+  setWorkflowRuntimeStatus(
+    status: WorkflowRuntimeStatus,
+    transitionedAt?: Date,
+    options?: { transitionInferenceJobs?: boolean },
+  ): Promise<void>;
+  getActiveRunCount(): Promise<number>;
 };
 
 type CreateRepositoryContractHarness = () => Promise<RepositoryContractHarness> | RepositoryContractHarness;
@@ -171,6 +176,43 @@ export function runWorkflowRuntimeRepositoryContract(
       now: new Date("2099-01-01T00:00:30.000Z"),
     });
     expect(outbox.filter(item => item.taskVersion === 4)).toHaveLength(1);
+  });
+
+  it("cancels a waiting Inference Run when the Workflow stops before completion", async () => {
+    const waiting = await createInferenceWait(harness.repository);
+    const jobs = await harness.repository.claimInferenceBatch({
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "inference-worker-1",
+      limit: 1,
+      now: OUTBOX_READY_AT,
+    });
+    expect(jobs).toHaveLength(1);
+    await expect(harness.getActiveRunCount()).resolves.toBe(1);
+
+    await harness.setWorkflowRuntimeStatus(
+      "stopped",
+      new Date("2099-01-01T00:00:10.000Z"),
+      { transitionInferenceJobs: false },
+    );
+    await expect(harness.repository.completeInference({
+      completedAt: new Date("2099-01-01T00:00:30.000Z"),
+      id: jobs[0]!.id,
+      leaseOwner: "inference-worker-1",
+      result: { content: "late result", type: "text" },
+    })).resolves.toBe(true);
+
+    await expect(harness.repository.findInferenceByExecutionKey(9, waiting.job.executionKey))
+      .resolves.toMatchObject({ status: "succeeded" });
+    await expect(harness.repository.findTask(9, waiting.task.id)).resolves.toMatchObject({
+      status: "cancelled",
+      taskType: "execute",
+    });
+    await expect(harness.repository.findRun(9, waiting.run.id)).resolves.toMatchObject({
+      nextExecuteAt: null,
+      status: "cancelled",
+      terminalReason: "workflow_stopped",
+    });
+    await expect(harness.getActiveRunCount()).resolves.toBe(0);
   });
 
   it("recovers an expired Inference lease without dispatching its waiting Task", async () => {

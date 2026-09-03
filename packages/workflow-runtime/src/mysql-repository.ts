@@ -2240,10 +2240,7 @@ export class MysqlWorkflowRuntimeRepository implements
             .executeTakeFirstOrThrow();
         }
         if (cancelledRunIds.length > 0) {
-          const cancelledRunRows = cancelledRunIds
-            .map(runId => runById.get(normalizeId(runId)))
-            .filter((run): run is NonNullable<typeof run> => Boolean(run));
-          const runUpdate = await trx.updateTable(RUN_TABLE).set({
+          await trx.updateTable(RUN_TABLE).set({
             completed_at: input.now,
             lock_version: sql<number>`lock_version + 1`,
             next_execute_at: null,
@@ -2252,11 +2249,17 @@ export class MysqlWorkflowRuntimeRepository implements
           }).where("id", "in", cancelledRunIds)
             .where("status", "=", "waiting")
             .executeTakeFirstOrThrow();
-          if (Number(runUpdate.numUpdatedRows) === cancelledRunRows.length) {
-            await releaseTenantCapacityForRuns(trx, cancelledRunRows.map(run => ({
+          const successfullyCancelledRunRows = await trx.selectFrom(RUN_TABLE)
+            .select(["id", "uid", "workflow_id"])
+            .where("id", "in", cancelledRunIds)
+            .where("status", "=", "cancelled")
+            .where("terminal_reason", "=", "workflow_stopped")
+            .execute();
+          if (successfullyCancelledRunRows.length > 0) {
+            await releaseTenantCapacityForRuns(trx, successfullyCancelledRunRows.map(run => ({
               uid: normalizeTenantId(run.uid),
             })));
-            await recordWorkflowRunMetrics(trx, cancelledRunRows.map(run => ({
+            await recordWorkflowRunMetrics(trx, successfullyCancelledRunRows.map(run => ({
               kind: "cancelled" as const,
               occurredAt: input.now,
               uid: normalizeTenantId(run.uid),

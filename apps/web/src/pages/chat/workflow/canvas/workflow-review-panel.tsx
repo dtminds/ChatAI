@@ -52,8 +52,10 @@ export function WorkflowReviewPanel({
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const isSubmitter = currentSubUserId === review.submittedBySubUserId;
   const canDecide = review.status === "pending";
-  const submitterLabel = isSubmitter ? "你" : "其他管理员";
-  const reviewerLabel = currentSubUserId === review.reviewedBySubUserId ? "你" : "其他管理员";
+  const submitterLabel = isSubmitter ? "你" : review.submittedByName ?? "其他管理员";
+  const reviewerLabel = currentSubUserId === review.reviewedBySubUserId
+    ? "你"
+    : review.reviewedByName ?? "其他管理员";
   const hasStructuralChanges = review.changeSummary.triggerChanged
     || review.changeSummary.pathChanged
     || review.changeSummary.firstPublication
@@ -76,7 +78,7 @@ export function WorkflowReviewPanel({
               </Badge>
             </div>
             <p className="mt-1.5 text-[13px] text-muted-foreground">
-              {submitterLabel}提交于 {formatReviewTime(review.submittedAt)}
+              {submitterLabel} 提交于 {formatReviewTime(review.submittedAt)}
             </p>
           </div>
           <Button
@@ -125,7 +127,7 @@ export function WorkflowReviewPanel({
                 {review.status === "rejected" ? "驳回结果" : "审核结果"}
               </h3>
               <p className="mt-2 text-xs text-muted-foreground">
-                {reviewerLabel}于 {formatReviewTime(review.reviewedAt)} {getReviewStatusLabel(review.status)}
+                {reviewerLabel} 于 {formatReviewTime(review.reviewedAt)} {getReviewStatusLabel(review.status)}
               </p>
               {review.reviewComment ? (
                 <p className="mt-3 whitespace-pre-wrap rounded-[8px] bg-surface-muted px-3 py-2.5 text-[13px] leading-5">

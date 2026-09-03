@@ -11,6 +11,33 @@ import { InMemoryWorkflowTemplateRepository } from "../../../src/modules/workflo
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
+  it("hydrates review operator names and omits names for missing sub-accounts", async () => {
+    const service = createService(new InMemoryWorkflowRepository(), {
+      subUserReader: {
+        listDisplayNames: async (_uid, subUserIds) => new Map(
+          subUserIds
+            .filter(subUserId => subUserId === operator.subUserId)
+            .map(subUserId => [subUserId, "提交管理员"] as const),
+        ),
+      },
+    });
+    const created = await createConfigured(service);
+    const submitted = await service.submitReview(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    expect(submitted).toMatchObject({ submittedByName: "提交管理员" });
+
+    const approved = await service.approveReview(
+      { roles: ["owner"], subUserId: "18", uid: operator.uid },
+      created.id,
+      submitted.id,
+      {},
+    );
+    expect(approved).toMatchObject({ submittedByName: "提交管理员" });
+    expect(approved).not.toHaveProperty("reviewedByName");
+  });
+
   it("loads a direct-entry key with the authoritative tenant and Workflow identity", async () => {
     const repository = new InMemoryWorkflowRepository();
     const getEndpointKey = vi.fn(async () => "java+/endpoint-key=");

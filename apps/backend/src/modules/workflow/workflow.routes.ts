@@ -51,6 +51,7 @@ import { getWorkflowActiveRunLimit } from "../../config/env.js";
 import { createCustomFieldService } from "../ai-hosting/custom-field.service.js";
 import { createWecomMemberService } from "./wecom-member.service.js";
 import { MysqlWorkflowTemplateRepository } from "./workflow-template-mysql.repository.js";
+import { MysqlWorkflowSubUserReader } from "./workflow-sub-user-reader.js";
 
 const WorkflowParamsSchema = Type.Object({
   workflowId: Type.String({ pattern: "^[1-9][0-9]*$" }),
@@ -126,6 +127,7 @@ export async function registerWorkflowRoutes(
       managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
+      subUserReader: new MysqlWorkflowSubUserReader(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
       logger: app.log,
       wecomMemberReader: createWecomMemberService(app.log),

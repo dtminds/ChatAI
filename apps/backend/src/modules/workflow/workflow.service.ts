@@ -130,6 +130,10 @@ import {
   type WorkflowSourceIdentityResolver,
 } from "./workflow-source-identity.js";
 import {
+  EmptyWorkflowSubUserReader,
+  type WorkflowSubUserReader,
+} from "./workflow-sub-user-reader.js";
+import {
   UnavailableWorkflowDirectEntryEndpointPort,
   type WorkflowDirectEntryEndpointPort,
 } from "./direct-entry-endpoint-port.js";
@@ -149,6 +153,7 @@ export type WorkflowServiceOptions = {
   directEntryEndpointPort?: WorkflowDirectEntryEndpointPort;
   entitlementPort?: WorkflowEntitlementPort;
   sourceIdentityResolver?: WorkflowSourceIdentityResolver;
+  subUserReader?: WorkflowSubUserReader;
   llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   llmTestTimeoutMs?: number;
   llmTestTtlMs?: number;
@@ -180,6 +185,7 @@ export class WorkflowService {
   private readonly directEntryEndpointPort: WorkflowDirectEntryEndpointPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly sourceIdentityResolver: WorkflowSourceIdentityResolver;
+  private readonly subUserReader: WorkflowSubUserReader;
   private readonly llmTestAttemptRepository?: WorkflowLlmTestAttemptRepository;
   private readonly llmTestTimeoutMs: number;
   private readonly llmTestTtlMs: number;
@@ -212,6 +218,7 @@ export class WorkflowService {
       ?? new UnavailableWorkflowEntitlementPort();
     this.sourceIdentityResolver = options.sourceIdentityResolver
       ?? new UnavailableWorkflowSourceIdentityResolver();
+    this.subUserReader = options.subUserReader ?? new EmptyWorkflowSubUserReader();
     this.llmTestAttemptRepository = options.llmTestAttemptRepository;
     this.llmTestTimeoutMs = options.llmTestTimeoutMs ?? 600_000;
     this.llmTestTtlMs = options.llmTestTtlMs ?? 86_400_000;
@@ -849,14 +856,14 @@ export class WorkflowService {
       workflowId,
       workflowType: definition.workflowType,
     }));
-    return toReview(review);
+    return this.toReview(scope.uid, review);
   }
 
   async getCurrentReview(scope: WorkflowOperatorScope, workflowId: string) {
     assertWorkflowAccess(scope);
     await this.requireVisibleDefinition(scope, workflowId);
     const review = await this.repository.findCurrentReview(scope.uid, workflowId);
-    return review ? toReview(review) : null;
+    return review ? this.toReview(scope.uid, review) : null;
   }
 
   async listReviews(
@@ -867,7 +874,8 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     await this.requireVisibleDefinition(scope, workflowId);
     const page = await this.repository.listReviews(scope.uid, workflowId, input);
-    return { items: page.items.map(toReview), nextCursor: page.nextCursor };
+    const names = await this.listReviewDisplayNames(scope.uid, page.items);
+    return { items: page.items.map(review => toReview(review, names)), nextCursor: page.nextCursor };
   }
 
   async approveReview(
@@ -880,7 +888,7 @@ export class WorkflowService {
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
     await this.requireEntitlement(scope.uid, definition.workflowType);
-    return toReview(this.unwrapMutation(await this.repository.decideReview({
+    return this.toReview(scope.uid, this.unwrapMutation(await this.repository.decideReview({
       comment: input.comment?.trim() || null,
       decision: "approved",
       opSubUserId: scope.subUserId,
@@ -909,7 +917,7 @@ export class WorkflowService {
     if (!reason) {
       throw new BadRequestError("WORKFLOW_REVIEW_REJECTION_REASON_REQUIRED", "请填写驳回原因");
     }
-    return toReview(this.unwrapMutation(await this.repository.decideReview({
+    return this.toReview(scope.uid, this.unwrapMutation(await this.repository.decideReview({
       comment: reason,
       decision: "rejected",
       opSubUserId: scope.subUserId,
@@ -923,7 +931,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const definition = await this.requireVisibleDefinition(scope, workflowId);
     this.assertNotStopped(definition);
-    return toReview(this.unwrapMutation(await this.repository.withdrawReview({
+    return this.toReview(scope.uid, this.unwrapMutation(await this.repository.withdrawReview({
       opSubUserId: scope.subUserId,
       reviewId,
       uid: scope.uid,
@@ -1335,7 +1343,23 @@ export class WorkflowService {
 
   private async toDefinition(record: WorkflowDefinitionRecord): Promise<WorkflowDefinition> {
     const review = await this.repository.findCurrentReview(record.uid, record.id);
-    return toDefinition(record, review);
+    const names = review ? await this.listReviewDisplayNames(record.uid, [review]) : new Map();
+    return toDefinition(record, review, names);
+  }
+
+  private async toReview(uid: number, record: WorkflowPublishReviewRecord) {
+    const names = await this.listReviewDisplayNames(uid, [record]);
+    return toReview(record, names);
+  }
+
+  private async listReviewDisplayNames(
+    uid: number,
+    reviews: readonly WorkflowPublishReviewRecord[],
+  ) {
+    return this.subUserReader.listDisplayNames(uid, reviews.flatMap(review => [
+      review.submittedBySubUserId,
+      review.reviewedBySubUserId,
+    ].filter((id): id is string => id !== null)));
   }
 
   private async createChangeSummary(
@@ -1497,6 +1521,7 @@ function getWorkflowListTrigger(draft: WorkflowDraft) {
 function toDefinition(
   record: WorkflowDefinitionRecord,
   currentReview: WorkflowPublishReviewRecord | null,
+  reviewDisplayNames: ReadonlyMap<string, string> = new Map(),
 ): WorkflowDefinition {
   const reviewLocked = currentReview?.status === "pending";
   return {
@@ -1504,7 +1529,7 @@ function toDefinition(
       runtimeSupportedNodeKinds: [...WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS],
     },
     createdAt: record.createdAt.toISOString(),
-    currentReview: currentReview ? toReview(currentReview) : null,
+    currentReview: currentReview ? toReview(currentReview, reviewDisplayNames) : null,
     description: record.description,
     draft: normalizeWorkflowDraft(record.draft),
     draftVersion: record.draftVersion,
@@ -1523,7 +1548,14 @@ function toDefinition(
   };
 }
 
-function toReview(record: WorkflowPublishReviewRecord): WorkflowPublishReview {
+function toReview(
+  record: WorkflowPublishReviewRecord,
+  reviewDisplayNames: ReadonlyMap<string, string> = new Map(),
+): WorkflowPublishReview {
+  const submittedByName = reviewDisplayNames.get(record.submittedBySubUserId);
+  const reviewedByName = record.reviewedBySubUserId === null
+    ? undefined
+    : reviewDisplayNames.get(record.reviewedBySubUserId);
   return {
     basePublishedRevision: record.basePublishedRevision,
     changeSummary: record.changeSummary,
@@ -1535,10 +1567,12 @@ function toReview(record: WorkflowPublishReviewRecord): WorkflowPublishReview {
     reviewComment: record.reviewComment,
     reviewedAt: record.reviewedAt?.toISOString() ?? null,
     reviewedBySubUserId: record.reviewedBySubUserId,
+    ...(reviewedByName === undefined ? {} : { reviewedByName }),
     sourceDraftVersion: record.sourceDraftVersion,
     status: record.status,
     submittedAt: record.submittedAt.toISOString(),
     submittedBySubUserId: record.submittedBySubUserId,
+    ...(submittedByName === undefined ? {} : { submittedByName }),
     workflowId: record.workflowId,
   };
 }

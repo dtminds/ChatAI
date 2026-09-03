@@ -144,10 +144,12 @@ export const WorkflowPublishReviewSchema = Type.Object({
   reviewComment: Type.Union([Type.String(), Type.Null()]),
   reviewedAt: Type.Union([Type.String(), Type.Null()]),
   reviewedBySubUserId: Type.Union([WorkflowIdSchema, Type.Null()]),
+  reviewedByName: Type.Optional(Type.String()),
   sourceDraftVersion: Type.Integer({ minimum: 1 }),
   status: WorkflowPublishReviewStatusSchema,
   submittedAt: Type.String(),
   submittedBySubUserId: WorkflowIdSchema,
+  submittedByName: Type.Optional(Type.String()),
   workflowId: WorkflowIdSchema,
 });
 

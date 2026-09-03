@@ -72,8 +72,21 @@ describe("WorkflowReviewPanel", () => {
       status: "rejected",
     }));
 
-    expect(screen.getByText(/其他管理员于 .* 审核驳回/)).toBeInTheDocument();
+    expect(screen.getByText(/其他管理员 于 .* 审核驳回/)).toBeInTheDocument();
     expect(screen.getByText("进入条件需要调整")).toBeInTheDocument();
+  });
+
+  it("shows resolved administrator names when they are available", () => {
+    renderPanel(createReview({
+      reviewedAt: "2026-08-16T11:30:00.000+08:00",
+      reviewedByName: "审核管理员",
+      reviewedBySubUserId: "303",
+      status: "approved",
+      submittedByName: "提交管理员",
+    }));
+
+    expect(screen.getByText(/提交管理员 提交于/)).toBeInTheDocument();
+    expect(screen.getByText(/审核管理员 于 .* 审核通过/)).toBeInTheDocument();
   });
 
   it("shows publication as a fact without changing the approved decision", () => {

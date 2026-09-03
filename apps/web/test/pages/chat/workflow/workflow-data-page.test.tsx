@@ -379,6 +379,7 @@ describe("WorkflowDataPage", () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
     const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    let executionLogCalls = 0;
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
@@ -386,19 +387,24 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 18, entered: 18, incomplete: 0 },
       })),
-      getExecutionLog: vi.fn(async () => ({
-        completedAt: "2026-07-12T09:00:01.000Z",
-        errorCode: null,
-        errorMessage: null,
-        inputSnapshot: { subjectId: "customer-1" },
-        nodeId: waitNode.id,
-        nodeKind: "wait" as const,
-        output: { resumed: false },
-        sequence: 1,
-        sourceOutletId: null,
-        startedAt: "2026-07-12T09:00:00.000Z",
-        status: "completed" as const,
-      })),
+      getExecutionLog: vi.fn(async () => {
+        executionLogCalls += 1;
+        return {
+          completedAt: "2026-07-12T09:00:01.000Z",
+          errorCode: null,
+          errorMessage: null,
+          executionId: "123",
+          inputAvailable: executionLogCalls === 1,
+          inputSnapshot: { subjectId: "customer-1" },
+          nodeId: waitNode.id,
+          nodeKind: "wait" as const,
+          output: { resumed: false },
+          sequence: 1,
+          sourceOutletId: null,
+          startedAt: "2026-07-12T09:00:00.000Z",
+          status: "completed" as const,
+        };
+      }),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T09:00:00.000Z",
         customer: { avatar: null, name: "张三" },
@@ -451,6 +457,13 @@ describe("WorkflowDataPage", () => {
     const log = within(logDialog).getByRole("region", { name: `${waitNode.data.title}日志` });
     expect(log).toHaveTextContent('"subjectId": "customer-1"');
     expect(log).toHaveTextContent('"resumed": false');
+
+    await user.click(within(logDialog).getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "查看日志" }));
+    const redactedLogDialog = await screen.findByRole("dialog", { name: "执行日志" });
+    expect(within(redactedLogDialog).getByText("执行ID")).toBeInTheDocument();
+    expect(within(redactedLogDialog).getByText("123")).toBeInTheDocument();
+    expect(within(redactedLogDialog).queryByText('"subjectId": "customer-1"')).not.toBeInTheDocument();
   });
 
   it("shows a user-facing reason when a Run is stopped while waiting", async () => {

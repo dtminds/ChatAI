@@ -216,25 +216,25 @@ function WorkflowDataOverviewView({
   const summaryItems = [
     {
       icon: ArrowRight02Icon,
-      iconClassName: "bg-primary/10 text-primary",
+      iconClassName: "bg-primary/8 text-primary",
       label: "进入次数",
       value: totals.entered,
     },
     {
       icon: Progress02Icon,
-      iconClassName: "bg-success-muted text-success",
+      iconClassName: "bg-success-muted/35 text-success",
       label: "当前停留",
       value: totals.current,
     },
     {
       icon: RacingFlagIcon,
-      iconClassName: "bg-indigo-500/10 text-indigo-500",
+      iconClassName: "bg-indigo-500/8 text-indigo-500",
       label: "已完成",
       value: totals.completed,
     },
     {
       icon: ComputerRemoveIcon,
-      iconClassName: "bg-warning-muted text-warning",
+      iconClassName: "bg-warning-muted/35 text-warning",
       label: "未完成",
       value: totals.incomplete,
     },
@@ -554,7 +554,11 @@ function ExecutionLogPanel({
             {log.completedAt ? <span>完成：{formatDateTime(log.completedAt)}</span> : null}
             {log.sourceOutletId ? <span>出口：{log.sourceOutletId}</span> : null}
           </div>
-          <JsonBlock label="输入快照" value={log.inputSnapshot} />
+          {log.inputAvailable ? (
+            <JsonBlock label="输入快照" value={log.inputSnapshot} />
+          ) : (
+            <ExecutionIdBlock value={log.executionId} />
+          )}
           <JsonBlock label="输出" value={log.output} />
           {log.errorCode || log.errorMessage ? (
             <div>
@@ -577,6 +581,15 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
       <pre className="max-h-72 overflow-auto rounded-[8px] bg-muted/50 p-3 text-xs leading-5">
         {JSON.stringify(value, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+function ExecutionIdBlock({ value }: { value: string }) {
+  return (
+    <div>
+      <h5 className="mb-1 text-xs font-medium">执行ID</h5>
+      <code className="block rounded-[8px] bg-muted/50 p-3 text-xs leading-5">{value}</code>
     </div>
   );
 }

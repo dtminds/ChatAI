@@ -650,6 +650,8 @@ describe("workflow contracts", () => {
       completedAt: "2026-07-12T09:00:01.000Z",
       errorCode: null,
       errorMessage: null,
+      executionId: "123",
+      inputAvailable: true,
       inputSnapshot: { subjectId: "customer-1" },
       nodeId: "message-query-1",
       nodeKind: "message-query",

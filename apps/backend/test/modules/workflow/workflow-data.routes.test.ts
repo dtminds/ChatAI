@@ -33,6 +33,8 @@ describe("workflow data routes", () => {
         completedAt: "2026-07-12T09:00:01.000Z",
         errorCode: null,
         errorMessage: null,
+        executionId: "123",
+        inputAvailable: true,
         inputSnapshot: { subjectId: "customer-1" },
         nodeId: "message-query-1",
         nodeKind: "message-query",
@@ -192,6 +194,35 @@ describe("workflow data routes", () => {
       uid: 9,
       windowStart: "2026-08-19",
       yesterday: "2026-08-24",
+    });
+  });
+
+  it("only requests execution input for subjects on the observer whitelist", async () => {
+    const reader = {
+      getExecutionLog: vi.fn(async () => ({})),
+    };
+    const scope = { roles: ["owner"], subUserId: "17", uid: 9 } as const;
+    const observer = new WorkflowDataService(reader as never, {
+      observerSubjects: new Set(["9:17"]),
+    });
+    const regular = new WorkflowDataService(reader as never);
+
+    await observer.getExecutionLog(scope, "12", "31", 1);
+    await regular.getExecutionLog(scope, "12", "31", 1);
+
+    expect(reader.getExecutionLog).toHaveBeenNthCalledWith(1, {
+      includeInput: true,
+      recordId: "31",
+      sequence: 1,
+      uid: 9,
+      workflowId: "12",
+    });
+    expect(reader.getExecutionLog).toHaveBeenNthCalledWith(2, {
+      includeInput: false,
+      recordId: "31",
+      sequence: 1,
+      uid: 9,
+      workflowId: "12",
     });
   });
 
@@ -664,6 +695,7 @@ describe("workflow data routes", () => {
         completedAt: new Date("2026-07-12T09:00:01.000Z"),
         errorCode: null,
         errorMessage: null,
+        id: "123",
         inputSnapshotJson: JSON.stringify({ subjectId: "customer-1" }),
         nodeId: "message-query-1",
         nodeKind: "message-query",
@@ -680,17 +712,31 @@ describe("workflow data routes", () => {
     expect(db.selectedColumns.find(item => item.table === "xy_wap_embed_workflow_node_execution")?.columns)
       .not.toEqual(expect.arrayContaining(["input_snapshot_json", "output_json"]));
 
-    await expect(reader.getExecutionLog({ recordId: "31", sequence: 2, uid: 9, workflowId: "12" }))
+    await expect(reader.getExecutionLog({ includeInput: true, recordId: "31", sequence: 2, uid: 9, workflowId: "12" }))
       .resolves.toMatchObject({
+        executionId: "123",
+        inputAvailable: true,
         inputSnapshot: { subjectId: "customer-1" },
         nodeId: "message-query-1",
         output: { messages: [] },
         sequence: 2,
         sourceOutletId: "default",
       });
+    await expect(reader.getExecutionLog({ includeInput: false, recordId: "31", sequence: 2, uid: 9, workflowId: "12" }))
+      .resolves.toMatchObject({
+        executionId: "123",
+        inputAvailable: false,
+        inputSnapshot: {},
+        output: { messages: [] },
+      });
     expect(db.wheres).toContainEqual(["xy_wap_embed_workflow_node_execution", "sequence", "=", 2]);
-    expect(db.selectedColumns.filter(item => item.table === "xy_wap_embed_workflow_node_execution").at(-1)?.columns)
+    const executionSelections = db.selectedColumns
+      .filter(item => item.table === "xy_wap_embed_workflow_node_execution")
+      .map(item => item.columns);
+    expect(executionSelections.find(columns => Array.isArray(columns) && columns.includes("input_snapshot_json")))
       .toEqual(expect.arrayContaining(["input_snapshot_json", "output_json"]));
+    expect(executionSelections.findLast(columns => Array.isArray(columns) && columns.includes("output_json")))
+      .not.toEqual(expect.arrayContaining(["input_snapshot_json"]));
   });
 
   it("keeps WeCom records available when Java contact lookup fails", async () => {
@@ -935,6 +981,7 @@ function createRecordDbMock(options: {
     completedAt: Date;
     errorCode: string | null;
     errorMessage: string | null;
+    id: string;
     inputSnapshotJson: string;
     nodeId: string;
     nodeKind: string;
@@ -1026,6 +1073,7 @@ function createRecordDbMock(options: {
               completed_at: options.executionLog.completedAt,
               error_code: options.executionLog.errorCode,
               error_message: options.executionLog.errorMessage,
+              id: options.executionLog.id,
               input_snapshot_json: options.executionLog.inputSnapshotJson,
               node_id: options.executionLog.nodeId,
               node_kind: options.executionLog.nodeKind,

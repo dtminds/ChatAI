@@ -403,6 +403,8 @@ export const WorkflowEntryRecordExecutionLogSchema = Type.Object({
   completedAt: Type.Union([Type.String(), Type.Null()]),
   errorCode: Type.Union([Type.String(), Type.Null()]),
   errorMessage: Type.Union([Type.String(), Type.Null()]),
+  executionId: WorkflowIdSchema,
+  inputAvailable: Type.Boolean(),
   inputSnapshot: WorkflowJsonObjectSchema,
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
   nodeKind: WorkflowEntryRecordStepNodeKindSchema,

@@ -148,7 +148,7 @@ export async function registerWorkflowRoutes(
       wecomContactDirectory: createWecomContactJavaClient(app.log),
       wecomMemberReader,
     }),
-    { capacityPort: entitlementPort },
+    { capacityPort: entitlementPort, observerSubjects: options.observerSubjects },
   );
 
   await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(

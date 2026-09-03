@@ -18,6 +18,7 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import type { WorkflowOperatorScope } from "./workflow.service.js";
 
 export type WorkflowDataReader = {
@@ -60,6 +61,7 @@ export type WorkflowDataReader = {
     workflowTypes?: WorkflowType[];
   }): Promise<WorkflowEntryRecordDetail>;
   getExecutionLog(input: {
+    includeInput: boolean;
     recordId: string;
     sequence: number;
     uid: number;
@@ -71,16 +73,19 @@ export type WorkflowDataReader = {
 export class WorkflowDataService {
   private readonly capacityPort: WorkflowTenantCapacityPort;
   private readonly clock: () => Date;
+  private readonly observerSubjects: ReadonlySet<string>;
 
   constructor(
     private readonly reader: WorkflowDataReader,
     options: {
       capacityPort?: WorkflowTenantCapacityPort;
       clock?: () => Date;
+      observerSubjects?: ReadonlySet<string>;
     } = {},
   ) {
     this.capacityPort = options.capacityPort ?? new UnavailableWorkflowEntitlementPort();
     this.clock = options.clock ?? (() => new Date());
+    this.observerSubjects = options.observerSubjects ?? new Set();
   }
 
   async getCapacityOverview(scope: WorkflowOperatorScope): Promise<WorkflowCapacityOverview> {
@@ -198,6 +203,10 @@ export class WorkflowDataService {
       throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
     }
     return this.reader.getExecutionLog({
+      includeInput: canViewInsightsWorkerObservability(this.observerSubjects, {
+        subUserId: scope.subUserId,
+        uid: scope.uid,
+      }),
       recordId,
       sequence,
       uid: scope.uid,

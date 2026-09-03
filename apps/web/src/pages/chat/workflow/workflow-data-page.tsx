@@ -22,6 +22,7 @@ import {
 } from "@chatai/contracts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Sheet,
@@ -480,19 +481,39 @@ function RecordDetailSheet({
                   );
                 })}
               </Timeline>
-              {selectedStep ? (
-                <ExecutionLogPanel
-                  error={logError}
-                  loading={loadingLog}
-                  log={executionLog}
-                  onRetry={() => loadExecutionLog(selectedStep)}
-                  step={selectedStep}
-                />
-              ) : null}
             </div>
           </>
         ) : null}
       </SheetContent>
+      <Dialog
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedStep(null);
+            setExecutionLog(null);
+            setLoadingLog(false);
+            setLogError(false);
+          }
+        }}
+        open={Boolean(selectedStep)}
+      >
+        <DialogContent
+          aria-describedby={undefined}
+          className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[min(680px,calc(100vw-48px))]"
+        >
+          <DialogHeader>
+            <DialogTitle>{selectedStep ? `${selectedStep.title}日志` : "执行日志"}</DialogTitle>
+          </DialogHeader>
+          {selectedStep ? (
+            <ExecutionLogPanel
+              error={logError}
+              loading={loadingLog}
+              log={executionLog}
+              onRetry={() => loadExecutionLog(selectedStep)}
+              step={selectedStep}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
@@ -511,8 +532,7 @@ function ExecutionLogPanel({
   step: WorkflowEntryRecordDetail["steps"][number];
 }) {
   return (
-    <section aria-label={`${step.title}日志`} className="mt-6 border-t pt-5">
-      <h4 className="text-sm font-semibold">{step.title}日志</h4>
+    <section aria-label={`${step.title}日志`} className="min-h-0 overflow-y-auto">
       {loading ? <div className="mt-4"><LoadingState /></div> : error ? (
         <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground" role="alert">
           <span>日志加载失败</span>

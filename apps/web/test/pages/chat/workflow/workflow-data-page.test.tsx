@@ -447,8 +447,8 @@ describe("WorkflowDataPage", () => {
     await user.click(screen.getByRole("button", { name: "查看日志" }));
 
     expect(repository.getExecutionLog).toHaveBeenCalledWith(document.id, "31", 1);
-    expect(await screen.findByRole("region", { name: `${waitNode.data.title}日志` })).toBeInTheDocument();
-    const log = screen.getByRole("region", { name: `${waitNode.data.title}日志` });
+    const logDialog = await screen.findByRole("dialog", { name: `${waitNode.data.title}日志` });
+    const log = within(logDialog).getByRole("region", { name: `${waitNode.data.title}日志` });
     expect(log).toHaveTextContent('"subjectId": "customer-1"');
     expect(log).toHaveTextContent('"resumed": false');
   });

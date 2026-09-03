@@ -261,4 +261,18 @@ describe("WorkflowCanvas", () => {
     expect(screen.queryByRole("button", { name: "添加 转 Agent节点" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 等待事件节点" })).not.toBeInTheDocument();
   });
+
+  it("hides non-runtime-ready nodes from the palette in production", () => {
+    vi.stubEnv("PROD", true);
+    try {
+      renderWorkflowCanvas({ paletteOpen: true });
+
+      expect(screen.getByRole("button", { name: "添加 等待节点" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "添加 转 Agent节点" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "添加 发券节点" })).not.toBeInTheDocument();
+    }
+    finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

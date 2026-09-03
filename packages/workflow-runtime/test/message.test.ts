@@ -6,6 +6,7 @@ import {
   getNextWorkflowMessageExecutionAt,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
 } from "../src/index.js";
+import { getWorkflowDatetimeVariableSelectors } from "../src/variable-content.js";
 import { FakeWorkflowCapabilityAdapter } from "./support/fake-capability-adapter.js";
 
 const context = {
@@ -121,6 +122,71 @@ describe("Workflow Message capability", () => {
       seatId: 101,
       source: "workflow",
     });
+  });
+
+  it("formats datetime variables as UTC+8 message text", () => {
+    expect(createWorkflowMessageCommand({
+      config: {
+        attachments: [],
+        content: [
+          { selector: ["trigger", "occurredAt"], type: "variable" },
+          { type: "text", value: " / " },
+          { selector: ["current-node-lifecycle", "enteredAt"], type: "variable" },
+          { type: "text", value: " / " },
+          { selector: ["node-lifecycle", "query", "exitedAt"], type: "variable" },
+          { type: "text", value: " / " },
+          { selector: ["node", "query", "displayText"], type: "variable" },
+        ],
+        contentMode: "custom",
+      },
+      context: {
+        ...context,
+        outputs: {
+          ...context.outputs,
+          query: {
+            ...context.outputs.query,
+            displayText: "2026-08-16T09:00:00.000Z",
+          },
+        },
+      },
+    }).content).toBe(
+      "2026-08-16 16:00:00 / 2026-08-16 17:30:00 / 2026-08-16 17:00:01 / 2026-08-16T09:00:00.000Z",
+    );
+  });
+
+  it("formats datetime node outputs registered by the execution contract", () => {
+    const datetimeVariableSelectors = getWorkflowDatetimeVariableSelectors({
+      edges: [],
+      entryNodeId: "wait-event",
+      nodes: [{
+        config: {},
+        id: "wait-event",
+        kind: "wait-event",
+        nodeSchemaVersion: 1,
+      }],
+      revision: 1,
+      schemaVersion: 3,
+      terminalNodeId: "wait-event",
+      workflowId: "workflow-1",
+    });
+
+    expect(createWorkflowMessageCommand({
+      config: {
+        attachments: [],
+        content: [{ selector: ["node", "wait-event", "triggeredAt"], type: "variable" }],
+        contentMode: "custom",
+      },
+      context: {
+        ...context,
+        outputs: {
+          ...context.outputs,
+          "wait-event": {
+            triggeredAt: "2026-08-16T09:00:00.000Z",
+          },
+        },
+        datetimeVariableSelectors,
+      },
+    }).content).toBe("2026-08-16 17:00:00");
   });
 
   it("derives text from structured messages without leaking its selector to the adapter", async () => {

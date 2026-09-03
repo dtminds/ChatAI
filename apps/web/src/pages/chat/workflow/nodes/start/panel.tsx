@@ -65,7 +65,9 @@ export function StartConfig({
 }) {
   const startData = node.data;
   const { entryPolicy, triggers } = startData;
-  const entryMode = startData.entryMode ?? "event";
+  const surface = useWorkflowSurface();
+  const canUseDirectPush = !surface.embedded;
+  const entryMode = canUseDirectPush ? (startData.entryMode ?? "event") : "event";
   const chatAiStartData = isChatAiStartNodeData(startData) ? startData : undefined;
   const isChatAi = chatAiStartData !== undefined;
   const sourceIds = getStartNodeSourceIds(startData);
@@ -141,7 +143,7 @@ export function StartConfig({
             aria-label="进入方式"
             className="flex items-center gap-6"
             onValueChange={(mode) => {
-              if (mode === "event" || mode === "direct-push") {
+              if (mode === "event" || (mode === "direct-push" && canUseDirectPush)) {
                 updateStartConfig({ entryMode: mode, triggers: [] });
               }
             }}
@@ -152,7 +154,7 @@ export function StartConfig({
               <span>事件触发</span>
             </label>
             <label className="flex items-center gap-2 text-[13px] text-foreground">
-              <RadioGroupItem value="direct-push" />
+              <RadioGroupItem disabled={!canUseDirectPush} value="direct-push" />
               <span>外部推送</span>
             </label>
           </RadioGroup>

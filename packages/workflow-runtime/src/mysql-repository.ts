@@ -2187,7 +2187,9 @@ export class MysqlWorkflowRuntimeRepository implements
         const executeTasks = waking.filter(item => item.decision === "execute");
         const suspendedTasks = waking.filter(item => item.decision === "defer");
         const cancelledTasks = waking.filter(item => item.decision === "cancel");
-        const wakingRunIds = [...new Set(waking.map(item => item.runId))];
+        const executeRunIds = [...new Set(executeTasks.map(item => item.runId))];
+        const suspendedRunIds = [...new Set(suspendedTasks.map(item => item.runId))];
+        const cancelledRunIds = [...new Set(cancelledTasks.map(item => item.runId))];
         if (executeTasks.length > 0) {
           await trx.updateTable(TASK_TABLE).set({
             bucket_time: floorToMinute(input.now),
@@ -2228,14 +2230,42 @@ export class MysqlWorkflowRuntimeRepository implements
             .where("status", "=", "waiting_external")
             .executeTakeFirstOrThrow();
         }
-        if (wakingRunIds.length > 0) {
+        if (executeRunIds.length > 0 || suspendedRunIds.length > 0) {
           await trx.updateTable(RUN_TABLE).set({
             lock_version: sql<number>`lock_version + 1`,
             next_execute_at: input.now,
             status: "running",
-          }).where("id", "in", wakingRunIds)
+          }).where("id", "in", [...new Set([...executeRunIds, ...suspendedRunIds])])
             .where("status", "=", "waiting")
             .executeTakeFirstOrThrow();
+        }
+        if (cancelledRunIds.length > 0) {
+          await trx.updateTable(RUN_TABLE).set({
+            completed_at: input.now,
+            lock_version: sql<number>`lock_version + 1`,
+            next_execute_at: null,
+            status: "cancelled",
+            terminal_reason: "workflow_stopped",
+          }).where("id", "in", cancelledRunIds)
+            .where("status", "=", "waiting")
+            .executeTakeFirstOrThrow();
+          const successfullyCancelledRunRows = await trx.selectFrom(RUN_TABLE)
+            .select(["id", "uid", "workflow_id"])
+            .where("id", "in", cancelledRunIds)
+            .where("status", "=", "cancelled")
+            .where("terminal_reason", "=", "workflow_stopped")
+            .execute();
+          if (successfullyCancelledRunRows.length > 0) {
+            await releaseTenantCapacityForRuns(trx, successfullyCancelledRunRows.map(run => ({
+              uid: normalizeTenantId(run.uid),
+            })));
+            await recordWorkflowRunMetrics(trx, successfullyCancelledRunRows.map(run => ({
+              kind: "cancelled" as const,
+              occurredAt: input.now,
+              uid: normalizeTenantId(run.uid),
+              workflowId: normalizeId(run.workflow_id),
+            })));
+          }
         }
       }
       return { expired: toFail.length, recovered: toRecover.length };
@@ -2326,11 +2356,22 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
         .where("status", "=", "waiting_external").executeTakeFirstOrThrow();
       await trx.updateTable(RUN_TABLE).set({
+        completed_at: decision === "cancel" ? input.completedAt : null,
         lock_version: run.lockVersion + 1,
-        next_execute_at: input.completedAt,
-        status: "running",
+        next_execute_at: decision === "cancel" ? null : input.completedAt,
+        status: decision === "cancel" ? "cancelled" : "running",
+        terminal_reason: decision === "cancel" ? "workflow_stopped" : null,
       }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
         .where("status", "=", "waiting").executeTakeFirstOrThrow();
+      if (decision === "cancel") {
+        await releaseTenantCapacity(trx, normalizeTenantId(run.uid), 1);
+        await recordWorkflowRunMetrics(trx, [{
+          kind: "cancelled",
+          occurredAt: input.completedAt,
+          uid: normalizeTenantId(run.uid),
+          workflowId: run.workflowId,
+        }]);
+      }
       if (decision === "execute") {
         await insertTaskOutbox(trx, {
           ...task,

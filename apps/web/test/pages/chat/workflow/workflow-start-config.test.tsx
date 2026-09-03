@@ -12,6 +12,7 @@ import {
   getWorkflowStartFixtureWorkUsers,
 } from "@/pages/chat/workflow/nodes/start/fixture-options";
 import { createStartNodeData } from "@/pages/chat/workflow/nodes/start/definition";
+import { WorkflowSurfaceProvider } from "@/pages/chat/workflow/workflow-surface";
 import type { StartNodeData, WorkflowNode } from "@/pages/chat/workflow/types";
 import type { WorkflowWeComMemberResource } from "@/pages/chat/workflow/workflow-wecom-member-resource";
 
@@ -242,6 +243,25 @@ describe("workflow start configuration", () => {
     expect(screen.queryByRole("button", { name: "消息发送开始时间" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "优先最早添加的账号" }))
       .not.toBeInTheDocument();
+  });
+
+  it("disables external push entry for the embedded WeCom surface", () => {
+    const node = createStartNode(createStartNodeData("wecom_sop"));
+
+    render(
+      <WorkflowSurfaceProvider surface="sop_embed">
+        <StartConfig
+          allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
+          edges={[]}
+          node={node}
+          nodes={[node]}
+          onNodeChange={vi.fn()}
+        />
+      </WorkflowSurfaceProvider>,
+    );
+
+    expect(screen.getByRole("radio", { name: "事件触发" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "外部推送" })).toBeDisabled();
   });
 
   it("commits WeCom members only after confirming the picker dialog", async () => {

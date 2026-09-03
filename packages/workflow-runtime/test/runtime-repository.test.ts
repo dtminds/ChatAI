@@ -134,11 +134,15 @@ describe("workflow runtime repository", () => {
     ["new target needs unavailable context", flowChangedSpec("context-incompatible"), "flow_changed_context_incompatible"],
     ["new Order Conversion target needs unavailable context", flowChangedSpec("order-conversion-context-incompatible"), "flow_changed_context_incompatible"],
     ["new branch needs unavailable context", flowChangedSpec("branch-context-incompatible"), "flow_changed_context_incompatible"],
+    ["new AI Collect target needs unavailable context", flowChangedSpec("ai-collect-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Message target lacks its frozen seat", flowChangedSpec("message-context-incompatible"), "flow_changed_context_incompatible"],
     ["new Handoff target lacks its frozen seat", flowChangedSpec("handoff-context-incompatible"), "flow_changed_context_incompatible"],
   ] as const)("ends the run when the %s in the latest revision", async (_scenario, spec, reason) => {
     const repository = repositoryWithLatestSpec(spec);
     const runInput = createRunInput();
+    const currentNode = spec.nodes.some(node => node.id === "wait-event-1")
+      ? { id: "wait-event-1", kind: "wait-event" as const, sourceOutletId: "triggered" }
+      : { id: "start", kind: "start" as const, sourceOutletId: "default" };
     const created = await repository.createRunWithInitialTask(spec.nodes.some(node =>
       node.kind === "message")
       ? {
@@ -152,7 +156,11 @@ describe("workflow runtime repository", () => {
             },
           },
         }
-      : runInput);
+      : {
+          ...runInput,
+          initialNodeId: currentNode.id,
+          initialNodeKind: currentNode.kind,
+        });
     const claimed = await repository.claimTask({
       expectedTaskVersion: created.task.taskVersion,
       leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
@@ -171,9 +179,13 @@ describe("workflow runtime repository", () => {
         expiresAt: new Date("2026-08-10T00:00:00.000Z"),
         messageId: `flow-changed:${reason}`,
       },
-      nodeExecution: { executionKey: `9:${created.run.id}:start:1`, input: {}, output: {} },
+      nodeExecution: {
+        executionKey: `9:${created.run.id}:${currentNode.id}:1`,
+        input: {},
+        output: {},
+      },
       runId: created.run.id,
-      sourceOutletId: "default",
+      sourceOutletId: currentNode.sourceOutletId,
       taskId: created.task.id,
       uid: 9,
     });
@@ -184,7 +196,7 @@ describe("workflow runtime repository", () => {
       run: { status: "cancelled", terminalReason: reason },
     });
     expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ current: -1, incomplete: 1, nodeId: "start", revision: 1 }),
+      expect.objectContaining({ current: -1, incomplete: 1, nodeId: currentNode.id, revision: 1 }),
     ]));
   });
 
@@ -1065,6 +1077,7 @@ function repositoryWithLatestSpec(executionSpec: WorkflowExecutionSpec) {
 function flowChangedSpec(
   scenario:
     | "branch-context-incompatible"
+    | "ai-collect-context-incompatible"
     | "context-incompatible"
     | "current-node-deleted"
     | "handoff-context-incompatible"
@@ -1199,6 +1212,43 @@ function flowChangedSpec(
           },
           id: "branch-1",
           kind: "branch",
+          nodeSchemaVersion: 1,
+        },
+        spec.nodes[1]!,
+      ],
+    };
+  }
+  if (scenario === "ai-collect-context-incompatible") {
+    return {
+      ...spec,
+      edges: [
+        { id: "start-wait-event", source: "start", sourceOutletId: "default", target: "wait-event-1" },
+        { id: "wait-event-ai-collect", source: "wait-event-1", sourceOutletId: "triggered", target: "ai-collect-1" },
+        { id: "wait-event-end", source: "wait-event-1", sourceOutletId: "timeout", target: "end" },
+        { id: "ai-collect-end", source: "ai-collect-1", sourceOutletId: "default", target: "end" },
+      ],
+      nodes: [
+        spec.nodes[0]!,
+        {
+          config: {
+            delay: { duration: 30, unit: "second" },
+            event: { type: "message.received" },
+            timeout: { duration: 15, unit: "minute" },
+          },
+          id: "wait-event-1",
+          kind: "wait-event",
+          nodeSchemaVersion: 1,
+        },
+        {
+          config: {
+            fields: [{ id: "field-1", instruction: "收集姓名", name: "姓名", type: "text" }],
+            inputSelector: ["node", "wait-event-1", "message"],
+            maxFollowUpCount: 1,
+            openingMessage: "请告诉我您的姓名",
+            timeout: { duration: 10, unit: "minute" },
+          },
+          id: "ai-collect-1",
+          kind: "ai-collect",
           nodeSchemaVersion: 1,
         },
         spec.nodes[1]!,

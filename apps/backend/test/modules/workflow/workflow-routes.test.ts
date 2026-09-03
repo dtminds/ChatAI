@@ -254,6 +254,30 @@ describe("workflow routes", () => {
       payload: { workflowType: "chatai_sop" },
       url: "/api/server/workflows",
     })).json().data;
+    const configuredDraft = {
+      ...created.draft,
+      nodes: created.draft.nodes.map((node: { id: string; data: Record<string, unknown> }) => node.id === "start"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              entryMode: "direct-push",
+              entryPolicy: { mode: "never" },
+              seatIds: [101],
+              triggers: [],
+            },
+          }
+        : node),
+    };
+    const saved = await app.inject({
+      method: "PUT",
+      payload: {
+        draft: configuredDraft,
+        expectedDraftVersion: created.draftVersion,
+      },
+      url: `/api/server/workflows/${created.id}/draft`,
+    });
+    expect(saved.statusCode).toBe(200);
 
     const response = await app.inject({
       method: "GET",

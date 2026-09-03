@@ -136,44 +136,60 @@ describe("MySQL workflow runtime repository contract", () => {
             .executeTakeFirstOrThrow();
         });
       },
-      async setWorkflowRuntimeStatus(status, transitionedAt = new Date("2099-01-01T00:00:00.000Z")) {
+      async setWorkflowRuntimeStatus(
+        status,
+        transitionedAt = new Date("2099-01-01T00:00:00.000Z"),
+        options = {},
+      ) {
         await contractDatabase.transaction().execute(async transaction => {
           await transaction.updateTable("xy_wap_embed_workflow_definition")
             .set({ runtime_status: status })
             .where("uid", "=", 9)
             .where("id", "=", "31")
             .executeTakeFirstOrThrow();
-          await new MysqlWorkflowRuntimeRepository(transaction).transitionInferenceJobs({
-            transitionedAt,
-            transition: status === "paused" ? "pause" : status === "active" ? "resume" : "cancel",
-            uid: 9,
-            workflowIds: ["31"],
-          });
-          if (status === "active" || status === "paused") {
-            await enqueueMysqlWorkflowTaskTransitions(transaction, {
-              requestedAt: transitionedAt,
-              targetStatus: status === "active" ? "pending" : "suspended",
+          if (options.transitionInferenceJobs !== false) {
+            await new MysqlWorkflowRuntimeRepository(transaction).transitionInferenceJobs({
+              transitionedAt,
+              transition: status === "paused" ? "pause" : status === "active" ? "resume" : "cancel",
               uid: 9,
               workflowIds: ["31"],
             });
-          } else {
-            await clearMysqlWorkflowTaskTransitions(transaction, {
-              uid: 9,
-              workflowIds: ["31"],
-            });
+            if (status === "active" || status === "paused") {
+              await enqueueMysqlWorkflowTaskTransitions(transaction, {
+                requestedAt: transitionedAt,
+                targetStatus: status === "active" ? "pending" : "suspended",
+                uid: 9,
+                workflowIds: ["31"],
+              });
+            } else {
+              await clearMysqlWorkflowTaskTransitions(transaction, {
+                uid: 9,
+                workflowIds: ["31"],
+              });
+            }
           }
         });
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          const result = await new MysqlWorkflowRuntimeRepository(contractDatabase).processTaskStatusTransitionBatch({
-            leaseExpiresAt: new Date(transitionedAt.getTime() + 60_000),
-            leaseOwner: "contract-transition-worker",
-            limit: 1_000,
-            maxAttempts: 5,
-            nextAttemptAt: transitionedAt,
-            now: transitionedAt,
-          });
-          if (!result.hasMore) break;
+        if (options.transitionInferenceJobs !== false) {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const result = await new MysqlWorkflowRuntimeRepository(contractDatabase).processTaskStatusTransitionBatch({
+              leaseExpiresAt: new Date(transitionedAt.getTime() + 60_000),
+              leaseOwner: "contract-transition-worker",
+              limit: 1_000,
+              maxAttempts: 5,
+              nextAttemptAt: transitionedAt,
+              now: transitionedAt,
+            });
+            if (!result.hasMore) break;
+          }
         }
+      },
+      async getActiveRunCount() {
+        if (!database) throw new Error("MySQL contract database is not initialized");
+        const row = await database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+          .select("active_run_count")
+          .where("uid", "=", 9)
+          .executeTakeFirstOrThrow();
+        return Number(row.active_run_count);
       },
     };
   });

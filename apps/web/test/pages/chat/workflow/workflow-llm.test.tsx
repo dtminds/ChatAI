@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { createEdge, createInitialNodes, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import {
@@ -41,6 +42,14 @@ const llmTestServiceMock = vi.hoisted(() => ({
   getWorkflowLlmTestAttempt: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/workflow/nodes/llm/test-service", () => llmTestServiceMock);
 
@@ -59,6 +68,7 @@ describe("workflow LLM node", () => {
     llmTestServiceMock.cancelWorkflowLlmTestAttempt.mockReset();
     llmTestServiceMock.createWorkflowLlmTestAttempt.mockReset();
     llmTestServiceMock.getWorkflowLlmTestAttempt.mockReset();
+    vi.mocked(toast.error).mockReset();
   });
 
   it("normalizes malformed configuration deterministically and emits the execution contract", () => {
@@ -1053,7 +1063,7 @@ describe("workflow LLM node", () => {
 
     created.reject(new Error("network"));
 
-    expect(await within(workspace).findByRole("alert")).toHaveTextContent("操作失败，请稍后重试");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("操作失败，请稍后重试"));
     expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
     expect(llmTestServiceMock.cancelWorkflowLlmTestAttempt).not.toHaveBeenCalled();
   });
@@ -1074,7 +1084,7 @@ describe("workflow LLM node", () => {
     await user.click(within(screen.getByRole("alertdialog"))
       .getByRole("button", { name: "停止并关闭" }));
 
-    expect(await within(workspace).findByRole("alert")).toHaveTextContent("操作失败，请稍后重试");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("操作失败，请稍后重试"));
     expect(screen.getByRole("region", { name: "试运行展开编辑" })).toBeInTheDocument();
   });
 

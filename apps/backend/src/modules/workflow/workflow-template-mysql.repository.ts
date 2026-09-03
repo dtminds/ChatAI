@@ -1,5 +1,6 @@
 import { sql, type Kysely } from "kysely";
 import { decodeWorkflowType, encodeWorkflowType, type WorkflowDatabase } from "@chatai/workflow-runtime";
+import { escapeLikePattern } from "../ai-hosting/sql-like-utils.js";
 import type { WorkflowTemplateRepository, WorkflowTemplateRecord } from "./workflow-template-repository-types.js";
 
 const TABLE = "xy_wap_embed_workflow_template" as const;
@@ -56,14 +57,14 @@ export class MysqlWorkflowTemplateRepository implements WorkflowTemplateReposito
     for (const tag of input.tags ?? []) {
       q = q.where(sql<boolean>`JSON_CONTAINS(tags_json, ${JSON.stringify(tag)}) = 1`);
     }
-    if (input.query) q = q.where("name", "like", `%${input.query}%`);
+    if (input.query) q = q.where("name", "like", `%${escapeLikePattern(input.query)}%`);
     const rows = await q.orderBy("sort_order", "desc").orderBy("update_time", "desc").orderBy("id", "desc").offset(input.offset ?? 0).limit(input.limit).execute();
     let countQuery = this.db.selectFrom(TABLE).select(({ fn }) => fn.count<number>("id").as("total")).where("status", "=", input.status ?? "published");
     if (input.workflowType) countQuery = countQuery.where("workflow_type", "=", encodeWorkflowType(input.workflowType));
     for (const tag of input.tags ?? []) {
       countQuery = countQuery.where(sql<boolean>`JSON_CONTAINS(tags_json, ${JSON.stringify(tag)}) = 1`);
     }
-    if (input.query) countQuery = countQuery.where("name", "like", `%${input.query}%`);
+    if (input.query) countQuery = countQuery.where("name", "like", `%${escapeLikePattern(input.query)}%`);
     const totalRow = await countQuery.executeTakeFirst();
     return { items: rows.map(map), total: Number(totalRow?.total ?? 0) };
   }

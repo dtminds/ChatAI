@@ -2220,14 +2220,18 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       : { bizStatus: 1 as const, runtimeStatus: "active" as const };
     const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
     task.taskType = "execute";
-    run.status = transitionRun(run.status, "running");
     if (boundaryDecision === "execute") {
+      run.status = transitionRun(run.status, "running");
       task.status = transitionTask(task.status, "dispatched");
       this.outbox.push(createOutbox(this.createId(), task, completedAt));
     } else if (boundaryDecision === "defer") {
+      run.status = transitionRun(run.status, "running");
       task.status = transitionTask(task.status, "suspended");
     } else {
       task.status = transitionTask(task.status, "cancelled");
+      run.status = transitionRun(run.status, "cancelled");
+      run.nextExecuteAt = null;
+      run.terminalReason = "workflow_stopped";
     }
     this.touchRun(run);
     return true;

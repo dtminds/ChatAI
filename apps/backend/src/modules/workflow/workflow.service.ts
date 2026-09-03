@@ -235,7 +235,18 @@ export class WorkflowService {
     workflowId: string,
   ): Promise<WorkflowDirectEntryEndpointResponse> {
     assertWorkflowAccess(scope);
-    await this.requireVisibleDefinition(scope, workflowId);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
+    const draft = normalizeWorkflowDraft(definition.draft);
+    const entryNode = draft.nodes.find(node => node.data.kind === "start");
+    const entryConfig = entryNode
+      ? extractWorkflowNodeDraftConfig("start", entryNode.data)
+      : null;
+    if (definition.workflowType !== "chatai_sop"
+      || !entryConfig
+      || !Value.Check(WorkflowStartDraftConfigSchema, entryConfig)
+      || entryConfig.entryMode !== "direct-push") {
+      throw new BadRequestError("WORKFLOW_DIRECT_ENTRY_UNAVAILABLE", "工作流尚未发布外部推送入口");
+    }
     const endpointKey = await this.directEntryEndpointPort.getEndpointKey({
       uid: scope.uid,
       workflowId,
@@ -532,13 +543,16 @@ export class WorkflowService {
   async listTemplates(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; tags?: string[]; workflowType?: WorkflowType; featured?: boolean }): Promise<WorkflowTemplateListPage> {
     assertWorkflowAccess(scope);
     assertWorkflowTemplateTagIds(input.tags);
+    const visibleTypes = getVisibleWorkflowTypes(scope);
+    const workflowType = input.workflowType ?? visibleTypes[0];
+    if (!workflowType || !visibleTypes.includes(workflowType)) return { items: [], total: 0 };
     const limit = input.featured ? Math.min(input.limit, 4) : input.limit;
     const page = await this.requireTemplateRepository().list({
       limit,
       offset: ((input.page ?? 1) - 1) * limit,
       query: input.query?.trim() || undefined,
       tags: normalizeWorkflowTemplateTagIds(input.tags),
-      workflowType: input.workflowType,
+      workflowType,
       status: "published",
     });
     return { items: page.items.map(toTemplateListItem), total: page.total };
@@ -559,6 +573,9 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const item = await this.requireTemplateRepository().find(templateId, "published");
     if (!item) throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    if (scope.surface && !getWorkflowSurfaceTypes(scope.surface).includes(item.workflowType)) {
+      throw new NotFoundError("WORKFLOW_TEMPLATE_NOT_FOUND", "模板不存在");
+    }
     return toTemplateDetail(item);
   }
 

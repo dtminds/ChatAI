@@ -45,16 +45,39 @@ describe("WorkflowService", () => {
       directEntryEndpointPort: { getEndpointKey },
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
 
-    await expect(service.getDirectEntryEndpoint(operator, created.id)).resolves.toEqual({
+    await expect(service.getDirectEntryEndpoint(operator, configured.id)).resolves.toEqual({
       endpointKey: "java+/endpoint-key=",
     });
-    expect(getEndpointKey).toHaveBeenCalledWith({ uid: 9, workflowId: created.id });
+    expect(getEndpointKey).toHaveBeenCalledWith({ uid: 9, workflowId: configured.id });
     await expect(service.getDirectEntryEndpoint(
       { roles: ["owner"], subUserId: "18", uid: 10 },
-      created.id,
+      configured.id,
     )).rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND", statusCode: 404 });
     expect(getEndpointKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects direct-entry endpoint requests for event-driven drafts", async () => {
+    const getEndpointKey = vi.fn(async () => "java+/endpoint-key=");
+    const service = createService(new InMemoryWorkflowRepository(), {
+      directEntryEndpointPort: { getEndpointKey },
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+
+    await expect(service.getDirectEntryEndpoint(operator, created.id)).rejects.toMatchObject({
+      code: "WORKFLOW_DIRECT_ENTRY_UNAVAILABLE",
+      statusCode: 400,
+    });
+    expect(getEndpointKey).not.toHaveBeenCalled();
   });
 
   it("rejects invalid direct-entry keys returned by the Java port", async () => {
@@ -62,8 +85,17 @@ describe("WorkflowService", () => {
       directEntryEndpointPort: { getEndpointKey: async () => "x".repeat(513) },
     });
     const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        seatIds: [101],
+        triggers: [],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
 
-    await expect(service.getDirectEntryEndpoint(operator, created.id)).rejects.toMatchObject({
+    await expect(service.getDirectEntryEndpoint(operator, configured.id)).rejects.toMatchObject({
       code: "WORKFLOW_DIRECT_ENTRY_ENDPOINT_INVALID",
       statusCode: 502,
     });

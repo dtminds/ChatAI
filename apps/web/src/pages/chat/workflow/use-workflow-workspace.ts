@@ -723,9 +723,11 @@ export function useWorkflowWorkspace(
   const restorePreviewVersion = useWorkflowStableCallback(async (version: WorkflowVersionHistoryItem) => {
     const result = await restoreVersion(version);
 
-    if (!result) {
+    if (result === undefined) {
+      toast.error("操作失败，请稍后重试", workflowToastOptions);
       return;
     }
+    if ("kind" in result) return;
 
     dispatchViewState({ type: "version-restored" });
     clearEdgeSelection();

@@ -505,4 +505,244 @@ describe("GroupMembersSidePanel", () => {
     expect(await screen.findByText("暂未添加为好友")).toBeInTheDocument();
     expect(getCustomerSeatRelations).toHaveBeenCalledWith("external-customer-002");
   });
+
+  it("opens the add-members dialog before search and refresh", async () => {
+    const user = userEvent.setup();
+    const getCustomers = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [
+        createCustomerSummary("external-xiaoming", "小明"),
+        createCustomerSummary("member-001", "已在群里"),
+        createCustomerSummary("external-wang", "王二"),
+      ],
+      total: 3,
+    });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "普通成员",
+            id: "member-001",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    const actions = screen.getByRole("button", { name: "添加群成员" }).parentElement;
+    expect(actions).not.toBeNull();
+    const actionButtons = within(actions as HTMLElement).getAllByRole("button");
+    expect(actionButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "添加群成员",
+      "搜索群成员",
+      "刷新群成员",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+
+    expect(await screen.findByRole("heading", { name: "添加群成员" })).toBeInTheDocument();
+    expect(getCustomers).toHaveBeenCalledWith({
+      limit: 50,
+      scope: "mine",
+      seatIds: ["seat-001"],
+    });
+    expect(await screen.findByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 王二" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 已在群里" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "选择 小明" }));
+
+    expect(screen.getByRole("region", { name: "已选成员" })).toHaveTextContent("小明");
+    expect(screen.getByRole("button", { name: "确认" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "移除 小明" }));
+    expect(screen.getByRole("region", { name: "已选成员" })).not.toHaveTextContent("小明");
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "选择 王二" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
+  });
+
+  it("searches add-member candidates from the current seat", async () => {
+    const user = userEvent.setup();
+    const getCustomers = vi.fn()
+      .mockResolvedValueOnce({
+        hasMore: false,
+        items: [createCustomerSummary("external-xiaoming", "小明")],
+        total: 1,
+      })
+      .mockResolvedValueOnce({
+        hasMore: false,
+        items: [createCustomerSummary("external-wang", "王二")],
+        total: 1,
+      });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        groupMembers={[]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+    expect(await screen.findByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox", { name: "搜索" }), "王");
+
+    expect(await screen.findByRole("checkbox", { name: "选择 王二" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 小明" })).not.toBeInTheDocument();
+    expect(getCustomers).toHaveBeenLastCalledWith({
+      keyword: "王",
+      limit: 50,
+      scope: "mine",
+      seatIds: ["seat-001"],
+    });
+  });
+
+  it("lets owners remove regular members from the detail card", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <GroupMembersSidePanel
+        currentSeatThirdUserId="seat-owner"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "群主席位",
+            id: "seat-owner",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "https://example.com/xiaoming.png",
+            displayName: "小明",
+            id: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 小明 的好友关系" }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "将 小明 移出群聊" }),
+    );
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("小明");
+    expect(screen.getByText("该操作无法撤回，请谨慎操作")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("hides remove when the current seat is not an owner or admin", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <GroupMembersSidePanel
+        currentSeatThirdUserId="seat-normal"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "接待席位",
+            id: "seat-normal",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+          {
+            avatarUrl: "",
+            displayName: "小明",
+            id: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 小明 的好友关系" }),
+    );
+
+    expect(await screen.findByText("暂未添加为好友")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "将 小明 移出群聊" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer remove for admins even when the current seat can kick", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <GroupMembersSidePanel
+        currentSeatThirdUserId="seat-owner"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "群主席位",
+            id: "seat-owner",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "",
+            displayName: "管理员甲",
+            id: "member-admin",
+            type: GROUP_MEMBER_TYPE.ADMIN,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 管理员甲 的好友关系" }),
+    );
+
+    expect(await screen.findByText("暂未添加为好友")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "将 管理员甲 移出群聊" }),
+    ).not.toBeInTheDocument();
+  });
 });
+
+function createCustomerSummary(thirdExternalUserId: string, name: string) {
+  return {
+    avatar: "",
+    bizStatus: 1,
+    customerKey: thirdExternalUserId,
+    gender: 0,
+    name,
+    platform: 5,
+    realName: "",
+    relationCount: 1,
+    seatRelations: [],
+    thirdExternalUserId,
+    uid: 1,
+  };
+}

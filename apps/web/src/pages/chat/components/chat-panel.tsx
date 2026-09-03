@@ -417,6 +417,7 @@ export function ChatPanel({
       accountName={accountName}
       conversationMode={activeConversation.mode}
       currentEmployeeId={currentEmployeeId}
+      currentSeatThirdUserId={activeConversation.thirdUserId}
       customer={customer}
       groupMembers={groupMembers}
       isGroupMembersLoading={isGroupMembersLoading}

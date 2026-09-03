@@ -1,0 +1,77 @@
+import {
+  isWorkflowHandoffExecutionConfigComplete,
+  WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH,
+  WorkflowHandoffCommandSchema,
+  WorkflowHandoffResultSchema,
+  type WorkflowHandoffCommand,
+  type WorkflowHandoffExecutionConfig,
+} from "@chatai/contracts";
+import type {
+  WorkflowCapabilityCommandContext,
+  WorkflowCapabilityExecutionBinding,
+} from "./capability-port.js";
+import { createCapabilityCommandError } from "./capability-command-error.js";
+import { readWorkflowTriggerSeatId } from "./context-readers.js";
+import { renderWorkflowVariableContent } from "./variable-content.js";
+
+export const WORKFLOW_HANDOFF_CAPABILITY_BINDING = {
+  createCommand: createWorkflowHandoffCommand,
+  definition: {
+    capabilityKey: "chatai.conversation.handoff",
+    commandSchema: WorkflowHandoffCommandSchema,
+    contractVersion: 1,
+    kind: "action",
+    resultSchema: WorkflowHandoffResultSchema,
+  },
+  nodeKind: "handoff",
+} satisfies WorkflowCapabilityExecutionBinding<
+  typeof WorkflowHandoffCommandSchema,
+  typeof WorkflowHandoffResultSchema,
+  "action"
+>;
+
+export function createWorkflowHandoffCommand(input: {
+  config: Record<string, unknown>;
+  context: WorkflowCapabilityCommandContext;
+}): WorkflowHandoffCommand {
+  if (!isWorkflowHandoffExecutionConfigComplete(input.config)) {
+    throw handoffCommandError("Handoff execution config failed schema validation");
+  }
+  const config = input.config as WorkflowHandoffExecutionConfig;
+  const operatorMessage = renderWorkflowVariableContent(
+    config.operatorMessage,
+    input.context,
+    handoffCommandError,
+  );
+  const customerMessage = renderWorkflowVariableContent(
+    config.customerMessage,
+    input.context,
+    handoffCommandError,
+  );
+  if (!operatorMessage.trim()) {
+    throw handoffCommandError("Rendered Handoff operator message is empty");
+  }
+  if (operatorMessage.length > WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH) {
+    throw handoffCommandError("Rendered Handoff operator message exceeds the supported length");
+  }
+  if (customerMessage.length > WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH) {
+    throw handoffCommandError("Rendered Handoff customer message exceeds the supported length");
+  }
+  const seatId = readWorkflowTriggerSeatId(input.context.trigger);
+  if (seatId === null) throw handoffCommandError("Handoff seat is unavailable in the Run context");
+  const thirdExternalUserId = input.context.identities.thirdExternalUserId;
+  if (!thirdExternalUserId) {
+    throw handoffCommandError("Handoff recipient is unavailable in the Run context");
+  }
+  return {
+    customerMessage: customerMessage.trim() ? customerMessage : "",
+    operatorMessage,
+    recipient: { thirdExternalUserId },
+    seatId,
+    source: "workflow",
+  };
+}
+
+const handoffCommandError = createCapabilityCommandError(
+  "WORKFLOW_HANDOFF_COMMAND_INVALID",
+);

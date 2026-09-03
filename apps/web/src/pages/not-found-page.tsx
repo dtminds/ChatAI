@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 
-export function NotFoundPage() {
+export function NotFoundPage({ showHomeLink = true }: { showHomeLink?: boolean }) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-6 py-12 text-foreground">
       <section
@@ -26,9 +26,11 @@ export function NotFoundPage() {
         <p className="mt-3 text-sm text-muted-foreground">
           访问地址可能有误，或页面已被移动
         </p>
-        <Button asChild className="mt-6">
-          <Link to="/">返回首页</Link>
-        </Button>
+        {showHomeLink && (
+          <Button asChild className="mt-6">
+            <Link to="/">返回首页</Link>
+          </Button>
+        )}
       </section>
     </main>
   );

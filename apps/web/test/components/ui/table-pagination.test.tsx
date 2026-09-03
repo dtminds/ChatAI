@@ -47,6 +47,37 @@ describe("TablePagination", () => {
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
   });
 
+  it("shows the missing page number instead of an ellipsis for a one-page gap", () => {
+    render(
+      <TablePagination
+        onPageChange={vi.fn()}
+        page={4}
+        total={21}
+        totalPages={5}
+      />,
+    );
+
+    for (const page of [1, 2, 3, 4, 5]) {
+      expect(screen.getByRole("button", { name: String(page) })).toBeInTheDocument();
+    }
+    expect(screen.queryByText("更多页面")).not.toBeInTheDocument();
+  });
+
+  it("keeps ellipses when at least two pages are hidden", () => {
+    render(
+      <TablePagination
+        onPageChange={vi.fn()}
+        page={5}
+        total={100}
+        totalPages={10}
+      />,
+    );
+
+    expect(screen.getAllByText("更多页面")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "8" })).not.toBeInTheDocument();
+  });
+
   it("limits navigation to 1000 pages by default while preserving the total count", () => {
     render(
       <TablePagination

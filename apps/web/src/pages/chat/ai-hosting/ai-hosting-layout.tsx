@@ -11,11 +11,13 @@ import {
   RoboticIcon,
   TokenCircleIcon,
   UserAiIcon,
+  WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
+import { canCreateWorkflows } from "@/pages/chat/workflow/workflow-template-access";
 import { useAuthStore } from "@/store/auth-store";
 import {
   fetchAiHostingQuota,
@@ -29,8 +31,13 @@ const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 const aiHostingNavItems = [
   {
     icon: RoboticIcon,
-    label: "Agent 管理",
+    label: "Agent",
     to: "/chat/ai-hosting/agents",
+  },
+  {
+    icon: WorkflowSquare06Icon,
+    label: "工作流",
+    to: "/chat/workflows",
   },
   {
     icon: AiBookIcon,
@@ -73,6 +80,7 @@ export function AiHostingLayout({
   title: string;
 }) {
   const quotaOwnerKey = useAuthStore((state) => formatAiHostingQuotaOwnerKey(state.subUser));
+  const canAccessWorkflows = canCreateWorkflows(useAuthStore((state) => state.subUser));
   const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(() =>
     getCachedAiHostingQuota(),
   );
@@ -138,23 +146,25 @@ export function AiHostingLayout({
           </div>
 
           <nav aria-label="智能体导航" className="space-y-1">
-            {aiHostingNavItems.map((item) => (
-              <NavLink
-                className={({ isActive }) =>
-                  cn(
-                    "flex h-9 items-center gap-2 rounded-[8px] px-3 text-[14px] transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  )
-                }
-                key={item.to}
-                to={item.to}
-              >
-                <HugeiconsIcon icon={item.icon} size={18} />
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
+            {aiHostingNavItems
+              .filter((item) => item.to !== "/chat/workflows" || canAccessWorkflows)
+              .map((item) => (
+                <NavLink
+                  className={({ isActive }) =>
+                    cn(
+                      "flex h-9 items-center gap-2 rounded-[8px] px-3 text-[14px] transition-colors",
+                      isActive
+                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )
+                  }
+                  key={item.to}
+                  to={item.to}
+                >
+                  <HugeiconsIcon icon={item.icon} size={18} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
           </nav>
 
           <div className="mt-auto space-y-3">

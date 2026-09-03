@@ -310,13 +310,16 @@ describe("adaptMessage", () => {
     });
   });
 
-  it("marks messages sent by Agent source", () => {
+  it.each([
+    WORKBENCH_MESSAGE_SOURCE.AGENT,
+    WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+  ])("marks messages sent by automated source %s", (source) => {
     expect(
       adaptMessage(
         {
           ...messageDto,
           senderType: "agent",
-          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+          source,
         } as WorkbenchMessageDto,
         customerProfilesById,
         accountsById,
@@ -324,9 +327,11 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       isAgentMessage: true,
-      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+      source,
     });
+  });
 
+  it("does not mark workbench messages as Agent messages", () => {
     expect(
       adaptMessage(
         {
@@ -696,7 +701,7 @@ describe("adaptMessage", () => {
           ...messageDto,
           content: {
             appName: "京东购物丨点外卖领国补",
-            coverImageUrl: "https://b3.iyouke.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
+            coverImageUrl: "https://media.example.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
             logoUrl: "http://mmbiz.qpic.cn/logo.png",
             sourceLabel: "小程序",
             title: "京东购物，多·快·好·省",
@@ -711,7 +716,7 @@ describe("adaptMessage", () => {
     ).toMatchObject({
       content: {
         appName: "京东购物丨点外卖领国补",
-        coverImageUrl: "https://b3.iyouke.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
+        coverImageUrl: "https://media.example.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
         logoUrl: "http://mmbiz.qpic.cn/logo.png",
         title: "京东购物，多·快·好·省",
         type: "mini-program",

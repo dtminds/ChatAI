@@ -1,0 +1,5672 @@
+import {
+  WORKFLOW_ACTIVE_RUN_STATUSES,
+  WorkflowEntryEventType,
+  WorkflowEntryEventTypeSchema,
+  WorkflowInferenceRequestSchema,
+  WorkflowInferenceResultSchema,
+  WorkflowJsonObjectSchema,
+  WorkflowNodeKind,
+  WorkflowRuntimeStatus,
+  WorkflowRunStatus,
+  WorkflowStatusReason,
+  WorkflowTaskMessageSchema,
+  WorkflowTaskStatus,
+  WorkflowStoredExecutionSpec,
+  WorkflowSubjectType,
+  type WorkflowTaskMessage,
+  type WorkflowTriggerBindingFilter,
+} from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
+import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
+import {
+  getWorkflowExecutionBoundaryDecision,
+  normalizeWorkflowExecutionSpec,
+  transitionRun,
+  transitionTask,
+} from "@chatai/workflow-engine";
+import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-metrics.js";
+import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
+import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
+import { formatWorkflowMetricDate } from "./workflow-date.js";
+import {
+  WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
+  WORKFLOW_RUNTIME_BATCH_LIMIT,
+} from "./runtime-value-limits.js";
+import {
+  decodeWorkflowSubjectType,
+  decodeWorkflowType,
+  encodeWorkflowSubjectType,
+  encodeWorkflowType,
+} from "./persistence-codecs.js";
+import type {
+  DatabaseId,
+  WorkflowDatabase,
+  WorkflowAiCollectStateTable,
+  WorkflowEventSubscriptionTable,
+  WorkflowInferenceJobTable,
+  WorkflowRunTable,
+  WorkflowTaskTable,
+  WorkflowTaskTransitionTable,
+} from "./db.js";
+import type {
+  WorkflowCapabilityExecutionFailureInput,
+  WorkflowAiCollectStateRecord,
+  WorkflowBeginEventWaitInput,
+  WorkflowBeginFixedWaitInput,
+  WorkflowCommitNodeResultInput,
+  WorkflowCreateRunInput,
+  WorkflowEventSubscriptionRecord,
+  WorkflowInferenceJobRecord,
+  WorkflowInferenceRepository,
+  WorkflowOutboxRecord,
+  WorkflowNodeMetricRecord,
+  WorkflowNodeExecutionRecord,
+  WorkflowRunRecord,
+  WorkflowRevisionCleanupRecord,
+  WorkflowRuntimeControlReader,
+  WorkflowRuntimeRepository,
+  WorkflowRuntimeSnapshotKey,
+  WorkflowRuntimeSnapshotReadResult,
+  WorkflowRuntimeSnapshotRecord,
+  WorkflowTaskRecord,
+  WorkflowTriggerBindingReader,
+  WorkflowTriggerBindingRecord,
+} from "./types.js";
+
+const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
+const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
+const CAPACITY_GUARD_TABLE = "xy_wap_embed_workflow_capacity_guard" as const;
+const CAPACITY_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_capacity_daily_metric" as const;
+const WORKFLOW_DAILY_METRIC_TABLE = "xy_wap_embed_workflow_daily_metric" as const;
+const WORKFLOW_METRIC_TABLE = "xy_wap_embed_workflow_metric" as const;
+const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
+const TASK_TRANSITION_TABLE = "xy_wap_embed_workflow_task_transition" as const;
+const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
+const INFERENCE_JOB_TABLE = "xy_wap_embed_workflow_inference_job" as const;
+const AI_COLLECT_STATE_TABLE = "xy_wap_embed_workflow_ai_collect_state" as const;
+const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
+const INBOX_TABLE = "xy_wap_embed_workflow_inbox" as const;
+const EVENT_SUBSCRIPTION_TABLE = "xy_wap_embed_workflow_event_subscription" as const;
+const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
+const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
+const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as const;
+const NODE_METRIC_TABLE = "xy_wap_embed_workflow_node_metric" as const;
+const REVISION_CLEANUP_TABLE = "xy_wap_embed_workflow_revision_cleanup" as const;
+const RUN_STATUS_RECORDS_INDEX = "idx_workflow_run_status_records" as const;
+const ACTIVE_RUN_STATUSES = WORKFLOW_ACTIVE_RUN_STATUSES;
+const ACTIVE_TASK_STATUSES = [
+  "pending",
+  "suspended",
+  "waiting_external",
+  "leased",
+  "dispatched",
+  "running",
+] as const;
+// Run lifecycle invariant: active statuses keep completed_at null, while terminal statuses set it.
+// Any new Run status or status update path must maintain both fields together.
+const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
+const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
+type RuntimeTransaction = Transaction<WorkflowDatabase>;
+type RuntimeDbExecutor = Kysely<WorkflowDatabase> | RuntimeTransaction;
+
+export class MysqlWorkflowRuntimeRepository implements
+  WorkflowRuntimeControlReader,
+  WorkflowRuntimeRepository,
+  WorkflowTriggerBindingReader {
+  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+
+  async deactivateWorkflowForEntitlementLoss(
+    input: Parameters<WorkflowRuntimeControlReader["deactivateWorkflowForEntitlementLoss"]>[0],
+  ) {
+    const result = await this.db.updateTable("xy_wap_embed_workflow_definition").set({
+      op_sub_uid: input.opSubUserId,
+      runtime_status: "inactive",
+      status_reason: "entitlement_revoked",
+    }).where("uid", "=", input.uid)
+      .where("id", "=", input.workflowId)
+      .where("workflow_type", "=", encodeWorkflowType(input.workflowType))
+      .where("biz_status", "=", 1)
+      .where("runtime_status", "in", ["active", "paused"])
+      .executeTakeFirst();
+    return { affectedDefinitions: Number(result.numUpdatedRows) };
+  }
+
+  async findDefinition(uid: number, workflowId: string) {
+    const row = await this.db.selectFrom("xy_wap_embed_workflow_definition")
+      .select(["biz_status", "published_revision", "runtime_status", "status_reason", "workflow_type"])
+      .where("uid", "=", uid)
+      .where("id", "=", workflowId)
+      .executeTakeFirst();
+    return row ? {
+      bizStatus: row.biz_status === 1 ? 1 as const : 0 as const,
+      publishedRevision: row.published_revision,
+      runtimeStatus: parseRuntimeStatus(row.runtime_status),
+      statusReason: parseStatusReason(row.status_reason),
+      workflowType: decodeWorkflowType(row.workflow_type),
+    } : null;
+  }
+
+  async findRevision(uid: number, workflowId: string, revision: number) {
+    const row = await this.db.selectFrom(REVISION_TABLE)
+      .select(["execution_spec_json", "revision", "subject_type", "workflow_type"])
+      .where("uid", "=", uid)
+      .where("workflow_id", "=", workflowId)
+      .where("revision", "=", revision)
+      .executeTakeFirst();
+    return row ? {
+      executionSpec: normalizeWorkflowExecutionSpec(
+        parseJson(row.execution_spec_json) as WorkflowStoredExecutionSpec,
+      ),
+      revision: row.revision,
+      subjectType: decodeWorkflowSubjectType(row.subject_type),
+      workflowType: decodeWorkflowType(row.workflow_type),
+    } : null;
+  }
+
+  async findRuntimeSnapshots(
+    uid: number,
+    keys: readonly WorkflowRuntimeSnapshotKey[],
+  ): Promise<WorkflowRuntimeSnapshotReadResult> {
+    const uniqueKeys = [...new Map(keys.map(key => [
+      runtimeSnapshotKey(key.workflowId, key.revision),
+      key,
+    ])).values()].sort(compareRuntimeSnapshotKeys);
+    const invalidKeys: WorkflowRuntimeSnapshotKey[] = [];
+    const snapshots: WorkflowRuntimeSnapshotRecord[] = [];
+    for (const chunk of chunksOf(uniqueKeys, WORKFLOW_RUNTIME_BATCH_LIMIT)) {
+      const rows = await this.db
+        .selectFrom("xy_wap_embed_workflow_definition as definition")
+        .innerJoin(`${REVISION_TABLE} as revision`, join => join
+          .onRef("revision.uid", "=", "definition.uid")
+          .onRef("revision.workflow_id", "=", "definition.id"))
+        .select([
+          "definition.biz_status as definition_biz_status",
+          "definition.id as workflow_id",
+          "definition.published_revision as definition_published_revision",
+          "definition.runtime_status as definition_runtime_status",
+          "definition.status_reason as definition_status_reason",
+          "definition.workflow_type as definition_workflow_type",
+          "revision.execution_spec_json",
+          "revision.revision",
+          "revision.subject_type",
+          "revision.workflow_type as revision_workflow_type",
+        ])
+        .where("definition.uid", "=", uid)
+        .where(sql<boolean>`(definition.id, revision.revision) in (${sql.join(
+          chunk.map(key => sql`(${key.workflowId}, ${key.revision})`),
+        )})`)
+        .execute();
+      for (const row of rows) {
+        const key = {
+          revision: row.revision,
+          workflowId: normalizeId(row.workflow_id),
+        };
+        try {
+          snapshots.push({
+            definition: {
+              bizStatus: row.definition_biz_status === 1 ? 1 as const : 0 as const,
+              publishedRevision: row.definition_published_revision,
+              runtimeStatus: parseRuntimeStatus(row.definition_runtime_status),
+              statusReason: parseStatusReason(row.definition_status_reason),
+              workflowType: decodeWorkflowType(row.definition_workflow_type),
+            },
+            revision: {
+              executionSpec: normalizeWorkflowExecutionSpec(
+                parseJson(row.execution_spec_json) as WorkflowStoredExecutionSpec,
+              ),
+              revision: row.revision,
+              subjectType: decodeWorkflowSubjectType(row.subject_type),
+              workflowType: decodeWorkflowType(row.revision_workflow_type),
+            },
+            uid,
+            workflowId: key.workflowId,
+          });
+        } catch {
+          invalidKeys.push(key);
+        }
+      }
+    }
+    return { invalidKeys, snapshots };
+  }
+
+  async listActiveTriggerBindings(
+    uid: number,
+    eventType: WorkflowEntryEventType,
+  ) {
+    const rows = await this.db.selectFrom(`${TRIGGER_BINDING_TABLE} as binding`)
+      .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "binding.uid")
+        .onRef("definition.id", "=", "binding.workflow_id")
+        .onRef("definition.published_revision", "=", "binding.revision"))
+      .select([
+        "binding.create_time",
+        "binding.event_type",
+        "binding.filter_spec_json",
+        "binding.id",
+        "binding.revision",
+        "binding.status",
+        "binding.subject_type",
+        "binding.uid",
+        "binding.update_time",
+        "binding.workflow_id",
+      ])
+      .where("binding.uid", "=", uid)
+      .where("binding.event_type", "=", eventType)
+      .where("binding.status", "=", 1)
+      .where("definition.biz_status", "=", 1)
+      .where("definition.runtime_status", "=", "active")
+      .execute();
+    return rows.map(mapTriggerBinding);
+  }
+
+  async createRunWithInitialTask(input: WorkflowCreateRunInput) {
+    assertNonNegativeSafeInteger(input.activeRunLimit, "Workflow active Run limit");
+    try {
+      return await this.db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
+        const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+          .select(["biz_status", "published_revision", "runtime_status", "workflow_type"])
+          .where("uid", "=", input.uid).where("id", "=", input.workflowId)
+          .forShare().executeTakeFirst();
+        const boundaryDecision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (boundaryDecision !== "execute") {
+          return { action: boundaryDecision, kind: "workflow-unavailable" as const };
+        }
+        if (definition?.published_revision !== input.revision) {
+          return { kind: "conflict" as const };
+        }
+        if (decodeWorkflowType(definition.workflow_type) !== input.workflowType) {
+          return { kind: "conflict" as const };
+        }
+
+        const existing = await findRunAndInitialTaskByEntryEvent(
+          trx,
+          input.uid,
+          input.workflowId,
+          input.entryEventId,
+        );
+        if (existing) {
+          return { deduplicated: true, kind: "success" as const, ...existing };
+        }
+
+        const admittedAt = await getDatabaseNow(trx);
+        await trx.insertInto(ENTRY_GUARD_TABLE).values({
+          latest_run_id: null,
+          subject_id: input.subjectId,
+          subject_type: encodeWorkflowSubjectType(input.subjectType),
+          total_entries: 0,
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }).onDuplicateKeyUpdate({
+          total_entries: sql<number>`total_entries`,
+        }).executeTakeFirstOrThrow();
+        const guard = await trx.selectFrom(ENTRY_GUARD_TABLE)
+          .select(["id", "latest_run_id", "total_entries"])
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", input.workflowId)
+          .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+          .where("subject_id", "=", input.subjectId)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+        const concurrentDuplicate = await findRunAndInitialTaskByEntryEvent(
+          trx,
+          input.uid,
+          input.workflowId,
+          input.entryEventId,
+          { lockForShare: true },
+        );
+        if (concurrentDuplicate) {
+          return { deduplicated: true, kind: "success" as const, ...concurrentDuplicate };
+        }
+        let latestRun: { id: DatabaseId; status: string } | undefined;
+        if (guard.latest_run_id !== null) {
+          latestRun = await trx.selectFrom(RUN_TABLE)
+              .select(["id", "status"])
+              .where("id", "=", guard.latest_run_id)
+              .where("uid", "=", input.uid)
+              .where("workflow_id", "=", input.workflowId)
+              .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+              .where("subject_id", "=", input.subjectId)
+              .forShare()
+              .executeTakeFirst();
+        } else if (guard.total_entries > 0) {
+          latestRun = await trx.selectFrom(RUN_TABLE)
+            .select(["id", "status"])
+            .where("uid", "=", input.uid)
+            .where("workflow_id", "=", input.workflowId)
+            .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+            .where("subject_id", "=", input.subjectId)
+            .where("status", "in", ACTIVE_RUN_STATUSES)
+            .orderBy("id", "desc")
+            .limit(1)
+            .forShare()
+            .executeTakeFirst();
+        }
+        if (latestRun && ACTIVE_RUN_STATUSES.includes(
+          latestRun.status as typeof ACTIVE_RUN_STATUSES[number],
+        )) {
+          if (guard.latest_run_id === null) {
+            await trx.updateTable(ENTRY_GUARD_TABLE).set({
+              latest_run_id: latestRun.id,
+            }).where("id", "=", guard.id)
+              .where("latest_run_id", "is", null)
+              .executeTakeFirstOrThrow();
+          }
+          return { kind: "active-run-rejected" as const };
+        }
+        if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
+          return { kind: "entry-policy-rejected" as const };
+        }
+        await trx.insertInto(CAPACITY_GUARD_TABLE).values({
+          active_run_count: 0,
+          uid: input.uid,
+        }).onDuplicateKeyUpdate({
+          uid: sql<number>`uid`,
+        }).executeTakeFirstOrThrow();
+        const capacityUpdate = await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+          active_run_count: sql<number>`active_run_count + 1`,
+        })
+          .where("uid", "=", input.uid)
+          .where("active_run_count", "<", input.activeRunLimit)
+          .executeTakeFirstOrThrow();
+        if (Number(capacityUpdate.numUpdatedRows) !== 1) {
+          return { kind: "capacity-rejected" as const };
+        }
+
+        const runInsert = await trx.insertInto(RUN_TABLE).values({
+          completed_at: null,
+          context_json: stringifyJson(input.context),
+          current_node_id: input.initialNodeId,
+          entry_event_id: input.entryEventId,
+          lock_version: 1,
+          create_time: admittedAt,
+          next_execute_at: admittedAt,
+          revision: input.revision,
+          sequence: 1,
+          shard_id: input.shardId,
+          status: "queued",
+          subject_id: input.subjectId,
+          subject_type: encodeWorkflowSubjectType(input.subjectType),
+          terminal_reason: null,
+          uid: input.uid,
+          update_time: admittedAt,
+          workflow_id: input.workflowId,
+        }).executeTakeFirstOrThrow();
+        const runId = normalizeId(runInsert.insertId);
+        const task = await insertTask(trx, {
+          createdAt: admittedAt,
+          dueAt: admittedAt,
+          nodeId: input.initialNodeId,
+          nodeKind: input.initialNodeKind,
+          runId,
+          sequence: 1,
+          shardId: input.shardId,
+          status: "dispatched",
+          taskType: "execute",
+          uid: input.uid,
+          workflowId: input.workflowId,
+          revision: input.revision,
+        });
+        await insertTaskOutbox(trx, task, admittedAt);
+        await trx.updateTable(ENTRY_GUARD_TABLE).set({
+          latest_run_id: runId,
+          total_entries: guard.total_entries + 1,
+        }).where("id", "=", guard.id).executeTakeFirstOrThrow();
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${runId}:entered`,
+          runId,
+          runRevision: input.revision,
+          runShardId: input.shardId,
+          uid: input.uid,
+          workflowId: input.workflowId,
+        }, createNodeMetricDeltas({
+          kind: "entered",
+          nodeId: input.initialNodeId,
+          nodeKind: input.initialNodeKind,
+        }));
+        await recordWorkflowRunMetrics(trx, [{
+          kind: "entered",
+          occurredAt: admittedAt,
+          uid: input.uid,
+          workflowId: input.workflowId,
+        }]);
+        return {
+          deduplicated: false,
+          kind: "success" as const,
+          run: createRunRecord(runId, input, admittedAt),
+          task,
+        };
+      });
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      const run = await this.findRunByEntryEvent(input.uid, input.workflowId, input.entryEventId);
+      if (!run) throw error;
+      const task = await this.findInitialTask(input.uid, run.id);
+      if (!task) throw new Error("Deduplicated workflow run has no initial task");
+      return { deduplicated: true, kind: "success" as const, run, task };
+    }
+  }
+
+  async hasProcessedInboxMessage(input: { consumer: string; messageId: string }) {
+    const row = await this.db.selectFrom(INBOX_TABLE).select("id")
+      .where("consumer", "=", input.consumer)
+      .where("message_id", "=", input.messageId)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  async recordProcessedInboxMessage(input: {
+    capacityRejectedCount: number;
+    consumer: string;
+    expiresAt: Date;
+    messageId: string;
+    processedAt: Date;
+    uid: number;
+  }) {
+    assertNonNegativeSafeInteger(
+      input.capacityRejectedCount,
+      "Workflow capacity rejected count",
+    );
+    return this.db.transaction().execute(async (trx) => {
+      const insertResult = await trx.insertInto(INBOX_TABLE).values({
+        consumer: input.consumer,
+        expires_at: input.expiresAt,
+        message_id: input.messageId,
+        processed_at: input.processedAt,
+        uid: input.uid,
+      }).onDuplicateKeyUpdate({
+        message_id: sql<string>`message_id`,
+      }).executeTakeFirst();
+      if ((insertResult.insertId ?? 0n) === 0n) return false;
+      if (input.capacityRejectedCount > 0) {
+        await trx.insertInto(CAPACITY_DAILY_METRIC_TABLE).values({
+          capacity_rejected_count: input.capacityRejectedCount,
+          metric_date: formatWorkflowMetricDate(input.processedAt),
+          uid: input.uid,
+        }).onDuplicateKeyUpdate({
+          capacity_rejected_count: sql<number>`capacity_rejected_count + ${input.capacityRejectedCount}`,
+        }).executeTakeFirstOrThrow();
+      }
+      return true;
+    });
+  }
+
+  beginEventWait(input: WorkflowBeginEventWaitInput) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.runId)
+        .forUpdate()
+        .executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!runRow || !taskRow || normalizeId(taskRow.run_id) !== input.runId) {
+        return { kind: "not-found" as const };
+      }
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (run.lockVersion !== input.expectedRunLockVersion
+        || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
+        || task.nodeKind !== "wait-event"
+        || input.expiresAt <= input.effectiveFrom) return { kind: "conflict" as const };
+
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", run.workflowId)
+        .forShare()
+        .executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (boundaryDecision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+
+      const inserted = await trx.insertInto(EVENT_SUBSCRIPTION_TABLE).values({
+        create_time: input.now,
+        effective_from: input.effectiveFrom,
+        event_type: input.eventType,
+        expires_at: input.expiresAt,
+        node_id: task.nodeId,
+        revision: task.revision,
+        resume_at: null,
+        run_id: run.id,
+        seat_id: input.seatId,
+        status: "waiting",
+        subject_id: run.subjectId,
+        subject_type: encodeWorkflowSubjectType(run.subjectType),
+        task_id: task.id,
+        trigger_event_id: null,
+        trigger_occurred_at: null,
+        trigger_projection_json: null,
+        uid: input.uid,
+        update_time: input.now,
+        workflow_id: run.workflowId,
+      }).executeTakeFirstOrThrow();
+      await trx.insertInto(INBOX_TABLE).values({
+        consumer: input.inbox.consumer,
+        expires_at: input.inbox.expiresAt,
+        message_id: input.inbox.messageId,
+        processed_at: input.now,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.expiresAt),
+        due_at: input.expiresAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending"),
+        task_type: "wait-event",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion)
+        .where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.expiresAt,
+        status: transitionRun(run.status, "waiting"),
+        update_time: input.now,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion)
+        .where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+
+      const subscription: WorkflowEventSubscriptionRecord = {
+        createdAt: input.now,
+        effectiveFrom: input.effectiveFrom,
+        eventType: input.eventType,
+        expiresAt: input.expiresAt,
+        id: normalizeId(inserted.insertId),
+        nodeId: task.nodeId,
+        revision: task.revision,
+        resumeAt: null,
+        runId: run.id,
+        seatId: input.seatId,
+        status: "waiting",
+        subjectId: run.subjectId,
+        subjectType: run.subjectType,
+        taskId: task.id,
+        triggerEventId: null,
+        triggerOccurredAt: null,
+        triggerProjection: null,
+        uid: input.uid,
+        updatedAt: input.now,
+        workflowId: run.workflowId,
+      };
+      return {
+        kind: "success" as const,
+        run: {
+          ...run,
+          lockVersion: run.lockVersion + 1,
+          nextExecuteAt: input.expiresAt,
+          status: "waiting" as const,
+        },
+        subscription,
+        task: {
+          ...task,
+          dueAt: input.expiresAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: boundaryDecision === "defer" ? "suspended" as const : "pending" as const,
+          taskType: "wait-event",
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  beginFixedWait(input: WorkflowBeginFixedWaitInput) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow || normalizeId(taskRow.run_id) !== input.runId) {
+        return { kind: "not-found" as const };
+      }
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (run.lockVersion !== input.expectedRunLockVersion
+        || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
+        || task.nodeKind !== "wait"
+        || task.taskType !== "execute"
+        || input.dueAt <= input.now) return { kind: "conflict" as const };
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      await trx.insertInto(INBOX_TABLE).values({
+        consumer: input.inbox.consumer,
+        expires_at: input.inbox.expiresAt,
+        message_id: input.inbox.messageId,
+        processed_at: input.now,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.dueAt),
+        due_at: input.dueAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: decision === "defer" ? "suspended" : transitionTask(task.status, "pending"),
+        task_type: "wait",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion)
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.dueAt,
+        status: transitionRun(run.status, "waiting"),
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion)
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: {
+          ...run,
+          lockVersion: run.lockVersion + 1,
+          nextExecuteAt: input.dueAt,
+          status: "waiting" as const,
+        },
+        task: {
+          ...task,
+          dueAt: input.dueAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: decision === "defer" ? "suspended" as const : "pending" as const,
+          taskType: "wait",
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async listMatchingEventSubscriptions(
+    uid: number,
+    subjectType: WorkflowSubjectType,
+    eventType: WorkflowEntryEventType,
+    subjectId: string,
+    seatId: number | null,
+    eventOccurredAt: Date,
+  ) {
+    let query = this.db.selectFrom(`${EVENT_SUBSCRIPTION_TABLE} as subscription`)
+      .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "subscription.uid")
+        .onRef("definition.id", "=", "subscription.workflow_id"))
+      .selectAll("subscription")
+      .where("subscription.uid", "=", uid)
+      .where("subscription.subject_type", "=", encodeWorkflowSubjectType(subjectType))
+      .where("subscription.event_type", "=", eventType)
+      .where("subscription.subject_id", "=", subjectId)
+      .where("subscription.status", "=", "waiting")
+      .where("subscription.effective_from", "<=", eventOccurredAt)
+      .where("subscription.expires_at", ">", eventOccurredAt)
+      .where("definition.biz_status", "=", 1)
+      .where("definition.runtime_status", "in", ["active", "paused"])
+      .orderBy("subscription.id", "asc");
+    query = seatId === null
+      ? query.where("subscription.seat_id", "is", null)
+      : query.where(eb => eb.or([
+          eb("subscription.seat_id", "is", null),
+          eb("subscription.seat_id", "=", seatId),
+        ]));
+    const rows = await query.execute();
+    return rows.map(mapEventSubscription);
+  }
+
+  async findEventSubscriptionByTask(uid: number, taskId: string) {
+    const row = await this.db.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+    return row ? mapEventSubscription(row) : null;
+  }
+
+  triggerEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["triggerEventSubscription"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const candidateRow = await trx.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.subscriptionId)
+        .executeTakeFirst();
+      if (!candidateRow) return { kind: "not-found" as const };
+      const candidate = mapEventSubscription(candidateRow);
+
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", candidate.runId)
+        .forUpdate()
+        .executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", candidate.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!runRow || !taskRow || normalizeId(taskRow.run_id) !== candidate.runId) {
+        return { kind: "not-found" as const };
+      }
+      const subscriptionRow = await trx.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.subscriptionId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!subscriptionRow) return { kind: "not-found" as const };
+      const subscription = mapEventSubscription(subscriptionRow);
+      if (subscription.runId !== candidate.runId || subscription.taskId !== candidate.taskId) {
+        return { kind: "conflict" as const };
+      }
+      if (subscription.status !== "waiting") {
+        return { kind: "conflict" as const };
+      }
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", subscription.workflowId)
+        .forShare()
+        .executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (boundaryDecision === "cancel") {
+        await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
+          status: "cancelled",
+          update_time: input.recordedAt,
+        })
+          .where("id", "=", subscription.id)
+          .where("status", "=", "waiting")
+          .executeTakeFirstOrThrow();
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      if ((task.status !== "pending"
+          && task.status !== "suspended"
+          && task.status !== "leased"
+          && task.status !== "dispatched"
+          && task.status !== "running")
+        || (run.status !== "waiting" && run.status !== "running")
+        || run.currentNodeId !== subscription.nodeId
+        || task.nodeId !== subscription.nodeId
+        || task.nodeKind !== "wait-event"
+        || task.taskType !== "wait-event") {
+        return { kind: "conflict" as const };
+      }
+
+      if (task.dueAt.getTime() !== subscription.expiresAt.getTime()
+        || input.eventOccurredAt.getTime() < subscription.effectiveFrom.getTime()
+        || input.eventOccurredAt.getTime() >= subscription.expiresAt.getTime()
+        || input.resumeAt.getTime() < input.recordedAt.getTime()) {
+        return { kind: "conflict" as const };
+      }
+
+      await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
+        resume_at: input.resumeAt,
+        status: "triggered",
+        trigger_event_id: input.eventId,
+        trigger_occurred_at: input.eventOccurredAt,
+        trigger_projection_json: stringifyJson(input.projection),
+        update_time: input.recordedAt,
+      }).where("id", "=", subscription.id)
+        .where("status", "=", "waiting")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.resumeAt),
+        due_at: input.resumeAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: boundaryDecision === "defer" ? "suspended" : "pending",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion)
+        .where("status", "in", ["pending", "suspended", "leased", "dispatched", "running"])
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.resumeAt,
+        status: "waiting",
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion)
+        .where("status", "in", ["waiting", "running"])
+        .executeTakeFirstOrThrow();
+
+      return {
+        kind: "success" as const,
+        run: {
+          ...run,
+          lockVersion: run.lockVersion + 1,
+          nextExecuteAt: input.resumeAt,
+          status: "waiting" as const,
+        },
+        subscription: {
+          ...subscription,
+          resumeAt: input.resumeAt,
+          status: "triggered" as const,
+          triggerEventId: input.eventId,
+          triggerOccurredAt: input.eventOccurredAt,
+          triggerProjection: structuredClone(input.projection),
+          updatedAt: input.recordedAt,
+        },
+        task: {
+          ...task,
+          dueAt: input.resumeAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: boundaryDecision === "defer" ? "suspended" as const : "pending" as const,
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  timeoutEventSubscription(
+    input: Parameters<WorkflowRuntimeRepository["timeoutEventSubscription"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.subscriptionId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!row) return { kind: "not-found" as const };
+      const subscription = mapEventSubscription(row);
+      if (subscription.status === "timed_out") return { kind: "already-processed" as const };
+      if (subscription.status !== "waiting") return { kind: "conflict" as const };
+      await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
+        status: "timed_out",
+        update_time: input.timedOutAt,
+      })
+        .where("id", "=", subscription.id)
+        .where("status", "=", "waiting")
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        subscription: {
+          ...subscription,
+          status: "timed_out" as const,
+          updatedAt: input.timedOutAt,
+        },
+      };
+    });
+  }
+
+  async claimTask(input: Parameters<WorkflowRuntimeRepository["claimTask"]>[0]) {
+    return this.db.transaction().execute(async (trx) => {
+      const candidateRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .executeTakeFirst();
+      if (!candidateRow) return { kind: "not-found" as const };
+      const candidate = mapTask(candidateRow);
+      if ((candidate.status !== "pending" && candidate.status !== "dispatched")
+        || candidate.taskVersion !== input.expectedTaskVersion) return { kind: "conflict" as const };
+
+      const runRow = await trx.selectFrom(RUN_TABLE)
+        .select(["current_node_id", "revision", "sequence", "shard_id", "status", "workflow_id"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", candidate.runId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!runRow || !["queued", "running", "waiting"].includes(runRow.status)) {
+        return { kind: "conflict" as const };
+      }
+
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!taskRow) return { kind: "not-found" as const };
+      const task = mapTask(taskRow);
+      if ((task.status !== "pending" && task.status !== "dispatched")
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.runId !== candidate.runId
+        || task.sequence !== runRow.sequence
+        || task.revision !== runRow.revision
+        || task.nodeId !== runRow.current_node_id
+        || task.workflowId !== normalizeId(runRow.workflow_id)
+        || task.shardId !== runRow.shard_id) return { kind: "conflict" as const };
+
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", task.workflowId)
+        .forShare().executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+
+      if (boundaryDecision !== "execute") {
+        await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: boundaryDecision === "defer" ? "suspended" : "cancelled",
+          task_version: task.taskVersion + 1,
+        }).where("uid", "=", input.uid).where("id", "=", input.taskId)
+          .where("task_version", "=", input.expectedTaskVersion).executeTakeFirstOrThrow();
+        return { action: boundaryDecision, kind: "workflow-unavailable" as const };
+      }
+
+      await trx.updateTable(TASK_TABLE).set({
+        attempt: task.attempt + 1,
+        last_error_code: null,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "running",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .where("task_version", "=", input.expectedTaskVersion).executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        next_execute_at: null,
+        status: "running",
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.runId)
+        .where("status", "in", ["queued", "waiting"])
+        .executeTakeFirst();
+      return {
+        kind: "success" as const,
+        task: {
+          ...task,
+          attempt: task.attempt + 1,
+          lastErrorCode: null,
+          leaseExpiresAt: input.leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+          status: "running" as const,
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
+    const dueAt = floorToMinute(input.dueAt);
+    return this.db.transaction().execute(async (trx) => {
+      const candidateRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .executeTakeFirst();
+      if (!candidateRow) return { kind: "not-found" as const };
+      const candidate = mapTask(candidateRow);
+      if ((candidate.status !== "pending" && candidate.status !== "dispatched" && candidate.status !== "leased")
+        || candidate.taskVersion !== input.expectedTaskVersion) return { kind: "conflict" as const };
+
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("id", "=", candidate.runId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!runRow || (runRow.status !== "queued" && runRow.status !== "running" && runRow.status !== "waiting")) {
+        return { kind: "conflict" as const };
+      }
+      const run = mapRun(runRow);
+
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!taskRow) return { kind: "not-found" as const };
+      const task = mapTask(taskRow);
+      if ((task.status !== "pending" && task.status !== "dispatched" && task.status !== "leased")
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.runId !== candidate.runId
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
+        || task.workflowId !== run.workflowId
+        || task.shardId !== run.shardId) return { kind: "conflict" as const };
+
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", task.workflowId)
+        .forShare()
+        .executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (boundaryDecision === "cancel") return { kind: "conflict" as const };
+
+      const nextRun = {
+        ...run,
+        lockVersion: run.lockVersion + 1,
+        nextExecuteAt: input.dueAt,
+        status: run.status === "waiting" ? "waiting" as const : transitionRun(run.status, "waiting"),
+      };
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: dueAt,
+        due_at: input.dueAt,
+        last_error_code: input.reasonCode,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: boundaryDecision === "defer" ? "suspended" : "pending",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", input.taskId)
+        .where("task_version", "=", input.expectedTaskVersion)
+        .where("status", "in", ["pending", "leased", "dispatched"])
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: nextRun.lockVersion,
+        next_execute_at: nextRun.nextExecuteAt,
+        status: nextRun.status,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion)
+        .where("status", "in", ACTIVE_RUN_STATUSES)
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: nextRun,
+        task: {
+          ...task,
+          dueAt: input.dueAt,
+          lastErrorCode: input.reasonCode,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: boundaryDecision === "defer" ? "suspended" as const : "pending" as const,
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) {
+      return { cancelled: 0, dispatched: 0, suspended: 0 };
+    }
+    return this.db.transaction().execute(async (trx) => {
+      // MySQL otherwise prefers the shorter reconcile index and filesorts the due queue.
+      const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
+        .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+        .selectAll("task")
+        .where("task.status", "=", "pending")
+        .where("task.bucket_time", "<=", floorToMinute(input.now))
+        .where("task.due_at", "<=", input.now)
+        .orderBy("task.bucket_time", "asc")
+        .orderBy("task.due_at", "asc")
+        .orderBy("task.id", "asc")
+        .limit(limit)
+        .forUpdate("task")
+        .skipLocked()
+        .execute();
+      const result = { cancelled: 0, dispatched: 0, suspended: 0 };
+      if (rows.length === 0) return result;
+      const tasks = rows.map(mapTask);
+      const definitionByKey = await loadDefinitionsForShare(trx, tasks.map(task => ({
+        uid: task.uid,
+        workflowId: task.workflowId,
+      })));
+      const cancelled: WorkflowTaskRecord[] = [];
+      const dispatched: WorkflowTaskRecord[] = [];
+      const suspended: WorkflowTaskRecord[] = [];
+      for (const task of tasks) {
+        const definition = definitionByKey.get(definitionKey(task.uid, task.workflowId));
+        const decision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (decision === "defer") suspended.push(task);
+        else if (decision === "cancel") cancelled.push(task);
+        else dispatched.push(task);
+      }
+      if (suspended.length > 0) {
+        await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "suspended",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", suspended.map(task => task.id))
+          .where("status", "=", "pending")
+          .executeTakeFirstOrThrow();
+        result.suspended = suspended.length;
+      }
+      if (cancelled.length > 0) {
+        await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "cancelled",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", cancelled.map(task => task.id))
+          .where("status", "=", "pending")
+          .executeTakeFirstOrThrow();
+        const cancelledRunIds = [...new Set(cancelled.map(task => task.runId))];
+        await cancelEventSubscriptions(trx, cancelledRunIds);
+        await cancelInferenceJobs(trx, cancelledRunIds);
+        result.cancelled = cancelled.length;
+      }
+      if (dispatched.length > 0) {
+        transitionTask(transitionTask("pending", "leased"), "dispatched");
+        await trx.updateTable(TASK_TABLE).set({
+          status: "dispatched",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", dispatched.map(task => task.id))
+          .where("status", "=", "pending")
+          .executeTakeFirstOrThrow();
+        await insertTaskOutboxBatch(trx, dispatched.map(task => ({
+          ...task,
+          status: "dispatched" as const,
+          taskVersion: task.taskVersion + 1,
+        })), input.now);
+        result.dispatched = dispatched.length;
+      }
+      return result;
+    });
+  }
+
+  async processTaskStatusTransitionBatch(
+    input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) {
+      return { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    const claim = await claimMysqlWorkflowTaskTransition(this.db, input);
+    if (!claim) {
+      return { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    if (claim.kind === "dead") {
+      return { claimed: true, dead: 1, failed: 0, hasMore: false, transitioned: 0 };
+    }
+    const { request } = claim;
+
+    try {
+      const result = await this.db.transaction().execute(async (trx) => {
+        const sourceStatus = request.targetStatus === "suspended" ? "pending" : "suspended";
+        const rows = await trx.selectFrom(TASK_TABLE).select("id")
+          .where("uid", "=", request.uid)
+          .where("workflow_id", "=", request.workflowId)
+          .where("status", "=", sourceStatus)
+          .orderBy("id", "asc")
+          .limit(limit)
+          .forUpdate()
+          .skipLocked()
+          .execute();
+        const definitionByKey = await loadDefinitionsForShare(trx, [{
+          uid: request.uid,
+          workflowId: request.workflowId,
+        }]);
+        const definition = definitionByKey.get(definitionKey(request.uid, request.workflowId));
+        const decision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        const targetStillCurrent = request.targetStatus === "suspended"
+          ? decision === "defer"
+          : decision === "execute";
+        if (!targetStillCurrent) {
+          return { hasMore: false, transitioned: 0 };
+        }
+        let transitioned = 0;
+        if (rows.length > 0) {
+          const update = await trx.updateTable(TASK_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: request.targetStatus,
+            task_version: sql<number>`task_version + 1`,
+          }).where("id", "in", rows.map(row => row.id))
+            .where("status", "=", sourceStatus)
+            .executeTakeFirstOrThrow();
+          transitioned = Number(update.numUpdatedRows);
+        }
+        // SKIP LOCKED can return a short batch while locked source rows remain.
+        const hasMore = rows.length === limit
+          || await trx.selectFrom(TASK_TABLE).select("id")
+            .where("uid", "=", request.uid)
+            .where("workflow_id", "=", request.workflowId)
+            .where("status", "=", sourceStatus)
+            .limit(1)
+            .executeTakeFirst() !== undefined;
+        return {
+          hasMore,
+          transitioned,
+        };
+      });
+
+      if (result.hasMore) {
+        await this.db.updateTable(TASK_TRANSITION_TABLE).set({
+          attempt: 0,
+          last_error_code: null,
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.now,
+          status: "pending",
+        }).where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+      } else {
+        await this.db.deleteFrom(TASK_TRANSITION_TABLE)
+          .where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+      }
+      return { claimed: true, dead: 0, failed: 0, ...result };
+    } catch (error) {
+      const dead = request.attempt >= input.maxAttempts;
+      let failureRecorded = false;
+      try {
+        const update = await this.db.updateTable(TASK_TRANSITION_TABLE).set({
+          last_error_code: getTaskTransitionErrorCode(error),
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.nextAttemptAt,
+          status: dead ? "dead" : "pending",
+        }).where("id", "=", request.id)
+          .where("transition_version", "=", request.transitionVersion)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirst();
+        failureRecorded = Number(update.numUpdatedRows) === 1;
+      } catch {
+        // Keep the processing failure as the role-level error when compensation also fails.
+      }
+      if (!failureRecorded) throw error;
+      return {
+        claimed: true,
+        dead: dead ? 1 : 0,
+        failed: dead ? 0 : 1,
+        hasMore: false,
+        transitioned: 0,
+      };
+    }
+  }
+
+  async prepareCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["prepareCapabilityExecution"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityExecutionState(trx, input);
+      if (state.kind !== "success") return state;
+      const { run, task } = state;
+      const existingRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("run_id", "=", input.runId)
+        .where("sequence", "=", task.sequence)
+        .forUpdate()
+        .executeTakeFirst();
+      if (existingRow) {
+        const existing = mapNodeExecution(existingRow);
+        if (existing.executionKey !== input.executionKey
+          || existing.nodeId !== task.nodeId
+          || existing.nodeKind !== task.nodeKind
+          || existing.status === "completed"
+          || existing.status === "failed") return { kind: "conflict" as const };
+        await trx.updateTable(EXECUTION_TABLE).set({
+          completed_at: null,
+          error_code: null,
+          error_message: null,
+          failure_kind: null,
+          status: "running",
+        }).where("uid", "=", input.uid)
+          .where("run_id", "=", input.runId)
+          .where("sequence", "=", task.sequence)
+          .where("execution_key", "=", input.executionKey)
+          .executeTakeFirstOrThrow();
+        return {
+          execution: {
+            ...existing,
+            errorCode: null,
+            errorMessage: null,
+            failureKind: null,
+            status: "running" as const,
+          },
+          kind: "success" as const,
+        };
+      }
+      await trx.insertInto(EXECUTION_TABLE).values({
+        completed_at: null,
+        error_code: null,
+        error_message: null,
+        failure_kind: null,
+        execution_key: input.executionKey,
+        input_snapshot_json: stringifyJson(input.input),
+        node_id: task.nodeId,
+        node_kind: task.nodeKind,
+        output_json: stringifyJson({}),
+        run_id: run.id,
+        revision: task.revision,
+        sequence: task.sequence,
+        source_outlet_id: null,
+        started_at: input.now,
+        status: "running",
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      return {
+        execution: {
+          errorCode: null,
+          errorMessage: null,
+          failureKind: null,
+          executionKey: input.executionKey,
+          input: structuredClone(input.input),
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+          output: {},
+          runId: run.id,
+          revision: task.revision,
+          sequence: task.sequence,
+          sourceOutletId: null,
+          status: "running" as const,
+          uid: input.uid,
+        },
+        kind: "success" as const,
+      };
+    });
+  }
+
+  async updateCapabilityExecutionInput(
+    input: Parameters<WorkflowRuntimeRepository["updateCapabilityExecutionInput"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityExecutionState(trx, input);
+      if (state.kind !== "success") return state;
+      const executionRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("run_id", "=", input.runId)
+        .where("sequence", "=", state.task.sequence)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!executionRow) return { kind: "conflict" as const };
+      const execution = mapNodeExecution(executionRow);
+      if (execution.executionKey !== input.executionKey
+        || execution.nodeId !== state.task.nodeId
+        || execution.nodeKind !== state.task.nodeKind
+        || execution.status !== "running") return { kind: "conflict" as const };
+      const update = await trx.updateTable(EXECUTION_TABLE).set({
+        input_snapshot_json: stringifyJson(input.input),
+      }).where("uid", "=", input.uid)
+        .where("run_id", "=", input.runId)
+        .where("sequence", "=", state.task.sequence)
+        .where("execution_key", "=", input.executionKey)
+        .where("status", "=", "running")
+        .executeTakeFirst();
+      if (Number(update.numUpdatedRows) !== 1) return { kind: "conflict" as const };
+      return {
+        execution: { ...execution, input: structuredClone(input.input) },
+        kind: "success" as const,
+      };
+    });
+  }
+
+  async beginInference(input: Parameters<WorkflowRuntimeRepository["beginInference"]>[0]) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow) return { kind: "not-found" as const };
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (task.runId !== run.id) return { kind: "not-found" as const };
+      if (run.lockVersion !== input.expectedRunLockVersion || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId
+        || (task.nodeKind !== "llm" && task.nodeKind !== "ai-intent" && task.nodeKind !== "ai-collect")
+        || input.deadlineAt <= input.now) return { kind: "conflict" as const };
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      if (decision !== "execute") {
+        return { action: decision, kind: "workflow-unavailable" as const };
+      }
+      const existingRow = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("execution_key", "=", input.executionKey)
+        .forUpdate()
+        .executeTakeFirst();
+      if (existingRow) {
+        const existing = mapInferenceJob(existingRow);
+        if (existing.taskId !== task.id) return { kind: "conflict" as const };
+        await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+        await trx.updateTable(TASK_TABLE).set({
+          bucket_time: floorToMinute(existing.deadlineAt),
+          due_at: existing.deadlineAt,
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "waiting_external",
+          task_type: "inference",
+          task_version: task.taskVersion + 1,
+        }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+          .where("status", "=", "running").executeTakeFirstOrThrow();
+        await trx.updateTable(RUN_TABLE).set({
+          lock_version: run.lockVersion + 1,
+          next_execute_at: existing.deadlineAt,
+          status: transitionRun(run.status, "waiting"),
+        }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+          .where("status", "=", "running").executeTakeFirstOrThrow();
+        return {
+          created: false,
+          job: existing,
+          kind: "success" as const,
+          run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: existing.deadlineAt, status: "waiting" as const },
+          task: {
+            ...task,
+            dueAt: existing.deadlineAt,
+            leaseExpiresAt: null,
+            leaseOwner: null,
+            status: "waiting_external" as const,
+            taskType: "inference",
+            taskVersion: task.taskVersion + 1,
+          },
+        };
+      }
+      const inserted = await trx.insertInto(INFERENCE_JOB_TABLE).values({
+        attempt: 0,
+        completed_at: null,
+        contract_version: input.contractVersion,
+        deadline_at: input.deadlineAt,
+        error_code: null,
+        error_message: null,
+        execution_key: input.executionKey,
+        failure_kind: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        node_id: task.nodeId,
+        node_kind: task.nodeKind,
+        payload_json: stringifyJson(input.payload),
+        paused_at: null,
+        result_json: null,
+        run_id: run.id,
+        sequence: task.sequence,
+        started_at: null,
+        status: "pending",
+        task_id: task.id,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.deadlineAt),
+        due_at: input.deadlineAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "waiting_external",
+        task_type: "inference",
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.deadlineAt,
+        status: transitionRun(run.status, "waiting"),
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      const insertedId = inserted.insertId;
+      if (insertedId === undefined) throw new Error("Inference Job insert did not return an ID");
+      const row = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("id", "=", insertedId).executeTakeFirstOrThrow();
+      return {
+        created: true,
+        job: mapInferenceJob(row),
+        kind: "success" as const,
+        run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: input.deadlineAt, status: "waiting" as const },
+        task: {
+          ...task,
+          dueAt: input.deadlineAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: "waiting_external" as const,
+          taskType: "inference",
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async findInferenceByExecutionKey(uid: number, executionKey: string) {
+    const row = await this.db.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+      .where("uid", "=", uid).where("execution_key", "=", executionKey)
+      .executeTakeFirst();
+    return row ? mapInferenceJob(row) : null;
+  }
+
+  async initializeAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["initializeAiCollectState"]>[0],
+  ) {
+    await this.db.insertInto(AI_COLLECT_STATE_TABLE).values({
+      active_batch_cutoff_at: null,
+      active_batch_cursor_id: null,
+      active_batch_cursor_time: null,
+      active_batch_has_more: 0,
+      active_inference_key: null,
+      biz_id: input.bizId,
+      collected_json: stringifyJson({}),
+      conversation_id: null,
+      directive_attempt: 0,
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_next_attempt_at: input.now,
+      directive_status: "inactive",
+      disable_reason: null,
+      expires_at: input.expiresAt,
+      initial_input_processed: 0,
+      last_message_id: input.initialMessageCursor.id,
+      last_message_time: input.initialMessageCursor.timestamp,
+      next_batch_sequence: 1,
+      observed_round: 0,
+      opening_message_sent: 0,
+      pending_cutoff_at: null,
+      quiet_until: null,
+      run_id: input.runId,
+      seat_id: input.seatId,
+      task_id: input.taskId,
+      terminal_outlet: null,
+      third_external_user_id: input.thirdExternalUserId,
+      uid: input.uid,
+      workflow_id: input.workflowId,
+    }).onDuplicateKeyUpdate({ task_id: sql`task_id` }).executeTakeFirstOrThrow();
+    const row = await this.db.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+      .where("uid", "=", input.uid)
+      .where("task_id", "=", input.taskId)
+      .executeTakeFirstOrThrow();
+    const state = mapAiCollectState(row);
+    if (state.bizId !== input.bizId
+      || state.runId !== input.runId
+      || state.workflowId !== input.workflowId
+      || state.seatId !== input.seatId
+      || state.thirdExternalUserId !== input.thirdExternalUserId
+      || !sameOptionalTimestamp(state.expiresAt, input.expiresAt)) {
+      throw new Error("AI Collect state initialization conflict");
+    }
+    return state;
+  }
+
+  async findAiCollectStateByTask(uid: number, taskId: string) {
+    const row = await this.db.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+    return row ? mapAiCollectState(row) : null;
+  }
+
+  async transitionAiCollectState(
+    input: Parameters<WorkflowRuntimeRepository["transitionAiCollectState"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("task_id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!row) return { kind: "not-found" as const };
+      const state = mapAiCollectState(row);
+      const transition = input.transition;
+      if (state.terminalOutlet !== null
+        && transition.kind !== "terminal"
+        && transition.kind !== "disable-requested"
+        && transition.kind !== "directive-disabled") return { kind: "conflict" as const };
+      if (transition.kind === "opening-message-sent") {
+        state.openingMessageSent = true;
+      } else if (transition.kind === "conversation-resolved") {
+        if (state.conversationId !== null && state.conversationId !== transition.conversationId) {
+          return { kind: "conflict" as const };
+        }
+        state.conversationId = transition.conversationId;
+      } else if (transition.kind === "directive-active") {
+        if (state.conversationId === null || state.expiresAt === null
+          || state.directiveStatus === "disabled") return { kind: "conflict" as const };
+        state.directiveStatus = "active";
+      } else if (transition.kind === "initial-input-processed") {
+        if (state.activeInferenceKey !== null) return { kind: "conflict" as const };
+        state.initialInputProcessed = true;
+      } else if (transition.kind === "inference-started") {
+        if (state.activeInferenceKey === transition.executionKey) {
+          return { kind: "success" as const, state };
+        }
+        if (state.activeInferenceKey !== null || !transition.executionKey) {
+          return { kind: "conflict" as const };
+        }
+        state.activeBatchCursor = transition.batchCursor ? structuredClone(transition.batchCursor) : null;
+        state.activeBatchCutoffAt = transition.batchCutoffAt;
+        state.activeBatchHasMore = transition.batchHasMore;
+        state.activeInferenceKey = transition.executionKey;
+        state.nextBatchSequence += 1;
+      } else if (transition.kind === "inference-completed") {
+        if (state.activeInferenceKey !== transition.executionKey) {
+          return { kind: "conflict" as const };
+        }
+        state.collected = structuredClone(transition.collected);
+        if (state.activeBatchCutoffAt === null) {
+          state.initialInputProcessed = true;
+        } else {
+          if (!state.activeBatchCursor) return { kind: "conflict" as const };
+          state.lastMessageCursor = structuredClone(state.activeBatchCursor);
+          if (state.activeBatchHasMore) {
+            state.quietUntil = input.now;
+          } else if (state.pendingCutoffAt
+            && state.pendingCutoffAt <= state.activeBatchCutoffAt) {
+            state.pendingCutoffAt = null;
+            state.quietUntil = null;
+          }
+        }
+        state.activeBatchCursor = null;
+        state.activeBatchCutoffAt = null;
+        state.activeBatchHasMore = false;
+        state.activeInferenceKey = null;
+      } else if (transition.kind === "message-batch-empty") {
+        if (state.activeInferenceKey !== null) return { kind: "conflict" as const };
+        if (state.pendingCutoffAt && state.pendingCutoffAt <= transition.cutoffAt) {
+          state.pendingCutoffAt = null;
+          state.quietUntil = null;
+        }
+      } else if (transition.kind === "disable-requested") {
+        state.disableReason = transition.reason;
+      } else if (transition.kind === "terminal") {
+        if (state.activeInferenceKey !== null
+          || (state.terminalOutlet !== null && state.terminalOutlet !== transition.outlet)) {
+          return { kind: "conflict" as const };
+        }
+        state.terminalOutlet = transition.outlet;
+        state.disableReason = transition.disableReason;
+      } else if (transition.kind === "directive-disabled") {
+        state.directiveStatus = "disabled";
+        state.directiveLeaseExpiresAt = null;
+        state.directiveLeaseOwner = null;
+      }
+      await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+        .where("uid", "=", input.uid)
+        .where("task_id", "=", input.taskId)
+        .executeTakeFirstOrThrow();
+      return { kind: "success" as const, state: { ...state, updatedAt: input.now } };
+    });
+  }
+
+  async beginAiCollectWait(
+    input: Parameters<WorkflowRuntimeRepository["beginAiCollectWait"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      const stateRow = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+        .forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow || !stateRow) return { kind: "not-found" as const };
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      const state = mapAiCollectState(stateRow);
+      if (task.runId !== run.id || state.runId !== run.id
+        || run.lockVersion !== input.expectedRunLockVersion || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion || task.status !== "running"
+        || task.sequence !== run.sequence || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId || task.nodeKind !== "ai-collect"
+        || (task.taskType !== "execute" && task.taskType !== "ai-collect")
+        || state.activeInferenceKey !== null || state.terminalOutlet !== null
+        || state.directiveStatus !== "active" || state.expiresAt === null
+        || input.dueAt > state.expiresAt || input.dueAt <= input.now) {
+        return { kind: "conflict" as const };
+      }
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid).where("id", "=", run.workflowId)
+        .forShare().executeTakeFirst();
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      if (decision === "cancel") {
+        return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+      }
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      const dueAt = input.dueAt;
+      const nextTaskVersion = task.taskVersion + 1;
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(dueAt),
+        due_at: dueAt,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: decision === "defer" ? "suspended" : "pending",
+        task_type: "ai-collect",
+        task_version: nextTaskVersion,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: dueAt,
+        status: "waiting",
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: { ...run, lockVersion: run.lockVersion + 1, nextExecuteAt: dueAt, status: "waiting" as const },
+        state,
+        task: {
+          ...task,
+          dueAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: decision === "defer" ? "suspended" as const : "pending" as const,
+          taskType: "ai-collect",
+          taskVersion: nextTaskVersion,
+        },
+      };
+    });
+  }
+
+  async recordAiCollectDirectiveEvent(
+    input: Parameters<WorkflowRuntimeRepository["recordAiCollectDirectiveEvent"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const inboxMessageId = `${input.uid}:${input.eventId}`;
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", "workflow-entry")
+        .where("message_id", "=", inboxMessageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "deduplicated" as const };
+      const stateCandidate = await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("biz_id", "=", input.bizId)
+        .executeTakeFirst();
+      const runRow = stateCandidate
+        ? await trx.selectFrom(RUN_TABLE).selectAll()
+            .where("uid", "=", input.uid).where("id", "=", stateCandidate.run_id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      const taskRow = stateCandidate
+        ? await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("uid", "=", input.uid).where("id", "=", stateCandidate.task_id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      const stateRow = stateCandidate
+        ? await trx.selectFrom(AI_COLLECT_STATE_TABLE).selectAll()
+            .where("id", "=", stateCandidate.id)
+            .forUpdate().executeTakeFirst()
+        : undefined;
+      await insertWorkflowInbox(trx, input.uid, {
+        consumer: "workflow-entry",
+        expiresAt: input.inboxExpiresAt,
+        messageId: inboxMessageId,
+      }, input.now);
+      if (!stateRow || !runRow || !taskRow) return { kind: "stale" as const };
+      const state = mapAiCollectState(stateRow);
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (state.runId !== run.id || state.taskId !== task.id || task.runId !== run.id
+        || state.directiveStatus !== "active" || state.terminalOutlet !== null
+        || state.expiresAt === null || input.eventOccurredAt >= state.expiresAt
+        || state.seatId !== input.seatId
+        || state.thirdExternalUserId !== input.thirdExternalUserId) {
+        return { kind: "stale" as const };
+      }
+      state.observedRound = Math.max(state.observedRound, input.totalRound);
+      state.pendingCutoffAt = !state.pendingCutoffAt || input.eventOccurredAt > state.pendingCutoffAt
+        ? input.eventOccurredAt
+        : state.pendingCutoffAt;
+      state.quietUntil = input.quietUntil < state.expiresAt ? input.quietUntil : state.expiresAt;
+      await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+        .where("id", "=", stateRow.id).executeTakeFirstOrThrow();
+      if (state.activeInferenceKey === null) {
+        if (task.status === "pending"
+          && task.dueAt.getTime() !== state.quietUntil.getTime()
+          && (run.status === "waiting" || run.status === "running")) {
+          await trx.updateTable(TASK_TABLE).set({
+            bucket_time: floorToMinute(state.quietUntil),
+            due_at: state.quietUntil,
+            task_version: task.taskVersion + 1,
+          }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+            .where("status", "=", "pending").executeTakeFirstOrThrow();
+          await trx.updateTable(RUN_TABLE).set({
+            lock_version: run.lockVersion + 1,
+            next_execute_at: state.quietUntil,
+            status: "waiting",
+          }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+            .where("status", "in", ["waiting", "running"]).executeTakeFirstOrThrow();
+        }
+      }
+      return { kind: "queued" as const };
+    });
+  }
+
+  async claimAiCollectDirectiveDisableBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimAiCollectDirectiveDisableBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${AI_COLLECT_STATE_TABLE} as state`)
+        .leftJoin(`${RUN_TABLE} as collect_run`, join => join
+          .onRef("collect_run.uid", "=", "state.uid")
+          .onRef("collect_run.id", "=", "state.run_id"))
+        .selectAll("state")
+        .select("collect_run.status as run_status")
+        .where("state.directive_next_attempt_at", "<=", input.now)
+        .where(eb => eb.or([
+          eb.and([
+            eb("state.directive_status", "=", "active"),
+            eb.or([
+              eb("state.disable_reason", "is not", null),
+              eb("state.expires_at", "<=", input.now),
+              eb("collect_run.status", "in", TERMINAL_RUN_STATUSES),
+            ]),
+          ]),
+          eb.and([
+            eb("state.directive_status", "=", "disabling"),
+            eb("state.directive_lease_expires_at", "<=", input.now),
+          ]),
+        ]))
+        .orderBy("state.directive_next_attempt_at", "asc")
+        .orderBy("state.id", "asc")
+        .limit(limit).forUpdate("state").skipLocked().execute();
+      const claimed: WorkflowAiCollectStateRecord[] = [];
+      for (const row of rows) {
+        const state = mapAiCollectState(row);
+        state.disableReason ??= state.expiresAt !== null && state.expiresAt <= input.now
+          ? "expired"
+          : row.run_status === "failed"
+            ? "workflow-failed"
+            : "workflow-stopped";
+        state.directiveAttempt += 1;
+        state.directiveLeaseExpiresAt = input.leaseExpiresAt;
+        state.directiveLeaseOwner = input.leaseOwner;
+        state.directiveStatus = "disabling";
+        await trx.updateTable(AI_COLLECT_STATE_TABLE).set(toAiCollectStateUpdate(state))
+          .where("uid", "=", state.uid).where("task_id", "=", state.taskId)
+          .executeTakeFirstOrThrow();
+        claimed.push({ ...state, updatedAt: input.now });
+      }
+      return claimed;
+    });
+  }
+
+  async completeAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["completeAiCollectDirectiveDisable"]>[0],
+  ) {
+    const result = await this.db.updateTable(AI_COLLECT_STATE_TABLE).set({
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_status: "disabled",
+    }).where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+      .where("directive_status", "=", "disabling")
+      .where("directive_lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async retryAiCollectDirectiveDisable(
+    input: Parameters<WorkflowRuntimeRepository["retryAiCollectDirectiveDisable"]>[0],
+  ) {
+    const result = await this.db.updateTable(AI_COLLECT_STATE_TABLE).set({
+      directive_lease_expires_at: null,
+      directive_lease_owner: null,
+      directive_next_attempt_at: input.nextAttemptAt,
+      directive_status: "active",
+    }).where("uid", "=", input.uid).where("task_id", "=", input.taskId)
+      .where("directive_status", "=", "disabling")
+      .where("directive_lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async claimInferenceBatch(input: Parameters<WorkflowRuntimeRepository["claimInferenceBatch"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+        .selectAll("job")
+        .where("job.status", "in", ["pending", "retry_wait"])
+        .where("job.next_attempt_at", "<=", input.now)
+        .where("job.deadline_at", ">", input.now)
+        .where("job.paused_at", "is", null)
+        .where(({ exists, selectFrom }) => exists(
+          selectFrom(`${RUN_TABLE} as inference_run`)
+            .innerJoin("xy_wap_embed_workflow_definition as inference_definition", join => join
+              .onRef("inference_definition.uid", "=", "inference_run.uid")
+              .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
+            .select("inference_run.id")
+            .whereRef("inference_run.uid", "=", "job.uid")
+            .whereRef("inference_run.id", "=", "job.run_id")
+            .where("inference_run.status", "=", "waiting")
+            .where("inference_definition.biz_status", "=", 1)
+            .where("inference_definition.runtime_status", "=", "active"),
+        ))
+        .orderBy("job.next_attempt_at", "asc").orderBy("job.id", "asc")
+        .limit(limit).forUpdate().skipLocked().execute();
+      if (rows.length === 0) return [];
+      const ids = rows.map(row => row.id);
+      await trx.updateTable(INFERENCE_JOB_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        started_at: sql<Date>`COALESCE(started_at, ${input.now})`,
+        status: "running",
+      }).where("id", "in", ids).where("status", "in", ["pending", "retry_wait"])
+        .executeTakeFirstOrThrow();
+      return rows.map(row => mapInferenceJob({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        started_at: row.started_at ?? input.now,
+        status: "running",
+      }));
+    });
+  }
+
+  async renewInferenceLease(input: Parameters<WorkflowRuntimeRepository["renewInferenceLease"]>[0]) {
+    const result = await this.db.updateTable(INFERENCE_JOB_TABLE).set({
+      lease_expires_at: input.leaseExpiresAt,
+    }).where("id", "=", input.id).where("status", "=", "running")
+      .where("lease_owner", "=", input.leaseOwner).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async completeInference(input: Parameters<WorkflowRuntimeRepository["completeInference"]>[0]) {
+    return this.finishInference({
+      completedAt: input.completedAt,
+      id: input.id,
+      leaseOwner: input.leaseOwner,
+      result: input.result,
+      status: "succeeded",
+    });
+  }
+
+  async retryInference(input: Parameters<WorkflowRuntimeRepository["retryInference"]>[0]) {
+    const result = await this.db.updateTable(INFERENCE_JOB_TABLE).set({
+      error_code: input.errorCode,
+      error_message: input.errorMessage,
+      failure_kind: input.failureKind,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: "retry_wait",
+    }).where("id", "=", input.id).where("status", "=", "running")
+      .where("lease_owner", "=", input.leaseOwner)
+      .where("deadline_at", ">", input.nextAttemptAt).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async failInference(input: Parameters<WorkflowRuntimeRepository["failInference"]>[0]) {
+    return this.finishInference({
+      completedAt: input.failedAt,
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+      failureKind: input.failureKind,
+      id: input.id,
+      leaseOwner: input.leaseOwner,
+      status: "failed",
+    });
+  }
+
+  async recoverInferenceJobs(input: Parameters<WorkflowRuntimeRepository["recoverInferenceJobs"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { expired: 0, recovered: 0 };
+    const candidateQuery = () => this.db.selectFrom(`${INFERENCE_JOB_TABLE} as job`)
+      .innerJoin(`${RUN_TABLE} as inference_run`, join => join
+        .onRef("inference_run.uid", "=", "job.uid")
+        .onRef("inference_run.id", "=", "job.run_id"))
+      .innerJoin("xy_wap_embed_workflow_definition as inference_definition", join => join
+        .onRef("inference_definition.uid", "=", "inference_run.uid")
+        .onRef("inference_definition.id", "=", "inference_run.workflow_id"))
+      .select(["job.id", "job.run_id", "job.task_id", "inference_run.uid", "inference_run.workflow_id"])
+      .where("job.paused_at", "is", null)
+      .where("inference_definition.biz_status", "=", 1)
+      .where("inference_definition.runtime_status", "=", "active");
+    const candidateRows = await Promise.all([
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait", "running"])
+        .where("job.deadline_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "in", ["pending", "retry_wait"])
+        .where("job.attempt", ">=", input.maxAttempts)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+      candidateQuery()
+        .where("job.status", "=", "running")
+        .where("job.lease_expires_at", "<=", input.now)
+        .orderBy("job.id", "asc").limit(limit).execute(),
+    ]);
+    const scanned = mergeRowsByNumericId(candidateRows.flat(), limit);
+    if (scanned.length === 0) return { expired: 0, recovered: 0 };
+    return this.db.transaction().execute(async (trx) => {
+      const runIds = uniqueSortedIds(scanned.map(row => row.run_id));
+      const taskIds = uniqueSortedIds(scanned.map(row => row.task_id));
+      const jobIds = uniqueSortedIds(scanned.map(row => row.id));
+      const runRows = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("id", "in", runIds).orderBy("id", "asc").forUpdate().execute();
+      const taskRows = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("id", "in", taskIds).orderBy("id", "asc").forUpdate().execute();
+      const definitionByKey = await loadDefinitionsForShare(trx, scanned.map(row => ({
+        uid: normalizeTenantId(row.uid),
+        workflowId: normalizeId(row.workflow_id),
+      })));
+      const locked = await trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("id", "in", jobIds)
+        .where("paused_at", "is", null)
+        .where("status", "in", ["pending", "retry_wait", "running"])
+        .orderBy("id", "asc").forUpdate().skipLocked().execute();
+      const toFail: typeof locked = [];
+      const toRecover: typeof locked = [];
+      for (const row of locked) {
+        const leaseExpired = row.status === "running"
+          && row.lease_expires_at !== null
+          && row.lease_expires_at <= input.now;
+        const attemptsExhausted = row.attempt >= input.maxAttempts
+          && (row.status !== "running" || leaseExpired);
+        if (row.deadline_at <= input.now || attemptsExhausted) toFail.push(row);
+        else if (leaseExpired) toRecover.push(row);
+      }
+      if (toRecover.length > 0) {
+        await trx.updateTable(INFERENCE_JOB_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: input.now,
+          status: "pending",
+        }).where("id", "in", toRecover.map(row => row.id))
+          .where("status", "=", "running")
+          .where("lease_expires_at", "<=", input.now)
+          .executeTakeFirst();
+      }
+      if (toFail.length > 0) {
+        const deadlineIds = toFail.filter(row => row.deadline_at <= input.now).map(row => row.id);
+        const attemptIds = toFail.filter(row => row.deadline_at > input.now).map(row => row.id);
+        if (deadlineIds.length > 0) {
+          await trx.updateTable(INFERENCE_JOB_TABLE).set({
+            completed_at: input.now,
+            error_code: "WORKFLOW_INFERENCE_DEADLINE_EXCEEDED",
+            error_message: "执行未完成",
+            failure_kind: "unknown",
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "failed",
+          }).where("id", "in", deadlineIds).executeTakeFirstOrThrow();
+        }
+        if (attemptIds.length > 0) {
+          await trx.updateTable(INFERENCE_JOB_TABLE).set({
+            completed_at: input.now,
+            error_code: "WORKFLOW_INFERENCE_ATTEMPTS_EXHAUSTED",
+            error_message: "执行未完成",
+            failure_kind: "unknown",
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "failed",
+          }).where("id", "in", attemptIds).executeTakeFirstOrThrow();
+        }
+        const runById = new Map(runRows.map(row => [normalizeId(row.id), row]));
+        const taskById = new Map(taskRows.map(row => [normalizeId(row.id), row]));
+        const waking: Array<{ decision: "cancel" | "defer" | "execute"; runId: string; task: WorkflowTaskRecord }> = [];
+        for (const row of toFail) {
+          const runRow = runById.get(normalizeId(row.run_id));
+          const taskRow = taskById.get(normalizeId(row.task_id));
+          if (!runRow || !taskRow) continue;
+          const task = mapTask(taskRow);
+          const run = mapRun(runRow);
+          if (task.status !== "waiting_external" || task.taskType !== "inference" || run.status !== "waiting") continue;
+          const definition = definitionByKey.get(definitionKey(run.uid, run.workflowId));
+          waking.push({
+            decision: definition
+              ? getWorkflowExecutionBoundaryDecision({
+                  bizStatus: definition.biz_status === 1 ? 1 : 0,
+                  runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+                })
+              : "cancel",
+            runId: run.id,
+            task,
+          });
+        }
+        const executeTasks = waking.filter(item => item.decision === "execute");
+        const suspendedTasks = waking.filter(item => item.decision === "defer");
+        const cancelledTasks = waking.filter(item => item.decision === "cancel");
+        const executeRunIds = [...new Set(executeTasks.map(item => item.runId))];
+        const suspendedRunIds = [...new Set(suspendedTasks.map(item => item.runId))];
+        const cancelledRunIds = [...new Set(cancelledTasks.map(item => item.runId))];
+        if (executeTasks.length > 0) {
+          await trx.updateTable(TASK_TABLE).set({
+            bucket_time: floorToMinute(input.now),
+            due_at: input.now,
+            status: "dispatched",
+            task_type: "execute",
+            task_version: sql<number>`task_version + 1`,
+          }).where("id", "in", executeTasks.map(item => item.task.id))
+            .where("status", "=", "waiting_external")
+            .executeTakeFirstOrThrow();
+          await insertTaskOutboxBatch(trx, executeTasks.map(item => ({
+            ...item.task,
+            dueAt: input.now,
+            status: "dispatched" as const,
+            taskType: "execute",
+            taskVersion: item.task.taskVersion + 1,
+          })), input.now);
+        }
+        if (suspendedTasks.length > 0) {
+          await trx.updateTable(TASK_TABLE).set({
+            bucket_time: floorToMinute(input.now),
+            due_at: input.now,
+            status: "suspended",
+            task_type: "execute",
+            task_version: sql<number>`task_version + 1`,
+          }).where("id", "in", suspendedTasks.map(item => item.task.id))
+            .where("status", "=", "waiting_external")
+            .executeTakeFirstOrThrow();
+        }
+        if (cancelledTasks.length > 0) {
+          await trx.updateTable(TASK_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "cancelled",
+            task_type: "execute",
+            task_version: sql<number>`task_version + 1`,
+          }).where("id", "in", cancelledTasks.map(item => item.task.id))
+            .where("status", "=", "waiting_external")
+            .executeTakeFirstOrThrow();
+        }
+        if (executeRunIds.length > 0 || suspendedRunIds.length > 0) {
+          await trx.updateTable(RUN_TABLE).set({
+            lock_version: sql<number>`lock_version + 1`,
+            next_execute_at: input.now,
+            status: "running",
+          }).where("id", "in", [...new Set([...executeRunIds, ...suspendedRunIds])])
+            .where("status", "=", "waiting")
+            .executeTakeFirstOrThrow();
+        }
+        if (cancelledRunIds.length > 0) {
+          await trx.updateTable(RUN_TABLE).set({
+            completed_at: input.now,
+            lock_version: sql<number>`lock_version + 1`,
+            next_execute_at: null,
+            status: "cancelled",
+            terminal_reason: "workflow_stopped",
+          }).where("id", "in", cancelledRunIds)
+            .where("status", "=", "waiting")
+            .executeTakeFirstOrThrow();
+          const successfullyCancelledRunRows = await trx.selectFrom(RUN_TABLE)
+            .select(["id", "uid", "workflow_id"])
+            .where("id", "in", cancelledRunIds)
+            .where("status", "=", "cancelled")
+            .where("terminal_reason", "=", "workflow_stopped")
+            .execute();
+          if (successfullyCancelledRunRows.length > 0) {
+            await releaseTenantCapacityForRuns(trx, successfullyCancelledRunRows.map(run => ({
+              uid: normalizeTenantId(run.uid),
+            })));
+            await recordWorkflowRunMetrics(trx, successfullyCancelledRunRows.map(run => ({
+              kind: "cancelled" as const,
+              occurredAt: input.now,
+              uid: normalizeTenantId(run.uid),
+              workflowId: normalizeId(run.workflow_id),
+            })));
+          }
+        }
+      }
+      return { expired: toFail.length, recovered: toRecover.length };
+    });
+  }
+
+  transitionInferenceJobs(
+    input: Parameters<WorkflowRuntimeRepository["transitionInferenceJobs"]>[0],
+  ) {
+    return transitionMysqlWorkflowInferenceJobs(this.db, input);
+  }
+
+  private finishInference(input: {
+    allowUnleased?: boolean;
+    completedAt: Date;
+    errorCode?: string;
+    errorMessage?: string;
+    failureKind?: "retryable" | "terminal" | "unknown";
+    id: string;
+    leaseOwner: string | null;
+    recovery?: {
+      maxAttempts: number;
+      now: Date;
+    };
+    result?: import("@chatai/contracts").WorkflowInferenceResult;
+    status: "failed" | "succeeded";
+  }) {
+    return this.db.transaction().execute(async (trx) => {
+      const candidate = await trx.selectFrom(INFERENCE_JOB_TABLE).select(["run_id", "task_id", "uid"])
+        .where("id", "=", input.id).executeTakeFirst();
+      if (!candidate) return false;
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", candidate.uid).where("id", "=", candidate.run_id)
+        .forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", candidate.uid).where("id", "=", candidate.task_id)
+        .forUpdate().executeTakeFirst();
+      const definition = runRow
+        ? await trx.selectFrom("xy_wap_embed_workflow_definition")
+            .select(["biz_status", "runtime_status"])
+            .where("uid", "=", candidate.uid).where("id", "=", runRow.workflow_id)
+            .forShare().executeTakeFirst()
+        : undefined;
+      let query = trx.selectFrom(INFERENCE_JOB_TABLE).selectAll()
+        .where("id", "=", input.id);
+      query = input.allowUnleased
+        ? query.where("status", "in", ["pending", "retry_wait", "running"])
+        : query.where("status", "=", "running");
+      if (!input.allowUnleased) query = query.where("lease_owner", "=", input.leaseOwner);
+      const row = await query.forUpdate().executeTakeFirst();
+      if (!row) return false;
+      if (input.recovery) {
+        if (row.paused_at !== null) return false;
+        const leaseExpired = row.status === "running"
+          && row.lease_expires_at !== null
+          && row.lease_expires_at <= input.recovery.now;
+        const attemptsExhausted = row.attempt >= input.recovery.maxAttempts
+          && (row.status !== "running" || leaseExpired);
+        if (row.deadline_at > input.recovery.now && !attemptsExhausted) return false;
+      }
+      await trx.updateTable(INFERENCE_JOB_TABLE).set({
+        completed_at: input.completedAt,
+        error_code: input.errorCode ?? null,
+        error_message: input.errorMessage ?? null,
+        failure_kind: input.failureKind ?? null,
+        lease_expires_at: null,
+        lease_owner: null,
+        result_json: input.result ? stringifyJson(input.result) : null,
+        status: input.status,
+      }).where("id", "=", row.id).executeTakeFirstOrThrow();
+      if (!taskRow || !runRow) return true;
+      const task = mapTask(taskRow);
+      const run = mapRun(runRow);
+      if (task.status !== "waiting_external" || task.taskType !== "inference" || run.status !== "waiting") {
+        return true;
+      }
+      const decision = definition ? getWorkflowExecutionBoundaryDecision({
+        bizStatus: definition.biz_status === 1 ? 1 : 0,
+        runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+      }) : "cancel";
+      const nextTaskVersion = task.taskVersion + 1;
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.completedAt),
+        due_at: input.completedAt,
+        status: decision === "execute" ? "dispatched" : decision === "defer" ? "suspended" : "cancelled",
+        task_type: "execute",
+        task_version: nextTaskVersion,
+      }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
+        .where("status", "=", "waiting_external").executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        completed_at: decision === "cancel" ? input.completedAt : null,
+        lock_version: run.lockVersion + 1,
+        next_execute_at: decision === "cancel" ? null : input.completedAt,
+        status: decision === "cancel" ? "cancelled" : "running",
+        terminal_reason: decision === "cancel" ? "workflow_stopped" : null,
+      }).where("id", "=", run.id).where("lock_version", "=", run.lockVersion)
+        .where("status", "=", "waiting").executeTakeFirstOrThrow();
+      if (decision === "cancel") {
+        await releaseTenantCapacity(trx, normalizeTenantId(run.uid), 1);
+        await recordWorkflowRunMetrics(trx, [{
+          kind: "cancelled",
+          occurredAt: input.completedAt,
+          uid: normalizeTenantId(run.uid),
+          workflowId: run.workflowId,
+        }]);
+      }
+      if (decision === "execute") {
+        await insertTaskOutbox(trx, {
+          ...task,
+          dueAt: input.completedAt,
+          status: "dispatched",
+          taskType: "execute",
+          taskVersion: nextTaskVersion,
+        }, input.completedAt);
+      }
+      return true;
+    });
+  }
+
+  async scheduleCapabilityRetry(
+    input: Parameters<WorkflowRuntimeRepository["scheduleCapabilityRetry"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityFailureState(trx, input);
+      if (state.kind !== "success") return state;
+      const { run, task } = state;
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", task.workflowId)
+        .forShare()
+        .executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (boundaryDecision === "cancel") return { kind: "conflict" as const };
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      await updateCapabilityExecutionFailure(trx, input, "retrying");
+      await trx.updateTable(TASK_TABLE).set({
+        bucket_time: floorToMinute(input.dueAt),
+        due_at: input.dueAt,
+        last_error_code: input.errorCode,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending"),
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.id)
+        .where("status", "=", "running")
+        .where("task_version", "=", input.expectedTaskVersion)
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: run.lockVersion + 1,
+        next_execute_at: input.dueAt,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", input.expectedRunLockVersion)
+        .where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        task: {
+          ...task,
+          dueAt: input.dueAt,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: boundaryDecision === "defer" ? "suspended" as const : "pending" as const,
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async failCapabilityExecution(
+    input: Parameters<WorkflowRuntimeRepository["failCapabilityExecution"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityFailureState(trx, input);
+      if (state.kind !== "success") return state;
+      const { run, task } = state;
+      await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
+      await updateCapabilityExecutionFailure(trx, input, "failed");
+      await insertNodeMetricEvents(trx, {
+        eventKey: `${run.id}:${task.id}:failed`,
+        runId: run.id,
+        runRevision: run.revision,
+        runShardId: run.shardId,
+        uid: input.uid,
+        workflowId: run.workflowId,
+      }, createNodeMetricDeltas({
+        kind: "left-incomplete",
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+      }));
+      await trx.updateTable(TASK_TABLE).set({
+        last_error_code: input.errorCode,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: transitionTask(task.status, "dead"),
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.id)
+        .where("status", "=", "running")
+        .where("task_version", "=", input.expectedTaskVersion)
+        .executeTakeFirstOrThrow();
+      const nextRun = {
+        ...run,
+        lockVersion: run.lockVersion + 1,
+        nextExecuteAt: null,
+        status: transitionRun(run.status, "failed"),
+      };
+      await trx.updateTable(RUN_TABLE).set({
+        completed_at: input.now,
+        lock_version: nextRun.lockVersion,
+        next_execute_at: null,
+        status: nextRun.status,
+        terminal_reason: input.errorCode,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", input.expectedRunLockVersion)
+        .where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      await releaseTenantCapacity(trx, input.uid, 1);
+      await recordWorkflowRunMetrics(trx, [{
+        kind: "failed",
+        occurredAt: input.now,
+        uid: input.uid,
+        workflowId: run.workflowId,
+      }]);
+      return {
+        kind: "success" as const,
+        run: nextRun,
+        task: {
+          ...task,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: "dead" as const,
+          taskVersion: task.taskVersion + 1,
+        },
+      };
+    });
+  }
+
+  async claimOutboxBatch(input: Parameters<WorkflowRuntimeRepository["claimOutboxBatch"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(OUTBOX_TABLE).selectAll()
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
+        .orderBy("next_attempt_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return [];
+      await trx.updateTable(OUTBOX_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }).where("id", "in", ids)
+        .where("status", "=", "pending")
+        .executeTakeFirstOrThrow();
+      return rows.map(row => mapOutbox({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }));
+    });
+  }
+
+  async markOutboxFailed(input: Parameters<WorkflowRuntimeRepository["markOutboxFailed"]>[0]) {
+    const result = await this.db.updateTable(OUTBOX_TABLE).set({
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: "pending",
+    }).where("id", "=", input.id)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async markOutboxDead(input: Parameters<WorkflowRuntimeRepository["markOutboxDead"]>[0]) {
+    return this.db.transaction().execute(async (trx) => {
+      const outboxRow = await trx.selectFrom(OUTBOX_TABLE).selectAll()
+        .where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirst();
+      if (!outboxRow) return false;
+      const candidateTask = await trx.selectFrom(TASK_TABLE).select([
+        "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "task_version", "workflow_id",
+      ])
+        .where("uid", "=", outboxRow.uid)
+        .where("id", "=", outboxRow.aggregate_id)
+        .where("status", "=", "dispatched")
+        .where("task_version", "=", outboxRow.task_version)
+        .executeTakeFirst();
+      const runRow = candidateTask
+        ? await trx.selectFrom(RUN_TABLE)
+            .select(["current_node_id", "revision", "shard_id", "workflow_id"])
+            .where("uid", "=", outboxRow.uid)
+            .where("id", "=", candidateTask.run_id)
+            .forUpdate()
+            .executeTakeFirst()
+        : undefined;
+      const taskRow = candidateTask
+        ? await trx.selectFrom(TASK_TABLE).select([
+            "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "task_version", "workflow_id",
+          ])
+            .where("uid", "=", outboxRow.uid)
+            .where("id", "=", outboxRow.aggregate_id)
+            .where("run_id", "=", candidateTask.run_id)
+            .where("status", "=", "dispatched")
+            .where("task_version", "=", outboxRow.task_version)
+            .forUpdate()
+            .executeTakeFirst()
+        : undefined;
+      const lockedOutbox = await trx.selectFrom(OUTBOX_TABLE).select("id")
+        .where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!lockedOutbox) return false;
+      await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirstOrThrow();
+      if (taskRow) {
+        const metricTask = runRow && runRow.current_node_id !== taskRow.node_id
+          ? await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind"])
+              .where("uid", "=", outboxRow.uid)
+              .where("run_id", "=", taskRow.run_id)
+              .where("node_id", "=", runRow.current_node_id)
+              .orderBy("sequence", "desc")
+              .limit(1)
+              .executeTakeFirst()
+          : taskRow;
+        if (runRow && metricTask) {
+          await insertNodeMetricEvents(trx, {
+            eventKey: `${normalizeId(taskRow.run_id)}:${normalizeId(taskRow.id)}:failed`,
+            runId: normalizeId(taskRow.run_id),
+            runRevision: runRow.revision,
+            runShardId: runRow.shard_id,
+            uid: outboxRow.uid,
+            workflowId: normalizeId(runRow.workflow_id),
+          }, createNodeMetricDeltas({
+            kind: "left-incomplete",
+            nodeId: metricTask.node_id,
+            nodeKind: parseNodeKind(metricTask.node_kind),
+          }));
+        }
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+          status: "dead",
+          task_version: taskRow.task_version + 1,
+        }).where("id", "=", taskRow.id)
+          .where("status", "=", "dispatched")
+          .where("task_version", "=", taskRow.task_version)
+          .executeTakeFirstOrThrow();
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.failedAt,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+        }).where("uid", "=", outboxRow.uid)
+          .where("id", "=", taskRow.run_id)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .executeTakeFirstOrThrow();
+        if (Number(runUpdate.numUpdatedRows) === 1) {
+          await releaseTenantCapacity(trx, outboxRow.uid, 1);
+          await recordWorkflowRunMetrics(trx, [{
+            kind: "failed",
+            occurredAt: input.failedAt,
+            uid: outboxRow.uid,
+            workflowId: taskRow.workflow_id,
+          }]);
+        }
+      }
+      return true;
+    });
+  }
+
+  async markOutboxSentBatch(
+    input: Parameters<WorkflowRuntimeRepository["markOutboxSentBatch"]>[0],
+  ) {
+    const ids = [...new Set(input.ids)];
+    let sent = 0;
+    for (const chunk of writeChunks(ids)) {
+      const result = await this.db.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        sent_at: input.sentAt,
+        status: "sent",
+      }).where("id", "in", chunk)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirst();
+      sent += Number(result.numUpdatedRows);
+    }
+    return sent;
+  }
+
+  commitNodeResult(input: WorkflowCommitNodeResultInput) {
+    return this.db.transaction().execute(async (trx) => {
+      const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("consumer", "=", input.inbox.consumer)
+        .where("message_id", "=", input.inbox.messageId)
+        .executeTakeFirst();
+      if (processed) return { kind: "already-processed" as const };
+
+      const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.runId).forUpdate().executeTakeFirst();
+      const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId).forUpdate().executeTakeFirst();
+      if (!runRow || !taskRow || normalizeId(taskRow.run_id) !== input.runId) {
+        return { kind: "not-found" as const };
+      }
+      const run = mapRun(runRow);
+      const task = mapTask(taskRow);
+      if (run.lockVersion !== input.expectedRunLockVersion
+        || run.status !== "running"
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.status !== "running"
+        || task.sequence !== run.sequence
+        || task.revision !== run.revision
+        || task.nodeId !== run.currentNodeId) return { kind: "conflict" as const };
+
+      const failed = input.nodeExecution.errorCode !== undefined;
+      const now = new Date();
+      const existingExecution = await trx.selectFrom(EXECUTION_TABLE).selectAll()
+        .where("uid", "=", input.uid)
+        .where("run_id", "=", run.id)
+        .where("sequence", "=", task.sequence)
+        .forUpdate()
+        .executeTakeFirst();
+      if (existingExecution
+        && (existingExecution.execution_key !== input.nodeExecution.executionKey
+          || existingExecution.revision !== task.revision
+          || existingExecution.status !== "running")) {
+        return { kind: "conflict" as const };
+      }
+
+      const nextContext = !failed && input.context
+        ? structuredClone(input.context)
+        : run.context;
+      let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
+      let latestRevision: number | null = null;
+      let forwardRoute: ReturnType<typeof resolveWorkflowForwardRoute> | null = null;
+      if (!failed && input.sourceOutletId) {
+        const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+          .select(["biz_status", "published_revision", "runtime_status"])
+          .where("uid", "=", input.uid)
+          .where("id", "=", run.workflowId)
+          .forShare()
+          .executeTakeFirst();
+        boundaryDecision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (boundaryDecision === "cancel") {
+          return { action: "cancel" as const, kind: "workflow-unavailable" as const };
+        }
+        if (definition?.published_revision === null || definition?.published_revision === undefined) {
+          return { kind: "conflict" as const };
+        }
+        const revisionRow = await trx.selectFrom(REVISION_TABLE)
+          .select(["execution_spec_json", "revision"])
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", run.workflowId)
+          .where("revision", "=", definition.published_revision)
+          .executeTakeFirst();
+        if (!revisionRow) return { kind: "conflict" as const };
+        latestRevision = revisionRow.revision;
+        forwardRoute = resolveWorkflowForwardRoute({
+          context: nextContext,
+          currentNodeId: task.nodeId,
+          currentNodeKind: task.nodeKind,
+          latestSpec: normalizeWorkflowExecutionSpec(
+            parseJson(revisionRow.execution_spec_json) as WorkflowStoredExecutionSpec,
+          ),
+          sourceOutletId: input.sourceOutletId,
+        });
+      }
+
+      if (existingExecution) {
+        await trx.updateTable(EXECUTION_TABLE).set({
+          completed_at: now,
+          error_code: input.nodeExecution.errorCode ?? null,
+          error_message: input.nodeExecution.errorMessage ?? null,
+          failure_kind: null,
+          output_json: stringifyJson(input.nodeExecution.output),
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
+          status: failed ? "failed" : "completed",
+        }).where("uid", "=", input.uid)
+          .where("run_id", "=", run.id)
+          .where("sequence", "=", task.sequence)
+          .where("status", "=", "running")
+          .executeTakeFirstOrThrow();
+      } else {
+        await trx.insertInto(EXECUTION_TABLE).values({
+          completed_at: now,
+          error_code: input.nodeExecution.errorCode ?? null,
+          error_message: input.nodeExecution.errorMessage ?? null,
+          failure_kind: null,
+          execution_key: input.nodeExecution.executionKey,
+          input_snapshot_json: stringifyJson(input.nodeExecution.input),
+          node_id: task.nodeId,
+          node_kind: task.nodeKind,
+          output_json: stringifyJson(input.nodeExecution.output),
+          revision: task.revision,
+          run_id: run.id,
+          sequence: task.sequence,
+          source_outlet_id: input.nodeExecution.sourceOutletId ?? null,
+          started_at: now,
+          status: failed ? "failed" : "completed",
+          uid: input.uid,
+        }).executeTakeFirstOrThrow();
+      }
+      await trx.insertInto(INBOX_TABLE).values({
+        consumer: input.inbox.consumer,
+        expires_at: input.inbox.expiresAt,
+        message_id: input.inbox.messageId,
+        processed_at: now,
+        uid: input.uid,
+      }).executeTakeFirstOrThrow();
+      await trx.updateTable(TASK_TABLE).set({
+        last_error_code: input.nodeExecution.errorCode ?? null,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: transitionTask(task.status, failed ? "dead" : "completed"),
+        task_version: task.taskVersion + 1,
+      }).where("uid", "=", input.uid).where("id", "=", task.id)
+        .where("task_version", "=", task.taskVersion).where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+
+      const nextSequence = run.sequence + 1;
+      let nextTask: WorkflowTaskRecord | null = null;
+      if (forwardRoute?.kind === "success" && latestRevision !== null) {
+        const dispatchImmediately = boundaryDecision === "execute";
+        nextTask = await insertTask(trx, {
+          createdAt: now,
+          dueAt: now,
+          nodeId: forwardRoute.target.id,
+          nodeKind: forwardRoute.target.kind,
+          revision: latestRevision,
+          runId: run.id,
+          sequence: nextSequence,
+          shardId: run.shardId,
+          status: dispatchImmediately ? "dispatched" : "suspended",
+          taskType: "execute",
+          uid: input.uid,
+          workflowId: run.workflowId,
+        });
+        if (dispatchImmediately) await insertTaskOutbox(trx, nextTask, now);
+      }
+
+      const nextRun: WorkflowRunRecord = {
+        ...run,
+        context: nextContext,
+        currentNodeId: forwardRoute?.kind === "success"
+          ? forwardRoute.target.id
+          : run.currentNodeId,
+        lockVersion: run.lockVersion + 1,
+        nextExecuteAt: forwardRoute?.kind === "success" ? now : null,
+        revision: forwardRoute?.kind === "success" && latestRevision !== null
+          ? latestRevision
+          : run.revision,
+        sequence: forwardRoute?.kind === "success" ? nextSequence : run.sequence,
+        status: transitionRun(
+          run.status,
+          failed
+            ? "failed"
+            : forwardRoute?.kind === "flow-changed"
+              ? "cancelled"
+              : forwardRoute?.kind === "success"
+                ? "running"
+                : "completed",
+        ),
+        terminalReason: failed
+          ? input.nodeExecution.errorCode ?? null
+          : forwardRoute?.kind === "flow-changed"
+            ? forwardRoute.reason
+            : null,
+      };
+      await trx.updateTable(RUN_TABLE).set({
+        completed_at: TERMINAL_RUN_STATUSES.includes(nextRun.status as typeof TERMINAL_RUN_STATUSES[number])
+          ? now
+          : null,
+        context_json: stringifyJson(nextRun.context),
+        current_node_id: nextRun.currentNodeId,
+        lock_version: nextRun.lockVersion,
+        next_execute_at: nextRun.nextExecuteAt,
+        revision: nextRun.revision,
+        sequence: nextRun.sequence,
+        status: nextRun.status,
+        terminal_reason: nextRun.terminalReason,
+      }).where("uid", "=", input.uid).where("id", "=", run.id)
+        .where("lock_version", "=", run.lockVersion).executeTakeFirstOrThrow();
+      if (TERMINAL_RUN_STATUSES.includes(nextRun.status as typeof TERMINAL_RUN_STATUSES[number])) {
+        await releaseTenantCapacity(trx, input.uid, 1);
+        await recordWorkflowRunMetrics(trx, [{
+          kind: nextRun.status === "completed"
+            ? "completed"
+            : nextRun.status === "failed" ? "failed" : "cancelled",
+          occurredAt: now,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }]);
+      }
+      if (failed) {
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:failed`,
+          runId: run.id,
+          runRevision: task.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+        }));
+      } else if (forwardRoute?.kind === "flow-changed") {
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:flow-changed`,
+          runId: run.id,
+          runRevision: task.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+        }));
+      } else if (forwardRoute?.kind === "success" && latestRevision !== null) {
+        const deltas = createNodeMetricDeltas({
+          fromNodeId: task.nodeId,
+          fromNodeKind: task.nodeKind,
+          kind: "advanced",
+          toNodeId: forwardRoute.target.id,
+          toNodeKind: forwardRoute.target.kind,
+        });
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:advanced:left`,
+          runId: run.id,
+          runRevision: task.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, deltas.filter(delta => delta.nodeId === task.nodeId));
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:advanced:entered`,
+          runId: run.id,
+          runRevision: latestRevision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, deltas.filter(delta => delta.nodeId === forwardRoute.target.id));
+      } else {
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:completed`,
+          runId: run.id,
+          runRevision: task.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, createNodeMetricDeltas({
+          kind: "completed",
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+        }));
+      }
+      return { kind: "success" as const, nextTask, run: nextRun };
+    });
+  }
+
+  async recoverExpiredLeases(input: Parameters<WorkflowRuntimeRepository["recoverExpiredLeases"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { dead: 0, recovered: 0 };
+    return this.db.transaction().execute(async (trx) => {
+      const candidateRows = await trx.selectFrom(TASK_TABLE).select([
+        "attempt", "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "uid", "workflow_id",
+      ])
+        .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc").orderBy("id", "asc").limit(limit)
+        .execute();
+      if (candidateRows.length === 0) return { dead: 0, recovered: 0 };
+      const runIds = [...new Set(candidateRows.map(row => row.run_id))];
+      const lockedRuns = await trx.selectFrom(RUN_TABLE).select(["id", "status"])
+        .where("id", "in", runIds)
+        .orderBy("id", "asc")
+        .forUpdate()
+        .execute();
+      const activeRunIdSet = new Set(lockedRuns
+        .filter(run => ACTIVE_RUN_STATUSES.includes(parseRunStatus(run.status) as typeof ACTIVE_RUN_STATUSES[number]))
+        .map(run => normalizeId(run.id)));
+      const rows = await trx.selectFrom(TASK_TABLE).select([
+        "attempt", "id", "node_id", "node_kind", "revision", "run_id", "sequence", "shard_id", "uid", "workflow_id",
+      ])
+        .where("id", "in", candidateRows.map(row => row.id))
+        .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc").orderBy("id", "asc")
+        .forUpdate().skipLocked().execute();
+      if (rows.length === 0) return { dead: 0, recovered: 0 };
+      const deadRows = rows.filter(row => row.attempt >= input.maxAttempts);
+      const recoverableRows = rows.filter(row => row.attempt < input.maxAttempts);
+      const definitionByKey = await loadDefinitionsForShare(trx, recoverableRows.map(row => ({
+        uid: normalizeTenantId(row.uid),
+        workflowId: normalizeId(row.workflow_id),
+      })));
+      const recoverableByStatus = new Map<"cancelled" | "pending" | "suspended", typeof recoverableRows>();
+      for (const row of recoverableRows) {
+        const definition = definitionByKey.get(definitionKey(
+          normalizeTenantId(row.uid),
+          normalizeId(row.workflow_id),
+        ));
+        const decision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        const status = decision === "execute" ? "pending" : decision === "defer" ? "suspended" : "cancelled";
+        const group = recoverableByStatus.get(status) ?? [];
+        group.push(row);
+        recoverableByStatus.set(status, group);
+      }
+      for (const [status, statusRows] of recoverableByStatus) {
+        if (statusRows.length === 0) continue;
+        await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status,
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", statusRows.map(row => row.id)).where("status", "=", "running")
+          .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
+      }
+      const recoverableIds = recoverableRows.map(row => row.id);
+      const deadIds = deadRows.map(row => row.id);
+      if (deadIds.length > 0) {
+        await trx.updateTable(EXECUTION_TABLE).set({
+          completed_at: input.now,
+          error_code: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+          error_message: "多次执行失败，流程已停止",
+          failure_kind: null,
+          status: "failed",
+        }).where(eb => eb.or(deadRows.map(row => eb.and([
+          eb("uid", "=", row.uid),
+          eb("run_id", "=", row.run_id),
+          eb("sequence", "=", row.sequence),
+        ]))))
+          .where("status", "=", "running")
+          .executeTakeFirst();
+        await insertNodeMetricEventsBulk(trx, deadRows.map(row => ({
+          context: {
+            eventKey: `${normalizeId(row.run_id)}:${normalizeId(row.id)}:failed`,
+            runId: normalizeId(row.run_id),
+            runRevision: row.revision,
+            runShardId: row.shard_id,
+            uid: normalizeTenantId(row.uid),
+            workflowId: normalizeId(row.workflow_id),
+          },
+          deltas: createNodeMetricDeltas({
+            kind: "left-incomplete",
+            nodeId: row.node_id,
+            nodeKind: parseNodeKind(row.node_kind),
+          }),
+        })));
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "dead",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", deadIds).where("status", "=", "running")
+          .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
+        const runsToFail = [...new Map(deadRows
+          .filter(row => activeRunIdSet.has(normalizeId(row.run_id)))
+          .map(row => [normalizeId(row.run_id), row])).values()];
+        const deadRunIds = runsToFail.map(row => row.run_id);
+        if (deadRunIds.length === 0) {
+          return { dead: deadIds.length, recovered: recoverableIds.length };
+        }
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+        }).where("id", "in", deadRunIds)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .executeTakeFirstOrThrow();
+        if (Number(runUpdate.numUpdatedRows) === runsToFail.length) {
+          await releaseTenantCapacityForRuns(trx, runsToFail.map(row => ({
+            uid: normalizeTenantId(row.uid),
+          })));
+          await recordWorkflowRunMetrics(trx, runsToFail.map(row => ({
+            kind: "failed" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(row.uid),
+            workflowId: row.workflow_id,
+          })));
+        }
+      }
+      return { dead: deadIds.length, recovered: recoverableIds.length };
+    });
+  }
+
+  async reconcileRunTaskConsistency(
+    input: Parameters<WorkflowRuntimeRepository["reconcileRunTaskConsistency"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit === 0) return emptyRunTaskConsistencyResult();
+
+    const runResult = await this.db.transaction().execute(async (trx) => {
+      let runQuery = trx.selectFrom(RUN_TABLE).select([
+        "current_node_id",
+        "id",
+        "lock_version",
+        "next_execute_at",
+        "revision",
+        "sequence",
+        "shard_id",
+        "status",
+        "uid",
+        "update_time",
+        "workflow_id",
+      ])
+        .where("completed_at", "is", null)
+        .where("status", "in", ACTIVE_RUN_STATUSES)
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked();
+      if (input.afterRunId) runQuery = runQuery.where("id", ">", input.afterRunId);
+      const candidateRuns = await runQuery.execute();
+      const runs = candidateRuns.slice(0, limit);
+      const runIds = runs.map(run => run.id);
+      const taskRows = runIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("run_id", "in", runIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("run_id", "asc")
+            .orderBy("sequence", "asc")
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const tasks = taskRows.map(mapTask);
+      const tasksByRunId = new Map<string, (typeof tasks)[number][]>();
+      for (const task of tasks) {
+        const runTasks = tasksByRunId.get(task.runId) ?? [];
+        runTasks.push(task);
+        tasksByRunId.set(task.runId, runTasks);
+      }
+      const taskIdsToCancel = new Set<string>();
+      const taskIdsToResume = new Set<string>();
+      const taskIdsToSuspend = new Set<string>();
+      const runsToFail: typeof runs = [];
+      const definitionKeys = new Map<string, { uid: number; workflowIds: Array<string | number | bigint> }>();
+      for (const run of runs) {
+        const uid = normalizeTenantId(run.uid);
+        const key = String(uid);
+        const group = definitionKeys.get(key) ?? { uid, workflowIds: [] };
+        group.workflowIds.push(run.workflow_id);
+        definitionKeys.set(key, group);
+      }
+      const definitions = definitionKeys.size === 0
+        ? []
+        : await trx.selectFrom("xy_wap_embed_workflow_definition")
+            .select(["biz_status", "id", "runtime_status", "uid"])
+            .where(eb => eb.or([...definitionKeys.values()].map(group => eb.and([
+              eb("uid", "=", group.uid),
+              eb("id", "in", group.workflowIds),
+            ]))))
+            .forShare()
+            .execute();
+      const definitionByKey = new Map(definitions.map(definition => [
+        `${normalizeTenantId(definition.uid)}:${normalizeId(definition.id)}`,
+        definition,
+      ]));
+
+      for (const run of runs) {
+        const definition = definitionByKey.get(
+          `${normalizeTenantId(run.uid)}:${normalizeId(run.workflow_id)}`,
+        );
+        const boundaryDecision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (boundaryDecision === "cancel") continue;
+
+        const runId = normalizeId(run.id);
+        const runTasks = tasksByRunId.get(runId) ?? [];
+        const authoritativeTask = runTasks.find(task => task.sequence === run.sequence);
+        for (const task of runTasks) {
+          if (task !== authoritativeTask) taskIdsToCancel.add(task.id);
+        }
+        const invalidAuthoritativeTask = !authoritativeTask
+          || authoritativeTask.uid !== normalizeTenantId(run.uid)
+          || authoritativeTask.workflowId !== normalizeId(run.workflow_id)
+          || authoritativeTask.revision !== run.revision
+          || authoritativeTask.shardId !== run.shard_id
+          || authoritativeTask.nodeId !== run.current_node_id
+          || (run.status === "waiting" && (
+            (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
+              && authoritativeTask.taskType !== "inference"
+              && authoritativeTask.taskType !== "ai-collect"
+              && !(authoritativeTask.taskType === "execute"
+                && isWorkflowTaskDeferReasonCode(authoritativeTask.lastErrorCode)))
+            || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
+          ));
+        if (!invalidAuthoritativeTask && authoritativeTask) {
+          if (boundaryDecision === "execute" && authoritativeTask.status === "suspended") {
+            taskIdsToResume.add(authoritativeTask.id);
+          } else if (boundaryDecision === "defer" && authoritativeTask.status === "pending") {
+            taskIdsToSuspend.add(authoritativeTask.id);
+          }
+        }
+        if (!invalidAuthoritativeTask || toDate(run.update_time) > input.inconsistentBefore) continue;
+        runsToFail.push(run);
+        for (const task of runTasks) taskIdsToCancel.add(task.id);
+      }
+
+      let taskStatusesReconciled = 0;
+      if (taskIdsToResume.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "pending",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToResume])
+          .where("status", "=", "suspended")
+          .executeTakeFirst();
+        taskStatusesReconciled += Number(update.numUpdatedRows);
+      }
+      if (taskIdsToSuspend.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "suspended",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToSuspend])
+          .where("status", "=", "pending")
+          .executeTakeFirst();
+        taskStatusesReconciled += Number(update.numUpdatedRows);
+      }
+
+      await insertNodeMetricEventsBulk(trx, runsToFail.flatMap(run => {
+        const runId = normalizeId(run.id);
+        const runTasks = tasksByRunId.get(runId) ?? [];
+        const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
+        return activeMetricTask ? [{
+          context: {
+            eventKey: `${runId}:runtime-state-inconsistent`,
+            runId,
+            runRevision: run.revision,
+            runShardId: run.shard_id,
+            uid: normalizeTenantId(run.uid),
+            workflowId: normalizeId(run.workflow_id),
+          },
+          deltas: createNodeMetricDeltas({
+            kind: "left-incomplete" as const,
+            nodeId: activeMetricTask.nodeId,
+            nodeKind: activeMetricTask.nodeKind,
+          }),
+        }] : [];
+      }));
+
+      let staleTasksCancelled = 0;
+      if (taskIdsToCancel.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          last_error_code: RUNTIME_STATE_INCONSISTENT,
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "cancelled",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToCancel])
+          .where("status", "in", ACTIVE_TASK_STATUSES)
+          .executeTakeFirst();
+        staleTasksCancelled = Number(update.numUpdatedRows);
+      }
+
+      let inconsistentRunsFailed = 0;
+      if (runsToFail.length > 0) {
+        const update = await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: RUNTIME_STATE_INCONSISTENT,
+        }).where("id", "in", runsToFail.map(run => run.id))
+          .where("status", "in", ACTIVE_RUN_STATUSES)
+          .where("update_time", "<=", input.inconsistentBefore)
+          .executeTakeFirst();
+        inconsistentRunsFailed = Number(update.numUpdatedRows);
+        if (inconsistentRunsFailed === runsToFail.length) {
+          await releaseTenantCapacityForRuns(trx, runsToFail.map(run => ({
+            uid: normalizeTenantId(run.uid),
+          })));
+          await recordWorkflowRunMetrics(trx, runsToFail.map(run => ({
+            kind: "failed" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(run.uid),
+            workflowId: run.workflow_id,
+          })));
+        }
+      }
+
+      return {
+        hasMoreRuns: candidateRuns.length > runs.length,
+        inconsistentRunsFailed,
+        lastRunId: runs.length > 0 ? normalizeId(runs.at(-1)!.id) : null,
+        runsChecked: runs.length,
+        staleTasksCancelled,
+        taskStatusesReconciled,
+      };
+    });
+
+    let taskQuery = this.db.selectFrom(TASK_TABLE).select(["id", "run_id"])
+      .where("status", "in", ACTIVE_TASK_STATUSES)
+      .orderBy("id", "asc")
+      .limit(limit + 1);
+    if (input.afterTaskId) taskQuery = taskQuery.where("id", ">", input.afterTaskId);
+    const candidateTasks = await taskQuery.execute();
+    const selectedTaskCandidates = candidateTasks.slice(0, limit);
+
+    const taskResult = await this.db.transaction().execute(async (trx) => {
+      const candidateRunIds = [...new Set(selectedTaskCandidates.map(task => task.run_id))];
+      const runs = candidateRunIds.length === 0
+        ? []
+        : await trx.selectFrom(RUN_TABLE).select(["id", "status"])
+            .where("id", "in", candidateRunIds)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const runStatusById = new Map(runs.map(run => [normalizeId(run.id), parseRunStatus(run.status)]));
+      const candidateTaskIds = selectedTaskCandidates.map(task => task.id);
+      const tasks = candidateTaskIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).select(["id", "run_id"])
+            .where("id", "in", candidateTaskIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const terminalTaskIds = tasks.filter(task => {
+        const runStatus = runStatusById.get(normalizeId(task.run_id));
+        return !runStatus || !isActiveRunStatus(runStatus);
+      }).map(task => task.id);
+      if (terminalTaskIds.length === 0) return { terminalRunTasksCancelled: 0 };
+      const update = await trx.updateTable(TASK_TABLE).set({
+        last_error_code: RUNTIME_STATE_INCONSISTENT,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      }).where("id", "in", terminalTaskIds)
+        .where("status", "in", ACTIVE_TASK_STATUSES)
+        .executeTakeFirst();
+      return { terminalRunTasksCancelled: Number(update.numUpdatedRows) };
+    });
+
+    return {
+      ...runResult,
+      hasMoreTasks: candidateTasks.length > selectedTaskCandidates.length,
+      lastTaskId: selectedTaskCandidates.length > 0
+        ? normalizeId(selectedTaskCandidates.at(-1)!.id)
+        : null,
+      tasksChecked: selectedTaskCandidates.length,
+      ...taskResult,
+    };
+  }
+
+  async reconcileTenantCapacityCounts(
+    input: Parameters<WorkflowRuntimeRepository["reconcileTenantCapacityCounts"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit === 0) {
+      return { checked: 0, corrected: 0, hasMore: false, lastUid: null };
+    }
+    return this.db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
+      let guardQuery = trx.selectFrom(CAPACITY_GUARD_TABLE)
+        .select(["active_run_count", "uid"])
+        .orderBy("uid", "asc")
+        .limit(limit + 1)
+        .forUpdate();
+      if (input.afterUid !== undefined) {
+        guardQuery = guardQuery.where("uid", ">", input.afterUid);
+      }
+      const candidateGuards = await guardQuery.execute();
+      const guards = candidateGuards.slice(0, limit);
+      const uids = guards.map(guard => normalizeTenantId(guard.uid));
+      const activeCounts = uids.length === 0
+        ? []
+        : await trx.selectFrom(RUN_TABLE)
+            .select(({ fn }) => [
+              "uid",
+              fn.countAll<number>().as("active_run_count"),
+            ])
+            .where("uid", "in", uids)
+            .where("status", "in", ACTIVE_RUN_STATUSES)
+            .groupBy("uid")
+            .execute();
+      const activeCountByUid = new Map(activeCounts.map(row => [
+        normalizeTenantId(row.uid),
+        Number(row.active_run_count),
+      ]));
+      const corrections: Array<{ activeRunCount: number; uid: number }> = [];
+      for (const guard of guards) {
+        const uid = normalizeTenantId(guard.uid);
+        const activeRunCount = activeCountByUid.get(uid) ?? 0;
+        if (Number(guard.active_run_count) === activeRunCount) continue;
+        corrections.push({ activeRunCount, uid });
+      }
+      for (const chunk of writeChunks(corrections)) {
+        await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+          active_run_count: sql<number>`CASE uid ${sql.join(chunk.map(correction =>
+            sql`WHEN ${correction.uid} THEN ${correction.activeRunCount}`), sql` `)}
+            ELSE active_run_count END`,
+        }).where("uid", "in", chunk.map(correction => correction.uid))
+          .executeTakeFirstOrThrow();
+      }
+      return {
+        checked: guards.length,
+        corrected: corrections.length,
+        hasMore: candidateGuards.length > guards.length,
+        lastUid: guards.length > 0 ? normalizeTenantId(guards.at(-1)!.uid) : null,
+      };
+    });
+  }
+
+  async listActiveCapacityTenants(
+    input: Parameters<WorkflowRuntimeRepository["listActiveCapacityTenants"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit === 0) return { hasMore: false, lastUid: null, uids: [] };
+    let query = this.db.selectFrom(CAPACITY_GUARD_TABLE)
+      .select("uid")
+      .where("active_run_count", ">", 0)
+      .orderBy("uid", "asc")
+      .limit(limit + 1);
+    if (input.afterUid !== undefined) query = query.where("uid", ">", input.afterUid);
+    const rows = await query.execute();
+    const selected = rows.slice(0, limit);
+    const uids = selected.map(row => normalizeTenantId(row.uid));
+    return {
+      hasMore: rows.length > selected.length,
+      lastUid: uids.at(-1) ?? null,
+      uids,
+    };
+  }
+
+  async listActiveRunWorkflowIds(
+    input: Parameters<WorkflowRuntimeRepository["listActiveRunWorkflowIds"]>[0],
+  ) {
+    if (input.workflowTypes.length === 0) return [];
+    const rows = await this.db.selectFrom(`${RUN_TABLE} as run`)
+      .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "run.uid")
+        .onRef("definition.id", "=", "run.workflow_id"))
+      .select(["run.workflow_id", "definition.workflow_type"])
+      .distinct()
+      .where("run.uid", "=", input.uid)
+      .where("run.status", "in", ACTIVE_RUN_STATUSES)
+      .where("definition.biz_status", "=", 1)
+      .where("definition.runtime_status", "in", ["active", "paused"])
+      .where("definition.workflow_type", "in", input.workflowTypes.map(encodeWorkflowType))
+      .execute();
+    return rows.map(row => ({
+      workflowId: normalizeId(row.workflow_id),
+      workflowType: decodeWorkflowType(row.workflow_type),
+    }));
+  }
+
+  async reconcileEventSubscriptions(
+    input: Parameters<WorkflowRuntimeRepository["reconcileEventSubscriptions"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) {
+      return { cancelled: 0, checked: 0, hasMore: false, lastSubscriptionId: null };
+    }
+    return this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom(EVENT_SUBSCRIPTION_TABLE).selectAll()
+        .where("status", "in", ["waiting", "triggered"])
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked();
+      if (input.afterSubscriptionId) {
+        query = query.where("id", ">", input.afterSubscriptionId);
+      }
+      const candidates = await query.execute();
+      const selected = candidates.slice(0, limit);
+      if (selected.length === 0) {
+        return { cancelled: 0, checked: 0, hasMore: false, lastSubscriptionId: null };
+      }
+
+      const runIds = [...new Set(selected.map(item => item.run_id))];
+      const taskIds = [...new Set(selected.map(item => item.task_id))];
+      const runs = await trx.selectFrom(RUN_TABLE).select(["current_node_id", "id", "status"])
+        .where("id", "in", runIds)
+        .execute();
+      const tasks = await trx.selectFrom(TASK_TABLE)
+        .select(["due_at", "id", "node_id", "node_kind", "run_id", "status", "task_type"])
+        .where("id", "in", taskIds)
+        .execute();
+      const runById = new Map(runs.map(run => [normalizeId(run.id), run]));
+      const taskById = new Map(tasks.map(task => [normalizeId(task.id), task]));
+      const inconsistentIds = selected.filter(row => {
+        const subscription = mapEventSubscription(row);
+        const run = runById.get(subscription.runId);
+        const task = taskById.get(subscription.taskId);
+        const expectedDueAt = subscription.status === "triggered"
+          ? subscription.resumeAt
+          : subscription.expiresAt;
+        return !run
+          || !["queued", "running", "waiting"].includes(run.status)
+          || run.current_node_id !== subscription.nodeId
+          || !task
+          || normalizeId(task.run_id) !== subscription.runId
+          || task.node_id !== subscription.nodeId
+          || task.node_kind !== "wait-event"
+          || task.task_type !== "wait-event"
+          || !["pending", "suspended", "leased", "dispatched", "running"].includes(task.status)
+          || !expectedDueAt
+          || !sameTimestamp(task.due_at, expectedDueAt);
+      }).map(row => row.id);
+      let cancelled = 0;
+      if (inconsistentIds.length > 0) {
+        const update = await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({ status: "cancelled" })
+          .where("id", "in", inconsistentIds)
+          .where("status", "in", ["waiting", "triggered"])
+          .executeTakeFirst();
+        cancelled = Number(update.numUpdatedRows);
+      }
+      return {
+        cancelled,
+        checked: selected.length,
+        hasMore: candidates.length > selected.length,
+        lastSubscriptionId: normalizeId(selected.at(-1)!.id),
+      };
+    });
+  }
+
+  async republishStalledDispatchedTasks(
+    input: Parameters<WorkflowRuntimeRepository["republishStalledDispatchedTasks"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
+        .innerJoin(`${OUTBOX_TABLE} as outbox`, join => join
+          .onRef("outbox.aggregate_id", "=", "task.id")
+          .onRef("outbox.task_version", "=", "task.task_version"))
+        .selectAll("task")
+        .select("outbox.id as outbox_id")
+        .where("task.status", "=", "dispatched")
+        .where("outbox.aggregate_type", "=", "workflow_task")
+        .where("outbox.status", "=", "sent")
+        .where("outbox.sent_at", "<=", input.dispatchedBefore)
+        .orderBy("outbox.sent_at", "asc")
+        .orderBy("task.id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      if (rows.length === 0) return 0;
+      await trx.updateTable(OUTBOX_TABLE).set({ status: "republished" })
+        .where("id", "in", rows.map(row => row.outbox_id))
+        .where("status", "=", "sent")
+        .executeTakeFirstOrThrow();
+      await insertTaskOutboxBatch(trx, rows.map(mapTask), input.now);
+      return rows.length;
+    });
+  }
+
+  async cleanupExpiredInbox(input: Parameters<WorkflowRuntimeRepository["cleanupExpiredInbox"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("expires_at", "<=", input.now)
+        .orderBy("expires_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return 0;
+      const result = await trx.deleteFrom(INBOX_TABLE).where("id", "in", ids).executeTakeFirst();
+      return Number(result.numDeletedRows);
+    });
+  }
+
+  async claimRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["claimRevisionCleanupBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
+        .executeTakeFirst();
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        last_error_code: "WORKFLOW_REVISION_CLEANUP_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("attempt", ">=", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      const pendingRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const leasedRows = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("attempt", "<", input.maxAttempts)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const rows = mergeRowsByNumericId([...pendingRows, ...leasedRows], limit);
+      if (rows.length === 0) return [];
+      const ids = rows.map(row => row.id);
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }).where("id", "in", ids).executeTakeFirstOrThrow();
+      return rows.map(row => mapRevisionCleanup({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }));
+    });
+  }
+
+  async processRevisionCleanupBatch(
+    input: Parameters<WorkflowRuntimeRepository["processRevisionCleanupBatch"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { kind: "conflict" as const };
+    const request = await this.db.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+      .where("id", "=", input.cleanupId)
+      .executeTakeFirst();
+    if (!request) return { kind: "not-found" as const };
+    if (request.status !== "leased" || request.lease_owner !== input.leaseOwner) {
+      return { kind: "conflict" as const };
+    }
+    return this.db.transaction().execute(async (trx) => {
+      let runQuery = trx.selectFrom(workflowRunStatusIndexedTable()).selectAll()
+        .where("uid", "=", normalizeTenantId(request.uid))
+        .where("workflow_id", "=", request.workflow_id)
+        .where("status", "in", ACTIVE_RUN_STATUSES)
+        .where("completed_at", "is", null)
+        .where("current_node_id", "=", request.node_id)
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate();
+      // Cursor pagination must wait for locked Runs or it can advance past them permanently.
+      if (request.after_run_id !== null) runQuery = runQuery.where("id", ">", request.after_run_id);
+      const candidateRuns = await runQuery.execute();
+      const selectedRuns = candidateRuns.slice(0, limit);
+      const runIds = selectedRuns.map(run => run.id);
+      const taskRows = runIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("run_id", "in", runIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select("published_revision")
+        .where("uid", "=", normalizeTenantId(request.uid))
+        .where("id", "=", request.workflow_id)
+        .forShare()
+        .executeTakeFirst();
+      const revision = definition?.published_revision === null || definition?.published_revision === undefined
+        ? null
+        : await trx.selectFrom(REVISION_TABLE)
+            .select("execution_spec_json")
+            .where("uid", "=", normalizeTenantId(request.uid))
+            .where("workflow_id", "=", request.workflow_id)
+            .where("revision", "=", definition.published_revision)
+            .executeTakeFirst();
+      if (!revision) return { kind: "conflict" as const };
+      const cleanupRow = await trx.selectFrom(REVISION_CLEANUP_TABLE).selectAll()
+        .where("id", "=", request.id)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!cleanupRow || cleanupRow.status !== "leased" || cleanupRow.lease_owner !== input.leaseOwner) {
+        return { kind: "conflict" as const };
+      }
+      const latestSpec = normalizeWorkflowExecutionSpec(
+        parseJson(revision.execution_spec_json) as WorkflowStoredExecutionSpec,
+      );
+      if (latestSpec.nodes.some(node => node.id === request.node_id)) {
+        await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "obsolete",
+        }).where("id", "=", request.id)
+          .where("status", "=", "leased")
+          .where("lease_owner", "=", input.leaseOwner)
+          .executeTakeFirstOrThrow();
+        return {
+          cancelled: 0,
+          hasMore: false,
+          kind: "success" as const,
+          status: "obsolete" as const,
+        };
+      }
+
+      const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
+      const expectedTaskType = nodeKind === "wait" ? "wait"
+        : nodeKind === "wait-event" ? "wait-event"
+          : "ai-collect";
+      const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
+      for (const task of taskRows) {
+        const runId = normalizeId(task.run_id);
+        const runTasks = taskRowsByRunId.get(runId) ?? [];
+        runTasks.push(task);
+        taskRowsByRunId.set(runId, runTasks);
+      }
+      const taskByRunId = new Map(selectedRuns.flatMap(run => {
+        const runId = normalizeId(run.id);
+        const task = taskRowsByRunId.get(runId)?.find(candidate => candidate.sequence === run.sequence
+          && candidate.node_id === request.node_id
+          && candidate.node_kind === nodeKind
+          && (candidate.task_type === "execute"
+            || candidate.task_type === expectedTaskType
+            || (nodeKind === "ai-collect" && candidate.task_type === "inference")));
+        return task ? [[runId, task] as const] : [];
+      }));
+      const runsToCancel = selectedRuns.filter(run => {
+        const task = taskByRunId.get(normalizeId(run.id));
+        return task?.sequence === run.sequence
+          && task.revision === run.revision
+          && task.node_id === run.current_node_id;
+      });
+      const taskIds = runsToCancel.flatMap(run => {
+        const task = taskByRunId.get(normalizeId(run.id));
+        return task ? [task.id] : [];
+      });
+      if (taskIds.length > 0) {
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "flow_changed_current_node_deleted",
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "cancelled",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", taskIds)
+          .where("status", "in", ACTIVE_TASK_STATUSES)
+          .executeTakeFirstOrThrow();
+      }
+      const cancelledRunIds = runsToCancel.map(run => run.id);
+      if (cancelledRunIds.length > 0) {
+        await trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({
+          status: "cancelled",
+          update_time: input.now,
+        }).where("run_id", "in", cancelledRunIds)
+          .where("status", "in", ["waiting", "triggered"])
+          .executeTakeFirst();
+        await cancelInferenceJobs(trx, cancelledRunIds);
+        await insertNodeMetricEventsBulk(trx, runsToCancel.map(run => {
+          const task = taskByRunId.get(normalizeId(run.id))!;
+          return {
+            context: {
+              eventKey: `${normalizeId(run.id)}:revision-cleanup:${normalizeId(request.id)}`,
+              runId: normalizeId(run.id),
+              runRevision: task.revision,
+              runShardId: run.shard_id,
+              uid: normalizeTenantId(run.uid),
+              workflowId: normalizeId(run.workflow_id),
+            },
+            deltas: createNodeMetricDeltas({
+              kind: "left-incomplete" as const,
+              nodeId: task.node_id,
+              nodeKind,
+            }),
+          };
+        }));
+        const runUpdate = await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "cancelled",
+          terminal_reason: "flow_changed_current_node_deleted",
+        }).where("id", "in", cancelledRunIds)
+          .where("status", "in", ACTIVE_RUN_STATUSES)
+          .executeTakeFirstOrThrow();
+        await releaseTenantCapacity(trx, normalizeTenantId(request.uid), Number(runUpdate.numUpdatedRows));
+        if (Number(runUpdate.numUpdatedRows) === runsToCancel.length) {
+          await recordWorkflowRunMetrics(trx, runsToCancel.map(run => ({
+            kind: "cancelled" as const,
+            occurredAt: input.now,
+            uid: normalizeTenantId(run.uid),
+            workflowId: run.workflow_id,
+          })));
+        }
+      }
+
+      const hasMore = candidateRuns.length > selectedRuns.length;
+      const nextStatus = hasMore ? "pending" as const : "done" as const;
+      await trx.updateTable(REVISION_CLEANUP_TABLE).set({
+        after_run_id: selectedRuns.at(-1)?.id ?? request.after_run_id,
+        attempt: 0,
+        last_error_code: null,
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        status: nextStatus,
+      }).where("id", "=", request.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirstOrThrow();
+      return {
+        cancelled: runsToCancel.length,
+        hasMore,
+        kind: "success" as const,
+        status: nextStatus,
+      };
+    });
+  }
+
+  async failRevisionCleanup(
+    input: Parameters<WorkflowRuntimeRepository["failRevisionCleanup"]>[0],
+  ) {
+    const row = await this.db.selectFrom(REVISION_CLEANUP_TABLE)
+      .select("attempt")
+      .where("id", "=", input.cleanupId)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    if (!row) return false;
+    const result = await this.db.updateTable(REVISION_CLEANUP_TABLE).set({
+      last_error_code: input.errorCode,
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: row.attempt >= input.maxAttempts ? "dead" : "pending",
+    }).where("id", "=", input.cleanupId)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async cleanupWorkflowHistory(
+    input: Parameters<WorkflowRuntimeRepository["cleanupWorkflowHistory"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return emptyHistoryCleanupResult();
+    const technical = await this.db.transaction().execute(async (trx) => {
+      const runs = await trx.selectFrom(RUN_TABLE).select("id")
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<", input.taskOutboxBefore)
+        .where(({ exists, selectFrom }) => exists(
+          selectFrom(`${TASK_TABLE} as cleanup_task`)
+            .select("cleanup_task.id")
+            .whereRef("cleanup_task.run_id", "=", `${RUN_TABLE}.id`),
+        ))
+        .orderBy("completed_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const selectedRuns = runs.slice(0, limit);
+      const runIds = selectedRuns.map(run => run.id);
+      if (runIds.length === 0) {
+        return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
+      }
+      const candidateOutbox = await trx.selectFrom(`${OUTBOX_TABLE} as outbox`)
+        .innerJoin(`${TASK_TABLE} as task`, join => join
+          .onRef("task.id", "=", "outbox.aggregate_id"))
+        .select(["outbox.status", "task.run_id"])
+        .where("outbox.aggregate_type", "=", "workflow_task")
+        .where("task.run_id", "in", runIds)
+        .orderBy("outbox.id", "asc")
+        .forUpdate()
+        .execute();
+      const blockedRunIds = new Set(candidateOutbox
+        .filter(item => item.status === "leased")
+        .map(item => normalizeId(item.run_id)));
+      const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
+      if (deletableRunIds.length === 0) {
+        return {
+          hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
+          outboxDeleted: 0,
+          tasksDeleted: 0,
+        };
+      }
+      await trx.deleteFrom(INFERENCE_JOB_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst();
+      await trx.deleteFrom(AI_COLLECT_STATE_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst();
+      const outboxDeleted = Number((await trx.deleteFrom(OUTBOX_TABLE)
+        .where("aggregate_type", "=", "workflow_task")
+        .where("aggregate_id", "in", trx.selectFrom(TASK_TABLE)
+          .select("id")
+          .where("run_id", "in", deletableRunIds))
+        .executeTakeFirst()).numDeletedRows);
+      await trx.deleteFrom(EVENT_SUBSCRIPTION_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst();
+      const tasksDeleted = Number((await trx.deleteFrom(TASK_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst()).numDeletedRows);
+      return {
+        hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
+        outboxDeleted,
+        tasksDeleted,
+      };
+    });
+    const userVisible = await this.db.transaction().execute(async (trx) => {
+      const runs = await trx.selectFrom(RUN_TABLE).select("id")
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<", input.runBefore)
+        .orderBy("completed_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const selectedRuns = runs.slice(0, limit);
+      if (selectedRuns.length === 0) {
+        return { hasMore: false, nodeExecutionsDeleted: 0, runsDeleted: 0 };
+      }
+      const runIds = selectedRuns.map(run => run.id);
+      const remainingTasks = await trx.selectFrom(TASK_TABLE).select("run_id")
+        .distinct()
+        .where("run_id", "in", runIds)
+        .execute();
+      const blockedRunIds = new Set(remainingTasks.map(task => normalizeId(task.run_id)));
+      const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
+      if (deletableRunIds.length === 0) {
+        return {
+          hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
+          nodeExecutionsDeleted: 0,
+          runsDeleted: 0,
+        };
+      }
+      const nodeExecutionsDeleted = Number((await trx.deleteFrom(EXECUTION_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst()).numDeletedRows);
+      const runsDeleted = Number((await trx.deleteFrom(RUN_TABLE)
+        .where("id", "in", deletableRunIds)
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<", input.runBefore)
+        .executeTakeFirst()).numDeletedRows);
+      return {
+        hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
+        nodeExecutionsDeleted,
+        runsDeleted,
+      };
+    });
+    return {
+      hasMore: technical.hasMore || userVisible.hasMore,
+      nodeExecutionsDeleted: userVisible.nodeExecutionsDeleted,
+      outboxDeleted: technical.outboxDeleted,
+      runsDeleted: userVisible.runsDeleted,
+      tasksDeleted: technical.tasksDeleted,
+    };
+  }
+
+  async aggregateNodeMetricEvents(
+    input: Parameters<WorkflowRuntimeRepository["aggregateNodeMetricEvents"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const events = await trx.selectFrom(NODE_METRIC_EVENT_TABLE).selectAll()
+        .where("processed_at", "is", null)
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      if (events.length === 0) return 0;
+      const aggregated = new Map<string, {
+        completed: number;
+        current: number;
+        entered: number;
+        incomplete: number;
+        nodeId: string;
+        passed: number;
+        revision: number;
+        shardId: number;
+        uid: number;
+        workflowId: string;
+      }>();
+      for (const event of events) {
+        const key = `${event.uid}:${event.workflow_id}:${event.revision}:${event.node_id}:${event.shard_id}`;
+        const current = aggregated.get(key) ?? {
+          completed: 0,
+          current: 0,
+          entered: 0,
+          incomplete: 0,
+          nodeId: event.node_id,
+          passed: 0,
+          revision: event.revision,
+          shardId: event.shard_id,
+          uid: event.uid,
+          workflowId: normalizeId(event.workflow_id),
+        };
+        current.completed += Number(event.completed_delta);
+        current.current += Number(event.current_delta);
+        current.entered += Number(event.entered_delta);
+        current.incomplete += Number(event.incomplete_delta);
+        current.passed += Number(event.passed_delta);
+        aggregated.set(key, current);
+      }
+      const orderedMetrics = [...aggregated.values()].sort(compareNodeMetricKeys);
+      for (const chunk of writeChunks(orderedMetrics)) {
+        await trx.insertInto(NODE_METRIC_TABLE).values(chunk.map(metric => ({
+          completed_count: metric.completed,
+          current_count: Math.max(0, metric.current),
+          entered_count: metric.entered,
+          incomplete_count: metric.incomplete,
+          node_id: metric.nodeId,
+          passed_count: metric.passed,
+          revision: metric.revision,
+          shard_id: metric.shardId,
+          uid: metric.uid,
+          workflow_id: metric.workflowId,
+        }))).onDuplicateKeyUpdate({
+          completed_count: sql<number>`completed_count + VALUES(completed_count)`,
+          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + CASE
+            ${sql.join(chunk.map(metric => sql`WHEN VALUES(uid) = ${metric.uid}
+              AND VALUES(workflow_id) = ${metric.workflowId}
+              AND VALUES(revision) = ${metric.revision}
+              AND BINARY VALUES(node_id) = BINARY ${metric.nodeId}
+              AND VALUES(shard_id) = ${metric.shardId}
+              THEN ${metric.current}`), sql` `)}
+            ELSE 0
+          END)`,
+          entered_count: sql<number>`entered_count + VALUES(entered_count)`,
+          incomplete_count: sql<number>`incomplete_count + VALUES(incomplete_count)`,
+          passed_count: sql<number>`passed_count + VALUES(passed_count)`,
+        }).executeTakeFirstOrThrow();
+      }
+      const processedAt = new Date();
+      await trx.updateTable(NODE_METRIC_EVENT_TABLE).set({ processed_at: processedAt })
+        .where("id", "in", events.map(event => event.id))
+        .where("processed_at", "is", null)
+        .executeTakeFirstOrThrow();
+      return events.length;
+    });
+  }
+
+  async cleanupProcessedNodeMetricEvents(
+    input: Parameters<WorkflowRuntimeRepository["cleanupProcessedNodeMetricEvents"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(NODE_METRIC_EVENT_TABLE).select("id")
+        .where("processed_at", "is not", null)
+        .where("processed_at", "<=", input.processedBefore)
+        .orderBy("processed_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      if (rows.length === 0) return 0;
+      const result = await trx.deleteFrom(NODE_METRIC_EVENT_TABLE)
+        .where("id", "in", rows.map(row => row.id))
+        .where("processed_at", "is not", null)
+        .executeTakeFirst();
+      return Number(result.numDeletedRows);
+    });
+  }
+
+  async listNodeMetrics(uid: number, workflowId: string, revision: number) {
+    const rows = await this.db.selectFrom(NODE_METRIC_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("workflow_id", "=", workflowId)
+      .where("revision", "=", revision)
+      .execute();
+    return rows.map(row => ({
+      completed: Number(row.completed_count),
+      current: Number(row.current_count),
+      entered: Number(row.entered_count),
+      incomplete: Number(row.incomplete_count),
+      nodeId: row.node_id,
+      passed: Number(row.passed_count),
+      revision: row.revision,
+      shardId: row.shard_id,
+      uid: normalizeTenantId(row.uid),
+      updatedAt: toDate(row.update_time),
+      workflowId: normalizeId(row.workflow_id),
+    } satisfies WorkflowNodeMetricRecord));
+  }
+
+  async recoverExpiredOutboxLeases(
+    input: Parameters<WorkflowRuntimeRepository["recoverExpiredOutboxLeases"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(OUTBOX_TABLE).select("id")
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc")
+        .orderBy("id", "asc")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return 0;
+      const update = await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        status: "pending",
+      }).where("id", "in", ids)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      return Number(update.numUpdatedRows);
+    });
+  }
+
+  async cancelWorkflowBatch(input: Parameters<WorkflowRuntimeRepository["cancelWorkflowBatch"]>[0]) {
+    const limit = boundBatchLimit(input.limit);
+    return this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom(RUN_TABLE).select(["current_node_id", "id", "revision", "shard_id", "workflow_id"])
+        .where("uid", "=", input.uid).where("workflow_id", "=", input.workflowId)
+        .where("status", "in", ["queued", "running", "waiting"])
+        .orderBy("id", "asc").limit(limit + 1).forUpdate();
+      if (input.afterRunId) query = query.where("id", ">", input.afterRunId);
+      const rows = await query.execute();
+      const selectedRows = rows.slice(0, limit);
+      const runIds = selectedRows.map((row) => row.id);
+      if (runIds.length === 0) {
+        return { cancelled: 0, hasMore: false, lastRunId: null };
+      }
+
+      const now = new Date();
+      const runUpdate = await trx.updateTable(RUN_TABLE).set({
+        completed_at: now,
+        lock_version: sql<number>`lock_version + 1`,
+        next_execute_at: null,
+        status: "cancelled",
+        terminal_reason: "workflow_stopped",
+      }).where("uid", "=", input.uid).where("id", "in", runIds)
+        .where("status", "in", ["queued", "running", "waiting"])
+        .executeTakeFirst();
+      await releaseTenantCapacity(trx, input.uid, Number(runUpdate.numUpdatedRows));
+      if (Number(runUpdate.numUpdatedRows) === selectedRows.length) {
+        await recordWorkflowRunMetrics(trx, selectedRows.map(run => ({
+          kind: "cancelled" as const,
+          occurredAt: now,
+          uid: input.uid,
+          workflowId: run.workflow_id,
+        })));
+      }
+      await recordCancellationMetrics(trx, selectedRows.map(run => ({
+        currentNodeId: run.current_node_id,
+        id: run.id,
+        revision: run.revision,
+        shardId: run.shard_id,
+        uid: input.uid,
+        workflowId: run.workflow_id,
+      })));
+      await trx.updateTable(TASK_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      })
+        .where("uid", "=", input.uid).where("run_id", "in", runIds)
+        .where("status", "in", ACTIVE_TASK_STATUSES)
+        .executeTakeFirst();
+      await cancelEventSubscriptions(trx, runIds);
+      await cancelInferenceJobs(trx, runIds);
+      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
+      return {
+        cancelled: Number(runUpdate.numUpdatedRows),
+        hasMore: rows.length > selectedRows.length,
+        lastRunId: normalizeId(runIds.at(-1)),
+      };
+    });
+  }
+
+  async cancelUnavailableWorkflowRuns(
+    input: Parameters<WorkflowRuntimeRepository["cancelUnavailableWorkflowRuns"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return { cancelled: 0, hasMore: false, lastRunId: null };
+    return this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom(`${RUN_TABLE} as run`)
+        .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
+          .onRef("definition.uid", "=", "run.uid")
+          .onRef("definition.id", "=", "run.workflow_id"))
+        .select(["run.current_node_id", "run.id", "run.revision", "run.shard_id", "run.uid", "run.workflow_id"])
+        .where("run.completed_at", "is", null)
+        .where("run.status", "in", ["queued", "running", "waiting"])
+        .where(eb => eb.or([
+          eb("definition.id", "is", null),
+          eb("definition.biz_status", "=", 0),
+          eb("definition.runtime_status", "in", ["inactive", "stopped"]),
+        ]))
+        .orderBy("run.id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked();
+      if (input.afterRunId) query = query.where("run.id", ">", input.afterRunId);
+      const rows = await query.execute();
+      const selected = rows.slice(0, limit);
+      const runIds = selected.map(row => row.id);
+      if (runIds.length === 0) return { cancelled: 0, hasMore: false, lastRunId: null };
+      const now = new Date();
+      const runUpdate = await trx.updateTable(RUN_TABLE).set({
+        completed_at: now,
+        lock_version: sql<number>`lock_version + 1`,
+        next_execute_at: null,
+        status: "cancelled",
+        terminal_reason: "workflow_stopped",
+      }).where("id", "in", runIds)
+        .where("status", "in", ["queued", "running", "waiting"])
+        .executeTakeFirst();
+      if (Number(runUpdate.numUpdatedRows) === selected.length) {
+        await releaseTenantCapacityForRuns(trx, selected.map(run => ({
+          uid: normalizeTenantId(run.uid),
+        })));
+        await recordWorkflowRunMetrics(trx, selected.map(run => ({
+          kind: "cancelled" as const,
+          occurredAt: now,
+          uid: normalizeTenantId(run.uid),
+          workflowId: run.workflow_id,
+        })));
+      }
+      await recordCancellationMetrics(trx, selected.map(run => ({
+        currentNodeId: run.current_node_id,
+        id: run.id,
+        revision: run.revision,
+        shardId: run.shard_id,
+        uid: normalizeTenantId(run.uid),
+        workflowId: run.workflow_id,
+      })));
+      await trx.updateTable(TASK_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      }).where("run_id", "in", runIds)
+        .where("status", "in", ACTIVE_TASK_STATUSES)
+        .executeTakeFirst();
+      await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("aggregate_type", "=", "workflow_task")
+        .where("aggregate_id", "in", trx.selectFrom(TASK_TABLE)
+          .select("id")
+          .where("run_id", "in", runIds))
+        .where("status", "in", ["pending", "leased", "republished"])
+        .executeTakeFirst();
+      await cancelEventSubscriptions(trx, runIds);
+      await cancelInferenceJobs(trx, runIds);
+      await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
+      return {
+        cancelled: Number(runUpdate.numUpdatedRows),
+        hasMore: rows.length > selected.length,
+        lastRunId: normalizeId(runIds.at(-1)),
+      };
+    });
+  }
+
+  private async findRunByEntryEvent(uid: number, workflowId: string, entryEventId: string) {
+    const row = await this.db.selectFrom(RUN_TABLE).selectAll()
+      .where("uid", "=", uid).where("workflow_id", "=", workflowId)
+      .where("entry_event_id", "=", entryEventId).executeTakeFirst();
+    return row ? mapRun(row) : null;
+  }
+
+  private async findInitialTask(uid: number, runId: string) {
+    const row = await this.db.selectFrom(TASK_TABLE).selectAll()
+      .where("uid", "=", uid).where("run_id", "=", runId)
+      .orderBy("sequence", "asc").limit(1).executeTakeFirst();
+    return row ? mapTask(row) : null;
+  }
+
+  async findRun(uid: number, runId: string) {
+    const row = await this.db.selectFrom(RUN_TABLE).selectAll()
+      .where("uid", "=", uid).where("id", "=", runId).executeTakeFirst();
+    return row ? mapRun(row) : null;
+  }
+
+  async findTask(uid: number, taskId: string) {
+    const row = await this.db.selectFrom(TASK_TABLE).selectAll()
+      .where("uid", "=", uid).where("id", "=", taskId).executeTakeFirst();
+    return row ? mapTask(row) : null;
+  }
+}
+
+async function insertTask(
+  trx: RuntimeTransaction,
+  input: Omit<WorkflowTaskRecord, "attempt" | "id" | "lastErrorCode" | "leaseExpiresAt" | "leaseOwner" | "taskVersion">,
+) {
+  const inserted = await trx.insertInto(TASK_TABLE).values({
+    attempt: 0,
+    bucket_time: floorToMinute(input.dueAt),
+    create_time: input.createdAt,
+    due_at: input.dueAt,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    node_id: input.nodeId,
+    node_kind: input.nodeKind,
+    revision: input.revision,
+    run_id: input.runId,
+    sequence: input.sequence,
+    shard_id: input.shardId,
+    status: input.status,
+    task_type: input.taskType,
+    task_version: 1,
+    uid: input.uid,
+    workflow_id: input.workflowId,
+  }).executeTakeFirstOrThrow();
+  return {
+    ...input,
+    attempt: 0,
+    id: normalizeId(inserted.insertId),
+    lastErrorCode: null,
+    leaseExpiresAt: null,
+    leaseOwner: null,
+    taskVersion: 1,
+  };
+}
+
+function insertTaskOutbox(trx: RuntimeTransaction, task: WorkflowTaskRecord, now: Date) {
+  return insertTaskOutboxBatch(trx, [task], now);
+}
+
+async function insertTaskOutboxBatch(
+  trx: RuntimeTransaction,
+  tasks: WorkflowTaskRecord[],
+  now: Date,
+) {
+  for (const chunk of writeChunks(tasks)) {
+    await trx.insertInto(OUTBOX_TABLE).values(chunk.map(task => ({
+      aggregate_id: task.id,
+      aggregate_type: "workflow_task",
+      attempt: 0,
+      event_type: "workflow.task.ready",
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: now,
+      payload_json: stringifyJson(createTaskMessage(task, now)),
+      sent_at: null,
+      status: "pending",
+      task_version: task.taskVersion,
+      uid: task.uid,
+    }))).executeTakeFirstOrThrow();
+  }
+}
+
+async function insertNodeMetricEvents(
+  trx: RuntimeTransaction,
+  context: {
+    eventKey: string;
+    runId: string;
+    runRevision: number;
+    runShardId: number;
+    uid: number;
+    workflowId: string;
+  },
+  deltas: WorkflowNodeMetricDelta[],
+) {
+  await insertNodeMetricEventsBulk(trx, [{ context, deltas }]);
+}
+
+async function insertNodeMetricEventsBulk(
+  trx: RuntimeTransaction,
+  items: Array<{
+    context: {
+      eventKey: string;
+      runId: string;
+      runRevision: number;
+      runShardId: number;
+      uid: number;
+      workflowId: string;
+    };
+    deltas: WorkflowNodeMetricDelta[];
+  }>,
+) {
+  const values = items.flatMap(({ context, deltas }) => deltas.map(delta => ({
+    completed_delta: delta.completed,
+    current_delta: delta.current,
+    entered_delta: delta.entered,
+    incomplete_delta: delta.incomplete,
+    event_key: `${context.eventKey}:${delta.nodeId}`,
+    node_id: delta.nodeId,
+    passed_delta: delta.passed,
+    processed_at: null,
+    revision: context.runRevision,
+    run_id: context.runId,
+    shard_id: context.runShardId % 16,
+    uid: context.uid,
+    workflow_id: context.workflowId,
+  })));
+  if (values.length === 0) return;
+  for (const chunk of writeChunks(values)) {
+    await trx.insertInto(NODE_METRIC_EVENT_TABLE).values(chunk).onDuplicateKeyUpdate({
+      event_key: sql<string>`event_key`,
+    }).executeTakeFirstOrThrow();
+  }
+}
+
+async function recordCancellationMetrics(
+  trx: RuntimeTransaction,
+  runs: Array<{
+    currentNodeId: string;
+    id: DatabaseId;
+    revision: number;
+    shardId: number;
+    uid: number;
+    workflowId: DatabaseId;
+  }>,
+) {
+  if (runs.length === 0) return;
+  const tasks = await trx.selectFrom(TASK_TABLE)
+    .select(["node_id", "node_kind", "run_id", "sequence"])
+    .where(eb => eb.or(runs.map(run => eb.and([
+      eb("run_id", "=", run.id),
+      eb("node_id", "=", run.currentNodeId),
+    ]))))
+    .orderBy("sequence", "desc")
+    .execute();
+  const latestByRunId = new Map<string, (typeof tasks)[number]>();
+  for (const task of tasks) {
+    const runId = normalizeId(task.run_id);
+    if (!latestByRunId.has(runId)) latestByRunId.set(runId, task);
+  }
+  await insertNodeMetricEventsBulk(trx, runs.flatMap(run => {
+    const task = latestByRunId.get(normalizeId(run.id));
+    if (!task) return [];
+    return [{
+      context: {
+        eventKey: `${normalizeId(run.id)}:cancelled`,
+        runId: normalizeId(run.id),
+        runRevision: run.revision,
+        runShardId: run.shardId,
+        uid: run.uid,
+        workflowId: normalizeId(run.workflowId),
+      },
+      deltas: createNodeMetricDeltas({
+        kind: "left-incomplete",
+        nodeId: task.node_id,
+        nodeKind: parseNodeKind(task.node_kind),
+      }),
+    }];
+  }));
+}
+
+async function loadDefinitionsForShare(
+  trx: RuntimeTransaction,
+  keys: Array<{ uid: number; workflowId: string }>,
+) {
+  if (keys.length === 0) return new Map<string, { biz_status: number; runtime_status: string }>();
+  const grouped = new Map<number, Set<string>>();
+  for (const key of keys) {
+    const workflowIds = grouped.get(key.uid) ?? new Set<string>();
+    workflowIds.add(key.workflowId);
+    grouped.set(key.uid, workflowIds);
+  }
+  const rows = await trx.selectFrom("xy_wap_embed_workflow_definition")
+    .select(["biz_status", "id", "runtime_status", "uid"])
+    .where(eb => eb.or([...grouped.entries()].map(([uid, workflowIds]) => eb.and([
+      eb("uid", "=", uid),
+      eb("id", "in", [...workflowIds]),
+    ]))))
+    .forShare()
+    .execute();
+  return new Map(rows.map(row => [
+    definitionKey(normalizeTenantId(row.uid), normalizeId(row.id)),
+    { biz_status: row.biz_status, runtime_status: row.runtime_status },
+  ]));
+}
+
+function definitionKey(uid: number, workflowId: string) {
+  return `${uid}:${workflowId}`;
+}
+
+type MysqlWorkflowTaskTransitionRequest = {
+  attempt: number;
+  id: string;
+  targetStatus: "pending" | "suspended";
+  transitionVersion: number;
+  uid: number;
+  workflowId: string;
+};
+
+type MysqlWorkflowTaskTransitionClaim =
+  | { kind: "claimed"; request: MysqlWorkflowTaskTransitionRequest }
+  | { kind: "dead" };
+
+async function claimMysqlWorkflowTaskTransition(
+  db: Kysely<WorkflowDatabase>,
+  input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    maxAttempts: number;
+    now: Date;
+  },
+): Promise<MysqlWorkflowTaskTransitionClaim | null> {
+  return db.transaction().execute(async (trx) => {
+    const pending = await trx.selectFrom(TASK_TRANSITION_TABLE).selectAll()
+      .where("status", "=", "pending")
+      .where("next_attempt_at", "<=", input.now)
+      .orderBy("id", "asc")
+      .limit(1)
+      .forUpdate()
+      .skipLocked()
+      .execute();
+    const expired = await trx.selectFrom(TASK_TRANSITION_TABLE).selectAll()
+      .where("status", "=", "leased")
+      .where("lease_expires_at", "<=", input.now)
+      .orderBy("id", "asc")
+      .limit(1)
+      .forUpdate()
+      .skipLocked()
+      .execute();
+    const row = mergeRowsByNumericId([...pending, ...expired], 1)[0];
+    if (!row) return null;
+    if (row.attempt >= input.maxAttempts) {
+      await trx.updateTable(TASK_TRANSITION_TABLE).set({
+        last_error_code: "WORKFLOW_TASK_TRANSITION_ATTEMPTS_EXHAUSTED",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", row.id)
+        .where("transition_version", "=", row.transition_version)
+        .executeTakeFirstOrThrow();
+      return { kind: "dead" };
+    }
+    if (row.target_status !== "pending" && row.target_status !== "suspended") {
+      await trx.updateTable(TASK_TRANSITION_TABLE).set({
+        last_error_code: "WORKFLOW_TASK_TRANSITION_TARGET_INVALID",
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", row.id)
+        .where("transition_version", "=", row.transition_version)
+        .executeTakeFirstOrThrow();
+      return { kind: "dead" };
+    }
+    await trx.updateTable(TASK_TRANSITION_TABLE).set({
+      attempt: sql<number>`attempt + 1`,
+      last_error_code: null,
+      lease_expires_at: input.leaseExpiresAt,
+      lease_owner: input.leaseOwner,
+      status: "leased",
+    }).where("id", "=", row.id)
+      .where("transition_version", "=", row.transition_version)
+      .executeTakeFirstOrThrow();
+    return {
+      kind: "claimed",
+      request: mapTaskTransitionRequest(row, row.attempt + 1),
+    };
+  });
+}
+
+function mapTaskTransitionRequest(
+  row: Selectable<WorkflowTaskTransitionTable>,
+  attempt: number,
+): MysqlWorkflowTaskTransitionRequest {
+  if (row.target_status !== "pending" && row.target_status !== "suspended") {
+    throw new Error(`Unknown Workflow Task transition target status: ${row.target_status}`);
+  }
+  return {
+    attempt,
+    id: normalizeId(row.id),
+    targetStatus: row.target_status,
+    transitionVersion: row.transition_version,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function getTaskTransitionErrorCode(error: unknown) {
+  if (typeof error === "object" && error !== null && "code" in error
+    && typeof error.code === "string") return error.code.slice(0, 128);
+  return "WORKFLOW_TASK_TRANSITION_FAILED";
+}
+
+function uniqueSortedIds(values: DatabaseId[]) {
+  return [...new Set(values.map(value => normalizeId(value)))]
+    .sort((first, second) => first < second ? -1 : first > second ? 1 : 0);
+}
+
+function mergeRowsByNumericId<T extends { id: DatabaseId }>(rows: T[], limit: number) {
+  const rowById = new Map<string, T>();
+  for (const row of rows) {
+    const id = normalizeId(row.id);
+    if (!rowById.has(id)) rowById.set(id, row);
+  }
+  return [...rowById.values()]
+    .sort((first, second) => compareDatabaseIds(first.id, second.id))
+    .slice(0, limit);
+}
+
+function compareDatabaseIds(first: DatabaseId, second: DatabaseId) {
+  const firstId = BigInt(first);
+  const secondId = BigInt(second);
+  return firstId === secondId ? 0 : firstId < secondId ? -1 : 1;
+}
+
+function boundBatchLimit(limit: number) {
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.min(Math.trunc(limit), WORKFLOW_RUNTIME_BATCH_LIMIT);
+}
+
+function writeChunks<T>(items: readonly T[]) {
+  return chunksOf(items, WORKFLOW_MYSQL_WRITE_CHUNK_SIZE);
+}
+
+function chunksOf<T>(items: readonly T[], size: number) {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size));
+  }
+  return chunks;
+}
+
+function createTaskMessage(task: WorkflowTaskRecord, now: Date): WorkflowTaskMessage {
+  return {
+    messageId: `workflow-task:${task.id}:v${task.taskVersion}`,
+    occurredAt: now.toISOString(),
+    runId: task.runId,
+    shardId: task.shardId,
+    taskId: task.id,
+    taskVersion: task.taskVersion,
+    uid: String(task.uid),
+  };
+}
+
+function emptyRunTaskConsistencyResult() {
+  return {
+    hasMoreRuns: false,
+    hasMoreTasks: false,
+    inconsistentRunsFailed: 0,
+    lastRunId: null,
+    lastTaskId: null,
+    runsChecked: 0,
+    staleTasksCancelled: 0,
+    taskStatusesReconciled: 0,
+    tasksChecked: 0,
+    terminalRunTasksCancelled: 0,
+  };
+}
+
+function emptyHistoryCleanupResult() {
+  return {
+    hasMore: false,
+    nodeExecutionsDeleted: 0,
+    outboxDeleted: 0,
+    runsDeleted: 0,
+    tasksDeleted: 0,
+  };
+}
+
+function mapInferenceJob(
+  row: Selectable<WorkflowInferenceJobTable>,
+): WorkflowInferenceJobRecord {
+  const payload = parseJson(row.payload_json);
+  if (!Value.Check(WorkflowInferenceRequestSchema, payload)) {
+    throw new Error("Database returned an invalid Workflow inference payload");
+  }
+  const result = row.result_json === null ? null : parseJson(row.result_json);
+  if (result !== null && !Value.Check(WorkflowInferenceResultSchema, result)) {
+    throw new Error("Database returned an invalid Workflow inference result");
+  }
+  const status = row.status;
+  if (status !== "pending" && status !== "running" && status !== "retry_wait"
+    && status !== "succeeded" && status !== "failed" && status !== "cancelled") {
+    throw new Error(`Unknown Workflow inference job status: ${status}`);
+  }
+  if (row.node_kind !== "llm" && row.node_kind !== "ai-intent" && row.node_kind !== "ai-collect") {
+    throw new Error(`Unknown Workflow inference node kind: ${row.node_kind}`);
+  }
+  return {
+    attempt: row.attempt,
+    contractVersion: row.contract_version,
+    createdAt: toDate(row.create_time),
+    deadlineAt: toDate(row.deadline_at),
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    executionKey: row.execution_key,
+    failureKind: parseCapabilityFailureKind(row.failure_kind),
+    id: normalizeId(row.id),
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    nodeId: row.node_id,
+    nodeKind: row.node_kind,
+    pausedAt: row.paused_at ? toDate(row.paused_at) : null,
+    payload,
+    result,
+    runId: normalizeId(row.run_id),
+    sequence: row.sequence,
+    status,
+    taskId: normalizeId(row.task_id),
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
+  };
+}
+
+function mapAiCollectState(
+  row: Selectable<WorkflowAiCollectStateTable>,
+): WorkflowAiCollectStateRecord {
+  const collected = parseJson(row.collected_json);
+  if (!Value.Check(WorkflowJsonObjectSchema, collected)) {
+    throw new Error("Database returned invalid AI Collect field state");
+  }
+  const directiveStatus = row.directive_status;
+  if (directiveStatus !== "inactive" && directiveStatus !== "active"
+    && directiveStatus !== "disabling" && directiveStatus !== "disabled") {
+    throw new Error(`Unknown AI Collect directive status: ${directiveStatus}`);
+  }
+  const terminalOutlet = row.terminal_outlet;
+  if (terminalOutlet !== null && terminalOutlet !== "completed" && terminalOutlet !== "incomplete") {
+    throw new Error(`Unknown AI Collect terminal outlet: ${terminalOutlet}`);
+  }
+  return {
+    activeBatchCursor: mapAiCollectCursor(
+      row.active_batch_cursor_time,
+      row.active_batch_cursor_id,
+      "active batch",
+    ),
+    activeBatchCutoffAt: row.active_batch_cutoff_at ? toDate(row.active_batch_cutoff_at) : null,
+    activeBatchHasMore: normalizeBooleanFlag(row.active_batch_has_more, "active_batch_has_more"),
+    activeInferenceKey: row.active_inference_key,
+    bizId: row.biz_id,
+    collected: structuredClone(collected),
+    conversationId: row.conversation_id === null
+      ? null
+      : normalizePositiveSafeNumber(row.conversation_id, "conversation_id"),
+    createdAt: toDate(row.create_time),
+    directiveAttempt: normalizeNonNegativeSafeNumber(row.directive_attempt, "directive_attempt"),
+    directiveLeaseExpiresAt: row.directive_lease_expires_at
+      ? toDate(row.directive_lease_expires_at)
+      : null,
+    directiveLeaseOwner: row.directive_lease_owner,
+    directiveNextAttemptAt: toDate(row.directive_next_attempt_at),
+    directiveStatus,
+    disableReason: row.disable_reason,
+    expiresAt: row.expires_at ? toDate(row.expires_at) : null,
+    initialInputProcessed: normalizeBooleanFlag(
+      row.initial_input_processed,
+      "initial_input_processed",
+    ),
+    lastMessageCursor: requireAiCollectCursor(
+      row.last_message_time,
+      row.last_message_id,
+      "last message",
+    ),
+    nextBatchSequence: normalizePositiveSafeNumber(
+      row.next_batch_sequence,
+      "next_batch_sequence",
+    ),
+    observedRound: normalizeNonNegativeSafeNumber(row.observed_round, "observed_round"),
+    openingMessageSent: normalizeBooleanFlag(row.opening_message_sent, "opening_message_sent"),
+    pendingCutoffAt: row.pending_cutoff_at ? toDate(row.pending_cutoff_at) : null,
+    quietUntil: row.quiet_until ? toDate(row.quiet_until) : null,
+    runId: normalizeId(row.run_id),
+    seatId: normalizePositiveSafeNumber(row.seat_id, "seat_id"),
+    taskId: normalizeId(row.task_id),
+    terminalOutlet,
+    thirdExternalUserId: row.third_external_user_id,
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function toAiCollectStateUpdate(state: WorkflowAiCollectStateRecord) {
+  return {
+    active_batch_cutoff_at: state.activeBatchCutoffAt,
+    active_batch_cursor_id: state.activeBatchCursor?.id ?? null,
+    active_batch_cursor_time: state.activeBatchCursor?.timestamp ?? null,
+    active_batch_has_more: state.activeBatchHasMore ? 1 : 0,
+    active_inference_key: state.activeInferenceKey,
+    collected_json: stringifyJson(state.collected),
+    conversation_id: state.conversationId,
+    directive_attempt: state.directiveAttempt,
+    directive_lease_expires_at: state.directiveLeaseExpiresAt,
+    directive_lease_owner: state.directiveLeaseOwner,
+    directive_next_attempt_at: state.directiveNextAttemptAt,
+    directive_status: state.directiveStatus,
+    disable_reason: state.disableReason,
+    initial_input_processed: state.initialInputProcessed ? 1 : 0,
+    last_message_id: state.lastMessageCursor.id,
+    last_message_time: state.lastMessageCursor.timestamp,
+    next_batch_sequence: state.nextBatchSequence,
+    observed_round: state.observedRound,
+    opening_message_sent: state.openingMessageSent ? 1 : 0,
+    pending_cutoff_at: state.pendingCutoffAt,
+    quiet_until: state.quietUntil,
+    terminal_outlet: state.terminalOutlet,
+  };
+}
+
+function mapAiCollectCursor(
+  timestampValue: unknown,
+  idValue: unknown,
+  name: string,
+) {
+  if (timestampValue === null && idValue === null) return null;
+  if (timestampValue === null || idValue === null) {
+    throw new Error(`Database returned incomplete AI Collect ${name} cursor`);
+  }
+  return {
+    id: normalizePositiveSafeNumber(idValue, `${name} id`),
+    timestamp: normalizeNonNegativeSafeNumber(timestampValue, `${name} timestamp`),
+  };
+}
+
+function requireAiCollectCursor(
+  timestampValue: unknown,
+  idValue: unknown,
+  name: string,
+) {
+  const cursor = mapAiCollectCursor(timestampValue, idValue, name);
+  if (!cursor) throw new Error(`Database returned missing AI Collect ${name} cursor`);
+  return cursor;
+}
+
+function normalizeBooleanFlag(value: unknown, name: string) {
+  const normalized = typeof value === "string" ? Number(value) : value;
+  if (normalized === 0) return false;
+  if (normalized === 1) return true;
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
+function normalizePositiveSafeNumber(value: unknown, name: string) {
+  const normalized = typeof value === "string" || typeof value === "bigint" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized > 0) {
+    return normalized;
+  }
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
+function normalizeNonNegativeSafeNumber(value: unknown, name: string) {
+  const normalized = typeof value === "string" || typeof value === "bigint" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized >= 0) {
+    return normalized;
+  }
+  throw new Error(`Database returned invalid AI Collect ${name}`);
+}
+
+function sameTimestamp(first: Date, second: Date | null) {
+  return second !== null && toDate(first).getTime() === toDate(second).getTime();
+}
+
+function sameOptionalTimestamp(first: Date | null, second: Date | null) {
+  return first === null ? second === null : second !== null && first.getTime() === second.getTime();
+}
+
+function isActiveRunStatus(status: WorkflowRunStatus) {
+  return status === "queued" || status === "running" || status === "waiting";
+}
+
+function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {
+  const status = row.status;
+  if (status !== "pending"
+    && status !== "leased"
+    && status !== "sent"
+    && status !== "dead"
+    && status !== "republished") {
+    throw new Error(`Unknown workflow outbox status: ${status}`);
+  }
+  if (row.event_type !== "workflow.task.ready") {
+    throw new Error(`Unknown workflow outbox event type: ${row.event_type}`);
+  }
+  const payload = parseJson(row.payload_json);
+  if (!Value.Check(WorkflowTaskMessageSchema, payload)) {
+    throw new Error("Workflow Outbox contains an invalid task message");
+  }
+  return {
+    attempt: row.attempt,
+    eventType: "workflow.task.ready",
+    id: normalizeId(row.id),
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    payload: structuredClone(payload) as WorkflowTaskMessage,
+    sentAt: row.sent_at ? toDate(row.sent_at) : null,
+    status,
+    taskVersion: row.task_version,
+    uid: normalizeTenantId(row.uid),
+  };
+}
+
+function createRunRecord(id: string, input: WorkflowCreateRunInput, admittedAt: Date): WorkflowRunRecord {
+  return {
+    context: structuredClone(input.context),
+    createdAt: admittedAt,
+    currentNodeId: input.initialNodeId,
+    entryEventId: input.entryEventId,
+    id,
+    lockVersion: 1,
+    nextExecuteAt: admittedAt,
+    revision: input.revision,
+    sequence: 1,
+    shardId: input.shardId,
+    status: "queued",
+    subjectId: input.subjectId,
+    subjectType: input.subjectType,
+    terminalReason: null,
+    uid: input.uid,
+    workflowId: input.workflowId,
+  };
+}
+
+function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
+  return {
+    context: parseJson(row.context_json),
+    createdAt: row.create_time,
+    currentNodeId: row.current_node_id,
+    entryEventId: row.entry_event_id,
+    id: normalizeId(row.id),
+    lockVersion: row.lock_version,
+    nextExecuteAt: row.next_execute_at,
+    revision: row.revision,
+    sequence: row.sequence,
+    shardId: row.shard_id,
+    status: parseRunStatus(row.status),
+    subjectId: row.subject_id,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
+    terminalReason: row.terminal_reason,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+async function getDatabaseNow(trx: RuntimeTransaction) {
+  const row = await trx.selectNoFrom(sql<Date>`CURRENT_TIMESTAMP`.as("now"))
+    .executeTakeFirstOrThrow();
+  return row.now instanceof Date ? row.now : new Date(row.now);
+}
+
+function assertNonNegativeSafeInteger(value: number, name: string) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
+}
+
+type WorkflowRunMetricEvent = {
+  kind: "cancelled" | "completed" | "entered" | "failed";
+  occurredAt: Date;
+  uid: number;
+  workflowId: DatabaseId;
+};
+
+async function recordWorkflowRunMetrics(
+  trx: RuntimeTransaction,
+  events: WorkflowRunMetricEvent[],
+) {
+  if (events.length === 0) return;
+
+  const summaries = new Map<string, {
+    cancelled: number;
+    completed: number;
+    entered: number;
+    failed: number;
+    lastRunAt: Date | null;
+    uid: number;
+    workflowId: DatabaseId;
+  }>();
+  const daily = new Map<string, {
+    cancelled: number;
+    completed: number;
+    entered: number;
+    failed: number;
+    metricDate: string;
+    uid: number;
+    workflowId: DatabaseId;
+  }>();
+
+  for (const event of events) {
+    const summaryKey = `${event.uid}:${normalizeId(event.workflowId)}`;
+    const summary = summaries.get(summaryKey) ?? {
+      cancelled: 0,
+      completed: 0,
+      entered: 0,
+      failed: 0,
+      lastRunAt: null,
+      uid: event.uid,
+      workflowId: event.workflowId,
+    };
+    summary[event.kind === "entered" ? "entered" : event.kind] += 1;
+    if (event.kind === "entered" && (!summary.lastRunAt || event.occurredAt > summary.lastRunAt)) {
+      summary.lastRunAt = event.occurredAt;
+    }
+    summaries.set(summaryKey, summary);
+
+    const metricDate = formatWorkflowMetricDate(event.occurredAt);
+    const dailyKey = `${summaryKey}:${metricDate}`;
+    const dailyMetric = daily.get(dailyKey) ?? {
+      cancelled: 0,
+      completed: 0,
+      entered: 0,
+      failed: 0,
+      metricDate,
+      uid: event.uid,
+      workflowId: event.workflowId,
+    };
+    dailyMetric[event.kind === "entered" ? "entered" : event.kind] += 1;
+    daily.set(dailyKey, dailyMetric);
+  }
+
+  const orderedSummaries = [...summaries.values()].sort(compareWorkflowMetricKeys);
+  for (const chunk of writeChunks(orderedSummaries)) {
+    await trx.insertInto(WORKFLOW_METRIC_TABLE).values(chunk.map(metric => ({
+      cancelled_run_count: metric.cancelled,
+      completed_run_count: metric.completed,
+      failed_run_count: metric.failed,
+      last_run_at: metric.lastRunAt,
+      total_run_count: metric.entered,
+      uid: metric.uid,
+      workflow_id: metric.workflowId,
+    }))).onDuplicateKeyUpdate({
+      cancelled_run_count: sql<number>`cancelled_run_count + VALUES(cancelled_run_count)`,
+      completed_run_count: sql<number>`completed_run_count + VALUES(completed_run_count)`,
+      failed_run_count: sql<number>`failed_run_count + VALUES(failed_run_count)`,
+      last_run_at: sql<Date | null>`CASE
+        WHEN VALUES(last_run_at) IS NULL THEN last_run_at
+        WHEN last_run_at IS NULL OR last_run_at < VALUES(last_run_at) THEN VALUES(last_run_at)
+        ELSE last_run_at
+      END`,
+      total_run_count: sql<number>`total_run_count + VALUES(total_run_count)`,
+    }).executeTakeFirstOrThrow();
+  }
+
+  const orderedDailyMetrics = [...daily.values()].sort((left, right) =>
+    compareWorkflowMetricKeys(left, right) || left.metricDate.localeCompare(right.metricDate));
+  for (const chunk of writeChunks(orderedDailyMetrics)) {
+    await trx.insertInto(WORKFLOW_DAILY_METRIC_TABLE).values(chunk.map(metric => ({
+      cancelled_count: metric.cancelled,
+      completed_count: metric.completed,
+      entered_count: metric.entered,
+      failed_count: metric.failed,
+      metric_date: metric.metricDate,
+      uid: metric.uid,
+      workflow_id: metric.workflowId,
+    }))).onDuplicateKeyUpdate({
+      cancelled_count: sql<number>`cancelled_count + VALUES(cancelled_count)`,
+      completed_count: sql<number>`completed_count + VALUES(completed_count)`,
+      entered_count: sql<number>`entered_count + VALUES(entered_count)`,
+      failed_count: sql<number>`failed_count + VALUES(failed_count)`,
+    }).executeTakeFirstOrThrow();
+  }
+}
+
+function compareWorkflowMetricKeys(
+  left: { uid: number; workflowId: DatabaseId },
+  right: { uid: number; workflowId: DatabaseId },
+) {
+  if (left.uid !== right.uid) return left.uid - right.uid;
+  const leftWorkflowId = normalizeId(left.workflowId);
+  const rightWorkflowId = normalizeId(right.workflowId);
+  return leftWorkflowId < rightWorkflowId ? -1 : leftWorkflowId > rightWorkflowId ? 1 : 0;
+}
+
+function compareNodeMetricKeys(
+  left: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+  right: { nodeId: string; revision: number; shardId: number; uid: number; workflowId: DatabaseId },
+) {
+  return compareWorkflowMetricKeys(left, right)
+    || left.revision - right.revision
+    || (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0)
+    || left.shardId - right.shardId;
+}
+
+function compareRuntimeSnapshotKeys(
+  left: WorkflowRuntimeSnapshotKey,
+  right: WorkflowRuntimeSnapshotKey,
+) {
+  return left.workflowId < right.workflowId
+    ? -1
+    : left.workflowId > right.workflowId
+      ? 1
+      : left.revision - right.revision;
+}
+
+function runtimeSnapshotKey(workflowId: string, revision: number) {
+  return `${workflowId}:${revision}`;
+}
+
+async function releaseTenantCapacity(
+  trx: RuntimeTransaction,
+  uid: number,
+  count: number,
+) {
+  if (count <= 0) return;
+  await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+    active_run_count: sql<number>`active_run_count - ${count}`,
+  }).where("uid", "=", uid)
+    .where("active_run_count", ">=", count)
+    .executeTakeFirst();
+}
+
+async function releaseTenantCapacityForRuns(
+  trx: RuntimeTransaction,
+  runs: Array<{ uid: number }>,
+) {
+  const counts = new Map<number, number>();
+  for (const run of runs) counts.set(run.uid, (counts.get(run.uid) ?? 0) + 1);
+  const sortedCounts = [...counts].sort(([left], [right]) => left - right);
+  for (const chunk of writeChunks(sortedCounts)) {
+    await trx.updateTable(CAPACITY_GUARD_TABLE).set({
+      active_run_count: sql<number>`CASE ${sql.join(chunk.map(([uid, count]) =>
+        sql`WHEN uid = ${uid} AND active_run_count >= ${count}
+          THEN active_run_count - ${count}`), sql` `)}
+        ELSE active_run_count END`,
+    }).where("uid", "in", chunk.map(([uid]) => uid))
+      .executeTakeFirst();
+  }
+}
+
+async function canEnterWorkflow(
+  trx: RuntimeTransaction,
+  input: WorkflowCreateRunInput,
+  totalEntries: number,
+  admittedAt: Date,
+) {
+  if (input.entryPolicy.mode === "never") return totalEntries === 0;
+  if (input.entryPolicy.mode === "lifetime_limit") {
+    return totalEntries < input.entryPolicy.maxEntries;
+  }
+  const windowMilliseconds = input.entryPolicy.windowSize
+    * (input.entryPolicy.windowUnit === "hour" ? 3_600_000 : 86_400_000);
+  const cutoff = new Date(admittedAt.getTime() - windowMilliseconds);
+  const row = await trx.selectFrom(RUN_TABLE)
+    .select(({ fn }) => fn.countAll<number>().as("entry_count"))
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "=", input.workflowId)
+    .where("subject_type", "=", encodeWorkflowSubjectType(input.subjectType))
+    .where("subject_id", "=", input.subjectId)
+    .where("create_time", ">=", cutoff)
+    .executeTakeFirstOrThrow();
+  return Number(row.entry_count) < input.entryPolicy.maxEntries;
+}
+
+async function findRunAndInitialTaskByEntryEvent(
+  trx: RuntimeTransaction,
+  uid: number,
+  workflowId: string,
+  entryEventId: string,
+  options: { lockForShare?: boolean } = {},
+) {
+  const runQuery = trx.selectFrom(RUN_TABLE).selectAll()
+    .where("uid", "=", uid)
+    .where("workflow_id", "=", workflowId)
+    .where("entry_event_id", "=", entryEventId);
+  const runRow = await (options.lockForShare ? runQuery.forShare() : runQuery).executeTakeFirst();
+  if (!runRow) return null;
+  const run = mapRun(runRow);
+  const taskQuery = trx.selectFrom(TASK_TABLE).selectAll()
+    .where("uid", "=", uid)
+    .where("run_id", "=", run.id)
+    .orderBy("sequence", "asc")
+    .limit(1);
+  const taskRow = await (options.lockForShare ? taskQuery.forShare() : taskQuery).executeTakeFirst();
+  if (!taskRow) throw new Error("Deduplicated workflow run has no initial task");
+  return { run, task: mapTask(taskRow) };
+}
+
+function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {
+  return {
+    attempt: row.attempt,
+    createdAt: row.create_time,
+    dueAt: row.due_at,
+    id: normalizeId(row.id),
+    lastErrorCode: row.last_error_code,
+    leaseExpiresAt: row.lease_expires_at,
+    leaseOwner: row.lease_owner,
+    nodeId: row.node_id,
+    nodeKind: parseNodeKind(row.node_kind),
+    revision: row.revision,
+    runId: normalizeId(row.run_id),
+    sequence: row.sequence,
+    shardId: row.shard_id,
+    status: parseTaskStatus(row.status),
+    taskType: row.task_type,
+    taskVersion: row.task_version,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABLE]>): WorkflowNodeExecutionRecord {
+  return {
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    failureKind: parseCapabilityFailureKind(row.failure_kind),
+    executionKey: row.execution_key,
+    input: row.input_snapshot_json ? parseJson(row.input_snapshot_json) : {},
+    nodeId: row.node_id,
+    nodeKind: parseNodeKind(row.node_kind),
+    output: row.output_json ? parseJson(row.output_json) : {},
+    runId: normalizeId(row.run_id),
+    revision: row.revision,
+    sequence: row.sequence,
+    sourceOutletId: row.source_outlet_id,
+    status: parseNodeExecutionStatus(row.status),
+    uid: normalizeTenantId(row.uid),
+  };
+}
+
+function mapRevisionCleanup(
+  row: Selectable<WorkflowDatabase[typeof REVISION_CLEANUP_TABLE]>,
+): WorkflowRevisionCleanupRecord {
+  const status = row.status;
+  if (status !== "pending" && status !== "leased" && status !== "done"
+    && status !== "obsolete" && status !== "dead") {
+    throw new Error(`Unknown Workflow Revision cleanup status: ${status}`);
+  }
+  return {
+    afterRunId: row.after_run_id === null ? null : normalizeId(row.after_run_id),
+    attempt: row.attempt,
+    id: normalizeId(row.id),
+    lastErrorCode: row.last_error_code,
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    nodeId: row.node_id,
+    nodeKind: parseRevisionCleanupNodeKind(row.node_kind),
+    revision: row.revision,
+    status,
+    uid: normalizeTenantId(row.uid),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function parseRevisionCleanupNodeKind(value: string): "ai-collect" | "wait" | "wait-event" {
+  if (value === "ai-collect" || value === "wait" || value === "wait-event") return value;
+  throw new Error(`Unknown Workflow Revision cleanup node kind: ${value}`);
+}
+
+async function lockCapabilityExecutionState(
+  trx: RuntimeTransaction,
+  input: {
+    expectedRunLockVersion: number;
+    expectedTaskVersion: number;
+    runId: string;
+    taskId: string;
+    uid: number;
+  },
+): Promise<
+  | { kind: "conflict" | "not-found" }
+  | { kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord }
+> {
+  const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+    .where("uid", "=", input.uid)
+    .where("id", "=", input.runId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!runRow) return { kind: "not-found" as const };
+  const run = mapRun(runRow);
+  if (run.lockVersion !== input.expectedRunLockVersion || run.status !== "running") {
+    return { kind: "conflict" as const };
+  }
+  const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+    .where("uid", "=", input.uid)
+    .where("id", "=", input.taskId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!taskRow || normalizeId(taskRow.run_id) !== input.runId) return { kind: "not-found" as const };
+  const task = mapTask(taskRow);
+  if (task.taskVersion !== input.expectedTaskVersion || task.status !== "running") {
+    return { kind: "conflict" as const };
+  }
+  return { kind: "success", run, task };
+}
+
+async function lockCapabilityFailureState(
+  trx: RuntimeTransaction,
+  input: WorkflowCapabilityExecutionFailureInput,
+): Promise<
+  | { kind: "already-processed" | "conflict" | "not-found" }
+  | {
+      execution: WorkflowNodeExecutionRecord;
+      kind: "success";
+      run: WorkflowRunRecord;
+      task: WorkflowTaskRecord;
+    }
+> {
+  const processed = await trx.selectFrom(INBOX_TABLE).select("id")
+    .where("consumer", "=", input.inbox.consumer)
+    .where("message_id", "=", input.inbox.messageId)
+    .executeTakeFirst();
+  if (processed) return { kind: "already-processed" as const };
+  const state = await lockCapabilityExecutionState(trx, input);
+  if (state.kind !== "success") return state;
+  const executionRow = await trx.selectFrom(EXECUTION_TABLE).selectAll()
+    .where("uid", "=", input.uid)
+    .where("run_id", "=", input.runId)
+    .where("sequence", "=", state.task.sequence)
+    .where("execution_key", "=", input.executionKey)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!executionRow) return { kind: "not-found" as const };
+  const execution = mapNodeExecution(executionRow);
+  if (execution.status !== "running") return { kind: "conflict" as const };
+  return { ...state, execution };
+}
+
+function insertWorkflowInbox(
+  trx: RuntimeTransaction,
+  uid: number,
+  inbox: WorkflowCapabilityExecutionFailureInput["inbox"],
+  now: Date,
+) {
+  return trx.insertInto(INBOX_TABLE).values({
+    consumer: inbox.consumer,
+    expires_at: inbox.expiresAt,
+    message_id: inbox.messageId,
+    processed_at: now,
+    uid,
+  }).executeTakeFirstOrThrow();
+}
+
+function updateCapabilityExecutionFailure(
+  trx: RuntimeTransaction,
+  input: WorkflowCapabilityExecutionFailureInput,
+  status: "failed" | "retrying",
+) {
+  return trx.updateTable(EXECUTION_TABLE).set({
+    completed_at: status === "failed" ? input.now : null,
+    error_code: input.errorCode,
+    error_message: input.errorMessage,
+    failure_kind: input.failureKind,
+    status,
+  }).where("uid", "=", input.uid)
+    .where("run_id", "=", input.runId)
+    .where("execution_key", "=", input.executionKey)
+    .where("status", "=", "running")
+    .executeTakeFirstOrThrow();
+}
+
+function failRunningNodeExecutions(
+  trx: RuntimeTransaction,
+  runIds: DatabaseId[],
+  completedAt: Date,
+  errorCode: string,
+  errorMessage: string,
+) {
+  return trx.updateTable(EXECUTION_TABLE).set({
+    completed_at: completedAt,
+    error_code: errorCode,
+    error_message: errorMessage,
+    failure_kind: null,
+    status: "failed",
+  }).where("run_id", "in", runIds)
+    .where("status", "in", ["running", "retrying"])
+    .executeTakeFirst();
+}
+
+function cancelEventSubscriptions(trx: RuntimeTransaction, runIds: readonly DatabaseId[]) {
+  if (runIds.length === 0) return Promise.resolve();
+  return trx.updateTable(EVENT_SUBSCRIPTION_TABLE).set({ status: "cancelled" })
+    .where("run_id", "in", runIds)
+    .where("status", "in", ["waiting", "triggered"])
+    .executeTakeFirst()
+    .then(() => undefined);
+}
+
+function cancelInferenceJobs(trx: RuntimeTransaction, runIds: readonly DatabaseId[]) {
+  if (runIds.length === 0) return Promise.resolve();
+  return trx.updateTable(INFERENCE_JOB_TABLE).set({
+    lease_expires_at: null,
+    lease_owner: null,
+    paused_at: null,
+    status: "cancelled",
+  }).where("run_id", "in", runIds)
+    .where("status", "in", ["pending", "running", "retry_wait"])
+    .executeTakeFirst()
+    .then(() => undefined);
+}
+
+export async function transitionMysqlWorkflowInferenceJobs(
+  db: RuntimeDbExecutor,
+  input: Parameters<WorkflowInferenceRepository["transitionInferenceJobs"]>[0],
+) {
+  if (input.workflowIds.length === 0) return;
+  const runIds = db.selectFrom(RUN_TABLE).select("id")
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "in", input.workflowIds);
+  if (input.transition === "cancel") {
+    await db.updateTable(INFERENCE_JOB_TABLE).set({
+      lease_expires_at: null,
+      lease_owner: null,
+      paused_at: null,
+      status: "cancelled",
+    }).where("uid", "=", input.uid)
+      .where("run_id", "in", runIds)
+      .where("status", "in", ["pending", "running", "retry_wait"])
+      .executeTakeFirstOrThrow();
+    return;
+  }
+  if (input.transition === "pause") {
+    await db.updateTable(INFERENCE_JOB_TABLE).set({
+      attempt: sql<number>`CASE WHEN status = 'running' THEN GREATEST(attempt - 1, 0) ELSE attempt END`,
+      lease_expires_at: null,
+      lease_owner: null,
+      paused_at: input.transitionedAt,
+      status: sql<string>`CASE WHEN status = 'running' THEN 'pending' ELSE status END`,
+    }).where("uid", "=", input.uid)
+      .where("run_id", "in", runIds)
+      .where("status", "in", ["pending", "running", "retry_wait"])
+      .where("deadline_at", ">", input.transitionedAt)
+      .where("paused_at", "is", null)
+      .executeTakeFirstOrThrow();
+    return;
+  }
+  await db.updateTable(INFERENCE_JOB_TABLE).set({
+    deadline_at: sql<Date>`TIMESTAMPADD(MICROSECOND, TIMESTAMPDIFF(MICROSECOND, paused_at, ${input.transitionedAt}), deadline_at)`,
+    next_attempt_at: sql<Date>`TIMESTAMPADD(MICROSECOND, TIMESTAMPDIFF(MICROSECOND, paused_at, ${input.transitionedAt}), next_attempt_at)`,
+    paused_at: null,
+  }).where("uid", "=", input.uid)
+    .where("run_id", "in", runIds)
+    .where("status", "in", ["pending", "retry_wait"])
+    .where("paused_at", "is not", null)
+    .executeTakeFirstOrThrow();
+}
+
+export async function enqueueMysqlWorkflowTaskTransitions(
+  db: RuntimeDbExecutor,
+  input: {
+    requestedAt: Date;
+    targetStatus: "pending" | "suspended";
+    uid: number;
+    workflowIds: string[];
+  },
+) {
+  if (input.workflowIds.length === 0) return 0;
+  const result = await db.insertInto(TASK_TRANSITION_TABLE).values(input.workflowIds.map(workflowId => ({
+    attempt: 0,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    next_attempt_at: input.requestedAt,
+    status: "pending",
+    target_status: input.targetStatus,
+    transition_version: 1,
+    uid: input.uid,
+    workflow_id: workflowId,
+  }))).onDuplicateKeyUpdate({
+    attempt: 0,
+    last_error_code: null,
+    lease_expires_at: null,
+    lease_owner: null,
+    next_attempt_at: input.requestedAt,
+    status: "pending",
+    target_status: input.targetStatus,
+    transition_version: sql<number>`transition_version + 1`,
+  }).executeTakeFirstOrThrow();
+  return Number(result.numInsertedOrUpdatedRows ?? input.workflowIds.length);
+}
+
+export async function clearMysqlWorkflowTaskTransitions(
+  db: RuntimeDbExecutor,
+  input: { uid: number; workflowIds: string[] },
+) {
+  if (input.workflowIds.length === 0) return 0;
+  const result = await db.deleteFrom(TASK_TRANSITION_TABLE)
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "in", input.workflowIds)
+    .executeTakeFirst();
+  return Number(result.numDeletedRows);
+}
+
+function mapEventSubscription(
+  row: Selectable<WorkflowEventSubscriptionTable>,
+): WorkflowEventSubscriptionRecord {
+  const status = row.status;
+  if (status !== "waiting"
+    && status !== "triggered"
+    && status !== "timed_out"
+    && status !== "cancelled") {
+    throw new Error(`Unknown workflow event subscription status: ${status}`);
+  }
+  return {
+    createdAt: toDate(row.create_time),
+    effectiveFrom: toDate(row.effective_from),
+    eventType: parseEntryEventType(row.event_type),
+    expiresAt: toDate(row.expires_at),
+    id: normalizeId(row.id),
+    nodeId: row.node_id,
+    revision: row.revision,
+    resumeAt: row.resume_at ? toDate(row.resume_at) : null,
+    runId: normalizeId(row.run_id),
+    seatId: row.seat_id == null ? null : Number(row.seat_id),
+    status,
+    subjectId: row.subject_id,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
+    taskId: normalizeId(row.task_id),
+    triggerEventId: row.trigger_event_id,
+    triggerOccurredAt: row.trigger_occurred_at ? toDate(row.trigger_occurred_at) : null,
+    triggerProjection: parseEventSubscriptionProjection(row.trigger_projection_json),
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function parseEventSubscriptionProjection(value: string | null) {
+  if (value === null) return null;
+  const projection = parseJson(value);
+  if (!Value.Check(WorkflowJsonObjectSchema, projection)) {
+    throw new Error("Invalid Workflow event subscription projection");
+  }
+  return structuredClone(projection);
+}
+
+function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBindingRecord {
+  return {
+    createdAt: toDate(row.create_time),
+    eventType: parseEntryEventType(row.event_type),
+    filter: parseJson(row.filter_spec_json) as WorkflowTriggerBindingFilter,
+    id: normalizeId(row.id),
+    revision: Number(row.revision),
+    status: Number(row.status) === 1 ? 1 : 0,
+    subjectType: decodeWorkflowSubjectType(row.subject_type),
+    uid: normalizeTenantId(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
+function parseNodeKind(value: string): WorkflowNodeKind {
+  if ([
+    "start",
+    "wait",
+    "wait-event",
+    "branch",
+    "ratio-split",
+    "message",
+    "message-query",
+    "tag",
+    "coupon",
+    "handoff",
+    "agent",
+    "llm",
+    "order-bind",
+    "order-query",
+    "order-conversion",
+    "tag-query",
+    "customer-update",
+    "ai-collect",
+    "ai-intent",
+    "audience-filter",
+    "end",
+  ].includes(value)) {
+    return value as WorkflowNodeKind;
+  }
+  throw new Error(`Unknown workflow node kind: ${value}`);
+}
+
+function parseCapabilityFailureKind(value: string | null) {
+  if (value === null || value === "retryable" || value === "terminal" || value === "unknown") return value;
+  throw new Error(`Unknown workflow capability failure kind: ${value}`);
+}
+
+function parseNodeExecutionStatus(value: string) {
+  if (value === "completed" || value === "failed" || value === "retrying" || value === "running") return value;
+  throw new Error(`Unknown workflow node execution status: ${value}`);
+}
+
+function parseRunStatus(value: string): WorkflowRunStatus {
+  if (["queued", "running", "waiting", "completed", "failed", "cancelled"].includes(value)) {
+    return value as WorkflowRunStatus;
+  }
+  throw new Error(`Unknown workflow run status: ${value}`);
+}
+
+function workflowRunStatusIndexedTable(): typeof RUN_TABLE {
+  // In standard entitlement mode, activeRunLimit bounds Revision cleanup locks.
+  // The node index can lock retained terminal Runs before LIMIT.
+  // Kysely accepts raw table expressions at runtime but models typed tables as string keys.
+  return sql<Selectable<WorkflowRunTable>>`${sql.table(RUN_TABLE)} FORCE INDEX (${sql.id(
+    RUN_STATUS_RECORDS_INDEX,
+  )})` as unknown as typeof RUN_TABLE;
+}
+
+function parseTaskStatus(value: string): WorkflowTaskStatus {
+  if ([
+    "pending",
+    "suspended",
+    "waiting_external",
+    "leased",
+    "dispatched",
+    "running",
+    "completed",
+    "cancelled",
+    "dead",
+  ].includes(value)) {
+    return value as WorkflowTaskStatus;
+  }
+  throw new Error(`Unknown workflow task status: ${value}`);
+}
+
+function parseRuntimeStatus(value: string): WorkflowRuntimeStatus {
+  if (value === "inactive" || value === "active" || value === "paused" || value === "stopped") {
+    return value;
+  }
+  throw new Error(`Unknown workflow runtime status: ${value}`);
+}
+
+function parseStatusReason(value: string | null): WorkflowStatusReason {
+  if (value === null || value === "entitlement_revoked") return value;
+  throw new Error(`Unknown workflow status reason: ${value}`);
+}
+
+function parseEntryEventType(value: unknown): WorkflowEntryEventType {
+  if (Value.Check(WorkflowEntryEventTypeSchema, value)) return value;
+  throw new Error(`Unknown workflow entry event type: ${String(value)}`);
+}
+
+function floorToMinute(value: Date) {
+  const result = new Date(value);
+  result.setUTCSeconds(0, 0);
+  return result;
+}
+
+function parseJson(value: unknown) {
+  return (typeof value === "string" ? JSON.parse(value) : structuredClone(value)) as Record<string, unknown>;
+}
+function stringifyJson(value: unknown) { return JSON.stringify(value); }
+function normalizeId(value: unknown) {
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
+  if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return value;
+  throw new Error("Database returned an invalid BIGINT identifier");
+}
+function normalizeTenantId(value: unknown) {
+  const normalized = typeof value === "string" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized > 0) return normalized;
+  throw new Error("Database returned an invalid tenant identifier");
+}
+function toDate(value: unknown) {
+  if (value instanceof Date) return value;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) throw new Error("Database returned an invalid DATETIME value");
+  return date;
+}
+function isDuplicateKeyError(error: unknown) {
+  return !!error && typeof error === "object" && "code" in error && error.code === "ER_DUP_ENTRY";
+}

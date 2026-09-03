@@ -9,6 +9,27 @@ const schemaSql = readFileSync(resolve(__dirname, "../../../../docs/db/schema.sq
 const changeLogMarkdown = readFileSync(resolve(__dirname, "../../../../docs/db/change-log.md"), "utf8");
 
 describe("database schema document", () => {
+  it("defines independently revocable embed browser sessions", () => {
+    const sessionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_sub_user_embed_session",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-31 Embed 独立登录会话",
+    );
+
+    expect(sessionTable).toContain("UNIQUE KEY uk_sub_user_embed_session_refresh");
+    expect(sessionTable).toContain(
+      "KEY idx_sub_user_embed_session_sub_user_expiry (sub_user_id, expires_at, id)",
+    );
+    expect(sessionTable).not.toContain("UNIQUE KEY uk_sub_user_id");
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS xy_wap_embed_sub_user_embed_session",
+    );
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_sub_user_embed_session");
+  });
+
   it("defines the final ticket fields on session action items", () => {
     const actionItemTable = extractCreateTable(schemaSql, "xy_wap_embed_session_action_item");
 
@@ -112,6 +133,259 @@ describe("database schema document", () => {
     const analysisPolicyTable = extractCreateTable(schemaSql, "xy_wap_embed_insight_analysis_policy");
 
     expect(analysisPolicyTable).toMatch(/\n  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1\b/);
+  });
+
+  it("defines Workflow entity tables with the shared auto-increment key and timestamp convention", () => {
+    const tableNames = [
+      "xy_wap_embed_workflow_definition",
+      "xy_wap_embed_workflow_revision",
+      "xy_wap_embed_workflow_trigger_binding",
+      "xy_wap_embed_workflow_run",
+      "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_task_transition",
+      "xy_wap_embed_workflow_event_subscription",
+      "xy_wap_embed_workflow_inference_job",
+      "xy_wap_embed_workflow_node_execution",
+      "xy_wap_embed_workflow_outbox",
+      "xy_wap_embed_workflow_inbox",
+      "xy_wap_embed_workflow_daily_metric",
+      "xy_wap_embed_workflow_capacity_daily_metric",
+    ];
+
+    for (const tableName of tableNames) {
+      const table = extractCreateTable(schemaSql, tableName);
+
+      expect(table).toContain("id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
+      expect(table).toContain("create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+      expect(table).toContain("update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+      expect(table).toContain("PRIMARY KEY (id)");
+    }
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_inference_job");
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_task_transition");
+  });
+
+  it("keeps workflow deletion separate from its runtime status", () => {
+    const definitionTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_definition");
+
+    expect(definitionTable).toContain("runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive'");
+    expect(definitionTable).toContain("biz_status TINYINT NOT NULL DEFAULT 1");
+    expect(definitionTable).toContain(
+      "description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述'",
+    );
+  });
+
+  it("stores the tenant active Run counter on the capacity guard", () => {
+    const capacityGuardTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_capacity_guard",
+    );
+
+    expect(capacityGuardTable).toContain(
+      "active_run_count INT UNSIGNED NOT NULL DEFAULT 0",
+    );
+  });
+
+  it("stores one capacity rejection metric per tenant and Shanghai date", () => {
+    const dailyMetricTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_capacity_daily_metric",
+    );
+
+    expect(dailyMetricTable).toContain(
+      "capacity_rejected_count BIGINT UNSIGNED NOT NULL DEFAULT 0",
+    );
+    expect(dailyMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_capacity_daily_metric (uid, metric_date)",
+    );
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_capacity_daily_metric");
+  });
+
+  it("stores Workflow totals separately from revision-free daily metrics", () => {
+    const metricTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_metric");
+    const dailyMetricTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_daily_metric");
+
+    expect(metricTable).toContain("PRIMARY KEY (uid, workflow_id)");
+    expect(metricTable).toContain("total_run_count BIGINT UNSIGNED NOT NULL DEFAULT 0");
+    expect(metricTable).toContain("last_run_at DATETIME NULL");
+    expect(dailyMetricTable).toContain("PRIMARY KEY (id)");
+    expect(dailyMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, metric_date)",
+    );
+    expect(dailyMetricTable).toContain("cancelled_count BIGINT UNSIGNED NOT NULL DEFAULT 0");
+    expect(dailyMetricTable).not.toContain("revision INT");
+    expect(dailyMetricTable).not.toContain("node_id");
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_metric");
+  });
+
+  it("documents the Workflow template table as writable by Node", () => {
+    const templateTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_template");
+
+    expect(templateTable).toContain("COMMENT");
+    expect(templateTable).toContain("sort_order INT NOT NULL DEFAULT 0");
+    expect(WRITABLE_TABLES).toContain("xy_wap_embed_workflow_template");
+  });
+
+  it("keeps only workflow run indexes required by current query paths", () => {
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+
+    expect(runTable.match(/^  (?:PRIMARY KEY|UNIQUE KEY|KEY) .+$/gm)).toHaveLength(7);
+    expect(runTable.match(/^  KEY .+$/gm)).toEqual([
+      "  KEY idx_workflow_run_records (uid, workflow_id, id),",
+      "  KEY idx_workflow_run_status_records (uid, status, workflow_id, id),",
+      "  KEY idx_workflow_run_node_records (uid, workflow_id, current_node_id, id),",
+      "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_type, subject_id, create_time, id),",
+      "  KEY idx_workflow_run_lifecycle (completed_at, id)",
+    ]);
+  });
+
+  it("converges Run lifecycle indexes without duplicating the node metric dimension prefix", () => {
+    const entryGuardTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_entry_guard");
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+    const nodeMetricTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_node_metric");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-29 Workflow Run 索引收敛与节点指标索引收尾",
+    );
+
+    expect(entryGuardTable).toContain("latest_run_id BIGINT UNSIGNED NULL");
+    expect(runTable).toContain("KEY idx_workflow_run_status_records (uid, status, workflow_id, id)");
+    expect(runTable).toContain("KEY idx_workflow_run_lifecycle (completed_at, id)");
+    expect(runTable).not.toContain("idx_workflow_run_retained_records");
+    expect(runTable).not.toContain("idx_workflow_run_cleanup_node");
+    expect(runTable).not.toContain("idx_workflow_run_active_subject");
+    expect(runTable).not.toContain("idx_workflow_run_status_reconcile");
+    expect(runTable).not.toContain("idx_workflow_run_history_cleanup");
+    expect(nodeMetricTable).toContain(
+      "UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id)",
+    );
+    expect(nodeMetricTable).not.toContain("idx_workflow_node_metric_query");
+    expect(nodeMetricTable).toContain(
+      "KEY idx_workflow_node_metric_node_query (uid, workflow_id, node_id, revision, shard_id)",
+    );
+    expect(migration).toContain("ADD COLUMN latest_run_id");
+    expect(migration).toContain("ADD KEY idx_workflow_run_lifecycle");
+    expect(migration).toContain("DROP KEY idx_workflow_node_metric_query");
+  });
+
+  it("orders the Workflow Task lease index for bounded running-task recovery", () => {
+    const taskTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_task");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Task 租约恢复索引",
+    );
+
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+    expect(taskTable).not.toContain(
+      "KEY idx_workflow_task_lease (lease_expires_at, status, id)",
+    );
+    expect(migration).toContain("DROP KEY idx_workflow_task_lease");
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_lease (status, lease_expires_at, id)",
+    );
+  });
+
+  it("indexes the global Workflow Task due queue without a shard prefix", () => {
+    const taskTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_task");
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Scheduler 全局到期索引",
+    );
+
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_schedule (status, bucket_time, due_at, id)",
+    );
+    expect(taskTable).not.toContain(
+      "KEY idx_workflow_task_schedule (shard_id, status, bucket_time, due_at, id)",
+    );
+    expect(migration).toContain("DROP KEY idx_workflow_task_schedule");
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_schedule (status, bucket_time, due_at, id)",
+    );
+    expect(taskTable).toContain(
+      "KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id)",
+    );
+    expect(migration).toContain(
+      "ADD KEY idx_workflow_task_workflow_status (uid, workflow_id, status, id)",
+    );
+  });
+
+  it("defines a leased and versioned Workflow Task transition queue", () => {
+    const transitionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_task_transition",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Scheduler 全局到期索引",
+    );
+
+    expect(transitionTable).toContain(
+      "UNIQUE KEY uk_workflow_task_transition_workflow (uid, workflow_id)",
+    );
+    expect(transitionTable).toContain(
+      "KEY idx_workflow_task_transition_pending (status, next_attempt_at, id)",
+    );
+    expect(transitionTable).toContain(
+      "KEY idx_workflow_task_transition_lease (status, lease_expires_at, id)",
+    );
+    expect(transitionTable).toContain("transition_version INT UNSIGNED NOT NULL DEFAULT 1");
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task_transition",
+    );
+  });
+
+  it("documents the Workflow worker heartbeat table as worker-only writes", () => {
+    const workerStateTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_worker_state",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-08-28 Workflow Worker 角色心跳表",
+    );
+
+    expect(workerStateTable).toContain("PRIMARY KEY (role)");
+    expect(workerStateTable).toContain("last_started_at DATETIME(3) NULL");
+    expect(workerStateTable).toContain("reported_by VARCHAR(128) NOT NULL");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state");
+    expect(WRITABLE_TABLES).not.toContain("xy_wap_embed_workflow_worker_state");
+  });
+
+  it("keeps the indexes required by bounded workflow history cleanup", () => {
+    const nodeExecutionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_node_execution",
+    );
+    const outboxTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_outbox");
+
+    expect(nodeExecutionTable).toContain(
+      "KEY idx_workflow_node_execution_run_cleanup (run_id, id)",
+    );
+    expect(outboxTable).toContain(
+      "KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)",
+    );
+  });
+
+  it("indexes active Wait Event interest and Run lifecycle operations", () => {
+    const subscriptionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_event_subscription",
+    );
+    expect(subscriptionTable).toContain(
+      "(uid, subject_type, event_type, subject_id, status, expires_at, id)",
+    );
+    expect(subscriptionTable).toContain(
+      "KEY idx_workflow_event_subscription_run (run_id, status, id)",
+    );
+    expect(subscriptionTable).not.toContain(
+      "KEY idx_workflow_event_subscription_run (uid, run_id, status, id)",
+    );
+    expect(subscriptionTable).toContain("resume_at DATETIME NULL");
+    expect(subscriptionTable).toContain("trigger_occurred_at DATETIME NULL");
+    expect(subscriptionTable).toContain("trigger_projection_json JSON NULL");
+    expect(schemaSql).not.toContain("xy_wap_embed_workflow_event_subscription_event");
   });
 });
 

@@ -151,6 +151,83 @@ function createLoginDb(
 }
 
 describe("verifyAccessSession cache", () => {
+  it("uses a separate table and cache namespace for embed sessions", async () => {
+    const cache = createCache({
+      "chatai:auth:session:501": JSON.stringify({
+        expiresAtMs: Date.now() + 60_000,
+        sessionVersion: 1,
+        subUserId: "101",
+        valid: true,
+      }),
+    });
+    const db = createSessionDb({
+      id: 501,
+      session_version: 1,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(db, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionKind: "embed",
+        sessionVersion: 1,
+        subUserId: "101",
+        uid: 9001,
+      }, cache, undefined, "embed"),
+    ).resolves.toBe(true);
+    expect(db.calls).toEqual(["xy_wap_embed_sub_user_embed_session"]);
+    expect(cache.sadd).toHaveBeenCalledWith(
+      "chatai:auth:session-index:embed:101",
+      ["501"],
+      14 * 24 * 60 * 60,
+    );
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:auth:session:embed:501",
+      expect.stringContaining("\"valid\":true"),
+      expect.any(Number),
+    );
+  });
+
+  it.each([
+    {
+      expectedKind: "embed" as const,
+      sessionKind: undefined,
+      title: "legacy app sessions on an embed host",
+    },
+    {
+      expectedKind: "embed" as const,
+      sessionKind: "app" as const,
+      title: "app sessions on an embed host",
+    },
+    {
+      expectedKind: "app" as const,
+      sessionKind: "embed" as const,
+      title: "embed sessions on an app host",
+    },
+  ])("rejects $title before reading a session table", async ({
+    expectedKind,
+    sessionKind,
+  }) => {
+    const db = createSessionDb({
+      id: 501,
+      session_version: 1,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(db, {
+        roles: ["operator"],
+        ...(sessionKind ? { sessionKind } : {}),
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+        uid: 9001,
+      }, undefined, undefined, expectedKind),
+    ).resolves.toBe(false);
+    expect(db.calls).toEqual([]);
+  });
+
   it("accepts a matching positive session cache without querying DB", async () => {
     const cache = createCache({
       "chatai:auth:session:501": JSON.stringify({

@@ -19,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { uploadWorkbenchImageFile } from "@/pages/chat/api/media-upload-service";
-import { QuickReplyAttachmentPicker } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
+import {
+  MessageAttachmentPicker,
+  type MessageDraftAttachment,
+  type MessageLocalImageAttachment,
+} from "@/pages/chat/components/message-content/message-attachment-picker";
 import { quickReplyTitlePalette } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
-import type {
-  QuickReplyDraftAttachment,
-  QuickReplyLocalImageAttachment,
-} from "@/pages/chat/lib/quick-reply-attachment-types";
 import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 const QUICK_REPLY_CONTENT_REQUIRED_ERROR = "请填写话术内容或添加附件";
@@ -54,10 +54,10 @@ export function QuickReplyFormDialog({
   const [contentText, setContentText] = useState(initialValues?.contentText ?? "");
   const [labelText, setLabelText] = useState(initialValues?.labelText ?? "");
   const [labelColor, setLabelColor] = useState(initialValues?.labelColor ?? "");
-  const [attachments, setAttachments] = useState<QuickReplyDraftAttachment[]>(
+  const [attachments, setAttachments] = useState<MessageDraftAttachment[]>(
     initialValues?.attachments ?? [],
   );
-  const attachmentsRef = useRef<QuickReplyDraftAttachment[]>(attachments);
+  const attachmentsRef = useRef<MessageDraftAttachment[]>(attachments);
   const [attachmentError, setAttachmentError] = useState("");
   const [contentError, setContentError] = useState("");
   const [labelError, setLabelError] = useState("");
@@ -88,7 +88,7 @@ export function QuickReplyFormDialog({
     };
   }, []);
 
-  const handleAttachmentsChange = (nextAttachments: QuickReplyDraftAttachment[]) => {
+  const handleAttachmentsChange = (nextAttachments: MessageDraftAttachment[]) => {
     revokeRemovedLocalImageUrls(attachmentsRef.current, nextAttachments);
     attachmentsRef.current = nextAttachments;
     setAttachments(nextAttachments);
@@ -256,8 +256,9 @@ export function QuickReplyFormDialog({
             ) : null}
           </div>
 
-          <QuickReplyAttachmentPicker
+          <MessageAttachmentPicker
             attachments={attachments}
+            imageSource="local-upload"
             maxCount={QUICK_REPLY_ATTACHMENT_MAX_COUNT}
             onChange={handleAttachmentsChange}
           />
@@ -298,7 +299,7 @@ export function QuickReplyFormDialog({
 
 async function resolveAttachmentsForSubmit(
   conversationId: string | undefined,
-  attachments: QuickReplyDraftAttachment[],
+  attachments: MessageDraftAttachment[],
 ): Promise<WorkbenchQuickReplyAttachment[]> {
   const resolved: WorkbenchQuickReplyAttachment[] = [];
 
@@ -338,14 +339,14 @@ async function resolveAttachmentsForSubmit(
 }
 
 function isLocalImageAttachment(
-  attachment: QuickReplyDraftAttachment,
-): attachment is QuickReplyLocalImageAttachment {
+  attachment: MessageDraftAttachment,
+): attachment is MessageLocalImageAttachment {
   return attachment.type === "image" && "localFile" in attachment;
 }
 
 function revokeRemovedLocalImageUrls(
-  currentAttachments: QuickReplyDraftAttachment[],
-  nextAttachments: QuickReplyDraftAttachment[],
+  currentAttachments: MessageDraftAttachment[],
+  nextAttachments: MessageDraftAttachment[],
 ) {
   const nextLocalUrls = new Set(
     nextAttachments
@@ -365,7 +366,7 @@ function revokeRemovedLocalImageUrls(
   }
 }
 
-function revokeLocalImageUrls(attachments: QuickReplyDraftAttachment[]) {
+function revokeLocalImageUrls(attachments: MessageDraftAttachment[]) {
   for (const attachment of attachments) {
     if (!isLocalImageAttachment(attachment)) {
       continue;
@@ -379,7 +380,7 @@ function revokeLocalImageUrls(attachments: QuickReplyDraftAttachment[]) {
   }
 }
 
-function readLocalUrl(attachment: QuickReplyLocalImageAttachment) {
+function readLocalUrl(attachment: MessageLocalImageAttachment) {
   const value = attachment.content.localUrl;
 
   return typeof value === "string" ? value : "";

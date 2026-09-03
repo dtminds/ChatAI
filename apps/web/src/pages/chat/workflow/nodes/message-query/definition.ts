@@ -1,0 +1,124 @@
+import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
+import { isValidWorkflowLocalDateTime, WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
+import type { WorkflowNodeDefinition } from "../definition-types";
+import {
+  compactNodeLayout,
+  createCatalogIssue,
+  createDefaultSourceHandles,
+  createDefaultTargetHandles,
+  createNodeData,
+  sourceNodeKinds,
+  targetNodeKinds,
+} from "../definition-shared";
+import {
+  createDefaultMessageQueryTimeRange,
+  getMessageQueryMetric,
+  getMessageQueryStatus,
+  MESSAGE_QUERY_LIMIT_MAX,
+  MESSAGE_QUERY_LIMIT_MIN,
+  normalizeMessageQueryLimit,
+  normalizeMessageQueryTake,
+  normalizeMessageQueryTimeRange,
+} from "./config";
+
+export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query"> = {
+  availableNextKinds: targetNodeKinds,
+  availablePrevKinds: sourceNodeKinds,
+  canDelete: true,
+  canDuplicate: true,
+  canInsertAfter: true,
+  canRename: true,
+  configSections: [],
+  createDefaultData: () => createNodeData("message-query", {
+    label: "消息查询",
+    limit: 10,
+    metric: "最新 10 条消息",
+    take: "latest",
+    timeRange: createDefaultMessageQueryTimeRange(),
+    title: "消息查询",
+  }),
+  description: "查询当前客户在指定时间范围内的历史消息",
+  getOutputVariables: () => [
+    {
+      description: "按时间顺序组装的文本、图片、视频及其他消息内容。",
+      key: "messages",
+      label: "消息列表",
+      usages: ["intent-input", "variable"],
+      valueType: { kind: "object", schemaRef: WORKFLOW_MESSAGES_SCHEMA_REF },
+    },
+    {
+      key: "messageCount",
+      label: "消息数量",
+      usages: ["variable"],
+      valueType: { kind: "number" },
+    },
+    {
+      key: "rangeStart",
+      label: "查询开始时间",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    },
+    {
+      key: "rangeEnd",
+      label: "查询结束时间",
+      usages: ["time-reference", "variable"],
+      valueType: { kind: "datetime" },
+    },
+  ],
+  getSourceHandles: createDefaultSourceHandles,
+  getTargetHandles: createDefaultTargetHandles,
+  insertable: true,
+  kind: "message-query",
+  layout: compactNodeLayout,
+  paletteGroup: "data",
+  paletteLabel: "消息查询",
+  sanitizeData: (data) => {
+    const limit = normalizeMessageQueryLimit(data.limit);
+    const take = normalizeMessageQueryTake(data.take);
+
+    return {
+      ...data,
+      limit,
+      metric: getMessageQueryMetric({ limit, take }),
+      status: getMessageQueryStatus({ timeRange: data.timeRange }),
+      take,
+      timeRange: normalizeMessageQueryTimeRange(data.timeRange),
+    };
+  },
+  sort: 105,
+  validate: (node) => {
+    const issues = [];
+    if (
+      !Number.isInteger(node.data.limit)
+      || node.data.limit < MESSAGE_QUERY_LIMIT_MIN
+      || node.data.limit > MESSAGE_QUERY_LIMIT_MAX
+    ) {
+      issues.push(createCatalogIssue(
+        "message-query-limit-invalid",
+        `查询数量需为 ${MESSAGE_QUERY_LIMIT_MIN}-${MESSAGE_QUERY_LIMIT_MAX} 条`,
+      ));
+    }
+
+    const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
+    if (timeRange.mode === "fixed") {
+      for (const [field, value] of [
+        ["start", timeRange.startAt],
+        ["end", timeRange.endAt],
+      ] as const) {
+        if (isValidWorkflowLocalDateTime(value)) continue;
+        issues.push(createCatalogIssue(
+          `message-query-${field}-time-required`,
+          `${field === "start" ? "开始" : "结束"}时间未选择`,
+        ));
+      }
+    }
+
+    return issues;
+  },
+  visual: {
+    accentClassName: "bg-orange-500 text-white",
+    accentRgb: "249 115 22",
+    icon: MessageSearch01Icon,
+    label: "消息查询",
+  },
+};

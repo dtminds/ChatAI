@@ -1,0 +1,689 @@
+import { useState } from "react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
+import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
+import { updateNodeDataOperation } from "@/pages/chat/workflow/graph-operations";
+import { getWorkflowNodeEstimatedHeight } from "@/pages/chat/workflow/layout";
+import { createDefaultNodeData, getNodeDefinition, insertableNodeKinds } from "@/pages/chat/workflow/node-definitions";
+import {
+  AI_INTENT_DESCRIPTION_MAX_LENGTH,
+  AI_INTENT_DESCRIPTION_COUNT_THRESHOLD,
+  AI_INTENT_FALLBACK_HANDLE_ID,
+  AI_INTENT_MAX_COUNT,
+  AI_INTENT_PROMPT_MAX_LENGTH,
+  getAiIntentHandleId,
+  normalizeAiIntentOptions,
+} from "@/pages/chat/workflow/nodes/ai-intent/config";
+import { AiIntentConfig } from "@/pages/chat/workflow/nodes/ai-intent/panel";
+import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
+import type {
+  AiIntentNodeData,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeConfigPatch,
+} from "@/pages/chat/workflow/types";
+import { validateWorkflowGraph } from "@/pages/chat/workflow/validation/workflow-graph-validation";
+import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
+import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
+import { createWorkflowRenderElements } from "@/pages/chat/workflow/use-workflow-render-elements";
+
+const aiIntentTestServiceMock = vi.hoisted(() => ({
+  cancelWorkflowAiIntentTestAttempt: vi.fn(),
+  createWorkflowAiIntentTestAttempt: vi.fn(),
+  getWorkflowAiIntentTestAttempt: vi.fn(),
+}));
+
+vi.mock(
+  "@/pages/chat/workflow/nodes/ai-intent/test-service",
+  () => aiIntentTestServiceMock,
+);
+
+describe("workflow AI intent", () => {
+  it("normalizes missing intent data with stable handle ids", () => {
+    expect(normalizeAiIntentOptions(undefined)).toEqual([{
+      description: "",
+      id: "intent-1",
+    }]);
+    expect(normalizeAiIntentOptions([])).toEqual([{
+      description: "",
+      id: "intent-1",
+    }]);
+  });
+
+  it("creates independent stable intent IDs and preserves valid IDs during hydration", () => {
+    const first = createDefaultNodeData("ai-intent");
+    const second = createDefaultNodeData("ai-intent");
+    expect(first.intents[0].id).not.toBe(second.intents[0].id);
+
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          advancedEnabled: "invalid",
+          inputSelector: ["node", "message-query", "messages"],
+          availableIntentInputs: [{
+            key: "messages",
+            label: "消息列表",
+            scope: "node",
+            selector: ["node", "message-query", "messages"],
+            type: "object",
+            valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
+          }],
+          intents: [
+            { description: "愿意参加活动", id: "stable-intent" },
+            { description: "x".repeat(AI_INTENT_DESCRIPTION_MAX_LENGTH + 20), id: "stable-intent" },
+          ],
+          kind: "ai-intent",
+          prompt: "x".repeat(AI_INTENT_PROMPT_MAX_LENGTH + 20),
+          title: "识别活动意向",
+        },
+        id: "intent-node",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    const data = draft.nodes[0]?.data;
+    expect(data?.kind).toBe("ai-intent");
+    if (data?.kind !== "ai-intent") return;
+
+    expect(data.inputSelector).toEqual(["node", "message-query", "messages"]);
+    expect(data).not.toHaveProperty("availableIntentInputs");
+    expect(data.advancedEnabled).toBe(false);
+    expect(data).not.toHaveProperty("mode");
+    expect(data.prompt).toHaveLength(AI_INTENT_PROMPT_MAX_LENGTH);
+    expect(data.intents).toHaveLength(2);
+    expect(data.intents[0]).toEqual({ description: "愿意参加活动", id: "stable-intent" });
+    expect(data.intents[1].id).toBe("intent-2");
+    expect(data.intents[1].description).toHaveLength(AI_INTENT_DESCRIPTION_MAX_LENGTH);
+
+    const hydratedAgain = hydrateWorkflowDraft(draft);
+    expect(hydratedAgain.nodes[0]?.data).toEqual(draft.nodes[0]?.data);
+  });
+
+  it("uses stable local IDs for dynamic outcomes and short model codes", () => {
+    const definition = getNodeDefinition("ai-intent");
+    const node = createAiIntentNode([
+      { description: "愿意参加活动", id: "intent-accept" },
+      { description: "明确拒绝活动", id: "intent-reject" },
+    ]);
+
+    expect(definition.getSourceHandles(node.data)).toEqual([
+      expect.objectContaining({
+        id: "intent:intent-accept",
+        label: "愿意参加活动",
+        outletKind: "outcome",
+        top: 96,
+      }),
+      expect.objectContaining({
+        id: "intent:intent-reject",
+        label: "明确拒绝活动",
+        outletKind: "outcome",
+        top: 138,
+      }),
+      expect.objectContaining({
+        id: AI_INTENT_FALLBACK_HANDLE_ID,
+        isDefault: true,
+        label: "其他意图",
+        outletKind: "outcome",
+        top: 180,
+      }),
+    ]);
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...node.data,
+        inputSelector: ["node", "message-query", "messages"],
+      },
+      kind: "ai-intent",
+    })).toEqual({
+      fallback: { id: "fallback" },
+      inputSelector: ["node", "message-query", "messages"],
+      intents: [
+        { description: "愿意参加活动", id: "intent-accept", modelCode: "I1" },
+        { description: "明确拒绝活动", id: "intent-reject", modelCode: "I2" },
+      ],
+    });
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        ...node.data,
+        advancedEnabled: true,
+        inputSelector: ["node", "message-query", "messages"],
+        prompt: "优先参考客户最近一条消息",
+      },
+      kind: "ai-intent",
+    })).toEqual(expect.objectContaining({
+      prompt: "优先参考客户最近一条消息",
+    }));
+    expect(definition.getOutputVariables?.(node)).toEqual([
+      expect.objectContaining({
+        key: "matchedIntentDescription",
+        label: "命中意图",
+        valueType: { kind: "string" },
+      }),
+      expect.objectContaining({ key: "reason", valueType: { kind: "string" } }),
+    ]);
+  });
+
+  it("derives node height and requires every intent outcome including fallback to connect", () => {
+    const startNode = createStartNode();
+    const intentNode = createAiIntentNode([
+      { description: "愿意参加活动", id: "intent-accept" },
+      { description: "明确拒绝活动", id: "intent-reject" },
+    ]);
+    const acceptNode = createNodeFromKind("message", "accept-message", 2);
+    const rejectNode = createNodeFromKind("message", "reject-message", 3);
+    const fallbackNode = createNodeFromKind("message", "fallback-message", 4);
+    const nodes = [startNode, intentNode, acceptNode, rejectNode, fallbackNode];
+    const missingFallbackEdges = [
+      createEdge(startNode.id, intentNode.id),
+      createEdge(intentNode.id, acceptNode.id, undefined, {
+        sourceHandle: getAiIntentHandleId("intent-accept"),
+      }),
+      createEdge(intentNode.id, rejectNode.id, undefined, {
+        sourceHandle: getAiIntentHandleId("intent-reject"),
+      }),
+    ];
+
+    expect(getWorkflowNodeEstimatedHeight(intentNode)).toBe(222);
+    expect(validateWorkflowGraph(nodes, missingFallbackEdges).graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "source-handle-unconnected",
+        nodeId: intentNode.id,
+      }),
+    ]));
+
+    const completeEdges = [
+      ...missingFallbackEdges,
+      createEdge(intentNode.id, fallbackNode.id, undefined, {
+        sourceHandle: AI_INTENT_FALLBACK_HANDLE_ID,
+      }),
+    ];
+    expect(validateWorkflowGraph(nodes, completeEdges).graphIssues.some((issue) =>
+      issue.code === "source-handle-unconnected" && issue.nodeId === intentNode.id,
+    )).toBe(false);
+  });
+
+  it("selects a guaranteed upstream input and preserves the prompt across advanced toggle changes", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const startNode = createStartNode();
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const intentNode = createAiIntentNode([
+      { description: "愿意参加活动", id: "intent-accept" },
+    ]);
+    const nodes = [startNode, queryNode, intentNode];
+    const edges = [
+      createEdge(startNode.id, queryNode.id),
+      createEdge(queryNode.id, intentNode.id),
+    ];
+
+    render(
+      <StatefulAiIntentConfig
+        edges={edges}
+        initialNode={intentNode}
+        nodes={nodes}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /消息查询/ }));
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: /消息列表/ }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      inputSelector: ["node", queryNode.id, "messages"],
+    }));
+
+    const prompt = screen.getByRole("textbox", { name: "提示词" });
+    expect(prompt).toBeDisabled();
+
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveAttribute("maxlength", String(AI_INTENT_PROMPT_MAX_LENGTH));
+    await user.type(prompt, "优先根据客户最后一条消息判断");
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
+    expect(prompt).toBeDisabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveValue("优先根据客户最后一条消息判断");
+  });
+
+  it("projects only available predecessor intent inputs into render data", () => {
+    const startNode = createStartNode();
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const intentNode = createAiIntentNode([
+      { description: "愿意参加活动", id: "intent-accept" },
+    ]);
+    const rendered = createWorkflowRenderElements({
+      ...createRenderHandlers(),
+      activeEdgeInsertMenuId: null,
+      allowedInsertableNodeKinds: insertableNodeKinds,
+      edges: [
+        createEdge(startNode.id, queryNode.id),
+        createEdge(queryNode.id, intentNode.id),
+      ],
+      nodes: [startNode, queryNode, intentNode],
+      quickInsertTarget: null,
+      selectedEdgeId: null,
+      selectedNodeIdSet: new Set(),
+    });
+
+    expect(rendered.nodes.find((node) => node.id === intentNode.id)?.data.availableIntentInputs)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "messages"],
+          type: "object",
+          valueType: { kind: "object", schemaRef: "workflow.messages.v1" },
+        }),
+      ]));
+    expect(rendered.nodes.find((node) => node.id === queryNode.id)?.data.availableIntentInputs)
+      .toBeUndefined();
+  });
+
+  it("runs the saved AI Intent node with structured messages and renders the mapped result", async () => {
+    const user = userEvent.setup();
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const baseIntentNode = createAiIntentNode([
+      { description: "咨询退款", id: "intent-refund" },
+    ]);
+    const intentNode = {
+      ...baseIntentNode,
+      data: {
+        ...baseIntentNode.data,
+        inputSelector: ["node", queryNode.id, "messages"] as [string, string, string],
+      },
+    };
+    const edges = [createEdge(queryNode.id, intentNode.id)];
+    const inputValue = [
+      {
+        id: 1,
+        parts: [{ text: "退款什么时候到账？", type: "text" as const }],
+        role: "customer" as const,
+      },
+      {
+        id: 2,
+        parts: [{ text: "正在为您查询", type: "text" as const }],
+        role: "agent" as const,
+      },
+    ];
+    aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({ inputValues: { inputValue }, status: "running" }),
+    );
+    aiIntentTestServiceMock.getWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({
+        completedAt: "2026-08-23T05:00:01.000Z",
+        inputValues: { inputValue },
+        output: { matchedIntentDescription: "咨询退款", reason: "用户在询问退款" },
+        status: "succeeded",
+      }),
+    );
+    const onNodeChange = vi.fn();
+    render(
+      <NodeConfigPanel
+        allowedEntryEventTypes={["message.received"]}
+        edges={edges}
+        node={intentNode}
+        nodes={[queryNode, intentNode]}
+        onClose={vi.fn()}
+        onNodeChange={onNodeChange}
+        onRenameNode={vi.fn()}
+        testContext={{ draftVersion: 3, saveState: "saved", workflowId: "42" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "试运行意图识别节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    const firstMessage = within(workspace).getByRole("group", { name: "消息 1" });
+    const firstInput = within(firstMessage).getByRole("textbox", { name: "消息 1 内容" });
+    expect(firstInput).toHaveAttribute("maxlength", "100");
+    await user.type(firstInput, "退款什么时候到账？");
+
+    const addMessage = within(workspace).getByRole("button", { name: "添加消息" });
+    await user.click(addMessage);
+    const secondMessage = within(workspace).getByRole("group", { name: "消息 2" });
+    await user.click(within(secondMessage).getByRole("combobox", { name: "消息 2 角色" }));
+    await user.click(screen.getByRole("option", { name: "客服" }));
+    await user.type(
+      within(secondMessage).getByRole("textbox", { name: "消息 2 内容" }),
+      "正在为您查询",
+    );
+    for (let index = 0; index < 8; index += 1) await user.click(addMessage);
+    expect(within(workspace).getAllByRole("group", { name: /^消息 \d+$/ })).toHaveLength(10);
+    expect(addMessage).toBeDisabled();
+
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).toHaveBeenCalledWith(
+      "42",
+      intentNode.id,
+      { expectedDraftVersion: 3, inputValue },
+      "/server/workflows",
+    );
+    expect(onNodeChange).not.toHaveBeenCalled();
+    expect(await within(workspace).findByText("咨询退款")).toBeInTheDocument();
+    expect(within(workspace).getByText("用户在询问退款")).toBeInTheDocument();
+  });
+
+  it("runs a saved AI Intent node with one Wait Event trigger message", async () => {
+    const user = userEvent.setup();
+    const waitEventNode = createNodeFromKind("wait-event", "wait-event", 1);
+    const baseIntentNode = createAiIntentNode([
+      { description: "咨询退款", id: "intent-refund" },
+    ]);
+    const intentNode = {
+      ...baseIntentNode,
+      data: {
+        ...baseIntentNode.data,
+        inputSelector: ["node", waitEventNode.id, "message"] as [string, string, string],
+      },
+    };
+    const edges = [createEdge(waitEventNode.id, intentNode.id, undefined, {
+      sourceHandle: "triggered",
+    })];
+    const inputValue = {
+      id: 1,
+      parts: [{ text: "退款什么时候到账？", type: "text" as const }],
+      role: "customer" as const,
+    };
+    aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({ inputValues: { inputValue }, status: "running" }),
+    );
+    aiIntentTestServiceMock.getWorkflowAiIntentTestAttempt.mockResolvedValue(
+      createAiIntentAttempt({
+        completedAt: "2026-08-23T05:00:01.000Z",
+        inputValues: { inputValue },
+        output: { matchedIntentDescription: "咨询退款", reason: "用户在询问退款" },
+        status: "succeeded",
+      }),
+    );
+
+    render(
+      <NodeConfigPanel
+        allowedEntryEventTypes={["message.received"]}
+        edges={edges}
+        node={intentNode}
+        nodes={[waitEventNode, intentNode]}
+        onClose={vi.fn()}
+        onNodeChange={vi.fn()}
+        onRenameNode={vi.fn()}
+        testContext={{ draftVersion: 3, saveState: "saved", workflowId: "42" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "试运行意图识别节点" }));
+    const workspace = screen.getByRole("region", { name: "试运行展开编辑" });
+    expect(within(workspace).queryByRole("button", { name: "添加消息" })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: "删除消息 1" })).not.toBeInTheDocument();
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+    expect(within(workspace).getByRole("alert")).toHaveTextContent("请输入消息内容");
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).not.toHaveBeenCalled();
+
+    await user.type(
+      within(workspace).getByRole("textbox", { name: "消息 1 内容" }),
+      inputValue.parts[0].text,
+    );
+    await user.click(within(workspace).getByRole("button", { name: "运行" }));
+
+    expect(aiIntentTestServiceMock.createWorkflowAiIntentTestAttempt).toHaveBeenCalledWith(
+      "42",
+      intentNode.id,
+      { expectedDraftVersion: 3, inputValue },
+      "/server/workflows",
+    );
+  });
+
+  it("limits intent rows and confirms deletion when the outcome is connected", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const intents = [
+      { description: "愿意参加活动", id: "intent-accept" },
+      { description: "明确拒绝活动", id: "intent-reject" },
+    ];
+    const intentNode = createAiIntentNode(intents);
+    const targetNode = createNodeFromKind("message", "accept-message", 2);
+    const edges = [createEdge(intentNode.id, targetNode.id, undefined, {
+      sourceHandle: getAiIntentHandleId("intent-accept"),
+    })];
+
+    render(
+      <StatefulAiIntentConfig
+        edges={edges}
+        initialNode={intentNode}
+        nodes={[intentNode, targetNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "意图 1" }))
+      .toHaveAttribute("maxlength", String(AI_INTENT_DESCRIPTION_MAX_LENGTH));
+    expect(screen.getByRole("textbox", { name: "意图 1" })).toHaveAttribute("rows", "1");
+    fireEvent.change(screen.getByRole("textbox", { name: "意图 1" }), {
+      target: { value: "x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD) },
+    });
+    expect(screen.queryByText(`${AI_INTENT_DESCRIPTION_COUNT_THRESHOLD}/${AI_INTENT_DESCRIPTION_MAX_LENGTH}`))
+      .not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "意图 1" }), {
+      target: { value: "x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1) },
+    });
+    expect(screen.getByText(`${AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1}/${AI_INTENT_DESCRIPTION_MAX_LENGTH}`))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "删除意图 1" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(screen.queryByDisplayValue("x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1)))
+      .not.toBeInTheDocument();
+
+    for (let count = 1; count < AI_INTENT_MAX_COUNT; count += 1) {
+      await user.click(screen.getByRole("button", { name: "添加意图" }));
+    }
+    expect(screen.getAllByRole("textbox", { name: /^意图 \d+$/ })).toHaveLength(AI_INTENT_MAX_COUNT);
+    expect(screen.getByRole("button", { name: "添加意图" })).toBeDisabled();
+  });
+
+  it("removes the matching edge after an intent is deleted from node data", () => {
+    const intentNode = createAiIntentNode([
+      { description: "愿意参加活动", id: "intent-accept" },
+      { description: "明确拒绝活动", id: "intent-reject" },
+    ]);
+    const targetNode = createNodeFromKind("message", "accept-message", 2);
+    const edge = createEdge(intentNode.id, targetNode.id, undefined, {
+      sourceHandle: getAiIntentHandleId("intent-accept"),
+    });
+    const operation = updateNodeDataOperation({
+      edges: [edge],
+      nodes: [intentNode, targetNode],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }, intentNode.id, {
+      intents: [{ description: "明确拒绝活动", id: "intent-reject" }],
+    });
+
+    expect(operation?.draft.edges).toEqual([]);
+  });
+
+  it("preserves intent edges across reorder and description changes", () => {
+    const acceptIntent = { description: "愿意参加活动", id: "intent-accept" };
+    const rejectIntent = { description: "明确拒绝活动", id: "intent-reject" };
+    const intentNode = createAiIntentNode([acceptIntent, rejectIntent]);
+    const acceptNode = createNodeFromKind("message", "accept-message", 2);
+    const rejectNode = createNodeFromKind("message", "reject-message", 3);
+    const edges = [
+      createEdge(intentNode.id, acceptNode.id, undefined, {
+        sourceHandle: getAiIntentHandleId(acceptIntent.id),
+      }),
+      createEdge(intentNode.id, rejectNode.id, undefined, {
+        sourceHandle: getAiIntentHandleId(rejectIntent.id),
+      }),
+    ];
+    const operation = updateNodeDataOperation({
+      edges,
+      nodes: [intentNode, acceptNode, rejectNode],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }, intentNode.id, {
+      intents: [rejectIntent, acceptIntent],
+    });
+
+    expect(operation?.draft.edges).toEqual([
+      expect.objectContaining({
+        sourceHandle: getAiIntentHandleId(acceptIntent.id),
+        target: acceptNode.id,
+      }),
+      expect.objectContaining({
+        sourceHandle: getAiIntentHandleId(rejectIntent.id),
+        target: rejectNode.id,
+      }),
+    ]);
+
+    const renamedOperation = operation && updateNodeDataOperation(
+      operation.draft,
+      intentNode.id,
+      {
+        intents: [
+          rejectIntent,
+          { ...acceptIntent, description: "愿意了解活动" },
+        ],
+      },
+    );
+    expect(renamedOperation?.draft.edges.find((edge) =>
+      edge.sourceHandle === getAiIntentHandleId(acceptIntent.id),
+    )).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ label: "愿意了解活动" }),
+      target: acceptNode.id,
+    }));
+  });
+
+  it("validates input, intent descriptions and advanced prompt limits", () => {
+    const node = createAiIntentNode([
+      { description: "", id: "intent-empty" },
+      { description: "重复意图", id: "intent-one" },
+      { description: "重复意图", id: "intent-two" },
+      { description: "x".repeat(AI_INTENT_DESCRIPTION_MAX_LENGTH + 1), id: "intent-long" },
+    ]);
+    const invalidNode: WorkflowNode<"ai-intent"> = {
+      ...node,
+      data: {
+        ...node.data,
+        advancedEnabled: true,
+        prompt: "x".repeat(AI_INTENT_PROMPT_MAX_LENGTH + 1),
+      },
+    };
+    const issueCodes = validateWorkflowNodeConfig(invalidNode, [invalidNode], [])
+      .map((issue) => issue.code);
+
+    expect(issueCodes).toEqual(expect.arrayContaining([
+      "ai-intent-input-required",
+      "ai-intent-description-required",
+      "ai-intent-description-duplicate",
+      "ai-intent-description-too-long",
+      "ai-intent-prompt-too-long",
+    ]));
+
+    expect(validateWorkflowNodeConfig({
+      ...invalidNode,
+      data: { ...invalidNode.data, advancedEnabled: false },
+    }, [invalidNode], []).map((issue) => issue.code))
+      .not.toContain("ai-intent-prompt-too-long");
+
+    const invalidInputNode: WorkflowNode<"ai-intent"> = {
+      ...createAiIntentNode([{ description: "愿意参加活动", id: "intent-accept" }]),
+      data: {
+        ...createDefaultNodeData("ai-intent"),
+        inputSelector: ["node", "missing-node", "messages"],
+        intents: [{ description: "愿意参加活动", id: "intent-accept" }],
+      },
+    };
+    expect(validateWorkflowNodeConfig(invalidInputNode, [invalidInputNode], []))
+      .toContainEqual(expect.objectContaining({ code: "ai-intent-input-invalid" }));
+
+  });
+});
+
+function createRenderHandlers() {
+  return {
+    onDeleteNode: vi.fn(),
+    onDuplicateNode: vi.fn(),
+    onInsertNodeAfter: vi.fn(),
+    onInsertNodeBetween: vi.fn(),
+    onRenameNode: vi.fn(),
+    onSelectNode: vi.fn(),
+    onToggleEdgeInsertMenu: vi.fn(),
+    onToggleNodeInsertMenu: vi.fn(),
+    onToggleNodeSelection: vi.fn(),
+  };
+}
+
+function StatefulAiIntentConfig({
+  edges,
+  initialNode,
+  nodes,
+  onNodeChange,
+}: {
+  edges: WorkflowEdge[];
+  initialNode: WorkflowNode<"ai-intent">;
+  nodes: WorkflowNode[];
+  onNodeChange: (patch: WorkflowNodeConfigPatch<"ai-intent">) => void;
+}) {
+  const [node, setNode] = useState(initialNode);
+
+  return (
+    <AiIntentConfig
+      edges={edges}
+      node={node}
+      nodes={nodes.map((item) => item.id === node.id ? node : item)}
+      onNodeChange={(patch) => {
+        onNodeChange(patch);
+        setNode((current) => ({
+          ...current,
+          data: { ...current.data, ...patch },
+        }));
+      }}
+    />
+  );
+}
+
+function createStartNode(): WorkflowNode<"start"> {
+  return {
+    data: createDefaultNodeData("start"),
+    id: "start",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+}
+
+function createAiIntentNode(
+  intents: AiIntentNodeData["intents"],
+): WorkflowNode<"ai-intent"> {
+  return {
+    data: {
+      ...createDefaultNodeData("ai-intent"),
+      intents,
+    },
+    id: "ai-intent",
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+}
+
+function createAiIntentAttempt(overrides: Partial<{
+  completedAt: string | null;
+  inputValues: Record<string, unknown>;
+  output: Record<string, string> | null;
+  status: "cancelled" | "failed" | "running" | "succeeded" | "timed_out";
+}> = {}) {
+  const createdAt = new Date("2026-08-23T05:00:00.000Z");
+  return {
+    attemptId: "1",
+    completedAt: null,
+    createdAt: createdAt.toISOString(),
+    errorMessage: null,
+    executionMode: "real" as const,
+    expiresAt: new Date(createdAt.getTime() + 600_000).toISOString(),
+    inputValues: {},
+    nodeId: "ai-intent",
+    output: null,
+    status: "running" as const,
+    workflowId: "42",
+    ...overrides,
+  };
+}

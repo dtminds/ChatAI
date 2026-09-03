@@ -1,4 +1,7 @@
-import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
+import { IconStack } from "@/components/ui/icon-stack";
 import {
   Tooltip,
   TooltipContent,
@@ -8,64 +11,58 @@ import {
 
 type KbEmptyStatePanelProps = {
   description: string;
-  illustrationUrl: string;
-  keepSuggestionOnSameLine?: boolean;
+  icon: IconSvgElement;
+  primaryAction: ReactNode;
   suggestionContent: string;
   suggestionLabel: string;
+  title: string;
 };
 
 export function KbEmptyStatePanel({
   description,
-  illustrationUrl,
-  keepSuggestionOnSameLine = false,
+  icon,
+  primaryAction,
   suggestionContent,
   suggestionLabel,
+  title,
 }: KbEmptyStatePanelProps) {
   return (
     <TooltipProvider>
-      <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-      <img
-        alt=""
-        aria-hidden="true"
-        className="h-auto w-[200px] opacity-40"
-        src={illustrationUrl}
-      />
-      <p
-        className={cn(
-          "text-sm leading-6 text-muted-foreground",
-          keepSuggestionOnSameLine
-            ? "inline-flex max-w-none flex-nowrap items-baseline justify-center whitespace-nowrap"
-            : "max-w-xl text-center",
-        )}
+      <section
+        aria-label={title}
+        className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center"
       >
-        <span className={keepSuggestionOnSameLine ? "whitespace-nowrap" : undefined}>
+        <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </IconStack>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
           {description}
-        </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              className={cn(
-                "ml-[10px] text-primary",
-                keepSuggestionOnSameLine
-                  ? "inline w-auto shrink-0 whitespace-nowrap"
-                  : "inline shrink-0",
-              )}
-              type="button"
+        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {primaryAction}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="outline">
+                {suggestionLabel}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent
+              align="start"
+              className="w-max max-w-[350px] px-3 py-2 text-left text-wrap leading-5"
+              side="bottom"
+              sideOffset={8}
             >
-              {suggestionLabel}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent
-            align="start"
-            className="w-max max-w-[350px] px-3 py-2 text-left text-wrap leading-5"
-            side="bottom"
-            sideOffset={8}
-          >
-            {suggestionContent}
-          </TooltipContent>
-        </Tooltip>
-      </p>
-      </div>
+              {suggestionContent}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </section>
     </TooltipProvider>
   );
 }

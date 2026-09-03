@@ -26,7 +26,7 @@ export class AgentTestService {
     const uid = await this.resolveUid(subUserId);
     const modelId = parseModelId(request.modelId);
 
-    await this.assertModelAvailable(uid, modelId);
+    await this.assertModelAvailable(modelId);
     assertAiHostingAgentPromptConfigLimits(request.promptConfig);
 
     const response = await this.javaClient.testAgent({
@@ -73,13 +73,13 @@ export class AgentTestService {
     return subUser.uid;
   }
 
-  private async assertModelAvailable(uid: number, modelId: number) {
+  private async assertModelAvailable(modelId: number) {
     const model = await this.db
       .selectFrom("xy_wap_embed_ai_model")
       .select(["id"])
       .where("id", "=", modelId)
       .where("status", "=", 1)
-      .where("uid", "in", [uid, 0])
+      .where("uid", "=", 0)
       .executeTakeFirst();
 
     if (!model) {

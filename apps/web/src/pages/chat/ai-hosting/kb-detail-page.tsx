@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
+  AiBookIcon,
   AlertCircleIcon,
   AiMagicIcon,
   ArrowLeft01Icon,
@@ -118,9 +119,6 @@ const kbAttachmentTypeByParam = new Map<string, KbAttachmentType>(
 const kbAttachmentTypeParamByType = new Map<KbAttachmentType, string>(
   kbAttachmentTypeParamEntries.map(([param, type]) => [type, param] as const),
 );
-
-const kbKnowledgeEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
   "添加各类知识，Agent 会参考相关的知识内容组织回复话术";
@@ -617,7 +615,7 @@ export function KbDetailPage() {
               />
             </div>
           ) : (
-            <KbKnowledgeEmptyState />
+            <KbKnowledgeEmptyState onSelect={handleAddKnowledgeSelect} />
           )}
         </section>
           </TabsContent>
@@ -747,15 +745,19 @@ function normalizeKbDetailViewSearchParams(searchParams: URLSearchParams) {
 function AddKnowledgeMenu({
   disabled = false,
   onSelect,
+  showIcon = true,
 }: {
   disabled?: boolean;
   onSelect: (type: AddKnowledgeOption["type"]) => void;
+  showIcon?: boolean;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button className="h-10 px-4" disabled={disabled} type="button">
-          <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+          {showIcon ? (
+            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+          ) : null}
           <span>添加知识</span>
         </Button>
       </DropdownMenuTrigger>
@@ -810,13 +812,19 @@ function renderAddKnowledgeOption(
   );
 }
 
-function KbKnowledgeEmptyState() {
+function KbKnowledgeEmptyState({
+  onSelect,
+}: {
+  onSelect: (type: AddKnowledgeOption["type"]) => void;
+}) {
   return (
     <KbEmptyStatePanel
       description={KB_KNOWLEDGE_EMPTY_DESCRIPTION}
-      illustrationUrl={kbKnowledgeEmptyIllustrationUrl}
+      icon={AiBookIcon}
+      primaryAction={<AddKnowledgeMenu onSelect={onSelect} showIcon={false} />}
       suggestionContent={KB_KNOWLEDGE_EMPTY_SUGGESTION}
       suggestionLabel="查看建议"
+      title="知识库已就绪"
     />
   );
 }

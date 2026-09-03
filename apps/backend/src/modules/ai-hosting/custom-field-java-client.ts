@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -16,17 +17,6 @@ export const CUSTOM_FIELD_INTERNAL_API_FAILED_CODE = "CUSTOM_FIELD_INTERNAL_API_
 export const CUSTOM_FIELD_INTERNAL_API_NOT_CONFIGURED_CODE =
   "CUSTOM_FIELD_INTERNAL_API_NOT_CONFIGURED";
 export const CUSTOM_FIELD_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-
-type JavaApiResponse<T> = {
-  code?: number;
-  count?: number | string;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  list?: T;
-  message?: string;
-  success?: boolean;
-};
 
 export type CustomFieldJavaOption = {
   optionMatch?: string | null;
@@ -77,7 +67,7 @@ export function createCustomFieldJavaClient(
         body.status = input.status;
       }
 
-      const response = await postJavaRequest<JavaApiResponse<CustomFieldJavaItem[]>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify(body),
         logContext: {
@@ -90,28 +80,39 @@ export function createCustomFieldJavaClient(
         token,
       });
 
-      if (!isJavaEnvelopeSuccessful(response)) {
-        throw new BadGatewayError(
-          CUSTOM_FIELD_INTERNAL_API_FAILED_CODE,
-          CUSTOM_FIELD_INTERNAL_API_USER_MESSAGE,
-          {
-            code: response.code,
-            error: response.error,
-            errorMsg: response.errorMsg ?? response.message,
-            operation: "custom-field-select-list",
-          },
-        );
+      const payload = decodeJavaResponse(response, "custom-field-select-list");
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("custom-field-select-list", "list must be an array");
       }
 
       return {
-        items: Array.isArray(response.list)
-          ? response.list
-          : Array.isArray(response.data)
-            ? response.data
-            : [],
+        items: payload.list as CustomFieldJavaItem[],
       };
     },
   };
+}
+
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
+  }
+
+  throw new BadGatewayError(
+    CUSTOM_FIELD_INTERNAL_API_FAILED_CODE,
+    CUSTOM_FIELD_INTERNAL_API_USER_MESSAGE,
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
+  );
+}
+
+function invalidJavaData(operation: string, reason: string) {
+  return new BadGatewayError(
+    CUSTOM_FIELD_INTERNAL_API_FAILED_CODE,
+    CUSTOM_FIELD_INTERNAL_API_USER_MESSAGE,
+    { operation, reason },
+  );
 }
 
 type PostJavaRequestOptions = {
@@ -234,22 +235,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function readJavaApiTimeoutMs() {

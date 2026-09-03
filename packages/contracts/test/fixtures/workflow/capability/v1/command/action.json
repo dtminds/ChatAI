@@ -1,0 +1,18 @@
+{
+  "capabilityKey": "operation.test.action",
+  "command": { "value": "hello" },
+  "contractVersion": 1,
+  "deadlineAt": "2026-08-10T00:00:15.000Z",
+  "execution": {
+    "nodeId": "message",
+    "revision": 2,
+    "runId": "run-1",
+    "sequence": 3,
+    "workflowId": "workflow-1"
+  },
+  "idempotencyKey": "9:run-1:message:3",
+  "kind": "action",
+  "subjectId": "contact-1",
+  "subjectType": "chatai_contact",
+  "uid": 9
+}

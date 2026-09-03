@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "unknown-event-1",
+  "eventType": "test.unknown",
+  "uid": 9,
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "wecom",
+  "payload": {}
+}

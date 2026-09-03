@@ -634,6 +634,14 @@ describe("workbench MySQL mappers", () => {
     ).toMatchObject({
       source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
     });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+    });
   });
 
   it("omits unsupported audit message source values", () => {

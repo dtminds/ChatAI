@@ -1,97 +1,115 @@
-import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { BlobatarProps } from "@blobatar/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mad } from "blobatar/expression";
 
 import {
   AgentAvatar,
-  resolveAgentAvatarRecipe,
+  resolveAgentAvatarIdentity,
 } from "@/pages/chat/ai-hosting/agent-avatar";
-import { useAppearanceStore } from "@/store/appearance-store";
+
+vi.mock("@blobatar/react", () => ({
+  Blobatar: ({ animate, expression, name, size }: BlobatarProps) => (
+    <output
+      data-animate={animate}
+      data-expression={expression === mad ? "mad" : expression ? "active" : "idle"}
+      data-name={name}
+      data-size={size}
+      data-testid="blobatar"
+    />
+  ),
+}));
 
 describe("AgentAvatar", () => {
-  beforeEach(() => {
-    useAppearanceStore.setState({
-      isSystemDarkMode: false,
-      themePreference: "light",
-    });
-  });
-
   afterEach(() => {
-    useAppearanceStore.setState({
-      isSystemDarkMode: false,
-      themePreference: "system",
-    });
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  it("keeps the generated identity stable across renames and varies it by agent id", () => {
-    const { container } = render(
+  it("uses the stable agent id and hover animation by default", () => {
+    render(
       <>
-        <AgentAvatar agentId="301" agentName="护肤小助理" />
-        <AgentAvatar agentId="301" agentName="护肤顾问" />
-        <AgentAvatar agentId="302" agentName="售后小助理" />
+        <AgentAvatar agentId="301" />
+        <AgentAvatar agentId="301" />
+        <AgentAvatar agentId="302" />
       </>,
     );
 
-    expect(screen.getByRole("img", { name: "护肤小助理头像" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "护肤顾问头像" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "售后小助理头像" })).toBeInTheDocument();
-
-    const avatars = Array.from(container.querySelectorAll("svg"));
-
-    expect(avatars).toHaveLength(3);
-    expect(getVisualMarkup(avatars[0])).toBe(getVisualMarkup(avatars[1]));
-    expect(getVisualMarkup(avatars[0])).not.toBe(getVisualMarkup(avatars[2]));
+    expect(screen.getAllByTestId("blobatar")).toEqual([
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "301" }) }),
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "301" }) }),
+      expect.objectContaining({ dataset: expect.objectContaining({ animate: "hover", name: "302" }) }),
+    ]);
   });
 
-  it("selects shape and palette independently from a stable agent id", () => {
-    const firstRecipe = resolveAgentAvatarRecipe("301");
-    const repeatedRecipe = resolveAgentAvatarRecipe("301");
-
-    expect(["nova", "flare", "void"]).toContain(firstRecipe.shape);
-    expect(firstRecipe).toEqual(repeatedRecipe);
-    expect(firstRecipe.palette).toBeTruthy();
+  it("reserves a draft identity before creation", () => {
+    expect(resolveAgentAvatarIdentity(" 301 ")).toBe("301");
+    expect(resolveAgentAvatarIdentity("  ")).toBe("draft");
   });
 
-  it("keeps the identity colors stable across appearance modes", () => {
-    const { container } = render(
-      <AgentAvatar agentId="301" agentName="护肤小助理" />,
-    );
-    const lightMarkup = getAvatarVisualMarkup(container);
+  it("temporarily uses an always animation for a click reaction", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    render(<AgentAvatar agentId="301" interaction="reaction" />);
+
+    const avatar = screen.getByTestId("blobatar");
+
+    expect(avatar).toHaveAttribute("data-animate", "hover");
+    expect(avatar).toHaveAttribute("data-expression", "idle");
+
+    fireEvent.click(screen.getByRole("button", { name: "切换 Agent 表情" }));
+
+    expect(avatar).toHaveAttribute("data-animate", "always");
+    expect(avatar).toHaveAttribute("data-expression", "active");
 
     act(() => {
-      useAppearanceStore.setState({ themePreference: "dark" });
+      vi.advanceTimersByTime(1_500);
     });
 
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
+    expect(avatar).toHaveAttribute("data-animate", "hover");
+    expect(avatar).toHaveAttribute("data-expression", "idle");
+  });
+
+  it("gives live avatars low-frequency friendly expressions", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    render(<AgentAvatar agentId="301" interaction="live" />);
+
+    const avatar = screen.getByTestId("blobatar");
+
+    expect(avatar).toHaveAttribute("data-animate", "always");
+    expect(avatar).toHaveAttribute("data-expression", "idle");
 
     act(() => {
-      useAppearanceStore.setState({
-        isSystemDarkMode: false,
-        themePreference: "system",
-      });
+      vi.advanceTimersByTime(12_000);
     });
 
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
+    expect(avatar).toHaveAttribute("data-expression", "active");
 
     act(() => {
-      useAppearanceStore.setState({ isSystemDarkMode: true });
+      vi.advanceTimersByTime(1_800);
     });
 
-    expect(getAvatarVisualMarkup(container)).toBe(lightMarkup);
+    expect(avatar).toHaveAttribute("data-expression", "idle");
+  });
+
+  it("lets live avatars use a full-range click reaction", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.2);
+    render(<AgentAvatar agentId="301" interaction="live" />);
+
+    const avatar = screen.getByTestId("blobatar");
+
+    fireEvent.click(screen.getByRole("button", { name: "切换 Agent 表情" }));
+
+    expect(avatar).toHaveAttribute("data-animate", "always");
+    expect(avatar).toHaveAttribute("data-expression", "mad");
+
+    act(() => {
+      vi.advanceTimersByTime(1_500);
+    });
+
+    expect(avatar).toHaveAttribute("data-animate", "always");
+    expect(avatar).toHaveAttribute("data-expression", "idle");
   });
 });
-
-function getVisualMarkup(avatar: SVGSVGElement) {
-  const clone = avatar.cloneNode(true) as SVGSVGElement;
-
-  clone.querySelector("title")?.remove();
-
-  return clone.innerHTML;
-}
-
-function getAvatarVisualMarkup(container: HTMLElement) {
-  const avatar = container.querySelector("svg");
-
-  expect(avatar).not.toBeNull();
-
-  return getVisualMarkup(avatar as SVGSVGElement);
-}

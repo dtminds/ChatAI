@@ -232,7 +232,53 @@ describe("ai-hosting work-tag routes", () => {
     });
   });
 
-  it("reads tag-component-list items from nested data.list", async () => {
+  it("resolves persisted work tag IDs via Java external tag list API", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            { groupName: "客户阶段组", id: 201, name: "已成交" },
+            { tagGroupName: "意向标签组", tagId: 101, tagName: "高意向" },
+          ],
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/work-tags/by-ids?tagIds=101,201,999",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        tags: [
+          { groupName: "意向标签组", id: 101, name: "高意向" },
+          { groupName: "客户阶段组", id: 201, name: "已成交" },
+        ],
+      },
+      success: true,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("https://java.internal/third-internal/work-tag/get-external-tag-list");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tagIds: [101, 201, 999],
+      uid: 9001,
+    });
+  });
+
+  it("rejects tag-component-list responses without a top-level list", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -269,21 +315,18 @@ describe("ai-hosting work-tag routes", () => {
       url: "/api/server/ai-hosting/work-tags?type=0",
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(502);
     expect(response.json()).toMatchObject({
-      data: {
-        pagination: { total: 1 },
-        tags: [expect.objectContaining({ id: 111, name: "高意向", groupId: 11 })],
-      },
-      success: true,
+      error: { code: "WORK_TAG_INTERNAL_API_FAILED" },
+      success: false,
     });
   });
 
-  it("prefers non-empty nested list when top-level list is empty", async () => {
+  it("uses the top-level list without inspecting nested data", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 3,
+          count: 0,
           data: {
             list: [
               {
@@ -336,14 +379,10 @@ describe("ai-hosting work-tag routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    expect(response.json()).toEqual({
       data: {
-        pagination: { total: 3 },
-        tags: [
-          expect.objectContaining({ id: 111, name: "高意向" }),
-          expect.objectContaining({ id: 112, name: "中意向" }),
-          expect.objectContaining({ id: 113, name: "低意向" }),
-        ],
+        pagination: { hasNext: false, page: 1, pageSize: 100, total: 0 },
+        tags: [],
       },
       success: true,
     });

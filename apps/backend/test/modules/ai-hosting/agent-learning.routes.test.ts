@@ -149,12 +149,45 @@ describe("ai-hosting agent-learning routes", () => {
     });
   });
 
+  it("rejects learning candidate lists outside the top-level list field", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          data: [{ id: "1001" }],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/10/learning-candidates?status=pending",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "AI_HOSTING_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
+
   it("loads valid search details and omits entries without chunk targets", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          code: 0,
-          data: [
+          count: 3,
+          list: [
             {
               chunkId: 1024,
               chunkTitle: "25+的油皮痘肌如果皮肤不敏感，有什么护肤产品推荐？",
@@ -184,11 +217,9 @@ describe("ai-hosting agent-learning routes", () => {
               score: 0.3,
             },
           ],
-          message: "success",
           page: 1,
           pageSize: 20,
-          total: 3,
-          totalPage: 1,
+          success: true,
         }),
         {
           headers: { "content-type": "application/json" },
@@ -242,6 +273,39 @@ describe("ai-hosting agent-learning routes", () => {
     });
   });
 
+  it("rejects search details outside the top-level list field", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          data: [{ chunkId: 1024 }],
+          page: 1,
+          pageSize: 20,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp("viewer");
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/search-detail",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "AI_HOSTING_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
+
   it("rejects search details outside the route agent scope without calling Java", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const created = await createAuthenticatedApp();
@@ -261,9 +325,8 @@ describe("ai-hosting agent-learning routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          code: 0,
           data: true,
-          message: "success",
+          success: true,
         }),
         {
           headers: { "content-type": "application/json" },
@@ -302,6 +365,39 @@ describe("ai-hosting agent-learning routes", () => {
     });
   });
 
+  it.each([
+    ["success false without diagnostics", { data: true, success: false }],
+    ["a legacy code-only response", { code: 0, data: true }],
+  ])("rejects approve for %s", async (_case, javaResponse) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(javaResponse), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        answer: "答案",
+        question: "问题",
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/approve",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "AI_HOSTING_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
+
   it("rejects a candidate that belongs to another agent without calling Java", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const created = await createAuthenticatedApp();
@@ -337,6 +433,78 @@ describe("ai-hosting agent-learning routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("maps batch approve data from the Java envelope", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            failDetails: [{ error: "目标知识不可用", id: 1001 }],
+            successCount: 0,
+          },
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        ids: ["1001"],
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/batch-approve",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        failDetails: [{ error: "目标知识不可用", id: "1001" }],
+        successCount: 0,
+      },
+      success: true,
+    });
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-learning/batch-approve",
+    );
+  });
+
+  it("maps batch reject data from the Java envelope", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 1, success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: { ids: ["1001"] },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/batch-reject",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: { updatedCount: 1 },
+      success: true,
+    });
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-learning/batch-reject",
+    );
   });
 
   it("rejects a candidate that belongs to another tenant", async () => {
@@ -416,7 +584,7 @@ describe("ai-hosting agent-learning routes", () => {
 
   it("trims candidate content before forwarding to Java", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ code: 0, data: true }), {
+      new Response(JSON.stringify({ data: true, success: true }), {
         headers: { "content-type": "application/json" },
         status: 200,
       }),

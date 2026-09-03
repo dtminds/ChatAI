@@ -28,6 +28,7 @@ export const WORKBENCH_MESSAGE_SOURCE = {
   WORKBENCH: 1,
   SIDEBAR: 2,
   AGENT: 3,
+  WORKFLOW: 4,
 } as const;
 
 export const MATERIAL_COLLECTION_BIZ_TYPE = {

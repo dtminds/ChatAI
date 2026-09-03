@@ -6,7 +6,14 @@ import axios, {
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
-import type { AuthRefreshResponse } from "@chatai/contracts";
+import { getEmbedAccessToken } from "@/lib/embed-access-token";
+import {
+  getAuthRequestAdapter,
+  getAuthScopeForHostname,
+  type AuthScope,
+  type AuthRefreshPayload,
+} from "@/lib/auth-request-adapter";
+import type { AuthSubUser } from "@chatai/contracts";
 
 export type RequestError = {
   details?: Record<string, unknown>;
@@ -62,12 +69,16 @@ export const requestInstance = axios.create({
 });
 
 type AuthRetryConfig = AxiosRequestConfig & {
+  authScope?: AuthScope;
   _skipAuthRetry?: boolean;
   _authRetry?: boolean;
+  _notifyAuthSessionChanged?: boolean;
   supportReadonlyAllowed?: boolean;
 };
 
-let refreshRequest: Promise<AuthRefreshResponse> | null = null;
+const refreshRequests: Partial<
+  Record<AuthScope, Promise<{ subUser: AuthSubUser }>>
+> = {};
 
 requestInstance.interceptors.request.use((config) => {
   const requestConfig = config as typeof config & AuthRetryConfig;
@@ -88,6 +99,11 @@ requestInstance.interceptors.request.use((config) => {
 
   headers.set("X-Workbench-Client", "chat-ai-ui");
   headers.set("Accept", "application/json");
+  const embedAccessToken = getEmbedAccessToken();
+
+  if (embedAccessToken && !headers.get("Authorization")) {
+    headers.set("Authorization", `Bearer ${embedAccessToken}`);
+  }
 
   config.headers = headers;
 
@@ -106,7 +122,10 @@ function normalizeError(error: unknown): RequestError {
         axiosError.message ??
         "Request failed",
       status: axiosError.response?.status,
-      code: apiError?.code ?? axiosError.code,
+      code:
+        apiError?.code
+        ?? axiosError.code
+        ?? (axiosError.response ? undefined : "ERR_NETWORK"),
       details: apiError?.details,
     };
   }
@@ -157,20 +176,30 @@ function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   return envelope.success === false && envelope.error !== undefined;
 }
 
-async function refreshAuth() {
-  refreshRequest ??= request<{ data: AuthRefreshResponse }>({
+async function refreshAuth(scope: AuthScope) {
+  const adapter = getAuthRequestAdapter(scope);
+  const existingRequest = refreshRequests[scope];
+
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const refreshRequest = request<{ data: AuthRefreshPayload }>({
+    authScope: scope,
     method: "POST",
     _skipAuthRetry: true,
-    url: "/auth/refresh",
+    url: adapter.refreshUrl,
   })
     .then((refresh) => refresh.data)
     .then((refresh) => {
-      useAuthStore.getState().setSession(refresh.subUser);
-      return refresh;
+      const subUser = adapter.applyRefresh(refresh);
+      useAuthStore.getState().setSession(subUser);
+      return { subUser };
     })
     .finally(() => {
-      refreshRequest = null;
+      delete refreshRequests[scope];
     });
+  refreshRequests[scope] = refreshRequest;
 
   return refreshRequest;
 }
@@ -193,7 +222,7 @@ export async function request<TResponse = unknown, TPayload = unknown>(
   } catch (error) {
     if (shouldRefreshAuth(error, config)) {
       try {
-        await refreshAuth();
+        await refreshAuth(resolveAuthScope(config.authScope));
 
         const retryConfig = {
           ...config,
@@ -212,7 +241,9 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
         return retryResponse.data;
       } catch (refreshError) {
-        notifyAuthSessionChanged();
+        if (config._notifyAuthSessionChanged !== false) {
+          notifyAuthSessionChanged();
+        }
         return Promise.reject(toRequestError(normalizeError(refreshError), refreshError));
       }
     }
@@ -223,6 +254,16 @@ export async function request<TResponse = unknown, TPayload = unknown>(
 
     return Promise.reject(toRequestError(normalizeError(error), error));
   }
+}
+
+function resolveAuthScope(scope: AuthScope | undefined): AuthScope {
+  if (scope) {
+    return scope;
+  }
+
+  return getAuthScopeForHostname(
+    typeof window === "undefined" ? "" : window.location.hostname,
+  );
 }
 
 function shouldRefreshAuth(error: unknown, config: AuthRetryConfig) {

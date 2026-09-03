@@ -728,6 +728,7 @@ function config(
       capabilityRetryDelayMs: 5_000,
       capabilityTimeoutMs: 15_000,
       batchSize: 100,
+      directiveDisableConcurrency: 8,
       dispatchTimeoutMs: 300_000,
       historyCleanupBatchSize: 1_000,
       historyCleanupIntervalMs: 3_600_000,

@@ -15,6 +15,7 @@ import {
   WorkflowDataOverviewSchema,
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
+  WorkflowEntryRecordExecutionLogSchema,
 } from "../src/workflow/dto.js";
 import {
   WorkflowObservabilitySummaryResponseSchema,
@@ -591,10 +592,13 @@ describe("workflow contracts", () => {
       subjectType: "chatai_contact",
       terminalReason: null,
       steps: [{
+        executionAvailable: true,
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "start",
         nodeKind: "start",
         revision: 1,
+        sequence: 1,
+        sourceOutletId: null,
         status: "completed",
         title: "进入流程",
       }],
@@ -608,11 +612,14 @@ describe("workflow contracts", () => {
       subjectType: "chatai_contact",
       terminalReason: null,
       steps: [{
+        executionAvailable: true,
         nextExecuteAt: "2026-07-13T01:00:00.000Z",
         occurredAt: "2026-07-12T12:31:00.000Z",
         nodeId: "message-1",
         nodeKind: "message",
         revision: 3,
+        sequence: 1,
+        sourceOutletId: null,
         status: "waiting",
         title: "消息发送",
       }],
@@ -627,13 +634,32 @@ describe("workflow contracts", () => {
       subjectType: "chatai_contact",
       terminalReason: "flow_changed_current_node_deleted",
       steps: [{
+        executionAvailable: false,
         occurredAt: "2026-07-12T09:00:00.000Z",
         nodeId: "future-action",
         nodeKind: "unknown",
         revision: 3,
+        sequence: 1,
+        sourceOutletId: null,
         status: "current",
         title: "未来动作",
       }],
+    })).toBe(true);
+
+    expect(Value.Check(WorkflowEntryRecordExecutionLogSchema, {
+      completedAt: "2026-07-12T09:00:01.000Z",
+      errorCode: null,
+      errorMessage: null,
+      executionId: "123",
+      inputAvailable: true,
+      inputSnapshot: { subjectId: "customer-1" },
+      nodeId: "message-query-1",
+      nodeKind: "message-query",
+      output: { messages: [] },
+      sequence: 2,
+      sourceOutletId: null,
+      startedAt: "2026-07-12T09:00:00.000Z",
+      status: "completed",
     })).toBe(true);
   });
 

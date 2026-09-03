@@ -179,11 +179,12 @@ describe("workflow worker config", () => {
       capabilityRetryDelayMs: 5_000,
       capabilityTimeoutMs: 15_000,
       batchSize: 100,
+      directiveDisableConcurrency: 8,
       dispatchTimeoutMs: 300_000,
       inboxCleanupBatchSize: 1_000,
       historyCleanupBatchSize: 1_000,
       historyCleanupIntervalMs: 3_600_000,
-      inferenceConcurrency: 10,
+      inferenceConcurrency: 5,
       inferenceHeartbeatIntervalMs: 15_000,
       inferenceIntervalMs: 1_000,
       inferenceLeaseDurationMs: 60_000,
@@ -322,6 +323,18 @@ describe("workflow worker config", () => {
       expect(() => loadWorkflowWorkerConfig(baseEnv({
         WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY: value,
       }))).toThrow("WORKFLOW_OUTBOX_PUBLISH_CONCURRENCY must be an integer from 1 to 100");
+    }
+  });
+
+  it("bounds directive disable concurrency independently from the batch size", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BATCH_SIZE: "1000",
+      WORKFLOW_DIRECTIVE_DISABLE_CONCURRENCY: "16",
+    })).runtime.directiveDisableConcurrency).toBe(16);
+    for (const value of ["0", "-1", "1.5", "101"]) {
+      expect(() => loadWorkflowWorkerConfig(baseEnv({
+        WORKFLOW_DIRECTIVE_DISABLE_CONCURRENCY: value,
+      }))).toThrow("WORKFLOW_DIRECTIVE_DISABLE_CONCURRENCY must be an integer from 1 to 100");
     }
   });
 

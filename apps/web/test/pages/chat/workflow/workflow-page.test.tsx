@@ -1124,6 +1124,32 @@ describe("Agent workflow page", () => {
     expect(listDocuments).not.toHaveBeenCalledWith(expect.objectContaining({ page: 5 }));
   });
 
+  it("loads featured templates after the workflow list is ready", async () => {
+    const baseRepository = getWorkflowDraftRepository();
+    let resolveList: ((page: WorkflowListPage) => void) | undefined;
+    const listDocuments = vi.fn(() => new Promise<WorkflowListPage>((resolve) => {
+      resolveList = resolve;
+    }));
+    const list = vi.fn<WorkflowTemplateRepository["list"]>(async () => ({ items: [], total: 0 }));
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list,
+    };
+
+    renderWorkflowPage("/chat/workflows", { ...baseRepository, listDocuments }, templateRepository);
+
+    await waitFor(() => expect(listDocuments).toHaveBeenCalled());
+    expect(list).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "推荐模板" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveList?.(await Promise.resolve(baseRepository.listDocuments()));
+    });
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith({ featured: true, limit: 4 }));
+  });
+
   it("shows all template pages and requests the selected page directly", async () => {
     const user = userEvent.setup();
     const createTemplateItem = (id: string, name: string) => ({
@@ -1292,7 +1318,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
 
     const recommendationSection = await screen.findByRole("region", { name: "推荐模板" });
-    const templateCard = within(recommendationSection).getByTestId("workflow-template-card-featured-1");
+    const templateCard = await within(recommendationSection).findByTestId("workflow-template-card-featured-1");
     expect(templateCard.querySelector("img")).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/backgrounds/10.png!w800.webp");
     expect(within(templateCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "light");
     expect(within(templateCard).getByLabelText("模板节点类型")).toHaveTextContent("+1");

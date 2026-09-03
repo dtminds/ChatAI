@@ -13,17 +13,23 @@ export async function processWorkflowConversationDirectiveDisableBatch(input: {
   port: WorkflowConversationDirectivePort;
   repository: WorkflowAiCollectRepository;
   retryDelayMs: number;
+  concurrency: number;
   timeoutMs: number;
 }) {
+  assertConcurrency(input.concurrency);
   const now = input.now ?? (() => new Date());
+  const result = { claimed: 0, disabled: 0, retried: 0 };
+  if (input.limit <= 0) return result;
+
   const startedAt = now();
+  const claimLimit = Math.min(input.limit, input.concurrency);
   const states = await input.repository.claimAiCollectDirectiveDisableBatch({
     leaseExpiresAt: new Date(startedAt.getTime() + input.leaseDurationMs),
     leaseOwner: input.leaseOwner,
-    limit: input.limit,
+    limit: claimLimit,
     now: startedAt,
   });
-  const result = { claimed: states.length, disabled: 0, retried: 0 };
+  result.claimed = states.length;
   await Promise.all(states.map(async state => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), input.timeoutMs);
@@ -58,4 +64,10 @@ export async function processWorkflowConversationDirectiveDisableBatch(input: {
     }
   }));
   return result;
+}
+
+function assertConcurrency(value: number) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Workflow directive disable concurrency must be a positive safe integer");
+  }
 }

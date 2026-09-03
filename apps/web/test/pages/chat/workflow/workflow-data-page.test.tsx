@@ -103,6 +103,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };
@@ -136,6 +137,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };
@@ -214,6 +216,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 0, entered: 0, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };
@@ -243,6 +246,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 0, entered: 9, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({ items: [], nextCursor: null })),
     };
@@ -277,6 +281,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 92, current: 18, entered: 126, incomplete: 16 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({
         items: [{
@@ -374,6 +379,7 @@ describe("WorkflowDataPage", () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
     const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    let executionLogCalls = 0;
     const repository = {
       getOverview: vi.fn(async () => ({
         calculatedAt: "2026-07-12T10:00:00.000Z",
@@ -381,15 +387,34 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 18, entered: 18, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(async () => {
+        executionLogCalls += 1;
+        return {
+          completedAt: "2026-07-12T09:00:01.000Z",
+          errorCode: null,
+          errorMessage: null,
+          executionId: "123",
+          inputAvailable: executionLogCalls === 1,
+          inputSnapshot: { subjectId: "customer-1" },
+          nodeId: waitNode.id,
+          nodeKind: "wait" as const,
+          output: { resumed: false },
+          sequence: 1,
+          sourceOutletId: null,
+          startedAt: "2026-07-12T09:00:00.000Z",
+          status: "completed" as const,
+        };
+      }),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T09:00:00.000Z",
         customer: { avatar: null, name: "张三" },
+        memberName: "托管账号A",
         recordId: "31",
         revision: document.publishedRevision!,
         status: "cancelled" as const,
         subjectType: "chatai_contact" as const,
         terminalReason: "flow_changed_outlet_deleted" as const,
-        steps: [{ occurredAt: "2026-07-12T09:00:00.000Z", nodeId: waitNode.id, nodeKind: "wait" as const, revision: document.publishedRevision!, status: "current" as const, title: waitNode.data.title }],
+        steps: [{ executionAvailable: true, occurredAt: "2026-07-12T09:00:00.000Z", nodeId: waitNode.id, nodeKind: "wait" as const, revision: document.publishedRevision!, sequence: 1, status: "current" as const, title: waitNode.data.title }],
       })),
       listRecords: vi.fn(async () => ({
         items: [{
@@ -420,8 +445,25 @@ describe("WorkflowDataPage", () => {
 
     await user.click(within(records).getByText("张三"));
     expect(await screen.findByRole("heading", { name: "运行轨迹" })).toBeInTheDocument();
+    expect(screen.getByText("托管账号A")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "流程变更说明" })).toBeInTheDocument();
     expect(repository.getRecord).toHaveBeenCalledWith(document.id, "31");
+    expect(screen.queryByRole("region", { name: `${waitNode.data.title}日志` })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看日志" }));
+
+    expect(repository.getExecutionLog).toHaveBeenCalledWith(document.id, "31", 1);
+    const logDialog = await screen.findByRole("dialog", { name: "执行日志" });
+    const log = within(logDialog).getByRole("region", { name: `${waitNode.data.title}日志` });
+    expect(log).toHaveTextContent('"subjectId": "customer-1"');
+    expect(log).toHaveTextContent('"resumed": false');
+
+    await user.click(within(logDialog).getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "查看日志" }));
+    const redactedLogDialog = await screen.findByRole("dialog", { name: "执行日志" });
+    expect(within(redactedLogDialog).getByText("执行ID")).toBeInTheDocument();
+    expect(within(redactedLogDialog).getByText("123")).toBeInTheDocument();
+    expect(within(redactedLogDialog).queryByText('"subjectId": "customer-1"')).not.toBeInTheDocument();
   });
 
   it("shows a user-facing reason when a Run is stopped while waiting", async () => {
@@ -435,6 +477,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 0, entered: 0, incomplete: 1 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T09:00:00.000Z",
         customer: { avatar: null, name: "已停止客户" },
@@ -445,10 +488,12 @@ describe("WorkflowDataPage", () => {
         terminalReason: null,
         steps: [{
           description: "流程已停止运行",
+          executionAvailable: false,
           occurredAt: "2026-07-12T10:00:00.000Z",
           nodeId: waitNode.id,
           nodeKind: "wait" as const,
           revision: document.publishedRevision!,
+          sequence: 1,
           status: "failed" as const,
           title: waitNode.data.title,
         }],
@@ -490,6 +535,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 1, entered: 10, incomplete: 9 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({ items: [], nextCursor: null })),
     };
@@ -511,6 +557,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 0, current: 1, entered: 1, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(async () => ({
         createdAt: "2026-07-12T12:31:00.000Z",
         customer: { avatar: null, name: "等待发送客户" },
@@ -520,11 +567,13 @@ describe("WorkflowDataPage", () => {
         subjectType: "chatai_contact" as const,
         terminalReason: null,
         steps: [{
+          executionAvailable: false,
           nextExecuteAt: "2026-07-13T01:00:00.000Z",
           occurredAt: "2026-07-12T12:31:00.000Z",
           nodeId: "message-1",
           nodeKind: "message" as const,
           revision: document.publishedRevision!,
+          sequence: 1,
           status: "waiting" as const,
           title: "消息发送",
         }],
@@ -588,6 +637,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: 1,
         summary: { completed: 0, current: 1, entered: 1, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn().mockResolvedValue(oldPage),
     };
@@ -627,6 +677,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: 1,
         summary: { completed: 0, current: 1, entered: 1, incomplete: 0 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(async () => ({
         items: [{
@@ -666,6 +717,7 @@ describe("WorkflowDataPage", () => {
         publishedRevision: document.publishedRevision!,
         summary: { completed: 2, current: 0, entered: 0, incomplete: 4 },
       })),
+      getExecutionLog: vi.fn(),
       getRecord: vi.fn(),
       listRecords: vi.fn(),
     };

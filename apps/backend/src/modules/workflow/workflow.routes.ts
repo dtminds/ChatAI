@@ -90,6 +90,10 @@ const WorkflowRecordParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ recordId: Type.String({ pattern: "^[1-9][0-9]*$" }) }),
 ]);
+const WorkflowExecutionLogParamsSchema = Type.Intersect([
+  WorkflowRecordParamsSchema,
+  Type.Object({ sequence: Type.Integer({ minimum: 1 }) }),
+]);
 const WorkflowLlmTestNodeParamsSchema = Type.Intersect([
   WorkflowParamsSchema,
   Type.Object({ nodeId: Type.String({ minLength: 1, maxLength: 128 }) }),
@@ -116,6 +120,8 @@ export async function registerWorkflowRoutes(
     token: process.env.JAVA_INTERNAL_API_TOKEN,
   });
   const customFieldService = createCustomFieldService(app.log);
+  const managedAccountReader = new MysqlWorkflowManagedAccountReader(app.db);
+  const wecomMemberReader = createWecomMemberService(app.log);
   const service = options.service ?? new WorkflowService(
     new MysqlWorkflowRepository(workflowDatabase),
     {
@@ -124,13 +130,13 @@ export async function registerWorkflowRoutes(
       },
       directEntryEndpointPort: createJavaWorkflowDirectEntryEndpointPort(app.log),
       entitlementPort,
-      managedAccountReader: new MysqlWorkflowManagedAccountReader(app.db),
+      managedAccountReader,
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       subUserReader: new MysqlWorkflowSubUserReader(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
       logger: app.log,
-      wecomMemberReader: createWecomMemberService(app.log),
+      wecomMemberReader,
       templateRepository: new MysqlWorkflowTemplateRepository(workflowDatabase),
     },
   );
@@ -138,9 +144,11 @@ export async function registerWorkflowRoutes(
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db, {
       logger: app.log,
+      managedAccountReader,
       wecomContactDirectory: createWecomContactJavaClient(app.log),
+      wecomMemberReader,
     }),
-    { capacityPort: entitlementPort },
+    { capacityPort: entitlementPort, observerSubjects: options.observerSubjects },
   );
 
   await app.register(async surfaceApp => registerWorkflowSurfaceRoutes(
@@ -214,6 +222,17 @@ function registerWorkflowSurfaceRoutes(
     { ...authenticated, schema: { params: WorkflowRecordParamsSchema } },
     async request => apiSuccess(await dataService.getRecord(
       getWorkflowScope(request, surface), request.params.workflowId, request.params.recordId,
+    )),
+  );
+
+  app.get<{ Params: Static<typeof WorkflowExecutionLogParamsSchema> }>(
+    "/workflows/:workflowId/records/:recordId/executions/:sequence",
+    { ...authenticated, schema: { params: WorkflowExecutionLogParamsSchema } },
+    async request => apiSuccess(await dataService.getExecutionLog(
+      getWorkflowScope(request, surface),
+      request.params.workflowId,
+      request.params.recordId,
+      request.params.sequence,
     )),
   );
 

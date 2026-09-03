@@ -73,4 +73,33 @@ describe("workflow data repository", () => {
     expect(mock.history.get.filter((request) => request.url === "/server/embed/workflows/33/records"))
       .toHaveLength(2);
   });
+
+  it("loads an execution log only on demand and does not cache completed results", async () => {
+    mock.onGet("/server/embed/workflows/33/records/31/executions/2").reply(200, {
+      data: {
+        completedAt: "2026-07-12T09:00:01.000Z",
+        errorCode: null,
+        errorMessage: null,
+        executionId: "123",
+        inputAvailable: true,
+        inputSnapshot: { subjectId: "customer-1" },
+        nodeId: "message-query-1",
+        nodeKind: "message-query",
+        output: { messages: [] },
+        sequence: 2,
+        sourceOutletId: null,
+        startedAt: "2026-07-12T09:00:00.000Z",
+        status: "completed",
+      },
+      success: true,
+    });
+    const repository = createWorkflowDataRepository("/server/embed/workflows");
+
+    const first = await repository.getExecutionLog("33", "31", 2);
+    const second = await repository.getExecutionLog("33", "31", 2);
+
+    expect(first).toEqual(second);
+    expect(mock.history.get.filter(request => request.url === "/server/embed/workflows/33/records/31/executions/2"))
+      .toHaveLength(2);
+  });
 });

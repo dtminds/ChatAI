@@ -2,6 +2,7 @@ import type {
   ApiSuccessEnvelope,
   WorkflowDataOverview,
   WorkflowEntryRecordDetail,
+  WorkflowEntryRecordExecutionLog,
   WorkflowEntryRecordPage,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
@@ -9,6 +10,7 @@ import { http } from "@/lib/request";
 const inFlightRequests = new Map<string, Promise<unknown>>();
 
 export type WorkflowDataRepository = {
+  getExecutionLog(workflowId: string, recordId: string, sequence: number): Promise<WorkflowEntryRecordExecutionLog>;
   getOverview(workflowId: string): Promise<WorkflowDataOverview>;
   getRecord(workflowId: string, recordId: string): Promise<WorkflowEntryRecordDetail>;
   listRecords(input: {
@@ -24,6 +26,13 @@ export function createWorkflowDataRepository(
   apiBasePath = "/server/workflows",
 ): WorkflowDataRepository {
   return {
+    getExecutionLog(workflowId, recordId, sequence) {
+      const key = `${apiBasePath}/${workflowId}/records/${recordId}/executions/${sequence}`;
+      return shareInFlight(
+        key,
+        async () => unwrap<WorkflowEntryRecordExecutionLog>(await http.get(key)),
+      );
+    },
     getOverview(workflowId) {
       return shareInFlight(
         `${apiBasePath}/${workflowId}/data`,

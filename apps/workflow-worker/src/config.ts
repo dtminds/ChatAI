@@ -42,6 +42,7 @@ export type WorkflowWorkerConfig = {
     capabilityRetryDelayMs: number;
     capabilityTimeoutMs: number;
     batchSize: number;
+    directiveDisableConcurrency: number;
     dispatchTimeoutMs: number;
     historyCleanupBatchSize: number;
     historyCleanupIntervalMs: number;
@@ -226,6 +227,12 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       ),
       capabilityTimeoutMs,
       batchSize: parseInteger(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE", WORKFLOW_RUNTIME_BATCH_LIMIT),
+      directiveDisableConcurrency: parseInteger(
+        env.WORKFLOW_DIRECTIVE_DISABLE_CONCURRENCY,
+        8,
+        "WORKFLOW_DIRECTIVE_DISABLE_CONCURRENCY",
+        100,
+      ),
       dispatchTimeoutMs: parseDurationMs(
         env.WORKFLOW_DISPATCH_TIMEOUT_MS,
         300_000,
@@ -244,7 +251,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       ),
       inferenceConcurrency: parseInteger(
         env.WORKFLOW_INFERENCE_CONCURRENCY,
-        10,
+        5,
         "WORKFLOW_INFERENCE_CONCURRENCY",
         100,
       ),

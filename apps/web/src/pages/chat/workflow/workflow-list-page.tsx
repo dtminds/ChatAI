@@ -139,6 +139,7 @@ export function WorkflowListPage({
     status: statusFilter,
   }), [debouncedQuery, page, statusFilter]);
   const { items, reload, status, total } = useWorkflowListResource(repository, listInput);
+  const [workflowListHasLoaded, setWorkflowListHasLoaded] = useState(false);
   const { activePage, totalPages } = resolveTablePagination({
     page,
     pageSize: workflowListPageSize,
@@ -169,6 +170,9 @@ export function WorkflowListPage({
     if (status !== "ready" || activePage === page) return;
     setPagination({ filterKey: listFilterKey, page: activePage });
   }, [activePage, listFilterKey, page, status]);
+  useEffect(() => {
+    if (status === "ready") setWorkflowListHasLoaded(true);
+  }, [status]);
 
   const changeWorkflowPage = (nextPage: number) => {
     const targetPage = Math.min(Math.max(1, nextPage), totalPages);
@@ -424,7 +428,7 @@ export function WorkflowListPage({
           />
         ) : null}
 
-        <WorkflowTemplateSection repository={resolvedTemplateRepository} />
+        {workflowListHasLoaded ? <WorkflowTemplateSection repository={resolvedTemplateRepository} /> : null}
       </section>
 
       <WorkflowMetadataDialog

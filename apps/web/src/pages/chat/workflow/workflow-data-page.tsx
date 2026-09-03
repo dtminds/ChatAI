@@ -8,7 +8,7 @@ import {
   Task01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getWorkflowCustomFieldVariableIds,
   WORKFLOW_RUN_RETENTION_DAYS,
@@ -16,11 +16,13 @@ import {
   type WorkflowDataOverview,
   type WorkflowEntryRecord,
   type WorkflowEntryRecordDetail,
+  type WorkflowEntryRecordExecutionLog,
   type WorkflowEntryRecordPage,
   type WorkflowFlowChangedReason,
 } from "@chatai/contracts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Sheet,
@@ -214,25 +216,25 @@ function WorkflowDataOverviewView({
   const summaryItems = [
     {
       icon: ArrowRight02Icon,
-      iconClassName: "bg-primary/10 text-primary",
+      iconClassName: "bg-primary/8 text-primary",
       label: "进入次数",
       value: totals.entered,
     },
     {
       icon: Progress02Icon,
-      iconClassName: "bg-success-muted text-success",
+      iconClassName: "bg-success-muted/35 text-success",
       label: "当前停留",
       value: totals.current,
     },
     {
       icon: RacingFlagIcon,
-      iconClassName: "bg-indigo-500/10 text-indigo-500",
+      iconClassName: "bg-indigo-500/8 text-indigo-500",
       label: "已完成",
       value: totals.completed,
     },
     {
       icon: ComputerRemoveIcon,
-      iconClassName: "bg-warning-muted text-warning",
+      iconClassName: "bg-warning-muted/35 text-warning",
       label: "未完成",
       value: totals.incomplete,
     },
@@ -367,22 +369,87 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
           ) : null}
         </div>
       )}
-      <RecordDetailSheet detail={detail} onOpenChange={open => { if (!open) setDetail(null); }} />
+      <RecordDetailSheet
+        detail={detail}
+        onOpenChange={open => { if (!open) setDetail(null); }}
+        repository={repository}
+        workflowId={document.id}
+      />
     </section>
   );
 }
 
-function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryRecordDetail | null; onOpenChange(open: boolean): void }) {
+function RecordDetailSheet({
+  detail,
+  onOpenChange,
+  repository,
+  workflowId,
+}: {
+  detail: WorkflowEntryRecordDetail | null;
+  onOpenChange(open: boolean): void;
+  repository: WorkflowDataRepository;
+  workflowId: string;
+}) {
+  const [selectedStep, setSelectedStep] = useState<WorkflowEntryRecordDetail["steps"][number] | null>(null);
+  const [executionLog, setExecutionLog] = useState<WorkflowEntryRecordExecutionLog | null>(null);
+  const [loadingLog, setLoadingLog] = useState(false);
+  const [logError, setLogError] = useState(false);
+  const logRequestId = useRef(0);
+
+  useEffect(() => {
+    setSelectedStep(null);
+    setExecutionLog(null);
+    setLoadingLog(false);
+    setLogError(false);
+    logRequestId.current += 1;
+  }, [detail?.recordId]);
+
+  const loadExecutionLog = useCallback((step: WorkflowEntryRecordDetail["steps"][number]) => {
+    if (step.sequence === undefined) return;
+    const requestId = ++logRequestId.current;
+    setSelectedStep(step);
+    setExecutionLog(null);
+    setLoadingLog(true);
+    setLogError(false);
+    void repository.getExecutionLog(workflowId, detail?.recordId ?? "", step.sequence)
+      .then(value => {
+        if (requestId === logRequestId.current) setExecutionLog(value);
+      })
+      .catch(() => {
+        if (requestId === logRequestId.current) setLogError(true);
+      })
+      .finally(() => {
+        if (requestId === logRequestId.current) setLoadingLog(false);
+      });
+  }, [detail?.recordId, repository, workflowId]);
+
   return (
     <Sheet onOpenChange={onOpenChange} open={Boolean(detail)}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-[min(680px,calc(100vw-48px))]">
         {detail ? (
           <>
-            <SheetHeader>
-              <SheetTitle>
-                <RecordCustomer customer={detail.customer} />
-              </SheetTitle>
-              <SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription>
+            <SheetHeader className="gap-0 text-left">
+              <SheetTitle className="text-base">运行详情</SheetTitle>
+              <SheetDescription className="sr-only">运行记录详情</SheetDescription>
+              <div className="mt-6 flex min-w-0 items-center gap-3">
+                <Avatar className="size-12 rounded-full">
+                  {detail.customer.avatar ? <AvatarImage alt="" src={detail.customer.avatar} /> : null}
+                  <AvatarFallback>{detail.customer.name.trim().slice(0, 1) || undefined}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-medium text-foreground">{detail.customer.name}</p>
+                  <p className="truncate text-[13px] text-muted-foreground">{detail.memberName ?? "未知"}</p>
+                </div>
+              </div>
+              <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-5 rounded-[8px] bg-muted/40 p-5 sm:grid-cols-4">
+                <RecordHeaderMetric
+                  label="状态"
+                  value={<span className={cn(detail.status === "failed" || detail.status === "cancelled" ? "text-destructive" : detail.status === "waiting" ? "text-warning" : "text-success")}>{statusLabel(detail.status)}</span>}
+                />
+                <RecordHeaderMetric label="进入时间" value={formatDate(detail.createdAt)} />
+                <RecordHeaderMetric label="运行ID" value={detail.recordId} />
+                <RecordHeaderMetric label="运行版本" value={detail.revision} />
+              </dl>
               {detail.terminalReason ? (
                 <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">
                   {flowChangedReasonLabel(detail.terminalReason)}
@@ -395,7 +462,7 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
                 {detail.steps.map((step, index) => {
                   const waitingUntil = step.status === "waiting" ? step.nextExecuteAt : undefined;
                   return (
-                    <TimelineItem key={`${step.nodeId}-${index}`}>
+                    <TimelineItem className="pr-24" key={`${step.nodeId}-${index}`}>
                       <TimelineIndicator variant={timelineStepVariant(step.status)} />
                       <TimelineSeparator />
                       <TimelineTitle>{step.title}</TimelineTitle>
@@ -405,6 +472,19 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
                           : formatDate(step.occurredAt)}
                       </TimelineDate>
                       {step.description ? <TimelineContent>{step.description}</TimelineContent> : null}
+                      {step.sourceOutletId ? <TimelineContent>出口 {step.sourceOutletId}</TimelineContent> : null}
+                      {step.executionAvailable && step.sequence !== undefined ? (
+                        <Button
+                          className="pointer-events-none absolute right-0 top-0 opacity-0 transition-opacity group-hover/timeline-item:pointer-events-auto group-hover/timeline-item:opacity-100"
+                          disabled={loadingLog && selectedStep?.sequence === step.sequence}
+                          onClick={() => loadExecutionLog(step)}
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                        >
+                          查看日志
+                        </Button>
+                      ) : null}
                     </TimelineItem>
                   );
                 })}
@@ -413,8 +493,118 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
           </>
         ) : null}
       </SheetContent>
+      <Dialog
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedStep(null);
+            setExecutionLog(null);
+            setLoadingLog(false);
+            setLogError(false);
+          }
+        }}
+        open={Boolean(selectedStep)}
+      >
+        <DialogContent
+          aria-describedby={undefined}
+          className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[min(680px,calc(100vw-48px))]"
+        >
+          <DialogHeader>
+            <DialogTitle>执行日志</DialogTitle>
+          </DialogHeader>
+          {selectedStep ? (
+            <ExecutionLogPanel
+              error={logError}
+              loading={loadingLog}
+              log={executionLog}
+              onRetry={() => loadExecutionLog(selectedStep)}
+              step={selectedStep}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
+}
+
+function ExecutionLogPanel({
+  error,
+  loading,
+  log,
+  onRetry,
+  step,
+}: {
+  error: boolean;
+  loading: boolean;
+  log: WorkflowEntryRecordExecutionLog | null;
+  onRetry(): void;
+  step: WorkflowEntryRecordDetail["steps"][number];
+}) {
+  return (
+    <section aria-label={`${step.title}日志`} className="min-h-0 overflow-y-auto">
+      {loading ? <div className="mt-4"><LoadingState /></div> : error ? (
+        <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground" role="alert">
+          <span>日志加载失败</span>
+          <Button onClick={onRetry} size="sm" type="button" variant="outline">重试</Button>
+        </div>
+      ) : log ? (
+        <div className="space-y-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+            <span>状态：{executionStatusLabel(log.status)}</span>
+            {log.startedAt ? <span>开始：{formatDateTime(log.startedAt)}</span> : null}
+            {log.completedAt ? <span>完成：{formatDateTime(log.completedAt)}</span> : null}
+            {log.sourceOutletId ? <span>出口：{log.sourceOutletId}</span> : null}
+          </div>
+          {log.inputAvailable ? (
+            <JsonBlock label="输入快照" value={log.inputSnapshot} />
+          ) : (
+            <ExecutionIdBlock value={log.executionId} />
+          )}
+          <JsonBlock label="输出" value={log.output} />
+          {log.errorCode || log.errorMessage ? (
+            <div>
+              <h5 className="mb-1 text-xs font-medium text-destructive">错误</h5>
+              <p className="whitespace-pre-wrap text-sm text-destructive">
+                {[log.errorCode, log.errorMessage].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function JsonBlock({ label, value }: { label: string; value: Record<string, unknown> }) {
+  return (
+    <div>
+      <h5 className="mb-1 text-xs font-medium">{label}</h5>
+      <pre className="max-h-72 overflow-auto rounded-[8px] bg-muted/80 p-3 text-xs leading-5">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+function ExecutionIdBlock({ value }: { value: string }) {
+  return (
+    <div>
+      <h5 className="mb-1 text-xs font-medium">执行ID</h5>
+      <code className="block rounded-[8px] bg-muted/80 p-3 text-xs leading-5">{value}</code>
+    </div>
+  );
+}
+
+function RecordHeaderMetric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-2 truncate text-sm font-semibold text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function executionStatusLabel(status: WorkflowEntryRecordExecutionLog["status"]) {
+  return ({ completed: "已完成", failed: "失败", retrying: "重试中", running: "执行中" } as const)[status];
 }
 
 function timelineStepVariant(status: WorkflowEntryRecordDetail["steps"][number]["status"]) {
@@ -464,6 +654,18 @@ function nodeTitle(document: WorkflowDocument, revision: number, nodeId: string)
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { day: "2-digit", hour: "2-digit", hour12: false, minute: "2-digit", month: "2-digit", timeZone: "Asia/Shanghai" }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Shanghai",
+  }).format(new Date(value));
 }
 
 function LoadingState() {

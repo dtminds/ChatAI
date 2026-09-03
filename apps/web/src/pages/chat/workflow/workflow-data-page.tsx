@@ -6,10 +6,9 @@ import {
   RacingFlagIcon,
   RefreshIcon,
   Task01Icon,
-  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Children, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getWorkflowCustomFieldVariableIds,
   WORKFLOW_RUN_RETENTION_DAYS,
@@ -433,8 +432,11 @@ function RecordDetailSheet({
                 <RecordCustomer customer={detail.customer} />
               </SheetTitle>
               <SheetDescription>
-                状态：{statusLabel(detail.status)} | 进入时间：{formatDate(detail.createdAt)}
-                {` | 成员：${detail.memberName ?? "未知"}`}
+                <RecordMeta>
+                  <span>状态：{statusLabel(detail.status)}</span>
+                  <span>进入时间：{formatDate(detail.createdAt)}</span>
+                  <span>成员：{detail.memberName ?? "未知"}</span>
+                </RecordMeta>
               </SheetDescription>
               <p className="text-xs text-muted-foreground">
                 Run ID {detail.recordId} · Revision {detail.revision} · Subject Type {detail.subjectType}
@@ -451,7 +453,7 @@ function RecordDetailSheet({
                 {detail.steps.map((step, index) => {
                   const waitingUntil = step.status === "waiting" ? step.nextExecuteAt : undefined;
                   return (
-                    <TimelineItem key={`${step.nodeId}-${index}`}>
+                    <TimelineItem className="pr-24" key={`${step.nodeId}-${index}`}>
                       <TimelineIndicator variant={timelineStepVariant(step.status)} />
                       <TimelineSeparator />
                       <TimelineTitle>{step.title}</TimelineTitle>
@@ -464,14 +466,13 @@ function RecordDetailSheet({
                       {step.sourceOutletId ? <TimelineContent>出口 {step.sourceOutletId}</TimelineContent> : null}
                       {step.executionAvailable && step.sequence !== undefined ? (
                         <Button
-                          className="mt-1 h-7 gap-1 px-2 text-xs"
+                          className="pointer-events-none absolute right-0 top-0 opacity-0 transition-opacity group-hover/timeline-item:pointer-events-auto group-hover/timeline-item:opacity-100"
                           disabled={loadingLog && selectedStep?.sequence === step.sequence}
                           onClick={() => loadExecutionLog(step)}
                           size="sm"
                           type="button"
-                          variant="ghost"
+                          variant="secondary"
                         >
-                          <HugeiconsIcon icon={ViewIcon} size={14} strokeWidth={1.8} />
                           查看日志
                         </Button>
                       ) : null}
@@ -549,6 +550,18 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
         {JSON.stringify(value, null, 2)}
       </pre>
     </div>
+  );
+}
+
+function RecordMeta({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn("flex flex-wrap items-center gap-y-1 text-sm text-muted-foreground", className)}>
+      {Children.toArray(children).map((child, index) => (
+        <span className={cn(index > 0 && "ml-3 border-l border-foreground/15 pl-3")} key={index}>
+          {child}
+        </span>
+      ))}
+    </span>
   );
 }
 

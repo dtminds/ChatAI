@@ -74,7 +74,7 @@ describe("workflow data repository", () => {
       .toHaveLength(2);
   });
 
-  it("loads an execution log only on demand and reuses it after it finishes", async () => {
+  it("loads an execution log only on demand and does not cache completed results", async () => {
     mock.onGet("/server/embed/workflows/33/records/31/executions/2").reply(200, {
       data: {
         completedAt: "2026-07-12T09:00:01.000Z",
@@ -100,6 +100,6 @@ describe("workflow data repository", () => {
 
     expect(first).toEqual(second);
     expect(mock.history.get.filter(request => request.url === "/server/embed/workflows/33/records/31/executions/2"))
-      .toHaveLength(1);
+      .toHaveLength(2);
   });
 });

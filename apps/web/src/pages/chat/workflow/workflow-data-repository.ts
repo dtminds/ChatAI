@@ -25,18 +25,13 @@ export type WorkflowDataRepository = {
 export function createWorkflowDataRepository(
   apiBasePath = "/server/workflows",
 ): WorkflowDataRepository {
-  const executionLogCache = new Map<string, WorkflowEntryRecordExecutionLog>();
-
   return {
     getExecutionLog(workflowId, recordId, sequence) {
       const key = `${apiBasePath}/${workflowId}/records/${recordId}/executions/${sequence}`;
-      const cached = executionLogCache.get(key);
-      if (cached) return Promise.resolve(cached);
-      return shareInFlight(key, async () => {
-        const value = await unwrap<WorkflowEntryRecordExecutionLog>(await http.get(key));
-        executionLogCache.set(key, value);
-        return value;
-      });
+      return shareInFlight(
+        key,
+        async () => unwrap<WorkflowEntryRecordExecutionLog>(await http.get(key)),
+      );
     },
     getOverview(workflowId) {
       return shareInFlight(

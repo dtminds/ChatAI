@@ -1,5 +1,6 @@
 import type React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { getWorkflowNodeContract } from "@chatai/contracts";
 import {
   Tooltip,
   TooltipContent,
@@ -33,7 +34,15 @@ export function WorkflowNodePicker({
   role?: "menu" | "region";
   style?: React.CSSProperties;
 }) {
-  const paletteGroups = getWorkflowPaletteItemGroups({ kinds });
+  const paletteGroups = getWorkflowPaletteItemGroups({ kinds })
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        !import.meta.env.PROD
+        || getWorkflowNodeContract(item.id).maturity === "runtime-ready",
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <section

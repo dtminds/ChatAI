@@ -66,6 +66,7 @@ export interface WorkflowCapabilityPort {
 export type WorkflowCapabilityCommandContext = {
   customFields: Record<string, number | string>;
   currentNodeLifecycle: { enteredAt?: string; exitedAt?: string };
+  datetimeVariableSelectors?: ReadonlySet<string>;
   identities: WorkflowContactIdentity;
   nodeLifecycle: Record<string, { enteredAt?: string; exitedAt?: string }>;
   outputs: Record<string, Record<string, unknown>>;

@@ -89,6 +89,7 @@ import {
   type WorkflowAiCollectMessageCursor,
   type WorkflowConversationDirectivePort,
 } from "./ai-collect.js";
+import { getWorkflowDatetimeVariableSelectors } from "./variable-content.js";
 import {
   executeWorkflowMessageQuery,
   type WorkflowMessageQueryPort,
@@ -706,6 +707,9 @@ export class WorkflowRuntimeService {
             preparedContext,
             run,
             startedAt: this.clock(),
+            datetimeVariableSelectors: getWorkflowDatetimeVariableSelectors(
+              revision.executionSpec,
+            ),
           })
           : await this.executors.execute(node, createExecutionContext(
             run,
@@ -1714,6 +1718,7 @@ async function executeWithCapabilityTimeout(input: {
   preparedContext: WorkflowPreparedExecutionContext;
   run: WorkflowRunRecord;
   startedAt: Date;
+  datetimeVariableSelectors: ReadonlySet<string>;
 }) {
   if (!input.binding) {
     throw new WorkflowCapabilityExecutionError(
@@ -1746,6 +1751,7 @@ async function executeWithCapabilityTimeout(input: {
       commandContext: {
         customFields: structuredClone(input.preparedContext.customFields),
         currentNodeLifecycle: { enteredAt: input.enteredAt.toISOString() },
+        datetimeVariableSelectors: input.datetimeVariableSelectors,
         identities: structuredClone(input.preparedContext.identities),
         nodeLifecycle: isRecord(input.run.context.nodeLifecycle)
           ? input.run.context.nodeLifecycle as Record<

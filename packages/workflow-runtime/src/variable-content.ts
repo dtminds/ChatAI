@@ -1,12 +1,35 @@
 import type {
+  WorkflowExecutionSpec,
   WorkflowVariableContentSegment,
   WorkflowVariableSelector,
 } from "@chatai/contracts";
+import { getWorkflowNodeOutputContracts } from "@chatai/contracts";
 import type { WorkflowCapabilityCommandContext } from "./capability-port.js";
 import {
   renderWorkflowMessageText,
   renderWorkflowMessagesText,
 } from "./workflow-messages.js";
+import { formatWorkflowDateTime } from "./workflow-date.js";
+
+const BUILT_IN_DATETIME_SELECTORS = new Set([
+  "trigger.occurredAt",
+  "current-node-lifecycle.enteredAt",
+  "current-node-lifecycle.exitedAt",
+]);
+
+export function getWorkflowDatetimeVariableSelectors(spec: WorkflowExecutionSpec) {
+  const selectors = new Set(BUILT_IN_DATETIME_SELECTORS);
+  for (const node of spec.nodes) {
+    selectors.add(`node-lifecycle.${node.id}.enteredAt`);
+    selectors.add(`node-lifecycle.${node.id}.exitedAt`);
+    for (const output of getWorkflowNodeOutputContracts(node.kind, node.config) ?? []) {
+      if (output.valueType.kind === "datetime") {
+        selectors.add(`node.${node.id}.${output.key}`);
+      }
+    }
+  }
+  return selectors;
+}
 
 export function renderWorkflowVariableContent(
   segments: WorkflowVariableContentSegment[],
@@ -17,6 +40,8 @@ export function renderWorkflowVariableContent(
     if (segment.type === "text") return segment.value;
     return stringifyWorkflowVariable(
       requireWorkflowVariableValue(segment.selector, context, invalid),
+      segment.selector,
+      context,
       invalid,
     );
   }).join("");
@@ -69,9 +94,17 @@ function readPath(value: unknown, path: readonly string[]) {
 
 function stringifyWorkflowVariable(
   value: unknown,
+  selector: WorkflowVariableSelector,
+  context: WorkflowCapabilityCommandContext,
   invalid: (diagnosticMessage: string) => Error,
 ) {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    const selectorKey = selector.join(".");
+    return isBuiltInDatetimeSelector(selector, selectorKey)
+      || context.datetimeVariableSelectors?.has(selectorKey)
+      ? formatWorkflowDateTime(value)
+      : value;
+  }
   const message = renderWorkflowMessageText(value);
   if (message !== null) return message;
   const messages = renderWorkflowMessagesText(value);
@@ -81,6 +114,16 @@ function stringifyWorkflowVariable(
     throw invalid("Workflow variable cannot be serialized");
   }
   return serialized;
+}
+
+function isBuiltInDatetimeSelector(
+  selector: WorkflowVariableSelector,
+  selectorKey: string,
+) {
+  if (BUILT_IN_DATETIME_SELECTORS.has(selectorKey)) return true;
+  return selector[0] === "node-lifecycle"
+    && selector.length === 3
+    && (selector[2] === "enteredAt" || selector[2] === "exitedAt");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

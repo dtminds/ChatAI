@@ -1,4 +1,3 @@
-import { getWorkflowCustomFieldVariableId } from "@chatai/contracts";
 import type { WorkflowVariableContentSegment, WorkflowVariableDefinition } from "../../types";
 import {
   getWorkflowVariableDisplayLabel,
@@ -59,7 +58,7 @@ export function getVariableContentText(
     const variable = variableBySelector.get(getWorkflowVariableSelectorKey(segment.selector));
     return `{${variable
       ? getWorkflowVariableDisplayLabel(variable)
-      : getUnavailableWorkflowVariableLabel(segment.selector)}}`;
+      : getUnavailableWorkflowVariableLabel()}}`;
   }).join("");
 }
 
@@ -88,7 +87,7 @@ export function getVariableContentSummarySegments(
       ? createWorkflowVariableReferenceSummarySegments(variable)
       : [{
           kind: "variable",
-          text: getUnavailableWorkflowVariableLabel(segment.selector),
+          text: getUnavailableWorkflowVariableLabel(),
           tone: "warning",
         }];
   });
@@ -146,7 +145,7 @@ export function truncateVariableContent(
     const variable = variableBySelector.get(getWorkflowVariableSelectorKey(segment.selector));
     const label = variable
       ? getWorkflowVariableDisplayLabel(variable)
-      : getUnavailableWorkflowVariableLabel(segment.selector);
+      : getUnavailableWorkflowVariableLabel();
     const length = label.length + 2;
     if (length > remaining) break;
     truncated.push({ selector: [...segment.selector], type: "variable" });
@@ -156,8 +155,6 @@ export function truncateVariableContent(
   return normalizeVariableContent(truncated);
 }
 
-export function getUnavailableWorkflowVariableLabel(selector: readonly string[]) {
-  return getWorkflowCustomFieldVariableId(selector) !== null
-    ? "原变量不可用"
-    : selector.join(".");
+export function getUnavailableWorkflowVariableLabel() {
+  return "原变量不可用";
 }

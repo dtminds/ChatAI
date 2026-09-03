@@ -29,4 +29,16 @@ describe("workflow variable content", () => {
     ]);
     expect(content[0]?.selector).toEqual(["subject", "customFields", "7"]);
   });
+
+  it("displays missing node variables as unavailable without exposing the selector", () => {
+    const content = [
+      { selector: ["node", "ai-collect-3", "field-132"], type: "variable" as const },
+    ];
+
+    expect(getVariableContentText(content, [])).toBe("{原变量不可用}");
+    expect(getVariableContentSummarySegments(content, [])).toEqual([
+      { kind: "variable", text: "原变量不可用", tone: "warning" },
+    ]);
+    expect(content[0]?.selector).toEqual(["node", "ai-collect-3", "field-132"]);
+  });
 });

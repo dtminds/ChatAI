@@ -15,7 +15,6 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
                 data.availableVariables,
               ),
               kind: "segments",
-              maxLines: 2,
             }
           : { kind: "empty" },
       },
@@ -29,7 +28,6 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
                 data.availableVariables,
               ),
               kind: "segments",
-              maxLines: 2,
             }
           : { kind: "empty" },
       },

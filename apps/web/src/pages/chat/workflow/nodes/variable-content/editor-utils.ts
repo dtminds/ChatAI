@@ -43,7 +43,8 @@ export function $restoreVariableContent(
       segment.selector,
       variable
         ? getWorkflowVariableDisplayLabel(variable)
-        : getUnavailableWorkflowVariableLabel(segment.selector),
+        : getUnavailableWorkflowVariableLabel(),
+      !variable,
     ));
   });
 }

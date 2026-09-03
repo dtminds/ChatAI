@@ -49,7 +49,7 @@ describe("NodeFieldList", () => {
                 { kind: "text", text: ".", tone: "muted" },
                 { kind: "variable", text: "触发时间" },
                 { kind: "operator", text: " 至 " },
-                { kind: "value", text: "未配置", tone: "warning" },
+                { kind: "variable", text: "原变量不可用", tone: "warning" },
               ],
               kind: "segments",
             },
@@ -65,12 +65,15 @@ describe("NodeFieldList", () => {
     expect(screen.getByText("新客户")).toBeInTheDocument();
     expect(screen.getByText("高意向")).toBeInTheDocument();
     expect(screen.getByText("配置异常")).toBeInTheDocument();
-    expect(screen.getAllByText("未配置")).toHaveLength(2);
+    expect(screen.getByText("未配置")).toBeInTheDocument();
     const summary = container.querySelector('[data-summary-kind="variable"]')?.closest("[aria-label]");
     if (!summary) throw new Error("summary segments not rendered");
+    const variableChip = summary.querySelector('[data-summary-kind="variable"]');
+    expect(variableChip).toHaveTextContent("开始.触发时间");
+    expect(variableChip?.querySelector("svg")).not.toBeNull();
     expect(summary.querySelector('[data-summary-kind="source"]')).toHaveTextContent("开始");
-    expect(summary.querySelector('[data-summary-kind="variable"]')).toHaveTextContent("触发时间");
     expect(summary.querySelector('[data-summary-kind="operator"]')).toBeInTheDocument();
-    expect(summary.querySelector('[data-summary-tone="warning"]')).toHaveTextContent("未配置");
+    expect(summary.querySelector('[data-summary-kind="variable"][data-summary-tone="warning"]'))
+      .toHaveTextContent("原变量不可用");
   });
 });

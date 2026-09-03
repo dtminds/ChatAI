@@ -17,8 +17,6 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogT
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconStack } from "@/components/ui/icon-stack";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
@@ -29,6 +27,7 @@ import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
 import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
+import { WORKFLOW_TEMPLATE_METADATA_DIALOG_CLASS_NAME, WorkflowTemplateMetadataFields, type WorkflowTemplateMetadataValue } from "./workflow-template-metadata-fields";
 import { useWorkflowSurface, WorkflowSurfaceProvider } from "./workflow-surface";
 import { nodeVisuals } from "./node-definitions";
 import type { WorkflowDraft } from "./types";
@@ -645,54 +644,35 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
 }
 
 function TemplateMetadataDialog({ detail, onOpenChange, onSubmit, open, pending, submitLabel, title }: { detail: WorkflowTemplateDetail; onOpenChange: (open: boolean) => void; onSubmit: (input: WorkflowTemplateDraftUpdateRequest) => Promise<void>; open: boolean; pending: boolean; submitLabel: string; title: string }) {
-  const [name, setName] = useState(detail.name);
-  const [description, setDescription] = useState(detail.description);
-  const [coverUrl, setCoverUrl] = useState(detail.coverUrl ?? "");
-  const [sortOrder, setSortOrder] = useState(String(detail.sortOrder ?? 0));
-  const [tags, setTags] = useState<string[]>(detail.tags ?? []);
+  const [metadata, setMetadata] = useState<WorkflowTemplateMetadataValue>({
+    coverUrl: detail.coverUrl ?? "",
+    description: detail.description,
+    name: detail.name,
+    sortOrder: String(detail.sortOrder ?? 0),
+    tags: detail.tags ?? [],
+  });
   useEffect(() => {
     if (!open) return;
-    setName(detail.name); setDescription(detail.description); setCoverUrl(detail.coverUrl ?? ""); setSortOrder(String(detail.sortOrder ?? 0)); setTags(detail.tags ?? []);
+    setMetadata({
+      coverUrl: detail.coverUrl ?? "",
+      description: detail.description,
+      name: detail.name,
+      sortOrder: String(detail.sortOrder ?? 0),
+      tags: detail.tags ?? [],
+    });
   }, [detail, open]);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
-        <DialogHeader className="shrink-0">
+      <DialogContent className={WORKFLOW_TEMPLATE_METADATA_DIALOG_CLASS_NAME}>
+        <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-            <Label className="pt-2" htmlFor="workflow-template-name">模板名称</Label>
-            <Input id="workflow-template-name" aria-label="模板名称" onChange={e => setName(e.target.value)} placeholder="请输入模板名称" value={name} />
-          </div>
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-            <Label className="pt-2" htmlFor="workflow-template-description">模板描述</Label>
-            <Textarea id="workflow-template-description" aria-label="模板描述" onChange={e => setDescription(e.target.value)} placeholder="请输入模板描述" required value={description} />
-          </div>
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-            <Label className="pt-2" htmlFor="workflow-template-cover-url">封面图片</Label>
-            <Input id="workflow-template-cover-url" aria-label="封面图片" onChange={e => setCoverUrl(e.target.value)} placeholder="请输入封面图片 URL（可选）" value={coverUrl} />
-          </div>
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-            <Label className="pt-2" htmlFor="workflow-template-sort-order">排序权重</Label>
-            <div className="space-y-1.5">
-              <Input id="workflow-template-sort-order" aria-label="模板排序值" inputMode="numeric" onChange={e => setSortOrder(e.target.value)} placeholder="请输入排序权重" type="number" value={sortOrder} />
-              <p className="text-xs text-muted-foreground">数值越大越靠前，默认为 0</p>
-            </div>
-          </div>
-          <div aria-label="模板标签" className="space-y-3">
-            {workflowTemplateTagDimensions.map(dimension => <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4" key={dimension.id}>
-              <div className="pt-1.5 text-sm font-medium">{dimension.label}</div>
-              <div className="flex flex-wrap gap-2">{dimension.tags.map(tag => {
-                const selected = tags.includes(tag.id);
-                return <Button aria-pressed={selected} className="h-8" key={tag.id} onClick={() => setTags(current => selected ? current.filter(id => id !== tag.id) : [...current, tag.id])} size="sm" type="button" variant={selected ? "secondary" : "outline"}>{tag.label}</Button>;
-              })}</div>
-            </div>)}
-          </div>
+        <div className="space-y-4">
+          <WorkflowTemplateMetadataFields onChange={setMetadata} value={metadata} />
         </div>
-        <DialogFooter className="shrink-0 pt-2">
+        <DialogFooter className="pt-2">
           <Button disabled={pending} onClick={() => onOpenChange(false)} variant="outline">关闭</Button>
-          <Button disabled={pending || !name.trim() || !description.trim() || !Number.isInteger(Number(sortOrder))} onClick={() => void onSubmit({ coverUrl: coverUrl.trim() || null, description: description.trim(), name: name.trim(), sortOrder: Number(sortOrder), tags })}>{pending ? `${submitLabel}中` : submitLabel}</Button>
+          <Button disabled={pending || !metadata.name.trim() || !metadata.description.trim() || !Number.isInteger(Number(metadata.sortOrder))} onClick={() => void onSubmit({ coverUrl: metadata.coverUrl.trim() || null, description: metadata.description.trim(), name: metadata.name.trim(), sortOrder: Number(metadata.sortOrder), tags: metadata.tags })}>{pending ? `${submitLabel}中` : submitLabel}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

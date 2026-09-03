@@ -1839,6 +1839,26 @@ describe("Agent workflow page", () => {
 
     expect(await screen.findByRole("dialog")).toHaveAccessibleName("转换为模板");
     expect(screen.getByRole("textbox", { name: "模板名称" })).toHaveValue("新人转化旅程");
+    expect(screen.getByText("封面图片", { selector: "label" })).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "排序权重" })).toHaveValue(0);
+    expect(screen.getByText("数值越大越靠前，默认为 0")).toBeInTheDocument();
+    expect(screen.getByText("生命周期")).toBeInTheDocument();
+    expect(screen.getByText("行业特性")).toBeInTheDocument();
+    expect(screen.getByText("常见场景")).toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox", { name: "模板描述" }), "用于验证模板转换");
+    await user.click(screen.getByRole("button", { name: "潜客转化" }));
+    await user.click(screen.getByRole("button", { name: "创建模板" }));
+
+    await waitFor(() => expect(repository.convertToTemplate).toHaveBeenCalledWith(
+      "newcomer-conversion",
+      expect.objectContaining({
+        description: "用于验证模板转换",
+        name: "新人转化旅程",
+        sortOrder: 0,
+        tags: ["lifecycle:potential_conversion"],
+      }),
+    ));
   });
 
   it("does not offer activation for an unpublished draft", async () => {

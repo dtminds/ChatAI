@@ -643,7 +643,7 @@ describe("workflow capability reliability", () => {
     });
 
     expect(createRun).toHaveBeenCalledWith(expect.objectContaining({
-      entryPolicy: expect.objectContaining({ windowSize: 90, windowUnit: "day" }),
+      entryPolicy: expect.objectContaining({ windowSize: 30, windowUnit: "day" }),
     }));
   });
 

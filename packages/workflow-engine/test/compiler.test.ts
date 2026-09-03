@@ -458,7 +458,7 @@ describe("compileWorkflowDraft", () => {
     expect(spec.nodes.find(node => node.id === "start")?.config.entryPolicy).toEqual({
       maxEntries: 2,
       mode: "rolling_window",
-      windowSize: 90,
+      windowSize: 30,
       windowUnit: "day",
     });
   });

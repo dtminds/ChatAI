@@ -485,7 +485,7 @@ describe("workflow data routes", () => {
       .resolves.toMatchObject({ terminalReason: null });
   });
 
-  it("lists active runs and only terminal runs inside the 180-day record window", async () => {
+  it("lists active runs and only terminal runs inside the 45-day record window", async () => {
     const listDb = createRecordListDbMock();
     const detailDb = createRecordDbMock({ runStatus: "completed" });
     const listReader = new MysqlWorkflowDataReader(listDb as never);

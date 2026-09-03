@@ -592,7 +592,7 @@ describe("workflow start configuration", () => {
     }));
   });
 
-  it("clamps rolling windows to 90 days when changing units", async () => {
+  it("clamps rolling windows to 30 days when changing units", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const node = createStartNode({
@@ -600,7 +600,7 @@ describe("workflow start configuration", () => {
       entryPolicy: {
         maxEntries: 2,
         mode: "rolling_window",
-        windowSize: 2_160,
+        windowSize: 720,
         windowUnit: "hour",
       },
     });
@@ -621,7 +621,7 @@ describe("workflow start configuration", () => {
       entryPolicy: {
         maxEntries: 2,
         mode: "rolling_window",
-        windowSize: 90,
+        windowSize: 30,
         windowUnit: "day",
       },
     }));

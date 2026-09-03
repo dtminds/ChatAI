@@ -481,17 +481,17 @@ describe("workflow contracts", () => {
     })).toBe(false);
   });
 
-  it("limits rolling entry windows to 90 days by actual duration", () => {
+  it("limits rolling entry windows to 30 days by actual duration", () => {
     const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
       entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
       seatIds: [101],
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
     });
 
-    expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
-    expect(Value.Check(WorkflowStartConfigSchema, createConfig(91, "day"))).toBe(false);
-    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_160, "hour"))).toBe(true);
-    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_161, "hour"))).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(30, "day"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(31, "day"))).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(720, "hour"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(721, "hour"))).toBe(false);
   });
 
   it("limits configured entry counts to ten", () => {
@@ -542,7 +542,7 @@ describe("workflow contracts", () => {
     })).toEqual({
       maxEntries: 10,
       mode: "rolling_window",
-      windowSize: 90,
+      windowSize: 30,
       windowUnit: "day",
     });
     expect(normalizeWorkflowEntryPolicy({
@@ -553,7 +553,7 @@ describe("workflow contracts", () => {
     })).toEqual({
       maxEntries: 2,
       mode: "rolling_window",
-      windowSize: 2_160,
+      windowSize: 720,
       windowUnit: "hour",
     });
   });

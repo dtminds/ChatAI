@@ -29,6 +29,19 @@ describe("workflow data routes", () => {
         status: "waiting",
         steps: [],
       })),
+      getExecutionLog: vi.fn(async () => ({
+        completedAt: "2026-07-12T09:00:01.000Z",
+        errorCode: null,
+        errorMessage: null,
+        inputSnapshot: { subjectId: "customer-1" },
+        nodeId: "message-query-1",
+        nodeKind: "message-query",
+        output: { messages: [] },
+        sequence: 2,
+        sourceOutletId: null,
+        startedAt: "2026-07-12T09:00:00.000Z",
+        status: "completed",
+      })),
       listRecords: vi.fn(async () => ({ items: [], nextCursor: "29" })),
     };
     const app = await createApp(dataService);
@@ -39,6 +52,8 @@ describe("workflow data routes", () => {
       .toMatchObject({ nextCursor: "29" });
     expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/records/31" })).json().data)
       .toMatchObject({ customer: { name: "张三" }, recordId: "31" });
+    expect((await app.inject({ method: "GET", url: "/api/server/workflows/12/records/31/executions/2" })).json().data)
+      .toMatchObject({ nodeId: "message-query-1", sequence: 2 });
 
     expect(dataService.listRecords).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }), expect.objectContaining({
       cursor: "40",
@@ -46,6 +61,7 @@ describe("workflow data routes", () => {
       nodeId: "wait-1",
       workflowId: "12",
     }));
+    expect(dataService.getExecutionLog).toHaveBeenCalledWith(expect.objectContaining({ uid: 9 }), "12", "31", 2);
   });
 
   it("serves one tenant-level capacity overview independently from the Workflow list", async () => {
@@ -478,7 +494,7 @@ describe("workflow data routes", () => {
           "xy_wap_embed_workflow_node_execution",
           "status",
           "in",
-          ["completed", "failed"],
+          ["completed", "failed", "retrying", "running"],
         ]);
     },
   );
@@ -613,6 +629,70 @@ describe("workflow data routes", () => {
     expect(directory.listByExternalUserIds).not.toHaveBeenCalled();
   });
 
+  it("hydrates a ChatAI record with its managed account name from the trigger seatId", async () => {
+    const managedAccountReader = {
+      findByIds: vi.fn(async () => new Map([[101, { avatarUrl: "", id: 101, name: "托管账号A" }]])),
+    };
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      contextJson: JSON.stringify({ trigger: { projection: { seatId: 101 } } }),
+    }) as never, { managedAccountReader });
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.memberName).toBe("托管账号A");
+    expect(managedAccountReader.findByIds).toHaveBeenCalledWith(9, [101]);
+  });
+
+  it("hydrates a WeCom record with its member name from the trigger workUserId", async () => {
+    const wecomMemberReader = {
+      findByIds: vi.fn(async () => new Map([[201, { avatarUrl: "", id: 201, name: "企微成员A" }]])),
+    };
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      contextJson: JSON.stringify({ trigger: { projection: { workUserId: 201 } } }),
+      subjectType: 2,
+    }) as never, { wecomMemberReader });
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.memberName).toBe("企微成员A");
+    expect(wecomMemberReader.findByIds).toHaveBeenCalledWith(9, [201]);
+  });
+
+  it("keeps execution JSON out of the trajectory query and reads one requested log", async () => {
+    const db = createRecordDbMock({
+      executionLog: {
+        completedAt: new Date("2026-07-12T09:00:01.000Z"),
+        errorCode: null,
+        errorMessage: null,
+        inputSnapshotJson: JSON.stringify({ subjectId: "customer-1" }),
+        nodeId: "message-query-1",
+        nodeKind: "message-query",
+        outputJson: JSON.stringify({ messages: [] }),
+        sequence: 2,
+        sourceOutletId: "default",
+        startedAt: new Date("2026-07-12T09:00:00.000Z"),
+        status: "completed",
+      },
+    });
+    const reader = new MysqlWorkflowDataReader(db as never);
+
+    await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+    expect(db.selectedColumns.find(item => item.table === "xy_wap_embed_workflow_node_execution")?.columns)
+      .not.toEqual(expect.arrayContaining(["input_snapshot_json", "output_json"]));
+
+    await expect(reader.getExecutionLog({ recordId: "31", sequence: 2, uid: 9, workflowId: "12" }))
+      .resolves.toMatchObject({
+        inputSnapshot: { subjectId: "customer-1" },
+        nodeId: "message-query-1",
+        output: { messages: [] },
+        sequence: 2,
+        sourceOutletId: "default",
+      });
+    expect(db.wheres).toContainEqual(["xy_wap_embed_workflow_node_execution", "sequence", "=", 2]);
+    expect(db.selectedColumns.filter(item => item.table === "xy_wap_embed_workflow_node_execution").at(-1)?.columns)
+      .toEqual(expect.arrayContaining(["input_snapshot_json", "output_json"]));
+  });
+
   it("keeps WeCom records available when Java contact lookup fails", async () => {
     const directory = {
       listByExternalUserIds: vi.fn(async () => {
@@ -636,25 +716,29 @@ describe("workflow data routes", () => {
       getOverview: vi.fn(),
       getTenantOverview: vi.fn(),
       getRecord: vi.fn(),
+      getExecutionLog: vi.fn(),
       listRecords: vi.fn(),
     };
     const app = await createApp(new WorkflowDataService(reader as never), ["viewer"]);
 
-    const [dataResponse, capacityResponse, overviewResponse] = await Promise.all([
+    const [dataResponse, capacityResponse, overviewResponse, logResponse] = await Promise.all([
       app.inject({ method: "GET", url: "/api/server/workflows/12/data" }),
       app.inject({ method: "GET", url: "/api/server/workflows/capacity" }),
       app.inject({ method: "GET", url: "/api/server/workflows/overview" }),
+      app.inject({ method: "GET", url: "/api/server/workflows/12/records/31/executions/1" }),
     ]);
 
     expect(dataResponse.statusCode).toBe(403);
     expect(capacityResponse.statusCode).toBe(403);
     expect(overviewResponse.statusCode).toBe(403);
+    expect(logResponse.statusCode).toBe(403);
     expect(capacityResponse.json()).toMatchObject({
       error: { code: "WORKFLOW_ACCESS_FORBIDDEN" },
     });
     expect(reader.getCapacityUsage).not.toHaveBeenCalled();
     expect(reader.getOverview).not.toHaveBeenCalled();
     expect(reader.getTenantOverview).not.toHaveBeenCalled();
+    expect(reader.getExecutionLog).not.toHaveBeenCalled();
   });
 
   async function createApp(
@@ -844,8 +928,22 @@ function metricRow(
 }
 
 function createRecordDbMock(options: {
+  contextJson?: unknown;
   draftJson?: unknown;
   executionKind?: string;
+  executionLog?: {
+    completedAt: Date;
+    errorCode: string | null;
+    errorMessage: string | null;
+    inputSnapshotJson: string;
+    nodeId: string;
+    nodeKind: string;
+    outputJson: string;
+    sequence: number;
+    sourceOutletId: string | null;
+    startedAt: Date;
+    status: string;
+  };
   executionStatus?: string;
   executionRows?: Array<{ nodeId: string; nodeKind: string }>;
   nextExecuteAt?: Date | null;
@@ -861,11 +959,15 @@ function createRecordDbMock(options: {
   const now = new Date("2026-07-12T10:00:00.000Z");
   const db = {
     retentionConditions: [] as unknown[][],
+    selectedColumns: [] as Array<{ columns: unknown; table: string }>,
     wheres: [] as unknown[][],
     selectFrom(table: string) {
       const builder = {
         orderBy() { return builder; },
-        select() { return builder; },
+        select(columns: unknown) {
+          db.selectedColumns.push({ columns, table });
+          return builder;
+        },
         where(...args: unknown[]) {
           if (table === "xy_wap_embed_workflow_run" && typeof args[0] === "function") {
             const eb = Object.assign(
@@ -892,6 +994,8 @@ function createRecordDbMock(options: {
               node_id: row.nodeId,
               node_kind: row.nodeKind,
               revision: 3,
+              sequence: 1,
+              source_outlet_id: null,
               status: options.executionStatus ?? "completed",
             }));
           }
@@ -912,7 +1016,24 @@ function createRecordDbMock(options: {
               subject_id: options.subjectId ?? "customer-1",
               subject_type: options.subjectType ?? 1,
               terminal_reason: options.terminalReason ?? null,
+              context_json: options.contextJson ?? JSON.stringify({ trigger: {} }),
+              sequence: 1,
               update_time: now,
+            };
+          }
+          if (table === "xy_wap_embed_workflow_node_execution" && options.executionLog) {
+            return {
+              completed_at: options.executionLog.completedAt,
+              error_code: options.executionLog.errorCode,
+              error_message: options.executionLog.errorMessage,
+              input_snapshot_json: options.executionLog.inputSnapshotJson,
+              node_id: options.executionLog.nodeId,
+              node_kind: options.executionLog.nodeKind,
+              output_json: options.executionLog.outputJson,
+              sequence: options.executionLog.sequence,
+              source_outlet_id: options.executionLog.sourceOutletId,
+              started_at: options.executionLog.startedAt,
+              status: options.executionLog.status,
             };
           }
           return {

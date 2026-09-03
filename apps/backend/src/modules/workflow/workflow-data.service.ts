@@ -2,6 +2,7 @@ import type {
   WorkflowCapacityOverview,
   WorkflowDataOverview,
   WorkflowEntryRecordDetail,
+  WorkflowEntryRecordExecutionLog,
   WorkflowEntryRecordPage,
   WorkflowTenantOverview,
   WorkflowType,
@@ -58,6 +59,13 @@ export type WorkflowDataReader = {
     workflowId: string;
     workflowTypes?: WorkflowType[];
   }): Promise<WorkflowEntryRecordDetail>;
+  getExecutionLog(input: {
+    recordId: string;
+    sequence: number;
+    uid: number;
+    workflowId: string;
+    workflowTypes?: WorkflowType[];
+  }): Promise<WorkflowEntryRecordExecutionLog>;
 };
 
 export class WorkflowDataService {
@@ -173,6 +181,25 @@ export class WorkflowDataService {
     }
     return this.reader.getRecord({
       recordId,
+      uid: scope.uid,
+      workflowId,
+      ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),
+    });
+  }
+
+  getExecutionLog(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    recordId: string,
+    sequence: number,
+  ) {
+    assertAccess(scope);
+    if (scope.surface && getVisibleWorkflowTypes(scope).length === 0) {
+      throw new NotFoundError("WORKFLOW_NOT_FOUND", "内容已不存在");
+    }
+    return this.reader.getExecutionLog({
+      recordId,
+      sequence,
       uid: scope.uid,
       workflowId,
       ...(scope.surface ? { workflowTypes: getVisibleWorkflowTypes(scope) } : {}),

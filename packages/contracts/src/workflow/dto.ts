@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { WorkflowJsonObjectSchema } from "./entry-event.js";
 import {
   WorkflowSubjectTypeSchema,
   WorkflowTypeSchema,
@@ -362,11 +363,14 @@ export const WorkflowEntryRecordStepNodeKindSchema = Type.Union([
 
 export const WorkflowEntryRecordStepSchema = Type.Object({
   description: Type.Optional(Type.String()),
+  executionAvailable: Type.Boolean(),
   nextExecuteAt: Type.Optional(Type.String()),
   occurredAt: Type.String(),
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
   nodeKind: WorkflowEntryRecordStepNodeKindSchema,
   revision: Type.Integer({ minimum: 1 }),
+  sequence: Type.Integer({ minimum: 1 }),
+  sourceOutletId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   status: Type.Union([
     Type.Literal("completed"),
     Type.Literal("failed"),
@@ -386,12 +390,32 @@ export const WorkflowFlowChangedReasonSchema = Type.Union([
 export const WorkflowEntryRecordDetailSchema = Type.Object({
   createdAt: Type.String(),
   customer: WorkflowEntryRecordCustomerSchema,
+  memberName: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
   recordId: WorkflowIdSchema,
   revision: Type.Integer({ minimum: 1 }),
   status: WorkflowEntryRecordStatusSchema,
   subjectType: WorkflowSubjectTypeSchema,
   terminalReason: Type.Union([WorkflowFlowChangedReasonSchema, Type.Null()]),
   steps: Type.Array(WorkflowEntryRecordStepSchema),
+});
+
+export const WorkflowEntryRecordExecutionLogSchema = Type.Object({
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  errorCode: Type.Union([Type.String(), Type.Null()]),
+  errorMessage: Type.Union([Type.String(), Type.Null()]),
+  inputSnapshot: WorkflowJsonObjectSchema,
+  nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+  nodeKind: WorkflowEntryRecordStepNodeKindSchema,
+  output: WorkflowJsonObjectSchema,
+  sequence: Type.Integer({ minimum: 1 }),
+  sourceOutletId: Type.Union([Type.String(), Type.Null()]),
+  startedAt: Type.Union([Type.String(), Type.Null()]),
+  status: Type.Union([
+    Type.Literal("completed"),
+    Type.Literal("failed"),
+    Type.Literal("retrying"),
+    Type.Literal("running"),
+  ]),
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
@@ -436,3 +460,4 @@ export type WorkflowEntryRecord = Static<typeof WorkflowEntryRecordSchema>;
 export type WorkflowEntryRecordPage = Static<typeof WorkflowEntryRecordPageSchema>;
 export type WorkflowEntryRecordStep = Static<typeof WorkflowEntryRecordStepSchema>;
 export type WorkflowEntryRecordDetail = Static<typeof WorkflowEntryRecordDetailSchema>;
+export type WorkflowEntryRecordExecutionLog = Static<typeof WorkflowEntryRecordExecutionLogSchema>;

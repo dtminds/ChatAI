@@ -1,9 +1,11 @@
 import {
   WORKFLOW_RUN_RETENTION_DAYS,
   WorkflowFlowChangedReasonSchema,
+  WorkflowJsonObjectSchema,
   WorkflowNodeKindSchema,
   type WorkflowDataOverview,
   type WorkflowEntryRecordDetail,
+  type WorkflowEntryRecordExecutionLog,
   type WorkflowEntryRecordPage,
   type WorkflowEntryRecordStepNodeKind,
   type WorkflowEntryRecordStatus,
@@ -27,6 +29,8 @@ import type {
   WecomContactDirectory,
   WecomContactProfile,
 } from "./wecom-contact-java-client.js";
+import type { WorkflowManagedAccountReader } from "./workflow-managed-account-reader.js";
+import type { WorkflowWeComMemberReader } from "./workflow-wecom-member-reader.js";
 
 type DataDatabase = Database & WorkflowDatabase;
 type WorkflowSubjectType = ReturnType<typeof decodeWorkflowSubjectType>;
@@ -38,18 +42,24 @@ const UNKNOWN_CUSTOMER: WorkflowCustomerProfile = { avatar: null, name: "未知�
 export class MysqlWorkflowDataReader implements WorkflowDataReader {
   private readonly db: Kysely<DataDatabase>;
   private readonly logger: AppLogger | RequestAwareLogger;
+  private readonly managedAccountReader: WorkflowManagedAccountReader | undefined;
   private readonly wecomContactDirectory: WecomContactDirectory | undefined;
+  private readonly wecomMemberReader: WorkflowWeComMemberReader | undefined;
 
   constructor(
     db: Kysely<Database>,
     options: {
       logger?: AppLogger | RequestAwareLogger;
+      managedAccountReader?: WorkflowManagedAccountReader;
       wecomContactDirectory?: WecomContactDirectory;
+      wecomMemberReader?: WorkflowWeComMemberReader;
     } = {},
   ) {
     this.db = db as unknown as Kysely<DataDatabase>;
     this.logger = options.logger ?? noopLogger;
+    this.managedAccountReader = options.managedAccountReader;
     this.wecomContactDirectory = options.wecomContactDirectory;
+    this.wecomMemberReader = options.wecomMemberReader;
   }
 
   async getCapacityUsage(input: { date: string; uid: number }) {
@@ -293,10 +303,12 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         "id",
         "next_execute_at",
         "revision",
+        "sequence",
         "status",
         "subject_id",
         "subject_type",
         "terminal_reason",
+        "context_json",
         "update_time",
       ])
       .where("uid", "=", input.uid)
@@ -308,19 +320,26 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       ]))
       .executeTakeFirst();
     if (!run) throw new NotFoundError("WORKFLOW_RECORD_NOT_FOUND", "运行记录不存在");
-    const [executions, customers] = await Promise.all([
+    const [allExecutions, customers, memberName] = await Promise.all([
       this.db.selectFrom("xy_wap_embed_workflow_node_execution")
-        .select(["completed_at", "create_time", "error_message", "node_id", "node_kind", "revision", "status"])
+        .select(["completed_at", "create_time", "error_message", "node_id", "node_kind", "revision", "sequence", "source_outlet_id", "status"])
         .where("uid", "=", input.uid)
         .where("run_id", "=", input.recordId)
-        .where("status", "in", ["completed", "failed"])
+        .where("status", "in", ["completed", "failed", "retrying", "running"])
         .orderBy("sequence", "asc")
         .execute(),
       this.loadSubjects(input.uid, [{
         subjectId: run.subject_id,
         subjectType: decodeWorkflowSubjectType(run.subject_type),
       }]),
+      this.loadRunMemberName({
+        contextJson: run.context_json,
+        subjectType: decodeWorkflowSubjectType(run.subject_type),
+        uid: input.uid,
+      }),
     ]);
+    const executions = allExecutions.filter(row => row.status === "completed" || row.status === "failed");
+    const executionBySequence = new Map(allExecutions.map(row => [row.sequence, row]));
     const revisionNumbers = [...new Set([...executions.map(row => row.revision), run.revision])];
     const revisions = await this.db.selectFrom("xy_wap_embed_workflow_revision")
       .select(["draft_json", "revision"])
@@ -341,6 +360,9 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         nodeId: row.node_id,
         nodeKind,
         revision: row.revision,
+        sequence: row.sequence,
+        sourceOutletId: row.source_outlet_id,
+        executionAvailable: true,
         status: row.status === "failed" ? "failed" : "completed",
         title: metadata?.title ?? fallbackNodeTitle(nodeKind),
       };
@@ -358,6 +380,9 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         nodeId: run.current_node_id,
         nodeKind: currentKind,
         revision: run.revision,
+        sequence: run.sequence,
+        sourceOutletId: executionBySequence.get(run.sequence)?.source_outlet_id ?? null,
+        executionAvailable: executionBySequence.has(run.sequence),
         status: run.status === "waiting" ? "waiting" as const : "current" as const,
         title: metadata?.title ?? previousStep?.title ?? fallbackNodeTitle(currentKind),
       };
@@ -376,6 +401,9 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         nodeId: run.current_node_id,
         nodeKind: currentKind,
         revision: run.revision,
+        sequence: run.sequence,
+        sourceOutletId: executionBySequence.get(run.sequence)?.source_outlet_id ?? null,
+        executionAvailable: executionBySequence.has(run.sequence),
         status: "failed",
         title: metadata?.title ?? fallbackNodeTitle(currentKind),
       });
@@ -386,12 +414,63 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         decodeWorkflowSubjectType(run.subject_type),
         run.subject_id,
       )) ?? UNKNOWN_CUSTOMER,
+      memberName,
       recordId: String(run.id),
       revision: run.revision,
       status: parseStatus(run.status),
       subjectType: decodeWorkflowSubjectType(run.subject_type),
       terminalReason: parseFlowChangedReason(run.terminal_reason),
       steps,
+    };
+  }
+
+  async getExecutionLog(input: Parameters<WorkflowDataReader["getExecutionLog"]>[0]): Promise<WorkflowEntryRecordExecutionLog> {
+    if (input.workflowTypes) await this.requireVisibleWorkflow(input as Required<typeof input>);
+    const run = await this.db.selectFrom("xy_wap_embed_workflow_run")
+      .select(["id"])
+      .where("uid", "=", input.uid)
+      .where("workflow_id", "=", input.workflowId)
+      .where("id", "=", input.recordId)
+      .where(eb => eb.or([
+        eb("status", "in", ["queued", "running", "waiting"]),
+        eb("completed_at", ">=", sql<Date>`CURRENT_TIMESTAMP - INTERVAL ${WORKFLOW_RUN_RETENTION_DAYS} DAY`),
+      ]))
+      .executeTakeFirst();
+    if (!run) throw new NotFoundError("WORKFLOW_RECORD_NOT_FOUND", "运行记录不存在");
+
+    const execution = await this.db.selectFrom("xy_wap_embed_workflow_node_execution")
+      .select([
+        "completed_at",
+        "error_code",
+        "error_message",
+        "input_snapshot_json",
+        "node_id",
+        "node_kind",
+        "output_json",
+        "sequence",
+        "source_outlet_id",
+        "started_at",
+        "status",
+      ])
+      .where("uid", "=", input.uid)
+      .where("run_id", "=", input.recordId)
+      .where("sequence", "=", input.sequence)
+      .executeTakeFirst();
+    if (!execution) {
+      throw new NotFoundError("WORKFLOW_EXECUTION_LOG_NOT_FOUND", "节点执行记录不存在");
+    }
+    return {
+      completedAt: execution.completed_at ? toDate(execution.completed_at).toISOString() : null,
+      errorCode: execution.error_code,
+      errorMessage: execution.error_message,
+      inputSnapshot: parseWorkflowJsonObject(execution.input_snapshot_json),
+      nodeId: execution.node_id,
+      nodeKind: parseRecordNodeKind(execution.node_kind),
+      output: parseWorkflowJsonObject(execution.output_json),
+      sequence: execution.sequence,
+      sourceOutletId: execution.source_outlet_id,
+      startedAt: execution.started_at ? toDate(execution.started_at).toISOString() : null,
+      status: parseExecutionLogStatus(execution.status),
     };
   }
 
@@ -464,6 +543,35 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         "企微客户资料补全失败",
       );
       return new Map<string, WorkflowCustomerProfile>();
+    }
+  }
+
+  private async loadRunMemberName(input: {
+    contextJson: unknown;
+    subjectType: WorkflowSubjectType;
+    uid: number;
+  }) {
+    const projection = readTriggerProjection(input.contextJson);
+    if (input.subjectType === "chatai_contact") {
+      const seatId = readPositiveInteger(projection.seatId);
+      if (seatId == null || !this.managedAccountReader) return null;
+      try {
+        return this.managedAccountReader
+          ? (await this.managedAccountReader.findByIds(input.uid, [seatId])).get(seatId)?.name ?? null
+          : null;
+      } catch (error) {
+        this.logger.warn({ err: error, seatId, uid: input.uid }, "托管账号名称补全失败");
+        return null;
+      }
+    }
+    if (input.subjectType !== "wecom_contact") return null;
+    const workUserId = readPositiveInteger(projection.workUserId);
+    if (workUserId == null || !this.wecomMemberReader) return null;
+    try {
+      return (await this.wecomMemberReader.findByIds(input.uid, [workUserId])).get(workUserId)?.name ?? null;
+    } catch (error) {
+      this.logger.warn({ err: error, uid: input.uid, workUserId }, "企微成员名称补全失败");
+      return null;
     }
   }
 }
@@ -608,4 +716,39 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
 
 function toDate(value: Date | string) {
   return value instanceof Date ? value : new Date(value);
+}
+
+function readTriggerProjection(value: unknown) {
+  const context = parseWorkflowJsonObject(value);
+  const trigger = context.trigger;
+  if (!trigger || typeof trigger !== "object" || Array.isArray(trigger)) return {};
+  const projection = (trigger as Record<string, unknown>).projection;
+  return projection && typeof projection === "object" && !Array.isArray(projection)
+    ? projection as Record<string, unknown>
+    : {};
+}
+
+function readPositiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function parseWorkflowJsonObject(value: unknown) {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return Value.Check(WorkflowJsonObjectSchema, parsed)
+    ? structuredClone(parsed)
+    : {};
+}
+
+function parseExecutionLogStatus(value: string): WorkflowEntryRecordExecutionLog["status"] {
+  if (["completed", "failed", "retrying", "running"].includes(value)) {
+    return value as WorkflowEntryRecordExecutionLog["status"];
+  }
+  throw new Error(`Unknown workflow execution log status: ${value}`);
 }

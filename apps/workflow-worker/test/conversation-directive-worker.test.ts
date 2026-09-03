@@ -132,15 +132,9 @@ describe("processWorkflowConversationDirectiveDisableBatch", () => {
     expect(maximumActive).toBe(2);
   });
 
-  it("claims another concurrency window after completing a full window", async () => {
-    const releases: Array<() => void> = [];
-    let active = 0;
-    let maximumActive = 0;
+  it("leaves later windows for the next invocation", async () => {
     const disable = vi.fn(async () => {
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      await new Promise<void>(resolve => releases.push(resolve));
-      active -= 1;
+      return undefined;
     });
     const firstWindow = [
       directiveState({ bizId: "9:31:1", taskId: "task-1" }),
@@ -171,17 +165,30 @@ describe("processWorkflowConversationDirectiveDisableBatch", () => {
       timeoutMs: 5_000,
     });
 
-    await vi.waitFor(() => expect(disable).toHaveBeenCalledTimes(2));
+    await expect(run).resolves.toEqual({ claimed: 2, disabled: 2, retried: 0 });
     expect(claim).toHaveBeenNthCalledWith(1, expect.objectContaining({ limit: 2 }));
     expect(claim).toHaveBeenCalledTimes(1);
-    releases.splice(0).forEach(release => release());
 
-    await vi.waitFor(() => expect(disable).toHaveBeenCalledTimes(4));
+    const nextRun = processWorkflowConversationDirectiveDisableBatch({
+      leaseDurationMs: 30_000,
+      leaseOwner: "directive-worker-1",
+      limit: 4,
+      maxRetryDelayMs: 60_000,
+      now: () => now,
+      port: { disable } as never,
+      repository: {
+        claimAiCollectDirectiveDisableBatch: claim,
+        completeAiCollectDirectiveDisable: complete,
+        retryAiCollectDirectiveDisable: vi.fn(),
+      } as never,
+      retryDelayMs: 1_000,
+      concurrency: 2,
+      timeoutMs: 5_000,
+    });
+
+    await expect(nextRun).resolves.toEqual({ claimed: 2, disabled: 2, retried: 0 });
     expect(claim).toHaveBeenNthCalledWith(2, expect.objectContaining({ limit: 2 }));
-    releases.splice(0).forEach(release => release());
-
-    await expect(run).resolves.toEqual({ claimed: 4, disabled: 4, retried: 0 });
-    expect(maximumActive).toBe(2);
+    expect(claim).toHaveBeenCalledTimes(2);
   });
 });
 

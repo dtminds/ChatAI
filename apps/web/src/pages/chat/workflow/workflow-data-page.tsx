@@ -439,7 +439,7 @@ function RecordDetailSheet({
                 </RecordMeta>
               </SheetDescription>
               <p className="text-xs text-muted-foreground">
-                Run ID {detail.recordId} · Revision {detail.revision} · Subject Type {detail.subjectType}
+                运行ID {detail.recordId} · 运行版本 {detail.revision}
               </p>
               {detail.terminalReason ? (
                 <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">

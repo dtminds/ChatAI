@@ -439,7 +439,7 @@ describe("WorkflowDataPage", () => {
 
     await user.click(within(records).getByText("张三"));
     expect(await screen.findByRole("heading", { name: "运行轨迹" })).toBeInTheDocument();
-    expect(screen.getByText(/成员：托管账号A/)).toBeInTheDocument();
+    expect(screen.getByText("托管账号A")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "流程变更说明" })).toBeInTheDocument();
     expect(repository.getRecord).toHaveBeenCalledWith(document.id, "31");
     expect(screen.queryByRole("region", { name: `${waitNode.data.title}日志` })).not.toBeInTheDocument();

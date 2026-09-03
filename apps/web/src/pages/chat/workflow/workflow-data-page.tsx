@@ -8,7 +8,7 @@ import {
   Task01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Children, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getWorkflowCustomFieldVariableIds,
   WORKFLOW_RUN_RETENTION_DAYS,
@@ -428,20 +428,28 @@ function RecordDetailSheet({
       <SheetContent className="w-full overflow-y-auto sm:max-w-[min(680px,calc(100vw-48px))]">
         {detail ? (
           <>
-            <SheetHeader>
-              <SheetTitle>
-                <RecordCustomer customer={detail.customer} />
-              </SheetTitle>
-              <SheetDescription>
-                <RecordMeta>
-                  <span>状态：{statusLabel(detail.status)}</span>
-                  <span>进入时间：{formatDate(detail.createdAt)}</span>
-                  <span>成员：{detail.memberName ?? "未知"}</span>
-                </RecordMeta>
-              </SheetDescription>
-              <p className="text-xs text-muted-foreground">
-                运行ID {detail.recordId} · 运行版本 {detail.revision}
-              </p>
+            <SheetHeader className="gap-0 text-left">
+              <SheetTitle className="text-base">运行详情</SheetTitle>
+              <SheetDescription className="sr-only">运行记录详情</SheetDescription>
+              <div className="mt-6 flex min-w-0 items-center gap-3">
+                <Avatar className="size-12 rounded-full">
+                  {detail.customer.avatar ? <AvatarImage alt="" src={detail.customer.avatar} /> : null}
+                  <AvatarFallback>{detail.customer.name.trim().slice(0, 1) || undefined}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-medium text-foreground">{detail.customer.name}</p>
+                  <p className="truncate text-[13px] text-muted-foreground">{detail.memberName ?? "未知"}</p>
+                </div>
+              </div>
+              <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-5 rounded-[8px] bg-muted/40 p-5 sm:grid-cols-4">
+                <RecordHeaderMetric
+                  label="状态"
+                  value={<span className={cn(detail.status === "failed" || detail.status === "cancelled" ? "text-destructive" : detail.status === "waiting" ? "text-warning" : "text-success")}>{statusLabel(detail.status)}</span>}
+                />
+                <RecordHeaderMetric label="进入时间" value={formatDate(detail.createdAt)} />
+                <RecordHeaderMetric label="运行ID" value={detail.recordId} />
+                <RecordHeaderMetric label="运行版本" value={detail.revision} />
+              </dl>
               {detail.terminalReason ? (
                 <p aria-label="流程变更说明" className="text-sm text-destructive" role="status">
                   {flowChangedReasonLabel(detail.terminalReason)}
@@ -573,15 +581,12 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
   );
 }
 
-function RecordMeta({ children, className }: { children: ReactNode; className?: string }) {
+function RecordHeaderMetric({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <span className={cn("flex flex-wrap items-center gap-y-1 text-sm text-muted-foreground", className)}>
-      {Children.toArray(children).map((child, index) => (
-        <span className={cn(index > 0 && "ml-3 border-l border-foreground/15 pl-3")} key={index}>
-          {child}
-        </span>
-      ))}
-    </span>
+    <div className="min-w-0">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-2 truncate text-sm font-semibold text-foreground">{value}</dd>
+    </div>
   );
 }
 

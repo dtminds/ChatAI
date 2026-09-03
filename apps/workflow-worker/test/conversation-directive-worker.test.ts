@@ -23,13 +23,14 @@ describe("processWorkflowConversationDirectiveDisableBatch", () => {
         retryAiCollectDirectiveDisable: retry,
       } as never,
       retryDelayMs: 1_000,
+      concurrency: 8,
       timeoutMs: 5_000,
     });
 
     expect(claim).toHaveBeenCalledWith({
       leaseExpiresAt: new Date("2026-08-30T08:00:30.000Z"),
       leaseOwner: "directive-worker-1",
-      limit: 25,
+      limit: 8,
       now,
     });
     expect(disable).toHaveBeenCalledWith(expect.objectContaining({
@@ -67,6 +68,7 @@ describe("processWorkflowConversationDirectiveDisableBatch", () => {
         retryAiCollectDirectiveDisable: retry,
       } as never,
       retryDelayMs: 1_000,
+      concurrency: 8,
       timeoutMs: 5_000,
     });
 
@@ -79,6 +81,107 @@ describe("processWorkflowConversationDirectiveDisableBatch", () => {
       uid: 9,
     });
     expect(result).toEqual({ claimed: 1, disabled: 0, retried: 1 });
+  });
+
+  it("limits concurrent directive disables across a claimed batch", async () => {
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maximumActive = 0;
+    const disable = vi.fn(async () => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise<void>(resolve => releases.push(resolve));
+      active -= 1;
+    });
+    const claim = vi.fn()
+      .mockResolvedValueOnce([
+        directiveState({ bizId: "9:31:1", taskId: "task-1" }),
+        directiveState({ bizId: "9:31:2", taskId: "task-2" }),
+      ])
+      .mockResolvedValueOnce([]);
+    const complete = vi.fn().mockResolvedValue(true);
+    const run = processWorkflowConversationDirectiveDisableBatch({
+      leaseDurationMs: 30_000,
+      leaseOwner: "directive-worker-1",
+      limit: 25,
+      maxRetryDelayMs: 60_000,
+      now: () => now,
+      port: { disable } as never,
+      repository: {
+        claimAiCollectDirectiveDisableBatch: claim,
+        completeAiCollectDirectiveDisable: complete,
+        retryAiCollectDirectiveDisable: vi.fn(),
+      } as never,
+      retryDelayMs: 1_000,
+      concurrency: 2,
+      timeoutMs: 5_000,
+    });
+
+    await vi.waitFor(() => expect(disable).toHaveBeenCalledTimes(2));
+    expect(claim).toHaveBeenCalledWith({
+      leaseExpiresAt: new Date("2026-08-30T08:00:30.000Z"),
+      leaseOwner: "directive-worker-1",
+      limit: 2,
+      now,
+    });
+    expect(maximumActive).toBe(2);
+
+    releases.splice(0).forEach(release => release());
+
+    await expect(run).resolves.toEqual({ claimed: 2, disabled: 2, retried: 0 });
+    expect(maximumActive).toBe(2);
+  });
+
+  it("claims another concurrency window after completing a full window", async () => {
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maximumActive = 0;
+    const disable = vi.fn(async () => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise<void>(resolve => releases.push(resolve));
+      active -= 1;
+    });
+    const firstWindow = [
+      directiveState({ bizId: "9:31:1", taskId: "task-1" }),
+      directiveState({ bizId: "9:31:2", taskId: "task-2" }),
+    ];
+    const secondWindow = [
+      directiveState({ bizId: "9:31:3", taskId: "task-3" }),
+      directiveState({ bizId: "9:31:4", taskId: "task-4" }),
+    ];
+    const claim = vi.fn()
+      .mockResolvedValueOnce(firstWindow)
+      .mockResolvedValueOnce(secondWindow);
+    const complete = vi.fn().mockResolvedValue(true);
+    const run = processWorkflowConversationDirectiveDisableBatch({
+      leaseDurationMs: 30_000,
+      leaseOwner: "directive-worker-1",
+      limit: 4,
+      maxRetryDelayMs: 60_000,
+      now: () => now,
+      port: { disable } as never,
+      repository: {
+        claimAiCollectDirectiveDisableBatch: claim,
+        completeAiCollectDirectiveDisable: complete,
+        retryAiCollectDirectiveDisable: vi.fn(),
+      } as never,
+      retryDelayMs: 1_000,
+      concurrency: 2,
+      timeoutMs: 5_000,
+    });
+
+    await vi.waitFor(() => expect(disable).toHaveBeenCalledTimes(2));
+    expect(claim).toHaveBeenNthCalledWith(1, expect.objectContaining({ limit: 2 }));
+    expect(claim).toHaveBeenCalledTimes(1);
+    releases.splice(0).forEach(release => release());
+
+    await vi.waitFor(() => expect(disable).toHaveBeenCalledTimes(4));
+    expect(claim).toHaveBeenNthCalledWith(2, expect.objectContaining({ limit: 2 }));
+    releases.splice(0).forEach(release => release());
+
+    await expect(run).resolves.toEqual({ claimed: 4, disabled: 4, retried: 0 });
+    expect(maximumActive).toBe(2);
   });
 });
 

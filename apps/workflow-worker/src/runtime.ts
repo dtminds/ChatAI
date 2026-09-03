@@ -284,6 +284,7 @@ export async function startWorkflowWorkerRuntime(input: {
             port: input.conversationDirectivePort,
             repository: input.conversationDirectiveRepository,
             retryDelayMs: input.config.runtime.capabilityRetryDelayMs,
+            concurrency: input.config.runtime.directiveDisableConcurrency,
             timeoutMs: input.config.runtime.capabilityTimeoutMs,
           }),
         ]);

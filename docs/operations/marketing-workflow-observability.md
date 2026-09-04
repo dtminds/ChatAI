@@ -49,10 +49,10 @@ Role results are flattened into the log event. Do not put counters under a neste
 1.0 applies one global policy to every tenant:
 
 - `queued`, `running`, and `waiting` Runs are retained without a time limit.
-- `completed`, `failed`, and `cancelled` Runs and their Node Execution ledgers are retained for 180 days from `completed_at`.
-- Task and task Outbox rows are removed 30 days after their owning Run terminates.
+- `completed`, `failed`, and `cancelled` Runs and their Node Execution ledgers are retained for 45 days from `completed_at`.
+- Task and task Outbox rows are removed 7 days after their owning Run terminates.
 - Entry Guard lifetime counters and cumulative node metrics are retained long-term.
-- No archive or product restore path exists; the run-record panel explicitly covers the latest 180 days.
+- No archive or product restore path exists; the run-record panel explicitly covers the latest 45 days.
 
 The Reconciler starts cleanup hourly in bounded batches. If a batch reports more work, it catches up at the normal Reconciler interval until the backlog is drained. Cleanup counters are expected `info`-level work, not recovery warnings. A terminal Run is deleted only after its Tasks are gone, and its Node Execution rows are deleted in the same transaction.
 

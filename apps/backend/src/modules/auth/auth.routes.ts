@@ -120,7 +120,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     "/api/auth/session",
     { preHandler: [requireAppHost, app.authenticate] },
     async (request) => apiSuccess({
-      subUser: await getCurrentSession(app, request.user),
+      subUser: await getCurrentSession(app, request.user, "app"),
     }),
   );
   app.get<{ Querystring: SupportInvestigationAccountsQuery }>(

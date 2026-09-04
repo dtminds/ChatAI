@@ -2061,7 +2061,7 @@ export class WorkbenchRepository {
 
     const subUser = await this.db
       .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "name", "uid"])
+      .select(["id", "name", "type", "uid"])
       .where("id", "=", subUserNumericId)
       .where("status", "=", 1)
       .executeTakeFirst();
@@ -2073,6 +2073,7 @@ export class WorkbenchRepository {
     return {
       displayName: subUser.name,
       subUserId: String(subUser.id),
+      type: subUser.type,
       uid: subUser.uid,
     };
   }

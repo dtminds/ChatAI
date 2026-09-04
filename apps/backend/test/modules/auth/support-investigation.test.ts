@@ -55,6 +55,17 @@ const phoneTarget = {
   uid: 9001,
 };
 
+const embedTarget = {
+  account: "embed-internal",
+  id: 104,
+  name: "Embed 内部身份",
+  platform: 5,
+  role: "operator",
+  status: 1,
+  type: 2,
+  uid: 9001,
+};
+
 describe("support investigation", () => {
   beforeEach(() => {
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
@@ -117,6 +128,9 @@ describe("support investigation", () => {
       },
       success: true,
     });
+    expect(allowed.json().data.accounts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ subUserId: "104" })]),
+    );
     expect(denied.statusCode).toBe(403);
     expect(denied.json()).toMatchObject({
       error: { code: "FORBIDDEN" },
@@ -151,6 +165,16 @@ describe("support investigation", () => {
       },
       url: "/api/auth/support-investigation/start",
     });
+    const embedTargetResponse = await app.inject({
+      headers: { authorization: `Bearer ${actorToken}` },
+      method: "POST",
+      payload: {
+        reason: "产品观测",
+        subUserId: "104",
+        uid: 9001,
+      },
+      url: "/api/auth/support-investigation/start",
+    });
     const started = await app.inject({
       headers: { authorization: `Bearer ${actorToken}` },
       method: "POST",
@@ -164,6 +188,11 @@ describe("support investigation", () => {
 
     expect(mismatch.statusCode).toBe(404);
     expect(mismatch.json()).toMatchObject({
+      error: { code: "SUPPORT_TARGET_NOT_FOUND" },
+      success: false,
+    });
+    expect(embedTargetResponse.statusCode).toBe(404);
+    expect(embedTargetResponse.json()).toMatchObject({
       error: { code: "SUPPORT_TARGET_NOT_FOUND" },
       success: false,
     });
@@ -371,7 +400,7 @@ function createSupportDbMock(options: {
   auditWrites?: Record<string, unknown>[];
   selectedTables?: string[];
 }) {
-  const subUsers = [actorSubUser, activeTarget, inactiveTarget, phoneTarget];
+  const subUsers = [actorSubUser, activeTarget, inactiveTarget, phoneTarget, embedTarget];
 
   return {
     insertInto(table: string) {
@@ -425,11 +454,16 @@ function createSupportDbMock(options: {
     }
 
     return subUsers.filter((row) => wheres.every(([column, operator, value]) => {
-      if (operator !== "=") {
-        return true;
+      if (operator === "=") {
+        return String(row[column as keyof typeof row]) === String(value);
       }
 
-      return String(row[column as keyof typeof row]) === String(value);
+      if (operator === "in" && Array.isArray(value)) {
+        return value.some((candidate) =>
+          String(row[column as keyof typeof row]) === String(candidate));
+      }
+
+      return true;
     }));
   }
 }

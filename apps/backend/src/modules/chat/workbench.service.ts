@@ -144,6 +144,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
+import { chatAiSubAccountTypes } from "../auth/permissions.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
 import type {
   JavaSendMessageData,
@@ -2431,7 +2432,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const subUser = await this.repository.getSubUser(subUserId);
+
+    if (!subUser || !chatAiSubAccountTypes.some((type) => type === subUser.type)) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId, subUser);
     await this.assertSeatAccess(subUserId, seatId, scope);
 
     const seat = await this.repository.getSeatOperateScope(seatId);
@@ -4039,8 +4046,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
   private async getAuthenticatedWorkbenchScope(
     subUserId: string,
+    authenticatedSubUser?: { uid: number },
   ): Promise<AuthenticatedWorkbenchScope> {
-    await this.getMe(subUserId);
+    const subUser = authenticatedSubUser ?? await this.repository.getSubUser(subUserId);
+
+    if (!subUser) {
+      throw new UnauthorizedError();
+    }
+
     const uid = this.workbenchScope.uid;
 
     if (uid == null || !Number.isSafeInteger(uid) || uid <= 0) {

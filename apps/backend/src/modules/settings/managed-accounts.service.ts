@@ -15,6 +15,7 @@ import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
+import { chatAiSubAccountTypes, dbSubAccountType } from "../auth/permissions.js";
 import { hydrateRelationRows } from "./relation-hydration.js";
 
 type TenantScope = AuthenticatedWorkbenchScope;
@@ -54,11 +55,6 @@ const dbSubAccountStatus = {
   active: 1,
   deleted: 0,
   disabled: 2,
-} as const;
-
-const dbSubAccountType = {
-  main: 1,
-  sub: 0,
 } as const;
 
 const dbActiveStatus = 1;
@@ -188,7 +184,8 @@ export class ManagedAccountSettingsService {
         "sub_user.type",
       ])
       .where("sub_user.uid", "=", scope.uid)
-      .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .where("sub_user.type", "in", chatAiSubAccountTypes);
 
     if (subAccountIds !== undefined) {
       query = query.where("sub_user.id", "in", subAccountIds);

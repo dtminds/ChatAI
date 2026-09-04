@@ -59,7 +59,7 @@ export function WorkflowTemplateMetadataFields({
         <Input
           id={coverUrlId}
           onChange={(event) => update("coverUrl", event.target.value)}
-          placeholder="请输入封面图片 URL（可选）"
+          placeholder="请输入封面图片 URL（可选，默认无需输入）"
           value={value.coverUrl}
         />
       </div>

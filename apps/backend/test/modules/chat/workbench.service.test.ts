@@ -1342,11 +1342,18 @@ describe("MysqlWorkbenchService", () => {
 
   it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
+    const getSubUser = vi.fn().mockResolvedValue({
+      displayName: "客服一号",
+      subUserId: "101",
+      type: 0,
+      uid: 9001,
+    });
     const getSeat = vi.fn();
     const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSubUser,
         getSeat,
         getSeatOperateScope: vi.fn().mockResolvedValue({
           platform: 5,
@@ -1375,7 +1382,63 @@ describe("MysqlWorkbenchService", () => {
       subUserId: "101",
       uid: 9001,
     });
+    expect(getSubUser).toHaveBeenCalledTimes(1);
     expect(getSeat).not.toHaveBeenCalled();
+  });
+
+  it("rejects takeover by an embed-only sub-user before calling Java", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatHostSubUser = vi.fn();
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "Embed 内部身份",
+          subUserId: "101",
+          type: 2,
+          uid: 9001,
+        }),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatId: "12",
+          thirdUserId: "zhangsan",
+          uid: 9001,
+        }),
+        updateSeatHostSubUser,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
+      code: "SUB_USER_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+    expect(updateSeatHostSubUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects takeover by an unknown sub-user type before calling Java", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatHostSubUser = vi.fn();
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "未知身份",
+          subUserId: "101",
+          type: 3,
+          uid: 9001,
+        }),
+        getSeatOperateScope: vi.fn(),
+        updateSeatHostSubUser,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
+      code: "SUB_USER_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+    expect(updateSeatHostSubUser).not.toHaveBeenCalled();
   });
 
   it("rejects takeover when the sub-user cannot access the seat", async () => {
@@ -8692,6 +8755,7 @@ function createActiveSubUser() {
     displayName: "客服一号",
     platform: 6,
     subUserId: "101",
+    type: 0,
     uid: 9001,
   };
 }

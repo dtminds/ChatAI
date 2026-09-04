@@ -16,6 +16,8 @@ import { AppError, UnauthorizedError } from "../../shared/errors.js";
 import { verifyAltchaPayload } from "./altcha.service.js";
 import { verifyPassword } from "./password.service.js";
 import {
+  chatAiSubAccountTypes,
+  dbSubAccountType,
   deriveAccountRole,
   deriveAccountType,
   canManageWorkflowTemplates,
@@ -123,7 +125,7 @@ export async function loginWithSmpEmbed(
 
   const { subUserId, uid } = identity;
 
-  const subUser = await findActiveSubUser(app.db, subUserId);
+  const subUser = await findActiveSubUser(app.db, subUserId, "embed");
 
   if (!subUser || subUser.uid !== uid) {
     throw new InvalidEmbedTicketError();
@@ -263,17 +265,13 @@ export async function refreshAccessToken(
 export async function getCurrentSession(
   app: FastifyInstance,
   user: JwtUser,
+  kind: AuthSessionKind,
 ): Promise<AuthLoginResponse["subUser"]> {
   if (!user.subUserId) {
     throw new UnauthorizedError();
   }
 
-  const subUser = await app.db
-    .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "role", "type", "uid"])
-    .where("id", "=", user.subUserId as never)
-    .where("status", "=", 1)
-    .executeTakeFirst();
+  const subUser = await findActiveSubUser(app.db, Number(user.subUserId), kind);
 
   if (!subUser) {
     throw new UnauthorizedError();
@@ -388,16 +386,26 @@ async function findActiveSubUserCredential(
     .select(["id", "name", "password_hash", "role", "type", "uid"])
     .where("account", "=", normalizedAccount)
     .where("status", "=", 1)
+    .where("type", "in", chatAiSubAccountTypes)
     .executeTakeFirst();
 }
 
-async function findActiveSubUser(db: Kysely<Database>, subUserId: number) {
-  return db
+async function findActiveSubUser(
+  db: Kysely<Database>,
+  subUserId: number,
+  kind: AuthSessionKind,
+) {
+  let query = db
     .selectFrom("xy_wap_embed_sub_user")
     .select(["id", "name", "role", "type", "uid"])
     .where("id", "=", subUserId)
-    .where("status", "=", 1)
-    .executeTakeFirst();
+    .where("status", "=", 1);
+
+  query = kind === "embed"
+    ? query.where("type", "=", dbSubAccountType.embed)
+    : query.where("type", "in", chatAiSubAccountTypes);
+
+  return query.executeTakeFirst();
 }
 
 async function refreshSession(
@@ -423,7 +431,7 @@ async function refreshSession(
     return undefined;
   }
 
-  const subUser = await findActiveSubUser(app.db, session.sub_user_id);
+  const subUser = await findActiveSubUser(app.db, session.sub_user_id, kind);
 
   if (!subUser || (expectedIdentity && subUser.uid !== expectedIdentity.uid)) {
     return undefined;

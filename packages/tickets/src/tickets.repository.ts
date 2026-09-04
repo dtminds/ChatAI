@@ -36,6 +36,8 @@ type TicketAccountAccessIdentity = {
   thirdUserId: string;
 };
 
+const CHAT_AI_SUB_ACCOUNT_TYPES = [0, 1] as const;
+
 type ResolvedTicketListRepositoryInput = TicketListRepositoryInput & {
   accountAccessIdentities?: TicketAccountAccessIdentity[];
 };
@@ -336,6 +338,7 @@ export class TicketsRepository {
       .where("conversation.biz_status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .where("sub_user.status", "=", 1)
+      .where("sub_user.type", "in", CHAT_AI_SUB_ACCOUNT_TYPES)
       .orderBy("sub_user.id", "asc")
       .execute();
 
@@ -562,6 +565,7 @@ export class TicketsRepository {
       .where("conversation.biz_status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .where("sub_user.status", "=", 1)
+      .where("sub_user.type", "in", CHAT_AI_SUB_ACCOUNT_TYPES)
       .executeTakeFirst();
     const assigneeSubUserId = assignee?.assignee_sub_user_id == null
       ? null

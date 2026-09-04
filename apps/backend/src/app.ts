@@ -23,6 +23,7 @@ import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
 import { registerFriendAddWayRoutes } from "./modules/workflow/friend-add-way.routes.js";
 import { registerWecomMemberRoutes } from "./modules/workflow/wecom-member.routes.js";
 import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
+import { registerOrderQueryResourceRoutes } from "./modules/workflow/order-query-resource.routes.js";
 import { registerWorkflowObservabilityRoutes } from "./modules/workflow/workflow-observability.routes.js";
 import type { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
@@ -86,6 +87,7 @@ export async function buildApp(options: AppBuildOptions = {}) {
     observerSubjects: workerObserverSubjects,
     service: options.workflowService,
   });
+  await registerOrderQueryResourceRoutes(app);
   await registerFriendAddWayRoutes(app);
   await registerWecomMemberRoutes(app);
   await registerTicketsRoutes(app);

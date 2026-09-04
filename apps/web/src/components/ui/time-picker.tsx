@@ -30,6 +30,7 @@ export function TimePicker({
   const [open, setOpen] = useState(false);
   const parsedTime = parseTime(value);
   const [hour, minute] = parsedTime ?? ["00", "00"];
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selectedHourRef = useRef<HTMLButtonElement>(null);
   const selectedMinuteRef = useRef<HTMLButtonElement>(null);
 
@@ -46,6 +47,7 @@ export function TimePicker({
           aria-label={ariaLabel}
           className={cn("h-9 w-28 justify-between rounded-[10px] px-2.5 font-normal", className)}
           disabled={disabled}
+          ref={triggerRef}
           type="button"
           variant={variant}
         >
@@ -61,8 +63,12 @@ export function TimePicker({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-44 p-2">
-        <div className="grid grid-cols-2 divide-x divide-border">
+      <PopoverContent
+        align="start"
+        className="flex h-56 max-h-[var(--radix-popover-content-available-height)] w-44 p-2"
+        portalContainer={triggerRef.current?.closest<HTMLElement>("[role='dialog']")}
+      >
+        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border">
           <TimeColumn
             label="时"
             onSelect={(nextHour) => onValueChange(`${nextHour}:${minute}`)}
@@ -97,9 +103,9 @@ function TimeColumn({
   value: string;
 }) {
   return (
-    <div className="min-w-0 px-1.5">
-      <div className="pb-1.5 text-center text-xs text-muted-foreground">{label}</div>
-      <div className="h-48 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex min-h-0 min-w-0 flex-col px-1.5">
+      <div className="shrink-0 pb-1.5 text-center text-xs text-muted-foreground">{label}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="space-y-0.5 pr-1">
           {options.map((option) => {
             const selected = option === value;

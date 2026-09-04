@@ -1,7 +1,10 @@
 import Fastify from "fastify";
 import type { WorkflowType } from "@chatai/contracts";
-import { InMemoryWorkflowLlmTestAttemptRepository } from "@chatai/workflow-runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  InMemoryWorkflowLlmTestAttemptRepository,
+  WorkflowContactIdentityLookupError,
+} from "@chatai/workflow-runtime";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
 import { NotFoundError } from "../../../src/shared/errors.js";
 import {
@@ -533,6 +536,102 @@ describe("workflow routes", () => {
     expect(response.json().error.code).toBe("WORKFLOW_LLM_TEST_INPUT_INVALID");
   });
 
+  it("returns a synchronous Order Query test result from the saved draft", async () => {
+    const execute = vi.fn(async () => ({
+      netAmount: 88,
+      orderCount: 2,
+      totalAmount: 100,
+    }));
+    const app = await createApp("owner", undefined, {
+      serviceOptions: {
+        contactIdentityPort: {
+          getContactIdentity: vi.fn(async () => ({ externalUserId: 101, xyId: 303 })),
+        },
+        orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+          ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+        >,
+      },
+    });
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: {
+        draft: withOrderQueryNode(created.draft),
+        expectedDraftVersion: created.draftVersion,
+      },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        expectedDraftVersion: saved.draftVersion,
+        externalUserId: 101,
+        variableValues: [],
+      },
+      url: `/api/server/workflows/${created.id}/nodes/order-query-1/order-query-test-run`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      output: { netAmount: 88, orderCount: 2, totalAmount: 100 },
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 400 when the Order Query test customer does not exist", async () => {
+    const app = await createApp("owner", undefined, {
+      serviceOptions: {
+        contactIdentityPort: {
+          getContactIdentity: vi.fn(async () => {
+            throw new WorkflowContactIdentityLookupError(
+              "Workflow contact identity endpoint rejected the request: -1 客户不存在",
+              { failureKind: "terminal", upstreamErrorCode: -1 },
+            );
+          }),
+        },
+        orderQueryCapabilityPort: { execute: vi.fn() } as unknown as NonNullable<
+          ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+        >,
+      },
+    });
+    const created = (await app.inject({
+      method: "POST",
+      payload: { workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const saved = (await app.inject({
+      method: "PUT",
+      payload: {
+        draft: withOrderQueryNode(created.draft),
+        expectedDraftVersion: created.draftVersion,
+      },
+      url: `/api/server/workflows/${created.id}/draft`,
+    })).json().data;
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        expectedDraftVersion: saved.draftVersion,
+        externalUserId: 101,
+        variableValues: [],
+      },
+      url: `/api/server/workflows/${created.id}/nodes/order-query-1/order-query-test-run`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "WORKFLOW_ORDER_QUERY_TEST_CUSTOMER_NOT_FOUND",
+        message: "客户不存在",
+      },
+    });
+  });
+
   it("creates and reads an AI Intent test Attempt through its dedicated endpoint", async () => {
     const app = await createApp("owner");
     const created = (await app.inject({
@@ -814,6 +913,7 @@ describe("workflow routes", () => {
   });
 
   async function createApp(role: string, dataService?: WorkflowDataService, options: {
+    serviceOptions?: ConstructorParameters<typeof WorkflowService>[1];
     subUserId?: string;
     templateRepository?: InMemoryWorkflowTemplateRepository;
     uid?: number;
@@ -846,6 +946,7 @@ describe("workflow routes", () => {
         },
         llmTestAttemptRepository: new InMemoryWorkflowLlmTestAttemptRepository(),
         templateRepository: options.templateRepository,
+        ...options.serviceOptions,
       }),
     });
     return app;
@@ -909,6 +1010,47 @@ describe("workflow routes", () => {
       nodes: [
         ...draft.nodes.filter(node => node.id !== "end"),
         llmNode,
+        draft.nodes.find(node => node.id === "end"),
+      ],
+    };
+  }
+
+  function withOrderQueryNode(
+    draft: { edges: unknown[]; nodes: Array<{ id: string }>; viewport: unknown },
+  ) {
+    const orderQueryNode = {
+      data: {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: { amount: 0, time: "23:59", unit: "day" },
+            mode: "relative",
+            start: { amount: 30, time: "00:00", unit: "day" },
+          },
+        },
+        kind: "order-query",
+        label: "订单查询",
+        metric: "按条件查询",
+        mode: "conditions",
+        schemaVersion: 1,
+        status: "ready",
+        title: "订单查询",
+      },
+      id: "order-query-1",
+      position: { x: 360, y: 240 },
+      type: "workflowNode",
+    };
+    return {
+      ...draft,
+      edges: [
+        { id: "edge-start-order-query", source: "start", target: "order-query-1", type: "workflowEdge" },
+        { id: "edge-order-query-end", source: "order-query-1", target: "end", type: "workflowEdge" },
+      ],
+      nodes: [
+        ...draft.nodes.filter(node => node.id !== "end"),
+        orderQueryNode,
         draft.nodes.find(node => node.id === "end"),
       ],
     };

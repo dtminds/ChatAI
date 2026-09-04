@@ -39,6 +39,13 @@ import {
   isWorkflowMessageSendingWindowValid,
   type WorkflowStartTrigger,
 } from "./trigger.js";
+import {
+  WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
+  WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
+  WorkflowOrderQueryDraftConfigSchema,
+  WorkflowOrderQueryExecutionConfigSchema,
+  type WorkflowOrderQueryExecutionConfig,
+} from "./order-query.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
   Type.Literal("placeholder"),
@@ -705,7 +712,12 @@ export const workflowNodeContractRegistry = {
     WorkflowOrderBindExecutionConfigSchema,
     ["externalUserId"],
   ),
-  "order-query": placeholderContract("query", ["externalUserId"]),
+  "order-query": runtimeReadyContract(
+    "query",
+    1,
+    WorkflowOrderQueryDraftConfigSchema,
+    WorkflowOrderQueryExecutionConfigSchema,
+  ),
   "order-conversion": runtimeReadyContract(
     "action",
     1,
@@ -809,6 +821,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
   if (kind === "audience-filter") return isWorkflowAudienceFilterExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
+  if (kind === "order-query") return isWorkflowOrderQueryExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
@@ -840,6 +853,52 @@ export function isWorkflowCustomerUpdateExecutionConfigComplete(
       field.fieldType,
       field.value,
     ));
+}
+
+export function isWorkflowOrderQueryExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowOrderQueryExecutionConfig {
+  if (!Value.Check(WorkflowOrderQueryExecutionConfigSchema, value)) return false;
+  if (value.mode === "order-number") return true;
+  const timeRange = value.conditions.timeRange;
+  if (timeRange.mode === "absolute"
+    && (!isValidWorkflowLocalDateTime(timeRange.startAt)
+      || !isValidWorkflowLocalDateTime(timeRange.endAt)
+      || timeRange.startAt > timeRange.endAt
+      || getWorkflowLocalDateTimeDifference(timeRange.startAt, timeRange.endAt)
+        >= WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
+    return false;
+  }
+  if (timeRange.mode === "relative"
+    && [timeRange.start, timeRange.end].some(point =>
+      getWorkflowOrderQueryRelativeLookbackMilliseconds(point)
+        > WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 86_400_000)) {
+    return false;
+  }
+  if (timeRange.mode === "dynamic"
+    && isWorkflowDynamicTimeRangeProvablyInvalid(timeRange.start, timeRange.end)) {
+    return false;
+  }
+  const amount = value.conditions.amount;
+  return amount.min === undefined || amount.max === undefined || amount.min <= amount.max;
+}
+
+function getWorkflowLocalDateTimeDifference(start: string, end: string) {
+  return Date.parse(`${end}:00Z`) - Date.parse(`${start}:00Z`);
+}
+
+function getWorkflowOrderQueryRelativeLookbackMilliseconds(
+  point: Extract<
+    Extract<WorkflowOrderQueryExecutionConfig, { mode: "conditions" }>["conditions"]["timeRange"],
+    { mode: "relative" }
+  >["start"],
+) {
+  const unitMilliseconds = point.unit === "day"
+    ? 86_400_000
+    : point.unit === "hour"
+      ? 3_600_000
+      : 60_000;
+  return point.amount * unitMilliseconds;
 }
 
 export function isWorkflowCustomerFieldTypeSupported(
@@ -1098,6 +1157,25 @@ export function getWorkflowNodeOutputContracts(
         key: "result",
         usages: ["variable"],
         valueType: { kind: "boolean" },
+      },
+    ];
+  }
+  if (kind === "order-query") {
+    return [
+      {
+        key: "orderCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "totalAmount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "netAmount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
       },
     ];
   }

@@ -12,6 +12,7 @@ import {
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowMessageExecutionConfigComplete,
   isWorkflowMessageQueryExecutionConfigComplete,
+  isWorkflowOrderQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
@@ -293,7 +294,9 @@ function validateWorkflowNodeReferences(
       }
     }
 
-    if ((node.kind === "order-conversion" || node.kind === "order-bind")
+    if ((node.kind === "order-conversion"
+      || node.kind === "order-bind"
+      || node.kind === "order-query" && node.config.mode === "order-number")
       && Array.isArray(node.config.orderNumberSelector)) {
       const selectorInput = {
         customFieldById,
@@ -318,7 +321,9 @@ function validateWorkflowNodeReferences(
         expectedValueType: { kind: "number" },
       });
       if (!valid) {
-        const label = node.kind === "order-conversion" ? "Order Conversion" : "Order Bind";
+        const label = node.kind === "order-conversion"
+          ? "Order Conversion"
+          : node.kind === "order-bind" ? "Order Bind" : "Order Query";
         issues.push({
           code: "invalid-node-config",
           message: `${label} node references unavailable or incompatible order number data`,
@@ -422,6 +427,52 @@ function validateWorkflowNodeReferences(
           message: rangeInvalid
             ? "Message Query node time range is causally reversed"
             : "Message Query node references unavailable time data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "order-query"
+      && isWorkflowOrderQueryExecutionConfigComplete(node.config)
+      && node.config.mode === "conditions"
+      && node.config.conditions.timeRange.mode === "dynamic") {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const { timeRange } = node.config.conditions;
+      const referencesAvailable = [timeRange.start, timeRange.end]
+        .every(selector => validateWorkflowVariableSelector({
+          allowedSourceKinds: [
+            "context",
+            "current-node-lifecycle",
+            "node-lifecycle",
+            "node-output",
+          ],
+          edges,
+          expectedValueType: { kind: "datetime" },
+          guaranteedUpstreamIds,
+          customFieldById,
+          nodeById,
+          requiredUsage: "time-reference",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      const rangeInvalid = isWorkflowDynamicTimeRangeProvablyInvalidInGraph({
+        edges,
+        end: timeRange.end,
+        nodeIds,
+        start: timeRange.start,
+      });
+      if (!referencesAvailable || rangeInvalid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: rangeInvalid
+            ? "Order Query node time range is causally reversed"
+            : "Order Query node references unavailable time data",
           nodeId: node.id,
         });
       }

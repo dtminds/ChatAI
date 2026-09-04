@@ -19,6 +19,7 @@ import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
 } from "@chatai/workflow-runtime";
@@ -53,6 +54,7 @@ import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
 import { HttpWorkflowOrderConversionCapabilityPort } from "./order-conversion-capability-port.js";
 import { HttpWorkflowOrderBindCapabilityPort } from "./order-bind-capability-port.js";
+import { HttpWorkflowOrderQueryCapabilityPort } from "./order-query-capability-port.js";
 import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
 import { MysqlWorkflowAiCollectConversationPort } from "./ai-collect-conversation-port.js";
 import { HttpWorkflowConversationDirectivePort } from "./conversation-directive-port.js";
@@ -132,6 +134,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const orderQueryCapabilityPort = new HttpWorkflowOrderQueryCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const capabilityPort = new WorkflowCapabilityRouter([
     {
       binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
@@ -150,6 +156,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     {
       binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
       port: orderBindCapabilityPort,
+    },
+    {
+      binding: WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
+      port: orderQueryCapabilityPort,
     },
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
@@ -296,6 +306,7 @@ export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
+export * from "./order-query-capability-port.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";
 export * from "./reconciler.js";

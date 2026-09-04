@@ -102,7 +102,7 @@ const draftConfigs = {
     },
   },
   "order-bind": {},
-  "order-query": {},
+  "order-query": { mode: "order-number" },
   "order-conversion": {},
   start: {
     entryPolicy: { mode: "never" },
@@ -182,11 +182,11 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "coupon", "order-query"]);
+      .toEqual(["agent", "coupon"]);
   });
 
   it("enforces Wait Event post-trigger delay boundaries for every supported unit", () => {
@@ -550,7 +550,7 @@ describe("workflow node contracts", () => {
       message: ["thirdExternalUserId"],
       "message-query": ["thirdExternalUserId"],
       "order-bind": ["externalUserId"],
-      "order-query": ["externalUserId"],
+      "order-query": [],
       "order-conversion": ["mallUserId"],
       "ratio-split": [],
       start: [],

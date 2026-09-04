@@ -12,11 +12,13 @@ import type { WorkflowFriendAddWayResource } from "../workflow-friend-add-way-re
 import type { WorkflowManagedAccountResource } from "../workflow-managed-account-resource";
 import type { WorkflowCustomFieldResource } from "../workflow-custom-field-resource";
 import type { WorkflowWeComMemberResource } from "../workflow-wecom-member-resource";
+import type { WorkflowOrderResource } from "../workflow-order-resource";
 
 export type WorkflowNodeSettingsResources = {
   customFields?: WorkflowCustomFieldResource;
   friendAddWays?: WorkflowFriendAddWayResource;
   managedAccounts?: WorkflowManagedAccountResource;
+  orders?: WorkflowOrderResource;
   wecomMembers?: WorkflowWeComMemberResource;
 };
 

@@ -12,6 +12,7 @@ import {
   WorkflowDefinitionListStatusSchema,
   WorkflowLlmTestAttemptCreateRequestSchema,
   WorkflowAiIntentTestAttemptCreateRequestSchema,
+  WorkflowOrderQueryTestRunRequestSchema,
   type WorkflowCreateRequest,
   type WorkflowMetadataUpdateRequest,
   type WorkflowPublishRequest,
@@ -22,6 +23,7 @@ import {
   type WorkflowSaveDraftRequest,
   type WorkflowLlmTestAttemptCreateRequest,
   type WorkflowAiIntentTestAttemptCreateRequest,
+  type WorkflowOrderQueryTestRunRequest,
   type WorkflowSurface,
   WorkflowTemplateConversionRequestSchema,
   WorkflowTemplateDraftUpdateRequestSchema,
@@ -34,6 +36,8 @@ import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
   createWorkflowEntitlementPort,
+  HttpWorkflowContactIdentityPort,
+  HttpWorkflowOrderQueryCapabilityPort,
   MysqlWorkflowLlmTestAttemptRepository,
 } from "@chatai/workflow-runtime";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
@@ -128,10 +132,18 @@ export async function registerWorkflowRoutes(
       customFieldReader: {
         listActiveFields: async uid => (await customFieldService.listFields(uid, { status: 1 })).fields,
       },
+      contactIdentityPort: new HttpWorkflowContactIdentityPort({
+        baseUrl: process.env.JAVA_INTERNAL_API_BASE_URL ?? "",
+        token: process.env.JAVA_INTERNAL_API_TOKEN,
+      }),
       directEntryEndpointPort: createJavaWorkflowDirectEntryEndpointPort(app.log),
       entitlementPort,
       managedAccountReader,
       metricReader: new MysqlWorkflowMetricReader(workflowDatabase),
+      orderQueryCapabilityPort: new HttpWorkflowOrderQueryCapabilityPort({
+        baseUrl: process.env.JAVA_INTERNAL_API_BASE_URL ?? "",
+        token: process.env.JAVA_INTERNAL_API_TOKEN,
+      }),
       sourceIdentityResolver: new MysqlWorkflowSourceIdentityResolver(app.db),
       subUserReader: new MysqlWorkflowSubUserReader(app.db),
       llmTestAttemptRepository: new MysqlWorkflowLlmTestAttemptRepository(workflowDatabase),
@@ -299,6 +311,26 @@ function registerWorkflowSurfaceRoutes(
       },
     },
     async request => apiSuccess(await service.createLlmTestAttempt(
+      getWorkflowScope(request, surface),
+      request.params.workflowId,
+      request.params.nodeId,
+      request.body,
+    )),
+  );
+
+  app.post<{
+    Body: WorkflowOrderQueryTestRunRequest;
+    Params: Static<typeof WorkflowLlmTestNodeParamsSchema>;
+  }>(
+    "/workflows/:workflowId/nodes/:nodeId/order-query-test-run",
+    {
+      ...authenticated,
+      schema: {
+        body: WorkflowOrderQueryTestRunRequestSchema,
+        params: WorkflowLlmTestNodeParamsSchema,
+      },
+    },
+    async request => apiSuccess(await service.runOrderQueryTest(
       getWorkflowScope(request, surface),
       request.params.workflowId,
       request.params.nodeId,

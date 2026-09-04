@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   getWorkflowCustomFieldVariableIds,
+  normalizeWorkflowUtcInstant,
   WORKFLOW_DESCRIPTION_MAX_LENGTH,
   WORKFLOW_NAME_MAX_LENGTH,
 } from "@chatai/contracts";
@@ -36,6 +37,11 @@ import type {
   WorkflowJsonObject,
   WorkflowLlmInputParameter,
   WorkflowOutputValueType,
+  WorkflowOrderQueryTestRunOutput,
+  WorkflowOrderQueryTestRunRequest,
+  WorkflowOrderQueryTestRunResponse,
+  WorkflowOrderQueryTestRunVariableValue,
+  WorkflowOrderQueryExecutionConfig,
   WorkflowVariableSelector,
   WorkflowTemplateApplicationRequest,
   WorkflowTemplateConversionRequest,
@@ -57,6 +63,7 @@ import {
   getWorkflowNodeOutputContracts,
   isWorkflowAiIntentExecutionConfigComplete,
   isWorkflowLlmExecutionConfigComplete,
+  isWorkflowNodeExecutionConfig,
   isWorkflowNodeDraftConfig,
   WorkflowMessageSchema,
   WorkflowStartConfigSchema,
@@ -64,6 +71,7 @@ import {
   WorkflowMessagesV1Schema,
   WorkflowDirectEntryEndpointKeySchema,
   WORKFLOW_LLM_TEST_INPUT_MAX_BYTES,
+  WorkflowOrderQueryTestRunOutputSchema,
 } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
@@ -85,9 +93,15 @@ import {
   decideWorkflowEntitlement,
   UnavailableWorkflowEntitlementPort,
   WorkflowEntitlementUnavailableError,
+  WorkflowContactIdentityLookupError,
   createWorkflowLlmInferenceRequest,
   createWorkflowAiIntentInferenceRequest,
+  executeWorkflowCapability,
+  WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   assertWorkflowRuntimeValue,
+  type WorkflowCapabilityCommandContext,
+  type WorkflowCapabilityPort,
+  type WorkflowContactIdentityPort,
   type WorkflowLlmTestAttemptRecord,
   type WorkflowLlmTestAttemptRepository,
   type WorkflowEntitlementDecision,
@@ -159,6 +173,9 @@ export type WorkflowServiceOptions = {
   llmTestTtlMs?: number;
   managedAccountReader?: WorkflowManagedAccountReader;
   metricReader?: WorkflowMetricReader;
+  orderQueryCapabilityPort?: WorkflowCapabilityPort;
+  orderQueryTestTimeoutMs?: number;
+  contactIdentityPort?: WorkflowContactIdentityPort;
   logger?: AppLogger | RequestAwareLogger;
   wecomMemberReader?: WorkflowWeComMemberReader;
   templateRepository?: WorkflowTemplateRepository;
@@ -191,6 +208,9 @@ export class WorkflowService {
   private readonly llmTestTtlMs: number;
   private readonly managedAccountReader: WorkflowManagedAccountReader;
   private readonly metricReader: WorkflowMetricReader;
+  private readonly orderQueryCapabilityPort?: WorkflowCapabilityPort;
+  private readonly orderQueryTestTimeoutMs: number;
+  private readonly contactIdentityPort?: WorkflowContactIdentityPort;
   private readonly logger: AppLogger | RequestAwareLogger;
   private readonly wecomMemberReader: WorkflowWeComMemberReader;
   private readonly templateRepository?: WorkflowTemplateRepository;
@@ -225,6 +245,9 @@ export class WorkflowService {
     this.managedAccountReader = options.managedAccountReader
       ?? new EmptyWorkflowManagedAccountReader();
     this.metricReader = options.metricReader ?? new EmptyWorkflowMetricReader();
+    this.orderQueryCapabilityPort = options.orderQueryCapabilityPort;
+    this.orderQueryTestTimeoutMs = options.orderQueryTestTimeoutMs ?? 12_000;
+    this.contactIdentityPort = options.contactIdentityPort;
     this.logger = options.logger ?? noopLogger;
     this.wecomMemberReader = options.wecomMemberReader ?? new EmptyWorkflowWeComMemberReader();
     this.templateRepository = options.templateRepository;
@@ -330,6 +353,173 @@ export class WorkflowService {
       workflowId,
     });
     return toLlmTestAttempt(attempt);
+  }
+
+  async runOrderQueryTest(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    nodeId: string,
+    input: WorkflowOrderQueryTestRunRequest,
+  ): Promise<WorkflowOrderQueryTestRunResponse> {
+    assertWorkflowAccess(scope);
+    const definition = await this.requireVisibleDefinition(scope, workflowId);
+    await this.requireEntitlement(scope.uid, definition.workflowType);
+    if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
+    const draft = normalizeWorkflowDraft(definition.draft);
+    const draftNode = draft.nodes.find(node => node.id === nodeId);
+    if (!draftNode) throw new NotFoundError("WORKFLOW_NODE_NOT_FOUND", "节点不存在");
+    if (draftNode.data.kind !== "order-query") {
+      throw new BadRequestError(
+        "WORKFLOW_ORDER_QUERY_TEST_NODE_INVALID",
+        "仅支持试运行订单查询节点",
+      );
+    }
+    if (!this.orderQueryCapabilityPort) {
+      throw new ServiceUnavailableError(
+        "WORKFLOW_ORDER_QUERY_TEST_UNAVAILABLE",
+        "操作失败，请稍后重试",
+      );
+    }
+
+    const projectedConfig = projectWorkflowNodeExecutionConfig({
+      data: draftNode.data,
+      kind: "order-query",
+      workflowType: definition.workflowType,
+    });
+    let executionConfig: WorkflowOrderQueryExecutionConfig;
+    let variableValues: WorkflowOrderQueryTestRunVariableValue[];
+    if (projectedConfig.mode === "order-number") {
+      if (!("orderNumber" in input)) throw invalidOrderQueryTestInput();
+      const orderNumber = input.orderNumber.trim();
+      if (!orderNumber || orderNumber.length > 64) throw invalidOrderQueryTestInput();
+      const selector: WorkflowVariableSelector = ["trigger", "orderNumber"];
+      executionConfig = { mode: "order-number", orderNumberSelector: selector };
+      variableValues = [{ selector, value: orderNumber }];
+    } else {
+      if ("orderNumber" in input) throw invalidOrderQueryTestInput();
+      const configError = getWorkflowNodeExecutionConfigError("order-query", projectedConfig);
+      if (configError || !isWorkflowNodeExecutionConfig("order-query", projectedConfig)) {
+        throw new BadRequestError(
+          "WORKFLOW_ORDER_QUERY_TEST_CONFIG_INVALID",
+          "请先完成订单查询节点配置",
+        );
+      }
+      executionConfig = structuredClone(projectedConfig) as WorkflowOrderQueryExecutionConfig;
+      variableValues = resolveOrderQueryTestVariableValues(
+        executionConfig,
+        input.variableValues,
+      );
+    }
+    const externalUserId = "orderNumber" in input ? undefined : input.externalUserId;
+    const startedAt = this.clock();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.orderQueryTestTimeoutMs);
+    try {
+      const identities = executionConfig.mode === "conditions"
+        ? await this.resolveOrderQueryTestIdentity(scope.uid, externalUserId, controller.signal)
+        : {};
+      const commandContext = createOrderQueryTestCommandContext({
+        enteredAt: startedAt.toISOString(),
+        externalUserId,
+        identities,
+        variableValues,
+      });
+      const output = await executeWorkflowCapability({
+        binding: WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
+        commandContext,
+        config: executionConfig,
+        deadlineAt: new Date(startedAt.getTime() + this.orderQueryTestTimeoutMs),
+        execution: {
+          nodeId,
+          revision: 0,
+          runId: "test-run",
+          sequence: 1,
+          workflowId,
+        },
+        executionKey: `workflow-order-query-test:${scope.uid}:${workflowId}:${nodeId}`,
+        port: this.orderQueryCapabilityPort,
+        signal: controller.signal,
+        subjectId: externalUserId ? String(externalUserId) : "test-run",
+        subjectType: "wecom_contact",
+        uid: scope.uid,
+      });
+      if (!Value.Check(WorkflowOrderQueryTestRunOutputSchema, output)) {
+        throw new WorkflowCapabilityExecutionError(
+          "terminal",
+          "WORKFLOW_ORDER_QUERY_TEST_OUTPUT_INVALID",
+          "返回结果异常",
+        );
+      }
+      return { output: output as WorkflowOrderQueryTestRunOutput };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      if (error instanceof WorkflowCapabilityExecutionError
+        && error.code === "WORKFLOW_ORDER_QUERY_COMMAND_INVALID") {
+        throw new BadRequestError(
+          "WORKFLOW_ORDER_QUERY_TEST_INPUT_INVALID",
+          "试运行输入与节点配置不匹配",
+        );
+      }
+      this.logger.error({
+        code: error instanceof WorkflowCapabilityExecutionError ? error.code : undefined,
+        diagnosticMessage: error instanceof WorkflowCapabilityExecutionError
+          ? error.diagnosticMessage
+          : undefined,
+        err: error,
+        nodeId,
+        uid: scope.uid,
+        workflowId,
+      }, "订单查询试运行失败");
+      throw new BadGatewayError(
+        "WORKFLOW_ORDER_QUERY_TEST_FAILED",
+        "操作失败，请稍后重试",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async resolveOrderQueryTestIdentity(
+    uid: number,
+    externalUserId: number | undefined,
+    signal: AbortSignal,
+  ) {
+    if (!externalUserId) {
+      throw new BadRequestError(
+        "WORKFLOW_ORDER_QUERY_TEST_EXTERNAL_USER_REQUIRED",
+        "请输入企微客户 ID",
+      );
+    }
+    if (!this.contactIdentityPort) {
+      throw new ServiceUnavailableError(
+        "WORKFLOW_ORDER_QUERY_TEST_UNAVAILABLE",
+        "操作失败，请稍后重试",
+      );
+    }
+    let resolved;
+    try {
+      resolved = await this.contactIdentityPort.getContactIdentity({
+        key: { externalUserId, type: "externalUserId" },
+        signal,
+        uid,
+      });
+    } catch (error) {
+      if (error instanceof WorkflowContactIdentityLookupError
+        && error.upstreamErrorCode === -1) {
+        throw new BadRequestError(
+          "WORKFLOW_ORDER_QUERY_TEST_CUSTOMER_NOT_FOUND",
+          "客户不存在",
+        );
+      }
+      throw error;
+    }
+    if (!resolved.xyId || !Number.isSafeInteger(resolved.xyId) || resolved.xyId <= 0) {
+      throw new BadRequestError(
+        "WORKFLOW_ORDER_QUERY_TEST_CUSTOMER_NOT_FOUND",
+        "未找到对应的客户身份",
+      );
+    }
+    return { externalUserId, xyId: resolved.xyId };
   }
 
   async createAiIntentTestAttempt(
@@ -1801,6 +1991,135 @@ function assertWorkflowAccess(scope: WorkflowOperatorScope) {
   if (!scope.roles.some((role) => role === "owner" || role === "admin")) {
     throw new ForbiddenError("WORKFLOW_FORBIDDEN", "无权访问");
   }
+}
+
+function resolveOrderQueryTestVariableValues(
+  config: WorkflowOrderQueryExecutionConfig,
+  supplied: WorkflowOrderQueryTestRunVariableValue[],
+) {
+  const expectedSelectors = getOrderQueryTestInputSelectors(config);
+  const suppliedBySelector = new Map<string, WorkflowOrderQueryTestRunVariableValue>();
+  for (const item of supplied) {
+    const key = item.selector.join(".");
+    if (suppliedBySelector.has(key)) throw invalidOrderQueryTestInput();
+    suppliedBySelector.set(key, item);
+  }
+  if (suppliedBySelector.size !== expectedSelectors.length) throw invalidOrderQueryTestInput();
+
+  return expectedSelectors.map((selector) => {
+    const item = suppliedBySelector.get(selector.join("."));
+    if (!item || !isDeepStrictEqual(item.selector, selector)) throw invalidOrderQueryTestInput();
+    if (config.mode === "order-number") {
+      const valid = typeof item.value === "number"
+        ? Number.isFinite(item.value)
+        : Boolean(item.value.trim()) && item.value.trim().length <= 64;
+      if (!valid) throw invalidOrderQueryTestInput();
+    } else {
+      const normalized = normalizeWorkflowUtcInstant(item.value);
+      if (normalized === null) throw invalidOrderQueryTestInput();
+      return { selector: [...selector] as WorkflowVariableSelector, value: normalized };
+    }
+    return { selector: [...selector] as WorkflowVariableSelector, value: item.value };
+  });
+}
+
+function getOrderQueryTestInputSelectors(config: WorkflowOrderQueryExecutionConfig) {
+  const selectors = config.mode === "order-number"
+    ? [config.orderNumberSelector]
+    : config.conditions.timeRange.mode === "dynamic"
+      ? [config.conditions.timeRange.start, config.conditions.timeRange.end]
+      : [];
+  const unique = new Map<string, WorkflowVariableSelector>();
+  for (const selector of selectors) {
+    unique.set(selector.join("."), selector);
+  }
+  return [...unique.values()];
+}
+
+function createOrderQueryTestCommandContext(input: {
+  enteredAt: string;
+  externalUserId?: number;
+  identities: WorkflowCapabilityCommandContext["identities"];
+  variableValues: WorkflowOrderQueryTestRunVariableValue[];
+}): WorkflowCapabilityCommandContext {
+  const context: WorkflowCapabilityCommandContext = {
+    customFields: {},
+    currentNodeLifecycle: { enteredAt: input.enteredAt },
+    identities: structuredClone(input.identities),
+    nodeLifecycle: {},
+    outputs: {},
+    subjectId: input.externalUserId ? String(input.externalUserId) : "test-run",
+    trigger: input.externalUserId
+      ? { projection: { externalUserId: input.externalUserId } }
+      : {},
+    workflow: {},
+  };
+  for (const item of input.variableValues) {
+    setOrderQueryTestVariableValue(context, item.selector, item.value);
+  }
+  return context;
+}
+
+function setOrderQueryTestVariableValue(
+  context: WorkflowCapabilityCommandContext,
+  selector: WorkflowVariableSelector,
+  value: number | string,
+) {
+  const [scope, key, ...path] = selector;
+  if (scope === "subject" && key === "id" && path.length === 0) {
+    context.subjectId = String(value);
+    return;
+  }
+  if (scope === "subject" && key === "customFields" && path.length === 1) {
+    context.customFields[path[0]!] = value;
+    return;
+  }
+  if (scope === "trigger" && key) {
+    setRecordPath(context.trigger, [key, ...path], value);
+    return;
+  }
+  if (scope === "current-node-lifecycle" && key === "enteredAt" && path.length === 0) {
+    if (typeof value !== "string") throw invalidOrderQueryTestInput();
+    context.currentNodeLifecycle.enteredAt = value;
+    return;
+  }
+  if (scope === "node" && key && path.length > 0) {
+    const output = context.outputs[key] ?? {};
+    context.outputs[key] = output;
+    setRecordPath(output, path, value);
+    return;
+  }
+  if (scope === "node-lifecycle" && key && path.length === 1) {
+    const lifecycle = context.nodeLifecycle[key] ?? {};
+    context.nodeLifecycle[key] = lifecycle;
+    setRecordPath(lifecycle, path, value);
+    return;
+  }
+  throw invalidOrderQueryTestInput();
+}
+
+function setRecordPath(
+  target: Record<string, unknown>,
+  path: string[],
+  value: number | string,
+) {
+  if (path.length === 0) throw invalidOrderQueryTestInput();
+  let current = target;
+  for (const part of path.slice(0, -1)) {
+    const existing = current[part];
+    if (existing !== undefined && !isRecord(existing)) throw invalidOrderQueryTestInput();
+    const next = isRecord(existing) ? existing : {};
+    current[part] = next;
+    current = next;
+  }
+  current[path.at(-1)!] = value;
+}
+
+function invalidOrderQueryTestInput() {
+  return new BadRequestError(
+    "WORKFLOW_ORDER_QUERY_TEST_INPUT_INVALID",
+    "试运行输入与节点配置不匹配",
+  );
 }
 
 function resolveLlmTestInputValues(

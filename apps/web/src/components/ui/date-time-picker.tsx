@@ -28,6 +28,7 @@ const minutes = Array.from({ length: 60 }, (_, index) =>
 
 type LocalDateTimePickerProps = {
   "aria-label": string;
+  "aria-invalid"?: boolean;
   className?: string;
   disabled?: boolean;
   onValueChange(value: string): void;
@@ -139,6 +140,7 @@ export function DatePicker({
 
 function LocalDateTimePicker({
   "aria-label": ariaLabel,
+  "aria-invalid": ariaInvalid,
   className,
   disabled = false,
   onValueChange,
@@ -169,7 +171,12 @@ function LocalDateTimePicker({
       <PopoverTrigger asChild>
         <Button
           aria-label={ariaLabel}
-          className={cn("h-9 w-full justify-between px-3 font-normal", className)}
+          aria-invalid={ariaInvalid || undefined}
+          className={cn(
+            "h-9 w-full justify-between px-3 font-normal",
+            ariaInvalid && "border-destructive focus-visible:ring-destructive/20",
+            className,
+          )}
           disabled={disabled}
           type="button"
           variant="outline"

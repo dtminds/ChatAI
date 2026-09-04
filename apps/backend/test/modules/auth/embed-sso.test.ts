@@ -51,7 +51,7 @@ describe("embed SSO", () => {
     const fetchMock = stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
 
@@ -99,11 +99,32 @@ describe("embed SSO", () => {
     await app.close();
   });
 
+  it.each([0, 1])("rejects ChatAI sub-account type %s for embed SSO", async (type) => {
+    stubDecrypt({ "chat-ai-account-token": validEmbedTicket(101, 9001) });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "ChatAI 账号", type, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+
+    const response = await injectEmbedSso(app, undefined, undefined, {
+      token: "chat-ai-account-token",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      error: { code: "EMBED_SSO_REJECTED" },
+      success: false,
+    });
+    expect(authDb.embedSessions).toHaveLength(0);
+    await app.close();
+  });
+
   it("reuses the current browser session for matching tickets", async () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
@@ -123,7 +144,7 @@ describe("embed SSO", () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
@@ -144,7 +165,7 @@ describe("embed SSO", () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
 
@@ -165,8 +186,8 @@ describe("embed SSO", () => {
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "账号一", type: 0, uid: 9001 },
-      { id: 202, name: "账号二", type: 0, uid: 9002 },
+      { id: 101, name: "账号一", type: 2, uid: 9001 },
+      { id: 202, name: "账号二", type: 2, uid: 9002 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app, undefined, undefined, {
@@ -194,8 +215,8 @@ describe("embed SSO", () => {
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "账号一", type: 0, uid: 9001 },
-      { id: 202, name: "账号二", type: 0, uid: 9002 },
+      { id: 101, name: "账号一", type: 2, uid: 9001 },
+      { id: 202, name: "账号二", type: 2, uid: 9002 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app, undefined, undefined, {
@@ -228,7 +249,7 @@ describe("embed SSO", () => {
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
@@ -260,7 +281,7 @@ describe("embed SSO", () => {
     });
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
 
@@ -281,7 +302,7 @@ describe("embed SSO", () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
     const first = await injectEmbedSso(app);
@@ -351,11 +372,43 @@ describe("embed SSO", () => {
     await app.close();
   });
 
+  it("rejects embed refresh and session after the identity is no longer type 2", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const accounts = [{ id: 101, name: "营销画布账号", type: 2, uid: 9001 }];
+    const authDb = createEmbedAuthDbMock(accounts);
+    app.db = authDb.db;
+    const login = await injectEmbedSso(app);
+    const accessToken = login.json().data.accessToken;
+    accounts[0].type = 0;
+
+    const refresh = await app.inject({
+      headers: {
+        cookie: cookieHeader(login),
+        host: EMBED_HOST,
+      },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    const session = await app.inject({
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        host: EMBED_HOST,
+      },
+      method: "GET",
+      url: "/api/embed/auth/session",
+    });
+
+    expect(refresh.statusCode).toBe(401);
+    expect(session.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("does not accept app and embed refresh cookies across auth interfaces", async () => {
     stubDecrypt();
     const app = await buildApp();
     const authDb = createEmbedAuthDbMock([
-      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+      { id: 101, name: "营销画布账号", type: 2, uid: 9001 },
     ]);
     app.db = authDb.db;
     const login = await injectEmbedSso(app);

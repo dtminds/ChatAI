@@ -8,6 +8,7 @@ import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import {
+  chatAiSubAccountTypes,
   deriveAccountRole,
   deriveAccountType,
   getRolePermissions,
@@ -37,6 +38,7 @@ export async function listSupportInvestigationAccounts(
     .select(["account", "id", "name", "role", "type", "uid"])
     .where("uid", "=", uid)
     .where("status", "=", 1)
+    .where("type", "in", chatAiSubAccountTypes)
     .orderBy("type", "desc")
     .orderBy("id", "asc")
     .execute();
@@ -58,6 +60,7 @@ export async function startSupportInvestigation(
     .where("id", "=", subUserId)
     .where("uid", "=", input.uid)
     .where("status", "=", 1)
+    .where("type", "in", chatAiSubAccountTypes)
     .executeTakeFirst();
 
   if (!target) {

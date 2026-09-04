@@ -72,6 +72,7 @@ describe("settings sub-account routes", () => {
       success: true,
     });
     expect(db.getSubAccountListWheres()).toContainEqual(["sub_user.uid", "=", 9001]);
+    expect(db.getSubAccountListWheres()).toContainEqual(["sub_user.type", "in", [0, 1]]);
     expect(db.getSubAccountListWheres()).not.toContainEqual(["sub_user.platform", "=", 5]);
     expect(db.seatListWheres).toContainEqual(["platform", "=", 5]);
 
@@ -378,6 +379,41 @@ describe("settings sub-account routes", () => {
 
     await app.close();
   });
+
+  it("treats an embed-only identity as nonexistent in ChatAI account mutations", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const update = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        name: "Embed 内部身份",
+        password: "",
+        seatIds: [],
+      },
+      url: "/api/server/settings/sub-accounts/99",
+    });
+    const status = await app.inject({
+      headers: { authorization },
+      method: "PATCH",
+      payload: { status: "disabled" },
+      url: "/api/server/settings/sub-accounts/99/status",
+    });
+    const remove = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/settings/sub-accounts/99",
+    });
+
+    expect(update.statusCode).toBe(404);
+    expect(status.statusCode).toBe(404);
+    expect(remove.statusCode).toBe(404);
+    expect(db.updatedSubAccount).toBeUndefined();
+    expect(db.statusUpdates).toEqual([]);
+    expect(db.deletedRelationSubIds).toEqual([]);
+
+    await app.close();
+  });
 });
 
 async function createSettingsApp() {
@@ -458,6 +494,16 @@ function createSettingsDbMock() {
       role: "operator",
       status: 2,
       type: 0,
+      uid: 9001,
+    },
+    {
+      account: "embed-internal",
+      id: 99,
+      name: "Embed 内部身份",
+      platform: 5,
+      role: "operator",
+      status: 1,
+      type: 2,
       uid: 9001,
     },
   ];
@@ -594,12 +640,17 @@ function createSettingsDbMock() {
                 const id = wheres.find(([column]) => column === "sub_user.id")?.[2];
                 const uid = wheres.find(([column]) => column === "sub_user.uid")?.[2];
                 const platform = wheres.find(([column]) => column === "sub_user.platform")?.[2];
+                const type = wheres.find(([column]) => column === "sub_user.type")?.[2];
 
                 if (uid !== undefined && subUser.uid !== uid) {
                   return false;
                 }
 
                 if (platform !== undefined && subUser.platform !== platform) {
+                  return false;
+                }
+
+                if (Array.isArray(type) && !type.includes(subUser.type)) {
                   return false;
                 }
 
@@ -634,19 +685,25 @@ function createSettingsDbMock() {
 
           if (table === "xy_wap_embed_sub_user") {
             state.scopeLookupCount += 1;
+            const typeFilter = wheres.find(([column]) => column === "type")?.[2];
+            const matchesType = (subUser: (typeof subUsers)[number]) =>
+              typeFilter === undefined
+                || (Array.isArray(typeFilter)
+                  ? typeFilter.includes(subUser.type)
+                  : subUser.type === typeFilter);
             if (wheres.some(([column]) => column === "account")) {
               const account = wheres.find(([column]) => column === "account")?.[2];
 
-              return subUsers.find((subUser) => subUser.account === account);
+              return subUsers.find((subUser) => subUser.account === account && matchesType(subUser));
             }
 
             if (wheres.some(([column]) => column === "id")) {
               const id = wheres.find(([column]) => column === "id")?.[2];
 
-              return subUsers.find((subUser) => subUser.id === id);
+              return subUsers.find((subUser) => subUser.id === id && matchesType(subUser));
             }
 
-            return subUsers[0];
+            return subUsers.find(matchesType);
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {

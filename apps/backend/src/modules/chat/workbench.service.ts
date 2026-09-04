@@ -144,6 +144,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
+import { dbSubAccountType } from "../auth/permissions.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
 import type {
   JavaSendMessageData,
@@ -2428,6 +2429,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const subUserNumericId = parseMySqlId(subUserId);
 
     if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const subUser = await this.repository.getSubUser(subUserId);
+
+    if (subUser?.type === dbSubAccountType.embed) {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 

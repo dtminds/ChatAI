@@ -56,6 +56,10 @@ type WorkflowRecordsSelection = {
   nodeId?: string;
 };
 
+const workflowDataSummaryHeight = 76;
+const workflowDataSummaryInset = 16;
+const workflowDataSummaryViewportOffsetY = workflowDataSummaryInset * 2 + workflowDataSummaryHeight;
+
 const readyEmptyCustomFieldResource: WorkflowCustomFieldResource = {
   fields: [],
   reload: () => undefined,
@@ -195,6 +199,10 @@ function WorkflowDataOverviewView({
     () => createWorkflowReadOnlyRenderElements(draft.nodes, draft.edges, customFields),
     [customFields, draft.edges, draft.nodes],
   );
+  const dataViewport = useMemo(() => ({
+    ...draft.viewport,
+    y: draft.viewport.y + workflowDataSummaryViewportOffsetY,
+  }), [draft.viewport]);
   const nodes = useMemo(() => rendered.nodes.map(node => ({
     ...node,
     data: {
@@ -241,11 +249,26 @@ function WorkflowDataOverviewView({
   ] as const;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[var(--workflow-canvas-bg)]">
+    <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
+      <WorkflowCanvas
+        allowedInsertableNodeKinds={[]}
+        canRedo={false} canUndo={false} edges={rendered.edges} isReadOnly nodes={nodes} showEditingTools={false}
+        onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
+        onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}
+        onNodeHoverEnd={() => {}} onNodeHoverStart={() => {}} onNodesChange={() => {}} onPaletteOpenChange={() => {}}
+        onPaneClick={() => {}} onRedo={() => {}} onSelectEdge={() => {}} onSelectNode={() => {}} onUndo={() => {}}
+        onViewportChangeEnd={() => {}} paletteOpen={false} viewport={dataViewport}
+      />
       <section
         aria-label="运行汇总"
-        className="m-4 flex shrink-0 items-stretch overflow-hidden rounded-2xl border border-foreground/10 bg-background"
+        className="absolute z-10 flex items-stretch overflow-hidden rounded-2xl border border-foreground/10 bg-background"
         role="region"
+        style={{
+          height: workflowDataSummaryHeight,
+          left: workflowDataSummaryInset,
+          right: workflowDataSummaryInset,
+          top: workflowDataSummaryInset,
+        }}
       >
         <dl className="grid min-w-0 flex-1 grid-cols-4">
           {summaryItems.map(({ icon, iconClassName, label, value }, index) => (
@@ -278,18 +301,14 @@ function WorkflowDataOverviewView({
           </Button>
         </div>
       </section>
-      <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
-        <WorkflowCanvas
-          allowedInsertableNodeKinds={[]}
-          canRedo={false} canUndo={false} edges={rendered.edges} isReadOnly nodes={nodes} showEditingTools={false}
-          onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
-          onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}
-          onNodeHoverEnd={() => {}} onNodeHoverStart={() => {}} onNodesChange={() => {}} onPaletteOpenChange={() => {}}
-          onPaneClick={() => {}} onRedo={() => {}} onSelectEdge={() => {}} onSelectNode={() => {}} onUndo={() => {}}
-          onViewportChangeEnd={() => {}} paletteOpen={false} viewport={draft.viewport}
-        />
-        {recordsPanel}
-      </div>
+      {recordsPanel ? (
+        <div
+          className="absolute inset-x-0 bottom-0"
+          style={{ top: workflowDataSummaryViewportOffsetY }}
+        >
+          {recordsPanel}
+        </div>
+      ) : null}
     </div>
   );
 }

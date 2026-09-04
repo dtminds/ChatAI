@@ -18,7 +18,13 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@chatai/workflow-engine/node-contract-registry": [
+        "../../packages/workflow-engine/src/node-contract-registry.ts"
+      ],
+      "@chatai/workflow-engine/graph": [
+        "../../packages/workflow-engine/src/graph.ts"
+      ]
     }
   },
   "include": ["src", "test"]

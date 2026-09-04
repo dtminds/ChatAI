@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -16,16 +17,6 @@ export const CDP_TAG_INTERNAL_API_FAILED_CODE = "CDP_TAG_INTERNAL_API_FAILED";
 export const CDP_TAG_INTERNAL_API_NOT_CONFIGURED_CODE =
   "CDP_TAG_INTERNAL_API_NOT_CONFIGURED";
 export const CDP_TAG_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-
-type JavaApiResponse<T> = {
-  code?: number;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  error_msg?: string;
-  message?: string;
-  success?: boolean;
-};
 
 export type CdpTagJavaTagItem = {
   name?: string | null;
@@ -52,7 +43,7 @@ export function createCdpTagJavaClient(
 
   return {
     async listTags(input) {
-      const response = await postJavaRequest<JavaApiResponse<CdpTagJavaGroupItem[]>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           uid: input.uid,
@@ -64,10 +55,10 @@ export function createCdpTagJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "cdp-tag-list-tags");
+      const payload = decodeJavaResponse(response, "cdp-tag-list-tags");
 
       return {
-        groups: extractGroups(response.data),
+        groups: extractGroups(payload.data),
       };
     },
   };
@@ -91,20 +82,18 @@ function extractGroups(data: unknown): CdpTagJavaGroupItem[] {
   return [];
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   throw new BadGatewayError(
     CDP_TAG_INTERNAL_API_FAILED_CODE,
     CDP_TAG_INTERNAL_API_USER_MESSAGE,
-    {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.error_msg ?? response.message,
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
   );
 }
 
@@ -228,22 +217,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function readJavaApiTimeoutMs() {

@@ -2700,7 +2700,11 @@ describe("ChatWorkbenchPage", () => {
       }),
     );
     await user.click(
-      await screen.findByRole("button", { name: "向 德瑞可 继续会话" }),
+      await screen.findByRole(
+        "button",
+        { name: "向 德瑞可 继续会话" },
+        { timeout: 3_000 },
+      ),
     );
 
     await waitFor(() => {

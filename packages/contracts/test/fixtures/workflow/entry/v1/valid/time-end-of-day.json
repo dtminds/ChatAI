@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "time-end-of-day-1",
+  "eventType": "message.received",
+  "uid": 9,
+  "occurredAt": "2026-12-31T23:59:59.999Z",
+  "source": "chatai",
+  "payload": {
+    "seatId": 101,
+    "workUserId": 201,
+    "thirdExternalUserId": "chatai-contact-time-1",
+    "message": {
+      "id": 938272,
+      "role": "customer",
+      "parts": [
+        { "type": "unsupported", "label": "语音" }
+      ]
+    }
+  }
+}

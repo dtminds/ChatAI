@@ -1,0 +1,112 @@
+import { Type, type Static } from "@sinclair/typebox";
+import { WorkflowDraftSchema, WorkflowIdSchema, WorkflowNodeKindSchema } from "./dto.js";
+import { WorkflowTypeSchema } from "./policy.js";
+import { WorkflowTemplateTagIdSchema } from "./template-tags.js";
+
+export const WorkflowTemplateStatusSchema = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("published"),
+  Type.Literal("deleted"),
+]);
+
+export const WORKFLOW_TEMPLATE_SORT_ORDER_MIN = 0;
+export const WORKFLOW_TEMPLATE_SORT_ORDER_MAX = 2_147_483_647;
+
+export const WorkflowTemplateConfigurationItemSchema = Type.Union([
+  Type.Object({
+    bindingKey: Type.String({ minLength: 1, maxLength: 80 }),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    kind: Type.Literal("resource"),
+    nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+    requirement: Type.Union([Type.Literal("required"), Type.Literal("recommended")]),
+    resourceKind: Type.Union([
+      Type.Literal("managed-account"),
+      Type.Literal("friend-add-way"),
+      Type.Literal("tag"),
+      Type.Literal("audience-group"),
+      Type.Literal("model"),
+      Type.Literal("customer-field"),
+      Type.Literal("material"),
+    ]),
+    title: Type.String({ minLength: 1, maxLength: 80 }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    fieldKey: Type.String({ minLength: 1, maxLength: 80 }),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    kind: Type.Literal("review"),
+    nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+    requirement: Type.Union([Type.Literal("required"), Type.Literal("recommended")]),
+    title: Type.String({ minLength: 1, maxLength: 80 }),
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowTemplateListItemSchema = Type.Object({
+  coverUrl: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
+  description: Type.String({ maxLength: 200 }),
+  id: WorkflowIdSchema,
+  name: Type.String({ minLength: 1, maxLength: 40 }),
+  nodeKinds: Type.Array(WorkflowNodeKindSchema, { maxItems: 200, uniqueItems: true }),
+  nodeCount: Type.Integer({ minimum: 0, maximum: 200 }),
+  publishedAt: Type.String(),
+  sortOrder: Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  }),
+  tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
+  trigger: Type.String({ maxLength: 128 }),
+  updatedAt: Type.String(),
+  version: Type.Integer({ minimum: 1 }),
+  workflowType: WorkflowTypeSchema,
+}, { additionalProperties: false });
+
+export const WorkflowTemplateListPageSchema = Type.Object({
+  items: Type.Array(WorkflowTemplateListItemSchema, { maxItems: 50 }),
+  total: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+}, { additionalProperties: false });
+
+export const WorkflowTemplateDetailSchema = Type.Intersect([
+  WorkflowTemplateListItemSchema,
+  Type.Object({
+    configurationItems: Type.Array(WorkflowTemplateConfigurationItemSchema, { maxItems: 100 }),
+    draft: WorkflowDraftSchema,
+    status: WorkflowTemplateStatusSchema,
+  }, { additionalProperties: false }),
+]);
+
+export const WorkflowTemplateConversionRequestSchema = Type.Object({
+  coverUrl: Type.Optional(Type.String({ maxLength: 512 })),
+  description: Type.String({ minLength: 1, maxLength: 200 }),
+  expectedDraftVersion: Type.Integer({ minimum: 1 }),
+  name: Type.String({ minLength: 1, maxLength: 40 }),
+  sortOrder: Type.Optional(Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  })),
+  tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
+});
+
+export const WorkflowTemplateDraftUpdateRequestSchema = Type.Object({
+  coverUrl: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
+  description: Type.String({ minLength: 1, maxLength: 200 }),
+  name: Type.String({ minLength: 1, maxLength: 40 }),
+  sortOrder: Type.Optional(Type.Integer({
+    maximum: WORKFLOW_TEMPLATE_SORT_ORDER_MAX,
+    minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
+  })),
+  tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
+});
+
+export const WorkflowTemplateApplicationRequestSchema = Type.Object({
+  clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+  description: Type.Optional(Type.String({ maxLength: 200 })),
+  name: Type.Optional(Type.String({ minLength: 1, maxLength: 40 })),
+});
+
+export type WorkflowTemplateStatus = Static<typeof WorkflowTemplateStatusSchema>;
+export type WorkflowTemplateConfigurationItem = Static<typeof WorkflowTemplateConfigurationItemSchema>;
+export type WorkflowTemplateListItem = Static<typeof WorkflowTemplateListItemSchema>;
+export type WorkflowTemplateListPage = Static<typeof WorkflowTemplateListPageSchema>;
+export type WorkflowTemplateDetail = Static<typeof WorkflowTemplateDetailSchema>;
+export type WorkflowTemplateConversionRequest = Static<typeof WorkflowTemplateConversionRequestSchema>;
+export type WorkflowTemplateDraftUpdateRequest = Static<typeof WorkflowTemplateDraftUpdateRequestSchema>;
+export type WorkflowTemplateApplicationRequest = Static<typeof WorkflowTemplateApplicationRequestSchema>;

@@ -22,6 +22,7 @@ import {
   setAuthCookies,
   setSupportAuthCookie,
 } from "./auth-cookies.js";
+import { requireAuthHost } from "./auth-host.js";
 import {
   listSupportInvestigationAccounts,
   startSupportInvestigation,
@@ -72,17 +73,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      requireAuthHost(request, "app");
       const login = await loginWithPassword(app, request.body, {
         ip: getRequestIp(request),
         userAgent: request.headers["user-agent"],
       });
 
-      setAuthCookies(reply, {
-        accessToken: login.accessToken,
-        accessTokenMaxAgeSeconds: login.expiresIn,
-        refreshToken: login.refreshToken,
-        refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
-      });
+      setLoginCookies(reply, login);
 
       return apiSuccess({
         expiresIn: login.expiresIn,
@@ -93,6 +90,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post(
     "/api/auth/refresh",
     async (request, reply) => {
+      requireAuthHost(request, "app");
       const refreshToken = readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME);
 
       if (!refreshToken) {
@@ -106,12 +104,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       try {
         const refresh = await refreshAccessToken(app, refreshToken);
 
-        setAuthCookies(reply, {
-          accessToken: refresh.accessToken,
-          accessTokenMaxAgeSeconds: refresh.expiresIn,
-          refreshToken: refresh.refreshToken,
-          refreshTokenMaxAgeSeconds: refresh.refreshTokenExpiresIn,
-        });
+        setLoginCookies(reply, refresh);
 
         return apiSuccess({
           expiresIn: refresh.expiresIn,
@@ -123,15 +116,17 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }
     },
   );
-  app.get("/api/auth/session", { preHandler: app.authenticate }, async (request) =>
-    apiSuccess({
+  app.get(
+    "/api/auth/session",
+    { preHandler: [requireAppHost, app.authenticate] },
+    async (request) => apiSuccess({
       subUser: await getCurrentSession(app, request.user),
     }),
   );
   app.get<{ Querystring: SupportInvestigationAccountsQuery }>(
     "/api/auth/support-investigation/accounts",
     {
-      preHandler: app.authenticate,
+      preHandler: [requireAppHost, app.authenticate],
       schema: {
         querystring: SupportInvestigationAccountsQuerySchema,
       },
@@ -147,7 +142,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post<{ Body: SupportInvestigationStartRequest }>(
     "/api/auth/support-investigation/start",
     {
-      preHandler: app.authenticate,
+      preHandler: [requireAppHost, app.authenticate],
       schema: {
         body: SupportInvestigationStartRequestSchema,
       },
@@ -170,12 +165,36 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
     },
   );
-  app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request, reply) => {
-    const result = await revokeSession(app, request.user);
+  app.post(
+    "/api/auth/logout",
+    { preHandler: [requireAppHost, app.authenticate] },
+    async (request, reply) => {
+      const result = await revokeSession(app, request.user);
 
-    clearAuthCookies(reply);
+      clearAuthCookies(reply);
 
-    return apiSuccess(result);
+      return apiSuccess(result);
+    },
+  );
+}
+
+async function requireAppHost(request: FastifyRequest) {
+  requireAuthHost(request, "app");
+}
+
+function setLoginCookies(
+  reply: Parameters<typeof setAuthCookies>[0],
+  login: Awaited<ReturnType<typeof loginWithPassword>>,
+) {
+  if (!login.refreshToken) {
+    throw new Error("Cannot set auth cookies without a refresh token");
+  }
+
+  setAuthCookies(reply, {
+    accessToken: login.accessToken,
+    accessTokenMaxAgeSeconds: login.expiresIn,
+    refreshToken: login.refreshToken,
+    refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
   });
 }
 

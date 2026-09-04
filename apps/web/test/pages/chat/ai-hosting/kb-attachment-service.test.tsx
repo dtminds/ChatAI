@@ -367,7 +367,7 @@ describe("KbAttachmentsTab", () => {
     expect(screen.getByRole("button", { name: "添加附件" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "批量删除" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "全选附件" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "编辑" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
   });
 

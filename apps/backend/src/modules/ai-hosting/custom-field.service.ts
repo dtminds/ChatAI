@@ -1,7 +1,6 @@
 import type {
   CustomFieldItem,
   CustomFieldListResponse,
-  CustomFieldType,
 } from "@chatai/contracts";
 import type { AppLogger, RequestAwareLogger } from "../../shared/logger.js";
 import {
@@ -9,8 +8,6 @@ import {
   type CustomFieldJavaClient,
   type CustomFieldJavaItem,
 } from "./custom-field-java-client.js";
-
-const customFieldTypes = new Set<CustomFieldType>([1, 2, 3, 4, 5, 6, 7, 8]);
 
 export class CustomFieldService {
   constructor(private readonly javaClient: CustomFieldJavaClient) {}
@@ -77,13 +74,9 @@ function mapCustomFieldItem(item: CustomFieldJavaItem): CustomFieldItem | null {
   };
 }
 
-function normalizeCustomFieldType(value: unknown): CustomFieldType | null {
+function normalizeCustomFieldType(value: unknown) {
   const numeric = normalizeInteger(value);
-  if (numeric == null || !customFieldTypes.has(numeric as CustomFieldType)) {
-    return null;
-  }
-
-  return numeric as CustomFieldType;
+  return numeric != null && numeric > 0 ? numeric : null;
 }
 
 function normalizePositiveInteger(value: unknown) {

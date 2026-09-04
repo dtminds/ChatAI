@@ -133,4 +133,34 @@ describe("ai-hosting cdp-tag routes", () => {
       success: true,
     });
   });
+
+  it("rejects Java responses without a boolean success", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [],
+          error: 0,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/cdp-tag-groups",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "CDP_TAG_INTERNAL_API_FAILED" },
+      success: false,
+    });
+  });
 });

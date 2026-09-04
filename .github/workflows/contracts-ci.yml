@@ -5,12 +5,14 @@ on:
     branches:
       - main
       - dev
+      - "integration/**"
   pull_request:
     branches:
       - main
       - dev
       - "feat/**"
       - "feature/**"
+      - "integration/**"
   workflow_dispatch:
 
 concurrency:

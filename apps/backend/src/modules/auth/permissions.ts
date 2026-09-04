@@ -85,3 +85,16 @@ export function hasPermission(
 ) {
   return permissions.includes(permission);
 }
+
+// Template management is a platform capability. Keep the allowlist in code so
+// it cannot be widened by tenant input or an environment variable.
+const WORKFLOW_TEMPLATE_MANAGER_SUBJECTS: ReadonlySet<string> = new Set([
+  "101:2",
+  "101:3",
+  "272:1",
+  "272:4",
+]);
+
+export function canManageWorkflowTemplates(subject: { uid: number; subUserId: string }) {
+  return WORKFLOW_TEMPLATE_MANAGER_SUBJECTS.has(`${subject.uid}:${subject.subUserId}`);
+}

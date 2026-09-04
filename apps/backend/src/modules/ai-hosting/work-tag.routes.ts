@@ -1,16 +1,36 @@
 import {
   apiSuccess,
   WorkTagGroupListQuerySchema,
+  WorkTagLookupQuerySchema,
   WorkTagListQuerySchema,
   type WorkTagAttr,
   type WorkTagComponentType,
   type WorkTagGroupListQuery,
+  type WorkTagLookupQuery,
   type WorkTagListQuery,
 } from "@chatai/contracts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createWorkTagService } from "./work-tag.service.js";
 
 export async function registerWorkTagRoutes(app: FastifyInstance) {
+  app.get<{ Querystring: WorkTagLookupQuery }>(
+    "/api/server/ai-hosting/work-tags/by-ids",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: WorkTagLookupQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createWorkTagService(app.log).getTagsByIds(
+          getUid(request),
+          parseTagIds(request.query.tagIds),
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: WorkTagGroupListQuery }>(
     "/api/server/ai-hosting/work-tag-groups",
     {
@@ -50,6 +70,10 @@ export async function registerWorkTagRoutes(app: FastifyInstance) {
       );
     },
   );
+}
+
+function parseTagIds(value: string) {
+  return [...new Set(value.split(",").map(Number))];
 }
 
 function getUid(request: FastifyRequest) {

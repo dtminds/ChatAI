@@ -1,0 +1,17 @@
+{
+  "capabilityKey": "operation.test.inference",
+  "command": { "value": "hello" },
+  "contractVersion": 1,
+  "deadlineAt": "2026-08-10T00:00:15.000Z",
+  "execution": {
+    "nodeId": "llm",
+    "revision": 2,
+    "runId": "run-1",
+    "sequence": 3,
+    "workflowId": "workflow-1"
+  },
+  "kind": "inference",
+  "subjectId": "contact-1",
+  "subjectType": "chatai_contact",
+  "uid": 9
+}

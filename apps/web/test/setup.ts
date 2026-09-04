@@ -1,5 +1,5 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 import {
   createMockWorkbenchService,
@@ -7,6 +7,10 @@ import {
 } from "../src/pages/chat/api/workbench-service";
 
 expect.extend(matchers);
+
+configure({
+  asyncUtilTimeout: process.env.CI === "true" ? 3_000 : 1_000,
+});
 
 beforeAll(() => {
   if (typeof window === "undefined") {

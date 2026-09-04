@@ -1,0 +1,36 @@
+import { Type, type Static } from "@sinclair/typebox";
+import {
+  QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+} from "../chat/quick-reply-content.js";
+
+const WorkflowMessageCommandAttachmentSchema = Type.Object({
+  content: Type.Record(Type.String(), Type.Unknown()),
+  materialCollectionId: Type.String({ maxLength: 128, minLength: 1 }),
+  msgInfoId: Type.String({ maxLength: 128, minLength: 1 }),
+  msgid: Type.Optional(Type.String({ maxLength: 128 })),
+  type: Type.Union([
+    Type.Literal("image"),
+    Type.Literal("file"),
+    Type.Literal("h5"),
+    Type.Literal("weapp"),
+    Type.Literal("sphfeed"),
+  ]),
+}, { additionalProperties: false });
+
+export const WorkflowMessageCommandSchema = Type.Object({
+  attachments: Type.Array(WorkflowMessageCommandAttachmentSchema, {
+    maxItems: QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  }),
+  content: Type.String({ maxLength: QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH }),
+  recipient: Type.Object({
+    thirdExternalUserId: Type.String({ maxLength: 128, minLength: 1 }),
+  }, { additionalProperties: false }),
+  seatId: Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
+  source: Type.Literal("workflow"),
+}, { additionalProperties: false });
+
+export const WorkflowMessageResultSchema = Type.Object({}, { additionalProperties: false });
+
+export type WorkflowMessageCommand = Static<typeof WorkflowMessageCommandSchema>;
+export type WorkflowMessageResult = Static<typeof WorkflowMessageResultSchema>;

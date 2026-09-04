@@ -218,7 +218,10 @@ export function adaptMessage(
     createdAtMs,
     isGroupConversation,
     isAgentMessage:
-      dto.source === WORKBENCH_MESSAGE_SOURCE.AGENT ? true : undefined,
+      dto.source === WORKBENCH_MESSAGE_SOURCE.AGENT
+        || dto.source === WORKBENCH_MESSAGE_SOURCE.WORKFLOW
+        ? true
+        : undefined,
     isOwnMessage,
     failReason: dto.failReason,
     isRevoked: dto.isRevoked,

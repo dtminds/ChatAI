@@ -25,11 +25,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import {
-  QuickReplyMaterialPickerDialog,
-  type QuickReplyAttachmentMaterialBizType,
-} from "@/pages/chat/components/quick-reply/quick-reply-material-picker-dialog";
+  MessageMaterialPickerDialog as QuickReplyMaterialPickerDialog,
+  type MessageAttachmentMaterialBizType as QuickReplyAttachmentMaterialBizType,
+} from "@/pages/chat/components/message-content/message-material-picker-dialog";
+import { MessageAttachmentPreview as QuickReplyAttachmentPreview } from "@/pages/chat/components/message-content/message-attachment-preview";
 import type { QuickReplyDraftAttachment } from "@/pages/chat/lib/quick-reply-attachment-types";
-import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply/quick-reply-attachment-preview";
 import {
   buildKbAttachmentPayloadFromMaterial,
   extractKbAttachmentMeta,

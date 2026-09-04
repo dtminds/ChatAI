@@ -1,0 +1,9 @@
+{
+  "capabilityKey": "operation.test.action",
+  "contractVersion": 1,
+  "error": {
+    "code": "TEST_TERMINAL",
+    "failureKind": "terminal",
+    "message": "terminal capability failure"
+  }
+}

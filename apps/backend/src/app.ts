@@ -13,12 +13,18 @@ import { registerKbChunkRoutes } from "./modules/ai-hosting/kb-chunk.routes.js";
 import { registerAiHostingRoutes as registerKbDocRoutes } from "./modules/ai-hosting/kb-doc.routes.js";
 import { registerKbRoutes } from "./modules/ai-hosting/kb.routes.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
+import { registerEmbedAuthRoutes } from "./modules/auth/embed-auth.routes.js";
 import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
 import { registerUserMemoryRoutes } from "./modules/ai-hosting/user-memory/user-memory.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
+import { registerFriendAddWayRoutes } from "./modules/workflow/friend-add-way.routes.js";
+import { registerWecomMemberRoutes } from "./modules/workflow/wecom-member.routes.js";
+import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
+import { registerWorkflowObservabilityRoutes } from "./modules/workflow/workflow-observability.routes.js";
+import type { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
 import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
@@ -26,7 +32,11 @@ import { dbPlugin } from "./plugins/db.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
 import { redisPlugin } from "./plugins/redis.js";
 
-export async function buildApp() {
+export type AppBuildOptions = {
+  workflowService?: WorkflowService;
+};
+
+export async function buildApp(options: AppBuildOptions = {}) {
   const { workerObserverSubjects } = validateBackendEnv();
 
   const app = Fastify({
@@ -53,6 +63,7 @@ export async function buildApp() {
   });
 
   await registerAuthRoutes(app);
+  await registerEmbedAuthRoutes(app);
   await registerAiHostingRoutes(app);
   await registerAgentLearningRoutes(app);
   await registerAgentSkillRoutes(app);
@@ -70,6 +81,13 @@ export async function buildApp() {
   await registerInsightsRoutes(app, workerObserverSubjects);
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
+  await registerWorkflowObservabilityRoutes(app, workerObserverSubjects);
+  await registerWorkflowRoutes(app, {
+    observerSubjects: workerObserverSubjects,
+    service: options.workflowService,
+  });
+  await registerFriendAddWayRoutes(app);
+  await registerWecomMemberRoutes(app);
   await registerTicketsRoutes(app);
 
   return app;
@@ -78,5 +96,6 @@ export async function buildApp() {
 export function shouldDisableRequestLogging(request: { url: string }) {
   return request.url.startsWith("/api/server/media/playable-voice")
     || request.url.startsWith("/api/server/insights/worker-observability")
-    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability");
+    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability")
+    || request.url.startsWith("/api/server/workflows/observability");
 }

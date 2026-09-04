@@ -1,6 +1,12 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountPermission } from "@chatai/contracts";
+import {
+  clearEmbedAuthHandoff,
+  getEmbedAccessToken,
+  setEmbedAccessToken,
+} from "@/lib/embed-access-token";
+import { getAuthScopeForHostname } from "@/lib/auth-request-adapter";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { useAuthStore } from "@/store/auth-store";
@@ -21,6 +27,7 @@ const operatorSubUser = {
 describe("request", () => {
   afterEach(() => {
     mock.reset();
+    clearEmbedAuthHandoff();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
@@ -45,6 +52,14 @@ describe("request", () => {
       client: "chat-ai-ui",
       withCredentials: true,
     });
+  });
+
+  it("selects the auth scope from the request host instead of token state", () => {
+    setEmbedAccessToken("embed-access-token");
+    expect(getAuthScopeForHostname("chat.example.com")).toBe("app");
+
+    clearEmbedAuthHandoff();
+    expect(getAuthScopeForHostname("chat-embed.example.com")).toBe("embed");
   });
 
   it("normalizes axios errors", async () => {
@@ -369,6 +384,93 @@ describe("request", () => {
       status: 401,
     });
     expect(mock.history.post).toHaveLength(0);
+    expect(sessionChanged).toHaveBeenCalledTimes(1);
+    window.removeEventListener("chatai:auth-session-changed", sessionChanged);
+  });
+
+  it("sends the embed access token as a bearer header", async () => {
+    setEmbedAccessToken("embed-access-token");
+    mock.onGet("/server/embed/workflows").reply((config) => [
+      200,
+      {
+        authorization: config.headers?.Authorization,
+      },
+    ]);
+
+    const response = await http.get<{ authorization: string }>(
+      "/server/embed/workflows",
+    );
+
+    expect(getEmbedAccessToken()).toBe("embed-access-token");
+    expect(response).toEqual({
+      authorization: "Bearer embed-access-token",
+    });
+  });
+
+  it("refreshes an expired embed session and retries with the new bearer", async () => {
+    const sessionChanged = vi.fn();
+    window.addEventListener("chatai:auth-session-changed", sessionChanged);
+    setEmbedAccessToken("expired-embed-access-token");
+    mock.onGet("/server/embed/workflows").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/embed/auth/refresh").reply(200, {
+      data: {
+        accessToken: "refreshed-embed-access-token",
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/server/embed/workflows").reply((config) => [
+      200,
+      { authorization: config.headers?.Authorization },
+    ]);
+
+    await expect(http.get("/server/embed/workflows", {
+      authScope: "embed",
+    })).resolves.toEqual({
+      authorization: "Bearer refreshed-embed-access-token",
+    });
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0]?.url).toBe("/embed/auth/refresh");
+    expect(getEmbedAccessToken()).toBe("refreshed-embed-access-token");
+    expect(useAuthStore.getState().subUser).toEqual(operatorSubUser);
+    expect(sessionChanged).not.toHaveBeenCalled();
+    window.removeEventListener("chatai:auth-session-changed", sessionChanged);
+  });
+
+  it("ends the embed session when refreshing an expired session fails", async () => {
+    const sessionChanged = vi.fn();
+    window.addEventListener("chatai:auth-session-changed", sessionChanged);
+    setEmbedAccessToken("expired-embed-access-token");
+    mock.onGet("/server/embed/workflows").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/embed/auth/refresh").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+
+    await expect(http.get("/server/embed/workflows", {
+      authScope: "embed",
+    })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
+    expect(mock.history.get).toHaveLength(1);
+    expect(mock.history.post).toHaveLength(1);
     expect(sessionChanged).toHaveBeenCalledTimes(1);
     window.removeEventListener("chatai:auth-session-changed", sessionChanged);
   });

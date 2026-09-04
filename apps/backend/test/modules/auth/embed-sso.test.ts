@@ -1,0 +1,631 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildApp } from "../../../src/app.js";
+import { REFRESH_TOKEN_COOKIE_NAME } from "../../../src/modules/auth/auth-cookies.js";
+import {
+  EMBED_REFRESH_TOKEN_COOKIE_NAME,
+} from "../../../src/modules/auth/embed-auth-cookies.js";
+import { SMP_EMBED_AES_DECRYPT_PATH } from "../../../src/modules/auth/smp-embed-decrypt-port.js";
+
+const EMBED_HOST = "chat-embed.example.com";
+
+describe("embed SSO", () => {
+  beforeEach(() => {
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    process.env.NODE_ENV = "development";
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete process.env.DATABASE_URL;
+    delete process.env.JAVA_INTERNAL_API_BASE_URL;
+    delete process.env.JAVA_INTERNAL_API_TOKEN;
+    delete process.env.JWT_DEV_SECRET;
+    delete process.env.NODE_ENV;
+  });
+
+  it("only exposes embed SSO on an embed host", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+
+    const response = await injectEmbedSso(app, undefined, {
+      host: "chat-test01.bokr.com.cn",
+    });
+    const appLogin = await app.inject({
+      headers: { host: EMBED_HOST },
+      method: "POST",
+      payload: { account: "operator", altcha: "proof", password: "secret" },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(appLogin.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("creates an independent embed session and signs it as embed", async () => {
+    const fetchMock = stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+
+    const response = await injectEmbedSso(app);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        accessToken: expect.any(String),
+        expiresIn: 1200,
+        subUser: { subUserId: "101", uid: 9001 },
+      },
+      success: true,
+    });
+    expect(authDb.embedSessions).toHaveLength(1);
+    expect(authDb.selectedTables).not.toContain("xy_wap_embed_sub_user_session");
+
+    const accessToken = response.json().data.accessToken;
+    expect(app.jwt.verify(accessToken)).toMatchObject({
+      sessionId: "501",
+      sessionKind: "embed",
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(readSetCookieHeader(response, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/embed/auth",
+    );
+    expect(response.headers["set-cookie"]).not.toEqual(expect.arrayContaining([
+      expect.stringContaining("chatai_access_token="),
+    ]));
+    expect(response.headers["set-cookie"]).not.toEqual(expect.arrayContaining([
+      expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=`),
+    ]));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.map(([url, init]) => ({
+      body: JSON.parse(String(init && "body" in init ? init.body : "{}")),
+      url,
+    }))).toEqual([
+      {
+        body: { content: "embed-handoff-token" },
+        url: `https://java.internal${SMP_EMBED_AES_DECRYPT_PATH}`,
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it("reuses the current browser session for matching tickets", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app);
+
+    const second = await injectEmbedSso(app, cookieHeader(first), {
+      authorization: `Bearer ${first.json().data.accessToken}`,
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json().data.accessToken).toBe(first.json().data.accessToken);
+    expect(second.headers["set-cookie"]).toBeUndefined();
+    expect(authDb.embedSessions).toHaveLength(1);
+    await app.close();
+  });
+
+  it("refreshes the same embed session when its access token is no longer valid", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app);
+    const second = await injectEmbedSso(app, cookieHeader(first), {
+      authorization: "Bearer expired-access-token",
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(authDb.embedSessions).toHaveLength(1);
+    expect(authDb.embedSessions[0]?.last_used_at).toBeInstanceOf(Date);
+    expect(readSetCookieValue(second, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toBe(
+      readSetCookieValue(first, EMBED_REFRESH_TOKEN_COOKIE_NAME),
+    );
+    await app.close();
+  });
+
+  it("keeps separate sessions for separate browsers of the same account", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+
+    const first = await injectEmbedSso(app);
+    const second = await injectEmbedSso(app);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(authDb.embedSessions.map((session) => session.id)).toEqual([501, 502]);
+    expect(authDb.embedSessions.every((session) => session.revoked_at === null)).toBe(true);
+    await app.close();
+  });
+
+  it("switches identity when valid tickets target another embed account", async () => {
+    stubDecrypt({
+      "handoff-token-101": validEmbedTicket(101, 9001),
+      "handoff-token-202": validEmbedTicket(202, 9002),
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "账号一", type: 0, uid: 9001 },
+      { id: 202, name: "账号二", type: 0, uid: 9002 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app, undefined, undefined, {
+      token: "handoff-token-101",
+    });
+
+    const second = await injectEmbedSso(
+      app,
+      cookieHeader(first),
+      { authorization: `Bearer ${first.json().data.accessToken}` },
+      { token: "handoff-token-202" },
+    );
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json().data.subUser).toMatchObject({ subUserId: "202", uid: 9002 });
+    expect(authDb.embedSessions.map((session) => session.sub_user_id)).toEqual([101, 202]);
+    expect(authDb.embedSessions.map((session) => session.revoked_at === null)).toEqual([false, true]);
+    await app.close();
+  });
+
+  it("revokes the old embed refresh session when switching after access expiry", async () => {
+    stubDecrypt({
+      "handoff-token-101": validEmbedTicket(101, 9001),
+      "handoff-token-202": validEmbedTicket(202, 9002),
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "账号一", type: 0, uid: 9001 },
+      { id: 202, name: "账号二", type: 0, uid: 9002 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app, undefined, undefined, {
+      token: "handoff-token-101",
+    });
+
+    const second = await injectEmbedSso(
+      app,
+      cookieHeader(first),
+      { authorization: "Bearer expired-access-token" },
+      { token: "handoff-token-202" },
+    );
+
+    expect(second.statusCode).toBe(200);
+    expect(authDb.embedSessions.map((session) => session.revoked_at === null)).toEqual([false, true]);
+
+    const oldRefresh = await app.inject({
+      headers: { cookie: cookieHeader(first), host: EMBED_HOST },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    expect(oldRefresh.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("rejects invalid tickets instead of falling back to the current cookie", async () => {
+    stubDecrypt({
+      "embed-handoff-token": validEmbedTicket(101, 9001),
+      "wrong-account-token": validEmbedTicket(101, 9002),
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app);
+
+    const rejected = await injectEmbedSso(
+      app,
+      cookieHeader(first),
+      {},
+      { token: "wrong-account-token" },
+    );
+
+    expect(rejected.statusCode).toBe(401);
+    expect(rejected.json()).toMatchObject({
+      error: { code: "EMBED_SSO_REJECTED" },
+      success: false,
+    });
+    expect(readSetCookieHeader(rejected, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      `${EMBED_REFRESH_TOKEN_COOKIE_NAME}=;`,
+    );
+    expect(authDb.embedSessions).toHaveLength(1);
+    await app.close();
+  });
+
+  it("rejects malformed, expired, and future-dated handoff tokens", async () => {
+    stubDecrypt({
+      "expired-token": validEmbedTicket(101, 9001, -601),
+      "future-token": validEmbedTicket(101, 9001, 60),
+      "malformed-token": "101_9001",
+    });
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+
+    for (const token of ["malformed-token", "expired-token", "future-token"]) {
+      const response = await injectEmbedSso(app, undefined, {}, { token });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({
+        error: { code: "EMBED_HANDOFF_REJECTED" },
+        success: false,
+      });
+    }
+    expect(authDb.embedSessions).toHaveLength(0);
+    await app.close();
+  });
+
+  it("refreshes and revokes only the current embed session", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const first = await injectEmbedSso(app);
+    const secondBrowser = await injectEmbedSso(app);
+
+    const refresh = await app.inject({
+      headers: {
+        cookie: cookieHeader(first),
+        host: EMBED_HOST,
+      },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    const refreshedAccessToken = refresh.json().data.accessToken;
+    const session = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: EMBED_HOST,
+      },
+      method: "GET",
+      url: "/api/embed/auth/session",
+    });
+    const appSessionOnEmbedHost = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: EMBED_HOST,
+      },
+      method: "GET",
+      url: "/api/auth/session",
+    });
+    const embedSessionOnAppHost = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: "chat.example.com",
+      },
+      method: "GET",
+      url: "/api/embed/auth/session",
+    });
+    const logout = await app.inject({
+      headers: {
+        authorization: `Bearer ${refreshedAccessToken}`,
+        host: EMBED_HOST,
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "POST",
+      url: "/api/embed/auth/logout",
+    });
+
+    expect(refresh.statusCode).toBe(200);
+    expect(session.statusCode).toBe(200);
+    expect(session.json().data.subUser).toMatchObject({
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(appSessionOnEmbedHost.statusCode).toBe(404);
+    expect(embedSessionOnAppHost.statusCode).toBe(404);
+    expect(logout.statusCode).toBe(200);
+    expect(authDb.embedSessions[0]?.revoked_at).toBeInstanceOf(Date);
+    expect(authDb.embedSessions[1]?.revoked_at).toBeNull();
+    expect(secondBrowser.json().data.accessToken).toBeTruthy();
+    expect(readSetCookieHeader(logout, EMBED_REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/embed/auth",
+    );
+    expect(String(logout.headers["set-cookie"])).not.toContain(
+      `${REFRESH_TOKEN_COOKIE_NAME}=`,
+    );
+    await app.close();
+  });
+
+  it("does not accept app and embed refresh cookies across auth interfaces", async () => {
+    stubDecrypt();
+    const app = await buildApp();
+    const authDb = createEmbedAuthDbMock([
+      { id: 101, name: "营销画布账号", type: 0, uid: 9001 },
+    ]);
+    app.db = authDb.db;
+    const login = await injectEmbedSso(app);
+    const embedRefreshToken = readSetCookieValue(
+      login,
+      EMBED_REFRESH_TOKEN_COOKIE_NAME,
+    );
+
+    const embedWithAppCookie = await app.inject({
+      headers: {
+        cookie: `${REFRESH_TOKEN_COOKIE_NAME}=${embedRefreshToken}`,
+        host: EMBED_HOST,
+      },
+      method: "POST",
+      url: "/api/embed/auth/refresh",
+    });
+    const appWithEmbedCookie = await app.inject({
+      headers: {
+        cookie: `${EMBED_REFRESH_TOKEN_COOKIE_NAME}=${embedRefreshToken}`,
+        host: "chat.example.com",
+      },
+      method: "POST",
+      url: "/api/auth/refresh",
+    });
+
+    expect(embedWithAppCookie.statusCode).toBe(401);
+    expect(appWithEmbedCookie.statusCode).toBe(401);
+    expect(readSetCookieHeader(
+      embedWithAppCookie,
+      EMBED_REFRESH_TOKEN_COOKIE_NAME,
+    )).toContain("Path=/api/embed/auth");
+    expect(
+      readSetCookieHeader(appWithEmbedCookie, REFRESH_TOKEN_COOKIE_NAME),
+    ).toContain("Path=/api/auth/refresh");
+    await app.close();
+  });
+});
+
+type AccountRow = {
+  id: number;
+  name: string;
+  type: number;
+  uid: number;
+};
+
+type EmbedSessionRow = {
+  expires_at: Date;
+  id: number;
+  ip: string | null;
+  last_used_at: Date | null;
+  refresh_token_hash: string;
+  revoked_at: Date | null;
+  session_version: number;
+  sub_user_id: number;
+  user_agent: string | null;
+};
+
+function stubDecrypt(
+  values: Record<string, string> = {
+    "embed-handoff-token": validEmbedTicket(101, 9001),
+  },
+) {
+  const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { content?: string };
+    const data = body.content ? values[body.content] : undefined;
+
+    return new Response(JSON.stringify({
+      data: data ?? "",
+      error: 0,
+      errorMsg: "",
+      success: Boolean(data),
+    }), { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function createEmbedAuthDbMock(accounts: AccountRow[]) {
+  const embedSessions: EmbedSessionRow[] = [];
+  const selectedTables: string[] = [];
+  let nextSessionId = 501;
+
+  const db = {
+    deleteFrom(table: string) {
+      if (table !== "xy_wap_embed_sub_user_embed_session") {
+        throw new Error(`Unexpected delete table: ${table}`);
+      }
+      let subUserId: number | undefined;
+      const builder = {
+        execute: async () => {
+          for (let index = embedSessions.length - 1; index >= 0; index -= 1) {
+            const session = embedSessions[index];
+            if (
+              session
+              && session.sub_user_id === subUserId
+              && (session.revoked_at !== null || session.expires_at <= new Date())
+            ) {
+              embedSessions.splice(index, 1);
+            }
+          }
+          return [];
+        },
+        where: (columnOrCallback: unknown, _operator?: string, value?: unknown) => {
+          if (columnOrCallback === "sub_user_id") {
+            subUserId = Number(value);
+          }
+          return builder;
+        },
+      };
+      return builder;
+    },
+    insertInto(table: string) {
+      if (table !== "xy_wap_embed_sub_user_embed_session") {
+        throw new Error(`Unexpected insert table: ${table}`);
+      }
+      let values: Record<string, unknown> = {};
+      const builder = {
+        execute: async () => {
+          embedSessions.push({
+            expires_at: values.expires_at as Date,
+            id: nextSessionId++,
+            ip: values.ip as string | null,
+            last_used_at: null,
+            refresh_token_hash: String(values.refresh_token_hash),
+            revoked_at: null,
+            session_version: Number(values.session_version),
+            sub_user_id: Number(values.sub_user_id),
+            user_agent: values.user_agent as string | null,
+          });
+          return [];
+        },
+        values: (nextValues: Record<string, unknown>) => {
+          values = nextValues;
+          return builder;
+        },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      selectedTables.push(table);
+      const wheres: Array<[string, string, unknown]> = [];
+      const find = () => {
+        const rows = table === "xy_wap_embed_sub_user"
+          ? accounts.map((account) => ({ ...account, role: "operator", status: 1 }))
+          : table === "xy_wap_embed_sub_user_embed_session"
+            ? embedSessions
+            : [];
+        return rows.find((row) => matchesWheres(row, wheres));
+      };
+      const builder = {
+        executeTakeFirst: async () => find(),
+        executeTakeFirstOrThrow: async () => {
+          const row = find();
+          if (!row) throw new Error(`No row for table: ${table}`);
+          return row;
+        },
+        orderBy: () => builder,
+        select: () => builder,
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
+      };
+      return builder;
+    },
+    updateTable(table: string) {
+      if (table !== "xy_wap_embed_sub_user_embed_session") {
+        throw new Error(`Unexpected update table: ${table}`);
+      }
+      const wheres: Array<[string, string, unknown]> = [];
+      let values: Record<string, unknown> = {};
+      const builder = {
+        execute: async () => {
+          for (const session of embedSessions) {
+            if (matchesWheres(session, wheres)) Object.assign(session, values);
+          }
+          return [];
+        },
+        set: (nextValues: Record<string, unknown>) => {
+          values = nextValues;
+          return builder;
+        },
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
+      };
+      return builder;
+    },
+  } as never;
+
+  return { db, embedSessions, selectedTables };
+}
+
+function matchesWheres(
+  row: Record<string, unknown>,
+  wheres: Array<[string, string, unknown]>,
+) {
+  return wheres.every(([column, operator, value]) => {
+    const rowValue = row[column];
+    if (operator === "=") return String(rowValue) === String(value);
+    if (operator === "is") return rowValue === value;
+    if (operator === ">") return rowValue instanceof Date && rowValue > (value as Date);
+    return true;
+  });
+}
+
+function injectEmbedSso(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  cookie?: string,
+  headers: { authorization?: string; host?: string } = {},
+  payload = { token: "embed-handoff-token" },
+) {
+  return app.inject({
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      ...(headers.authorization
+        ? { authorization: headers.authorization }
+        : {}),
+      host: headers.host ?? EMBED_HOST,
+    },
+    method: "POST",
+    payload,
+    url: "/api/embed/auth/sso",
+  });
+}
+
+function validEmbedTicket(subUserId: number, uid: number, offsetSeconds = 0) {
+  const issuedAtSeconds = Math.floor(Date.now() / 1000) + offsetSeconds;
+  return `${subUserId}_${uid}_${issuedAtSeconds}`;
+}
+
+function cookieHeader(
+  response: { headers: Record<string, unknown> },
+  names = [EMBED_REFRESH_TOKEN_COOKIE_NAME],
+) {
+  return names
+    .map((name) => `${name}=${readSetCookieValue(response, name)}`)
+    .join("; ");
+}
+
+function readSetCookieHeader(
+  response: { headers: Record<string, unknown> },
+  name: string,
+) {
+  const cookies = response.headers["set-cookie"];
+  const values = Array.isArray(cookies)
+    ? cookies
+    : typeof cookies === "string"
+      ? [cookies]
+      : [];
+  const header = values.find((item) => item.startsWith(`${name}=`));
+
+  if (!header) throw new Error(`Missing ${name} cookie`);
+  return header;
+}
+
+function readSetCookieValue(
+  response: { headers: Record<string, unknown> },
+  name: string,
+) {
+  const cookies = response.headers["set-cookie"];
+  const values = Array.isArray(cookies)
+    ? cookies
+    : typeof cookies === "string"
+      ? [cookies]
+      : [];
+  const header = values.find((item) => item.startsWith(`${name}=`));
+  const value = header?.split(";")[0]?.slice(name.length + 1);
+
+  if (!value) throw new Error(`Missing ${name} cookie`);
+  return value;
+}

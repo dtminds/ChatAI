@@ -2,12 +2,17 @@ import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import {
   Navigate,
   createBrowserRouter,
+  useLocation,
   useRouteError,
 } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
+import { EmbedRootLayout } from "@/app/embed-root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
+import { isPagePathAllowedForHostname } from "@/lib/host-page-access";
+import { isEmbedPath } from "@/pages/auth/auth-redirect";
+import { isChatEmbedHostname } from "@chatai/contracts";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -17,6 +22,11 @@ const LoginPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import("@/pages/not-found-page").then(({ NotFoundPage }) => ({
     default: NotFoundPage,
+  })),
+);
+const WorkflowDirectEntryPage = lazy(() =>
+  import("@/pages/workflow-direct-entry-page").then(({ WorkflowDirectEntryPage }) => ({
+    default: WorkflowDirectEntryPage,
   })),
 );
 const ChatWorkbenchRoutePage = lazy(() =>
@@ -40,6 +50,34 @@ const AgentHostingSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-hosting-settings-page").then(
     ({ AgentHostingSettingsPage }) => ({
       default: AgentHostingSettingsPage,
+    }),
+  ),
+);
+const WorkflowPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-list-page").then(
+    ({ WorkflowPage }) => ({
+      default: WorkflowPage,
+    }),
+  ),
+);
+const WorkflowTemplateCenterPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-template-section").then(
+    ({ WorkflowTemplateCenterPage }) => ({
+      default: WorkflowTemplateCenterPage,
+    }),
+  ),
+);
+const WorkflowObservabilityPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-observability-page").then(
+    ({ WorkflowObservabilityPage }) => ({
+      default: WorkflowObservabilityPage,
+    }),
+  ),
+);
+const WorkflowEditorPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-editor-page").then(
+    ({ WorkflowEditorPage }) => ({
+      default: WorkflowEditorPage,
     }),
   ),
 );
@@ -186,10 +224,23 @@ function RouteLoadingFallback() {
   );
 }
 
+function HostRestrictedRoot() {
+  const location = useLocation();
+  const hostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
+
+  if (!isPagePathAllowedForHostname(hostname, location.pathname)) {
+    return withRouteSuspense(
+      <NotFoundPage showHomeLink={!isChatEmbedHostname(hostname)} />,
+    );
+  }
+
+  return isEmbedPath(location.pathname) ? <EmbedRootLayout /> : <RootLayout />;
+}
+
 export const routerConfig = [
   {
     path: "/",
-    element: <RootLayout />,
+    element: <HostRestrictedRoot />,
     errorElement: <RouteErrorFallback />,
     children: [
       {
@@ -199,6 +250,10 @@ export const routerConfig = [
       {
         path: "login",
         element: withRouteSuspense(<LoginPage />),
+      },
+      {
+        path: "workflow/endpoint",
+        element: withRouteSuspense(<WorkflowDirectEntryPage />),
       },
       {
         path: "chat",
@@ -267,6 +322,50 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/agents",
         element: withRouteSuspense(<AgentManagementPage />),
+      },
+      {
+        path: "chat/workflows",
+        element: withRouteSuspense(<WorkflowPage surface="chatai" />),
+      },
+      {
+        path: "chat/workflows/new",
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
+      },
+      {
+        path: "chat/workflows/observability",
+        element: withRouteSuspense(<WorkflowObservabilityPage />),
+      },
+      {
+        path: "chat/workflows/templates",
+        element: withRouteSuspense(<WorkflowTemplateCenterPage surface="chatai" />),
+      },
+      {
+        path: "chat/workflows/:workflowId",
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
+      },
+      {
+        path: "chat/workflows/:workflowId/data",
+        element: withRouteSuspense(<WorkflowEditorPage surface="chatai" />),
+      },
+      {
+        path: "embed/workflows",
+        element: withRouteSuspense(<WorkflowPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/new",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/templates",
+        element: withRouteSuspense(<WorkflowTemplateCenterPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/:workflowId",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
+      },
+      {
+        path: "embed/workflows/:workflowId/data",
+        element: withRouteSuspense(<WorkflowEditorPage surface="sop_embed" />),
       },
       {
         path: "chat/ai-hosting/agents/new",

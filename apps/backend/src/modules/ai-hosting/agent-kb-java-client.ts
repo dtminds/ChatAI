@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ForbiddenError,
@@ -19,20 +20,6 @@ export const AI_HOSTING_INTERNAL_API_FAILED_CODE = "AI_HOSTING_INTERNAL_API_FAIL
 export const AI_HOSTING_INTERNAL_API_NOT_CONFIGURED_CODE =
   "AI_HOSTING_INTERNAL_API_NOT_CONFIGURED";
 export const AI_HOSTING_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-
-type JavaApiResponse<T> = {
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  success?: boolean;
-};
-
-type JavaChunkPageResponse = JavaApiResponse<unknown> & {
-  count?: number;
-  list?: AgentKbJavaChunkPageItem[];
-  page?: number;
-  pageSize?: number;
-};
 
 export type AgentKbJavaCreateKbInput = {
   name: string;
@@ -349,7 +336,7 @@ export function createAgentKbJavaClient(
         body.attachmentType = input.attachmentType;
       }
 
-      const response = await postJavaJson<JavaChunkPageResponse>(
+      const response = await postJavaJson<unknown>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/page",
@@ -359,15 +346,16 @@ export function createAgentKbJavaClient(
         input,
       );
 
-      if (!isJavaEnvelopeSuccessful(response)) {
-        throw mapAgentKbJavaBusinessError(response, "agent-kb-chunk-page");
+      const payload = decodeJavaResponse(response, "agent-kb-chunk-page");
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("agent-kb-chunk-page", "list must be an array");
       }
 
       return {
-        count: Number(response.count ?? 0),
-        list: response.list ?? [],
-        page: Number(response.page ?? input.page),
-        pageSize: Number(response.pageSize ?? input.pageSize),
+        count: Number(payload.count ?? 0),
+        list: payload.list as AgentKbJavaChunkPageItem[],
+        page: Number(payload.page ?? input.page),
+        pageSize: Number(payload.pageSize ?? input.pageSize),
       };
     },
     async updateKb(input) {
@@ -434,7 +422,7 @@ async function postJavaFormEnvelope<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
-  const response = await postJavaForm<JavaApiResponse<T>>(
+  const response = await postJavaForm<unknown>(
     baseUrl,
     token,
     path,
@@ -444,11 +432,7 @@ async function postJavaFormEnvelope<T>(
     logContext,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
-    throw mapAgentKbJavaBusinessError(response, operation);
-  }
-
-  return response.data as T;
+  return decodeJavaResponse(response, operation).data as T;
 }
 
 async function postJavaJsonEnvelopeObject<T>(
@@ -460,7 +444,7 @@ async function postJavaJsonEnvelopeObject<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
-  const response = await postJavaJsonObject<JavaApiResponse<T>>(
+  const response = await postJavaJsonObject<unknown>(
     baseUrl,
     token,
     path,
@@ -470,11 +454,7 @@ async function postJavaJsonEnvelopeObject<T>(
     logContext,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
-    throw mapAgentKbJavaBusinessError(response, operation);
-  }
-
-  return response.data as T;
+  return decodeJavaResponse(response, operation).data as T;
 }
 
 async function postJavaJsonEnvelope<T>(
@@ -486,7 +466,7 @@ async function postJavaJsonEnvelope<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
-  const response = await postJavaJson<JavaApiResponse<T>>(
+  const response = await postJavaJson<unknown>(
     baseUrl,
     token,
     path,
@@ -496,11 +476,7 @@ async function postJavaJsonEnvelope<T>(
     logContext,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
-    throw mapAgentKbJavaBusinessError(response, operation);
-  }
-
-  return response.data as T;
+  return decodeJavaResponse(response, operation).data as T;
 }
 
 async function postJavaJsonObject<T>(
@@ -684,8 +660,36 @@ type AgentKbJavaErrorKind =
   | "doc_not_found"
   | "kb_not_found";
 
-function mapAgentKbJavaBusinessError(response: JavaApiResponse<unknown>, operation: string) {
-  const errorMsg = response.errorMsg?.trim() ?? "";
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
+  }
+
+  if (envelope.kind === "rejected") {
+    throw mapAgentKbJavaBusinessError(envelope, operation);
+  }
+
+  throw new BadGatewayError(
+    AI_HOSTING_INTERNAL_API_FAILED_CODE,
+    AI_HOSTING_INTERNAL_API_USER_MESSAGE,
+    { operation, reason: envelope.reason },
+  );
+}
+
+function invalidJavaData(operation: string, reason: string) {
+  return new BadGatewayError(
+    AI_HOSTING_INTERNAL_API_FAILED_CODE,
+    AI_HOSTING_INTERNAL_API_USER_MESSAGE,
+    { operation, reason },
+  );
+}
+
+function mapAgentKbJavaBusinessError(
+  response: { error: number; errorMsg: string },
+  operation: string,
+) {
+  const errorMsg = response.errorMsg.trim();
   const kind = resolveAgentKbJavaErrorKind(errorMsg);
   const details = {
     error: response.error,
@@ -797,14 +801,6 @@ function attachErrorCause(error: BadGatewayError, cause: unknown) {
   }
 
   return error;
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (response.success === true) {
-    return true;
-  }
-
-  return response.error === 0;
 }
 
 function normalizeJavaBatchDeleteChunksResponse(

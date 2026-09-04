@@ -3,6 +3,7 @@ import type {
   WorkTagAttr,
   WorkTagComponentType,
   WorkTagGroupListResponse,
+  WorkTagLookupResponse,
   WorkTagListResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
@@ -73,6 +74,19 @@ export async function listWorkTags(params: ListWorkTagsParams = {}) {
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
   const response = await http.get<ApiSuccessEnvelope<WorkTagListResponse>>(
     `/server/ai-hosting/work-tags${suffix}`,
+  );
+
+  return response.data;
+}
+
+export async function getWorkTagsByIds(tagIds: readonly number[]) {
+  if (tagIds.length === 0) {
+    return { tags: [] } satisfies WorkTagLookupResponse;
+  }
+
+  const query = new URLSearchParams({ tagIds: tagIds.join(",") });
+  const response = await http.get<ApiSuccessEnvelope<WorkTagLookupResponse>>(
+    `/server/ai-hosting/work-tags/by-ids?${query.toString()}`,
   );
 
   return response.data;

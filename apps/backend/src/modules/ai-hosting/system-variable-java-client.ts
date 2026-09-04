@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -18,16 +19,6 @@ export const SYSTEM_VARIABLE_INTERNAL_API_NOT_CONFIGURED_CODE =
   "SYSTEM_VARIABLE_INTERNAL_API_NOT_CONFIGURED";
 export const SYSTEM_VARIABLE_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
 
-type JavaApiResponse<T> = {
-  code?: number;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  error_msg?: string;
-  message?: string;
-  success?: boolean;
-};
-
 export type SystemVariableJavaItem = {
   key?: string | null;
   name?: string | null;
@@ -47,7 +38,7 @@ export function createSystemVariableJavaClient(
 
   return {
     async listAvailable(input) {
-      const response = await postJavaRequest<JavaApiResponse<SystemVariableJavaItem[]>>({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
           uid: input.uid,
@@ -59,10 +50,10 @@ export function createSystemVariableJavaClient(
         token,
       });
 
-      assertJavaSuccess(response, "available-system-variables");
+      const payload = decodeJavaResponse(response, "available-system-variables");
 
       return {
-        items: extractItems(response.data),
+        items: extractItems(payload.data),
       };
     },
   };
@@ -86,20 +77,18 @@ function extractItems(data: unknown): SystemVariableJavaItem[] {
   return [];
 }
 
-function assertJavaSuccess(response: JavaApiResponse<unknown>, operation: string) {
-  if (isJavaEnvelopeSuccessful(response)) {
-    return;
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
   throw new BadGatewayError(
     SYSTEM_VARIABLE_INTERNAL_API_FAILED_CODE,
     SYSTEM_VARIABLE_INTERNAL_API_USER_MESSAGE,
-    {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.error_msg ?? response.message,
-      operation,
-    },
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
   );
 }
 
@@ -223,23 +212,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  // 该接口实测会返回 error:0 + data，同时 success:false；以 error 为准
-  if (typeof response.error === "number") {
-    return response.error === 0;
-  }
-
-  if (typeof response.success === "boolean") {
-    return response.success;
-  }
-
-  if (typeof response.code === "number") {
-    return response.code === 0;
-  }
-
-  return true;
 }
 
 function readJavaApiTimeoutMs() {

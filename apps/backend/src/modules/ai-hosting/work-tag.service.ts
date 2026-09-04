@@ -4,6 +4,7 @@ import type {
   WorkTagGroupItem,
   WorkTagGroupListResponse,
   WorkTagItem,
+  WorkTagLookupResponse,
   WorkTagListResponse,
 } from "@chatai/contracts";
 import {
@@ -16,6 +17,7 @@ import {
   type WorkTagJavaClient,
   type WorkTagJavaComponentItem,
   type WorkTagJavaGroupItem,
+  type WorkTagJavaLookupItem,
 } from "./work-tag-java-client.js";
 
 const workTagAttrs = new Set<WorkTagAttr>([1, 2]);
@@ -30,6 +32,28 @@ export class WorkTagService {
     private readonly javaClient: WorkTagJavaClient,
     private readonly logger: AppLogger | RequestAwareLogger = noopLogger,
   ) {}
+
+  async getTagsByIds(uid: number, tagIds: number[]): Promise<WorkTagLookupResponse> {
+    const uniqueTagIds = [...new Set(tagIds.filter(id => Number.isSafeInteger(id) && id > 0))];
+    if (uniqueTagIds.length === 0) {
+      return { tags: [] };
+    }
+
+    const result = await this.javaClient.getExternalTags({ tagIds: uniqueTagIds, uid });
+    const tagsById = new Map(
+      result.items
+        .map(mapLookupItem)
+        .filter((item): item is NonNullable<ReturnType<typeof mapLookupItem>> => item != null)
+        .map(item => [item.id, item]),
+    );
+
+    return {
+      tags: uniqueTagIds.flatMap(id => {
+        const tag = tagsById.get(id);
+        return tag ? [tag] : [];
+      }),
+    };
+  }
 
   async listGroups(
     uid: number,
@@ -173,6 +197,17 @@ function mapTagItem(
     name,
     type,
   };
+}
+
+function mapLookupItem(item: WorkTagJavaLookupItem) {
+  const id = normalizePositiveInteger(item.id ?? item.tagId ?? item.tag_id, 0);
+  const name = firstNonEmptyString(item.name, item.tagName, item.tag_name);
+  const groupName = firstNonEmptyString(
+    item.groupName,
+    item.group_name,
+    item.tagGroupName,
+  );
+  return id > 0 && name ? { groupName, id, name } : null;
 }
 
 /** 由分组名生成稳定正整数，供缺 groupId 的上游对齐前端分组 */

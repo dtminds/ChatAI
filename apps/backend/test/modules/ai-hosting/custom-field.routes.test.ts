@@ -37,7 +37,7 @@ describe("ai-hosting custom-field routes", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          count: 2,
+          count: 5,
           error: 0,
           list: [
             {
@@ -55,6 +55,30 @@ describe("ai-hosting custom-field routes", () => {
               sort: 10,
               title: "性别",
               type: 1,
+            },
+            {
+              fieldId: 3,
+              key: "score",
+              optionInfoList: [],
+              sort: 30,
+              title: "客户评分",
+              type: 11,
+            },
+            {
+              fieldId: 4,
+              key: "birthday",
+              optionInfoList: [],
+              sort: 40,
+              title: "生日",
+              type: 12,
+            },
+            {
+              fieldId: 5,
+              key: "future_type",
+              optionInfoList: [],
+              sort: 50,
+              title: "未来类型",
+              type: 99,
             },
             {
               fieldId: null,
@@ -104,6 +128,30 @@ describe("ai-hosting custom-field routes", () => {
             title: "客户等级",
             type: 2,
           },
+          {
+            id: 3,
+            key: "score",
+            options: [],
+            sort: 30,
+            title: "客户评分",
+            type: 11,
+          },
+          {
+            id: 4,
+            key: "birthday",
+            options: [],
+            sort: 40,
+            title: "生日",
+            type: 12,
+          },
+          {
+            id: 5,
+            key: "future_type",
+            options: [],
+            sort: 50,
+            title: "未来类型",
+            type: 99,
+          },
         ],
       },
       success: true,
@@ -122,6 +170,36 @@ describe("ai-hosting custom-field routes", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       status: 1,
       uid: 9001,
+    });
+  });
+
+  it("rejects select-list responses without a top-level list", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ fieldId: 1, key: "gender", title: "性别", type: 1 }],
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/custom-fields",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "CUSTOM_FIELD_INTERNAL_API_FAILED" },
+      success: false,
     });
   });
 });

@@ -1,3 +1,4 @@
+import { decodeJavaInternalApiEnvelope } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -16,17 +17,6 @@ export const AI_HOSTING_INTERNAL_API_FAILED_CODE = "AI_HOSTING_INTERNAL_API_FAIL
 export const AI_HOSTING_INTERNAL_API_NOT_CONFIGURED_CODE =
   "AI_HOSTING_INTERNAL_API_NOT_CONFIGURED";
 export const AI_HOSTING_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后重试";
-
-type JavaApiResponse<T> = {
-  code?: number;
-  count?: number | string;
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  list?: T;
-  message?: string;
-  success?: boolean;
-};
 
 export type AgentLearningJavaApproveInput = {
   answer: string;
@@ -262,13 +252,7 @@ export function createAgentLearningJavaClient(
         body.status = input.status;
       }
 
-      const response = await postJavaRequest<
-        JavaApiResponse<AgentLearningJavaListItem[]> & {
-          page?: number | string;
-          pageSize?: number | string;
-          total?: number | string;
-        }
-      >({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify(body),
         contentType: "application/json",
@@ -285,40 +269,21 @@ export function createAgentLearningJavaClient(
         token,
       });
 
-      if (!isJavaEnvelopeSuccessful(response)) {
-        throw new BadGatewayError(
-          AI_HOSTING_INTERNAL_API_FAILED_CODE,
-          AI_HOSTING_INTERNAL_API_USER_MESSAGE,
-          {
-            code: response.code,
-            error: response.error,
-            errorMsg: response.errorMsg ?? response.message,
-            operation: "agent-learning-list",
-          },
-        );
+      const payload = decodeJavaResponse(response, "agent-learning-list");
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData("agent-learning-list", "list must be an array");
       }
 
       return {
-        items: Array.isArray(response.list)
-          ? response.list
-          : Array.isArray(response.data)
-            ? response.data
-            : [],
-        page: normalizePositiveInteger(response.page, input.page),
-        pageSize: normalizePositiveInteger(response.pageSize, input.pageSize),
-        total: normalizeNonNegativeInteger(response.count ?? response.total),
+        items: payload.list as AgentLearningJavaListItem[],
+        page: normalizePositiveInteger(payload.page, input.page),
+        pageSize: normalizePositiveInteger(payload.pageSize, input.pageSize),
+        total: normalizeNonNegativeInteger(payload.count),
       };
     },
 
     async searchDetail(input) {
-      const response = await postJavaRequest<
-        JavaApiResponse<AgentLearningJavaSearchDetailItem[]> & {
-          page?: number | string;
-          pageSize?: number | string;
-          total?: number | string;
-          totalPage?: number | string;
-        }
-      >({
+      const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({ id: input.id, uid: input.uid }),
         contentType: "application/json",
@@ -329,25 +294,23 @@ export function createAgentLearningJavaClient(
         token,
       });
 
-      if (!isJavaEnvelopeSuccessful(response)) {
-        throw new BadGatewayError(
-          AI_HOSTING_INTERNAL_API_FAILED_CODE,
-          AI_HOSTING_INTERNAL_API_USER_MESSAGE,
-          {
-            code: response.code,
-            error: response.error,
-            errorMsg: response.errorMsg ?? response.message,
-            operation: "agent-learning-search-detail",
-          },
+      const payload = decodeJavaResponse(response, "agent-learning-search-detail");
+      if (!Array.isArray(payload.list)) {
+        throw invalidJavaData(
+          "agent-learning-search-detail",
+          "list must be an array",
         );
       }
 
+      const pageSize = normalizePositiveInteger(payload.pageSize, 20);
+      const total = normalizeNonNegativeInteger(payload.count);
+
       return {
-        items: Array.isArray(response.data) ? response.data : [],
-        page: normalizePositiveInteger(response.page, 1),
-        pageSize: normalizePositiveInteger(response.pageSize, 20),
-        total: normalizeNonNegativeInteger(response.total),
-        totalPages: normalizeNonNegativeInteger(response.totalPage),
+        items: payload.list as AgentLearningJavaSearchDetailItem[],
+        page: normalizePositiveInteger(payload.page, 1),
+        pageSize,
+        total,
+        totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
       };
     },
   };
@@ -362,7 +325,7 @@ async function postJavaJsonEnvelope<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
-  const response = await postJavaRequest<JavaApiResponse<T>>({
+  const response = await postJavaRequest<unknown>({
     baseUrl,
     body: JSON.stringify(body),
     contentType: "application/json",
@@ -373,16 +336,30 @@ async function postJavaJsonEnvelope<T>(
     token,
   });
 
-  if (!isJavaEnvelopeSuccessful(response)) {
-    throw new BadGatewayError(AI_HOSTING_INTERNAL_API_FAILED_CODE, AI_HOSTING_INTERNAL_API_USER_MESSAGE, {
-      code: response.code,
-      error: response.error,
-      errorMsg: response.errorMsg ?? response.message,
-      operation,
-    });
+  return decodeJavaResponse(response, operation).data as T;
+}
+
+function decodeJavaResponse(response: unknown, operation: string) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
-  return response.data as T;
+  throw new BadGatewayError(
+    AI_HOSTING_INTERNAL_API_FAILED_CODE,
+    AI_HOSTING_INTERNAL_API_USER_MESSAGE,
+    envelope.kind === "rejected"
+      ? { error: envelope.error, errorMsg: envelope.errorMsg, operation }
+      : { operation, reason: envelope.reason },
+  );
+}
+
+function invalidJavaData(operation: string, reason: string) {
+  return new BadGatewayError(
+    AI_HOSTING_INTERNAL_API_FAILED_CODE,
+    AI_HOSTING_INTERNAL_API_USER_MESSAGE,
+    { operation, reason },
+  );
 }
 
 type PostJavaRequestOptions = {
@@ -484,14 +461,6 @@ async function postJavaRequest<T>({
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (response.success === true || response.error === 0) {
-    return true;
-  }
-
-  return response.code === 0;
 }
 
 function normalizeNonNegativeInteger(value: unknown) {

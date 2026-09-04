@@ -36,16 +36,24 @@ See [LICENSE](LICENSE) for the full terms.
 │   │   │   ├── store/       # Zustand 状态管理
 │   │   │   └── styles/      # Tailwind v4 全局样式
 │   │   └── test/            # Web 测试
-│   └── backend/             # Node 后端服务
-│       ├── src/
-│       │   ├── config/      # env 加载和配置解析
-│       │   ├── db/          # Kysely / MySQL 接入点
-│       │   ├── modules/     # auth、chat 等业务模块
-│       │   ├── plugins/     # Fastify 插件
-│       │   └── shared/      # 后端共享错误和工具
-│       └── test/            # Backend 测试
+│   ├── backend/             # HTTP API 服务
+│   │   ├── src/
+│   │   │   ├── config/      # env 加载和配置解析
+│   │   │   ├── db/          # Kysely / MySQL 接入点
+│   │   │   ├── modules/     # auth、chat 等业务模块
+│   │   │   ├── plugins/     # Fastify 插件
+│   │   │   └── shared/      # 后端共享错误和工具
+│   │   └── test/            # Backend 测试
+│   ├── backend-worker/      # Insights 和 User Memory 异步任务
+│   └── workflow-worker/     # Marketing Workflow 执行进程
 ├── packages/
-│   └── contracts/           # 前后端共享 DTO、响应结构和契约类型
+│   ├── contracts/           # 跨层 DTO、响应结构和契约类型
+│   ├── database/            # 共享 MySQL 连接和 Kysely schema
+│   ├── insights/            # Insights Worker 运行逻辑
+│   ├── tickets/             # 工单持久化能力
+│   ├── user-memory/         # User Memory Worker 运行逻辑
+│   ├── workflow-engine/     # Workflow 编译和纯执行逻辑
+│   └── workflow-runtime/    # Workflow 运行时和持久化接口
 ├── docs/
 │   ├── db/                  # 数据库相关文档
 │   └── superpowers/specs/   # 设计和架构文档
@@ -102,7 +110,8 @@ pnpm dev:test-api
 pnpm dev                  # 启动 web，本地前端 -> 本地 backend
 pnpm dev:test-api         # 启动 web，本地前端 -> 测试环境 API
 pnpm backend:dev          # 启动 backend
-pnpm backend:db:codegen   # 按 apps/backend/scripts/codegen-db.config.json 生成 Kysely 类型
+pnpm backend-worker:dev   # 启动 backend worker
+pnpm database:codegen     # 按 packages/database/scripts/codegen-db.config.json 生成 Kysely 类型
 pnpm typecheck            # 全仓类型检查
 pnpm test                 # 全仓测试
 pnpm build                # 构建 web
@@ -136,9 +145,12 @@ apps/backend/.env.local
 apps/backend/.env.example
 ```
 
+本地运行 Backend Worker 时，新建 `apps/backend-worker/.env.local`，并参考
+`apps/backend-worker/.env.example` 配置数据库、Insights 和 User Memory Worker。
+
 ## 数据库类型生成
 
-Backend 使用 `kysely-codegen` 从 `apps/backend/.env.local` 的 `DATABASE_URL` 连接数据库，并且只生成 `apps/backend/scripts/codegen-db.config.json` 中配置的表：
+Database package 使用 `kysely-codegen` 从 `packages/database/.env.local` 的 `DATABASE_URL` 连接数据库；迁移期间仍兼容读取 `apps/backend/.env.local`。只生成 `packages/database/scripts/codegen-db.config.json` 中配置的表：
 
 ```json
 {
@@ -157,13 +169,13 @@ apps/backend/src/db/schema.ts
 日常直接运行：
 
 ```bash
-pnpm backend:db:codegen
+pnpm database:codegen
 ```
 
 如果临时验证某张表，也可以用命令行参数覆盖配置：
 
 ```bash
-pnpm backend:db:codegen -- table_name
+pnpm database:codegen -- table_name
 ```
 
 ## API 约定
@@ -182,14 +194,6 @@ pnpm backend:db:codegen -- table_name
 ```
 
 不要在前端页面里直接裸写 `fetch`，也不要把 backend 内部实现名暴露到公开 URL。
-
-### 侧栏嵌入页（自定义 iframe）查询参数
-
-打开设置里配置的自定义侧栏 iframe 时，前端会在 `src` 上追加查询参数（实现见 [`apps/web/src/pages/chat/lib/sidebar-iframe-url.ts`](apps/web/src/pages/chat/lib/sidebar-iframe-url.ts)）：
-
-- **`tos`**：`0` 表示当前子账号尚未接管该席位，`1` 表示已由当前登录子账号接管。
-- **`qd`**：仅在当前会话为**群聊**且后端返回了三方群 ID（`thirdGroupId`）时追加，供嵌入页识别群会话。
-- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，由后端 `POST /api/server/sidebar-iframe-params` 按当前席位与会话（服务端查库）签发并拼入 URL；**切换会话或侧栏 Tab 时会重新请求**，从而刷新 `ts`。前端不持有 `secret` / `iv`。仅用于 URL 脱敏与既有嵌入页协议，**不是**对嵌入页的身份防伪边界。
 
 ## 关键文件
 

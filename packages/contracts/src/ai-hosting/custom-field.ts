@@ -1,16 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-/** 自定义属性字段类型：1文本 2单选 3多选 4日期 5手机 6邮箱 7地区 8图片 */
-export const CustomFieldTypeSchema = Type.Union([
-  Type.Literal(1),
-  Type.Literal(2),
-  Type.Literal(3),
-  Type.Literal(4),
-  Type.Literal(5),
-  Type.Literal(6),
-  Type.Literal(7),
-  Type.Literal(8),
-]);
+/** Java 自定义属性类型枚举；未知正整数仍需透传给消费方显示为暂不支持。 */
+export const CustomFieldTypeSchema = Type.Integer({ minimum: 1 });
 
 export const CustomFieldOptionSchema = Type.Object(
   {

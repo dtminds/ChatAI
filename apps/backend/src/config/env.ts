@@ -7,21 +7,10 @@ import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insight
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_DAILY_TIME: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_EXECUTION_MODE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_TIMEZONE: Type.Optional(Type.String()),
-  AGENT_USER_MEMORY_WORKER_ENABLED: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_BATCH_SIZE: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),
   INSIGHTS_WORKER_OBSERVER_SUBJECTS: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: Type.Optional(Type.String()),
   INSIGHTS_WORKER_UID_ALLOWLIST: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),
@@ -31,20 +20,17 @@ export const EnvSchema = Type.Object({
   LOG_LEVEL: Type.Optional(Type.String()),
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
+  WORKFLOW_ACTIVE_RUN_LIMIT: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
   REDIS_KEY_PREFIX: Type.Optional(Type.String()),
   REDIS_URL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_LITE_MAX_TOKENS: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_LITE_MODEL: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_MAX_TOKENS: Type.Optional(Type.String()),
-  VOLCENGINE_ARK_MODEL: Type.Optional(Type.String()),
 });
 
 export type Env = Static<typeof EnvSchema>;
+
+export const DEFAULT_WORKFLOW_ACTIVE_RUN_LIMIT = 10_000;
 
 type LoadBackendEnvOptions = {
   appDir?: string;
@@ -129,7 +115,7 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
-  const missingVariables = requiredVariables.filter((name) => !env[name]);
+  const missingVariables = requiredVariables.filter((name) => !env[name]?.trim());
 
   if (missingVariables.length > 0) {
     const environmentLabel = env.NODE_ENV ? ` for ${env.NODE_ENV}` : "";
@@ -143,9 +129,20 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
 
+  getWorkflowActiveRunLimit(env);
   return {
     workerObserverSubjects: parseInsightsWorkerObserverSubjects(
       env.INSIGHTS_WORKER_OBSERVER_SUBJECTS,
     ),
   };
+}
+
+export function getWorkflowActiveRunLimit(env: NodeJS.ProcessEnv = process.env) {
+  const configured = env.WORKFLOW_ACTIVE_RUN_LIMIT?.trim();
+  if (!configured) return DEFAULT_WORKFLOW_ACTIVE_RUN_LIMIT;
+  const activeRunLimit = Number(configured);
+  if (!Number.isSafeInteger(activeRunLimit) || activeRunLimit < 0) {
+    throw new Error("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
+  }
+  return activeRunLimit;
 }

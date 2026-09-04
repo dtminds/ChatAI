@@ -1,16 +1,17 @@
-import type {
-  WorkbenchBroadcastProtectionStatusDto,
-  WorkbenchSendMessageResponse,
-  WorkbenchSmartReplyAttachmentsResponse,
-  WorkbenchSmartReplyAutoGeneralAnswerResponse,
-  WorkbenchSmartReplyGeneralAnswerResponse,
-  WorkbenchSmartReplyPollResponse,
-  WorkbenchKnowledgePageResponse,
-  WorkbenchKnowledgeDocPageResponse,
-  WorkbenchKnowledgeFaqAddResponse,
-  WorkbenchKnowledgeConfigResponse,
-  WorkbenchSmartReplyTextModerationResponse,
-  WorkbenchUploadCredentialResponse,
+import {
+  decodeJavaInternalApiEnvelope,
+  type WorkbenchBroadcastProtectionStatusDto,
+  type WorkbenchSendMessageResponse,
+  type WorkbenchSmartReplyAttachmentsResponse,
+  type WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  type WorkbenchSmartReplyGeneralAnswerResponse,
+  type WorkbenchSmartReplyPollResponse,
+  type WorkbenchKnowledgePageResponse,
+  type WorkbenchKnowledgeDocPageResponse,
+  type WorkbenchKnowledgeFaqAddResponse,
+  type WorkbenchKnowledgeConfigResponse,
+  type WorkbenchSmartReplyTextModerationResponse,
+  type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { mapJavaAttachmentList } from "./attachment-mappers.js";
 import {
@@ -73,13 +74,6 @@ export const JAVA_MENTION_LOCATION = {
 export const JAVA_MENTION_HIT_TYPE = {
   MEMBER: 2,
 } as const;
-
-type JavaApiResponse<T> = {
-  data?: T;
-  error?: number;
-  errorMsg?: string;
-  success?: boolean;
-};
 
 type JavaMentionFields = {
   atLocation?: number;
@@ -366,7 +360,6 @@ export function createWorkbenchJavaClient(
         {},
         logger,
         "get-broadcast-protection-status",
-        { requireExplicitSuccess: true },
       ).then((data) => mapJavaBroadcastProtectionStatus(data, logger));
     },
     changeConversationFullAuto(input) {
@@ -1136,9 +1129,9 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
-  options: { requireExplicitSuccess?: boolean; timeoutMs?: number } = {},
+  options: { timeoutMs?: number } = {},
 ): Promise<T> {
-  const response = await postJava<JavaApiResponse<T>>(
+  const response = await postJava<unknown>(
     baseUrl,
     token,
     path,
@@ -1148,34 +1141,8 @@ async function postJavaEnvelope<T>(
     options,
   );
 
-  const isSuccessful = options.requireExplicitSuccess
-    ? response.success === true
-    : isJavaEnvelopeSuccessful(response);
-
-  if (!isSuccessful) {
-    logger.error(
-      {
-        ...buildJavaLogContext(body),
-        error: response.error,
-        errorMsg: response.errorMsg,
-        requestId: getLoggerRequestId(logger),
-        operation,
-        path,
-        success: response.success,
-      },
-      "内部接口业务失败",
-    );
-    throw new BusinessError(
-      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
-      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
-      {
-        error: response.error,
-        errorMsg: response.errorMsg,
-      },
-    );
-  }
-
-  return response.data as T;
+  const payload = decodeWorkbenchJavaResponse(response, body, logger, operation, path);
+  return payload.data as T;
 }
 
 function mapJavaBroadcastProtectionStatus(
@@ -1223,7 +1190,7 @@ async function postJavaPageEnvelope(
   logger: AppLogger,
   operation: string,
 ) {
-  const response = await postJava<JavaApiResponse<unknown> & Record<string, unknown>>(
+  const response = await postJava<unknown>(
     baseUrl,
     token,
     path,
@@ -1232,53 +1199,105 @@ async function postJavaPageEnvelope(
     operation,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
-    logger.error(
-      {
-        ...buildJavaLogContext(body),
-        error: response.error,
-        errorMsg: response.errorMsg,
-        requestId: getLoggerRequestId(logger),
-        operation,
-        path,
-        success: response.success,
-      },
-      "内部接口业务失败",
-    );
-    throw new BusinessError(
-      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
-      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
-      {
-        error: response.error,
-        errorMsg: response.errorMsg,
-      },
+  const payload = decodeWorkbenchJavaResponse(
+    response,
+    body,
+    logger,
+    operation,
+    path,
+  );
+  if (!Array.isArray(payload.list)) {
+    throwWorkbenchJavaContractInvalid(
+      body,
+      logger,
+      operation,
+      path,
+      "list must be an array",
     );
   }
 
   logger.info(
     {
       ...buildJavaLogContext(body),
-      count: response.count,
-      list: response.list,
-      listLength: Array.isArray(response.list) ? response.list.length : undefined,
+      count: payload.count,
+      list: payload.list,
+      listLength: payload.list.length,
       operation,
       path,
       requestId: getLoggerRequestId(logger),
-      response,
+      response: payload,
     },
     "分页接口原始响应",
   );
 
-  return response;
+  return payload;
 }
 
-function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
-  if (response.success === true) {
-    return true;
+function decodeWorkbenchJavaResponse(
+  response: unknown,
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+  path: string,
+) {
+  const envelope = decodeJavaInternalApiEnvelope(response);
+  if (envelope.kind === "success") {
+    return envelope.payload;
   }
 
-  // SCRM 部分内部接口用 numeric error 表示结果：0 为成功。个别接口在空结果时仍会返回 success:false。
-  return response.error === 0;
+  if (envelope.kind === "rejected") {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        error: envelope.error,
+        errorMsg: envelope.errorMsg,
+        requestId: getLoggerRequestId(logger),
+        operation,
+        path,
+        success: false,
+      },
+      "内部接口业务失败",
+    );
+    throw new BusinessError(
+      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      envelope.errorMsg.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        error: envelope.error,
+        errorMsg: envelope.errorMsg,
+      },
+    );
+  }
+
+  return throwWorkbenchJavaContractInvalid(
+    body,
+    logger,
+    operation,
+    path,
+    envelope.reason,
+  );
+}
+
+function throwWorkbenchJavaContractInvalid(
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+  path: string,
+  reason: string,
+): never {
+  logger.error(
+    {
+      ...buildJavaLogContext(body),
+      operation,
+      path,
+      reason,
+      requestId: getLoggerRequestId(logger),
+    },
+    "上游接口响应异常",
+  );
+  throw new BadGatewayError(
+    WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+    JAVA_INTERNAL_API_USER_MESSAGE,
+  );
 }
 
 function mapJavaHttpFailureStatus(status: number) {

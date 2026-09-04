@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "legacy-contact-change-1",
+  "eventType": "contact.friend_added",
+  "uid": 9,
+  "subjectType": "chatai_contact",
+  "subjectId": "chatai-contact-1",
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "wecom",
+  "payload": {
+    "workUserId": 201,
+    "externalUserId": 3267,
+    "seatId": 101,
+    "thirdExternalUserId": "chatai-contact-1"
+  }
+}

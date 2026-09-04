@@ -104,11 +104,39 @@ export const WorkTagListResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const WorkTagLookupQuerySchema = Type.Object(
+  {
+    tagIds: Type.String({
+      pattern: "^[1-9][0-9]*(,[1-9][0-9]*){0,99}$",
+    }),
+  },
+  { additionalProperties: false },
+);
+
+export const WorkTagLookupItemSchema = Type.Object(
+  {
+    groupName: Type.String(),
+    id: Type.Number(),
+    name: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
+export const WorkTagLookupResponseSchema = Type.Object(
+  {
+    tags: Type.Array(WorkTagLookupItemSchema),
+  },
+  { additionalProperties: false },
+);
+
 export type WorkTagAttr = Static<typeof WorkTagAttrSchema>;
 export type WorkTagComponentType = Static<typeof WorkTagComponentTypeSchema>;
 export type WorkTagGroupItem = Static<typeof WorkTagGroupItemSchema>;
 export type WorkTagGroupListQuery = Static<typeof WorkTagGroupListQuerySchema>;
 export type WorkTagGroupListResponse = Static<typeof WorkTagGroupListResponseSchema>;
 export type WorkTagItem = Static<typeof WorkTagItemSchema>;
+export type WorkTagLookupItem = Static<typeof WorkTagLookupItemSchema>;
+export type WorkTagLookupQuery = Static<typeof WorkTagLookupQuerySchema>;
+export type WorkTagLookupResponse = Static<typeof WorkTagLookupResponseSchema>;
 export type WorkTagListQuery = Static<typeof WorkTagListQuerySchema>;
 export type WorkTagListResponse = Static<typeof WorkTagListResponseSchema>;

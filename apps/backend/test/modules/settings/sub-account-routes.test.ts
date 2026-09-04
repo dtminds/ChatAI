@@ -199,12 +199,22 @@ describe("settings sub-account routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.revokedSessionSubUserIds).toEqual([12]);
+    expect(db.revokedEmbedSessionSubUserIds).toEqual([12]);
     expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:12");
     expect(app.cache.del).toHaveBeenCalledWith(
       "chatai:auth:session:701",
       "chatai:auth:session:702",
     );
     expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:12");
+    expect(app.cache.smembers).toHaveBeenCalledWith(
+      "chatai:auth:session-index:embed:12",
+    );
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:auth:session:embed:801",
+    );
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:auth:session-index:embed:12",
+    );
     expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:12");
 
     await app.close();
@@ -230,9 +240,16 @@ describe("settings sub-account routes", () => {
       role: "viewer",
     });
     expect(db.expiredAccessTokenSubUserIds).toEqual([11]);
+    expect(db.expiredEmbedAccessTokenSubUserIds).toEqual([11]);
     expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:11");
     expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session:601");
     expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:11");
+    expect(app.cache.smembers).toHaveBeenCalledWith(
+      "chatai:auth:session-index:embed:11",
+    );
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:auth:session:embed:901",
+    );
     expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:11");
 
     await app.close();
@@ -333,6 +350,7 @@ describe("settings sub-account routes", () => {
     expect(remove.statusCode).toBe(200);
     expect(db.statusUpdates).toEqual([2, 1, 0]);
     expect(db.revokedSessionSubUserIds).toEqual([11, 11]);
+    expect(db.revokedEmbedSessionSubUserIds).toEqual([11, 11]);
     expect(db.deletedRelationSubIds).toEqual([11]);
     expect(db.releasedHostSubUserIds).toEqual([11]);
 
@@ -396,6 +414,14 @@ function createCacheMock() {
 
       if (key === "chatai:auth:session-index:12") {
         return ["701", "702"];
+      }
+
+      if (key === "chatai:auth:session-index:embed:11") {
+        return ["901"];
+      }
+
+      if (key === "chatai:auth:session-index:embed:12") {
+        return ["801"];
       }
 
       return [];
@@ -466,9 +492,11 @@ function createSettingsDbMock() {
     insertedRelations: [] as Array<Record<string, unknown>>,
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
     expiredAccessTokenSubUserIds: [] as number[],
+    expiredEmbedAccessTokenSubUserIds: [] as number[],
     joinCalls: [] as Array<{ method: string; table: unknown }>,
     releasedHostSubUserIds: [] as number[],
     revokedSessionSubUserIds: [] as number[],
+    revokedEmbedSessionSubUserIds: [] as number[],
     seatListWheres: [] as Array<[string, string, unknown]>,
     scopeLookupCount: 0,
     statusUpdates: [] as number[],
@@ -590,7 +618,10 @@ function createSettingsDbMock() {
           throw new Error(`Unexpected execute table: ${table}`);
         },
         executeTakeFirst: async () => {
-          if (table === "xy_wap_embed_sub_user_session") {
+          if (
+            table === "xy_wap_embed_sub_user_session"
+            || table === "xy_wap_embed_sub_user_embed_session"
+          ) {
             return {
               expires_at: new Date(Date.now() + 1000),
               id: "501",
@@ -694,14 +725,25 @@ function createSettingsDbMock() {
       let nextValues: Record<string, unknown> = {};
       const builder = {
         execute: async () => {
-          if (table === "xy_wap_embed_sub_user_session") {
+          if (
+            table === "xy_wap_embed_sub_user_session"
+            || table === "xy_wap_embed_sub_user_embed_session"
+          ) {
             const subUserId = wheres.find(([column]) => column === "sub_user_id")?.[2];
 
             if (typeof subUserId === "number") {
               if ("revoked_at" in nextValues) {
-                state.revokedSessionSubUserIds.push(subUserId);
+                if (table === "xy_wap_embed_sub_user_embed_session") {
+                  state.revokedEmbedSessionSubUserIds.push(subUserId);
+                } else {
+                  state.revokedSessionSubUserIds.push(subUserId);
+                }
               } else if ("session_version" in nextValues) {
-                state.expiredAccessTokenSubUserIds.push(subUserId);
+                if (table === "xy_wap_embed_sub_user_embed_session") {
+                  state.expiredEmbedAccessTokenSubUserIds.push(subUserId);
+                } else {
+                  state.expiredAccessTokenSubUserIds.push(subUserId);
+                }
               }
             }
           } else if (table === "xy_wap_embed_user_seat") {
@@ -718,6 +760,7 @@ function createSettingsDbMock() {
           if (
             table !== "xy_wap_embed_sub_user" &&
             table !== "xy_wap_embed_sub_user_session" &&
+            table !== "xy_wap_embed_sub_user_embed_session" &&
             table !== "xy_wap_embed_user_seat"
           ) {
             throw new Error(`Unexpected update table: ${table}`);

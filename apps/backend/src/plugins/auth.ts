@@ -7,6 +7,7 @@ import { verifyAccessSession } from "../modules/auth/auth.service.js";
 import { ACCESS_TOKEN_COOKIE_NAME, readAuthCookie } from "../modules/auth/auth-cookies.js";
 import { isValidSupportInvestigationUser } from "../modules/auth/support-investigation-access.js";
 import { assertSupportReadonlyRequestAllowed } from "../modules/auth/support-readonly-policy.js";
+import { getRequestAuthSessionKind } from "../modules/auth/auth-host.js";
 
 const mutatingMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
 const expectedWorkbenchClient = "chat-ai-ui";
@@ -75,7 +76,13 @@ export const authPlugin = fp(async (app) => {
     const hasValidSession = request.user.accessMode === "support_readonly"
       ? isValidSupportInvestigationUser(request.user)
       : app.db
-        && await verifyAccessSession(app.db, request.user, app.cache, app.cacheKeys);
+        && await verifyAccessSession(
+          app.db,
+          request.user,
+          app.cache,
+          app.cacheKeys,
+          getRequestAuthSessionKind(request),
+        );
 
     if (!hasValidSession) {
       throw new UnauthorizedError();

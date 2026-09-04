@@ -12,16 +12,14 @@ import {
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { CachePort } from "../../cache/cache-port.js";
-import {
-  invalidateSeatAccess,
-  invalidateSubUserSessions,
-} from "../../cache/invalidation.js";
+import { invalidateSeatAccess } from "../../cache/invalidation.js";
 import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
+import { createAuthSessionStore } from "../auth/auth-session-store.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { hydrateRelationRows } from "./relation-hydration.js";
 
@@ -379,29 +377,23 @@ export class SubAccountSettingsService {
   }
 
   private async revokeActiveSessions(subAccountId: number) {
-    await this.db
-      .updateTable("xy_wap_embed_sub_user_session")
-      .set({
-        revoked_at: new Date(),
-        update_time: new Date(),
-      })
-      .where("sub_user_id", "=", subAccountId)
-      .where("revoked_at", "is", null)
-      .execute();
-    await this.invalidateSubUserSessions(subAccountId);
+    for (const kind of ["app", "embed"] as const) {
+      await createAuthSessionStore({
+        cache: this.cache,
+        cacheKeys: this.cacheKeys,
+        db: this.db,
+      }, kind).revokeSubUserSessions(subAccountId);
+    }
   }
 
   private async expireAccessTokens(subAccountId: number) {
-    await this.db
-      .updateTable("xy_wap_embed_sub_user_session")
-      .set((expressionBuilder) => ({
-        session_version: expressionBuilder("session_version", "+", 1),
-        update_time: new Date(),
-      }))
-      .where("sub_user_id", "=", subAccountId)
-      .where("revoked_at", "is", null)
-      .execute();
-    await this.invalidateSubUserSessions(subAccountId);
+    for (const kind of ["app", "embed"] as const) {
+      await createAuthSessionStore({
+        cache: this.cache,
+        cacheKeys: this.cacheKeys,
+        db: this.db,
+      }, kind).expireSubUserAccessTokens(subAccountId);
+    }
   }
 
   private async normalizeSeatIds(scope: TenantScope, rawSeatIds: string[]) {
@@ -423,10 +415,6 @@ export class SubAccountSettingsService {
     }
 
     return uniqueSeatIds;
-  }
-
-  private invalidateSubUserSessions(subAccountId: number) {
-    return invalidateSubUserSessions(this.cache, this.cacheKeys, subAccountId);
   }
 
   private invalidateSeatAccess(subAccountId: number) {

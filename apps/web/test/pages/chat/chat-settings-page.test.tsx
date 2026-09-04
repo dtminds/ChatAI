@@ -2076,6 +2076,14 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("导入进度")).toBeInTheDocument();
     expect(screen.getByText("加载占位")).toBeInTheDocument();
     expect(screen.getByText("文字切换")).toBeInTheDocument();
+    const iconStackVariants = screen.getByRole("group", {
+      name: "IconStack 语义色变体",
+    });
+    for (const variant of ["neutral", "primary", "success", "warning"]) {
+      expect(
+        iconStackVariants.querySelector(`[data-variant="${variant}"]`),
+      ).toBeInTheDocument();
+    }
     expect(screen.getByLabelText("文字切换示例")).toHaveTextContent(
       "Agent 正在查看消息",
     );
@@ -2083,6 +2091,20 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "质检抽样比例" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "媒体比例预览" })).toBeInTheDocument();
+
+    const surfaceRegression = screen.getByRole("region", {
+      name: "surface-muted 视觉回归",
+    });
+    for (const scenario of [
+      "搜索输入框",
+      "分段选择器",
+      "卡片内部 Block",
+      "选中行与 Hover",
+      "消息与占位",
+      "按钮与禁用态",
+    ]) {
+      expect(within(surfaceRegression).getByRole("region", { name: scenario })).toBeInTheDocument();
+    }
 
     await user.click(screen.getByRole("button", { name: "打开右侧抽屉" }));
 

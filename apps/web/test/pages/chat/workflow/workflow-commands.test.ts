@@ -1,0 +1,313 @@
+import { describe, expect, it } from "vitest";
+import { createWorkflowClipboardData } from "@/pages/chat/workflow/workflow-clipboard";
+import { getWorkflowConnectionPolicyViolation } from "@/pages/chat/workflow/connection-policy";
+import { runWorkflowGraphCommand } from "@/pages/chat/workflow/workflow-commands";
+import {
+  createEdge,
+  createInitialDraft,
+  createNodeFromKind,
+} from "@/pages/chat/workflow/graph";
+import type { WorkflowGraphCommand } from "@/pages/chat/workflow/workflow-commands";
+import type {
+  WorkflowDraft,
+  WorkflowNodeConfigPatch,
+} from "@/pages/chat/workflow/types";
+
+function createDraft(): WorkflowDraft {
+  return createInitialDraft();
+}
+
+describe("workflow graph commands", () => {
+  it("maps user graph intents to undoable operations with generated ids", () => {
+    const addOperation = runWorkflowGraphCommand(createDraft(), {
+      kind: "handoff",
+      position: { x: 1280, y: 420 },
+      type: "add-node",
+    });
+
+    expect(addOperation?.event).toBe("node:add");
+    expect(addOperation?.result?.nodeId).toMatch(/^handoff-/);
+    expect(addOperation?.draft.nodes.find((node) => node.id === addOperation.result?.nodeId)?.position)
+      .toEqual({ x: 1280, y: 420 });
+
+    const duplicateOperation = runWorkflowGraphCommand(createDraft(), {
+      nodeId: "message-welcome",
+      type: "duplicate-node",
+    });
+
+    expect(duplicateOperation?.event).toBe("node:duplicate");
+    expect(duplicateOperation?.result?.nodeId).toMatch(/^message-/);
+    expect(duplicateOperation?.draft.nodes.find((node) => node.id === duplicateOperation.result?.nodeId)?.data.title)
+      .toBe("发送欢迎消息 (1)");
+  });
+
+  it("keeps invalid commands from creating history operations", () => {
+    expect(runWorkflowGraphCommand(createDraft(), {
+      nodeId: "missing",
+      type: "duplicate-node",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      kind: "start" as never,
+      position: { x: 0, y: 0 },
+      type: "add-node",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      kind: "end" as never,
+      previousNodeId: "wait-2d",
+      type: "insert-node-after",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      edgeId: "edge-wait-2d-branch-intent",
+      kind: "start" as never,
+      sourceNodeId: "wait-2d",
+      targetNodeId: "branch-intent",
+      type: "insert-node-between",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "missing-node", position: { x: 420, y: 120 } },
+      ],
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "wait-2d", position: { x: Number.NaN, y: 120 } },
+      ],
+    })).toBeUndefined();
+  });
+
+  it("returns canonical drafts for every structural command boundary", () => {
+    const draft = createDirtyDraftForCommandBoundary();
+    const commands: WorkflowGraphCommand[] = [
+      {
+        kind: "handoff",
+        position: { x: 1280, y: 420 },
+        type: "add-node",
+      },
+      {
+        kind: "wait",
+        previousNodeId: "branch-intent",
+        sourceHandle: "branch-high",
+        type: "insert-node-after",
+      },
+      {
+        edgeId: "edge-branch-intent-branch-high-message-welcome",
+        kind: "handoff",
+        sourceNodeId: "branch-intent",
+        targetNodeId: "message-welcome",
+        type: "insert-node-between",
+      },
+      {
+        connection: {
+          source: "branch-intent",
+          sourceHandle: "branch-default",
+          target: "message-normal",
+          targetHandle: null,
+        },
+        type: "connect-nodes",
+      },
+      {
+        edgeId: "edge-message-welcome-end",
+        type: "delete-edge",
+      },
+      {
+        edgeIds: ["edge-message-welcome-end", "missing-edge"],
+        type: "delete-edges",
+      },
+      {
+        nodeId: "message-welcome",
+        type: "delete-node",
+      },
+      {
+        nodeIds: ["wait-2d", "message-welcome"],
+        type: "delete-nodes",
+      },
+      {
+        nodeId: "message-welcome",
+        type: "duplicate-node",
+      },
+      {
+        type: "arrange-nodes",
+      },
+      {
+        nodeId: "wait-2d",
+        type: "move-nodes",
+        updates: [
+          { nodeId: "wait-2d", position: { x: 420, y: 120 } },
+        ],
+      },
+      {
+        nodeId: "wait-2d",
+        patch: { title: "等待确认" },
+        type: "update-node-data",
+      },
+    ];
+
+    commands.forEach((command) => {
+      const operation = runWorkflowGraphCommand(draft, command);
+
+      expect(operation, command.type).toBeDefined();
+      expect(operation!.draft.viewport).toEqual({ x: 320, y: 180, zoom: 1.4 });
+      expect(new Set(operation!.draft.edges.map((edge) => edge.id)).size).toBe(operation!.draft.edges.length);
+      expect(operation!.draft.edges.some((edge) => edge.id === "edge-missing-end")).toBe(false);
+      expect(operation!.draft.edges.every((edge) => edge.selected === false)).toBe(true);
+      expect(operation!.draft.edges.every((edge) => typeof edge.data?.onToggleInsertMenu === "undefined")).toBe(true);
+      expect(operation!.draft.nodes.every((node) => node.selected === false)).toBe(true);
+      expect(operation!.draft.nodes.every((node) => node.zIndex === undefined)).toBe(true);
+      expect(operation!.draft.nodes.every((node) => typeof node.data.onDelete === "undefined")).toBe(true);
+      expect(getGraphPolicyViolations(operation!.draft), command.type).toEqual([]);
+    });
+  });
+
+  it("pastes clipboard data through the same command boundary with unique node ids", () => {
+    const draft = createDraft();
+    const clipboardData = createWorkflowClipboardData(draft, ["message-welcome"])!;
+    const operation = runWorkflowGraphCommand(draft, {
+      clipboardData,
+      type: "paste-clipboard",
+    });
+
+    expect(operation?.event).toBe("node:paste");
+    expect(operation?.result?.nodeId).toMatch(/^message-/);
+    expect(operation?.draft.nodes.some((node) => node.id === operation.result?.nodeId)).toBe(true);
+  });
+
+  it("maps batched edge removals to one graph operation", () => {
+    const draft = createDraft();
+    const edgeIds = draft.edges.slice(0, 2).map((edge) => edge.id);
+    const operation = runWorkflowGraphCommand(draft, {
+      edgeIds,
+      type: "delete-edges",
+    });
+
+    expect(operation?.event).toBe("edge:delete");
+    expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[0]);
+    expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[1]);
+  });
+
+  it("does not invent downstream edges when inserting after an empty outlet", () => {
+    const operation = runWorkflowGraphCommand(createDraft(), {
+      kind: "wait",
+      previousNodeId: "branch-intent",
+      sourceHandle: "branch-default",
+      type: "insert-node-after",
+    });
+
+    expect(operation?.event).toBe("node:add");
+    expect(operation).toBeDefined();
+    const insertedNodeId = operation!.result?.nodeId;
+
+    expect(operation!.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-default",
+        target: insertedNodeId,
+      }),
+    ]));
+    expect(operation!.draft.edges.some((edge) =>
+      edge.source === insertedNodeId && edge.target === "end",
+    )).toBe(false);
+    expect(getGraphPolicyViolations(operation!.draft)).toEqual([]);
+  });
+
+  it("routes node movement and config edits through the command boundary", () => {
+    const moveOperation = runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "wait-2d", position: { x: 420, y: 120 } },
+        { nodeId: "branch-intent", position: { x: 760, y: 180 } },
+      ],
+    });
+
+    expect(moveOperation?.event).toBe("node:move");
+    expect(moveOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual({ x: 420, y: 120 });
+    expect(moveOperation?.draft.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual({ x: 760, y: 180 });
+
+    const configOperation = runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      patch: {
+        kind: "end",
+        title: "等待确认",
+      } as unknown as WorkflowNodeConfigPatch,
+      type: "update-node-data",
+    });
+
+    expect(configOperation?.event).toBe("node:config-change");
+    expect(configOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.kind).toBe("wait");
+    expect(configOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title).toBe("等待确认");
+  });
+});
+
+function createDirtyDraftForCommandBoundary(): WorkflowDraft {
+  const draft = createDraft();
+
+  return {
+    ...draft,
+    edges: [
+      ...draft.edges.map((edge) =>
+        edge.id === "edge-message-welcome-end"
+          ? {
+              ...edge,
+              data: {
+                ...edge.data,
+                onToggleInsertMenu: () => undefined,
+              },
+              selected: true,
+            }
+          : edge,
+      ),
+      createEdge("message-welcome", "end"),
+      {
+        ...createEdge("missing", "end"),
+        id: "edge-missing-end",
+      },
+    ],
+    nodes: [
+      ...draft.nodes.map((node) =>
+        node.id === "message-welcome"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                onDelete: () => undefined,
+              },
+              selected: true,
+              zIndex: 20,
+            }
+          : node,
+      ),
+      createNodeFromKind("message", "message-normal", 10),
+    ],
+    viewport: {
+      x: 320,
+      y: 180,
+      zoom: 1.4,
+    },
+  };
+}
+
+function getGraphPolicyViolations(draft: WorkflowDraft) {
+  return draft.edges.flatMap((edge) => {
+    const violation = getWorkflowConnectionPolicyViolation(draft, {
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    }, {
+      ignoreEdgeId: edge.id,
+    });
+
+    return violation ? [{ edgeId: edge.id, violation }] : [];
+  });
+}

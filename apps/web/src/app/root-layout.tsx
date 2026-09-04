@@ -9,7 +9,14 @@ import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
-const PUBLIC_PATHS = new Set(["/login"]);
+function isDirectEndpointPath(pathname: string, search: string) {
+  if (pathname !== "/workflow/endpoint") return false;
+  return Boolean(new URLSearchParams(search).get("key"));
+}
+
+function isPublicPath(pathname: string, search: string) {
+  return pathname === "/login" || isDirectEndpointPath(pathname, search);
+}
 
 export function RootLayout() {
   useAppearancePreferences();
@@ -39,17 +46,16 @@ export function RootLayout() {
   useEffect(() => {
     let isActive = true;
 
-    if (PUBLIC_PATHS.has(location.pathname)) {
+    if (location.pathname === "/login") {
       resetWorkbenchSession();
       lastSubUserIdRef.current = null;
       clearSession();
       return undefined;
     }
+    if (isDirectEndpointPath(location.pathname, location.search)) return undefined;
 
     const syncAuthSessionState = async (options: { force?: boolean } = {}) => {
-      if (!options.force && authStatusRef.current === "authenticated") {
-        return;
-      }
+      if (!options.force && authStatusRef.current === "authenticated") return;
 
       setChecking();
 
@@ -58,15 +64,10 @@ export function RootLayout() {
 
         if (isActive) {
           const nextSubUserId = response.data.subUser.subUserId;
-          // RootLayout may mount after login already populated auth-store, so
-          // compare the last synced session first and fall back to auth-store.
           const currentSubUserId =
             lastSubUserIdRef.current ?? authSubUserIdRef.current;
 
-          if (
-            currentSubUserId !== null &&
-            currentSubUserId !== nextSubUserId
-          ) {
+          if (currentSubUserId !== null && currentSubUserId !== nextSubUserId) {
             resetWorkbenchSession();
           }
 
@@ -82,9 +83,7 @@ export function RootLayout() {
       }
     };
 
-    if (isActive) {
-      void syncAuthSessionState();
-    }
+    void syncAuthSessionState();
     const unsubscribe = subscribeAuthSessionChanged(() => {
       void syncAuthSessionState({ force: true });
     });
@@ -101,16 +100,13 @@ export function RootLayout() {
     location.pathname,
   ]);
 
-  const isPublicPath = PUBLIC_PATHS.has(location.pathname);
+  const publicPath = isPublicPath(location.pathname, location.search);
   const shouldVerifyPrivatePath =
-    !isPublicPath &&
+    !publicPath &&
     status !== "authenticated" &&
     checkedPath !== location.pathname;
 
-  if (
-    !isPublicPath &&
-    (status === "checking" || shouldVerifyPrivatePath)
-  ) {
+  if (!publicPath && (status === "checking" || shouldVerifyPrivatePath)) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">
@@ -128,19 +124,19 @@ export function RootLayout() {
             <span>正在验证登录状态</span>
           </div>
         </main>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
       </div>
     );
   }
 
-  if (!isPublicPath && status === "anonymous") {
+  if (!publicPath && status === "anonymous") {
     return <Navigate replace to={buildLoginRedirectPath(location)} />;
   }
 
   return (
     <div className="min-h-svh bg-background text-foreground">
       <Outlet />
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" />
     </div>
   );
 }

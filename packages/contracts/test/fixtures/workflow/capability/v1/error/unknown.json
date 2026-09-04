@@ -1,0 +1,9 @@
+{
+  "capabilityKey": "operation.test.action",
+  "contractVersion": 1,
+  "error": {
+    "code": "TEST_UNKNOWN",
+    "failureKind": "unknown",
+    "message": "capability result is unknown"
+  }
+}

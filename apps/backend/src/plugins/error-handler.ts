@@ -6,7 +6,12 @@ import { formatValidationErrorMessage } from "../shared/format-validation-error.
 export async function registerErrorHandler(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error.validation) {
-      const message = formatValidationErrorMessage(error);
+      const message = formatValidationErrorMessage(
+        error,
+        request.url.includes("/workflows")
+          ? { description: "备注", name: "名称" }
+          : undefined,
+      );
 
       request.log.warn(
         {

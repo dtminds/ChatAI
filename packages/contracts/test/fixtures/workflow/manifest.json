@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "fixtureId": "entry-v1-valid-message-received",
+      "kind": "entry",
+      "path": "entry/v1/valid/message-received.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-contact-friend-added",
+      "kind": "entry",
+      "path": "entry/v1/valid/contact-friend-added.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-contact-tag-added",
+      "kind": "entry",
+      "path": "entry/v1/valid/contact-tag-added.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-time-leap-day",
+      "kind": "entry",
+      "path": "entry/v1/valid/time-leap-day.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-time-end-of-day",
+      "kind": "entry",
+      "path": "entry/v1/valid/time-end-of-day.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-idempotent-a",
+      "idempotencyGroup": "entry-v1-idempotent-pair",
+      "kind": "entry",
+      "path": "entry/v1/valid/idempotent-a.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-valid-idempotent-b",
+      "idempotencyGroup": "entry-v1-idempotent-pair",
+      "kind": "entry",
+      "path": "entry/v1/valid/idempotent-b.json",
+      "stage": "envelope",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "entry-v1-invalid-json",
+      "kind": "entry",
+      "path": "entry/v1/invalid/invalid-json.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "invalid_json" }
+    },
+    {
+      "fixtureId": "entry-v1-envelope-too-large",
+      "kind": "entry",
+      "path": "entry/v1/invalid/envelope-too-large.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_too_large" }
+    },
+    {
+      "fixtureId": "entry-v1-unsupported-schema-version",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unsupported-schema-version.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "unsupported_schema_version" }
+    },
+    {
+      "fixtureId": "entry-v1-envelope-invalid",
+      "kind": "entry",
+      "path": "entry/v1/invalid/envelope-invalid.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_invalid" }
+    },
+    {
+      "fixtureId": "entry-v1-legacy-single-subject-envelope",
+      "kind": "entry",
+      "path": "entry/v1/invalid/legacy-single-subject-envelope.json",
+      "stage": "envelope",
+      "expected": { "accepted": false, "resultCode": "envelope_invalid" }
+    },
+    {
+      "fixtureId": "entry-v1-unknown-event-type",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unknown-event-type.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "unknown_event_type" }
+    },
+    {
+      "fixtureId": "entry-v1-unsupported-payload-version",
+      "kind": "entry",
+      "path": "entry/v1/invalid/unsupported-payload-version.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "unsupported_payload_version" }
+    },
+    {
+      "fixtureId": "entry-v1-payload-invalid",
+      "kind": "entry",
+      "path": "entry/v1/invalid/payload-invalid.json",
+      "stage": "catalog",
+      "expected": { "accepted": false, "resultCode": "payload_invalid" }
+    },
+    {
+      "fixtureId": "trigger-projection-v1-contact-friend-added",
+      "kind": "trigger-projection",
+      "path": "trigger-projection/v1/contact-friend-added.json",
+      "stage": "projection",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "trigger-projection-v1-near-limit",
+      "kind": "trigger-projection",
+      "minimumBytes": 31744,
+      "path": "trigger-projection/v1/near-limit.json",
+      "stage": "projection",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-command-action",
+      "kind": "capability-command",
+      "path": "capability/v1/command/action.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-command-query",
+      "kind": "capability-command",
+      "path": "capability/v1/command/query.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-command-inference",
+      "kind": "capability-command",
+      "path": "capability/v1/command/inference.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-result-success",
+      "kind": "capability-result",
+      "path": "capability/v1/result/success.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-retryable",
+      "kind": "capability-error",
+      "path": "capability/v1/error/retryable.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-terminal",
+      "kind": "capability-error",
+      "path": "capability/v1/error/terminal.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    },
+    {
+      "fixtureId": "capability-v1-error-unknown",
+      "kind": "capability-error",
+      "path": "capability/v1/error/unknown.json",
+      "stage": "capability",
+      "expected": { "accepted": true, "resultCode": "accepted" }
+    }
+  ]
+}

@@ -45,8 +45,7 @@ describe("ai-hosting system-variable routes", () => {
           ],
           error: 0,
           errorMsg: "",
-          // 上游实测会带 success:false，即使 error:0 且有 data
-          success: false,
+          success: true,
         }),
         {
           headers: { "content-type": "application/json" },
@@ -121,6 +120,37 @@ describe("ai-hosting system-variable routes", () => {
     expect(response.json()).toEqual({
       data: { variables: [] },
       success: true,
+    });
+  });
+
+  it("treats Java success false as rejected without requiring diagnostics", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ key: "customer_nickname", name: "客户昵称" }],
+          error: 0,
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/system-variables",
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: { code: "SYSTEM_VARIABLE_INTERNAL_API_FAILED" },
+      success: false,
     });
   });
 });

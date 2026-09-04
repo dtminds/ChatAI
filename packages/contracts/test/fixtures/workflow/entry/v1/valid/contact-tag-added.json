@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "payloadVersion": 1,
+  "eventId": "contact.tag_added:790",
+  "eventType": "contact.tag_added",
+  "uid": 9,
+  "occurredAt": "2026-08-09T10:30:15.123Z",
+  "source": "wecom",
+  "payload": {
+    "workUserId": 201,
+    "externalUserId": 3267,
+    "tagId": 301,
+    "seatId": 101,
+    "thirdExternalUserId": "chatai-contact-1"
+  }
+}

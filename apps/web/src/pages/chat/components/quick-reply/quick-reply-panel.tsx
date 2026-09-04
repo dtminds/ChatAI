@@ -8,6 +8,7 @@ import {
   DragDropVerticalIcon,
   Edit03Icon,
   Knowledge02Icon,
+  Layers01Icon,
   MoreVerticalIcon,
   Move02Icon,
   MoveToIcon,
@@ -54,6 +55,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { IconStack } from "@/components/ui/icon-stack";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -637,12 +639,7 @@ export function QuickReplyPanel({
                 </div>
               ) : !activeTopCategory ? (
                 <div className="flex flex-col items-center py-10 text-center text-[13px] text-muted-foreground">
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className="h-36 w-48 mx-auto opacity-45"
-                    src="https://b5.bokr.com.cn/dist/ui/empty-state.svg"
-                  />
+                  <QuickReplyEmptyIllustration />
                   <div>添加分类，如售前、售后、物流等</div>
                   <QuickReplyManualLink />
                 </div>
@@ -656,12 +653,7 @@ export function QuickReplyPanel({
                 </div>
               ) : childCategories.length === 0 ? (
                 <div className="flex flex-col items-center rounded-[8px] px-4 py-8 text-center">
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className="h-36 w-48 mx-auto opacity-45"
-                    src="https://b5.bokr.com.cn/dist/ui/empty-state.svg"
-                  />
+                  <QuickReplyEmptyIllustration />
                   <div className="text-[13px] text-muted-foreground">
                     添加一个话术分组，即可开始创建话术
                   </div>
@@ -761,6 +753,19 @@ export function QuickReplyPanel({
         </section>
       </div>
     </div>
+  );
+}
+
+function QuickReplyEmptyIllustration() {
+  return (
+    <IconStack aria-hidden="true" className="mb-6 h-20 w-18">
+      <HugeiconsIcon
+        aria-hidden="true"
+        icon={Layers01Icon}
+        size={16}
+        strokeWidth={1.8}
+      />
+    </IconStack>
   );
 }
 

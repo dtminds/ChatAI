@@ -18,8 +18,6 @@ describe("createAgentKbJavaClient", () => {
       new Response(
         JSON.stringify({
           data: 1001,
-          error: 0,
-          errorMsg: "",
           success: true,
         }),
         {
@@ -95,8 +93,8 @@ describe("createAgentKbJavaClient", () => {
       new Response(
         JSON.stringify({
           data: 601,
-          error: 0,
-          errorMsg: "",
+          error: 50001,
+          errorMsg: "ignored on success",
           success: true,
         }),
         {
@@ -263,6 +261,39 @@ describe("createAgentKbJavaClient", () => {
       page: 1,
       pageSize: 10,
       uid: 9001,
+    });
+  });
+
+  it("rejects chunk pages without a top-level list", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          data: {
+            list: [{ id: 501, title: "切片标题" }],
+          },
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createAgentKbJavaClient().listKbChunks({
+        docId: 1001,
+        page: 1,
+        pageSize: 10,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: AI_HOSTING_INTERNAL_API_FAILED_CODE,
+      statusCode: 502,
     });
   });
 
@@ -719,6 +750,34 @@ describe("createAgentKbJavaClient", () => {
     ).rejects.toMatchObject({
       code: AI_HOSTING_INTERNAL_API_FAILED_CODE,
       message: "VDB_CALL_FAILED",
+      statusCode: 502,
+    });
+  });
+
+  it.each([
+    [
+      "success false with unusable diagnostics",
+      { data: true, error: 0, errorMsg: null, success: false },
+    ],
+    ["a legacy error-only response", { data: true, error: 0 }],
+  ])("rejects %s", async (_case, javaResponse) => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(javaResponse), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createAgentKbJavaClient().deleteKbDoc({
+        docId: 1001,
+        operatorId: "101",
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: AI_HOSTING_INTERNAL_API_FAILED_CODE,
+      message: AI_HOSTING_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
   });

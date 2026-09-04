@@ -1,0 +1,159 @@
+import { AiBrain04Icon } from "@hugeicons/core-free-icons";
+import type { WorkflowNodeDefinition } from "../definition-types";
+import {
+  createCatalogIssue,
+  createDefaultTargetHandles,
+  createNodeData,
+  sourceNodeKinds,
+  targetNodeKinds,
+} from "../definition-shared";
+import {
+  AI_INTENT_DESCRIPTION_MAX_LENGTH,
+  AI_INTENT_FALLBACK_HANDLE_ID,
+  AI_INTENT_MAX_COUNT,
+  AI_INTENT_MIN_COUNT,
+  AI_INTENT_PROMPT_MAX_LENGTH,
+  createWorkflowIntentOption,
+  getAiIntentEstimatedHeight,
+  getAiIntentHandleId,
+  getAiIntentHandleLabel,
+  getAiIntentHandleTop,
+  getAiIntentMetric,
+  getAiIntentStatus,
+  normalizeAiIntentAdvancedEnabled,
+  normalizeAiIntentInputSelector,
+  normalizeAiIntentOptions,
+  normalizeAiIntentPrompt,
+} from "./config";
+
+export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
+  availableNextKinds: targetNodeKinds,
+  availablePrevKinds: sourceNodeKinds,
+  canDelete: true,
+  canDuplicate: true,
+  canInsertAfter: true,
+  canRename: true,
+  configSections: [],
+  createDefaultData: () => createNodeData("ai-intent", {
+    advancedEnabled: false,
+    inputSelector: undefined,
+    intents: [createWorkflowIntentOption()],
+    label: "意图识别",
+    metric: "待配置意图识别",
+    prompt: "",
+    status: "warning",
+    title: "意图识别",
+  }),
+  description: "使用 AI 理解客户的对话内容，根据设定的意图分类进行归类，将客户分流到不同的后续运营路径",
+  getEstimatedHeight: getAiIntentEstimatedHeight,
+  getOutputVariables: () => [
+    {
+      key: "matchedIntentDescription",
+      label: "命中意图",
+      usages: ["variable"],
+      valueType: { kind: "string" },
+    },
+    {
+      description: "模型判断当前内容属于该意图的简要依据。",
+      key: "reason",
+      label: "判断原因",
+      usages: ["variable"],
+      valueType: { kind: "string" },
+    },
+  ],
+  getSourceHandles: (data) => {
+    const intentHandles = normalizeAiIntentOptions(data.intents).map((intent, index) => ({
+      id: getAiIntentHandleId(intent.id),
+      label: getAiIntentHandleLabel(intent.description),
+      outletKind: "outcome" as const,
+      top: getAiIntentHandleTop(index),
+    }));
+
+    return [
+      ...intentHandles,
+      {
+        id: AI_INTENT_FALLBACK_HANDLE_ID,
+        isDefault: true,
+        label: "其他意图",
+        outletKind: "outcome" as const,
+        top: getAiIntentHandleTop(intentHandles.length),
+      },
+    ];
+  },
+  getTargetHandles: createDefaultTargetHandles,
+  insertable: true,
+  kind: "ai-intent",
+  layout: {
+    estimatedHeight: 180,
+    width: 320,
+  },
+  paletteGroup: "flow",
+  paletteLabel: "意图识别",
+  sanitizeData: (data) => {
+    const nextData = {
+      ...data,
+      advancedEnabled: normalizeAiIntentAdvancedEnabled(data.advancedEnabled),
+      inputSelector: normalizeAiIntentInputSelector(data.inputSelector),
+      intents: normalizeAiIntentOptions(data.intents),
+      prompt: normalizeAiIntentPrompt(data.prompt),
+    };
+
+    return {
+      ...nextData,
+      metric: getAiIntentMetric(nextData),
+      status: getAiIntentStatus(nextData),
+    };
+  },
+  sort: 30,
+  validate: (node) => {
+    const issues = [];
+    const intents = normalizeAiIntentOptions(node.data.intents);
+    const descriptions = intents.map((intent) => intent.description.trim());
+    const rawIntents = Array.isArray(node.data.intents) ? node.data.intents : [];
+
+    if (!normalizeAiIntentInputSelector(node.data.inputSelector)) {
+      issues.push(createCatalogIssue("ai-intent-input-required", "未配置输入"));
+    }
+    if (rawIntents.length < AI_INTENT_MIN_COUNT || rawIntents.length > AI_INTENT_MAX_COUNT) {
+      issues.push(createCatalogIssue(
+        "ai-intent-count-invalid",
+        `意图数量需要为 ${AI_INTENT_MIN_COUNT}-${AI_INTENT_MAX_COUNT} 个`,
+      ));
+    }
+    if (descriptions.some((description) => !description)) {
+      issues.push(createCatalogIssue("ai-intent-description-required", "意图描述不能为空"));
+    }
+    if (rawIntents.some((intent) =>
+      intent && typeof intent.description === "string"
+      && intent.description.length > AI_INTENT_DESCRIPTION_MAX_LENGTH,
+    )) {
+      issues.push(createCatalogIssue(
+        "ai-intent-description-too-long",
+        `意图描述不能超过 ${AI_INTENT_DESCRIPTION_MAX_LENGTH} 字`,
+      ));
+    }
+    if (new Set(descriptions).size !== descriptions.length) {
+      issues.push(createCatalogIssue("ai-intent-description-duplicate", "意图描述不能重复"));
+    }
+    if (
+      normalizeAiIntentAdvancedEnabled(node.data.advancedEnabled)
+      &&
+      typeof node.data.prompt === "string"
+      && node.data.prompt.length > AI_INTENT_PROMPT_MAX_LENGTH
+    ) {
+      issues.push(createCatalogIssue(
+        "ai-intent-prompt-too-long",
+        `提示词不能超过 ${AI_INTENT_PROMPT_MAX_LENGTH} 字`,
+      ));
+    }
+
+    return issues;
+  },
+  visual: {
+    accentClassName: "bg-blue-400 text-white",
+    accentRgb: "37 99 235",
+    badge: "ai",
+    icon: AiBrain04Icon,
+    label: "意图识别",
+  },
+};

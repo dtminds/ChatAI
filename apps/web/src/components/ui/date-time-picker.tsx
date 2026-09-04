@@ -1,30 +1,235 @@
-import { useState } from "react";
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TimePicker } from "@/components/ui/time-picker";
+import { parseLocalDateTime } from "@/lib/local-date-time";
 import { cn } from "@/lib/utils";
 
-const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
-const minutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+const hours = Array.from({ length: 24 }, (_, index) =>
+  String(index).padStart(2, "0"),
+);
+const minutes = Array.from({ length: 60 }, (_, index) =>
+  String(index).padStart(2, "0"),
+);
 
-type DateTimePickerProps = {
+type LocalDateTimePickerProps = {
+  "aria-label": string;
+  className?: string;
+  disabled?: boolean;
+  onValueChange(value: string): void;
+  value: string;
+};
+
+type DatePickerProps = {
+  "aria-label": string;
+  className?: string;
+  disabled?: boolean;
+  onValueChange(value: string): void;
+  placeholder?: string;
+  value: string;
+};
+
+type DateValuePickerProps = {
   ariaLabel: string;
   className?: string;
-  onChange: (value: Date | undefined) => void;
+  onChange(value: Date | undefined): void;
   placeholder?: string;
   value?: Date;
 };
 
-export function DateTimePicker({
+type DateTimePickerProps = LocalDateTimePickerProps | DateValuePickerProps;
+
+export function DateTimePicker(props: DateTimePickerProps) {
+  return "onValueChange" in props ? (
+    <LocalDateTimePicker {...props} />
+  ) : (
+    <DateValuePicker {...props} />
+  );
+}
+
+export function DatePicker({
+  "aria-label": ariaLabel,
+  className,
+  disabled = false,
+  onValueChange,
+  placeholder = "请选择日期",
+  value,
+}: DatePickerProps) {
+  const parsedValue = parseDateValue(value);
+  const [open, setOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState<Date | undefined>(parsedValue);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setDraftDate(parseDateValue(value));
+    setOpen(nextOpen);
+  };
+
+  return (
+    <Popover onOpenChange={handleOpenChange} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          className={cn("h-9 w-full justify-between px-3 font-normal", className)}
+          disabled={disabled}
+          type="button"
+          variant="outline"
+        >
+          <span className={cn("truncate", !parsedValue && "text-muted-foreground")}>
+            {parsedValue ? formatDateValue(parsedValue) : placeholder}
+          </span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0 text-muted-foreground"
+            icon={Calendar03Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          defaultMonth={draftDate}
+          mode="single"
+          onSelect={setDraftDate}
+          selected={draftDate}
+        />
+        <div className="flex items-center justify-end gap-2 border-t border-border p-3">
+          <Button
+            onClick={() => {
+              onValueChange("");
+              setOpen(false);
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            清除
+          </Button>
+          <Button
+            disabled={!draftDate}
+            onClick={() => {
+              if (!draftDate) return;
+              onValueChange(formatDateValue(draftDate));
+              setOpen(false);
+            }}
+            size="sm"
+            type="button"
+          >
+            确定
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function LocalDateTimePicker({
+  "aria-label": ariaLabel,
+  className,
+  disabled = false,
+  onValueChange,
+  value,
+}: LocalDateTimePickerProps) {
+  const parsedValue = parseLocalDateTime(value);
+  const [open, setOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState<Date | undefined>(parsedValue?.date);
+  const [draftTime, setDraftTime] = useState(parsedValue?.time ?? "00:00");
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      const nextValue = parseLocalDateTime(value);
+      setDraftDate(nextValue?.date);
+      setDraftTime(nextValue?.time ?? "00:00");
+    }
+    setOpen(nextOpen);
+  };
+
+  const applyValue = () => {
+    if (!draftDate) return;
+    onValueChange(`${formatDateValue(draftDate)}T${draftTime}`);
+    setOpen(false);
+  };
+
+  return (
+    <Popover onOpenChange={handleOpenChange} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          className={cn("h-9 w-full justify-between px-3 font-normal", className)}
+          disabled={disabled}
+          type="button"
+          variant="outline"
+        >
+          <span className={cn("truncate", !parsedValue && "text-muted-foreground")}>
+            {parsedValue
+              ? `${formatDateValue(parsedValue.date)} ${parsedValue.time}`
+              : "请选择日期时间"}
+          </span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0 text-muted-foreground"
+            icon={Calendar03Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          defaultMonth={draftDate}
+          mode="single"
+          onSelect={setDraftDate}
+          selected={draftDate}
+        />
+        <div className="flex items-center justify-between gap-3 border-t border-border p-3">
+          <TimePicker
+            aria-label={`${ariaLabel}时间`}
+            onValueChange={setDraftTime}
+            value={draftTime}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => {
+                onValueChange("");
+                setOpen(false);
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              清除
+            </Button>
+            <Button disabled={!draftDate} onClick={applyValue} size="sm" type="button">
+              确定
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function DateValuePicker({
   ariaLabel,
   className,
   onChange,
   placeholder = "选择日期和时间",
   value,
-}: DateTimePickerProps) {
+}: DateValuePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState<Date>(() => normalizeDate(value ?? new Date()));
 
@@ -52,37 +257,114 @@ export function DateTimePicker({
       <PopoverTrigger asChild>
         <Button
           aria-label={ariaLabel}
-          className={cn("h-10 w-full justify-between rounded-[10px] px-3.5 font-normal", !value && "text-muted-foreground", className)}
+          className={cn(
+            "h-10 w-full justify-between rounded-[10px] px-3.5 font-normal",
+            !value && "text-muted-foreground",
+            className,
+          )}
           type="button"
           variant="outline"
         >
           <span>{value ? formatDateTime(value) : placeholder}</span>
-          <HugeiconsIcon aria-hidden="true" className="text-muted-foreground" icon={Calendar03Icon} size={16} strokeWidth={1.8} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="text-muted-foreground"
+            icon={Calendar03Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">
-        <Calendar className="mx-auto" mode="single" onSelect={selectDate} selected={draft} />
+        <Calendar
+          className="mx-auto"
+          mode="single"
+          onSelect={selectDate}
+          selected={draft}
+        />
         <div className="flex items-end gap-2 border-t p-3">
           <div className="grid flex-1 gap-1.5">
             <span className="text-xs text-muted-foreground">时间</span>
             <div className="flex items-center gap-2">
-              <Select onValueChange={(nextValue) => updateTime("hour", nextValue)} value={hours[draft.getHours()]}>
-                <SelectTrigger aria-label="小时" className="w-24"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-64">{hours.map((hour) => <SelectItem key={hour} value={hour}>{hour}</SelectItem>)}</SelectContent>
+              <Select
+                onValueChange={(nextValue) => updateTime("hour", nextValue)}
+                value={hours[draft.getHours()]}
+              >
+                <SelectTrigger aria-label="小时" className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {hours.map((hour) => (
+                    <SelectItem key={hour} value={hour}>
+                      {hour}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
               <span className="text-muted-foreground">:</span>
-              <Select onValueChange={(nextValue) => updateTime("minute", nextValue)} value={minutes[draft.getMinutes()]}>
-                <SelectTrigger aria-label="分钟" className="w-24"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-64">{minutes.map((minute) => <SelectItem key={minute} value={minute}>{minute}</SelectItem>)}</SelectContent>
+              <Select
+                onValueChange={(nextValue) => updateTime("minute", nextValue)}
+                value={minutes[draft.getMinutes()]}
+              >
+                <SelectTrigger aria-label="分钟" className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {minutes.map((minute) => (
+                    <SelectItem key={minute} value={minute}>
+                      {minute}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
           </div>
-          {value ? <Button onClick={() => { onChange(undefined); setIsOpen(false); }} type="button" variant="ghost">清除</Button> : null}
-          <Button onClick={() => { onChange(draft); setIsOpen(false); }} type="button">确定</Button>
+          {value ? (
+            <Button
+              onClick={() => {
+                onChange(undefined);
+                setIsOpen(false);
+              }}
+              type="button"
+              variant="ghost"
+            >
+              清除
+            </Button>
+          ) : null}
+          <Button
+            onClick={() => {
+              onChange(draft);
+              setIsOpen(false);
+            }}
+            type="button"
+          >
+            确定
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
   );
+}
+
+function formatDateValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateValue(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+    ? date
+    : undefined;
 }
 
 function normalizeDate(value: Date) {

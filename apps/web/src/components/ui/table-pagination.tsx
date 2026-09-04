@@ -60,6 +60,7 @@ export function TablePagination({
   page,
   pageSize,
   pageSizeOptions,
+  showTotal = true,
   total,
   totalPages,
 }: {
@@ -71,6 +72,7 @@ export function TablePagination({
   page: number;
   pageSize?: number;
   pageSizeOptions?: readonly number[];
+  showTotal?: boolean;
   total: number;
   totalPages: number;
 }) {
@@ -91,9 +93,11 @@ export function TablePagination({
           pageSizeOptions={pageSizeOptions}
         />
       ) : null}
-      <span className="shrink-0 whitespace-nowrap">
-        共 {total} {itemLabel}
-      </span>
+      {showTotal ? (
+        <span className="shrink-0 whitespace-nowrap">
+          共 {total} {itemLabel}
+        </span>
+      ) : null}
       <PageButtons
         maxPage={maxPage}
         onPageChange={onPageChange}
@@ -165,7 +169,13 @@ function PageButtons({
 
     return Array.from(visiblePages)
       .filter((value) => value >= 1 && value <= safeTotalPages)
-      .sort((left, right) => left - right);
+      .sort((left, right) => left - right)
+      .flatMap((value, index, sortedPages) => {
+        const previousPage = sortedPages[index - 1];
+        return previousPage !== undefined && value - previousPage === 2
+          ? [value - 1, value]
+          : [value];
+      });
   }, [safePage, safeTotalPages]);
 
   return (

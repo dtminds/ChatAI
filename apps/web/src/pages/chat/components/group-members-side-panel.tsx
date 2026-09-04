@@ -49,6 +49,7 @@ export function GroupMembersSidePanel({
   accounts = [],
   currentEmployeeId,
   currentSeatThirdUserId,
+  conversationId,
   groupMembers,
   isLoading,
   onRefresh,
@@ -58,6 +59,7 @@ export function GroupMembersSidePanel({
   accounts?: Account[];
   currentEmployeeId?: string;
   currentSeatThirdUserId?: string;
+  conversationId?: string;
   groupMembers: GroupMember[];
   isLoading: boolean;
   onRefresh: () => void;
@@ -225,16 +227,21 @@ export function GroupMembersSidePanel({
       </div>
       </ScrollArea>
       <AddGroupMembersDialog
+        conversationId={conversationId}
+        currentSeatThirdUserId={currentSeatThirdUserId}
         excludeMemberIds={existingMemberIds}
+        onAdded={onRefresh}
         onOpenChange={setIsAddOpen}
         open={isAddOpen}
         seatId={seatId}
       />
       <RemoveGroupMemberDialog
+        conversationId={conversationId}
         member={memberToRemove}
         onOpenChange={(open) => {
           if (!open) setMemberToRemove(null);
         }}
+        onRemoved={onRefresh}
         open={memberToRemove !== null}
       />
     </>

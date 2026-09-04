@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import type { WorkbenchCustomerSummaryDto } from "@chatai/contracts";
+import type {
+  WorkbenchEnterpriseMemberDto,
+  WorkbenchSeatFriendDto,
+} from "@chatai/contracts";
 import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
   Cancel01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -19,9 +30,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
-const CANDIDATE_PAGE_SIZE = 50;
-const SEARCH_DEBOUNCE_MS = 250;
+const CANDIDATE_GROUPS = [
+  { kind: "employee", defaultOpen: false, label: "成员" },
+  { kind: "member", defaultOpen: true, label: "客户" },
+] as const;
 
 const nameSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
@@ -32,78 +46,145 @@ export type AddGroupMemberCandidate = {
   avatarUrl: string;
   displayName: string;
   id: string;
+  kind: "employee" | "member";
 };
 
+type CandidateLoadState = "idle" | "loading" | "loaded" | "error";
+
 export function AddGroupMembersDialog({
+  conversationId,
+  currentSeatThirdUserId,
   excludeMemberIds,
+  onAdded,
   onOpenChange,
   open,
   seatId,
 }: {
+  conversationId?: string;
+  currentSeatThirdUserId?: string;
   excludeMemberIds: readonly string[];
+  onAdded?: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   seatId?: string;
 }) {
   const [keyword, setKeyword] = useState("");
-  const [candidates, setCandidates] = useState<AddGroupMemberCandidate[]>([]);
-  const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">(
-    "idle",
-  );
+  const [employees, setEmployees] = useState<AddGroupMemberCandidate[]>([]);
+  const [customers, setCustomers] = useState<AddGroupMemberCandidate[]>([]);
+  const [employeeLoadState, setEmployeeLoadState] = useState<CandidateLoadState>("idle");
+  const [customerLoadState, setCustomerLoadState] = useState<CandidateLoadState>("idle");
   const [selectedById, setSelectedById] = useState<Map<string, AddGroupMemberCandidate>>(
     () => new Map(),
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const normalizedKeyword = keyword.trim();
   const excludedIds = useMemo(() => new Set(excludeMemberIds), [excludeMemberIds]);
   const selectedMembers = useMemo(() => [...selectedById.values()], [selectedById]);
+  const employeeCandidates = useMemo(
+    () =>
+      employees.filter((candidate) => {
+        if (excludedIds.has(candidate.id) || candidate.id === currentSeatThirdUserId) {
+          return false;
+        }
+        if (
+          normalizedKeyword &&
+          !candidate.displayName.toLocaleLowerCase().includes(
+            normalizedKeyword.toLocaleLowerCase(),
+          )
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [currentSeatThirdUserId, employees, excludedIds, normalizedKeyword],
+  );
+  const customerCandidates = useMemo(
+    () =>
+      customers.filter((candidate) => {
+        if (excludedIds.has(candidate.id)) {
+          return false;
+        }
+        if (
+          normalizedKeyword &&
+          !candidate.displayName.toLocaleLowerCase().includes(
+            normalizedKeyword.toLocaleLowerCase(),
+          )
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [customers, excludedIds, normalizedKeyword],
+  );
   const visibleCandidates = useMemo(
-    () => candidates.filter((candidate) => !excludedIds.has(candidate.id)),
-    [candidates, excludedIds],
+    () => [...employeeCandidates, ...customerCandidates],
+    [customerCandidates, employeeCandidates],
   );
 
   useEffect(() => {
     if (!open) {
       setKeyword("");
-      setCandidates([]);
-      setLoadState("idle");
+      setEmployees([]);
+      setCustomers([]);
+      setEmployeeLoadState("idle");
+      setCustomerLoadState("idle");
       setSelectedById(new Map());
-      return;
-    }
-
-    if (!seatId) {
-      setCandidates([]);
-      setLoadState("loaded");
+      setIsSubmitting(false);
       return;
     }
 
     let cancelled = false;
-    setLoadState("loading");
+    setEmployeeLoadState("loading");
 
-    const timer = window.setTimeout(() => {
-      void getWorkbenchService()
-        .getCustomers({
-          ...(normalizedKeyword ? { keyword: normalizedKeyword } : {}),
-          limit: CANDIDATE_PAGE_SIZE,
-          scope: "mine",
-          seatIds: [seatId],
-        })
-        .then((response) => {
-          if (cancelled) return;
-          setCandidates(response.items.map(toCandidate));
-          setLoadState("loaded");
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setCandidates([]);
-          setLoadState("error");
-        });
-    }, normalizedKeyword ? SEARCH_DEBOUNCE_MS : 0);
+    void getWorkbenchService()
+      .getEnterpriseMembers()
+      .then((response) => {
+        if (cancelled) return;
+        setEmployees(response.items.map(toEmployeeCandidate));
+        setEmployeeLoadState("loaded");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEmployees([]);
+        setEmployeeLoadState("error");
+      });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [normalizedKeyword, open, seatId]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!seatId) {
+      setCustomers([]);
+      setCustomerLoadState("loaded");
+      return;
+    }
+
+    let cancelled = false;
+    setCustomerLoadState("loading");
+
+    void getWorkbenchService()
+      .getSeatFriends(seatId)
+      .then((response) => {
+        if (cancelled) return;
+        setCustomers(response.items.map(toCustomerCandidate));
+        setCustomerLoadState("loaded");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCustomers([]);
+        setCustomerLoadState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, seatId]);
 
   function toggleCandidate(candidate: AddGroupMemberCandidate) {
     setSelectedById((current) => {
@@ -125,14 +206,41 @@ export function AddGroupMembersDialog({
     });
   }
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && isSubmitting) {
+      return;
+    }
+    onOpenChange(nextOpen);
+  }
+
+  async function handleConfirm() {
+    if (!conversationId || selectedMembers.length === 0 || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await getWorkbenchService().pullGroupMembers(conversationId, {
+        contactThirdUserIds: selectedMembers.map((member) => member.id),
+      });
+      toast.success("已添加");
+      onAdded?.();
+      setIsSubmitting(false);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="flex max-h-[min(36rem,calc(100vh-3rem))] w-full max-w-[min(40rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0">
+    <Dialog onOpenChange={handleOpenChange} open={open}>
+      <DialogContent className="flex h-[min(36rem,calc(100vh-3rem))] w-full max-w-[min(40rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0">
         <DialogTitle className="border-b border-divider px-5 py-4 text-base font-semibold">
           添加群成员
         </DialogTitle>
         <DialogDescription className="sr-only">
-          选择要加入当前群聊的客户
+          选择要加入当前群聊的成员或客户
         </DialogDescription>
 
         <div className="grid min-h-0 flex-1 grid-cols-2">
@@ -158,27 +266,38 @@ export function AddGroupMembersDialog({
 
             <CandidateList
               candidates={visibleCandidates}
-              loadState={loadState}
-              onRetry={() => {
-                setLoadState("loading");
+              customerLoadState={customerLoadState}
+              employeeLoadState={employeeLoadState}
+              keyword={normalizedKeyword}
+              onRetryCustomers={() => {
                 if (!seatId) {
-                  setLoadState("loaded");
+                  setCustomers([]);
+                  setCustomerLoadState("loaded");
                   return;
                 }
+                setCustomerLoadState("loading");
                 void getWorkbenchService()
-                  .getCustomers({
-                    ...(normalizedKeyword ? { keyword: normalizedKeyword } : {}),
-                    limit: CANDIDATE_PAGE_SIZE,
-                    scope: "mine",
-                    seatIds: [seatId],
-                  })
+                  .getSeatFriends(seatId)
                   .then((response) => {
-                    setCandidates(response.items.map(toCandidate));
-                    setLoadState("loaded");
+                    setCustomers(response.items.map(toCustomerCandidate));
+                    setCustomerLoadState("loaded");
                   })
                   .catch(() => {
-                    setCandidates([]);
-                    setLoadState("error");
+                    setCustomers([]);
+                    setCustomerLoadState("error");
+                  });
+              }}
+              onRetryEmployees={() => {
+                setEmployeeLoadState("loading");
+                void getWorkbenchService()
+                  .getEnterpriseMembers()
+                  .then((response) => {
+                    setEmployees(response.items.map(toEmployeeCandidate));
+                    setEmployeeLoadState("loaded");
+                  })
+                  .catch(() => {
+                    setEmployees([]);
+                    setEmployeeLoadState("error");
                   });
               }}
               onToggle={toggleCandidate}
@@ -223,14 +342,22 @@ export function AddGroupMembersDialog({
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-divider px-5 py-3">
-          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+          <Button
+            disabled={isSubmitting}
+            onClick={() => handleOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
             取消
           </Button>
           <Button
-            disabled={selectedMembers.length === 0}
-            onClick={() => onOpenChange(false)}
+            disabled={selectedMembers.length === 0 || isSubmitting || !conversationId}
+            onClick={() => {
+              void handleConfirm();
+            }}
             type="button"
           >
+            {isSubmitting ? <Spinner aria-hidden="true" size={14} /> : null}
             确认
           </Button>
         </div>
@@ -241,18 +368,47 @@ export function AddGroupMembersDialog({
 
 function CandidateList({
   candidates,
-  loadState,
-  onRetry,
+  customerLoadState,
+  employeeLoadState,
+  keyword,
+  onRetryCustomers,
+  onRetryEmployees,
   onToggle,
   selectedIds,
 }: {
   candidates: AddGroupMemberCandidate[];
-  loadState: "idle" | "loading" | "loaded" | "error";
-  onRetry: () => void;
+  customerLoadState: CandidateLoadState;
+  employeeLoadState: CandidateLoadState;
+  keyword: string;
+  onRetryCustomers: () => void;
+  onRetryEmployees: () => void;
   onToggle: (candidate: AddGroupMemberCandidate) => void;
   selectedIds: Map<string, AddGroupMemberCandidate>;
 }) {
-  if (loadState === "loading" || loadState === "idle") {
+  const [openByKind, setOpenByKind] = useState<Partial<Record<"employee" | "member", boolean>>>(
+    {},
+  );
+  const isInitialLoading =
+    (employeeLoadState === "idle" || employeeLoadState === "loading") &&
+    (customerLoadState === "idle" || customerLoadState === "loading");
+  const isCombinedError =
+    employeeLoadState === "error" && customerLoadState === "error";
+
+  useEffect(() => {
+    if (isInitialLoading) {
+      setOpenByKind({});
+      return;
+    }
+
+    if (keyword) {
+      setOpenByKind({
+        employee: candidates.some((candidate) => candidate.kind === "employee"),
+        member: candidates.some((candidate) => candidate.kind === "member"),
+      });
+    }
+  }, [candidates, isInitialLoading, keyword]);
+
+  if (isInitialLoading) {
     return (
       <div
         className="flex min-h-[12rem] flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
@@ -264,53 +420,142 @@ function CandidateList({
     );
   }
 
-  if (loadState === "error") {
+  if (isCombinedError) {
     return (
       <div className="flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <span>加载失败</span>
-        <Button onClick={onRetry} size="sm" variant="outline">
+        <Button
+          onClick={() => {
+            onRetryEmployees();
+            onRetryCustomers();
+          }}
+          size="sm"
+          variant="outline"
+        >
           重试
         </Button>
       </div>
     );
   }
 
-  if (candidates.length === 0) {
-    return (
-      <div className="flex min-h-[12rem] flex-1 items-center justify-center text-sm text-muted-foreground">
-        暂无数据
-      </div>
-    );
-  }
+  const groupedCandidates = CANDIDATE_GROUPS.map((group) => ({
+    ...group,
+    items: candidates.filter((candidate) => candidate.kind === group.kind),
+    loadState: group.kind === "employee" ? employeeLoadState : customerLoadState,
+    onRetry: group.kind === "employee" ? onRetryEmployees : onRetryCustomers,
+  }));
 
   return (
-    <ScrollArea aria-label="可选客户" className="min-h-0 flex-1" role="region">
-      <ul className="space-y-0.5 px-2 py-2">
-        {candidates.map((candidate) => {
-          const checked = selectedIds.has(candidate.id);
-          return (
-            <li key={candidate.id}>
-              <label
-                className={cn(
-                  "flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-accent",
-                  checked && "bg-accent",
-                )}
-              >
-                <Checkbox
-                  aria-label={`选择 ${candidate.displayName}`}
-                  checked={checked}
-                  onCheckedChange={() => onToggle(candidate)}
-                />
-                <CandidateAvatar member={candidate} />
-                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                  {candidate.displayName}
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+    <ScrollArea aria-label="可选成员" className="min-h-0 flex-1" role="region">
+      <div className="space-y-0.5 px-2 py-2">
+        {groupedCandidates.map((group) => (
+          <CandidateGroup
+            group={group}
+            key={group.kind}
+            onOpenChange={(open) => {
+              setOpenByKind((current) => ({ ...current, [group.kind]: open }));
+            }}
+            onRetry={group.onRetry}
+            onToggle={onToggle}
+            open={openByKind[group.kind] ?? group.defaultOpen}
+            selectedIds={selectedIds}
+          />
+        ))}
+      </div>
     </ScrollArea>
+  );
+}
+
+function CandidateGroup({
+  group,
+  onOpenChange,
+  onRetry,
+  onToggle,
+  open,
+  selectedIds,
+}: {
+  group: {
+    items: AddGroupMemberCandidate[];
+    kind: "employee" | "member";
+    label: string;
+    loadState: CandidateLoadState;
+  };
+  onOpenChange: (open: boolean) => void;
+  onRetry: () => void;
+  onToggle: (candidate: AddGroupMemberCandidate) => void;
+  open: boolean;
+  selectedIds: Map<string, AddGroupMemberCandidate>;
+}) {
+  const contentId = `add-group-member-${group.kind}`;
+
+  return (
+    <Collapsible onOpenChange={onOpenChange} open={open}>
+      <CollapsibleTrigger asChild>
+        <Button
+          aria-controls={contentId}
+          aria-expanded={open}
+          aria-label={`${open ? "收起" : "展开"}${group.label}`}
+          className="h-8 w-full justify-start gap-1.5 px-2 font-normal"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0 text-muted-foreground"
+            icon={open ? ArrowDown01Icon : ArrowRight01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          <span className="truncate text-sm text-foreground">{group.label}</span>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent id={contentId}>
+        {group.loadState === "loading" || group.loadState === "idle" ? (
+          <div
+            className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground"
+            role="status"
+          >
+            <Spinner className="text-current" size={14} variant="classic" />
+            <span>正在加载</span>
+          </div>
+        ) : group.loadState === "error" ? (
+          <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+            <span>加载失败</span>
+            <Button onClick={onRetry} size="sm" variant="outline">
+              重试
+            </Button>
+          </div>
+        ) : group.items.length === 0 ? (
+          <div className="px-2 py-2 text-sm text-muted-foreground">暂无数据</div>
+        ) : (
+          <ul className="space-y-0.5">
+            {group.items.map((candidate) => {
+              const checked = selectedIds.has(candidate.id);
+              return (
+                <li key={candidate.id}>
+                  <label
+                    className={cn(
+                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-accent",
+                      checked && "bg-accent",
+                    )}
+                  >
+                    <Checkbox
+                      aria-label={`选择 ${candidate.displayName}`}
+                      checked={checked}
+                      onCheckedChange={() => onToggle(candidate)}
+                    />
+                    <CandidateAvatar member={candidate} />
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {candidate.displayName}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -325,11 +570,21 @@ function CandidateAvatar({ member }: { member: AddGroupMemberCandidate }) {
   );
 }
 
-function toCandidate(item: WorkbenchCustomerSummaryDto): AddGroupMemberCandidate {
+function toCustomerCandidate(item: WorkbenchSeatFriendDto): AddGroupMemberCandidate {
   return {
-    avatarUrl: item.avatar,
-    displayName: item.name.trim() || item.realName.trim() || item.thirdExternalUserId,
+    avatarUrl: item.avatarUrl,
+    displayName: item.displayName.trim() || item.thirdExternalUserId,
     id: item.thirdExternalUserId,
+    kind: "member",
+  };
+}
+
+function toEmployeeCandidate(item: WorkbenchEnterpriseMemberDto): AddGroupMemberCandidate {
+  return {
+    avatarUrl: item.avatarUrl,
+    displayName: item.displayName.trim() || item.thirdUserId,
+    id: item.thirdUserId,
+    kind: "employee",
   };
 }
 

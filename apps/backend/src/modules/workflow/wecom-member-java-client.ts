@@ -20,8 +20,10 @@ export const WECOM_MEMBER_INTERNAL_API_USER_MESSAGE = "操作失败，请稍后�
 
 export const JAVA_WECOM_MEMBER_SELECT_TYPE_DEPARTMENT_AND_USER = 2;
 export const JAVA_WECOM_MEMBER_STATUS_ACTIVE = 1;
+export const JAVA_WECOM_MEMBER_ALL = 0;
 export const JAVA_WECOM_MEMBER_EXTERNAL_CONTACT_ONLY = 1;
 export const JAVA_WECOM_MEMBER_LICENSE_UNRESTRICTED = 0;
+export const JAVA_WECOM_MEMBER_TYPE_USER = 1;
 
 export type WecomMemberJavaNode = {
   avatar?: string | null;
@@ -40,7 +42,10 @@ export type WecomMemberJavaTree = {
 };
 
 export type WecomMemberJavaClient = {
-  listDepartmentUsers: (input: { uid: number }) => Promise<WecomMemberJavaTree>;
+  listDepartmentUsers: (input: {
+    isExternal?: number;
+    uid: number;
+  }) => Promise<WecomMemberJavaTree>;
 };
 
 export function createWecomMemberJavaClient(
@@ -54,7 +59,7 @@ export function createWecomMemberJavaClient(
       const response = await postJavaRequest<unknown>({
         baseUrl,
         body: JSON.stringify({
-          isExternal: JAVA_WECOM_MEMBER_EXTERNAL_CONTACT_ONLY,
+          isExternal: input.isExternal ?? JAVA_WECOM_MEMBER_EXTERNAL_CONTACT_ONLY,
           isLicense: JAVA_WECOM_MEMBER_LICENSE_UNRESTRICTED,
           selectType: JAVA_WECOM_MEMBER_SELECT_TYPE_DEPARTMENT_AND_USER,
           status: JAVA_WECOM_MEMBER_STATUS_ACTIVE,

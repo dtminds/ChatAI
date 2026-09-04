@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
@@ -10,8 +11,17 @@ import {
 import { GroupMembersSidePanel } from "@/pages/chat/components/group-members-side-panel";
 import type { Account } from "@/pages/chat/chat-types";
 
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
 afterEach(() => {
   resetWorkbenchService();
+  vi.mocked(toast.error).mockReset();
+  vi.mocked(toast.success).mockReset();
   vi.useRealTimers();
 });
 
@@ -508,22 +518,24 @@ describe("GroupMembersSidePanel", () => {
 
   it("opens the add-members dialog before search and refresh", async () => {
     const user = userEvent.setup();
-    const getCustomers = vi.fn().mockResolvedValue({
-      hasMore: false,
+    const getSeatFriends = vi.fn().mockResolvedValue({
       items: [
-        createCustomerSummary("external-xiaoming", "小明"),
-        createCustomerSummary("member-001", "已在群里"),
-        createCustomerSummary("external-wang", "王二"),
+        createSeatFriend("external-xiaoming", "小明"),
+        createSeatFriend("member-001", "已在群里"),
+        createSeatFriend("external-wang", "王二"),
       ],
-      total: 3,
     });
+    const pullGroupMembers = vi.fn().mockResolvedValue({ conversationId: "conv-004" });
+    const onRefresh = vi.fn();
     setWorkbenchService({
       ...createMockWorkbenchService(),
-      getCustomers,
+      getSeatFriends,
+      pullGroupMembers,
     });
 
     render(
       <GroupMembersSidePanel
+        conversationId="conv-004"
         groupMembers={[
           {
             avatarUrl: "",
@@ -533,7 +545,7 @@ describe("GroupMembersSidePanel", () => {
           },
         ]}
         isLoading={false}
-        onRefresh={vi.fn()}
+        onRefresh={onRefresh}
         seatId="seat-001"
       />,
     );
@@ -550,11 +562,7 @@ describe("GroupMembersSidePanel", () => {
     await user.click(screen.getByRole("button", { name: "添加群成员" }));
 
     expect(await screen.findByRole("heading", { name: "添加群成员" })).toBeInTheDocument();
-    expect(getCustomers).toHaveBeenCalledWith({
-      limit: 50,
-      scope: "mine",
-      seatIds: ["seat-001"],
-    });
+    expect(getSeatFriends).toHaveBeenCalledWith("seat-001");
     expect(await screen.findByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 王二" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 已在群里" })).not.toBeInTheDocument();
@@ -572,25 +580,75 @@ describe("GroupMembersSidePanel", () => {
     await user.click(screen.getByRole("checkbox", { name: "选择 王二" }));
     await user.click(screen.getByRole("button", { name: "确认" }));
 
+    await waitFor(() => {
+      expect(pullGroupMembers).toHaveBeenCalledWith("conv-004", {
+        contactThirdUserIds: ["external-wang"],
+      });
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("已添加");
     expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the add-members dialog open when inviting members fails", async () => {
+    const user = userEvent.setup();
+    const getSeatFriends = vi.fn().mockResolvedValue({
+      items: [createSeatFriend("external-wang", "王二")],
+    });
+    const pullGroupMembers = vi.fn().mockRejectedValue(new Error("该客户不是好友"));
+    const onRefresh = vi.fn();
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getSeatFriends,
+      pullGroupMembers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        conversationId="conv-004"
+        groupMembers={[]}
+        isLoading={false}
+        onRefresh={onRefresh}
+        seatId="seat-001"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 王二" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    await waitFor(() => {
+      expect(pullGroupMembers).toHaveBeenCalledWith("conv-004", {
+        contactThirdUserIds: ["external-wang"],
+      });
+    });
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("该客户不是好友");
+    expect(screen.getByRole("heading", { name: "添加群成员" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认" })).toBeEnabled();
   });
 
   it("searches add-member candidates from the current seat", async () => {
     const user = userEvent.setup();
-    const getCustomers = vi.fn()
-      .mockResolvedValueOnce({
-        hasMore: false,
-        items: [createCustomerSummary("external-xiaoming", "小明")],
-        total: 1,
-      })
-      .mockResolvedValueOnce({
-        hasMore: false,
-        items: [createCustomerSummary("external-wang", "王二")],
-        total: 1,
-      });
+    const getSeatFriends = vi.fn().mockResolvedValue({
+      items: [
+        createSeatFriend("external-xiaoming", "小明"),
+        createSeatFriend("external-wang", "王二"),
+      ],
+    });
+    const getEnterpriseMembers = vi.fn().mockResolvedValue({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "王五",
+          thirdUserId: "seat-user-wang",
+        },
+      ],
+    });
     setWorkbenchService({
       ...createMockWorkbenchService(),
-      getCustomers,
+      getSeatFriends,
+      getEnterpriseMembers,
     });
 
     render(
@@ -609,12 +667,10 @@ describe("GroupMembersSidePanel", () => {
 
     expect(await screen.findByRole("checkbox", { name: "选择 王二" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 小明" })).not.toBeInTheDocument();
-    expect(getCustomers).toHaveBeenLastCalledWith({
-      keyword: "王",
-      limit: 50,
-      scope: "mine",
-      seatIds: ["seat-001"],
-    });
+    expect(getSeatFriends).toHaveBeenCalledOnce();
+    expect(getSeatFriends).toHaveBeenCalledWith("seat-001");
+    expect(getEnterpriseMembers).toHaveBeenCalledOnce();
+    expect(screen.getByRole("checkbox", { name: "选择 王五" })).toBeInTheDocument();
   });
 
   it("lets owners remove regular members from the detail card", async () => {
@@ -656,6 +712,97 @@ describe("GroupMembersSidePanel", () => {
 
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("kicks the selected group member and refreshes the list", async () => {
+    const user = userEvent.setup();
+    const kickGroupMember = vi.fn().mockResolvedValue({ conversationId: "conv-004" });
+    const onRefresh = vi.fn();
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      kickGroupMember,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        conversationId="conv-004"
+        currentSeatThirdUserId="seat-owner"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "群主席位",
+            id: "seat-owner",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "",
+            displayName: "小明",
+            id: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "查看 小明 的好友关系" }));
+    await user.click(await screen.findByRole("button", { name: "将 小明 移出群聊" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(kickGroupMember).toHaveBeenCalledWith("conv-004", {
+        kickOutThirdUserId: "member-xiaoming",
+      });
+    });
+    expect(toast.success).toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the remove dialog open when kicking a member fails", async () => {
+    const user = userEvent.setup();
+    const kickGroupMember = vi.fn().mockRejectedValue(new Error("操作过于频繁，请稍后再试~"));
+    const onRefresh = vi.fn();
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      kickGroupMember,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        conversationId="conv-004"
+        currentSeatThirdUserId="seat-owner"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "群主席位",
+            id: "seat-owner",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "",
+            displayName: "小明",
+            id: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "查看 小明 的好友关系" }));
+    await user.click(await screen.findByRole("button", { name: "将 小明 移出群聊" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("操作过于频繁，请稍后再试~");
+    });
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
   it("hides remove when the current seat is not an owner or admin", async () => {
@@ -729,20 +876,77 @@ describe("GroupMembersSidePanel", () => {
       screen.queryByRole("button", { name: "将 管理员甲 移出群聊" }),
     ).not.toBeInTheDocument();
   });
+
+  it("groups add-member candidates into employees and members without tabs", async () => {
+    const user = userEvent.setup();
+    const getSeatFriends = vi.fn().mockResolvedValue({
+      items: [createSeatFriend("external-xiaoming", "小明")],
+    });
+    const getEnterpriseMembers = vi.fn().mockResolvedValue({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "花花",
+          thirdUserId: "seat-user-hua",
+        },
+        {
+          avatarUrl: "",
+          displayName: "饭饭",
+          thirdUserId: "seat-user-fan",
+        },
+        {
+          avatarUrl: "",
+          displayName: "当前席位",
+          thirdUserId: "seat-user-current",
+        },
+      ],
+    });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getSeatFriends,
+      getEnterpriseMembers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        conversationId="conv-004"
+        currentSeatThirdUserId="seat-user-current"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "饭饭",
+            id: "seat-user-fan",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+
+    expect(await screen.findByRole("button", { name: "展开成员" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收起客户" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 花花" })).not.toBeInTheDocument();
+    expect(getEnterpriseMembers).toHaveBeenCalledOnce();
+    expect(getSeatFriends).toHaveBeenCalledWith("seat-001");
+
+    await user.click(screen.getByRole("button", { name: "展开成员" }));
+
+    expect(screen.getByRole("checkbox", { name: "选择 花花" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 饭饭" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 当前席位" })).not.toBeInTheDocument();
+  });
 });
 
-function createCustomerSummary(thirdExternalUserId: string, name: string) {
+function createSeatFriend(thirdExternalUserId: string, displayName: string) {
   return {
-    avatar: "",
-    bizStatus: 1,
-    customerKey: thirdExternalUserId,
-    gender: 0,
-    name,
-    platform: 5,
-    realName: "",
-    relationCount: 1,
-    seatRelations: [],
+    avatarUrl: "",
+    displayName,
     thirdExternalUserId,
-    uid: 1,
   };
 }

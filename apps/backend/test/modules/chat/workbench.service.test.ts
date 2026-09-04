@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
+  WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import {
@@ -2016,6 +2017,273 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       isPinned: true,
       platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("rejects pulling group members when the conversation seat is not taken over", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+        listGroupMembers: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: ["external-a"],
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects pulling group members without contacts", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: ["  ", ""],
+      }),
+    ).rejects.toMatchObject({
+      code: "CONTACT_REQUIRED",
+      statusCode: 400,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
+  });
+
+  it("pulls selected friends into a taken-over group through Java", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        listGroupMembers: vi.fn().mockResolvedValue({
+          conversationId: "88",
+          groupSeatId: "501",
+          items: [],
+          thirdGroupId: "group-1",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: ["external-a", " external-a ", "external-b"],
+      }),
+    ).resolves.toEqual({
+      conversationId: "88",
+    });
+    expect(javaClient.pullFriendsInGroup).toHaveBeenCalledWith({
+      contactThirdUserids: ["external-a", "external-b"],
+      groupSeatId: 501,
+      platform: 5,
+      subUserId: 101,
+      uid: 9001,
+    });
+  });
+
+  it("lists only ChatAI seats of the current enterprise as add-group employees", async () => {
+    const javaClient = createJavaClient();
+    const listTenantSeatIdentities = vi.fn().mockResolvedValue([
+      {
+        avatarUrl: "https://example.com/seat-hua.png",
+        displayName: "席位花花",
+        thirdUserId: "seat-user-hua",
+        userId: 201,
+      },
+      {
+        avatarUrl: "",
+        displayName: "饭饭",
+        thirdUserId: "seat-user-fan",
+        userId: 301,
+      },
+      {
+        avatarUrl: "",
+        displayName: "重复席位",
+        thirdUserId: "seat-user-hua",
+        userId: 401,
+      },
+    ]);
+    const service = createWorkbenchService(
+      { listTenantSeatIdentities } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getEnterpriseMembers("101")).resolves.toEqual({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "饭饭",
+          thirdUserId: "seat-user-fan",
+        },
+        {
+          avatarUrl: "https://example.com/seat-hua.png",
+          displayName: "席位花花",
+          thirdUserId: "seat-user-hua",
+        },
+      ],
+    });
+    expect(javaClient.listEnterpriseDepartmentUsers).not.toHaveBeenCalled();
+    expect(listTenantSeatIdentities).toHaveBeenCalledOnce();
+    expect(listTenantSeatIdentities).toHaveBeenCalledWith({
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("caps enterprise members at the documented catalog limit", async () => {
+    const javaClient = createJavaClient();
+    const catalogSize = WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS + 1;
+    const listTenantSeatIdentities = vi.fn().mockResolvedValue(
+      Array.from({ length: catalogSize }, (_, index) => ({
+        avatarUrl: "",
+        displayName: `成员${String(index + 1).padStart(4, "0")}`,
+        thirdUserId: `third-${index + 1}`,
+        userId: index + 1,
+      })),
+    );
+    const service = createWorkbenchService(
+      { listTenantSeatIdentities } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    const response = await service.getEnterpriseMembers("101");
+
+    expect(response.items).toHaveLength(WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS);
+    expect(javaClient.listEnterpriseDepartmentUsers).not.toHaveBeenCalled();
+    expect(listTenantSeatIdentities).toHaveBeenCalledOnce();
+  });
+
+  it("lists seat friends for the add-group dialog from the current takeover seat", async () => {
+    const javaClient = createJavaClient();
+    const listSeatFriends = vi.fn().mockResolvedValue({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "水门溪风",
+          thirdExternalUserId: "external-shuimen",
+        },
+      ],
+    });
+    const service = createWorkbenchService(
+      { listSeatFriends } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getSeatFriends("101", "12")).resolves.toEqual({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "水门溪风",
+          thirdExternalUserId: "external-shuimen",
+        },
+      ],
+    });
+    expect(listSeatFriends).toHaveBeenCalledWith({
+      platform: 5,
+      seatId: "12",
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("rejects kicking a group member when the conversation seat is not taken over", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+        listGroupMembers: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.kickGroupMember("101", "88", {
+        kickOutThirdUserId: "member-xiaoming",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects kicking a group member without a member id", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
+
+    await expect(
+      service.kickGroupMember("101", "88", {
+        kickOutThirdUserId: "  ",
+      }),
+    ).rejects.toMatchObject({
+      code: "MEMBER_REQUIRED",
+      statusCode: 400,
+    });
+    expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
+  });
+
+  it("kicks a group member from a taken-over group through Java", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        listGroupMembers: vi.fn().mockResolvedValue({
+          conversationId: "88",
+          groupSeatId: "501",
+          items: [],
+          thirdGroupId: "group-1",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.kickGroupMember("101", "88", {
+        kickOutThirdUserId: " member-xiaoming ",
+      }),
+    ).resolves.toEqual({
+      conversationId: "88",
+    });
+    expect(javaClient.kickOutOfGroup).toHaveBeenCalledWith({
+      groupSeatId: 501,
+      kickOutThirdUserid: "member-xiaoming",
+      platform: 5,
+      subUserId: 101,
       uid: 9001,
     });
   });
@@ -8705,6 +8973,7 @@ function createJavaClient(): WorkbenchJavaClient {
     addKnowledgeFaq: vi.fn().mockResolvedValue({ success: true }),
     checkTextModerationPlus: vi.fn().mockResolvedValue({ result: "pass" }),
     getAiHelperTemplate: vi.fn().mockResolvedValue(1),
+    getBroadcastProtectionStatus: vi.fn().mockResolvedValue({}),
     getKnowledgeConfig: vi.fn().mockResolvedValue({}),
     getUploadCredential: vi.fn(),
     insertSystemMessage: vi.fn().mockResolvedValue("1001"),
@@ -8715,6 +8984,9 @@ function createJavaClient(): WorkbenchJavaClient {
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),
+    kickOutOfGroup: vi.fn().mockResolvedValue(undefined),
+    listEnterpriseDepartmentUsers: vi.fn().mockResolvedValue({ roots: [] }),
+    pullFriendsInGroup: vi.fn().mockResolvedValue(undefined),
     requestAutoGeneralAnswer: vi.fn().mockResolvedValue({ id: "1" }),
     requestGeneralAnswer: vi.fn().mockResolvedValue({ suggestion: null }),
     recognizeSentence: vi.fn().mockResolvedValue("这是一段语音转文字测试文本"),
@@ -8722,9 +8994,12 @@ function createJavaClient(): WorkbenchJavaClient {
     sendMessage: vi.fn(),
     sendRecommendAnswer: vi.fn().mockResolvedValue(undefined),
     sendSmartHeartbeat: vi.fn().mockResolvedValue(undefined),
+    setGroupSeatHostUserSeatIds: vi.fn().mockResolvedValue(undefined),
     streamAiHelperAsk: vi.fn().mockResolvedValue("改短后的内容"),
     submitAiHelperGenerateAsk: vi.fn().mockResolvedValue({ generateId: "generate-1" }),
+    syncSeatGroups: vi.fn().mockResolvedValue(undefined),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
+    testAgent: vi.fn(),
     transMsgFile: vi.fn(),
     updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),

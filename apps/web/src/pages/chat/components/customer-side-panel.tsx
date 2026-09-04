@@ -391,6 +391,7 @@ export function CustomerSidePanel({
               {isGroupConversation ? (
                 <GroupMembersSidePanel
                   accounts={accounts}
+                  conversationId={sidebarIframeConversationId}
                   currentEmployeeId={currentEmployeeId}
                   currentSeatThirdUserId={currentSeatThirdUserId}
                   groupMembers={groupMembers}

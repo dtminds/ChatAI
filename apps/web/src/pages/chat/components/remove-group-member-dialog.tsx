@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,21 +10,59 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type { GroupMember } from "@/pages/chat/chat-types";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 export function RemoveGroupMemberDialog({
+  conversationId,
   member,
   onOpenChange,
+  onRemoved,
   open,
 }: {
+  conversationId?: string;
   member: GroupMember | null;
   onOpenChange: (open: boolean) => void;
+  onRemoved?: () => void;
   open: boolean;
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const displayName = member?.displayName.trim() || "该成员";
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && isSubmitting) {
+      return;
+    }
+    if (!nextOpen) {
+      setIsSubmitting(false);
+    }
+    onOpenChange(nextOpen);
+  }
+
+  async function handleConfirm(event: { preventDefault(): void }) {
+    event.preventDefault();
+    if (!conversationId || !member || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await getWorkbenchService().kickGroupMember(conversationId, {
+        kickOutThirdUserId: member.id,
+      });
+      toast.success("已移出");
+      onRemoved?.();
+      setIsSubmitting(false);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <AlertDialog onOpenChange={onOpenChange} open={open}>
+    <AlertDialog onOpenChange={handleOpenChange} open={open}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>确认将“{displayName}”移出群聊？</AlertDialogTitle>
@@ -31,8 +71,12 @@ export function RemoveGroupMemberDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={() => onOpenChange(false)} variant="destructive">
+          <AlertDialogCancel disabled={isSubmitting}>取消</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isSubmitting}
+            onClick={handleConfirm}
+            variant="destructive"
+          >
             确定
           </AlertDialogAction>
         </AlertDialogFooter>

@@ -296,8 +296,8 @@ describe("workflow worker runtime", () => {
 
     expect(resources.reconciler).toHaveBeenNthCalledWith(1, expect.objectContaining({
       historyRetention: {
-        runBefore: new Date("2026-01-14T00:00:00.000Z"),
-        taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+        runBefore: new Date("2026-05-29T00:00:00.000Z"),
+        taskOutboxBefore: new Date("2026-07-06T00:00:00.000Z"),
       },
       now: new Date("2026-07-13T00:00:00.000Z"),
     }));
@@ -306,8 +306,8 @@ describe("workflow worker runtime", () => {
     }));
     expect(resources.reconciler).toHaveBeenNthCalledWith(3, expect.objectContaining({
       historyRetention: {
-        runBefore: new Date("2026-01-14T01:00:00.000Z"),
-        taskOutboxBefore: new Date("2026-06-13T01:00:00.000Z"),
+        runBefore: new Date("2026-05-29T01:00:00.000Z"),
+        taskOutboxBefore: new Date("2026-07-06T01:00:00.000Z"),
       },
       now: new Date("2026-07-13T01:00:00.000Z"),
     }));
@@ -750,9 +750,9 @@ function config(
       reconcileIntervalMs: 30_000,
       readinessIntervalMs: 30_000,
       retryDelayMs: 5_000,
-      runRetentionDays: 180,
+      runRetentionDays: 45,
       schedulerIntervalMs: 1_000,
-      taskOutboxRetentionDays: 30,
+      taskOutboxRetentionDays: 7,
     },
     subscriptions: { entry: "entry-sub", task: "task-sub" },
     topics: { entry: "entry-topic", task: "task-topic" },

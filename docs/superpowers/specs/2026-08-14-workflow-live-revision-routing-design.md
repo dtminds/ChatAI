@@ -422,7 +422,7 @@ Revision 历史仍可用于审计和单人路径还原，但不作为人数看�
 
 ### 12.2 顶栏汇总
 
-顶栏使用长期累计 Metric，不扫描保留期 Run，也不随 180 天 Run 清理回落：
+顶栏使用长期累计 Metric，不扫描保留期 Run，也不随 45 天 Run 清理回落：
 
 | 指标 | 口径 |
 | --- | --- |
@@ -448,7 +448,7 @@ Metric 聚合是异步最终一致，因此存在待处理事件时四项数字�
 - 节点配置
 - 对应 Revision
 
-当前未完成节点使用 Authoritative Task Revision 还原。Task 在 Run 结束 30 天后清理，Node Execution 与 Run 保留 180 天，因此已完成步骤不能依赖 Task 还原历史。
+当前未完成节点使用 Authoritative Task Revision 还原。Task 在 Run 结束 7 天后清理，Node Execution 与 Run 保留 45 天，因此已完成步骤不能依赖 Task 还原历史。
 
 ### 12.4 数据 API
 

@@ -256,8 +256,8 @@ describe("WorkflowDataPage", () => {
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /已进入 9/ }));
 
-    const records = await screen.findByRole("dialog", { name: "全部进入记录" });
-    expect(within(records).getByText("已结束记录仅保留最近 45 天")).toBeInTheDocument();
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
+    expect(within(records).getByText("仅展示近45天运行明细，共 0 条")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith({
       cursor: undefined,
       workflowId: document.id,
@@ -307,9 +307,9 @@ describe("WorkflowDataPage", () => {
     expect(within(summary).getByText("92")).toBeInTheDocument();
     expect(within(summary).getByText("16")).toBeInTheDocument();
 
-    await user.click(within(summary).getByRole("button", { name: "查看全部记录" }));
+    await user.click(within(summary).getByRole("button", { name: "运行明细" }));
 
-    const records = await screen.findByRole("dialog", { name: "全部进入记录" });
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
     expect(within(records).getByText("全部记录客户")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith({
       cursor: undefined,
@@ -365,7 +365,7 @@ describe("WorkflowDataPage", () => {
       );
 
       const summary = await screen.findByRole("region", { name: "运行汇总" });
-      await user.click(within(summary).getByRole("button", { name: "查看全部记录" }));
+      await user.click(within(summary).getByRole("button", { name: "运行明细" }));
       expect(await screen.findByText("全部记录客户")).toBeInTheDocument();
       expect(
         mock.history.get.filter((request) => request.url === `/server/embed/workflows/${document.id}/records`),
@@ -438,7 +438,7 @@ describe("WorkflowDataPage", () => {
     expect(screen.queryByRole("tablist", { name: "数据视图" })).not.toBeInTheDocument();
     expect(within(canvas).queryByRole("button", { name: "打开节点库" })).not.toBeInTheDocument();
     await user.click(within(canvas).getByRole("button", { name: /当前停留 18.*已通过 102/ }));
-    const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
     expect(screen.getByRole("application")).toBeInTheDocument();
     expect(within(records).getByText("张三")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith(expect.objectContaining({ nodeId: waitNode.id }));
@@ -518,7 +518,7 @@ describe("WorkflowDataPage", () => {
 
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /未完成 1/ }));
-    const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
     await user.click(within(records).getByText("已停止客户"));
 
     expect(screen.getByText("流程已停止运行")).toBeInTheDocument();
@@ -598,7 +598,7 @@ describe("WorkflowDataPage", () => {
 
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
-    const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
     await user.click(within(records).getByText("等待发送客户"));
 
     expect(await screen.findByText("等待发送 · 07/13 09:00 继续")).toBeInTheDocument();
@@ -649,7 +649,7 @@ describe("WorkflowDataPage", () => {
     );
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
-    expect(await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "运行明细" })).toBeInTheDocument();
 
     view.rerender(
       <ReactFlowProvider>
@@ -661,7 +661,7 @@ describe("WorkflowDataPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: `${waitNode.data.title}进入记录` })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "运行明细" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("application")).toBeInTheDocument();
   });
@@ -703,8 +703,8 @@ describe("WorkflowDataPage", () => {
     const canvas = await screen.findByRole("application");
     await userEvent.click(within(canvas).getByRole("button", { name: /当前停留 1/ }));
 
-    const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
-    expect(within(records).getByRole("heading", { name: waitNode.data.title })).toBeInTheDocument();
+    const records = await screen.findByRole("dialog", { name: "运行明细" });
+    expect(within(records).getByRole("heading", { name: "运行明细" })).toBeInTheDocument();
   });
 
   it("echoes configured node summaries that depend on upstream variables", async () => {

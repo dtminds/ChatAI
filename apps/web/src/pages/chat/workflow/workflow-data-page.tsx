@@ -217,7 +217,7 @@ function WorkflowDataOverviewView({
     {
       icon: ArrowRight02Icon,
       iconClassName: "bg-primary/8 text-primary",
-      label: "进入次数",
+      label: "累计进入",
       value: totals.entered,
     },
     {
@@ -229,7 +229,7 @@ function WorkflowDataOverviewView({
     {
       icon: RacingFlagIcon,
       iconClassName: "bg-indigo-500/8 text-indigo-500",
-      label: "已完成",
+      label: "累计完成",
       value: totals.completed,
     },
     {
@@ -274,7 +274,7 @@ function WorkflowDataOverviewView({
         <div className="flex shrink-0 items-center border-l px-5">
           <Button className="gap-2" onClick={onViewAllRecords} size="sm" type="button" variant="outline">
             <HugeiconsIcon icon={Task01Icon} size={16} strokeWidth={1.8} />
-            查看全部记录
+            运行明细
           </Button>
         </div>
       </section>
@@ -320,25 +320,21 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
   const openDetail = useCallback((record: WorkflowEntryRecord) => {
     void repository.getRecord(document.id, record.recordId).then(setDetail);
   }, [document.id, repository]);
-  const title = nodeId && document.publishedRevision
-    ? nodeTitle(document, document.publishedRevision, nodeId)
-    : "全部进入记录";
-  const panelLabel = nodeId ? `${title}进入记录` : title;
+  const title = "运行明细";
   return (
     <section
-      aria-label={panelLabel}
+      aria-label={title}
       className="absolute inset-4 z-10 flex min-h-0 flex-col overflow-hidden rounded-[8px] border bg-background shadow-sm"
       role="dialog"
     >
       <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
-          <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-            <span>共显示 {page?.items.length ?? 0} 条进入记录</span>
-            <span>已结束记录仅保留最近 {WORKFLOW_RUN_RETENTION_DAYS} 天</span>
+          <div className="mt-1 text-xs text-muted-foreground">
+            仅展示近{WORKFLOW_RUN_RETENTION_DAYS}天运行明细，共 {page?.items.length ?? 0} 条
           </div>
         </div>
-        <Button aria-label="关闭进入记录" className="size-8" onClick={onClose} size="icon" type="button" variant="ghost">
+        <Button aria-label="关闭运行明细" className="size-8" onClick={onClose} size="icon" type="button" variant="ghost">
           <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
         </Button>
       </div>

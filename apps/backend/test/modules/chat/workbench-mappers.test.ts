@@ -7,6 +7,7 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  UNREAD_LOOKBACK_MS,
 } from "../../../src/modules/chat/workbench-mappers.js";
 
 describe("workbench MySQL mappers", () => {
@@ -78,7 +79,7 @@ describe("workbench MySQL mappers", () => {
         last_audit_info_id: 9002,
         last_message_content: "最近一条文本",
         last_message_type: "text",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         reply: 0,
         seat_id: 12,
@@ -105,9 +106,37 @@ describe("workbench MySQL mappers", () => {
       thirdExternalUserId: "external-1",
       thirdUserId: "third-user-1",
       unreadCount: 2,
+      hasStoredUnread: true,
     });
     expect(conversation.createdAt).toBe(1778832000000);
     expect(conversation.verified).toBe(false);
+  });
+
+  it("clears conversation unread outside the seven-day lookback", () => {
+    const conversation = mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        contact_original_name: null,
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: "最近一条文本",
+        last_message_type: "text",
+        last_msgtime: Date.now() - UNREAD_LOOKBACK_MS - 60_000,
+        pinned_time: 0,
+        reply: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 2,
+        verified: 0,
+      });
+
+    expect(conversation.unreadCount).toBe(0);
+    expect(conversation.hasStoredUnread).toBe(true);
   });
 
   it("maps application-message bind type for single conversations", () => {
@@ -135,6 +164,7 @@ describe("workbench MySQL mappers", () => {
       customerAvatar: "https://b5.bokr.com.cn/dist/app-avatar.png",
       customerBindType: 2,
       customerName: "应用消息",
+      hasStoredUnread: false,
       mode: "single",
     });
   });
@@ -231,7 +261,7 @@ describe("workbench MySQL mappers", () => {
       id: 88,
       last_message_content: "最近一条文本",
       last_message_type: "text",
-      last_msgtime: 1778240100000,
+      last_msgtime: Date.now() - 60_000,
       pinned_time: 0,
       seat_id: 12,
       third_external_userid: "external-1",
@@ -356,7 +386,7 @@ describe("workbench MySQL mappers", () => {
         id: 91,
         last_message_content: "普通文本",
         last_message_type: "text",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",
@@ -380,7 +410,7 @@ describe("workbench MySQL mappers", () => {
         id: 92,
         last_message_content: "不能直接透出",
         last_message_type: "unknown-msgtype",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",
@@ -404,7 +434,7 @@ describe("workbench MySQL mappers", () => {
         id: 93,
         last_message_content: null,
         last_message_type: "",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",
@@ -430,7 +460,7 @@ describe("workbench MySQL mappers", () => {
         id: 93,
         last_message_content: JSON.stringify({ content: "客户加入了群聊" }),
         last_message_type: "system",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",
@@ -454,7 +484,7 @@ describe("workbench MySQL mappers", () => {
         id: 94,
         last_message_content: JSON.stringify({ type: "unknown" }),
         last_message_type: "system",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",
@@ -480,7 +510,7 @@ describe("workbench MySQL mappers", () => {
         id: 95,
         last_message_content: "Agent 转人工处理：请及时接管",
         last_message_type: "system",
-        last_msgtime: 1778240100000,
+        last_msgtime: Date.now() - 60_000,
         pinned_time: 0,
         seat_id: 12,
         third_external_userid: "external-1",

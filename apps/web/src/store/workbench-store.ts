@@ -2593,6 +2593,12 @@ function isCursorInvalidationError(error: unknown) {
   return candidate.code === "WORKBENCH_CURSOR_INVALIDATED";
 }
 
+function shouldRequestConversationRead(conversation: Conversation | undefined) {
+  return Boolean(
+    conversation && (conversation.unread > 0 || conversation.hasStoredUnread),
+  );
+}
+
 function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
@@ -2607,6 +2613,7 @@ function applyReadResult(
       conversation.id === conversationId
         ? {
             ...conversation,
+            hasStoredUnread: false,
             unread: 0,
           }
         : conversation,
@@ -2653,6 +2660,7 @@ function applyUnreadResult(
       conversation.id === conversationId
         ? {
             ...conversation,
+            hasStoredUnread: true,
             unread: 1,
           }
         : conversation,
@@ -4019,7 +4027,7 @@ export function createWorkbenchStore() {
     ) {
       const conversation = getConversationById(get(), conversationId);
 
-      if (!conversation || conversation.unread <= 0) {
+      if (!shouldRequestConversationRead(conversation)) {
         return;
       }
 
@@ -5790,8 +5798,7 @@ export function createWorkbenchStore() {
         );
 
         if (
-          !conversation ||
-          conversation.unread <= 0 ||
+          !shouldRequestConversationRead(conversation) ||
           !canUseConversationActions(state, account)
         ) {
           return;

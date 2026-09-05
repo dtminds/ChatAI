@@ -2621,6 +2621,14 @@ describe("ChatWorkbenchPage", () => {
       }));
     });
 
+    await waitFor(() => {
+      expect(
+        useWorkbenchStore.getState().conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-001",
+        )?.unread,
+      ).toBe(2);
+    });
+
     await pasteIntoComposer(user, composer, "我来确认一下权益清单");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 

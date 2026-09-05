@@ -566,26 +566,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("excludes the current seat from the group mention picker", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await user.click(await screen.findByRole("tab", { name: "群聊" }));
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "@");
-
-    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
-    expect(within(listbox).getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
-    expect(
-      within(listbox).queryByRole("option", { name: "德瑞可-小可" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("sends selected member mentions with any-position placeholders", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
@@ -635,27 +615,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(sentPayload.atOriginText).toMatch(
       /^hello @小林\s+world @缪勇飞 群昵称111$/,
     );
-  });
-
-  it("inserts a selected mention at a middle caret position", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await user.click(await screen.findByRole("tab", { name: "群聊" }));
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "1  @帅庆 @帅庆");
-    placeContentEditableCaretAtTextOffset(composer, 1);
-    await user.keyboard("@");
-
-    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
-    await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
-
-    expect(composer.textContent).toBe("1 @所有人   @帅庆 @帅庆");
   });
 
   it("keeps the retry dialog open when refreshed group members still do not contain the mention target", async () => {

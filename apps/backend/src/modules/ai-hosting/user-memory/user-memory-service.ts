@@ -21,7 +21,7 @@ import {
   parseUserMemoryDocument,
   updateManualMemory,
   UserMemoryDomainError,
-} from "./user-memory-domain.js";
+} from "@chatai/user-memory/http";
 import {
   DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER,
   USER_MEMORY_SCHEDULE,
@@ -32,7 +32,7 @@ import {
   resolveUserMemoryCustomerLimit,
   sumUserMemoryChanges,
   type UserMemoryCustomerLimitResolver,
-} from "./user-memory-domain.js";
+} from "@chatai/user-memory/http";
 
 export {
   DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER,
@@ -44,7 +44,7 @@ export {
   resolveUserMemoryCustomerLimit,
   sumUserMemoryChanges,
   type UserMemoryCustomerLimitResolver,
-} from "./user-memory-domain.js";
+} from "@chatai/user-memory/http";
 
 type CustomerKey = { platform: number; thirdExternalUserId: string };
 type CustomerSummary = CustomerKey & { avatarUrl?: string; customerName: string };

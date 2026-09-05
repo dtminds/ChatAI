@@ -110,6 +110,11 @@ function getRequiredContextSelectors(
   if (node.kind === "order-conversion") {
     return selectorFrom(config.orderNumberSelector);
   }
+  if (node.kind === "order-query") {
+    if (config.mode === "order-number") return selectorFrom(config.orderNumberSelector);
+    const conditions = isRecord(config.conditions) ? config.conditions : {};
+    return selectorsFromTimeRange(conditions.timeRange);
+  }
   if (node.kind === "message-query") return selectorsFromTimeRange(config.timeRange);
   if (node.kind === "branch") return requiredBranchSelectors(node, spec);
   return [];

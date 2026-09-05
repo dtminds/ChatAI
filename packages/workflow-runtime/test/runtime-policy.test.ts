@@ -13,6 +13,7 @@ import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
   WorkflowRuntimeService,
@@ -290,13 +291,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "order-query",
-      kind: "order-query",
+      id: "coupon",
+      kind: "coupon",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-query", source: "start", sourceOutletId: "default", target: "order-query" },
-      { id: "query-end", source: "order-query", sourceOutletId: "default", target: "end" },
+      { id: "start-coupon", source: "start", sourceOutletId: "default", target: "coupon" },
+      { id: "coupon-end", source: "coupon", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
@@ -308,8 +309,8 @@ describe("Workflow runtime policy", () => {
       context: { outputs: {}, trigger: {} },
       entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "order-query",
-      initialNodeKind: "order-query",
+      initialNodeId: "coupon",
+      initialNodeKind: "coupon",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -612,6 +613,7 @@ function createHarness(options: {
               WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
               WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
               WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+              WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
               WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
             ],

@@ -244,6 +244,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Order Conversion node requires an order number variable";
     case "order-bind":
       return "Order Bind node requires an order number variable";
+    case "order-query":
+      return "Order Query node requires an order number variable or complete query conditions";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

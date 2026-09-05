@@ -176,6 +176,10 @@ const projectableDraftData = {
   "order-bind": {
     orderNumberSelector: ["node", "llm", "orderNo"],
   },
+  "order-query": {
+    mode: "order-number",
+    orderNumberSelector: ["node", "llm", "orderNo"],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],
@@ -194,5 +198,4 @@ const projectableDraftData = {
 const placeholderKinds = [
   "agent",
   "coupon",
-  "order-query",
 ] as const satisfies readonly WorkflowNodeKind[];

@@ -52,6 +52,7 @@ import {
   useWorkflowCustomFieldResource,
 } from "./workflow-custom-field-resource";
 import { useWorkflowWeComMemberResource } from "./workflow-wecom-member-resource";
+import { useWorkflowOrderResource } from "./workflow-order-resource";
 import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import {
   WorkflowCreateDialog,
@@ -231,6 +232,9 @@ function WorkflowWorkspaceContent({
     && inspector.node?.data.kind === "start"
     && "workUserIds" in inspector.node.data;
   const wecomMemberResource = useWorkflowWeComMemberResource(shouldLoadWecomMembers);
+  const orderResource = useWorkflowOrderResource(
+    inspector.isOpen && inspector.node?.data.kind === "order-query",
+  );
   const previousInspectorOpenRef = useRef(false);
   const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const canRestoreVersion = currentDocument.permissions.canEdit
@@ -474,6 +478,7 @@ function WorkflowWorkspaceContent({
                     reload: () => void managedAccountResource.reload(),
                     status: managedAccountResource.status,
                   },
+                  orders: orderResource,
                   wecomMembers: {
                     memberLimit: wecomMemberResource.memberLimit,
                     reload: () => void wecomMemberResource.reload(),

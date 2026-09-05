@@ -296,41 +296,47 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: "/embed/workflows/31",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: true,
+          path: "/embed/workflows/31",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
 
     await router.navigate(-1);
 
     expect(await screen.findByText("嵌入列表")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: false,
-        path: "/embed/workflows",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: false,
+          path: "/embed/workflows",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
 
     await router.navigate(1);
 
     expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenLastCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: "/embed/workflows/31",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenLastCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: true,
+          path: "/embed/workflows/31",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
   });
 
   it("logs in embed workflows with an encrypted handoff token", async () => {

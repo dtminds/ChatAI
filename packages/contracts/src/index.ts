@@ -42,6 +42,8 @@ export * from "./workflow/messages.js";
 export * from "./workflow/node-contract.js";
 export * from "./workflow/observability.js";
 export * from "./workflow/order-bind.js";
+export * from "./workflow/order-query.js";
+export * from "./workflow/order-query-resource.js";
 export * from "./workflow/order-conversion.js";
 export * from "./workflow/policy.js";
 export * from "./workflow/ratio-split.js";

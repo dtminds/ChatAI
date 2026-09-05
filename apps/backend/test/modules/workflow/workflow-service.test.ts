@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowLlmTestAttemptRepository,
+  WorkflowContactIdentityLookupError,
 } from "@chatai/workflow-runtime";
 import {
   InMemoryWorkflowRepository,
@@ -78,6 +79,332 @@ describe("WorkflowService", () => {
       statusCode: 400,
     });
     expect(getEndpointKey).not.toHaveBeenCalled();
+  });
+
+  it("runs an Order Query condition test synchronously with resolved xyId", async () => {
+    const getContactIdentity = vi.fn(async () => ({ externalUserId: 101, xyId: 303 }));
+    const execute = vi.fn(async () => ({
+      netAmount: 80,
+      orderCount: 1,
+      totalAmount: 100,
+    }));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => new Date("2026-09-04T04:30:00.000Z"),
+      contactIdentityPort: { getContactIdentity },
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"],
+            mode: "dynamic",
+            start: ["trigger", "occurredAt"],
+          },
+        },
+        mode: "conditions",
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      externalUserId: 101,
+      variableValues: [
+        {
+          selector: ["trigger", "occurredAt"],
+          value: "2026-09-01T00:00:00.000Z",
+        },
+        {
+          selector: ["current-node-lifecycle", "enteredAt"],
+          value: "2026-09-03T04:00:00.000Z",
+        },
+      ],
+    })).resolves.toEqual({
+      output: {
+        netAmount: 80,
+        orderCount: 1,
+        totalAmount: 100,
+      },
+    });
+    expect(getContactIdentity).toHaveBeenCalledWith({
+      key: { externalUserId: 101, type: "externalUserId" },
+      signal: expect.any(AbortSignal),
+      uid: 9,
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ capabilityKey: "customer.order.query" }),
+      expect.objectContaining({
+        command: expect.objectContaining({
+          mode: "conditions",
+          timeRange: ["2026-09-01 08:00:00", "2026-09-03 12:00:00"],
+        }),
+        identities: { externalUserId: 101, xyId: 303 },
+        uid: 9,
+      }),
+    );
+  });
+
+  it("rejects unsafe Order Query test variable paths without mutating object prototypes", async () => {
+    const prototype = Object.prototype as Record<string, unknown>;
+    delete prototype.orderQueryTestProbe;
+    const execute = vi.fn();
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository, {
+      contactIdentityPort: {
+        getContactIdentity: vi.fn(async () => ({ externalUserId: 101, xyId: 303 })),
+      },
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const seeded = await repository.saveDraft({
+      draft: withOrderQueryNode(created.draft, {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"],
+            mode: "dynamic",
+            start: ["trigger", "__proto__", "orderQueryTestProbe"],
+          },
+        },
+        mode: "conditions",
+      }),
+      draftSemanticHash: "unsafe-order-query-test-selector",
+      expectedDraftVersion: created.draftVersion,
+      opSubUserId: operator.subUserId,
+      uid: operator.uid,
+      workflowId: created.id,
+    });
+    if (seeded.kind !== "success") throw new Error("unsafe Order Query draft seed failed");
+
+    try {
+      await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+        expectedDraftVersion: seeded.value.draftVersion,
+        externalUserId: 101,
+        variableValues: [
+          {
+            selector: ["trigger", "__proto__", "orderQueryTestProbe"],
+            value: "2026-09-01T00:00:00.000Z",
+          },
+          {
+            selector: ["current-node-lifecycle", "enteredAt"],
+            value: "2026-09-03T04:00:00.000Z",
+          },
+        ],
+      })).rejects.toMatchObject({
+        code: "WORKFLOW_ORDER_QUERY_TEST_CONFIG_INVALID",
+        statusCode: 400,
+      });
+      expect(prototype).not.toHaveProperty("orderQueryTestProbe");
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      delete prototype.orderQueryTestProbe;
+    }
+  });
+
+  it("runs an Order Query order-number test without resolving customer identity", async () => {
+    const getContactIdentity = vi.fn();
+    const execute = vi.fn(async () => ({
+      netAmount: 25,
+      orderCount: 1,
+      totalAmount: 25,
+    }));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      contactIdentityPort: { getContactIdentity },
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, {
+        mode: "order-number",
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      orderNumber: "SO-1001",
+    })).resolves.toMatchObject({ output: { orderCount: 1, totalAmount: 25 } });
+    expect(getContactIdentity).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ command: { mode: "order-number", orderNumber: "SO-1001" } }),
+    );
+  });
+
+  it("aborts an Order Query test when its synchronous deadline expires", async () => {
+    let markExecutionStarted!: (signal: AbortSignal) => void;
+    const executionStarted = new Promise<AbortSignal>((resolve) => {
+      markExecutionStarted = resolve;
+    });
+    const execute = vi.fn((
+      _definition: unknown,
+      request: { signal: AbortSignal },
+    ) => {
+      markExecutionStarted(request.signal);
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const service = createService(new InMemoryWorkflowRepository(), {
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+      orderQueryTestTimeoutMs: 12_000,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, { mode: "order-number" }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    vi.useFakeTimers();
+    try {
+      const result = service.runOrderQueryTest(operator, created.id, "order-query-1", {
+        expectedDraftVersion: saved.draftVersion,
+        orderNumber: "SO-1001",
+      });
+      const resultExpectation = expect(result).rejects.toMatchObject({
+        code: "WORKFLOW_ORDER_QUERY_TEST_FAILED",
+        statusCode: 502,
+      });
+      const signal = await executionStarted;
+      await vi.advanceTimersByTimeAsync(12_000);
+
+      await resultExpectation;
+      expect(signal.aborted).toBe(true);
+      expect(execute).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects missing identity and mismatched Order Query test variables", async () => {
+    const execute = vi.fn();
+    const getContactIdentity = vi.fn(async () => ({}));
+    const service = createService(new InMemoryWorkflowRepository(), {
+      contactIdentityPort: { getContactIdentity },
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"],
+            mode: "dynamic",
+            start: ["trigger", "occurredAt"],
+          },
+        },
+        mode: "conditions",
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      variableValues: [
+        { selector: ["trigger", "occurredAt"], value: "2026-09-01T00:00:00.000Z" },
+        {
+          selector: ["current-node-lifecycle", "enteredAt"],
+          value: "2026-09-03T04:00:00.000Z",
+        },
+      ],
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_QUERY_TEST_EXTERNAL_USER_REQUIRED",
+      statusCode: 400,
+    });
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      externalUserId: 101,
+      variableValues: [{ selector: ["trigger", "wrongTime"], value: "2026-09-01T00:00:00.000Z" }],
+    })).rejects.toMatchObject({ code: "WORKFLOW_ORDER_QUERY_TEST_INPUT_INVALID", statusCode: 400 });
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      externalUserId: 101,
+      variableValues: [
+        {
+          selector: ["trigger", "occurredAt"],
+          value: "2026-09-01T00:00:00.000Z",
+        },
+        {
+          selector: ["current-node-lifecycle", "enteredAt"],
+          value: "2026-09-03T04:00:00.000Z",
+        },
+      ],
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_QUERY_TEST_CUSTOMER_NOT_FOUND",
+      statusCode: 400,
+    });
+    expect(getContactIdentity).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("returns a customer-not-found client error for Java identity error -1", async () => {
+    const identityError = new WorkflowContactIdentityLookupError(
+      "Workflow contact identity endpoint rejected the request: -1 客户不存在",
+      { failureKind: "terminal", upstreamErrorCode: -1 },
+    );
+    const service = createService(new InMemoryWorkflowRepository(), {
+      contactIdentityPort: {
+        getContactIdentity: vi.fn(async () => { throw identityError; }),
+      },
+      orderQueryCapabilityPort: { execute: vi.fn() } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"],
+            mode: "dynamic",
+            start: ["trigger", "occurredAt"],
+          },
+        },
+        mode: "conditions",
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+      expectedDraftVersion: saved.draftVersion,
+      externalUserId: 101,
+      variableValues: [
+        { selector: ["trigger", "occurredAt"], value: "2026-09-01T00:00:00.000Z" },
+        {
+          selector: ["current-node-lifecycle", "enteredAt"],
+          value: "2026-09-03T04:00:00.000Z",
+        },
+      ],
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_QUERY_TEST_CUSTOMER_NOT_FOUND",
+      message: "客户不存在",
+      statusCode: 400,
+    });
   });
 
   it("rejects invalid direct-entry keys returned by the Java port", async () => {
@@ -2612,6 +2939,38 @@ function withLlmNode(
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
       llmNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
+  };
+}
+
+function withOrderQueryNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: Record<string, unknown>,
+) {
+  const orderQueryNode = {
+    data: {
+      ...config,
+      kind: "order-query" as const,
+      label: "订单查询",
+      metric: "",
+      schemaVersion: 1,
+      status: "ready" as const,
+      title: "订单查询",
+    },
+    id: "order-query-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      { id: "edge-start-order-query", source: "start", target: "order-query-1", type: "workflowEdge" },
+      { id: "edge-order-query-end", source: "order-query-1", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      orderQueryNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
   };

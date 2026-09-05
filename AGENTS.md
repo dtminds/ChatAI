@@ -5,6 +5,12 @@
 - `apps/web` 前端，`apps/backend` 后端，`packages/contracts` 共享契约。设计文档在 `docs/superpowers/specs`，数据库文档在 `docs/db`。
 - Node.js 24 LTS + pnpm。Web：Vite、React、TypeScript、Tailwind、shadcn/ui、Hugeicons、React Router、Zustand、Axios。Backend：Fastify、Kysely、mysql2、`@fastify/jwt`、TypeBox。测试：Vitest。
 
+## Execution
+
+- 明确的实施请求下，按现有模式完成范围内的实现、验证和结果说明，无需为常规技术选择反复询问。只读审查、方案讨论或“先不修改”时，不编辑文件。
+- 先从代码和文档确认事实；仍影响业务语义、数据安全或授权边界的歧义才暂停相关操作并询问，同时继续不受影响的工作。范围外改动先取得确认。
+- Codex 执行 package script 一律使用 `corepack pnpm ...`，不直接执行裸 `pnpm`。
+
 ## Architecture
 
 - 浏览器 API 走同源 `/api`，公开业务接口 `/api/server/*`；不要硬编码环境域名，也不要在 URL 中暴露内部实现命名。
@@ -16,6 +22,7 @@
 ## Coding Standards
 
 - 编写或修改列表、接口、数据库、分页、Worker 或跨层契约时，读取 `CODING_STANDARDS.md` 并执行 Extra Checks。
+- 新增或修改 `/third-internal/*` 调用时，读取其中的 Java internal API 返回协议；新增或修改测试时，读取其中的 Testing。
 - 审查 PR、分支、Commit、未提交改动或复审前同样读取该文件；审查时额外应用其中的 Review 章节。通用审查流程沿用 Review Skill。
 
 ## Workflow Node Development
@@ -28,16 +35,15 @@
 - 日期、时间和日期时间输入统一使用共享 UI 组件：日期和日期时间使用 `apps/web/src/components/ui/date-time-picker.tsx` 导出的 `DatePicker` / `DateTimePicker`，仅选择时间时使用 `apps/web/src/components/ui/time-picker.tsx` 的 `TimePicker`。组件能力不足时扩展共享组件；业务页面不得使用浏览器原生 `<input type="date">`、`<input type="time">` 或 `<input type="datetime-local">`。
 - 不要覆盖基础组件已有的 `disabled` / `hover` / `focus` / `active` / `loading` 状态，除非用户明确要求或基础组件有缺陷。
 - UI 改动限制在用户指出的范围内，先查同模块相邻页面和 `components/ui` 再复用；额外调整先说明并取得确认。
-- 异步操作失败用 `toast.error` 或当前弹窗展示，不要写入页面级 `setError`。页面/区块内联错误只用于自身加载失败，并随重载、重试或路由切换清除；字段校验可在字段附近展示。用户触发的异步失败且没有可行动原因时，toast 用「操作失败，请稍后重试」，不要写成「保存工单失败」这类动作名拼接。
+- 新增或修改 Web 错误反馈时，读取并执行 `CODING_STANDARDS.md` 的 Extra Checks → Web 错误反馈；展示位置、文案和例外统一在该处定义。
 - 登录态页面不要用浏览器自动化验证；用代码路径、Vitest 和 build。
 - 保持基础语义和可访问名称；不要为无障碍手写复杂焦点管理或引入额外产品复杂度。完整 WCAG 不是当前目标。
 - 截图只取结构、层级、相对关系、状态和可见文案，必须覆盖截图中出现的信息节点。不要用截图像素或显示大小推导字号、间距、圆角或控件高度，尤其不要因为截图看起来大就把界面做大；尺寸沿用现有 token 和 shadcn 源码。
 - 写 UI 文案时，只写用户需要知道和可以操作的内容，不要解释内部实现。
-- 用户主动触发的异步操作失败、且没有可行动的具体原因时，toast 统一使用「操作失败，请稍后重试」；禁止重复按钮或动作名称组成「保存工单失败」「开始排查失败」等文案。极简、说人话，别一板一眼。
 - 中文短提示类微文案：短的中文 UI tips、hints、placeholders、helper text、loading tips 和其它提示式文案，默认不要在末尾加标点；只有较长的段落式解释在确实能提升可读性时才保留末尾标点。UI 微文案默认短句优先，能用 2-4 个字说清就不要拼接业务对象名；加载态默认「正在加载」，空态默认「暂无数据」，按钮和状态文案不要写成说明句。
 - 列表/表格/卡片区分 loading、empty、error：loading 期间不显示「暂无数据」；表格 loading 保留表头，表体用 `role="status"` + `Spinner` +「正在加载」；empty 只在请求完成且数据为空时出现。加载用 `apps/web/src/components/ui/spinner.tsx`，不要手写 spinner，也不要拼接页面名。
 - 工作台状态收敛到 `apps/web/src/store/workbench-store.ts`。
-- 组件测试覆盖可感知行为、语义、状态流转和数据契约，不断言 Tailwind class、视觉细节或文案。简单样式微调（间距、颜色、字号等，且不改结构/行为/语义）不必先补测试，跑现有测试、build 和 `git diff --check` 即可；新结构、新状态或新交互仍要补行为测试。
+- UI 改动的测试范围按 `CODING_STANDARDS.md` 的 Testing 执行，其中区分简单样式微调与结构、行为、数据或语义变化。
 
 ## Backend
 
@@ -54,9 +60,13 @@
 ## Pre-PR Verification
 
 - 提交或开 PR 前跑与受影响 CI 对齐的 build，不能用局部 typecheck 或单测代替。跑不了的命令写进说明，不能省略。每次提交跑 `git diff --check`。
-- `apps/web`：`pnpm --filter @chatai/web build`（含 `tsc -b`，不能用 `typecheck` 替代）；有可测逻辑时再跑相关 Vitest。
-- `apps/backend`：对应 build + 相关测试；涉及数据库、路由契约或鉴权时优先补测试。
-- `packages/contracts` 或跨层 DTO：contracts build，并跑受影响消费方；同时动到 web 和 backend 时两侧 build 都跑，加上相关契约/适配层测试。
+- `apps/web`：`corepack pnpm --filter @chatai/web build`（含 `tsc -b`，不能用 `typecheck` 替代）；有可测逻辑时再跑相关 Vitest。
+- `apps/backend`：`corepack pnpm --filter @chatai/backend build` + 相关测试；涉及数据库、路由契约或鉴权时优先补测试。
+- `packages/contracts` 或跨层 DTO：`corepack pnpm --filter @chatai/contracts build`，并跑受影响消费方；同时动到 web 和 backend 时两侧 build 都跑，加上相关契约/适配层测试。
+- 其它受影响包从其 `package.json` 的 `name`、`scripts` 和 `.github/workflows` 查明验证入口，用 `corepack pnpm --filter <package-name> <script>` 执行，不猜测脚本名。
+- 定向 Vitest 在对应 package 目录运行本地二进制，并显式指定该包的配置和测试路径。例如工作目录为 `apps/web` 时：`./node_modules/.bin/vitest run --config vitest.config.ts test/pages/chat/ai-hosting-pages.test.tsx`。不要在仓库根目录运行 Vitest；特殊测试套件使用该包实际配置的入口。
+- 验证范围由受影响路径、风险和 CI 要求确定。必要检查通过且当前 Diff 已审阅后结束验证；只有后续代码、依赖或配置变化、检查失败或尚未解决的具体风险，才重跑相关检查或扩大范围，不为增加信心重复相同检查。
+- 只有取得完整结束状态的命令才能声明通过；说明已执行、失败或未执行的检查及原因和剩余风险。纯文档改动核对内容、引用和 `git diff --check`；若触及文档构建或可执行配置，仍跑对应检查。
 
 ## Agent skills
 

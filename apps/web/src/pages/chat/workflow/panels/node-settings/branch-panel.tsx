@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -248,10 +249,11 @@ function BranchConditionRow({
 }) {
   const variable = condition.selector ? resolveWorkflowVariable(variables, condition.selector) : undefined;
   const operatorOptions = getBranchOperatorOptions(variable?.type);
+  const needsValue = variable && branchOperatorNeedsValue(condition.operator);
 
   return (
     <div className="space-y-2 rounded-[8px] bg-secondary/50 p-2.5">
-      <div className="grid grid-cols-[minmax(0,1fr)_8.5rem_2rem] gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_2rem] gap-2">
         <WorkflowVariableSelect
           ariaLabel={`条件 ${index + 1} 变量`}
           customFieldVisibility="all"
@@ -268,6 +270,25 @@ function BranchConditionRow({
           variables={variables}
         />
 
+        <Button
+          aria-label={`删除条件 ${index + 1}`}
+          className="size-8 p-0 text-destructive hover:text-destructive"
+          disabled={!showDelete}
+          onClick={onDelete}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
+        </Button>
+      </div>
+
+      <div className={cn(
+        "grid gap-2",
+        needsValue
+          ? "grid-cols-[6rem_minmax(0,1fr)]"
+          : "grid-cols-1",
+      )}>
         <Select
           disabled={!variable}
           onValueChange={(value) => {
@@ -283,7 +304,7 @@ function BranchConditionRow({
         >
           <SelectTrigger
             aria-label={`条件 ${index + 1} 判断`}
-            className="h-9 w-full rounded-[8px] text-[13px]"
+            className="h-9 w-full rounded-[8px] px-2 text-xs"
           >
             <SelectValue placeholder="选择判断" />
           </SelectTrigger>
@@ -294,26 +315,14 @@ function BranchConditionRow({
           </SelectContent>
         </Select>
 
-        <Button
-          aria-label={`删除条件 ${index + 1}`}
-          className="size-8 p-0 text-destructive hover:text-destructive"
-          disabled={!showDelete}
-          onClick={onDelete}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
-        </Button>
+        {needsValue ? (
+          <ConditionValueField
+            condition={condition}
+            onChange={(value) => onChange({ value })}
+            type={variable.type}
+          />
+        ) : null}
       </div>
-
-      {variable && branchOperatorNeedsValue(condition.operator) ? (
-        <ConditionValueField
-          condition={condition}
-          onChange={(value) => onChange({ value })}
-          type={variable.type}
-        />
-      ) : null}
     </div>
   );
 }
@@ -333,13 +342,13 @@ function ConditionValueField({
       <div className="grid grid-cols-2 gap-2">
         <DateTimePicker
           aria-label="开始时间"
-          className="text-[13px]"
+          className="text-xs"
           onValueChange={(nextValue) => onChange([nextValue, value[1]])}
           value={value[0]}
         />
         <DateTimePicker
           aria-label="结束时间"
-          className="text-[13px]"
+          className="text-xs"
           onValueChange={(nextValue) => onChange([value[0], nextValue])}
           value={value[1]}
         />
@@ -350,7 +359,7 @@ function ConditionValueField({
     return (
       <DateTimePicker
         aria-label="比较时间"
-        className="text-[13px]"
+        className="text-xs"
         onValueChange={onChange}
         value={typeof condition.value === "string" ? condition.value : ""}
       />
@@ -362,7 +371,7 @@ function ConditionValueField({
   return (
     <Input
       aria-label="比较值"
-      className="h-9 rounded-[8px] px-3 text-[13px]"
+      className="h-9 rounded-[8px] px-3 text-xs md:text-xs"
       onChange={(event) => onChange(event.target.value)}
       placeholder="输入比较值"
       value={typeof condition.value === "string" ? condition.value : ""}
@@ -387,7 +396,7 @@ function NumberConditionValueField({
   return (
     <Input
       aria-label="比较值"
-      className="h-9 rounded-[8px] px-3 text-[13px]"
+      className="h-9 rounded-[8px] px-3 text-xs md:text-xs"
       onBlur={() => {
         if (draftValue && !Number.isFinite(Number(draftValue))) {
           setDraftValue(committedValue);

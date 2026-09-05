@@ -98,6 +98,7 @@ describe("Workflow contact identity Java port", () => {
     })).toThrow(expect.objectContaining({
       message:
         "Workflow contact identity endpoint rejected the request: 40001 客户身份查询参数无效",
+      upstreamErrorCode: 40001,
     }));
   });
 

@@ -8,6 +8,7 @@ import { NodeOutputsSection } from "./node-outputs-section";
 import { SettingWorkspace, SettingWorkspaceProvider, useSettingWorkspace } from "./setting-workspace";
 import { LlmTestWorkspaceTrigger } from "../nodes/llm/test-workspace";
 import { AiIntentTestWorkspaceTrigger } from "../nodes/ai-intent/test-workspace";
+import { OrderQueryTestWorkspaceTrigger } from "../nodes/order-query/test-workspace";
 import type { WorkflowNodeTestContext } from "./types";
 
 export function NodeConfigPanel({
@@ -58,6 +59,8 @@ export function NodeConfigPanel({
               ? <LlmTestWorkspaceTrigger nodeId={node.id} />
               : node.data.kind === "ai-intent"
                 ? <AiIntentTestWorkspaceTrigger nodeId={node.id} />
+                : node.data.kind === "order-query"
+                  ? <OrderQueryTestWorkspaceTrigger nodeId={node.id} />
                 : undefined
             : undefined}
           node={node}

@@ -25,6 +25,7 @@ import type {
   WorkflowMessageQueryConfig,
   WorkflowOrderBindDraftConfig,
   WorkflowOrderConversionDraftConfig,
+  WorkflowOrderQueryDraftConfig,
   WorkflowRatioSplitDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
@@ -147,7 +148,7 @@ export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
-export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
+export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query"> & WorkflowOrderQueryDraftConfig;
 export type OrderConversionNodeData = WorkflowNodeDataBase<"order-conversion">
   & WorkflowOrderConversionDraftConfig;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;

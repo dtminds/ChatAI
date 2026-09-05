@@ -1,8 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  act,
   cleanup,
-  fireEvent,
   render,
   screen,
   waitFor,
@@ -193,23 +191,6 @@ const mockInsightSettings = {
     preset: "custom",
   },
 };
-
-async function openSettingsDialog(
-  tabName: string,
-  buttonName: string,
-  dialogName: string,
-) {
-  renderRoute("/chat/insights/settings");
-
-  expect(
-    await screen.findByRole("heading", { name: "洞察配置" }),
-  ).toBeInTheDocument();
-
-  await userEvent.click(screen.getByRole("tab", { name: tabName }));
-  await userEvent.click(screen.getByRole("button", { name: buttonName }));
-
-  return screen.findByRole("dialog", { name: dialogName });
-}
 
 vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => ticketServiceMocks);

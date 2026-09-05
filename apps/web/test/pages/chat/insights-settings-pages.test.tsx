@@ -1,20 +1,15 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  act,
   cleanup,
-  fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import {
-  createMockWorkbenchService,
   resetWorkbenchService,
-  setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
@@ -414,45 +409,6 @@ function createMockInsightDetail() {
         tagName: "物流异常",
       },
     ],
-  };
-}
-
-function createMockAnalyzingInsightDetail() {
-  return {
-    actionItems: [],
-    analysisStatus: "analyzing",
-    currentSnapshotId: undefined,
-    entities: [],
-    evidenceItems: [],
-    faqCandidates: [],
-    intents: [],
-    problemResolution: {
-      confidence: 0,
-      evidenceMessageIds: [],
-      problemDetected: false,
-      problemSummary: "",
-      resolutionStatus: "unknown",
-      unresolvedReason: undefined,
-    },
-    qaFindings: [],
-    sentiment: [],
-    session: {
-      agentAvatarUrl: "https://example.com/agent-4.png",
-      agentName: "客服四号",
-      conversationId: "304",
-      customerAvatarUrl: "https://example.com/customer-4.png",
-      customerName: "孙七",
-      endedAt: undefined,
-      generatedAt: undefined,
-      phase: undefined,
-      sessionId: "504",
-      startedAt: 1_780_245_000_000,
-    },
-    summary: {
-      sessionTitle: "",
-      text: "",
-    },
-    tags: [],
   };
 }
 
@@ -1317,37 +1273,6 @@ function installInsightMocks() {
       id,
     }),
   );
-}
-
-async function applyDateRangePreset(
-  label: string,
-  expectedFrom: string,
-  expectedTo: string,
-) {
-  await userEvent.click(screen.getByRole("button", { name: /日期范围/ }));
-  await userEvent.click(await screen.findByRole("button", { name: label }));
-
-  await waitFor(() => {
-    expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        from: `${expectedFrom}T00:00:00.000+08:00`,
-        to: `${expectedTo}T23:59:59.999+08:00`,
-      }),
-    );
-  });
-  expect(serviceMocks.getInsightOverviewSessions).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      from: `${expectedFrom}T00:00:00.000+08:00`,
-      page: 1,
-      pageSize: 20,
-      to: `${expectedTo}T23:59:59.999+08:00`,
-    }),
-  );
-  expect(
-    screen.getByRole("button", {
-      name: new RegExp(`日期范围.*${label}.*${expectedFrom}.*${expectedTo}`),
-    }),
-  ).toBeInTheDocument();
 }
 
 describe("conversation insights pages", () => {

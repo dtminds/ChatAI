@@ -93,7 +93,7 @@ export function useVisibleUnreadConversationRead({
         context.activeView !== "chat" ||
         !context.canUseConversationActions ||
         context.isConversationLoading ||
-        context.unreadCount <= 0 ||
+        (!options.force && context.unreadCount <= 0) ||
         (!options.force &&
           shouldSuppressAutoRead?.(conversationId, context.unreadCount)) ||
         (!options.force &&

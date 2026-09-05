@@ -40,6 +40,7 @@ import {
 import type {
   WorkflowBranchPath,
   WorkflowDraft,
+  WorkflowNodeKind,
 } from "@/pages/chat/workflow/types";
 
 function createDraft(): WorkflowDraft {
@@ -54,7 +55,7 @@ describe("workflow graph operations", () => {
   });
 
   it("keeps node metadata, default data, renderers, settings panels and palette in sync", () => {
-    const nodeKinds = Object.keys(nodeDefinitions);
+    const nodeKinds = Object.keys(nodeDefinitions) as WorkflowNodeKind[];
     const paletteNodeIds = paletteItems.map((item) => item.id);
 
     expect(nodeKinds).toEqual([

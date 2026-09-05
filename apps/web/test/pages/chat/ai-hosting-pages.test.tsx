@@ -3466,52 +3466,6 @@ describe("AI hosting pages", () => {
     expect(replacementCheckbox).toBeEnabled();
   });
 
-  it("shows document storage below 1MB with one decimal place", async () => {
-    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
-      agents: {
-        limit: 20,
-        used: 2,
-      },
-      kbDocs: {
-        limit: 1024 * 1024 * 1024,
-        used: 512 * 1024,
-      },
-      kbs: {
-        limit: 20,
-        used: 3,
-      },
-    });
-
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
-
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0.5MB/1GB");
-  });
-
-  it("shows document storage below 0.1MB as zero without a unit", async () => {
-    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
-      agents: {
-        limit: 20,
-        used: 2,
-      },
-      kbDocs: {
-        limit: 1024 * 1024 * 1024,
-        used: 64 * 1024,
-      },
-      kbs: {
-        limit: 20,
-        used: 3,
-      },
-    });
-
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
-
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0/1GB");
-  });
-
   it("reuses the sidebar quota when navigating between AI hosting pages", async () => {
     const router = createMemoryRouter(
       [

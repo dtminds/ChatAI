@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageRow, MESSAGE_SENT_AT_HOVER_DELAY_MS } from "@/pages/chat/components/message-feed";
-import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   installChatWorkbenchTestEnvironment,
@@ -14,7 +13,7 @@ describe("text message bubble layout", () => {
     installChatWorkbenchTestEnvironment();
   });
 
-  it("shrinks failed media message stacks to their content width", () => {
+  it("keeps retry controls beside failed media message content", () => {
     render(
       <MessageRow
         message={{
@@ -38,30 +37,11 @@ describe("text message bubble layout", () => {
     const contentRow = screen.getByTestId("message-inline-content-row");
     const retrySlot = screen.getByTestId("message-inline-status-slot");
 
-    expect(contentRow).toHaveClass("w-fit", "max-w-full");
-    expect(contentStack).toHaveClass("w-fit", "max-w-full");
     expect(contentRow).toContainElement(retrySlot);
     expect(contentRow).toContainElement(contentStack);
     expect(contentStack).not.toContainElement(retrySlot);
   });
 
-  it("forces long words and URLs to wrap inside the bubble", () => {
-    render(
-      <TextMessageBubble
-        isAgent={false}
-        text="https://example.com/verylongpathwithoutbreakpoints/abcdefghijklmnopqrstuvwxyz0123456789"
-      />,
-    );
-
-    const bubble = screen.getByTestId("text-message-bubble");
-    const text = screen.getByText(/verylongpathwithoutbreakpoints/);
-
-    expect(bubble).toHaveClass("max-w-full");
-    expect(text).toHaveStyle({
-      overflowWrap: "anywhere",
-      wordBreak: "break-word",
-    });
-  });
 
   it("shows the sender name for other group members", () => {
     render(

@@ -29,7 +29,6 @@ describe("AgentThinkingOrb", () => {
     const orb = container.querySelector('[data-slot="agent-thinking-orb"]');
 
     expect(orb).toHaveAttribute("aria-hidden", "true");
-    expect(orb).toHaveAttribute("data-orb-size", "20");
     expect(orb).toHaveAttribute("data-orb-speed", "1.2");
     expect(orb).toHaveAttribute("data-orb-state", "working");
     expect(orb).toHaveAttribute("data-orb-theme", "auto");

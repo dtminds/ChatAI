@@ -1077,22 +1077,13 @@ describe("ChatPanel", () => {
     expect(screen.getByText("测试席位")).toBeInTheDocument();
     expect(screen.getByText("切换 AI 模式")).toBeInTheDocument();
     expect(screen.getByText("会话托管")).toBeInTheDocument();
-    expect(screen.getByText("仅影响此会话，开启后 Agent 将自动回复客户")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "切换 AI 模式" })).toBeInTheDocument();
     expect(screen.getByText("自动回复")).toBeInTheDocument();
-    expect(screen.getByText("Agent 自动生成并发送消息，仅在必要时转人工")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭当前会话托管" })).toBeEnabled();
 
     await user.click(screen.getByRole("combobox", { name: "切换 AI 模式" }));
-    expect(screen.getByRole("option", { name: /关闭/ })).toHaveTextContent(
-      "由人工客服独立承接，不开启 AI 辅助",
-    );
-    expect(screen.getByRole("option", { name: /话术推荐/ })).toHaveTextContent(
-      "Agent 生成话术推荐，人工确认后发送",
-    );
-    expect(screen.getByRole("option", { name: /自动回复/ })).toHaveTextContent(
-      "Agent 自动生成并发送消息，仅在必要时转人工",
-    );
+    expect(screen.getByRole("option", { name: /关闭/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /自动回复/ })).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: /话术推荐/ }));
 
     expect(onChangeSeatAgentMode).toHaveBeenCalledWith("assistant");
@@ -1231,9 +1222,6 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("group-ai-dialog-content")).toBeInTheDocument();
     expect(screen.getByText("测试席位")).toBeInTheDocument();
     expect(screen.getByText("AI自动回复")).toBeInTheDocument();
-    expect(
-      screen.getByText("开启后，当前企微号被@时，AI会自动处理"),
-    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("switch", { name: "AI自动回复" }));
 

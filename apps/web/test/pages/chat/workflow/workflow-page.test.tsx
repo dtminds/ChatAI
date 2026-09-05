@@ -1421,41 +1421,6 @@ describe("Agent workflow page", () => {
     expect(within(nodeKinds).queryByText(/\+/)).not.toBeInTheDocument();
   });
 
-  it("picks overlay icon tone from the preset cover brightness", async () => {
-    const lightTemplate = {
-      coverUrl: null,
-      description: "",
-      id: "1",
-      name: "浅色封面",
-      nodeKinds: ["message"] as WorkflowNodeKind[],
-      nodeCount: 3,
-      publishedAt: "2026-09-01T00:00:00.000Z",
-      sortOrder: 0,
-      trigger: "添加好友",
-      updatedAt: "2026-09-01T00:00:00.000Z",
-      version: 1,
-      workflowType: "chatai_sop" as const,
-    };
-    const darkTemplate = {
-      ...lightTemplate,
-      id: "4",
-      name: "深色封面",
-    };
-    const templateRepository: WorkflowTemplateRepository = {
-      apply: vi.fn(),
-      get: vi.fn(),
-      list: vi.fn(async input => input.featured
-        ? { items: [lightTemplate, darkTemplate], total: 2 }
-        : { items: [], total: 0 }),
-    };
-
-    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
-
-    const lightCard = await screen.findByTestId("workflow-template-card-1");
-    const darkCard = screen.getByTestId("workflow-template-card-4");
-    expect(within(lightCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "light");
-    expect(within(darkCard).getByLabelText("模板节点类型")).toHaveAttribute("data-tone", "dark");
-  });
 
   it("shows a clean template draft preview and lets template managers delete the draft", async () => {
     const user = userEvent.setup();

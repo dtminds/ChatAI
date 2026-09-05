@@ -114,6 +114,61 @@ describe("Workflow Order Query Java port", () => {
     });
   });
 
+  it("rejects an order without subOrders because net amount cannot be verified", async () => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(vi.fn(async () => javaResponse({
+      count: 1,
+      list: [{ actuPayment: 25 }],
+      page: 1,
+      pageSize: 100,
+      success: true,
+    }))))).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_QUERY_RESPONSE_INVALID",
+      failureKind: "terminal",
+    });
+  });
+
+  it.each([
+    {
+      code: "WORKFLOW_ORDER_QUERY_FAILED",
+      fetch: vi.fn(async () => { throw new Error("network"); }),
+    },
+    {
+      code: "WORKFLOW_ORDER_QUERY_UNAVAILABLE",
+      fetch: vi.fn(async () => new Response(null, { status: 503 })),
+    },
+  ])("classifies transport or HTTP failure as $code", async ({ code, fetch }) => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(fetch))).rejects.toMatchObject({
+      code,
+      failureKind: "retryable",
+    });
+  });
+
+  it("classifies a Java business rejection as terminal with upstream diagnostics", async () => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(vi.fn(async () => javaResponse({
+      error: 40001,
+      errorMsg: "订单查询参数无效",
+      success: false,
+    }))))).rejects.toMatchObject({
+      code: "WORKFLOW_ORDER_QUERY_REJECTED",
+      diagnosticMessage:
+        "Workflow Order Query Java endpoint rejected the request: 40001 订单查询参数无效",
+      failureKind: "terminal",
+    });
+  });
+
+  it("propagates cancellation before issuing the Java request", async () => {
+    const fetchMock = vi.fn();
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    controller.abort(reason);
+
+    await expect(executeWorkflowOrderQuery(orderNumberInput(
+      fetchMock,
+      controller.signal,
+    ))).rejects.toBe(reason);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("omits platform from customer queries that target all platforms", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       count: 0,
@@ -142,3 +197,18 @@ describe("Workflow Order Query Java port", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty("platform");
   });
 });
+
+function orderNumberInput(fetch: typeof fetch, signal = new AbortController().signal) {
+  return {
+    baseUrl: "https://java.example.com/internal",
+    command: { mode: "order-number" as const, orderNumber: "SO-1001" },
+    fetch,
+    signal,
+    token: null,
+    uid: 9,
+  };
+}
+
+function javaResponse(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200 });
+}

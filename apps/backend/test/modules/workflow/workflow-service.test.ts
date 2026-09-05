@@ -183,6 +183,55 @@ describe("WorkflowService", () => {
     );
   });
 
+  it("aborts an Order Query test when its synchronous deadline expires", async () => {
+    let markExecutionStarted!: (signal: AbortSignal) => void;
+    const executionStarted = new Promise<AbortSignal>((resolve) => {
+      markExecutionStarted = resolve;
+    });
+    const execute = vi.fn((
+      _definition: unknown,
+      request: { signal: AbortSignal },
+    ) => {
+      markExecutionStarted(request.signal);
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const service = createService(new InMemoryWorkflowRepository(), {
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+      orderQueryTestTimeoutMs: 12_000,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withOrderQueryNode(created.draft, { mode: "order-number" }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    vi.useFakeTimers();
+    try {
+      const result = service.runOrderQueryTest(operator, created.id, "order-query-1", {
+        expectedDraftVersion: saved.draftVersion,
+        orderNumber: "SO-1001",
+      });
+      const resultExpectation = expect(result).rejects.toMatchObject({
+        code: "WORKFLOW_ORDER_QUERY_TEST_FAILED",
+        statusCode: 502,
+      });
+      const signal = await executionStarted;
+      await vi.advanceTimersByTimeAsync(12_000);
+
+      await resultExpectation;
+      expect(signal.aborted).toBe(true);
+      expect(execute).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects missing identity and mismatched Order Query test variables", async () => {
     const execute = vi.fn();
     const getContactIdentity = vi.fn(async () => ({}));

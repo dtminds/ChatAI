@@ -52,7 +52,7 @@ describe("Workflow Order Query capability", () => {
       platformId: 2,
       shopIds: [11],
       timeField: "order-time",
-      timeRange: ["2026-08-28 00:00:00", "2026-09-04 23:59:00"],
+      timeRange: ["2026-08-28 00:00:00", "2026-09-04 23:59:59"],
     });
   });
 
@@ -123,7 +123,7 @@ describe("Workflow Order Query capability", () => {
       },
       context,
     })).toMatchObject({
-      timeRange: ["2025-09-09 00:00:00", "2026-09-04 23:59:00"],
+      timeRange: ["2025-09-09 00:00:00", "2026-09-04 23:59:59"],
     });
   });
 

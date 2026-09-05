@@ -16,7 +16,7 @@
 条件模式的订单时间字段支持下单时间、支付时间和完成时间，分别映射 Java 的 `orderTimes`、`payTimes` 和 `finishTime`。时间范围支持三种模式：
 
 - `dynamic`：默认模式，开始时间引用 `trigger.occurredAt`，结束时间引用当前订单查询节点的 `enteredAt`；也可选择其它可达的 datetime 变量。
-- `relative`：以订单查询节点的 `enteredAt` 为基准向前计算，并按配置覆盖时分。
+- `relative`：以订单查询节点的 `enteredAt` 为基准向前计算，并按配置覆盖时分；开始分钟从 `:00` 计入，结束分钟包含到 `:59`。
 - `absolute`：配置固定的 UTC+8 本地日期时间范围。
 
 Compiler 校验动态时间变量的 datetime 类型、确定前序可用性和因果顺序；Runtime 在调用 Java 前解析选择器、拒绝缺失或反向范围，并统一生成 UTC+8 wall-clock 秒级时间。
@@ -58,6 +58,8 @@ Java 查询响应使用顶层 `count`、`page`、`pageSize` 和 `list`；Runtime
 - `netAmount`：每笔 `actuPayment` 扣除已完成退款后的累计值，最低为 0。
 
 当前 Java 文档没有提供 `subRefundState` 枚举，因此以非空 `subRefundFinishTime` 作为退款已完成的权威证据，再扣除对应 `subRefundAmount`。若 Java 后续提供稳定枚举，需单独更新该判定并补兼容测试。
+
+每笔订单必须返回 `subOrders` 数组，空数组表示没有子单退款明细。字段缺失或类型错误时无法证明净成交金额正确，Runtime 按非法响应终止，不将其静默当作无退款。
 
 ## 4. 试运行
 

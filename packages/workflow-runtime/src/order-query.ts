@@ -140,8 +140,8 @@ function resolveOrderTimeRange(
   if (!now || Number.isNaN(now.getTime())) {
     throw orderQueryCommandError("Order Query relative time requires current node enteredAt");
   }
-  const start = resolveRelativePoint(now, timeRange.start);
-  const end = resolveRelativePoint(now, timeRange.end);
+  const start = resolveRelativePoint(now, timeRange.start, 0);
+  const end = resolveRelativePoint(now, timeRange.end, 59);
   if (start > end) {
     throw orderQueryCommandError("Order Query relative time is reversed");
   }
@@ -169,6 +169,7 @@ function resolveRelativePoint(
     Extract<WorkflowOrderQueryExecutionConfig, { mode: "conditions" }>["conditions"]["timeRange"],
     { mode: "relative" }
   >["start"],
+  second: 0 | 59,
 ) {
   const unitMilliseconds = point.unit === "day"
     ? 86_400_000
@@ -178,7 +179,7 @@ function resolveRelativePoint(
   const shifted = new Date(now.getTime() - point.amount * unitMilliseconds);
   const [hour, minute] = point.time.split(":").map(Number);
   const local = new Date(shifted.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
-  local.setUTCHours(hour!, minute!, 0, 0);
+  local.setUTCHours(hour!, minute!, second, 0);
   return new Date(local.getTime() - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
 }
 

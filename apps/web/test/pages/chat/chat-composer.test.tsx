@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
@@ -111,5 +111,38 @@ describe("ChatComposer", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  it("ignores pasted images with unsupported mime types", async () => {
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [new File(["image-bytes"], "clipboard.webp", { type: "image/webp" })],
+      },
+    });
+
+    expect(composer.querySelector('img[alt="clipboard.webp"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
+
+  it("clears a drag state when the pointer leaves before rerender", async () => {
+    const image = new File(["image-bytes"], "dropped.png", { type: "image/png" });
+    const dataTransfer = {
+      dropEffect: "none",
+      files: [image],
+      items: [{ kind: "file", type: image.type }],
+      types: ["Files"],
+    };
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      fireEvent.dragEnter(composer, { dataTransfer });
+      fireEvent.dragLeave(composer, { dataTransfer });
+    });
+
+    expect(screen.queryByTestId("chat-composer-image-drop-overlay")).not.toBeInTheDocument();
   });
 });

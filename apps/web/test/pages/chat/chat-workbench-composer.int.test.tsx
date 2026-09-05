@@ -943,38 +943,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("clears a batched drag state when the pointer leaves before React rerenders", async () => {
-    const image = new File(["image-bytes"], "dropped.png", {
-      type: "image/png",
-    });
-    const dataTransfer = createFileDragData([image]);
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    const createDragEvent = (type: "dragenter" | "dragleave") => {
-      const event = new Event(type, {
-        bubbles: true,
-        cancelable: true,
-      });
-
-      Object.defineProperty(event, "dataTransfer", {
-        configurable: true,
-        value: dataTransfer,
-      });
-      return event;
-    };
-
-    act(() => {
-      composer.dispatchEvent(createDragEvent("dragenter"));
-      composer.dispatchEvent(createDragEvent("dragleave"));
-    });
-
-    expect(
-      screen.queryByTestId("chat-composer-image-drop-overlay"),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows unsupported feedback when dragged files contain no accepted images", async () => {
     const image = new File(["image-bytes"], "dropped.webp", {
       type: "image/webp",
@@ -2333,27 +2301,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
     expect(uploadOptions?.signal?.aborted).toBe(true);
     expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
-  });
-
-  it("ignores pasted clipboard images outside jpeg and png", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.webp", {
-      type: "image/webp",
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    expect(
-      within(composer).queryByRole("img", { name: "clipboard.webp" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
   });
 
   it("limits composer images to five", async () => {

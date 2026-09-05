@@ -2233,6 +2233,10 @@ describe("Agent workflow page", () => {
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
 
     const customerSection = customerMessage.closest("section")!;
+    await waitFor(() => {
+      expect(within(canvas).getByRole("button", { name: "转人工" }))
+        .toHaveTextContent("客服提示：全局变量.客户 ID");
+    });
     await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
@@ -3136,12 +3140,12 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
     await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "复制节点" }));
 
-    await user.click(within(canvas).getByRole("button", { name: "发送欢迎消息 (1)" }));
+    await user.click(await within(canvas).findByRole("button", { name: "发送欢迎消息 (1)" }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息 (1)" }));
     await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "复制节点" }));
 
     expect(within(canvas).getByRole("button", { name: "发送欢迎消息 (1)" })).toBeInTheDocument();
-    expect(within(canvas).getByRole("button", { name: "发送欢迎消息 (2)" })).toBeInTheDocument();
+    expect(await within(canvas).findByRole("button", { name: "发送欢迎消息 (2)" })).toBeInTheDocument();
   });
 
   it("does not duplicate the selected node with keyboard shortcuts", async () => {

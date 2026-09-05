@@ -3,10 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
+import type { GroupMember } from "@/pages/chat/chat-types";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer(options: { isMobileLayout?: boolean } = {}) {
+function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean } = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer
@@ -16,9 +17,10 @@ function renderComposer(options: { isMobileLayout?: boolean } = {}) {
       canSendMessage
       shouldShowConversationAIHostingControl={false}
       hasActiveFileUpload={false}
-      groupMembers={[]}
+      groupMembers={options.groupMembers ?? []}
+      currentSeatThirdUserId={options.currentSeatThirdUserId}
       inputEnterBehavior="send"
-      isGroupConversation={false}
+      isGroupConversation={options.isGroupConversation ?? false}
       isEmojiPickerOpen={false}
       isSending={false}
       isHistoryPanelOpen={false}
@@ -249,5 +251,23 @@ describe("ChatComposer", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "历史记录" }));
     expect(onOpenHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("filters the current seat from mention candidates", async () => {
+    renderComposer({
+      groupMembers: [
+        { id: "seat", displayName: "当前客服", type: 0 },
+        { id: "member", displayName: "客户", type: 0 },
+      ],
+      currentSeatThirdUserId: "seat",
+      isGroupConversation: true,
+    });
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("@");
+    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    expect(screen.queryByRole("option", { name: "当前客服" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "客户" })).toBeInTheDocument();
+    expect(listbox).toBeInTheDocument();
   });
 });

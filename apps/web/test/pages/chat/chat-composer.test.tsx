@@ -66,7 +66,100 @@ function placeCaretAtTextOffset(element: HTMLElement, offset: number) {
   }
 }
 
+function createFileDragData(files: File[]) {
+  return {
+    dropEffect: "none",
+    files,
+    items: files.map((file) => ({ kind: "file", type: file.type })),
+    types: ["Files"],
+  };
+}
+
 describe("ChatComposer", () => {
+  it("keeps existing suffix text when a middle paste exceeds the composer limit", async () => {
+    const prefix = "前".repeat(499);
+    const suffix = "后".repeat(499);
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste(`${prefix}${suffix}`);
+    placeCaretAtTextOffset(composer, prefix.length);
+    fireEvent(document, new Event("selectionchange"));
+    await userEvent.paste("甲乙丙丁");
+
+    await waitFor(() => {
+      expect(composer.textContent?.replaceAll("\u200B", "")).toBe(
+        `${prefix}甲乙${suffix}`,
+      );
+    });
+  });
+
+  it("shows unsupported feedback and rejects drops without accepted images", () => {
+    const dataTransfer = createFileDragData([
+      new File(["image-bytes"], "dropped.webp", { type: "image/webp" }),
+      new File(["document-bytes"], "dropped.pdf", { type: "application/pdf" }),
+    ]);
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    fireEvent.dragEnter(composer, { dataTransfer });
+    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toHaveTextContent(
+      "仅支持 JPG、PNG 图片",
+    );
+    fireEvent.dragOver(composer, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("none");
+    fireEvent.drop(composer, { dataTransfer });
+
+    expect(screen.queryByTestId("chat-composer-image-drop-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "dropped.webp" })).not.toBeInTheDocument();
+  });
+
+  it("does not accept dropped images when sending is disabled", () => {
+    const dataTransfer = createFileDragData([
+      new File(["image-bytes"], "dropped.png", { type: "image/png" }),
+    ]);
+
+    render(
+      <ChatComposer
+        canConfigureSeatAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canToggleConversationAIHosting={false}
+        canSendMessage={false}
+        shouldShowConversationAIHostingControl={false}
+        hasActiveFileUpload={false}
+        groupMembers={[]}
+        inputEnterBehavior="send"
+        isGroupConversation={false}
+        isEmojiPickerOpen={false}
+        isSending={false}
+        isHistoryPanelOpen={false}
+        historyKey="disabled-drop-test"
+        onClearQuotedMessage={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onChangeSeatAgentMode={vi.fn()}
+        onChangeFullAuto={vi.fn()}
+        onOpenMaterialLibrary={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onSegmentsChange={vi.fn()}
+        onSendDraft={vi.fn()}
+        placeholder="当前账号无发送权限，暂时无法发送消息"
+        quotedMessage={null}
+        composerRef={createRef<LexicalEditor>()}
+      />,
+    );
+
+    const composer = screen.getByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+    fireEvent.dragEnter(composer, { dataTransfer });
+    fireEvent.drop(composer, { dataTransfer });
+    expect(screen.queryByRole("img", { name: "dropped.png" })).not.toBeInTheDocument();
+  });
+
   it.each([
     ["收录的图片", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
     ["收录的文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],

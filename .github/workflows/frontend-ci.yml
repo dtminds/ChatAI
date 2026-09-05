@@ -61,10 +61,14 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - "1/4"
-          - "2/4"
-          - "3/4"
-          - "4/4"
+          - "1/8"
+          - "2/8"
+          - "3/8"
+          - "4/8"
+          - "5/8"
+          - "6/8"
+          - "7/8"
+          - "8/8"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -83,6 +87,39 @@ jobs:
 
       - name: Test frontend (unit)
         run: pnpm --filter @chatai/web test:unit --shard=${{ matrix.shard }}
+
+  frontend-integration:
+    name: Frontend Integration (${{ matrix.test }})
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - "chat-workbench-composer.int.test.tsx"
+          - "chat-workbench-sidebar.int.test.tsx"
+          - "chat-workbench-downloads.int.test.tsx"
+          - "chat-workbench-session.int.test.tsx"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test frontend (integration)
+        working-directory: apps/web
+        run: VITEST_TEST_GROUP=integration ./node_modules/.bin/vitest run --config vitest.config.ts test/pages/chat/${{ matrix.test }}
 
   frontend-verify:
     name: Frontend Verify
@@ -108,9 +145,6 @@ jobs:
       - name: Typecheck frontend
         run: pnpm --filter @chatai/web typecheck
 
-      - name: Test frontend (integration)
-        run: pnpm --filter @chatai/web test:integration
-
       - name: Build frontend
         run: pnpm --filter @chatai/web build
 
@@ -119,6 +153,7 @@ jobs:
     needs:
       - changes
       - frontend-unit
+      - frontend-integration
       - frontend-verify
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
@@ -126,8 +161,9 @@ jobs:
       - name: Check frontend jobs
         run: |
           echo "Frontend Unit: ${{ needs.frontend-unit.result }}"
+          echo "Frontend Integration: ${{ needs.frontend-integration.result }}"
           echo "Frontend Verify: ${{ needs.frontend-verify.result }}"
 
-          if [[ "${{ needs.frontend-unit.result }}" != "success" || "${{ needs.frontend-verify.result }}" != "success" ]]; then
+          if [[ "${{ needs.frontend-unit.result }}" != "success" || "${{ needs.frontend-integration.result }}" != "success" || "${{ needs.frontend-verify.result }}" != "success" ]]; then
             exit 1
           fi

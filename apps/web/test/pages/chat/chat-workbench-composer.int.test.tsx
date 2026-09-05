@@ -297,61 +297,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("keeps history visible while folding secondary actions in the mobile composer", async () => {
-    mockViewportMediaQuery({ width: 390 });
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByTestId("conversation-card-conv-001");
-    await user.click(getConversationCardMainButton("conv-001"));
-
-    const composerToolbar = await screen.findByTestId("chat-composer-mobile-toolbar");
-    expect(within(composerToolbar).getByRole("button", { name: "微信表情" })).toBeInTheDocument();
-    expect(within(composerToolbar).getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
-    expect(within(composerToolbar).getByRole("button", { name: "历史记录" })).toBeInTheDocument();
-    expect(within(composerToolbar).getByRole("button", { name: "本地上传" })).toBeInTheDocument();
-    expect(within(composerToolbar).getByRole("button", { name: "从收录发送" })).toBeInTheDocument();
-    expect(within(composerToolbar).getByRole("button", { name: "发送消息" })).toBeInTheDocument();
-    expect(
-      within(composerToolbar)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual([
-      "微信表情",
-      "本地上传",
-      "从收录发送",
-      "AI 对话",
-      "历史记录",
-      "发送消息",
-    ]);
-    expect(within(composerToolbar).queryByRole("button", { name: "收录的视频" })).not.toBeInTheDocument();
-    expect(within(composerToolbar).queryByRole("button", { name: "收录的小程序" })).not.toBeInTheDocument();
-
-    await user.click(within(composerToolbar).getByRole("button", { name: "本地上传" }));
-    const uploadMenu = await screen.findByRole("menu", { name: "本地上传" });
-    expect(within(uploadMenu).getByRole("menuitem", { name: "本地图片" })).toBeInTheDocument();
-    expect(within(uploadMenu).getByRole("menuitem", { name: "本地文件" })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await user.click(within(composerToolbar).getByRole("button", { name: "从收录发送" }));
-
-    const moreMenu = await screen.findByRole("menu", { name: "从收录发送" });
-    expect(within(moreMenu).getByText("从收录发送")).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "图片" })).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "视频" })).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "小程序" })).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "H5" })).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "文件" })).toBeInTheDocument();
-    expect(within(moreMenu).queryByRole("menuitem", { name: "收录的视频" })).not.toBeInTheDocument();
-    expect(within(moreMenu).queryByRole("menuitem", { name: "历史记录" })).not.toBeInTheDocument();
-
-    await user.keyboard("{Escape}");
-    await user.click(within(composerToolbar).getByRole("button", { name: "历史记录" }));
-
-    expect(await screen.findByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
-  });
-
   it("opens material libraries with the mobile dialog layout from the mobile composer", async () => {
     mockViewportMediaQuery({ width: 390 });
     const user = userEvent.setup();

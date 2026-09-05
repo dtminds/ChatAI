@@ -6,7 +6,7 @@ import type { LexicalEditor } from "lexical";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer() {
+function renderComposer(options: { isMobileLayout?: boolean } = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer
@@ -22,6 +22,7 @@ function renderComposer() {
       isEmojiPickerOpen={false}
       isSending={false}
       isHistoryPanelOpen={false}
+      isMobileLayout={options.isMobileLayout}
       historyKey="composer-test"
       onClearQuotedMessage={vi.fn()}
       onDraftChange={vi.fn()}
@@ -209,5 +210,44 @@ describe("ChatComposer", () => {
     await userEvent.paste("好的[打脸]");
 
     expect(await screen.findByRole("img", { name: "[打脸]" })).toBeInTheDocument();
+  });
+
+  it("exposes the history entry from the mobile composer toolbar", async () => {
+    const onOpenHistory = vi.fn();
+    render(
+      <ChatComposer
+        canConfigureSeatAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canToggleConversationAIHosting={false}
+        canSendMessage
+        shouldShowConversationAIHostingControl={false}
+        hasActiveFileUpload={false}
+        groupMembers={[]}
+        inputEnterBehavior="send"
+        isGroupConversation={false}
+        isEmojiPickerOpen={false}
+        isSending={false}
+        isHistoryPanelOpen={false}
+        isMobileLayout
+        historyKey="mobile-composer-test"
+        onClearQuotedMessage={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onChangeSeatAgentMode={vi.fn()}
+        onChangeFullAuto={vi.fn()}
+        onOpenMaterialLibrary={vi.fn()}
+        onOpenHistory={onOpenHistory}
+        onSegmentsChange={vi.fn()}
+        onSendDraft={vi.fn()}
+        placeholder="请输入消息……"
+        quotedMessage={null}
+        composerRef={createRef<LexicalEditor>()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "历史记录" }));
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
   });
 });

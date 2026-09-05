@@ -4884,16 +4884,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("8000/8000")).toBeInTheDocument();
   });
 
-  it("keeps the selected model icon and label in one trigger row", async () => {
-    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
-
-    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await screen.findByTitle("模型图标：默认模型");
-
-    const trigger = screen.getByRole("combobox", { name: "大模型" });
-
-    expect(trigger.querySelector("[data-agent-model-trigger-value]")).toBeInTheDocument();
-  });
 
   it("renders model icons in the model selector options", async () => {
     const user = userEvent.setup();

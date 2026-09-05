@@ -2587,6 +2587,14 @@ describe("ChatWorkbenchPage", () => {
     renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-001");
+      expect(
+        useWorkbenchStore.getState().conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-001",
+        )?.unread,
+      ).toBe(0);
+    });
     markConversationRead.mockClear();
 
     act(() => {
@@ -2611,6 +2619,14 @@ describe("ChatWorkbenchPage", () => {
           ),
         },
       }));
+    });
+
+    await waitFor(() => {
+      expect(
+        useWorkbenchStore.getState().conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-001",
+        )?.unread,
+      ).toBe(2);
     });
 
     await pasteIntoComposer(user, composer, "我来确认一下权益清单");

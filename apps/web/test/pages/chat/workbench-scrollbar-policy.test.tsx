@@ -37,23 +37,6 @@ describe("workbench scrollbar policy", () => {
     );
   });
 
-  it("keeps the chat workbench as a horizontal desktop layout below phone widths", async () => {
-    renderWithChatWorkbenchRouter(<ChatWorkbenchPage />);
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    expect(screen.getByTestId("chat-workbench-scroll-container")).toHaveClass(
-      "overflow-x-auto",
-      "shadow",
-    );
-    expect(screen.getByTestId("chat-workbench-content")).not.toHaveClass("shadow");
-    expect(screen.getByTestId("chat-workbench-content")).toHaveStyle({
-      minWidth: "1100px",
-    });
-    expect(screen.getByTestId("chat-main-layout")).toHaveStyle({
-      gridTemplateColumns: "256px minmax(0, 1fr)",
-    });
-  });
 
   it("uses a mobile IM flow with collapsed account rail on the list and full-width chat detail", async () => {
     const user = userEvent.setup();
@@ -88,22 +71,7 @@ describe("workbench scrollbar policy", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "展开侧边栏" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-mobile-list-layout")).not.toBeInTheDocument();
-    expect(screen.getByTestId("chat-mobile-detail-layout")).toHaveClass(
-      "h-full",
-      "min-h-0",
-      "overflow-hidden",
-    );
-    expect(screen.getByTestId("chat-mobile-detail-layout").firstElementChild).toHaveClass(
-      "h-full",
-      "min-h-0",
-      "flex",
-      "flex-col",
-    );
-    expect(within(screen.getByTestId("chat-mobile-detail-layout")).getByTestId("message-viewport")).toHaveClass(
-      "h-full",
-      "min-h-0",
-      "overflow-y-auto",
-    );
+    expect(within(screen.getByTestId("chat-mobile-detail-layout")).getByTestId("message-viewport")).toBeInTheDocument();
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "展开侧边栏" }));

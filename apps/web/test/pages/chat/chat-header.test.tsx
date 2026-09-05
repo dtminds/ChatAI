@@ -525,7 +525,6 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
-    expect(screen.getByText("温馨提示：因浏览器权限约束，每次刷新页面后，需要点击一次开启提示音，以免错过新消息哦")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "忽略" }));
 

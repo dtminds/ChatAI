@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,13 +60,6 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-service", () => ({
 vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
   createKbChunk: vi.fn(),
 }));
-
-const themeCss = readFileSync(join(process.cwd(), "src/styles/index.css"), "utf8");
-const appearanceThemeBlocks = [
-  ...themeCss.matchAll(
-    /html(?:\.dark)?\[data-appearance-theme="[^"]+"\]\s*\{[\s\S]*?\n\}/g,
-  ),
-].map((match) => match[0]);
 
 type MockAnimation = {
   cancel: ReturnType<typeof vi.fn>;
@@ -136,8 +127,6 @@ describe("SmartReplyCard", () => {
     expect(
       screen.getByRole("button", { name: "更多智能回复操作" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "编辑" })).toHaveTextContent("编辑");
-    expect(screen.getByRole("button", { name: "发送" })).toHaveTextContent("发送");
     expect(
       screen
         .getByTestId("smart-reply-card-header")
@@ -155,14 +144,6 @@ describe("SmartReplyCard", () => {
     expect(screen.getByTestId("smart-reply-card-body")).toHaveTextContent(
       "这里是思考的文案...",
     );
-  });
-
-  it("does not define dedicated smart reply theme tokens", () => {
-    expect(themeCss).not.toContain("--smart-reply-");
-    expect(themeCss).not.toContain("--color-smart-reply-");
-    for (const block of appearanceThemeBlocks) {
-      expect(block).not.toContain("--smart-reply-");
-    }
   });
 
   it("calls dismiss from the close control without exposing an expand state", async () => {

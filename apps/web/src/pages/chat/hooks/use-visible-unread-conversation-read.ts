@@ -105,7 +105,10 @@ export function useVisibleUnreadConversationRead({
       const lastRequestedAt =
         lastReadRequestedAtByConversationIdRef.current[conversationId] ?? 0;
 
-      if (now - lastRequestedAt < ACTIVE_CONVERSATION_READ_THROTTLE_MS) {
+      if (
+        !options.force &&
+        now - lastRequestedAt < ACTIVE_CONVERSATION_READ_THROTTLE_MS
+      ) {
         return;
       }
 

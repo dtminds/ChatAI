@@ -3,11 +3,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null } = {}) {
+function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null; onOpenMaterialLibrary?: (bizType: string) => void } = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer
@@ -33,7 +34,7 @@ function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: Grou
       onFileSelect={vi.fn()}
       onChangeSeatAgentMode={vi.fn()}
       onChangeFullAuto={vi.fn()}
-      onOpenMaterialLibrary={vi.fn()}
+      onOpenMaterialLibrary={options.onOpenMaterialLibrary ?? vi.fn()}
       onOpenHistory={vi.fn()}
       onSegmentsChange={vi.fn()}
       onSendDraft={vi.fn()}
@@ -66,6 +67,25 @@ function placeCaretAtTextOffset(element: HTMLElement, offset: number) {
 }
 
 describe("ChatComposer", () => {
+  it.each([
+    ["收录的图片", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
+    ["收录的文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],
+    ["收录的小程序", MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM],
+    ["收录的H5", MATERIAL_COLLECTION_BIZ_TYPE.H5],
+  ])("opens the %s material library through its callback", async (label, bizType) => {
+    const onOpenMaterialLibrary = vi.fn();
+    renderComposer({ onOpenMaterialLibrary });
+
+    await userEvent.click(screen.getByRole("button", { name: label }));
+    expect(onOpenMaterialLibrary).toHaveBeenCalledWith(bizType);
+  });
+
+  it("does not render the video channel material library entry by default", () => {
+    renderComposer();
+
+    expect(screen.queryByRole("button", { name: "收录的视频号" })).not.toBeInTheDocument();
+  });
+
   it("shows the quoted message preview and clears it through the callback", async () => {
     const onClearQuotedMessage = vi.fn();
     render(

@@ -1211,34 +1211,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it.each([
-    ["收录的图片", "收录的图片"],
-    ["收录的文件", "收录的文件"],
-    ["收录的小程序", "收录的小程序"],
-    ["收录的H5", "收录的H5"],
-  ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: buttonName }));
-
-    expect(
-      await screen.findByRole("dialog", { name: dialogName }),
-    ).toBeInTheDocument();
-  });
-
-  it("hides the video channel material library entry in the composer by default", async () => {
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    expect(
-      screen.queryByRole("button", { name: "收录的视频号" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("keeps the latest material library request when switching material types quickly", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

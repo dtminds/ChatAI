@@ -459,7 +459,7 @@ describe("buildPublishChecks", () => {
       source: "catalog",
     }));
 
-    for (const kind of ["coupon", "end"] as const) {
+    for (const kind of ["agent", "end"] as const) {
       const node = kind === "end"
         ? nodes.find((item) => item.data.kind === "end")!
         : createNodeFromKind(kind, `${kind}-contract`, nodes.length);

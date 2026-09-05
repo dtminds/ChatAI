@@ -197,5 +197,4 @@ const projectableDraftData = {
 
 const placeholderKinds = [
   "agent",
-  "coupon",
 ] as const satisfies readonly WorkflowNodeKind[];

@@ -157,6 +157,36 @@ describe("workflow order query resource routes", () => {
       }),
     );
   });
+
+  it("does not truncate valid platform, status, or shop resources locally", async () => {
+    vi.stubEnv("JAVA_INTERNAL_API_BASE_URL", "https://java.internal");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/cdp-platform/list-platform")) {
+        return jsonResponse({
+          data: Array.from({ length: 101 }, (_, index) => ({ id: index + 1, name: `平台${index + 1}` })),
+          success: true,
+        });
+      }
+      if (path.endsWith("/cdp-order/select-order-status")) {
+        return jsonResponse({
+          data: Array.from({ length: 101 }, (_, index) => ({ name: `状态${index}`, status: index })),
+          success: true,
+        });
+      }
+      return jsonResponse({
+        data: Array.from({ length: 501 }, (_, index) => ({
+          auth: true, platformId: 1, shopId: index + 1, shopModel: 1, shopName: `店铺${index + 1}`, status: 0,
+        })),
+        success: true,
+      });
+    });
+    const client = createOrderQueryResourceJavaClient();
+
+    await expect(client.listPlatforms(9001)).resolves.toHaveLength(101);
+    await expect(client.listOrderStatuses()).resolves.toHaveLength(101);
+    await expect(client.listShops(9001)).resolves.toHaveLength(501);
+  });
 });
 
 async function createResourceApp(overrides: {

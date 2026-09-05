@@ -13,6 +13,7 @@ import type {
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
   WorkflowCustomerUpdateDraftConfig,
+  WorkflowCouponDraftConfig,
   WorkflowIntentOption as SharedWorkflowIntentOption,
   WorkflowHandoffDraftConfig,
   WorkflowLlmDraftConfig,
@@ -138,7 +139,7 @@ export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
-export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
+export type CouponNodeData = WorkflowNodeDataBase<"coupon"> & WorkflowCouponDraftConfig;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & WorkflowHandoffDraftConfig;
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;
 export type WorkflowLlmInputValue = SharedWorkflowLlmInputValue;

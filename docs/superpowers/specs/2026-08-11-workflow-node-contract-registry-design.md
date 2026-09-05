@@ -32,8 +32,8 @@ Draft 到 Execution 的投影只允许存在于 `packages/workflow-engine/src/no
 `workflowNodeContractRegistry` 为权威来源；以下仅为本次文档更新时的快照：
 
 - `draft-ready`：无
-- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`ratio-split`、`message`、`message-query`、`handoff`、`tag-query`、`tag`、`customer-update`、`order-bind`、`order-query`、`order-conversion`、`llm`、`ai-intent`、`ai-collect`、`end`
-- `placeholder`：`coupon`、`agent`
+- `runtime-ready`：`start`、`wait`、`wait-event`、`branch`、`ratio-split`、`message`、`message-query`、`handoff`、`tag-query`、`tag`、`customer-update`、`order-bind`、`order-query`、`order-conversion`、`coupon`、`llm`、`ai-intent`、`ai-collect`、`end`
+- `placeholder`：`agent`
 
 把节点加入画布节点库不等于加入 Workflow Runtime Support。只有完成端到端执行闭环后，才能把成熟度改为 `runtime-ready`。
 

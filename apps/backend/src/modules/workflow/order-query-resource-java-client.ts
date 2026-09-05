@@ -54,7 +54,7 @@ export function createOrderQueryResourceJavaClient(
           || typeof item.name !== "string"
           || !item.name.trim()) return [];
         return [{ id: item.id, name: item.name.trim().slice(0, 256) }];
-      }).slice(0, 100);
+      });
     },
     async listOrderStatuses() {
       const data = await post(
@@ -68,7 +68,7 @@ export function createOrderQueryResourceJavaClient(
           || typeof item.name !== "string"
           || !item.name.trim()) return [];
         return [{ name: item.name.trim().slice(0, 256), status: item.status }];
-      }).slice(0, 100);
+      });
     },
     async listShops(uid: number, platformIds?: number[]) {
       const data = await post(
@@ -92,7 +92,7 @@ export function createOrderQueryResourceJavaClient(
           name: item.shopName.trim().slice(0, 256),
           platformId: item.platformId,
         }];
-      }).slice(0, 500);
+      });
     },
   };
 }

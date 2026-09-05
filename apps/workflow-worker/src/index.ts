@@ -18,6 +18,7 @@ import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
+  WORKFLOW_COUPON_CAPABILITY_BINDING,
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
   WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
@@ -53,6 +54,7 @@ import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
 import { HttpWorkflowOrderConversionCapabilityPort } from "./order-conversion-capability-port.js";
+import { HttpWorkflowCouponCapabilityPort } from "./coupon-capability-port.js";
 import { HttpWorkflowOrderBindCapabilityPort } from "./order-bind-capability-port.js";
 import { HttpWorkflowOrderQueryCapabilityPort } from "./order-query-capability-port.js";
 import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
@@ -139,6 +141,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     token: config.javaInternalApi.token,
   });
   const capabilityPort = new WorkflowCapabilityRouter([
+    {
+      binding: WORKFLOW_COUPON_CAPABILITY_BINDING,
+      port: new HttpWorkflowCouponCapabilityPort({ baseUrl: config.javaInternalApi.baseUrl, token: config.javaInternalApi.token }),
+    },
     {
       binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
       port: audienceFilterCapabilityPort,

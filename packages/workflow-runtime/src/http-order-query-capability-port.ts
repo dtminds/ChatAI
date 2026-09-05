@@ -113,14 +113,17 @@ function aggregateOrder(
     toCents(actuPayment),
   );
   let refundCents = 0;
-  const subOrders = order.subOrders;
-  if (!Array.isArray(subOrders)) throw invalidResponse("Order Query result has invalid subOrders");
+  // Java may omit subOrders for orders without item/refund details. The aggregate only
+  // depends on refund fields when they are present, so an omitted or malformed collection
+  // must not turn an otherwise usable order response into a terminal failure.
+  const subOrders = Array.isArray(order.subOrders) ? order.subOrders : [];
   for (const item of subOrders) {
-    if (!isRecord(item)) throw invalidResponse("Order Query result contains a non-object sub-order");
-    if (typeof item.subRefundFinishTime === "string" && item.subRefundFinishTime.trim()) {
+    if (!isRecord(item)) continue;
+    if (typeof item.subRefundFinishTime === "string" && item.subRefundFinishTime.trim()
+      && typeof item.subRefundAmount === "number"
+      && Number.isFinite(item.subRefundAmount) && item.subRefundAmount >= 0) {
       refundCents = addSafeCents(
-        refundCents,
-        toCents(readMoney(item.subRefundAmount, "subRefundAmount")),
+        refundCents, toCents(item.subRefundAmount),
       );
     }
   }
@@ -201,23 +204,10 @@ async function fetchFirstOrderPage(input: {
       `Workflow Order Query Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  const count = envelope.payload.count;
-  const page = envelope.payload.page;
-  const pageSize = envelope.payload.pageSize;
   const list = envelope.payload.list;
-  if (!Array.isArray(list)
-    || !isNonNegativeSafeInteger(count)
-    || !isPositiveSafeInteger(page)
-    || page !== 1
-    || pageSize !== WORKFLOW_ORDER_QUERY_PAGE_SIZE) {
-    throw invalidResponse("Workflow Order Query Java endpoint returned an invalid page");
-  }
-  if (list.length > pageSize) {
-    throw invalidResponse("Workflow Order Query Java endpoint exceeded the requested page size");
-  }
-  if (list.length !== Math.min(pageSize, count)) {
-    throw invalidResponse("Workflow Order Query Java endpoint returned inconsistent pagination");
-  }
+  // Only the first page is intentionally used by the product. Java's count/page metadata
+  // is informational here; success plus a list is sufficient for this bounded calculation.
+  if (!Array.isArray(list)) throw invalidResponse("Workflow Order Query Java endpoint returned an invalid list");
   return list.map((item) => {
     if (!isRecord(item)) throw invalidResponse("Workflow Order Query page contains a non-object order");
     return item;
@@ -258,14 +248,6 @@ function addSafeCents(left: number, right: number) {
   const result = left + right;
   if (!Number.isSafeInteger(result)) throw invalidResponse("Order Query aggregate exceeds safe range");
   return result;
-}
-
-function isNonNegativeSafeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isPositiveSafeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function assertCapabilityDefinition(

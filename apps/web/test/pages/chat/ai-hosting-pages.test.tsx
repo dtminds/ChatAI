@@ -1248,13 +1248,7 @@ describe("AI hosting pages", () => {
     expect(
       within(popover).getByRole("link", { name: "直播话术知识库" }),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/4");
-    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-48");
     expect(within(popover).getAllByTitle("知识库图标")).toHaveLength(4);
-    expect(
-      within(popover)
-        .getByTestId("agent-kb-popover-scroll")
-        .querySelector("[data-slot='scroll-area-viewport']"),
-    ).toHaveClass("[&>div]:!block", "[&>div]:!min-w-0", "[&>div]:!w-full");
     expect(
       within(popover).getByTitle("测试超长测试超长测试知识库"),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");

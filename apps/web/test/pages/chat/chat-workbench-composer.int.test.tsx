@@ -815,8 +815,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "好的[打脸]");
 
-    expect(screen.getByRole("img", { name: "[打脸]" })).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     await expectLatestConversationMessage("conv-001", {

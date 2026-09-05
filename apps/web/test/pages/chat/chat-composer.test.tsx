@@ -201,4 +201,13 @@ describe("ChatComposer", () => {
     await waitFor(() => expect(screen.queryByRole("img", { name: "clipboard.png" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
   });
+
+  it("renders pasted WeChat emoji tokens as images", async () => {
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("好的[打脸]");
+
+    expect(await screen.findByRole("img", { name: "[打脸]" })).toBeInTheDocument();
+  });
 });

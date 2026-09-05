@@ -5,10 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
-import { ChatComposer } from "@/pages/chat/components/chat-composer";
+import {
+  ChatComposer,
+  type ComposerMaterialLibraryBizType,
+} from "@/pages/chat/components/chat-composer";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null; onOpenMaterialLibrary?: (bizType: string) => void } = {}) {
+function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null; onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void } = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer

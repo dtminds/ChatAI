@@ -3,6 +3,7 @@ import {
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
+  resolveMessageQueryRelativePoint,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
@@ -44,6 +45,10 @@ export function createWorkflowMessageQueryCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowMessageQueryCommandContext;
 }): WorkflowMessageQueryCommand {
+  // Product policy: the 90-day lookback/span is checked when configuring and
+  // publishing, not when executing. Do not reuse execution completeness here:
+  // published fixed dates must keep working as time passes. Runtime still checks
+  // structure, timestamps, identities and the resolved start/end ordering.
   if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
@@ -109,6 +114,16 @@ function resolveMessageQueryRange(
     return {
       rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
+    };
+  }
+  if (timeRange.mode === "relative") {
+    const enteredAt = parseTimestamp(
+      context.currentNodeLifecycle.enteredAt,
+      "Message Query relative time requires current node enteredAt",
+    );
+    return {
+      rangeStart: resolveMessageQueryRelativePoint(enteredAt, timeRange.start, false),
+      rangeEnd: resolveMessageQueryRelativePoint(enteredAt, timeRange.end, true),
     };
   }
   return {

@@ -27,6 +27,12 @@ export const messageQueryNodeUi: WorkflowNodeUiBinding<"message-query"> = {
             { kind: "operator" as const, text: " 至 " },
             createFixedTimeSegment(timeRange.endAt),
           ]
+        : timeRange.mode === "relative"
+          ? [
+              { kind: "value" as const, text: formatRelativePoint(timeRange.start) },
+              { kind: "operator" as const, text: " 至 " },
+              { kind: "value" as const, text: formatRelativePoint(timeRange.end) },
+            ]
         : [
             ...createDynamicTimeReferenceSegments(
               timeRange.start,
@@ -59,6 +65,11 @@ export const messageQueryNodeUi: WorkflowNodeUiBinding<"message-query"> = {
   },
   settings: { component: MessageQueryConfig, kind: "custom" },
 };
+
+function formatRelativePoint(point: { amount: number; unit: "day" | "hour" | "minute"; time?: string }) {
+  const unit = point.unit === "day" ? "天" : point.unit === "hour" ? "小时" : "分钟";
+  return `过去 ${point.amount} ${unit}${point.unit === "day" ? ` ${point.time}` : ""}`;
+}
 
 function formatFixedDateTime(value: string) {
   return value ? value.replace("T", " ") : "未配置";

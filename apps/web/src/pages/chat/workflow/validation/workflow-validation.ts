@@ -1,4 +1,9 @@
 import {
+  isMessageQueryRelativeRangeComplete,
+  isValidWorkflowLocalDateTime,
+  isMessageQueryFixedRangeWithinBounds,
+  isMessageQueryRelativeRangeWithinBounds,
+  resolveMessageQueryRelativePoint,
   type CustomFieldItem,
 } from "@chatai/contracts";
 import {
@@ -193,6 +198,21 @@ function validateNodeVariableContent(
         ]
       : [];
 
+    if (timeRange.mode === "relative") {
+      const now = Date.now();
+      if (!isMessageQueryRelativeRangeComplete(timeRange)
+        || !isMessageQueryRelativeRangeWithinBounds(
+          now,
+          resolveMessageQueryRelativePoint(now, timeRange.start, false),
+          resolveMessageQueryRelativePoint(now, timeRange.end, true),
+        )) {
+        issues.push(createVariableContentIssue(
+          "message-query-relative-time-invalid",
+          "时间不能早于90天前，跨度不能超过90天，开始不能晚于结束",
+        ));
+      }
+    }
+
     const dynamicReferencesIdentical = timeRange.mode === "dynamic"
       && areDynamicTimeReferencesEqual(timeRange.start, timeRange.end);
     if (dynamicReferencesIdentical) {
@@ -225,6 +245,16 @@ function validateNodeVariableContent(
       issues.push(createVariableContentIssue(
         "message-query-time-range-invalid",
         "开始时间不能晚于结束时间",
+      ));
+    }
+    if (timeRange.mode === "fixed" && timeRange.startAt && timeRange.endAt
+      && isValidWorkflowLocalDateTime(timeRange.startAt)
+      && isValidWorkflowLocalDateTime(timeRange.endAt)
+      && timeRange.startAt <= timeRange.endAt
+      && !isMessageQueryFixedRangeWithinBounds(Date.now(), timeRange.startAt, timeRange.endAt)) {
+      issues.push(createVariableContentIssue(
+        "message-query-fixed-time-bounds-invalid",
+        "时间不能早于90天前，跨度不能超过90天",
       ));
     }
     return issues;

@@ -6,10 +6,18 @@ import type {
 import {
   areWorkflowVariableSelectorsEqual,
   isWorkflowMessageQueryExecutionConfigComplete,
+  isMessageQueryRelativeTimeRange,
 } from "@chatai/contracts";
 
 export const MESSAGE_QUERY_LIMIT_MIN = 1;
 export const MESSAGE_QUERY_LIMIT_MAX = 50;
+export function createDefaultMessageQueryRelativeTimeRange(): Extract<WorkflowTimeRange, { mode: "relative" }> {
+  return {
+    mode: "relative",
+    start: { amount: 30, unit: "day", time: "00:00" },
+    end: { amount: 0, unit: "day", time: "23:59" },
+  };
+}
 export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {
   return {
     end: ["current-node-lifecycle", "enteredAt"],
@@ -20,6 +28,12 @@ export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {
 
 export function normalizeMessageQueryTimeRange(value: unknown): WorkflowTimeRange {
   if (!isRecord(value)) return createDefaultMessageQueryTimeRange();
+
+  if (value.mode === "relative") {
+    return isMessageQueryRelativeTimeRange(value)
+      ? structuredClone(value)
+      : createDefaultMessageQueryRelativeTimeRange();
+  }
 
   if (value.mode === "fixed") {
     return {

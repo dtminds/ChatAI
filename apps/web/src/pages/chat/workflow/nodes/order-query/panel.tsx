@@ -548,7 +548,7 @@ function formatOrderQueryDateTime(value: string) {
 
 function formatRelativePoint(point: RelativePointValue) {
   const unit = point.unit === "day" ? "天" : point.unit === "hour" ? "小时" : "分钟";
-  return `过去 ${point.amount} ${unit} ${point.time}:00`;
+  return `过去 ${point.amount} ${unit}${point.unit === "day" ? ` ${point.time}:00` : ""}`;
 }
 
 function formatOrderQueryAmount(conditions: WorkflowOrderQueryDraftCondition) {
@@ -659,7 +659,10 @@ function RelativePoint({ invalid, label, onChange, value }: { invalid: boolean; 
         type="number"
         value={value.amount}
       />
-      <Select value={value.unit} onValueChange={(unit) => { if (unit === "day" || unit === "hour" || unit === "minute") onChange({ ...value, unit }); }}>
+      <Select value={value.unit} onValueChange={(unit) => {
+        if (unit === "day") onChange({ amount: value.amount, unit, time: label === "开始" ? "00:00" : "23:59" });
+        if (unit === "hour" || unit === "minute") onChange({ amount: value.amount, unit });
+      }}>
         <SelectTrigger aria-label={`${label}相对单位`} className="w-24"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="day">天前</SelectItem>
@@ -667,7 +670,7 @@ function RelativePoint({ invalid, label, onChange, value }: { invalid: boolean; 
           <SelectItem value="minute">分钟前</SelectItem>
         </SelectContent>
       </Select>
-      <TimePicker aria-label={`${label}时间`} className="h-10" onValueChange={time => onChange({ ...value, time })} value={value.time} />
+      {value.unit === "day" ? <TimePicker aria-label={`${label}时间`} className="h-10" onValueChange={time => onChange({ ...value, time })} value={value.time} /> : null}
     </div>
   );
 }

@@ -150,6 +150,7 @@ function parseOrderQueryLocalDateTime(value: string) {
 
 function resolveRelativePoint(now: Date, point: RelativePoint) {
   const shifted = new Date(now.getTime() - getRelativeLookbackMilliseconds(point));
+  if (point.unit !== "day") return shifted.getTime();
   const [hour, minute] = point.time.split(":").map(Number);
   const local = new Date(shifted.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
   local.setUTCHours(hour!, minute!, 0, 0);

@@ -32,6 +32,7 @@ type LocalDateTimePickerProps = {
   className?: string;
   disabled?: boolean;
   onValueChange(value: string): void;
+  validateValue?(value: string): string | undefined;
   value: string;
 };
 
@@ -144,14 +145,17 @@ function LocalDateTimePicker({
   className,
   disabled = false,
   onValueChange,
+  validateValue,
   value,
 }: LocalDateTimePickerProps) {
   const parsedValue = parseLocalDateTime(value);
   const [open, setOpen] = useState(false);
   const [draftDate, setDraftDate] = useState<Date | undefined>(parsedValue?.date);
   const [draftTime, setDraftTime] = useState(parsedValue?.time ?? "00:00");
+  const [error, setError] = useState<string>();
 
   const handleOpenChange = (nextOpen: boolean) => {
+    setError(undefined);
     if (nextOpen) {
       const nextValue = parseLocalDateTime(value);
       setDraftDate(nextValue?.date);
@@ -162,7 +166,11 @@ function LocalDateTimePicker({
 
   const applyValue = () => {
     if (!draftDate) return;
-    onValueChange(`${formatDateValue(draftDate)}T${draftTime}`);
+    const next = `${formatDateValue(draftDate)}T${draftTime}`;
+    const validationError = validateValue?.(next);
+    setError(validationError);
+    if (validationError) return;
+    onValueChange(next);
     setOpen(false);
   };
 
@@ -199,19 +207,20 @@ function LocalDateTimePicker({
         <Calendar
           defaultMonth={draftDate}
           mode="single"
-          onSelect={setDraftDate}
+          onSelect={date => { setDraftDate(date); setError(undefined); }}
           selected={draftDate}
         />
         <div className="flex items-center justify-between gap-3 border-t border-border p-3">
           <TimePicker
             aria-label={`${ariaLabel}时间`}
-            onValueChange={setDraftTime}
+            onValueChange={time => { setDraftTime(time); setError(undefined); }}
             value={draftTime}
           />
           <div className="flex items-center gap-2">
             <Button
               onClick={() => {
                 onValueChange("");
+                setError(undefined);
                 setOpen(false);
               }}
               size="sm"
@@ -225,6 +234,7 @@ function LocalDateTimePicker({
             </Button>
           </div>
         </div>
+        {error ? <p role="alert" className="px-3 pb-3 text-xs text-destructive">{error}</p> : null}
       </PopoverContent>
     </Popover>
   );

@@ -139,7 +139,37 @@ describe("compileWorkflowDraft", () => {
       .toMatchObject({ limit: 10, take: "latest" });
   });
 
+  it("compiles relative Message Query without dynamic variable dependencies", () => {
+    const draft = createDraft();
+    const timeRange = {
+      mode: "relative",
+      start: { amount: 30, unit: "day", time: "00:00" },
+      end: { amount: 0, unit: "day", time: "23:59" },
+    };
+    draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
+    const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42", workflowType: "chatai_sop" });
+    expect(spec.nodes.find(item => item.kind === "message-query")?.config).toMatchObject({ timeRange });
+    timeRange.start.amount = 91;
+    draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
+    expectCompilationIssue(draft, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
+  });
+
   it("rejects incomplete or unavailable Message Query time ranges", () => {
+    const mixedRange = createDraft();
+    mixedRange.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10, take: "latest", timeRange: {
+        mode: "relative", start: { amount: 0, unit: "hour" }, end: { amount: 1, unit: "day", time: "00:00" },
+      },
+    }));
+    expectCompilationIssue(mixedRange, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
     const invalidFixedRange = createDraft();
     invalidFixedRange.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10,

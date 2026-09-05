@@ -1,7 +1,107 @@
 import { describe, expect, it } from "vitest";
 import { createWorkflowMessageQueryCommand } from "../src/index.js";
+import { isMessageQueryFixedRangeWithinBounds } from "@chatai/contracts";
 
 describe("Workflow Message Query binding", () => {
+  it.each(["hour", "minute"])("uses exact elapsed %s and treats zero as node entry", unit => {
+    expect(createWorkflowMessageQueryCommand({
+      config: { limit: 10, take: "latest", timeRange: {
+        mode: "relative", start: { amount: unit === "hour" ? 1 : 60, unit }, end: { amount: 0, unit },
+      } },
+      context: { ...context(), currentNodeLifecycle: { enteredAt: "2026-09-04T16:30:12.345Z" } },
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-09-04T15:30:12.345Z"),
+      rangeEnd: Date.parse("2026-09-04T16:30:12.345Z"),
+    });
+  });
+  it("keeps published fixed dates executable after the lookback window expires", () => {
+    const timeRange = { mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00" };
+    expect(isMessageQueryFixedRangeWithinBounds(Date.parse("2026-01-03T10:00:00+08:00"), timeRange.startAt, timeRange.endAt)).toBe(true);
+    expect(createWorkflowMessageQueryCommand({
+      config: { limit: 10, take: "latest", timeRange }, context: context(),
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-01-01T10:00:00+08:00"),
+      rangeEnd: Date.parse("2026-01-02T10:00:59.999+08:00"),
+    });
+  });
+  it("does not reapply publication offset limits at runtime", () => {
+    const commandContext = context();
+    const config = {
+      limit: 10, take: "latest",
+      timeRange: {
+        mode: "relative",
+        start: { amount: 90, unit: "day", time: "00:00" },
+        end: { amount: 0, unit: "day", time: "23:59" },
+      },
+    };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
+    config.timeRange.start.amount = 91;
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
+  });
+  it("does not reapply fixed span limits but still rejects reversed fixed ranges", () => {
+    const config = { limit: 10, take: "latest", timeRange: {
+      mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-08-01T10:00",
+    } };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() })).not.toThrow();
+    config.timeRange.endAt = "2025-12-31T10:00";
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  });
+  it("anchors relative dates to node entry in UTC+8 and includes the last minute", () => {
+    const input = {
+      config: {
+        limit: 10, take: "latest",
+        timeRange: {
+          mode: "relative",
+          start: { amount: 30, unit: "day", time: "00:00" },
+          end: { amount: 0, unit: "day", time: "23:59" },
+        },
+      },
+      context: context(),
+    };
+    const command = createWorkflowMessageQueryCommand(input);
+    expect(command).toMatchObject({
+      rangeStart: Date.parse("2026-07-15T16:00:00.000Z"),
+      rangeEnd: Date.parse("2026-08-15T15:59:59.999Z"),
+    });
+    expect(createWorkflowMessageQueryCommand(input)).toEqual(command);
+  });
+
+  it.each(["hour", "minute"])("handles relative %s offsets across local midnight", unit => {
+    const commandContext = context();
+    commandContext.currentNodeLifecycle.enteredAt = "2026-08-14T16:30:00.000Z";
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 1, take: "earliest",
+        timeRange: {
+          mode: "relative",
+          start: { amount: unit === "hour" ? 1 : 60, unit },
+          end: { amount: 0, unit: "day", time: "00:30" },
+        },
+      },
+      context: commandContext,
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-08-14T15:30:00.000Z"),
+      rangeEnd: Date.parse("2026-08-14T16:30:59.999Z"),
+    });
+  });
+
+  it("rejects relative ranges without an anchor or with reversed resolved dates", () => {
+    const config = {
+      limit: 10, take: "latest",
+      timeRange: {
+        mode: "relative",
+        start: { amount: 1, unit: "hour" },
+        end: { amount: 0, unit: "day", time: "00:00" },
+      },
+    };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+    expect(() => createWorkflowMessageQueryCommand({
+      config, context: { ...context(), currentNodeLifecycle: {} },
+    })).toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  });
+
   it("resolves the default dynamic range and seat identity", () => {
     expect(createWorkflowMessageQueryCommand({
       config: {

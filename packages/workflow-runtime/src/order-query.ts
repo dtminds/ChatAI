@@ -177,6 +177,8 @@ function resolveRelativePoint(
       ? 3_600_000
       : 60_000;
   const shifted = new Date(now.getTime() - point.amount * unitMilliseconds);
+  // Only day offsets override the clock; hours/minutes preserve elapsed time.
+  if (point.unit !== "day") return shifted;
   const [hour, minute] = point.time.split(":").map(Number);
   const local = new Date(shifted.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
   local.setUTCHours(hour!, minute!, second, 0);

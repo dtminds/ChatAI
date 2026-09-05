@@ -2,6 +2,87 @@ import { describe, expect, it } from "vitest";
 import { createWorkflowMessageQueryCommand } from "../src/index.js";
 
 describe("Workflow Message Query binding", () => {
+  it("rejects expired fixed time before invoking the query", () => {
+    expect(() => createWorkflowMessageQueryCommand({
+      config: { limit: 10, take: "latest", timeRange: {
+        mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00",
+      } }, context: context(),
+    })).toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  });
+  it("rejects resolved times older than 90 days and spans longer than 90 days", () => {
+    const commandContext = context();
+    const config = {
+      limit: 10, take: "latest",
+      timeRange: {
+        mode: "relative",
+        start: { amount: 90, unit: "day", time: "10:00" },
+        end: { amount: 0, unit: "day", time: "09:59" },
+      },
+    };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
+    config.timeRange.start.time = "09:59";
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext }))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+    config.timeRange.start.time = "10:00";
+    config.timeRange.end.time = "10:00";
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext }))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  });
+  it("anchors relative dates to node entry in UTC+8 and includes the last minute", () => {
+    const input = {
+      config: {
+        limit: 10, take: "latest",
+        timeRange: {
+          mode: "relative",
+          start: { amount: 30, unit: "day", time: "00:00" },
+          end: { amount: 0, unit: "day", time: "23:59" },
+        },
+      },
+      context: context(),
+    };
+    const command = createWorkflowMessageQueryCommand(input);
+    expect(command).toMatchObject({
+      rangeStart: Date.parse("2026-07-15T16:00:00.000Z"),
+      rangeEnd: Date.parse("2026-08-15T15:59:59.999Z"),
+    });
+    expect(createWorkflowMessageQueryCommand(input)).toEqual(command);
+  });
+
+  it.each(["hour", "minute"])("handles relative %s offsets across local midnight", unit => {
+    const commandContext = context();
+    commandContext.currentNodeLifecycle.enteredAt = "2026-08-14T16:30:00.000Z";
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 1, take: "earliest",
+        timeRange: {
+          mode: "relative",
+          start: { amount: unit === "hour" ? 1 : 60, unit, time: "23:00" },
+          end: { amount: 0, unit: "day", time: "00:30" },
+        },
+      },
+      context: commandContext,
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-08-14T15:00:00.000Z"),
+      rangeEnd: Date.parse("2026-08-14T16:30:59.999Z"),
+    });
+  });
+
+  it("rejects relative ranges without an anchor or with reversed resolved dates", () => {
+    const config = {
+      limit: 10, take: "latest",
+      timeRange: {
+        mode: "relative",
+        start: { amount: 1, unit: "hour", time: "23:00" },
+        end: { amount: 0, unit: "day", time: "00:00" },
+      },
+    };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
+      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+    expect(() => createWorkflowMessageQueryCommand({
+      config, context: { ...context(), currentNodeLifecycle: {} },
+    })).toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  });
+
   it("resolves the default dynamic range and seat identity", () => {
     expect(createWorkflowMessageQueryCommand({
       config: {

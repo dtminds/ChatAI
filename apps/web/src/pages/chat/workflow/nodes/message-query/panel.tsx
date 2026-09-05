@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { getMessageQueryRelativeAmountMax, isMessageQueryFixedRangeWithinBounds, isValidWorkflowLocalDateTime, WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS, type WorkflowMessageQueryRelativePoint } from "@chatai/contracts";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -21,6 +23,7 @@ import { WorkflowVariableSelect } from "../../workflow-variable-select";
 import { getAvailableTimeReferenceVariablesForNode } from "../../workflow-variables";
 import {
   createDefaultMessageQueryTimeRange,
+  createDefaultMessageQueryRelativeTimeRange,
   getMessageQueryMetric,
   getMessageQueryStatus,
   MESSAGE_QUERY_LIMIT_MAX,
@@ -65,11 +68,13 @@ export function MessageQueryConfig({
       <WorkflowSettingsSection contentClassName="text-[13px]" title="时间范围">
         <RadioGroup
           aria-label="时间范围类型"
-          className="flex items-center gap-6"
+          className="flex flex-wrap items-center gap-6"
           onValueChange={(mode) => {
-            if (mode !== "fixed" && mode !== "dynamic") return;
+            if (mode !== "fixed" && mode !== "dynamic" && mode !== "relative") return;
             updateConfig({
-              timeRange: mode === "fixed"
+              timeRange: mode === "relative"
+                ? createDefaultMessageQueryRelativeTimeRange()
+                : mode === "fixed"
                 ? { endAt: "", mode: "fixed", startAt: "" }
                 : createDefaultMessageQueryTimeRange(),
             });
@@ -84,6 +89,10 @@ export function MessageQueryConfig({
             <RadioGroupItem value="dynamic" />
             <span>动态时间</span>
           </label>
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <RadioGroupItem value="relative" />
+            <span>相对时间</span>
+          </label>
         </RadioGroup>
         <div className="rounded-[8px] border bg-card p-4">
           {timeRange.mode === "fixed" ? (
@@ -91,6 +100,11 @@ export function MessageQueryConfig({
               onChange={(nextRange) => updateConfig({ timeRange: nextRange })}
               value={timeRange}
             />
+          ) : timeRange.mode === "relative" ? (
+            <div className="space-y-4">
+              <RelativeTimeField label="开始时间" value={timeRange.start} onChange={start => updateConfig({ timeRange: { ...timeRange, start } })} />
+              <RelativeTimeField label="结束时间" value={timeRange.end} onChange={end => updateConfig({ timeRange: { ...timeRange, end } })} />
+            </div>
           ) : (
             <DynamicTimeRangeFields
               onChange={(nextRange) => updateConfig({ timeRange: nextRange })}
@@ -132,22 +146,73 @@ export function MessageQueryConfig({
   );
 }
 
+function RelativeTimeField({ label, value, onChange }: {
+  label: string;
+  value: WorkflowMessageQueryRelativePoint;
+  onChange: (value: WorkflowMessageQueryRelativePoint) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3">
+      <span className="text-[13px]">{label}</span>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_80px_92px] items-center gap-1.5">
+        <BoundedNumberInput
+          className="h-9 min-w-0 w-full px-2 text-[13px]"
+          aria-label={`${label}相对数值`}
+          min={0}
+          max={getMessageQueryRelativeAmountMax(value.unit)}
+          value={value.amount}
+          onValueChange={amount => onChange({ ...value, amount })}
+        />
+        <Select value={value.unit} onValueChange={unit => {
+          if (unit !== "day" && unit !== "hour" && unit !== "minute") return;
+          onChange({ ...value, unit, amount: Math.min(value.amount, getMessageQueryRelativeAmountMax(unit)) });
+        }}>
+          <SelectTrigger aria-label={`${label}相对单位`} className="h-9 w-full min-w-0 px-2 text-[13px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="day">天前</SelectItem>
+            <SelectItem value="hour">小时前</SelectItem>
+            <SelectItem value="minute">分钟前</SelectItem>
+          </SelectContent>
+        </Select>
+        <TimePicker aria-label={`${label}时间点`} className="w-full min-w-0 px-2 text-[13px]" value={value.time} onValueChange={time => onChange({ ...value, time })} />
+      </div>
+    </div>
+  );
+}
+
 function FixedTimeRangeFields({ onChange, value }: {
   onChange: (value: Extract<WorkflowTimeRange, { mode: "fixed" }>) => void;
   value: Extract<WorkflowTimeRange, { mode: "fixed" }>;
 }) {
+  const [error, setError] = useState<string>();
+  const update = (field: "startAt" | "endAt", selected: string) => {
+    const next = { ...value, [field]: selected };
+    if (selected && (!isValidWorkflowLocalDateTime(selected)
+      || Date.parse(`${selected}:00+08:00`) < Date.now() - WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 86_400_000)) {
+      setError("时间不能早于90天前");
+      return;
+    }
+    if (next.startAt && next.endAt
+      && !isMessageQueryFixedRangeWithinBounds(Date.now(), next.startAt, next.endAt)) {
+      setError("时间跨度不能超过90天，开始不能晚于结束");
+      return;
+    }
+    setError(undefined);
+    onChange(next);
+  };
   return (
     <div className="space-y-3">
       <DateTimeField
         label="开始时间"
-        onChange={(startAt) => onChange({ ...value, startAt })}
+        onChange={(startAt) => update("startAt", startAt)}
         value={value.startAt}
       />
       <DateTimeField
         label="结束时间"
-        onChange={(endAt) => onChange({ ...value, endAt })}
+        onChange={(endAt) => update("endAt", endAt)}
         value={value.endAt}
       />
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
@@ -225,7 +290,7 @@ function DynamicTimeField({
 
 function BoundedNumberInput({
   "aria-label": ariaLabel,
-  className = "h-9 text-[13px]",
+  className = "h-9 w-20 px-2.5 text-[13px]",
   max,
   min,
   onValueChange,
@@ -254,7 +319,7 @@ function BoundedNumberInput({
   return (
     <Input
       aria-label={ariaLabel}
-      className={`${className} w-20 px-2.5`}
+      className={className}
       max={max}
       min={min}
       onBlur={() => commitValue(draftValue)}

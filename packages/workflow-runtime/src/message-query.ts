@@ -1,8 +1,11 @@
 import {
   WorkflowMessageQueryCommandSchema,
-  WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
+  isWorkflowMessageQueryExecutionConfigComplete,
+  resolveMessageQueryRelativePoint,
+  isMessageQueryRelativeRangeWithinBounds,
+  isMessageQueryFixedRangeWithinBounds,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
@@ -44,7 +47,7 @@ export function createWorkflowMessageQueryCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowMessageQueryCommandContext;
 }): WorkflowMessageQueryCommand {
-  if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
+  if (!isWorkflowMessageQueryExecutionConfigComplete(input.config)) {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
   const config = input.config as WorkflowMessageQueryConfig;
@@ -106,10 +109,29 @@ function resolveMessageQueryRange(
   context: WorkflowMessageQueryCommandContext,
 ) {
   if (timeRange.mode === "fixed") {
+    const enteredAt = parseTimestamp(context.currentNodeLifecycle.enteredAt,
+      "Message Query fixed time requires current node enteredAt");
+    if (!isMessageQueryFixedRangeWithinBounds(enteredAt, timeRange.startAt, timeRange.endAt)) {
+      throw invalidMessageQueryCommand("Message Query fixed range exceeds the 90-day lookback or span");
+    }
     return {
       rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
     };
+  }
+  if (timeRange.mode === "relative") {
+    const enteredAt = parseTimestamp(
+      context.currentNodeLifecycle.enteredAt,
+      "Message Query relative time requires current node enteredAt",
+    );
+    const range = {
+      rangeStart: resolveMessageQueryRelativePoint(enteredAt, timeRange.start, false),
+      rangeEnd: resolveMessageQueryRelativePoint(enteredAt, timeRange.end, true),
+    };
+    if (!isMessageQueryRelativeRangeWithinBounds(enteredAt, range.rangeStart, range.rangeEnd)) {
+      throw invalidMessageQueryCommand("Message Query relative range exceeds the 90-day lookback or span");
+    }
+    return range;
   }
   return {
     rangeEnd: resolveDynamicTimeReference(timeRange.end, context),

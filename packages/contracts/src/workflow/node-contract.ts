@@ -17,6 +17,11 @@ import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
 import {
+  isMessageQueryRelativeRangeComplete,
+  WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS,
+  WorkflowMessageQueryRelativeTimeRangeSchema,
+} from "./message-query.js";
+import {
   WORKFLOW_MESSAGE_SCHEMA_REF,
   WORKFLOW_MESSAGES_SCHEMA_REF,
 } from "./messages.js";
@@ -183,6 +188,7 @@ export const WorkflowMessageExecutionConfigSchema = Type.Union([
 ]);
 
 export const WorkflowTimeRangeSchema = Type.Union([
+  WorkflowMessageQueryRelativeTimeRangeSchema,
   Type.Object({
     endAt: Type.String({ maxLength: 32 }),
     mode: Type.Literal("fixed"),
@@ -988,7 +994,13 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
   if (value.timeRange.mode === "fixed") {
     return isValidWorkflowLocalDateTime(value.timeRange.startAt)
       && isValidWorkflowLocalDateTime(value.timeRange.endAt)
-      && value.timeRange.startAt <= value.timeRange.endAt;
+      && value.timeRange.startAt <= value.timeRange.endAt
+      && Date.parse(`${value.timeRange.endAt}:59.999+08:00`)
+        - Date.parse(`${value.timeRange.startAt}:00+08:00`)
+        <= WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 86_400_000;
+  }
+  if (value.timeRange.mode === "relative") {
+    return isMessageQueryRelativeRangeComplete(value.timeRange);
   }
   return !isWorkflowDynamicTimeRangeProvablyInvalid(
     value.timeRange.start,

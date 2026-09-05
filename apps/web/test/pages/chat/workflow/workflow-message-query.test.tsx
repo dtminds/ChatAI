@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
@@ -13,6 +14,53 @@ import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/wor
 import { WorkflowCustomFieldResourceProvider } from "@/pages/chat/workflow/workflow-custom-field-resource";
 
 describe("workflow message query", () => {
+  it("edits relative times with the existing panel controls and preserves saved values", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    function StatefulPanel() {
+      const [node, setNode] = useState(createMessageQueryNode);
+      return <MessageQueryConfig
+        edges={[createEdge("start", node.id)]} node={node} nodes={[createStartNode(), node]}
+        onNodeChange={patch => {
+          onChange(patch);
+          setNode(current => ({ ...current, data: { ...current.data, ...patch } }));
+        }}
+      />;
+    }
+    const view = render(<StatefulPanel />);
+    expect(screen.getByRole("radio", { name: "动态时间" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "相对时间" }));
+    const startInput = screen.getByRole("spinbutton", { name: "开始时间相对数值" });
+    await user.clear(startInput);
+    await user.type(startInput, "7");
+    await user.tab();
+    await user.click(screen.getByRole("combobox", { name: "开始时间相对单位" }));
+    await user.click(screen.getByRole("option", { name: "小时前" }));
+    await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
+    await user.click(screen.getByRole("button", { name: "22时" }));
+    await user.keyboard("{Escape}");
+    const patch = onChange.mock.calls.at(-1)![0];
+    expect(patch.timeRange).toEqual({
+      mode: "relative",
+      start: { amount: 7, unit: "hour", time: "00:00" },
+      end: { amount: 0, unit: "day", time: "22:59" },
+    });
+    view.unmount();
+    const node = createMessageQueryNode();
+    node.data = { ...node.data, ...patch };
+    render(<MessageQueryConfig edges={[]} node={node} nodes={[node]} onNodeChange={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "相对时间" })).toBeChecked();
+    expect(screen.getByRole("spinbutton", { name: "开始时间相对数值" })).toHaveValue(7);
+    expect(messageQueryNodeUi.body.kind === "fields" && messageQueryNodeUi.body.getFields(node.data))
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        id: "time-range",
+        value: expect.objectContaining({ items: expect.arrayContaining([
+          expect.objectContaining({ text: "过去 7 小时 00:00" }),
+          expect.objectContaining({ text: "过去 0 天 22:59" }),
+        ]) }),
+      })]));
+  });
+
   it("defines a stable default execution contract and downstream outputs", () => {
     const definition = getNodeDefinition("message-query");
     const data = definition.createDefaultData();

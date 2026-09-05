@@ -1,0 +1,70 @@
+import MockAdapter from "axios-mock-adapter";
+import { toast } from "sonner";
+import { vi } from "vitest";
+import { requestInstance } from "@/lib/request";
+import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { resetTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
+import { useAuthStore } from "@/store/auth-store";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+
+export const workbenchHttpMock = new MockAdapter(requestInstance);
+
+const mediaUploadMocks = vi.hoisted(() => ({
+  resolveImageSegmentsForSend: vi.fn(async (_conversationId: string, segments: ComposerSegment[]) =>
+    segments.map((segment) => segment.type === "image" ? {
+      ...segment,
+      fileId: "chat-images/conv-001/mock-image.png",
+      url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
+    } : segment)),
+  uploadWorkbenchFile: vi.fn(async (_conversationId: string, file: File) => ({
+    extension: file.name.split(".").pop() ?? "",
+    fileId: `chat-files/conv-001/${file.name}`,
+    fileName: file.name,
+    fileSize: file.size,
+    fileSizeLabel: `${file.size} B`,
+    type: "file",
+    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+  })),
+  uploadWorkbenchImageFile: vi.fn(async (_conversationId: string, file: File) => ({
+    alt: file.name || "图片",
+    fileId: `chat-images/conv-001/${file.name}`,
+    type: "image",
+    url: `https://b5.bokr.com.cn/chat-images/conv-001/${file.name}`,
+  })),
+}));
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+  return { ...actual, toast: { ...actual.toast, error: vi.fn(), success: vi.fn(), warning: vi.fn() } };
+});
+
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>()),
+  ...mediaUploadMocks,
+}));
+
+export const workbenchToastErrorMock = vi.mocked(toast.error);
+export const workbenchToastSuccessMock = vi.mocked(toast.success);
+export const workbenchToastWarningMock = vi.mocked(toast.warning);
+
+export { mediaUploadMocks };
+
+export function resetChatWorkbenchTestState() {
+  workbenchHttpMock.reset();
+  workbenchHttpMock.onGet("/server/tickets/counts").reply(200, { data: { assignedToMeActive: 0 }, success: true });
+  workbenchHttpMock.onGet(/\/server\/tickets\/by-conversation\/[^/]+\/active-count$/).reply(200, { data: { activeCount: 0 }, success: true });
+  resetWorkbenchService();
+  vi.mocked(mediaUploadMocks.resolveImageSegmentsForSend).mockImplementation(async (_id, segments) => segments.map((segment) => segment.type === "image" ? { ...segment, fileId: "chat-images/conv-001/mock-image.png", url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png" } : segment));
+  vi.mocked(mediaUploadMocks.uploadWorkbenchFile).mockImplementation(async (_id, file) => ({ extension: file.name.split(".").pop() ?? "", fileId: `chat-files/conv-001/${file.name}`, fileName: file.name, fileSize: file.size, fileSizeLabel: `${file.size} B`, type: "file", url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}` }));
+  vi.mocked(mediaUploadMocks.uploadWorkbenchImageFile).mockImplementation(async (_id, file) => ({ alt: file.name || "图片", fileId: `chat-images/conv-001/${file.name}`, type: "image", url: `https://b5.bokr.com.cn/chat-images/conv-001/${file.name}` }));
+  workbenchToastErrorMock.mockClear();
+  workbenchToastSuccessMock.mockClear();
+  workbenchToastWarningMock.mockClear();
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({ accountType: "sub", displayName: "客服一号", permissions: ["chat.access", "chat.send", "chat.takeover"], role: "operator", subUserId: "sub-user-001", uid: 1 });
+  resetTicketCountStore();
+  useWorkbenchStore.getState().resetWorkbenchRuntime();
+  useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+}

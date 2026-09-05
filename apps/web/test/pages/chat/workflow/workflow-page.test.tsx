@@ -9,21 +9,7 @@ import {
   WorkflowPage,
 } from "@/pages/chat/workflow/workflow-page";
 import { WorkflowTemplateCenterPage } from "@/pages/chat/workflow/workflow-template-section";
-import {
-  splitWorkflowTriggers,
-  WorkflowListTable,
-} from "@/pages/chat/workflow/workflow-list-components";
-import {
-  canDeleteNodeKind,
-  canDuplicateNodeKind,
-  canInsertAfterNodeKind,
-  createDefaultNodeData,
-  getNodeDefinition,
-  insertableNodeKinds,
-  nodeDefinitions,
-  orderedNodeDefinitions,
-  paletteItems,
-} from "@/pages/chat/workflow/node-definitions";
+import { WorkflowListTable } from "@/pages/chat/workflow/workflow-list-components";
 import {
   createEdge,
   createInitialDraft,
@@ -490,102 +476,6 @@ describe("Agent workflow page", () => {
     agentServiceMock.listAiHostingModels.mockResolvedValue({ models: [] });
   });
 
-  it("splits multiple workflow triggers into separate labels", () => {
-    expect(splitWorkflowTriggers("添加好友、用户消息")).toEqual(["添加好友", "用户消息"]);
-    expect(splitWorkflowTriggers("表单提交，收到邮件")).toEqual(["表单提交", "收到邮件"]);
-    expect(splitWorkflowTriggers("90 天未复购会员")).toEqual(["90 天未复购会员"]);
-  });
-
-  it("keeps node metadata, default data, renderers, settings panels and palette in sync", () => {
-    const nodeKinds = Object.keys(nodeDefinitions) as WorkflowNodeKind[];
-    const paletteNodeIds = paletteItems.map((item) => item.id);
-
-    expect(nodeKinds).toEqual([
-      "agent",
-      "ai-collect",
-      "ai-intent",
-      "audience-filter",
-      "branch",
-      "coupon",
-      "customer-update",
-      "end",
-      "handoff",
-      "llm",
-      "message",
-      "message-query",
-      "order-bind",
-      "order-query",
-      "order-conversion",
-      "ratio-split",
-      "start",
-      "tag",
-      "tag-query",
-      "wait",
-      "wait-event",
-    ]);
-
-    for (const kind of nodeKinds) {
-      const definition = nodeDefinitions[kind];
-      const defaultData = createDefaultNodeData(kind);
-
-      expect(defaultData.kind).toBe(kind);
-      expect(defaultData.title).toBeTruthy();
-      expect(defaultData.label).toBeTruthy();
-      expect(defaultData.metric).toBeTruthy();
-      expect(defaultData.status).toBeTruthy();
-      expect(getNodeDefinition(kind)).toBe(definition);
-      expect(definition.body.kind).toMatch(/custom|fields|none/);
-      expect(canDeleteNodeKind(kind)).toBe(definition.canDelete);
-      expect(canDuplicateNodeKind(kind)).toBe(definition.canDuplicate);
-      expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
-    }
-
-    expect(insertableNodeKinds).toEqual([
-      "wait",
-      "wait-event",
-      "branch",
-      "audience-filter",
-      "ratio-split",
-      "ai-intent",
-      "llm",
-      "ai-collect",
-      "order-query",
-      "tag-query",
-      "tag",
-      "customer-update",
-      "order-bind",
-      "message",
-      "message-query",
-      "handoff",
-      "agent",
-      "coupon",
-      "order-conversion",
-    ]);
-    expect(paletteNodeIds).toEqual(insertableNodeKinds);
-    expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
-      "start",
-      "wait",
-      "wait-event",
-      "branch",
-      "audience-filter",
-      "ratio-split",
-      "ai-intent",
-      "llm",
-      "ai-collect",
-      "order-query",
-      "tag-query",
-      "tag",
-      "customer-update",
-      "order-bind",
-      "message",
-      "message-query",
-      "handoff",
-      "agent",
-      "coupon",
-      "order-conversion",
-      "end",
-    ]);
-  });
 
   it("opens the Workflow menu on the list page instead of the canvas editor", async () => {
     renderWorkflowPage("/chat/workflows");

@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { isWorkflowNodeDraftConfig, isWorkflowNodeExecutionConfig, isMessageQueryRelativeRangeWithinBounds, isMessageQueryFixedRangeWithinBounds } from "../src/index.js";
 
 describe("Message Query relative time contract", () => {
+  it.each([
+    [{ amount: 0, unit: "hour" }, { amount: 1, unit: "day", time: "00:00" }, false],
+    [{ amount: 0, unit: "day", time: "00:00" }, { amount: 24, unit: "hour" }, false],
+    [{ amount: 1, unit: "day", time: "00:00" }, { amount: 0, unit: "minute" }, true],
+    [{ amount: 60, unit: "minute" }, { amount: 0, unit: "day", time: "23:59" }, true],
+    [{ amount: 0, unit: "day", time: "23:59" }, { amount: 0, unit: "minute" }, true],
+    [{ amount: 0, unit: "minute" }, { amount: 0, unit: "day", time: "00:00" }, true],
+  ])("checks mixed-unit ordering without rejecting partially valid ranges: %j → %j", (start, end, valid) => {
+    const config = { limit: 10, take: "latest", timeRange: { mode: "relative", start, end } };
+    expect(isWorkflowNodeDraftConfig("message-query", config)).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("message-query", config)).toBe(valid);
+  });
   it.each(["message-query", "order-query"] as const)("rejects clock times on duration units for %s", kind => {
     const range = { mode: "relative", start: { amount: 1, unit: "hour" }, end: { amount: 0, unit: "minute" } };
     const config = (timeRange: unknown) => kind === "message-query"

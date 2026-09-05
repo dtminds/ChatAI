@@ -18,7 +18,7 @@
 条件模式的订单时间字段支持下单时间、支付时间和完成时间，分别映射 Java 的 `orderTimes`、`payTimes` 和 `finishTime`。时间范围支持三种模式：
 
 - `dynamic`：默认模式，开始时间引用 `trigger.occurredAt`，结束时间引用当前订单查询节点的 `enteredAt`；也可选择其它可达的 datetime 变量。
-- `relative`：以订单查询节点的 `enteredAt` 为基准向前计算，并按配置覆盖时分；开始分钟从 `:00` 计入，结束分钟包含到 `:59`。
+- `relative`：以订单查询节点的 `enteredAt` 为基准向前计算。仅天单位按配置覆盖时分，开始分钟从 `:00` 计入，结束分钟包含到 `:59`；小时/分钟直接减去实际时长，不覆盖时分秒。
 - `absolute`：配置固定的 UTC+8 本地日期时间范围。
 
 Compiler 校验动态时间变量的 datetime 类型、确定前序可用性和因果顺序；Runtime 在调用 Java 前解析选择器、拒绝缺失或反向范围，并统一生成 UTC+8 wall-clock 秒级时间。

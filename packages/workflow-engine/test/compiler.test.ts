@@ -159,6 +159,17 @@ describe("compileWorkflowDraft", () => {
   });
 
   it("rejects incomplete or unavailable Message Query time ranges", () => {
+    const mixedRange = createDraft();
+    mixedRange.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10, take: "latest", timeRange: {
+        mode: "relative", start: { amount: 0, unit: "hour" }, end: { amount: 1, unit: "day", time: "00:00" },
+      },
+    }));
+    expectCompilationIssue(mixedRange, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
     const invalidFixedRange = createDraft();
     invalidFixedRange.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10,

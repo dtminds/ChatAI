@@ -44,7 +44,13 @@ export function isMessageQueryRelativeRangeComplete(
   if (start.unit === "day" && end.unit === "day") {
     return start.amount > end.amount || (start.amount === end.amount && start.time <= end.time);
   }
-  return true;
+  // Within a UTC+8 day, a mixed range's end-start difference is linear in
+  // enteredAt. Checking both extrema proves whether any valid ordering exists;
+  // one arbitrary anchor would reject ranges that work at other times of day.
+  const midnight = Date.parse("2000-01-01T00:00:00+08:00");
+  return [midnight, midnight + 86_400_000 - 1].some(anchor =>
+    resolveMessageQueryRelativePoint(anchor, start, false)
+      < resolveMessageQueryRelativePoint(anchor, end, true));
 }
 
 export function resolveMessageQueryRelativePoint(

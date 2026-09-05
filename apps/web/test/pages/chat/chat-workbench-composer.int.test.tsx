@@ -1014,17 +1014,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("only accepts jpeg and png files from the composer image picker", async () => {
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    expect(screen.getByLabelText("选择图片")).toHaveAttribute(
-      "accept",
-      "image/jpeg,image/png,.jpg,.jpeg,.png",
-    );
-  });
-
   it("uploads a selected file and sends it as a file message", async () => {
     const upload = createDeferred<Awaited<ReturnType<typeof mediaUploadMocks.uploadWorkbenchFile>>>();
     const file = new File(["file-bytes"], "报价单.pdf", {
@@ -2301,31 +2290,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
     expect(uploadOptions?.signal?.aborted).toBe(true);
     expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
-  });
-
-  it("limits composer images to five", async () => {
-    const clipboardImages = Array.from(
-      { length: 6 },
-      (_, index) =>
-        new File(["image-bytes"], `clipboard-${index + 1}.png`, {
-          type: "image/png",
-        }),
-    );
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: clipboardImages,
-      },
-    });
-
-    expect(await within(composer).findAllByRole("img")).toHaveLength(5);
-    expect(
-      within(composer).queryByRole("img", { name: "clipboard-6.png" }),
-    ).not.toBeInTheDocument();
   });
 
   it("keeps overflowing composer content scrollable inside the editor", async () => {

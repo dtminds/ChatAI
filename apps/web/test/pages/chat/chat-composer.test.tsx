@@ -145,4 +145,27 @@ describe("ChatComposer", () => {
 
     expect(screen.queryByTestId("chat-composer-image-drop-overlay")).not.toBeInTheDocument();
   });
+
+  it("accepts only jpeg and png files from the image picker", () => {
+    renderComposer();
+
+    expect(screen.getByLabelText("选择图片")).toHaveAttribute(
+      "accept",
+      "image/jpeg,image/png,.jpg,.jpeg,.png",
+    );
+  });
+
+  it("limits pasted composer images to five", async () => {
+    const images = Array.from({ length: 6 }, (_, index) =>
+      new File(["image-bytes"], `clipboard-${index + 1}.png`, { type: "image/png" }),
+    );
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, { clipboardData: { files: images } });
+
+    expect(await screen.findAllByRole("img")).toHaveLength(5);
+    expect(screen.queryByRole("img", { name: "clipboard-6.png" })).not.toBeInTheDocument();
+  });
 });

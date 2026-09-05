@@ -7,11 +7,14 @@ export const WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS = 90;
 export const WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS =
   WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS + 1;
 
-const WorkflowMessageQueryRelativePointSchema = Type.Object({
+const WorkflowMessageQueryRelativePointSchema = Type.Union([Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
   time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
-  unit: Type.Union([Type.Literal("day"), Type.Literal("hour"), Type.Literal("minute")]),
-}, { additionalProperties: false });
+  unit: Type.Literal("day"),
+}, { additionalProperties: false }), Type.Object({
+  amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
+  unit: Type.Union([Type.Literal("hour"), Type.Literal("minute")]),
+}, { additionalProperties: false })]);
 
 export const WorkflowMessageQueryRelativeTimeRangeSchema = Type.Object({
   mode: Type.Literal("relative"),
@@ -34,10 +37,14 @@ export function isMessageQueryRelativeRangeComplete(
 ) {
   const { start, end } = range;
   if ([start, end].some(point => point.amount > getMessageQueryRelativeAmountMax(point.unit))) return false;
-  const minutes = (point: WorkflowMessageQueryRelativePoint) =>
-    point.amount * (point.unit === "day" ? 1440 : point.unit === "hour" ? 60 : 1);
-  const difference = minutes(start) - minutes(end);
-  return difference > -1440 && (difference > 0 || start.time <= end.time);
+  if (start.unit !== "day" && end.unit !== "day") {
+    return start.amount * (start.unit === "hour" ? 60 : 1)
+      > end.amount * (end.unit === "hour" ? 60 : 1);
+  }
+  if (start.unit === "day" && end.unit === "day") {
+    return start.amount > end.amount || (start.amount === end.amount && start.time <= end.time);
+  }
+  return true;
 }
 
 export function resolveMessageQueryRelativePoint(
@@ -46,6 +53,8 @@ export function resolveMessageQueryRelativePoint(
   end: boolean,
 ) {
   const unitMs = point.unit === "day" ? 86_400_000 : point.unit === "hour" ? 3_600_000 : 60_000;
+  // Hours/minutes are elapsed durations; only day offsets select a clock time.
+  if (point.unit !== "day") return enteredAt - point.amount * unitMs;
   const offsetMs = 8 * 3_600_000;
   const local = new Date(enteredAt - point.amount * unitMs + offsetMs);
   const [hours, minutes] = point.time.split(":").map(Number);

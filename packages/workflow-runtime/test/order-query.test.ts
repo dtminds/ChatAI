@@ -20,6 +20,15 @@ const context = {
 };
 
 describe("Workflow Order Query capability", () => {
+  it.each(["hour", "minute"])("subtracts elapsed %s without overriding the clock", unit => {
+    expect(createWorkflowOrderQueryCommand({
+      config: { mode: "conditions", conditions: {
+        amount: {}, shopIds: [], timeField: "order-time",
+        timeRange: { mode: "relative", start: { amount: unit === "hour" ? 1 : 60, unit }, end: { amount: 0, unit } },
+      } },
+      context: { ...context, currentNodeLifecycle: { enteredAt: "2026-09-04T16:30:12.345Z" } },
+    })).toMatchObject({ timeRange: ["2026-09-04 23:30:12", "2026-09-05 00:30:12"] });
+  });
   it("resolves an upstream order number without requiring customer identity", () => {
     expect(createWorkflowOrderQueryCommand({
       config: { mode: "order-number", orderNumberSelector: ["node", "collect", "orderNo"] },

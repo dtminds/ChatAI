@@ -3,6 +3,17 @@ import { createWorkflowMessageQueryCommand } from "../src/index.js";
 import { isMessageQueryFixedRangeWithinBounds } from "@chatai/contracts";
 
 describe("Workflow Message Query binding", () => {
+  it.each(["hour", "minute"])("uses exact elapsed %s and treats zero as node entry", unit => {
+    expect(createWorkflowMessageQueryCommand({
+      config: { limit: 10, take: "latest", timeRange: {
+        mode: "relative", start: { amount: unit === "hour" ? 1 : 60, unit }, end: { amount: 0, unit },
+      } },
+      context: { ...context(), currentNodeLifecycle: { enteredAt: "2026-09-04T16:30:12.345Z" } },
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-09-04T15:30:12.345Z"),
+      rangeEnd: Date.parse("2026-09-04T16:30:12.345Z"),
+    });
+  });
   it("keeps published fixed dates executable after the lookback window expires", () => {
     const timeRange = { mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00" };
     expect(isMessageQueryFixedRangeWithinBounds(Date.parse("2026-01-03T10:00:00+08:00"), timeRange.startAt, timeRange.endAt)).toBe(true);
@@ -64,13 +75,13 @@ describe("Workflow Message Query binding", () => {
         limit: 1, take: "earliest",
         timeRange: {
           mode: "relative",
-          start: { amount: unit === "hour" ? 1 : 60, unit, time: "23:00" },
+          start: { amount: unit === "hour" ? 1 : 60, unit },
           end: { amount: 0, unit: "day", time: "00:30" },
         },
       },
       context: commandContext,
     })).toMatchObject({
-      rangeStart: Date.parse("2026-08-14T15:00:00.000Z"),
+      rangeStart: Date.parse("2026-08-14T15:30:00.000Z"),
       rangeEnd: Date.parse("2026-08-14T16:30:59.999Z"),
     });
   });
@@ -80,7 +91,7 @@ describe("Workflow Message Query binding", () => {
       limit: 10, take: "latest",
       timeRange: {
         mode: "relative",
-        start: { amount: 1, unit: "hour", time: "23:00" },
+        start: { amount: 1, unit: "hour" },
         end: { amount: 0, unit: "day", time: "00:00" },
       },
     };

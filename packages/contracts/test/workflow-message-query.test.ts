@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { isWorkflowNodeDraftConfig, isWorkflowNodeExecutionConfig, isMessageQueryRelativeRangeWithinBounds, isMessageQueryFixedRangeWithinBounds } from "../src/index.js";
 
 describe("Message Query relative time contract", () => {
+  it.each(["message-query", "order-query"] as const)("rejects clock times on duration units for %s", kind => {
+    const range = { mode: "relative", start: { amount: 1, unit: "hour" }, end: { amount: 0, unit: "minute" } };
+    const config = (timeRange: unknown) => kind === "message-query"
+      ? { limit: 10, take: "latest", timeRange }
+      : { mode: "conditions", conditions: { amount: {}, shopIds: [], timeField: "order-time", timeRange } };
+    expect(isWorkflowNodeDraftConfig(kind, config(range))).toBe(true);
+    expect(isWorkflowNodeDraftConfig(kind, config({ ...range, start: { ...range.start, time: "23:00" } }))).toBe(false);
+    expect(isWorkflowNodeDraftConfig(kind, config({ ...range, start: { amount: 1, unit: "day" } }))).toBe(false);
+  });
   it("checks fixed time lookback and inclusive end minute against 90 days", () => {
     const now = Date.parse("2026-09-05T10:00:00+08:00");
     expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-05T09:59")).toBe(true);
@@ -16,7 +25,7 @@ describe("Message Query relative time contract", () => {
     limit: 10, take: "latest",
     timeRange: {
       mode: "relative",
-      start: { amount, unit, time: "00:00" },
+      start: { amount, unit, ...(unit === "day" ? { time: "00:00" } : {}) },
       end: { amount: 0, unit: "day", time: "23:59" },
     },
   });

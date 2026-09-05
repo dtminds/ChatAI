@@ -34,14 +34,17 @@ export const WorkflowOrderQueryTimeFieldSchema = Type.Union([
   Type.Literal("finish-time"),
 ]);
 
-const WorkflowOrderQueryRelativePointSchema = Type.Object({
+const WorkflowOrderQueryRelativePointSchema = Type.Union([Type.Object({
   amount: Type.Integer({
     maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60,
     minimum: 0,
   }),
   time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
-  unit: WorkflowOrderQueryRelativeUnitSchema,
-}, { additionalProperties: false });
+  unit: Type.Literal("day"),
+}, { additionalProperties: false }), Type.Object({
+  amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
+  unit: Type.Union([Type.Literal("hour"), Type.Literal("minute")]),
+}, { additionalProperties: false })]);
 
 const WorkflowOrderQueryAbsoluteTimeSchema = Type.Object({
   endAt: Type.String({ maxLength: 16 }),

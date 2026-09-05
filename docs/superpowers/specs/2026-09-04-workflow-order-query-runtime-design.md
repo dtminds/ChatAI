@@ -1,5 +1,7 @@
 # Workflow 订单查询节点运行设计
 
+相对时间单位规则：仅天单位允许配置 time，按 UTC+8 设置所选时分。小时/分钟隐藏时间输入，契约不保存 time，直接从节点 enteredAt 减去时长，0 表示节点进入时刻。运行时与前端校验采用同一语义，Java 查询时间仍按秒格式化。
+
 - 日期：2026-09-04
 - 状态：Implemented
 - 范围：`order-query` Contract、Compiler、Web、Runtime、Worker 与编辑器资源代理

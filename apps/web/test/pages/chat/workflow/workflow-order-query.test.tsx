@@ -33,6 +33,28 @@ vi.mock(
 );
 
 describe("workflow Order Query node", () => {
+  it("removes clock values for hour/minute units and restores day time inputs", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(<StatefulOrderQueryConfig listShops={vi.fn().mockResolvedValue([])} onNodeChange={onNodeChange} />);
+    await user.click(screen.getByRole("radio", { name: "按条件" }));
+    await user.click(screen.getByRole("button", { name: "修改条件" }));
+    await user.click(screen.getByRole("combobox", { name: "订单时间类型" }));
+    await user.click(screen.getByRole("option", { name: "相对时间" }));
+    for (const name of ["小时前", "分钟前"]) {
+      await user.click(screen.getByRole("combobox", { name: "开始相对单位" }));
+      await user.click(screen.getByRole("option", { name }));
+      expect(screen.queryByRole("button", { name: "开始时间" })).not.toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: expect.objectContaining({
+      timeRange: expect.objectContaining({ start: { amount: 30, unit: "minute" } }),
+    }) }));
+    await user.click(screen.getByRole("button", { name: "修改条件" }));
+    await user.click(screen.getByRole("combobox", { name: "开始相对单位" }));
+    await user.click(screen.getByRole("option", { name: "天前" }));
+    expect(screen.getByRole("button", { name: "开始时间" })).toHaveTextContent("00:00");
+  });
   it("shows the query mode and order number variable on the node", () => {
     const data = {
       ...createOrderQueryNode({

@@ -114,13 +114,14 @@ describe("workflow message query", () => {
     await user.tab();
     await user.click(screen.getByRole("combobox", { name: "开始时间相对单位" }));
     await user.click(screen.getByRole("option", { name: "小时前" }));
+    expect(screen.queryByRole("button", { name: "开始时间时间点" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
     await user.click(screen.getByRole("button", { name: "22时" }));
     await user.keyboard("{Escape}");
     const patch = onChange.mock.calls.at(-1)![0];
     expect(patch.timeRange).toEqual({
       mode: "relative",
-      start: { amount: 7, unit: "hour", time: "00:00" },
+      start: { amount: 7, unit: "hour" },
       end: { amount: 0, unit: "day", time: "22:59" },
     });
     view.unmount();
@@ -133,7 +134,7 @@ describe("workflow message query", () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({
         id: "time-range",
         value: expect.objectContaining({ items: expect.arrayContaining([
-          expect.objectContaining({ text: "过去 7 小时 00:00" }),
+          expect.objectContaining({ text: "过去 7 小时" }),
           expect.objectContaining({ text: "过去 0 天 22:59" }),
         ]) }),
       })]));

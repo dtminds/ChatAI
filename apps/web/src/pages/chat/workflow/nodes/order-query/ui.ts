@@ -104,5 +104,5 @@ function formatRelativePoint(
   point: Extract<WorkflowOrderQueryDraftCondition["timeRange"], { mode: "relative" }>["start"],
 ) {
   const unit = point.unit === "day" ? "天" : point.unit === "hour" ? "小时" : "分钟";
-  return `过去 ${point.amount} ${unit} ${point.time}`;
+  return `过去 ${point.amount} ${unit}${point.unit === "day" ? ` ${point.time}` : ""}`;
 }

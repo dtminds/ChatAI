@@ -165,7 +165,8 @@ function RelativeTimeField({ label, value, onChange }: {
         />
         <Select value={value.unit} onValueChange={unit => {
           if (unit !== "day" && unit !== "hour" && unit !== "minute") return;
-          onChange({ ...value, unit, amount: Math.min(value.amount, getMessageQueryRelativeAmountMax(unit)) });
+          const amount = Math.min(value.amount, getMessageQueryRelativeAmountMax(unit));
+          onChange(unit === "day" ? { amount, unit, time: label === "开始时间" ? "00:00" : "23:59" } : { amount, unit });
         }}>
           <SelectTrigger aria-label={`${label}相对单位`} className="h-9 w-full min-w-0 px-2 text-[13px]"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -174,7 +175,7 @@ function RelativeTimeField({ label, value, onChange }: {
             <SelectItem value="minute">分钟前</SelectItem>
           </SelectContent>
         </Select>
-        <TimePicker aria-label={`${label}时间点`} className="w-full min-w-0 px-2 text-[13px]" value={value.time} onValueChange={time => onChange({ ...value, time })} />
+        {value.unit === "day" ? <TimePicker aria-label={`${label}时间点`} className="w-full min-w-0 px-2 text-[13px]" value={value.time} onValueChange={time => onChange({ ...value, time })} /> : null}
       </div>
     </div>
   );

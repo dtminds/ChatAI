@@ -2292,64 +2292,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
   });
 
-  it("scrolls the composer editor to the bottom after a pasted image loads", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    Object.defineProperty(composer, "scrollHeight", {
-      configurable: true,
-      value: 960,
-    });
-    composer.scrollTop = 120;
-
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    const image = await screen.findByRole("img", { name: "clipboard.png" });
-    fireEvent.load(image);
-
-    await waitFor(() => {
-      expect(composer.scrollTop).toBe(960);
-    });
-  });
-
-  it("removes a composer image from its close button", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-
-    await userEvent.click(
-      within(composer).getByRole("button", { name: "移除图片 clipboard.png" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        within(composer).queryByRole("img", { name: "clipboard.png" }),
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-  });
-
   it("shows a sending state and prevents duplicate sends while waiting for the send API", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

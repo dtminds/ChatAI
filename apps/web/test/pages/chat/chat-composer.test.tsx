@@ -168,4 +168,37 @@ describe("ChatComposer", () => {
     expect(await screen.findAllByRole("img")).toHaveLength(5);
     expect(screen.queryByRole("img", { name: "clipboard-6.png" })).not.toBeInTheDocument();
   });
+
+  it("scrolls to the bottom when a pasted image finishes loading", async () => {
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    Object.defineProperty(composer, "scrollHeight", { configurable: true, value: 960 });
+    composer.scrollTop = 120;
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [new File(["image-bytes"], "clipboard.png", { type: "image/png" })],
+      },
+    });
+
+    const image = await screen.findByRole("img", { name: "clipboard.png" });
+    fireEvent.load(image);
+    await waitFor(() => expect(composer.scrollTop).toBe(960));
+  });
+
+  it("removes a pasted image and clears the sendable state", async () => {
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [new File(["image-bytes"], "clipboard.png", { type: "image/png" })],
+      },
+    });
+
+    await screen.findByRole("img", { name: "clipboard.png" });
+    await userEvent.click(screen.getByRole("button", { name: "移除图片 clipboard.png" }));
+    await waitFor(() => expect(screen.queryByRole("img", { name: "clipboard.png" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
 });

@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean } = {}) {
+function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null } = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer
@@ -38,7 +38,7 @@ function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: Grou
       onSegmentsChange={vi.fn()}
       onSendDraft={vi.fn()}
       placeholder="请输入消息……"
-      quotedMessage={null}
+      quotedMessage={options.quotedMessage ?? null}
       composerRef={createRef<LexicalEditor>()}
     />,
   );
@@ -66,6 +66,50 @@ function placeCaretAtTextOffset(element: HTMLElement, offset: number) {
 }
 
 describe("ChatComposer", () => {
+  it("shows the quoted message preview and clears it through the callback", async () => {
+    const onClearQuotedMessage = vi.fn();
+    render(
+      <ChatComposer
+        canConfigureSeatAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canToggleConversationAIHosting={false}
+        canSendMessage
+        shouldShowConversationAIHostingControl={false}
+        hasActiveFileUpload={false}
+        groupMembers={[]}
+        inputEnterBehavior="send"
+        isGroupConversation={false}
+        isEmojiPickerOpen={false}
+        isSending={false}
+        isHistoryPanelOpen={false}
+        historyKey="quote-composer-test"
+        onClearQuotedMessage={onClearQuotedMessage}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onChangeSeatAgentMode={vi.fn()}
+        onChangeFullAuto={vi.fn()}
+        onOpenMaterialLibrary={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onSegmentsChange={vi.fn()}
+        onSendDraft={vi.fn()}
+        placeholder="请输入消息……"
+        quotedMessage={{
+          contentType: "text",
+          quoteMsgId: "quote-001",
+          senderName: "客户",
+          text: "请确认这个版本",
+        }}
+        composerRef={createRef<LexicalEditor>()}
+      />,
+    );
+
+    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent("请确认这个版本");
+    await userEvent.click(screen.getByRole("button", { name: "取消引用" }));
+    expect(onClearQuotedMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("limits pasted text to the supported composer length", async () => {
     const user = userEvent.setup();
     const allowedText = "字".repeat(1000);

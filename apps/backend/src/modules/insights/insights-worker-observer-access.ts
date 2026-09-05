@@ -3,4 +3,4 @@ export {
   parseInsightsWorkerObserverSubjects,
   parseInsightsWorkerTraceUids,
   type InsightsWorkerObserverSubject,
-} from "@chatai/insights";
+} from "@chatai/insights/http";

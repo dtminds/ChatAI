@@ -10,9 +10,13 @@
       "@chatai/contracts": ["../../packages/contracts/src/index.ts"],
       "@chatai/database": ["../../packages/database/src/index.ts"],
       "@chatai/insights": ["../../packages/insights/src/index.ts"],
+      "@chatai/insights/http": ["../../packages/insights/src/http.ts"],
+      "@chatai/insights/worker": ["../../packages/insights/src/worker.ts"],
       "@chatai/llm": ["../../packages/llm/src/index.ts"],
       "@chatai/tickets": ["../../packages/tickets/src/index.ts"],
       "@chatai/user-memory": ["../../packages/user-memory/src/index.ts"],
+      "@chatai/user-memory/http": ["../../packages/user-memory/src/http.ts"],
+      "@chatai/user-memory/worker": ["../../packages/user-memory/src/worker.ts"],
       "@chatai/workflow-engine": ["../../packages/workflow-engine/src/index.ts"],
       "@chatai/workflow-runtime": ["../../packages/workflow-runtime/src/index.ts"]
     }

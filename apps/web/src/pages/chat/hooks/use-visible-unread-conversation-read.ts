@@ -96,7 +96,8 @@ export function useVisibleUnreadConversationRead({
         context.unreadCount <= 0 ||
         (!options.force &&
           shouldSuppressAutoRead?.(conversationId, context.unreadCount)) ||
-        inFlightReadConversationIdsRef.current.has(conversationId)
+        (!options.force &&
+          inFlightReadConversationIdsRef.current.has(conversationId))
       ) {
         return;
       }

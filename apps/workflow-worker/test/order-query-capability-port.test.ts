@@ -66,12 +66,10 @@ describe("Workflow Order Query Java port", () => {
     });
   });
 
-  it("rejects a page whose list does not match count/page/pageSize", async () => {
+  it("uses the returned list without requiring pagination metadata", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       count: 101,
       list: [],
-      page: 1,
-      pageSize: 100,
       success: true,
     }), { status: 200 }));
 
@@ -82,7 +80,7 @@ describe("Workflow Order Query Java port", () => {
       signal: new AbortController().signal,
       token: null,
       uid: 9,
-    })).rejects.toMatchObject({ code: "WORKFLOW_ORDER_QUERY_RESPONSE_INVALID" });
+    })).resolves.toEqual({ netAmount: 0, orderCount: 0, totalAmount: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -114,17 +112,12 @@ describe("Workflow Order Query Java port", () => {
     });
   });
 
-  it("rejects an order without subOrders because net amount cannot be verified", async () => {
+  it("treats omitted or malformed subOrders as having no refundable items", async () => {
     await expect(executeWorkflowOrderQuery(orderNumberInput(vi.fn(async () => javaResponse({
       count: 1,
-      list: [{ actuPayment: 25 }],
-      page: 1,
-      pageSize: 100,
+      list: [{ actuPayment: 25 }, { actuPayment: 10, subOrders: [null, { subRefundAmount: "invalid" }] }],
       success: true,
-    }))))).rejects.toMatchObject({
-      code: "WORKFLOW_ORDER_QUERY_RESPONSE_INVALID",
-      failureKind: "terminal",
-    });
+    }))))).resolves.toEqual({ netAmount: 35, orderCount: 2, totalAmount: 35 });
   });
 
   it.each([

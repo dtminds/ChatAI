@@ -39,6 +39,15 @@ export function projectWorkflowNodeExecutionConfig({
 
   const draftConfig = extractWorkflowNodeDraftConfig(kind, data);
 
+  if (kind === "coupon") {
+    const coupon = draftConfig.coupon;
+    return cloneJsonRecord(compactUndefined({
+      couponId: coupon && typeof coupon === "object" && !Array.isArray(coupon)
+        ? (coupon as Record<string, unknown>).couponId : undefined,
+      number: draftConfig.number,
+    }));
+  }
+
   if (kind === "start") {
     const resolvedWorkflowType = workflowType ?? ("seatIds" in draftConfig
       ? "chatai_sop"

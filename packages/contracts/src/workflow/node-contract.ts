@@ -12,6 +12,7 @@ import {
   type WorkflowAudienceGroupSnapshot,
 } from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
+import { WorkflowCouponDraftConfigSchema, WorkflowCouponExecutionConfigSchema } from "./coupon.js";
 import { getWorkflowCustomFieldVariableId } from "./custom-field-variable.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
@@ -677,7 +678,7 @@ export const workflowNodeContractRegistry = {
     [],
     true,
   ),
-  coupon: placeholderContract("action", ["externalUserId"]),
+  coupon: runtimeReadyContract("action", 1, WorkflowCouponDraftConfigSchema, WorkflowCouponExecutionConfigSchema, ["mallUserId"]),
   "customer-update": runtimeReadyContract(
     "action",
     1,

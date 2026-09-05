@@ -74,7 +74,7 @@ const draftConfigs = {
       { basisPoints: 5_000, id: "ratio-b", label: "B 组" },
     ],
   },
-  coupon: {},
+  coupon: { number: 1 },
   "customer-update": {
     fields: [{ id: "field-1", value: { kind: "literal", value: "" } }],
   },
@@ -182,11 +182,11 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
-      .toEqual(["agent", "coupon"]);
+      .toEqual(["agent"]);
   });
 
   it("enforces Wait Event post-trigger delay boundaries for every supported unit", () => {
@@ -542,7 +542,7 @@ describe("workflow node contracts", () => {
       "ai-intent": [],
       "audience-filter": ["externalUserId"],
       branch: [],
-      coupon: ["externalUserId"],
+      coupon: ["mallUserId"],
       "customer-update": ["externalUserId"],
       end: [],
       handoff: ["thirdExternalUserId"],

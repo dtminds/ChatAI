@@ -651,13 +651,23 @@ describe("compileWorkflowDraft", () => {
 
   it("rejects node kinds that Phase 3 cannot execute", () => {
     const draft = createDraft();
-    draft.nodes.splice(2, 0, node("coupon", "coupon"));
+    draft.nodes.splice(2, 0, node("coupon", "agent"));
     draft.edges.splice(1, 1,
       { id: "wait-coupon", source: "wait", target: "coupon" },
       { id: "coupon-end", source: "coupon", target: "end" },
     );
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+  });
+  it("compiles a selected coupon into one bounded issuance command", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait", "coupon", {
+      coupon: { couponId: 12, couponName: "券", couponContent: "满100减20", couponType: 1 }, number: 5,
+    }));
+    const spec = compileWorkflowDraft({ draft, revision: 1, workflowId: "42", workflowType: "chatai_sop" });
+    expect(spec.nodes.find(item => item.id === "wait")?.config).toEqual({ couponId: 12, number: 5 });
+    draft.nodes.splice(1, 1, node("wait", "coupon", { number: 1 }));
+    expectCompilationIssues(draft, ["invalid-node-config"]);
   });
 });
 

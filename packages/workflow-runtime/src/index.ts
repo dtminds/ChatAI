@@ -26,6 +26,7 @@ export * from "./order-bind.js";
 export * from "./order-query.js";
 export * from "./persistence-codecs.js";
 export * from "./order-conversion.js";
+export * from "./coupon.js";
 export * from "./reconciler.js";
 export * from "./runtime-value-limits.js";
 export * from "./service.js";

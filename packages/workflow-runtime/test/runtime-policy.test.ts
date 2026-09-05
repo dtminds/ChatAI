@@ -9,6 +9,7 @@ import {
   InMemoryWorkflowRuntimeRepository,
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+  WORKFLOW_COUPON_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
@@ -292,7 +293,7 @@ describe("Workflow runtime policy", () => {
     executionSpec.nodes.splice(1, 0, {
       config: {},
       id: "coupon",
-      kind: "coupon",
+      kind: "agent",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
@@ -310,7 +311,7 @@ describe("Workflow runtime policy", () => {
       entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
       initialNodeId: "coupon",
-      initialNodeKind: "coupon",
+      initialNodeKind: "agent",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -611,6 +612,7 @@ function createHarness(options: {
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
               WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+              WORKFLOW_COUPON_CAPABILITY_BINDING,
               WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
               WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
               WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,

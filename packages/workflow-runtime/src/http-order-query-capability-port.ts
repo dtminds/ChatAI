@@ -1,6 +1,5 @@
 import {
   decodeJavaInternalApiEnvelope,
-  WORKFLOW_ORDER_QUERY_MAX_PAGES,
   WORKFLOW_ORDER_QUERY_PAGE_SIZE,
   WorkflowOrderQueryCommandSchema,
   type WorkflowOrderQueryCommand,
@@ -86,18 +85,8 @@ export async function executeWorkflowOrderQuery(input: {
     netAmountCents: 0,
     totalAmountCents: 0,
   };
-  for (let pageNum = 1; pageNum <= WORKFLOW_ORDER_QUERY_MAX_PAGES; pageNum += 1) {
-    const page = await fetchOrderPage({ ...input, pageNum });
-    for (const order of page.list) aggregateOrder(input.command, order, aggregate);
-    if (!page.hasNext) break;
-    if (pageNum === WORKFLOW_ORDER_QUERY_MAX_PAGES) {
-      throw terminalError(
-        "WORKFLOW_ORDER_QUERY_RESULT_TOO_LARGE",
-        "订单数量过多，流程已停止",
-        `Workflow Order Query exceeded ${WORKFLOW_ORDER_QUERY_MAX_PAGES} pages`,
-      );
-    }
-  }
+  const orders = await fetchFirstOrderPage(input);
+  for (const order of orders) aggregateOrder(input.command, order, aggregate);
 
   return {
     netAmount: aggregate.netAmountCents / 100,
@@ -141,11 +130,10 @@ function aggregateOrder(
   );
 }
 
-async function fetchOrderPage(input: {
+async function fetchFirstOrderPage(input: {
   baseUrl: string;
   command: WorkflowOrderQueryCommand;
   fetch: typeof fetch;
-  pageNum: number;
   signal: AbortSignal;
   token: string | null;
   uid: number;
@@ -157,7 +145,7 @@ async function fetchOrderPage(input: {
     response = await input.fetch(new URL(JAVA_ORDER_QUERY_PATH, `${input.baseUrl}/`), {
       body: JSON.stringify({
         orderType: [0, 1],
-        pageNum: input.pageNum,
+        pageNum: 1,
         pageSize: WORKFLOW_ORDER_QUERY_PAGE_SIZE,
         uid: input.uid,
         ...(input.command.mode === "order-number"
@@ -220,25 +208,20 @@ async function fetchOrderPage(input: {
   if (!Array.isArray(list)
     || !isNonNegativeSafeInteger(count)
     || !isPositiveSafeInteger(page)
-    || page !== input.pageNum
+    || page !== 1
     || pageSize !== WORKFLOW_ORDER_QUERY_PAGE_SIZE) {
     throw invalidResponse("Workflow Order Query Java endpoint returned an invalid page");
   }
   if (list.length > pageSize) {
     throw invalidResponse("Workflow Order Query Java endpoint exceeded the requested page size");
   }
-  const pageOffset = (page - 1) * pageSize;
-  if (!Number.isSafeInteger(pageOffset)
-    || list.length !== Math.min(pageSize, Math.max(0, count - pageOffset))) {
+  if (list.length !== Math.min(pageSize, count)) {
     throw invalidResponse("Workflow Order Query Java endpoint returned inconsistent pagination");
   }
-  return {
-    hasNext: page * pageSize < count,
-    list: list.map((item) => {
-      if (!isRecord(item)) throw invalidResponse("Workflow Order Query page contains a non-object order");
-      return item;
-    }),
-  };
+  return list.map((item) => {
+    if (!isRecord(item)) throw invalidResponse("Workflow Order Query page contains a non-object order");
+    return item;
+  });
 }
 
 function getJavaTimeRangeField(

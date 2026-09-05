@@ -2,47 +2,33 @@ import { describe, expect, it, vi } from "vitest";
 import { executeWorkflowOrderQuery } from "../src/order-query-capability-port.js";
 
 describe("Workflow Order Query Java port", () => {
-  it("paginates customer orders, applies inclusive actuPayment bounds, and deducts completed refunds", async () => {
+  it("uses only the first 100 customer orders, applies inclusive actuPayment bounds, and deducts completed refunds", async () => {
     const unmatchedOrders = Array.from({ length: 99 }, () => ({
       actuPayment: 50,
       goodsAmount: 40,
       subOrders: [],
     }));
-    const pages = [
-      {
-        count: 101,
-        list: [
-          {
-            actuPayment: 110,
-            goodsAmount: 10,
-            subOrders: [{
-              goodsId: "g1",
-              goodsName: "T恤",
-              num: 2,
-              skuName: "黑色",
-              subRefundAmount: 20,
-              subRefundFinishTime: "2026-09-03 12:00:00",
-            }],
-          },
-          ...unmatchedOrders,
-        ],
-        page: 1,
-        pageSize: 100,
-        success: true,
-      },
-      {
-        count: 101,
-        list: [{
-          actuPayment: 50,
-          goodsAmount: 40,
-          subOrders: [],
-        }],
-        page: 2,
-        pageSize: 100,
-        success: true,
-      },
-    ];
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify(pages.shift()), { status: 200 }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      count: 101,
+      list: [
+        {
+          actuPayment: 110,
+          goodsAmount: 10,
+          subOrders: [{
+            goodsId: "g1",
+            goodsName: "T恤",
+            num: 2,
+            skuName: "黑色",
+            subRefundAmount: 20,
+            subRefundFinishTime: "2026-09-03 12:00:00",
+          }],
+        },
+        ...unmatchedOrders,
+      ],
+      page: 1,
+      pageSize: 100,
+      success: true,
+    }), { status: 200 }));
     const result = await executeWorkflowOrderQuery({
       baseUrl: "https://java.example.com/internal",
       command: {
@@ -65,7 +51,7 @@ describe("Workflow Order Query Java port", () => {
       orderCount: 1,
       totalAmount: 110,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       goodsName: "T恤",
       orderType: [0, 1],

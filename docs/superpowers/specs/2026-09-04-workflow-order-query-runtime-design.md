@@ -38,18 +38,18 @@ Compiler 校验动态时间变量的 datetime 类型、确定前序可用性和�
 执行查询：
 
 - `POST /third-internal/cdp-order/search-order`
-- 固定 `pageSize = 100`，最多自动读取 100 页。
+- 固定只请求 `pageNum = 1`、`pageSize = 100`，不自动读取后续页。
 - 条件查询按 `tradeTimeAsc = true` 请求稳定顺序。
 - 未选择店铺时省略 `shopIdList`，表示不限制店铺。
 - Java 标准信封统一通过 `decodeJavaInternalApiEnvelope` 解码。
 
-HTTP 或网络失败进入 Runtime retry；Java 业务拒绝、非法响应或超过 100 页时 terminal。分页响应超过请求页大小，或空页仍声明 `hasNext = true`，按非法响应终止。
+HTTP 或网络失败进入 Runtime retry；Java 业务拒绝或非法响应时 terminal。Java 返回的 `count` 超过 100 时不视为失败，Runtime 仅按第一页最多 100 条计算并继续流程。
 
 ## 3. 订单统计与金额
 
-金额筛选由 Worker 按 `actuPayment` 复核，可配置最低金额、最高金额或双边区间，边界均包含在内。Worker 逐页聚合，不缓存完整订单列表。
+金额筛选由 Worker 按第一页订单的 `actuPayment` 复核，可配置最低金额、最高金额或双边区间，边界均包含在内。Worker 只聚合本次返回的最多 100 条订单。
 
-Java 查询响应使用顶层 `count`、`page`、`pageSize` 和 `list`；Runtime 校验分页字段与请求页一致，并根据 `page * pageSize < count` 判断是否继续。Runtime 使用最终通过金额复核的订单数作为累计订单数，不直接使用 Java 在复核前返回的 `count`。
+Java 查询响应使用顶层 `count`、`page`、`pageSize` 和 `list`；Runtime 校验响应为第一页且列表不超过 100 条，不根据 `count` 继续翻页。Runtime 使用第一页中最终通过金额复核的订单数作为累计订单数，不直接使用 Java 在复核前返回的 `count`。因此 `count > 100` 时，三项输出都明确是第一页最多 100 条订单的截断统计。
 
 输出：
 

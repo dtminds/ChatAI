@@ -1,6 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-export const WORKFLOW_ORDER_QUERY_MAX_PAGES = 100;
 export const WORKFLOW_ORDER_QUERY_PAGE_SIZE = 100;
 export const WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS = 360;
 export const WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS =

@@ -5,11 +5,12 @@ describe("Message Query relative time contract", () => {
   it("checks fixed time lookback and inclusive end minute against 90 days", () => {
     const now = Date.parse("2026-09-05T10:00:00+08:00");
     expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-05T09:59")).toBe(true);
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T09:59", "2026-09-05T09:59")).toBe(false);
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-05T10:00")).toBe(false);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T00:00", "2026-09-05T23:59")).toBe(true);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-06T10:00", "2026-09-05T09:59")).toBe(false);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-06T10:00")).toBe(false);
     expect(isWorkflowNodeExecutionConfig("message-query", {
       limit: 10, take: "latest", timeRange: { mode: "fixed", startAt: "2026-06-07T10:00", endAt: "2026-09-05T10:00" },
-    })).toBe(false);
+    })).toBe(true);
   });
   const config = (amount = 30, unit = "day") => ({
     limit: 10, take: "latest",
@@ -28,12 +29,12 @@ describe("Message Query relative time contract", () => {
     },
   );
 
-  it("enforces exact 90-day lookback and span boundaries", () => {
+  it("allows 91 days minus one millisecond but rejects the 91-day boundary", () => {
     const now = Date.parse("2026-09-05T04:00:00.000Z");
-    const earliest = now - 90 * 86_400_000;
-    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest, now)).toBe(true);
-    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest - 1, now - 1)).toBe(false);
-    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest, now + 1)).toBe(false);
+    const earliest = now - 91 * 86_400_000;
+    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest + 1, now)).toBe(true);
+    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest, now - 1)).toBe(false);
+    expect(isMessageQueryRelativeRangeWithinBounds(now, earliest + 1, now + 1)).toBe(false);
   });
 
   it("allows intermediate reversed drafts but rejects execution", () => {

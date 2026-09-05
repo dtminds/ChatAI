@@ -4,6 +4,8 @@ import { WorkflowMessagesV1Schema } from "./messages.js";
 import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
 
 export const WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS = 90;
+export const WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS =
+  WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS + 1;
 
 const WorkflowMessageQueryRelativePointSchema = Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
@@ -56,12 +58,12 @@ export function isMessageQueryRelativeRangeWithinBounds(
   rangeStart: number,
   rangeEnd: number,
 ) {
-  const maximumSpan = WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 86_400_000;
+  const maximumSpan = WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000;
   return Number.isFinite(enteredAt)
     && rangeStart < rangeEnd
-    && rangeStart >= enteredAt - maximumSpan
-    && rangeEnd >= enteredAt - maximumSpan
-    && rangeEnd - rangeStart <= maximumSpan;
+    && rangeStart > enteredAt - maximumSpan
+    && rangeEnd > enteredAt - maximumSpan
+    && rangeEnd - rangeStart < maximumSpan;
 }
 
 export function isMessageQueryFixedRangeWithinBounds(

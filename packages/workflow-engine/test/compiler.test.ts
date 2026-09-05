@@ -149,7 +149,7 @@ describe("compileWorkflowDraft", () => {
     draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
     const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42", workflowType: "chatai_sop" });
     expect(spec.nodes.find(item => item.kind === "message-query")?.config).toMatchObject({ timeRange });
-    timeRange.start.amount = 361;
+    timeRange.start.amount = 91;
     draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
     expectCompilationIssue(draft, {
       code: "invalid-node-config",

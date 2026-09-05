@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMessageQueryRelativeAmountMax, isMessageQueryFixedRangeWithinBounds, isValidWorkflowLocalDateTime, WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS, type WorkflowMessageQueryRelativePoint } from "@chatai/contracts";
+import { getMessageQueryRelativeAmountMax, isMessageQueryFixedRangeWithinBounds, isValidWorkflowLocalDateTime, WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS, type WorkflowMessageQueryRelativePoint } from "@chatai/contracts";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
@@ -184,43 +184,41 @@ function FixedTimeRangeFields({ onChange, value }: {
   onChange: (value: Extract<WorkflowTimeRange, { mode: "fixed" }>) => void;
   value: Extract<WorkflowTimeRange, { mode: "fixed" }>;
 }) {
-  const [error, setError] = useState<string>();
-  const update = (field: "startAt" | "endAt", selected: string) => {
+  const validate = (field: "startAt" | "endAt", selected: string) => {
     const next = { ...value, [field]: selected };
     if (selected && (!isValidWorkflowLocalDateTime(selected)
-      || Date.parse(`${selected}:00+08:00`) < Date.now() - WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 86_400_000)) {
-      setError("时间不能早于90天前");
-      return;
+      || Date.parse(`${selected}:00+08:00`) <= Date.now() - WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
+      return "时间不能早于90天前";
     }
     if (next.startAt && next.endAt
       && !isMessageQueryFixedRangeWithinBounds(Date.now(), next.startAt, next.endAt)) {
-      setError("时间跨度不能超过90天，开始不能晚于结束");
-      return;
+      return "时间跨度不能超过90天，开始不能晚于结束";
     }
-    setError(undefined);
-    onChange(next);
+    return undefined;
   };
   return (
     <div className="space-y-3">
       <DateTimeField
         label="开始时间"
-        onChange={(startAt) => update("startAt", startAt)}
+        onChange={(startAt) => onChange({ ...value, startAt })}
+        validateValue={selected => validate("startAt", selected)}
         value={value.startAt}
       />
       <DateTimeField
         label="结束时间"
-        onChange={(endAt) => update("endAt", endAt)}
+        onChange={(endAt) => onChange({ ...value, endAt })}
+        validateValue={selected => validate("endAt", selected)}
         value={value.endAt}
       />
-      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
 
-function DateTimeField({ label, onChange, value }: {
+function DateTimeField({ label, onChange, value, validateValue }: {
   label: string;
   onChange: (value: string) => void;
   value: string;
+  validateValue: (value: string) => string | undefined;
 }) {
   return (
     <label className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 text-[13px]">
@@ -229,6 +227,7 @@ function DateTimeField({ label, onChange, value }: {
         aria-label={label}
         className="text-[13px]"
         onValueChange={onChange}
+        validateValue={validateValue}
         value={value}
       />
     </label>

@@ -9,22 +9,18 @@ describe("Workflow Message Query binding", () => {
       } }, context: context(),
     })).toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
   });
-  it("rejects resolved times older than 90 days and spans longer than 90 days", () => {
+  it("allows the complete 90th day and rejects offsets beyond 90 days", () => {
     const commandContext = context();
     const config = {
       limit: 10, take: "latest",
       timeRange: {
         mode: "relative",
-        start: { amount: 90, unit: "day", time: "10:00" },
-        end: { amount: 0, unit: "day", time: "09:59" },
+        start: { amount: 90, unit: "day", time: "00:00" },
+        end: { amount: 0, unit: "day", time: "23:59" },
       },
     };
     expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
-    config.timeRange.start.time = "09:59";
-    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext }))
-      .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
-    config.timeRange.start.time = "10:00";
-    config.timeRange.end.time = "10:00";
+    config.timeRange.start.amount = 91;
     expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext }))
       .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
   });

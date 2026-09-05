@@ -14,6 +14,84 @@ import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/wor
 import { WorkflowCustomFieldResourceProvider } from "@/pages/chat/workflow/workflow-custom-field-resource";
 
 describe("workflow message query", () => {
+  it("keeps a rejected fixed time in the picker and commits only after correction", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const user = userEvent.setup();
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt: "2026-09-05T10:00", endAt: "2026-09-05T12:00" };
+      const onNodeChange = vi.fn();
+      render(<MessageQueryConfig node={node} nodes={[node]} edges={[]} onNodeChange={onNodeChange} />);
+      await user.click(screen.getByRole("button", { name: "结束时间" }));
+      await user.click(screen.getByRole("button", { name: "结束时间时间" }));
+      await user.click(screen.getByRole("button", { name: "09时" }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(onNodeChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "结束时间时间" })).toHaveTextContent("09:00");
+      await user.click(screen.getByRole("button", { name: "结束时间时间" }));
+      await user.click(screen.getByRole("button", { name: "13时" }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "确定" })).not.toBeInTheDocument();
+      expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
+        timeRange: { mode: "fixed", startAt: "2026-09-05T10:00", endAt: "2026-09-05T13:00" },
+      }));
+    } finally { now.mockRestore(); }
+  });
+
+  it.each([
+    ["2026-06-06T10:00", "2026-06-06T12:00", "开始时间"],
+    ["2026-09-05T10:00", "2026-12-05T12:00", "结束时间"],
+  ])("does not commit fixed time beyond lookback or span: %s", async (startAt, endAt, label) => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const user = userEvent.setup();
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt, endAt };
+      const onNodeChange = vi.fn();
+      render(<MessageQueryConfig node={node} nodes={[node]} edges={[]} onNodeChange={onNodeChange} />);
+      await user.click(screen.getByRole("button", { name: label }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(onNodeChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "确定" })).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally { now.mockRestore(); }
+  });
+
+  it("reports only the reversed-range issue for an otherwise valid fixed date", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt: "2026-09-05T15:00", endAt: "2026-09-05T14:00" };
+      const issues = validateWorkflowNodeConfig(node, [createStartNode(), node], [createEdge("start", node.id)]);
+      expect(issues).toContainEqual(expect.objectContaining({ code: "message-query-time-range-invalid" }));
+      expect(issues).not.toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+    } finally { now.mockRestore(); }
+  });
+  it.each(["00:00:00.000", "10:30:00.000", "23:59:59.999"])(
+    "allows the complete 90th day at %s when validating publication", clock => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse(`2026-09-05T${clock}+08:00`));
+      try {
+        const node = createMessageQueryNode();
+        node.data.timeRange = {
+          mode: "relative",
+          start: { amount: 90, unit: "day", time: "00:00" },
+          end: { amount: 0, unit: "day", time: "23:59" },
+        };
+        const validate = () => validateWorkflowNodeConfig(node, [createStartNode(), node], [createEdge("start", node.id)]);
+        expect(validate()).not.toContainEqual(expect.objectContaining({ code: "message-query-relative-time-invalid" }));
+        node.data.timeRange = { mode: "fixed", startAt: "2026-06-07T00:00", endAt: "2026-09-05T23:59" };
+        expect(validate()).not.toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+        node.data.timeRange.endAt = "2026-09-06T00:00";
+        expect(validate()).toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+      } finally {
+        now.mockRestore();
+      }
+    },
+  );
   it("edits relative times with the existing panel controls and preserves saved values", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

@@ -18,7 +18,7 @@ import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
 import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
 import {
   isMessageQueryRelativeRangeComplete,
-  WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS,
+  WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS,
   WorkflowMessageQueryRelativeTimeRangeSchema,
 } from "./message-query.js";
 import {
@@ -997,7 +997,7 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
       && value.timeRange.startAt <= value.timeRange.endAt
       && Date.parse(`${value.timeRange.endAt}:59.999+08:00`)
         - Date.parse(`${value.timeRange.startAt}:00+08:00`)
-        <= WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 86_400_000;
+        < WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000;
   }
   if (value.timeRange.mode === "relative") {
     return isMessageQueryRelativeRangeComplete(value.timeRange);

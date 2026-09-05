@@ -1,5 +1,6 @@
 import {
   isMessageQueryRelativeRangeComplete,
+  isValidWorkflowLocalDateTime,
   isMessageQueryFixedRangeWithinBounds,
   isMessageQueryRelativeRangeWithinBounds,
   resolveMessageQueryRelativePoint,
@@ -247,6 +248,9 @@ function validateNodeVariableContent(
       ));
     }
     if (timeRange.mode === "fixed" && timeRange.startAt && timeRange.endAt
+      && isValidWorkflowLocalDateTime(timeRange.startAt)
+      && isValidWorkflowLocalDateTime(timeRange.endAt)
+      && timeRange.startAt <= timeRange.endAt
       && !isMessageQueryFixedRangeWithinBounds(Date.now(), timeRange.startAt, timeRange.endAt)) {
       issues.push(createVariableContentIssue(
         "message-query-fixed-time-bounds-invalid",

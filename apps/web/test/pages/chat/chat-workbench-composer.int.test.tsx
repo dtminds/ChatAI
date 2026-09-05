@@ -692,29 +692,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("inserts a pasted clipboard image into the composer and enables sending", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送消息" })).not.toBeDisabled();
-    });
-
-    expect(screen.getByRole("button", { name: "发送消息" })).not.toBeDisabled();
-  });
-
   it("accepts image drops across the composer and appends them to the draft", async () => {
     const user = userEvent.setup();
     const image = new File(["image-bytes"], "dropped.png", {

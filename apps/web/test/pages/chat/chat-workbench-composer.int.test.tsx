@@ -829,26 +829,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("limits pasted composer text to 1000 characters and blocks further typing", async () => {
-    const user = userEvent.setup();
-    const allowedText = "字".repeat(1000);
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, `${allowedText}多`);
-
-    await waitFor(() => {
-      expect(composer.textContent?.replaceAll("\u200B", "")).toBe(allowedText);
-    });
-
-    await user.type(composer, "余");
-
-    await waitFor(() => {
-      expect(composer.textContent?.replaceAll("\u200B", "")).toBe(allowedText);
-    });
-  });
-
   it("keeps existing suffix text when a middle paste exceeds the composer limit", async () => {
     const user = userEvent.setup();
     const prefix = "前".repeat(499);

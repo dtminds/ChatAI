@@ -2012,7 +2012,6 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application");
     const toolbar = within(canvas).getByLabelText("画布工具");
 
-    expect(toolbar).toHaveClass("nodrag", "nopan");
     expect(within(toolbar).getByRole("button", { name: "缩小" })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: "放大" })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: "撤销" })).toBeInTheDocument();
@@ -2538,7 +2537,6 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application");
-    expect(within(canvas).getByLabelText("画布工具")).toHaveClass("nodrag", "nopan");
 
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });

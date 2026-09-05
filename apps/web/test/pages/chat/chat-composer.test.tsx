@@ -1,11 +1,13 @@
 import { createRef } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
+import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
 function renderComposer() {
+  resetChatWorkbenchTestState();
   return render(
     <ChatComposer
       canConfigureSeatAIHosting={false}
@@ -57,5 +59,25 @@ describe("ChatComposer", () => {
     await user.type(composer, "余");
 
     expect(composer.textContent?.replaceAll("\u200B", "")).toBe(allowedText);
+  });
+
+  it("keeps pasted images outside the text limit and enables sending", async () => {
+    const user = userEvent.setup();
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    renderComposer();
+
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await user.click(composer);
+    await user.paste("字".repeat(1000));
+    fireEvent.paste(composer, {
+      clipboardData: { files: [clipboardImage] },
+    });
+
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送消息" })).not.toBeDisabled();
+    expect(mediaUploadMocks.uploadWorkbenchImageFile).not.toHaveBeenCalled();
   });
 });

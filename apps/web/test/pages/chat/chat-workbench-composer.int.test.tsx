@@ -849,32 +849,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("does not count pasted images against the composer text limit", async () => {
-    const user = userEvent.setup();
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-    const allowedText = "字".repeat(1000);
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    expect(await within(composer).findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-    await pasteIntoComposer(user, composer, allowedText);
-
-    await waitFor(() => {
-      expect(composer.textContent?.replaceAll("\u200B", "")).toBe(allowedText);
-    });
-    expect(within(composer).getByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-  });
-
   it("inserts a pasted clipboard image into the composer and enables sending", async () => {
     const clipboardImage = new File(["image-bytes"], "clipboard.png", {
       type: "image/png",

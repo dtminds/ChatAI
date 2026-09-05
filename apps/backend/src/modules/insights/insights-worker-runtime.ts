@@ -2,4 +2,4 @@ export {
   createInsightsWorkerRuntime,
   parseInsightsWorkerRuntimeConfig,
   type InsightsWorkerRuntimeConfig,
-} from "@chatai/insights";
+} from "@chatai/insights/worker";

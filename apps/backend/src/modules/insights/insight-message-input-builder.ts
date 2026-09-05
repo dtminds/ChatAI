@@ -1,1 +1,1 @@
-export * from "@chatai/insights";
+export * from "@chatai/insights/http";

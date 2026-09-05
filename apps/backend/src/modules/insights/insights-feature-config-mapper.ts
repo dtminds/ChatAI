@@ -2,4 +2,4 @@ export {
   parseFeatureConfigRow,
   parseWorkerFeatureConfigRow,
   type InsightFeatureConfigRow,
-} from "@chatai/insights";
+} from "@chatai/insights/http";

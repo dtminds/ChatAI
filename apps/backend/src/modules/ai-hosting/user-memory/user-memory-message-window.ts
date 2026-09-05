@@ -1,1 +1,1 @@
-export * from "@chatai/user-memory";
+export * from "@chatai/user-memory/http";

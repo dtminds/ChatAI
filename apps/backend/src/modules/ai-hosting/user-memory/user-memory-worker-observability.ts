@@ -1,1 +1,1 @@
-export { UserMemoryWorkerObservability } from "@chatai/user-memory";
+export { UserMemoryWorkerObservability } from "@chatai/user-memory/worker";

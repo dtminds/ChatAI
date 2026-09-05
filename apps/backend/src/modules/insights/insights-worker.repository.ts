@@ -1,1 +1,1 @@
-export { MysqlInsightWorkerRepository } from "@chatai/insights";
+export { MysqlInsightWorkerRepository } from "@chatai/insights/worker";

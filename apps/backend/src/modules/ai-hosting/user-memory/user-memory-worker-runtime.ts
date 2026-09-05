@@ -1,4 +1,4 @@
 export {
   createUserMemoryWorkerRuntime,
   parseUserMemoryWorkerRuntimeConfig,
-} from "@chatai/user-memory";
+} from "@chatai/user-memory/worker";

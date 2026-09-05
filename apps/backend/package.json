@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:package-imports": "node scripts/verify-package-import-boundaries.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

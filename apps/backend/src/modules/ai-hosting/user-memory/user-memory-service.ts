@@ -32,7 +32,7 @@ import {
   resolveUserMemoryCustomerLimit,
   sumUserMemoryChanges,
   type UserMemoryCustomerLimitResolver,
-} from "@chatai/user-memory";
+} from "./user-memory-domain.js";
 
 export {
   DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER,
@@ -44,7 +44,7 @@ export {
   resolveUserMemoryCustomerLimit,
   sumUserMemoryChanges,
   type UserMemoryCustomerLimitResolver,
-} from "@chatai/user-memory";
+} from "./user-memory-domain.js";
 
 type CustomerKey = { platform: number; thirdExternalUserId: string };
 type CustomerSummary = CustomerKey & { avatarUrl?: string; customerName: string };

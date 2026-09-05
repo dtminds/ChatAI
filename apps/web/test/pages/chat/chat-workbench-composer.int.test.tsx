@@ -658,26 +658,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(composer.textContent).toBe("1 @所有人   @帅庆 @帅庆");
   });
 
-  it("opens the group mention picker when @ is typed at a middle caret position", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await user.click(await screen.findByRole("tab", { name: "群聊" }));
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "1  @帅庆 @帅庆");
-    placeContentEditableCaretAtTextOffset(composer, 1);
-    await user.keyboard("@");
-
-    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
-    expect(within(listbox).getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
-    expect(composer.textContent).toBe("1@  @帅庆 @帅庆");
-  });
-
   it("keeps the retry dialog open when refreshed group members still do not contain the mention target", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

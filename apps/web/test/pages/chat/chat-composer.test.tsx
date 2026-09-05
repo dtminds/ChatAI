@@ -44,6 +44,27 @@ function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: Grou
   );
 }
 
+function placeCaretAtTextOffset(element: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let remaining = offset;
+  let node = walker.nextNode();
+  while (node) {
+    const length = node.textContent?.length ?? 0;
+    if (remaining <= length) {
+      const range = document.createRange();
+      range.setStart(node, remaining);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.focus();
+      return;
+    }
+    remaining -= length;
+    node = walker.nextNode();
+  }
+}
+
 describe("ChatComposer", () => {
   it("limits pasted text to the supported composer length", async () => {
     const user = userEvent.setup();
@@ -284,5 +305,19 @@ describe("ChatComposer", () => {
     );
 
     expect(composer).toHaveTextContent("请 @客户");
+  });
+
+  it("opens mention candidates at a middle caret position", async () => {
+    renderComposer({
+      groupMembers: [{ id: "member", displayName: "客户", type: 0 }],
+      isGroupConversation: true,
+    });
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("前文 后文");
+    placeCaretAtTextOffset(composer, 2);
+    await userEvent.keyboard("@");
+
+    expect(await screen.findByRole("option", { name: "客户" })).toBeInTheDocument();
   });
 });

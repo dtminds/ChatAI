@@ -1,12 +1,19 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const WORKFLOW_ORDER_QUERY_PAGE_SIZE = 100;
+export const WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS = 20;
 export const WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS = 360;
 export const WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS =
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS + 1;
 
+const WorkflowOrderQueryVariablePathSegmentSchema = Type.String({
+  maxLength: 128,
+  minLength: 1,
+  pattern: "^(?!(?:__proto__|prototype|constructor)$).+$",
+});
+
 export const WorkflowOrderQueryVariableSelectorSchema = Type.Array(
-  Type.String({ minLength: 1, maxLength: 128 }),
+  WorkflowOrderQueryVariablePathSegmentSchema,
   { minItems: 2, maxItems: 4 },
 );
 
@@ -65,6 +72,14 @@ export const WorkflowOrderQueryAmountSchema = Type.Object({
   min: Type.Optional(Type.Number({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 })),
 }, { additionalProperties: false });
 
+export function hasValidWorkflowOrderQueryAmountPrecision(amount: {
+  max?: number;
+  min?: number;
+}) {
+  return [amount.min, amount.max].every(value => value === undefined
+    || /^\d+(?:\.\d{1,2})?$/.test(String(value)));
+}
+
 export const WorkflowOrderQueryConditionSchema = Type.Object({
   amount: WorkflowOrderQueryAmountSchema,
   goodsName: Type.Optional(Type.String({ maxLength: 512, minLength: 1 })),
@@ -74,7 +89,7 @@ export const WorkflowOrderQueryConditionSchema = Type.Object({
   timeField: WorkflowOrderQueryTimeFieldSchema,
   shopIds: Type.Array(
     Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
-    { maxItems: 100, uniqueItems: true },
+    { maxItems: WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS, uniqueItems: true },
   ),
 }, { additionalProperties: false });
 
@@ -87,7 +102,7 @@ export const WorkflowOrderQueryDraftConditionSchema = Type.Object({
   timeField: WorkflowOrderQueryTimeFieldSchema,
   shopIds: Type.Array(
     Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
-    { maxItems: 100, uniqueItems: true },
+    { maxItems: WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS, uniqueItems: true },
   ),
 }, { additionalProperties: false });
 
@@ -131,7 +146,7 @@ export const WorkflowOrderQueryCommandSchema = Type.Union([
     platformId: Type.Optional(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 })),
     shopIds: Type.Array(
       Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
-      { maxItems: 100, uniqueItems: true },
+      { maxItems: WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS, uniqueItems: true },
     ),
   }, { additionalProperties: false }),
 ]);

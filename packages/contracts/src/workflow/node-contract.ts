@@ -40,10 +40,12 @@ import {
   type WorkflowStartTrigger,
 } from "./trigger.js";
 import {
+  hasValidWorkflowOrderQueryAmountPrecision,
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
   WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
   WorkflowOrderQueryDraftConfigSchema,
   WorkflowOrderQueryExecutionConfigSchema,
+  type WorkflowOrderQueryDraftConfig,
   type WorkflowOrderQueryExecutionConfig,
 } from "./order-query.js";
 
@@ -794,6 +796,12 @@ export function isWorkflowNodeDraftConfig(
       (value as WorkflowAudienceFilterDraftConfig).groups,
     );
   }
+  if (kind === "order-query") {
+    const config = value as WorkflowOrderQueryDraftConfig;
+    return config.mode !== "conditions"
+      || config.conditions === undefined
+      || hasValidWorkflowOrderQueryAmountPrecision(config.conditions.amount);
+  }
   return true;
 }
 
@@ -880,7 +888,8 @@ export function isWorkflowOrderQueryExecutionConfigComplete(
     return false;
   }
   const amount = value.conditions.amount;
-  return amount.min === undefined || amount.max === undefined || amount.min <= amount.max;
+  return hasValidWorkflowOrderQueryAmountPrecision(amount)
+    && (amount.min === undefined || amount.max === undefined || amount.min <= amount.max);
 }
 
 function getWorkflowLocalDateTimeDifference(start: string, end: string) {

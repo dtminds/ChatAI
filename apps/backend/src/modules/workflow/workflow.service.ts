@@ -2103,16 +2103,23 @@ function setRecordPath(
   path: string[],
   value: number | string,
 ) {
-  if (path.length === 0) throw invalidOrderQueryTestInput();
+  if (path.length === 0 || path.some(isUnsafeRecordPathSegment)) {
+    throw invalidOrderQueryTestInput();
+  }
   let current = target;
   for (const part of path.slice(0, -1)) {
-    const existing = current[part];
-    if (existing !== undefined && !isRecord(existing)) throw invalidOrderQueryTestInput();
-    const next = isRecord(existing) ? existing : {};
+    const hasExisting = Object.prototype.hasOwnProperty.call(current, part);
+    const existing = hasExisting ? current[part] : undefined;
+    if (hasExisting && !isRecord(existing)) throw invalidOrderQueryTestInput();
+    const next = hasExisting ? existing as Record<string, unknown> : {};
     current[part] = next;
     current = next;
   }
   current[path.at(-1)!] = value;
+}
+
+function isUnsafeRecordPathSegment(value: string) {
+  return value === "__proto__" || value === "constructor" || value === "prototype";
 }
 
 function invalidOrderQueryTestInput() {

@@ -309,6 +309,77 @@ describe("workflow Order Query node", () => {
     expect(onNodeChange).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves decimal price input and rejects more than two decimal places", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(<StatefulOrderQueryConfig listShops={vi.fn().mockResolvedValue([])} onNodeChange={onNodeChange} />);
+
+    await user.click(screen.getByRole("radio", { name: "按条件" }));
+    await user.click(screen.getByRole("button", { name: "修改条件" }));
+    const minimum = screen.getByRole("textbox", { name: "最低订单金额" });
+    const maximum = screen.getByRole("textbox", { name: "最高订单金额" });
+    await user.type(minimum, "1.50");
+    await user.type(maximum, "2.345");
+
+    expect(minimum).toHaveValue("1.50");
+    expect(maximum).toHaveValue("2.345");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("请输入正确的金额，最多两位小数")).toBeInTheDocument();
+    expect(onNodeChange).toHaveBeenCalledTimes(1);
+
+    await user.clear(maximum);
+    await user.type(maximum, "2.35");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      conditions: expect.objectContaining({ amount: { max: 2.35, min: 1.5 } }),
+    })));
+  });
+
+  it("limits shop and influencer selection to 20 items", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const shops = Array.from({ length: 21 }, (_, index) => ({
+      id: index + 1,
+      model: 1,
+      name: `店铺 ${index + 1}`,
+      platformId: 2,
+    }));
+    render(<StatefulOrderQueryConfig
+      listShops={vi.fn().mockResolvedValue(shops)}
+      onNodeChange={onNodeChange}
+    />);
+
+    await user.click(screen.getByRole("radio", { name: "按条件" }));
+    await user.click(screen.getByRole("button", { name: "修改条件" }));
+    await user.click(screen.getByRole("combobox", { name: "店铺/达人" }));
+    for (let index = 1; index <= 20; index += 1) {
+      await user.click(await screen.findByRole("checkbox", { name: `店铺 ${index}` }));
+    }
+
+    const firstShop = screen.getByRole("checkbox", { name: "店铺 1" });
+    const twentyFirstShop = screen.getByRole("checkbox", { name: "店铺 21" });
+    expect(firstShop).toBeEnabled();
+    expect(twentyFirstShop).toBeDisabled();
+    await user.click(firstShop);
+    expect(twentyFirstShop).toBeEnabled();
+    await user.click(twentyFirstShop);
+    expect(screen.getByRole("combobox", { name: "店铺/达人" })).toHaveTextContent("已选择 20 个");
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      conditions: expect.objectContaining({
+        shopIds: [...Array.from({ length: 19 }, (_, index) => index + 2), 21],
+      }),
+    })));
+  });
+
+  it("validates the shop selection limit before saving", () => {
+    expect(validateOrderQueryConditions({
+      ...createDefaultOrderQueryConditions(),
+      shopIds: Array.from({ length: 21 }, (_, index) => index + 1),
+    }).shopIds).toBe("最多选择 20 个店铺/达人");
+  });
+
   it("validates the 360-day absolute and relative time boundaries", () => {
     const now = new Date("2026-09-04T21:00:00+08:00");
     const base = createDefaultOrderQueryConditions();

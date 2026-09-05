@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type {
-  WorkflowOrderQueryDraftCondition,
-  WorkflowOrderShop,
-  WorkflowVariableSelector,
+import {
+  WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS,
+  type WorkflowOrderQueryDraftCondition,
+  type WorkflowOrderShop,
+  type WorkflowVariableSelector,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -162,6 +170,10 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
   const [draftConditions, setDraftConditions] = useState<WorkflowOrderQueryDraftCondition>(
     () => structuredClone(conditions),
   );
+  const [amountInputs, setAmountInputs] = useState(() => ({
+    max: formatAmountInput(conditions.amount.max),
+    min: formatAmountInput(conditions.amount.min),
+  }));
   const [validationErrors, setValidationErrors] = useState<OrderQueryConditionValidationErrors>({});
   const [shops, setShops] = useState<WorkflowOrderShop[]>([]);
   const [shopStatus, setShopStatus] = useState<"error" | "idle" | "loading" | "ready">("idle");
@@ -195,8 +207,8 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
   }, [listShops, selectedPlatformIds]);
   const patch = (value: Partial<WorkflowOrderQueryDraftCondition>) => {
     setDraftConditions(current => ({ ...current, ...value }));
-    if ("amount" in value) {
-      setValidationErrors(current => ({ ...current, amount: undefined }));
+    if ("shopIds" in value) {
+      setValidationErrors(current => ({ ...current, shopIds: undefined }));
     }
     if ("timeRange" in value) {
       setValidationErrors(current => ({ ...current, timeRange: undefined }));
@@ -224,11 +236,20 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
     }
     patch({ orderStatus: Number(value) });
   };
+  const updateAmountInput = (key: "max" | "min") => (event: ChangeEvent<HTMLInputElement>) => {
+    setAmountInputs(current => ({ ...current, [key]: event.target.value }));
+    setValidationErrors(current => ({ ...current, amount: undefined }));
+  };
   const save = () => {
-    const nextErrors = validateOrderQueryConditions(draftConditions);
+    const parsedAmount = parseAmountInputs(amountInputs);
+    const nextConditions = parsedAmount
+      ? { ...draftConditions, amount: parsedAmount }
+      : draftConditions;
+    const nextErrors = validateOrderQueryConditions(nextConditions);
+    if (!parsedAmount) nextErrors.amount = "请输入正确的金额，最多两位小数";
     setValidationErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    onChange(draftConditions);
+    onChange(nextConditions);
     onOpenChange(false);
   };
   return (
@@ -246,13 +267,19 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
             </div>
           </Field>
           <Field label="店铺/达人">
-            <ShopMultiSelect
-              onRetry={loadShops}
-              onChange={shopIds => patch({ shopIds })}
-              selectedIds={draftConditions.shopIds}
-              shops={shops}
-              status={shopStatus}
-            />
+            <div className="flex flex-col gap-1.5">
+              <ShopMultiSelect
+                invalid={Boolean(validationErrors.shopIds)}
+                onRetry={loadShops}
+                onChange={shopIds => patch({ shopIds })}
+                selectedIds={draftConditions.shopIds}
+                shops={shops}
+                status={shopStatus}
+              />
+              {validationErrors.shopIds ? (
+                <p className="text-xs text-destructive" role="alert">{validationErrors.shopIds}</p>
+              ) : null}
+            </div>
           </Field>
           <Field label="商品名称">
             <Input
@@ -321,9 +348,10 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
           </Field>
           <Field label="订单金额">
             <AmountFields
-              conditions={draftConditions}
+              amountInputs={amountInputs}
               error={validationErrors.amount}
-              patch={patch}
+              onMaxChange={updateAmountInput("max")}
+              onMinChange={updateAmountInput("min")}
             />
           </Field>
         </div>
@@ -336,7 +364,8 @@ function OrderConditionsDialog({ conditions, onChange, onOpenChange, resource, t
   );
 }
 
-function ShopMultiSelect({ onChange, onRetry, selectedIds, shops, status }: {
+function ShopMultiSelect({ invalid, onChange, onRetry, selectedIds, shops, status }: {
+  invalid: boolean;
   onChange: (shopIds: number[]) => void;
   onRetry: () => Promise<void>;
   selectedIds: number[];
@@ -360,6 +389,7 @@ function ShopMultiSelect({ onChange, onRetry, selectedIds, shops, status }: {
       <PopoverTrigger asChild>
         <Button
           aria-expanded={open}
+          aria-invalid={invalid || undefined}
           aria-label="店铺/达人"
           className="w-64 max-w-full justify-between px-3.5 text-sm font-normal"
           role="combobox"
@@ -387,18 +417,31 @@ function ShopMultiSelect({ onChange, onRetry, selectedIds, shops, status }: {
             {shopGroups.map(group => (
               <div aria-label={group.label} key={group.label} role="group">
                 <div className="px-2.5 pb-1 pt-2 text-[11px] text-muted-foreground">{group.label}</div>
-                {group.shops.map(shop => (
-                  <label className="flex h-10 cursor-pointer items-center gap-2 rounded-[8px] px-2.5 hover:bg-surface-hover" key={shop.id}>
-                    <Checkbox
-                      aria-label={shop.name}
-                      checked={selectedIdSet.has(shop.id)}
-                      onCheckedChange={(checked) => onChange(checked
-                        ? [...selectedIds, shop.id]
-                        : selectedIds.filter(id => id !== shop.id))}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{shop.name}</span>
-                  </label>
-                ))}
+                {group.shops.map((shop) => {
+                  const selected = selectedIdSet.has(shop.id);
+                  const disabled = !selected
+                    && selectedIds.length >= WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS;
+                  return (
+                    <label className="flex h-10 cursor-pointer items-center gap-2 rounded-[8px] px-2.5 hover:bg-surface-hover" key={shop.id}>
+                      <Checkbox
+                        aria-label={shop.name}
+                        checked={selected}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => {
+                          if (checked === true) {
+                            if (!selected
+                              && selectedIds.length < WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS) {
+                              onChange([...selectedIds, shop.id]);
+                            }
+                            return;
+                          }
+                          onChange(selectedIds.filter(id => id !== shop.id));
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{shop.name}</span>
+                    </label>
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -514,19 +557,18 @@ function formatOrderQueryAmount(conditions: WorkflowOrderQueryDraftCondition) {
   return `${min ?? "不限"} - ${max ?? "不限"}`;
 }
 
-function AmountFields({ conditions, error, patch }: {
-  conditions: WorkflowOrderQueryDraftCondition;
+function AmountFields({ amountInputs, error, onMaxChange, onMinChange }: {
+  amountInputs: { max: string; min: string };
   error?: string;
-  patch: (value: Partial<WorkflowOrderQueryDraftCondition>) => void;
+  onMaxChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onMinChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
-  const updateAmount = (value: Partial<WorkflowOrderQueryDraftCondition["amount"]>) =>
-    patch({ amount: { ...conditions.amount, ...value } });
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <Input aria-invalid={error ? true : undefined} aria-label="最低订单金额" className={cn("w-32 text-sm", error && "border-destructive focus-visible:ring-destructive/20")} inputMode="decimal" onChange={event => updateAmount({ min: readOptionalNumber(event.target.value) })} placeholder="最低金额" value={conditions.amount.min ?? ""} />
+        <Input aria-invalid={error ? true : undefined} aria-label="最低订单金额" className={cn("w-32 text-sm", error && "border-destructive focus-visible:ring-destructive/20")} inputMode="decimal" onChange={onMinChange} placeholder="最低金额" value={amountInputs.min} />
         <span className="shrink-0 text-muted-foreground">至</span>
-        <Input aria-invalid={error ? true : undefined} aria-label="最高订单金额" className={cn("w-32 text-sm", error && "border-destructive focus-visible:ring-destructive/20")} inputMode="decimal" onChange={event => updateAmount({ max: readOptionalNumber(event.target.value) })} placeholder="最高金额" value={conditions.amount.max ?? ""} />
+        <Input aria-invalid={error ? true : undefined} aria-label="最高订单金额" className={cn("w-32 text-sm", error && "border-destructive focus-visible:ring-destructive/20")} inputMode="decimal" onChange={onMaxChange} placeholder="最高金额" value={amountInputs.max} />
       </div>
       {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
     </div>
@@ -630,10 +672,26 @@ function RelativePoint({ invalid, label, onChange, value }: { invalid: boolean; 
   );
 }
 
-function readOptionalNumber(value: string) {
-  if (!value.trim()) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+function formatAmountInput(value: number | undefined) {
+  return value === undefined ? "" : String(value);
+}
+
+function parseAmountInputs(values: { max: string; min: string }) {
+  const min = parseOptionalAmount(values.min);
+  const max = parseOptionalAmount(values.max);
+  if (min === null || max === null) return null;
+  return {
+    ...(max === undefined ? {} : { max }),
+    ...(min === undefined ? {} : { min }),
+  };
+}
+
+function parseOptionalAmount(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed <= Number.MAX_SAFE_INTEGER ? parsed : null;
 }
 
 function readOptionalText(value: string) {

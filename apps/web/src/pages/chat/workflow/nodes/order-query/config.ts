@@ -1,6 +1,8 @@
 import {
+  hasValidWorkflowOrderQueryAmountPrecision,
   isWorkflowNodeExecutionConfig,
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
+  WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS,
   WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
   type WorkflowOrderQueryDraftCondition,
   type WorkflowOrderQueryDraftConfig,
@@ -15,6 +17,7 @@ const ORDER_QUERY_TIME_RANGE_REJECTION_MILLISECONDS =
 
 export type OrderQueryConditionValidationErrors = {
   amount?: string;
+  shopIds?: string;
   timeRange?: string;
 };
 
@@ -77,10 +80,15 @@ export function validateOrderQueryConditions(
   now: Date = new Date(),
 ): OrderQueryConditionValidationErrors {
   const errors: OrderQueryConditionValidationErrors = {};
-  if (conditions.amount.min !== undefined
+  if (!hasValidWorkflowOrderQueryAmountPrecision(conditions.amount)) {
+    errors.amount = "金额最多支持两位小数";
+  } else if (conditions.amount.min !== undefined
     && conditions.amount.max !== undefined
     && conditions.amount.min > conditions.amount.max) {
     errors.amount = "最低金额不能大于最高金额";
+  }
+  if (conditions.shopIds.length > WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS) {
+    errors.shopIds = `最多选择 ${WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS} 个店铺/达人`;
   }
   const timeRangeError = validateOrderQueryTimeRange(conditions.timeRange, now);
   if (timeRangeError) errors.timeRange = timeRangeError;

@@ -20,6 +20,27 @@ describe("Workflow Order Query contract", () => {
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 200, min: 100 }))).toBe(true);
   });
 
+  it("accepts prices with at most two decimal places", () => {
+    expect(isWorkflowNodeDraftConfig("order-query", conditions({ min: 1.23 }))).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 99.99, min: 1.2 }))).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-query", conditions({ min: 1.234 }))).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 99.999 }))).toBe(false);
+  });
+
+  it("limits a condition query to 20 shops", () => {
+    const twentyShopIds = Array.from({ length: 20 }, (_, index) => index + 1);
+    const twentyOneShopIds = Array.from({ length: 21 }, (_, index) => index + 1);
+    const withShopIds = (shopIds: number[]) => ({
+      ...conditions({}),
+      conditions: { ...conditions({}).conditions, shopIds },
+    });
+
+    expect(isWorkflowNodeDraftConfig("order-query", withShopIds(twentyShopIds))).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-query", withShopIds(twentyShopIds))).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-query", withShopIds(twentyOneShopIds))).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-query", withShopIds(twentyOneShopIds))).toBe(false);
+  });
+
   it("allows customer conditions without a platform filter", () => {
     const config = conditions({});
     delete config.conditions.platformId;
@@ -60,6 +81,14 @@ describe("Workflow Order Query contract", () => {
       start: { amount: 30, time: "00:00", unit: "day" },
     }))).toBe(true);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}))).toBe(true);
+  });
+
+  it("rejects unsafe variable selector path segments", () => {
+    expect(isWorkflowNodeDraftConfig("order-query", conditions({}, {
+      end: ["current-node-lifecycle", "enteredAt"],
+      mode: "dynamic",
+      start: ["trigger", "__proto__", "probe"],
+    }))).toBe(false);
   });
 
   it("rejects negative or reversed amounts and invalid time ranges", () => {

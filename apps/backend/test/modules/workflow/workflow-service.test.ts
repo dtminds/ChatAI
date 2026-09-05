@@ -151,6 +151,67 @@ describe("WorkflowService", () => {
     );
   });
 
+  it("rejects unsafe Order Query test variable paths without mutating object prototypes", async () => {
+    const prototype = Object.prototype as Record<string, unknown>;
+    delete prototype.orderQueryTestProbe;
+    const execute = vi.fn();
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository, {
+      contactIdentityPort: {
+        getContactIdentity: vi.fn(async () => ({ externalUserId: 101, xyId: 303 })),
+      },
+      orderQueryCapabilityPort: { execute } as unknown as NonNullable<
+        ConstructorParameters<typeof WorkflowService>[1]["orderQueryCapabilityPort"]
+      >,
+    });
+    const created = await service.create(operator, { workflowType: "chatai_sop" });
+    const seeded = await repository.saveDraft({
+      draft: withOrderQueryNode(created.draft, {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: ["current-node-lifecycle", "enteredAt"],
+            mode: "dynamic",
+            start: ["trigger", "__proto__", "orderQueryTestProbe"],
+          },
+        },
+        mode: "conditions",
+      }),
+      draftSemanticHash: "unsafe-order-query-test-selector",
+      expectedDraftVersion: created.draftVersion,
+      opSubUserId: operator.subUserId,
+      uid: operator.uid,
+      workflowId: created.id,
+    });
+    if (seeded.kind !== "success") throw new Error("unsafe Order Query draft seed failed");
+
+    try {
+      await expect(service.runOrderQueryTest(operator, created.id, "order-query-1", {
+        expectedDraftVersion: seeded.value.draftVersion,
+        externalUserId: 101,
+        variableValues: [
+          {
+            selector: ["trigger", "__proto__", "orderQueryTestProbe"],
+            value: "2026-09-01T00:00:00.000Z",
+          },
+          {
+            selector: ["current-node-lifecycle", "enteredAt"],
+            value: "2026-09-03T04:00:00.000Z",
+          },
+        ],
+      })).rejects.toMatchObject({
+        code: "WORKFLOW_ORDER_QUERY_TEST_CONFIG_INVALID",
+        statusCode: 400,
+      });
+      expect(prototype).not.toHaveProperty("orderQueryTestProbe");
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      delete prototype.orderQueryTestProbe;
+    }
+  });
+
   it("runs an Order Query order-number test without resolving customer identity", async () => {
     const getContactIdentity = vi.fn();
     const execute = vi.fn(async () => ({

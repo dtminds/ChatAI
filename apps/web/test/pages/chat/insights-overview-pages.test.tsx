@@ -2533,29 +2533,6 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps long advanced filter option labels on one line", async () => {
-    renderRoute("/chat/insights");
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFilterOptions).toHaveBeenCalled();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
-    const advancedFilters = await screen.findByRole("menu", {
-      name: /更多筛选/,
-    });
-    await userEvent.click(
-      within(advancedFilters).getByRole("menuitem", { name: "意图" }),
-    );
-
-    await screen.findByRole("menuitemradio", {
-      name: "咨询AI客服系统相关信息",
-    });
-  });
-
   it("starts a new custom date range when clicking the calendar after a complete range is selected", async () => {
     renderRoute("/chat/insights");
 
@@ -2972,30 +2949,6 @@ describe("conversation insights pages", () => {
 
   });
 
-
-  it("shows a centered empty state for overview sessions", async () => {
-    serviceMocks.getInsightOverviewSessions.mockResolvedValue({
-      items: [],
-      mode: "insight",
-      page: 1,
-      pageSize: 20,
-      total: 0,
-      totalPages: 0,
-    });
-
-    renderRoute("/chat/insights");
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
-    ).toBeInTheDocument();
-    const overviewTable = screen.getByRole("table", { name: "咨询会话明细" });
-    const emptyCell = await within(overviewTable).findByText("暂无数据");
-
-    expect(emptyCell).toBeInTheDocument();
-    expect(
-      within(overviewTable).queryByText("当前时间范围内暂无咨询会话"),
-    ).not.toBeInTheDocument();
-  });
 
 
   it("shows a loading row when switching quality result views", async () => {

@@ -9,11 +9,7 @@ import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-
 import { AgentOptimizationSuggestionsPage } from "@/pages/chat/ai-hosting/agent-optimization-suggestions-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { AgentSubscriptionPage } from "@/pages/chat/ai-hosting/agent-subscription-page";
-import { AiSkillsPage } from "@/pages/chat/ai-hosting/ai-skills-page";
-import { SKILL_CREATE_DRAFT_STATE_KEY } from "@/pages/chat/ai-hosting/ai-skill-create-draft";
 import { AiSkillSettingsPage } from "@/pages/chat/ai-hosting/ai-skill-settings-page";
-import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
-import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
 import { resetAiHostingQuotaCacheForTest } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
 import { notifyAiHostingQuotaChanged } from "@/pages/chat/ai-hosting/ai-hosting-layout";
@@ -31,9 +27,6 @@ import { useAuthStore } from "@/store/auth-store";
 import {
   AI_HOSTING_AGENT_KB_MAX_COUNT,
   AI_HOSTING_AGENT_SKILL_MAX_COUNT,
-  AGENT_SKILL_TAG_MAX_COUNT,
-  AGENT_SKILL_TOOL_MAX_COUNT,
-  AGENT_SKILL_VARIABLE_MAX_COUNT,
 } from "@chatai/contracts";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
@@ -65,8 +58,6 @@ const kbAttachmentServiceMock = vi.hoisted(() => ({
   getKbAttachmentStatus: vi.fn(),
   listKbAttachments: vi.fn(),
 }));
-const chunkVectorizationTip =
-  "保存编辑后的切片内容，需要重新向量化，并产生额外 tokens 消耗。";
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
   getAiHostingQuota: vi.fn(),
@@ -508,30 +499,6 @@ async function addAgentSkills(
   await user.click(within(dialog).getByRole("button", { name: "确认" }));
 }
 
-function createDropData(file: File) {
-  return {
-    dataTransfer: {
-      files: [file],
-      items: [
-        {
-          getAsFile: () => file,
-          kind: "file",
-          type: file.type,
-        },
-      ],
-      types: ["Files"],
-    },
-  };
-}
-
-function createFileWithSize(content: string, name: string, size: number, options?: FilePropertyBag) {
-  const file = new File([content], name, options);
-  Object.defineProperty(file, "size", {
-    configurable: true,
-    value: size,
-  });
-  return file;
-}
 
 function mockSession(role: AccountRole = "admin") {
   useAuthStore.setState(useAuthStore.getInitialState(), true);

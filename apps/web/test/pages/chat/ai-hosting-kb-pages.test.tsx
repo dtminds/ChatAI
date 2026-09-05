@@ -4,19 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
-import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
-import { AgentOptimizationSuggestionsPage } from "@/pages/chat/ai-hosting/agent-optimization-suggestions-page";
-import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
-import { AgentSubscriptionPage } from "@/pages/chat/ai-hosting/agent-subscription-page";
-import { AiSkillsPage } from "@/pages/chat/ai-hosting/ai-skills-page";
-import { SKILL_CREATE_DRAFT_STATE_KEY } from "@/pages/chat/ai-hosting/ai-skill-create-draft";
-import { AiSkillSettingsPage } from "@/pages/chat/ai-hosting/ai-skill-settings-page";
 import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
 import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
 import { resetAiHostingQuotaCacheForTest } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
-import { notifyAiHostingQuotaChanged } from "@/pages/chat/ai-hosting/ai-hosting-layout";
 import { resetMockKbData } from "./kb-service-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import * as agentLearningService from "@/pages/chat/ai-hosting/api/agent-learning-service";
@@ -28,13 +19,6 @@ import * as skillTemplateService from "@/pages/chat/ai-hosting/api/skill-templat
 import * as systemVariableService from "@/pages/chat/ai-hosting/api/system-variable-service";
 import * as workTagService from "@/pages/chat/ai-hosting/api/work-tag-service";
 import { useAuthStore } from "@/store/auth-store";
-import {
-  AI_HOSTING_AGENT_KB_MAX_COUNT,
-  AI_HOSTING_AGENT_SKILL_MAX_COUNT,
-  AGENT_SKILL_TAG_MAX_COUNT,
-  AGENT_SKILL_TOOL_MAX_COUNT,
-  AGENT_SKILL_VARIABLE_MAX_COUNT,
-} from "@chatai/contracts";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
   createMockKbDocChunksResponse,
@@ -316,30 +300,6 @@ const mockLearningCandidateSearchDetail = {
   },
 };
 
-const mockAttachmentLearningCandidateSearchDetail = {
-  items: [
-    {
-      chunkId: "2048",
-      chunkTitle: "产品说明书",
-      content: "安装与使用说明",
-      docId: "90",
-      docName: "附件库",
-      docSuffix: "attachment",
-      docType: 4,
-      kbId: "16",
-      kbName: "产品知识库",
-      score: 0.81,
-      volcChunkId: "doc_id_272_90_20260717105032070-6",
-    },
-  ],
-  pagination: {
-    page: 1,
-    pageSize: 20,
-    total: 1,
-    totalPages: 1,
-  },
-};
-
 const mockAgentDetail = {
   availableKbs: [],
   availableSkills: [],
@@ -367,33 +327,6 @@ const mockAgentDetail = {
   },
   publishedAt: 1_718_006_400_000,
   updatedAt: 1_718_006_460_000,
-};
-
-const mockInvalidAgentDetail = {
-  ...mockAgentDetail,
-  availableKbs: [
-    {
-      id: "100",
-      invalidReason: "deleted" as const,
-      name: "已删除知识库",
-      status: "invalid" as const,
-    },
-  ],
-  availableSkills: [
-    {
-      id: "3",
-      invalidReason: "disabled" as const,
-      name: "已停用技能",
-      status: "invalid" as const,
-    },
-  ],
-  promptConfig: {
-    ...mockAgentDetail.promptConfig,
-    availableKbIds: [100],
-    availableSkillIds: [3],
-    conditionLogic:
-      '先核实<resource type="knowledge_base" kbId="100" name="已删除知识库" />再调用<resource type="skill" skillId="3" name="已停用技能" />',
-  },
 };
 
 const emptyGroupChat = {
@@ -475,38 +408,6 @@ function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
   };
 }
 
-async function openAgentPreview(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "打开预览调试" }));
-  return screen.getByRole("region", { name: "Agent 预览调试" });
-}
-
-async function addAgentKnowledgeBases(
-  user: ReturnType<typeof userEvent.setup>,
-  names: readonly string[],
-) {
-  await user.click(screen.getByRole("button", { name: "添加知识库" }));
-  const dialog = await screen.findByRole("dialog", { name: "添加知识库" });
-
-  for (const name of names) {
-    await user.click(await within(dialog).findByRole("checkbox", { name: `选择${name}` }));
-  }
-
-  await user.click(within(dialog).getByRole("button", { name: "确认" }));
-}
-
-async function addAgentSkills(
-  user: ReturnType<typeof userEvent.setup>,
-  names: readonly string[],
-) {
-  await user.click(screen.getByRole("button", { name: "添加技能" }));
-  const dialog = await screen.findByRole("dialog", { name: "添加技能" });
-
-  for (const name of names) {
-    await user.click(await within(dialog).findByRole("checkbox", { name: `选择${name}` }));
-  }
-
-  await user.click(within(dialog).getByRole("button", { name: "确认" }));
-}
 
 function createDropData(file: File) {
   return {

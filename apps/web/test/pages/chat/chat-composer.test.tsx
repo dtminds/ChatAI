@@ -9,7 +9,7 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
-import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-environment";
+import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
 function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null; onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void } = {}) {
   resetChatWorkbenchTestState();

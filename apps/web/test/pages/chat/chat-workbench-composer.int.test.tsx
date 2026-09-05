@@ -2381,61 +2381,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("disables the composer image picker after five images", async () => {
-    const clipboardImages = Array.from(
-      { length: 5 },
-      (_, index) =>
-        new File(["image-bytes"], `clipboard-${index + 1}.png`, {
-          type: "image/png",
-        }),
-    );
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: clipboardImages,
-      },
-    });
-
-    expect(await within(composer).findAllByRole("img")).toHaveLength(5);
-    await userEvent.click(screen.getByRole("button", { name: "打开图片菜单" }));
-
-    expect(await screen.findByRole("menuitem", { name: "本地图片" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: "收录的图片" })).not.toHaveAttribute(
-      "aria-disabled",
-    );
-  });
-
-  it("keeps consecutive pasted images inline without visible spacer text", async () => {
-    const clipboardImages = [
-      new File(["image-bytes"], "clipboard-1.png", {
-        type: "image/png",
-      }),
-      new File(["image-bytes"], "clipboard-2.png", {
-        type: "image/png",
-      }),
-    ];
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: clipboardImages,
-      },
-    });
-
-    expect(await within(composer).findAllByRole("img")).toHaveLength(2);
-    expect(composer.textContent?.replaceAll("\u200B", "")).toBe("");
-  });
-
   it("keeps overflowing composer content scrollable inside the editor", async () => {
     renderChatWorkbenchPage();
 

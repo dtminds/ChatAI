@@ -80,4 +80,36 @@ describe("ChatComposer", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).not.toBeDisabled();
     expect(mediaUploadMocks.uploadWorkbenchImageFile).not.toHaveBeenCalled();
   });
+
+  it("keeps consecutive pasted images inline without spacer text", async () => {
+    const images = [1, 2].map(
+      (index) => new File(["image-bytes"], `clipboard-${index}.png`, { type: "image/png" }),
+    );
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, { clipboardData: { files: images } });
+
+    expect(await screen.findAllByRole("img")).toHaveLength(2);
+    expect(composer.textContent?.replaceAll("\u200B", "")).toBe("");
+  });
+
+  it("disables local image insertion after five pasted images", async () => {
+    const images = Array.from({ length: 5 }, (_, index) =>
+      new File(["image-bytes"], `clipboard-${index + 1}.png`, { type: "image/png" }),
+    );
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, { clipboardData: { files: images } });
+
+    expect(await screen.findAllByRole("img")).toHaveLength(5);
+    await userEvent.click(screen.getByRole("button", { name: "打开图片菜单" }));
+    expect(await screen.findByRole("menuitem", { name: "本地图片" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
 });

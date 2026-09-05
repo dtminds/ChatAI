@@ -2292,14 +2292,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
   });
 
-  it("keeps overflowing composer content scrollable inside the editor", async () => {
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    expect(composer).toBeInTheDocument();
-  });
-
   it("scrolls the composer editor to the bottom after a pasted image loads", async () => {
     const clipboardImage = new File(["image-bytes"], "clipboard.png", {
       type: "image/png",

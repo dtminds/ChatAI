@@ -586,25 +586,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("pads a selected mention when @ is typed immediately after text", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await user.click(await screen.findByRole("tab", { name: "群聊" }));
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "请@");
-
-    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
-    await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
-
-    expect(composer).toHaveTextContent("请 @所有人");
-  });
-
   it("sends selected member mentions with any-position placeholders", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

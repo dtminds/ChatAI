@@ -270,4 +270,19 @@ describe("ChatComposer", () => {
     expect(screen.getByRole("option", { name: "客户" })).toBeInTheDocument();
     expect(listbox).toBeInTheDocument();
   });
+
+  it("inserts a selected mention with spacing after existing text", async () => {
+    renderComposer({
+      groupMembers: [{ id: "member", displayName: "客户", type: 0 }],
+      isGroupConversation: true,
+    });
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("请@");
+    await userEvent.click(
+      await screen.findByRole("option", { name: "客户" }),
+    );
+
+    expect(composer).toHaveTextContent("请 @客户");
+  });
 });

@@ -2587,6 +2587,9 @@ describe("ChatWorkbenchPage", () => {
     renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-001");
+    });
     markConversationRead.mockClear();
 
     act(() => {

@@ -1,11 +1,9 @@
 import {
   WorkflowMessageQueryCommandSchema,
+  WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTime,
-  isWorkflowMessageQueryExecutionConfigComplete,
   resolveMessageQueryRelativePoint,
-  isMessageQueryRelativeRangeWithinBounds,
-  isMessageQueryFixedRangeWithinBounds,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
@@ -47,7 +45,11 @@ export function createWorkflowMessageQueryCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowMessageQueryCommandContext;
 }): WorkflowMessageQueryCommand {
-  if (!isWorkflowMessageQueryExecutionConfigComplete(input.config)) {
+  // Product policy: the 90-day lookback/span is checked when configuring and
+  // publishing, not when executing. Do not reuse execution completeness here:
+  // published fixed dates must keep working as time passes. Runtime still checks
+  // structure, timestamps, identities and the resolved start/end ordering.
+  if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
   const config = input.config as WorkflowMessageQueryConfig;
@@ -109,11 +111,6 @@ function resolveMessageQueryRange(
   context: WorkflowMessageQueryCommandContext,
 ) {
   if (timeRange.mode === "fixed") {
-    const enteredAt = parseTimestamp(context.currentNodeLifecycle.enteredAt,
-      "Message Query fixed time requires current node enteredAt");
-    if (!isMessageQueryFixedRangeWithinBounds(enteredAt, timeRange.startAt, timeRange.endAt)) {
-      throw invalidMessageQueryCommand("Message Query fixed range exceeds the 90-day lookback or span");
-    }
     return {
       rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
@@ -124,14 +121,10 @@ function resolveMessageQueryRange(
       context.currentNodeLifecycle.enteredAt,
       "Message Query relative time requires current node enteredAt",
     );
-    const range = {
+    return {
       rangeStart: resolveMessageQueryRelativePoint(enteredAt, timeRange.start, false),
       rangeEnd: resolveMessageQueryRelativePoint(enteredAt, timeRange.end, true),
     };
-    if (!isMessageQueryRelativeRangeWithinBounds(enteredAt, range.rangeStart, range.rangeEnd)) {
-      throw invalidMessageQueryCommand("Message Query relative range exceeds the 90-day lookback or span");
-    }
-    return range;
   }
   return {
     rangeEnd: resolveDynamicTimeReference(timeRange.end, context),

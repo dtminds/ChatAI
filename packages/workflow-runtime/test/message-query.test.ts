@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createWorkflowMessageQueryCommand } from "../src/index.js";
+import { isMessageQueryFixedRangeWithinBounds } from "@chatai/contracts";
 
 describe("Workflow Message Query binding", () => {
-  it("rejects expired fixed time before invoking the query", () => {
-    expect(() => createWorkflowMessageQueryCommand({
-      config: { limit: 10, take: "latest", timeRange: {
-        mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00",
-      } }, context: context(),
-    })).toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
+  it("keeps published fixed dates executable after the lookback window expires", () => {
+    const timeRange = { mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00" };
+    expect(isMessageQueryFixedRangeWithinBounds(Date.parse("2026-01-03T10:00:00+08:00"), timeRange.startAt, timeRange.endAt)).toBe(true);
+    expect(createWorkflowMessageQueryCommand({
+      config: { limit: 10, take: "latest", timeRange }, context: context(),
+    })).toMatchObject({
+      rangeStart: Date.parse("2026-01-01T10:00:00+08:00"),
+      rangeEnd: Date.parse("2026-01-02T10:00:59.999+08:00"),
+    });
   });
-  it("allows the complete 90th day and rejects offsets beyond 90 days", () => {
+  it("does not reapply publication offset limits at runtime", () => {
     const commandContext = context();
     const config = {
       limit: 10, take: "latest",
@@ -21,7 +25,15 @@ describe("Workflow Message Query binding", () => {
     };
     expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
     config.timeRange.start.amount = 91;
-    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext }))
+    expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
+  });
+  it("does not reapply fixed span limits but still rejects reversed fixed ranges", () => {
+    const config = { limit: 10, take: "latest", timeRange: {
+      mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-08-01T10:00",
+    } };
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() })).not.toThrow();
+    config.timeRange.endAt = "2025-12-31T10:00";
+    expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
       .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
   });
   it("anchors relative dates to node entry in UTC+8 and includes the last minute", () => {

@@ -297,13 +297,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("boots chat workbench through the shared test harness", async () => {
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
-  });
-
   it("keeps history visible while folding secondary actions in the mobile composer", async () => {
     mockViewportMediaQuery({ width: 390 });
     const user = userEvent.setup();

@@ -782,6 +782,17 @@ describe("workflow draft normalizer", () => {
     expect(isWorkflowDraftEqual(sanitizeDraft(createRuntimeDraft()), sanitizeDraft(createRuntimeDraft(10)))).toBe(false);
   });
 
+  it("treats canvas selection flags as non-graph history content", () => {
+    const unselectedDraft = sanitizeDraft(createRuntimeDraft());
+    const selectedDraft = {
+      ...unselectedDraft,
+      edges: unselectedDraft.edges.map((edge) => ({ ...edge, selected: true })),
+      nodes: unselectedDraft.nodes.map((node) => ({ ...node, selected: true })),
+    };
+
+    expect(isWorkflowGraphEqual(unselectedDraft, selectedDraft)).toBe(true);
+  });
+
   it("compares graph history content separately from viewport state", () => {
     const firstDraft = sanitizeDraft(createRuntimeDraft());
     const secondDraft = {

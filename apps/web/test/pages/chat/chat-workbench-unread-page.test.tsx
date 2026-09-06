@@ -1800,6 +1800,9 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "群聊视图", selected: true })).toBeInTheDocument();
+    });
     await user.click(
       await screen.findByRole("button", {
         name: "查看 丹阳草莓 的好友关系",

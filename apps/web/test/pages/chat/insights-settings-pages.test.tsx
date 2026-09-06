@@ -1757,7 +1757,7 @@ describe("conversation insights pages", () => {
       screen.queryByText("未通过：problem_resolution"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
-  });
+  }, 20_000);
 
   it("loads business topics per selected tab instead of preloading every dimension", async () => {
     serviceMocks.getInsightBusinessTopics

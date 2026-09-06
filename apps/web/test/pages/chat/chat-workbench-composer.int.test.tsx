@@ -763,6 +763,42 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
+  it("blocks oversized selected files without uploading or sending", async () => {
+    const user = userEvent.setup();
+    const sendMessage = createAcceptedSendMessageMock();
+    setWorkbenchService({ ...createMockWorkbenchService(), sendMessage });
+    const file = new File(["file-bytes"], "超大报价单.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(file, "size", { value: 10 * 1024 * 1024 + 1 });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    fireEvent.change(screen.getByLabelText("选择文件"), {
+      target: { files: [file] },
+    });
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "文件过大，无法发送",
+    });
+    expect(dialog).toHaveAccessibleDescription("请选择不超过 10 MB 的文件");
+    expect(mediaUploadMocks.uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(screen.queryByText(file.name)).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "知道了" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
+      "contenteditable",
+      "true",
+    );
+    expect(mediaUploadMocks.uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("uploads a selected file and sends it as a file message", async () => {
     const upload = createDeferred<Awaited<ReturnType<typeof mediaUploadMocks.uploadWorkbenchFile>>>();
     const file = new File(["file-bytes"], "报价单.pdf", {

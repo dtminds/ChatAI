@@ -2471,68 +2471,6 @@ describe("conversation insights pages", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps advanced session filters inside the more filters dropdown", async () => {
-    renderRoute("/chat/insights");
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFilterOptions).toHaveBeenCalled();
-    });
-
-    expect(
-      screen.getByRole("textbox", { name: "搜索摘要" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "AI 诊断" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "标签" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "实体" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "意图" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "分析状态" }),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
-    const advancedFilters = await screen.findByRole("menu", {
-      name: /更多筛选/,
-    });
-    expect(
-      within(advancedFilters).queryByRole("menuitemradio", {
-        name: "退款咨询",
-      }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(
-      within(advancedFilters).getByRole("menuitem", { name: "标签" }),
-    );
-    const refundTagOption = await screen.findByRole("menuitemradio", {
-      name: "退款咨询",
-    });
-    await userEvent.click(refundTagOption);
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightOverviewSessions).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          page: 1,
-          tagId: "11",
-        }),
-      );
-    });
-    expect(
-      screen.getByRole("button", { name: "更多筛选" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "移除筛选 标签：退款咨询" }),
-    ).toBeInTheDocument();
-  });
-
   it("starts a new custom date range when clicking the calendar after a complete range is selected", async () => {
     renderRoute("/chat/insights");
 

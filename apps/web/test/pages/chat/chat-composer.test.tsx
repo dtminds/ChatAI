@@ -173,6 +173,47 @@ describe("ChatComposer", () => {
     expect(screen.queryByRole("img", { name: "dropped.png" })).not.toBeInTheDocument();
   });
 
+  it("locks send and emoji actions when sending is disabled", () => {
+    render(
+      <ChatComposer
+        canConfigureSeatAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canToggleConversationAIHosting={false}
+        canSendMessage={false}
+        shouldShowConversationAIHostingControl={false}
+        hasActiveFileUpload={false}
+        groupMembers={[]}
+        inputEnterBehavior="send"
+        isGroupConversation={false}
+        isEmojiPickerOpen={false}
+        isSending={false}
+        isHistoryPanelOpen={false}
+        historyKey="disabled-send-test"
+        onClearQuotedMessage={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onChangeSeatAgentMode={vi.fn()}
+        onChangeFullAuto={vi.fn()}
+        onOpenMaterialLibrary={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onSegmentsChange={vi.fn()}
+        onSendDraft={vi.fn()}
+        placeholder="暂时无法发送消息"
+        quotedMessage={null}
+        composerRef={createRef<LexicalEditor>()}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "暂时无法发送消息" })).toHaveAttribute(
+      "aria-readonly",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
+
   it.each([
     ["收录的图片", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
     ["收录的文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],

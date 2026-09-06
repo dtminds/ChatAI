@@ -1323,6 +1323,25 @@ describe("message feed row actions", () => {
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
+  it("keeps the retry control visible but disabled when message actions are locked", () => {
+    const onRetryMessage = vi.fn();
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={{
+          ...createTextMessage("只读失败消息"),
+          failReason: "模拟发送失败",
+          status: "failed",
+        }}
+        onRetryMessage={onRetryMessage}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重试发送" })).toBeDisabled();
+    expect(onRetryMessage).not.toHaveBeenCalled();
+  });
+
   it("delegates retry for unsupported failed message content to the page handler", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();

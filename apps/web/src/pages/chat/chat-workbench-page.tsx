@@ -82,7 +82,11 @@ import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collectio
 import { useMessageForward } from "@/pages/chat/hooks/use-message-forward";
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
+import { PollingPausedDialog } from "@/pages/chat/components/polling-paused-dialog";
+import {
+  resolveStickyPollingPauseReason,
+  type PollingPauseReason,
+} from "@/pages/chat/lib/polling-pause";
 import { useMediaQuery } from "@/pages/chat/hooks/use-media-query";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -1628,7 +1632,9 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setPollingPauseReason((current) => current ?? "sync-gap");
+    setPollingPauseReason((current) =>
+      resolveStickyPollingPauseReason(current, "sync-gap"),
+    );
   }, [pollPauseReason, pollStatus]);
 
   useWorkbenchPolling({
@@ -3021,38 +3027,12 @@ function ChatWorkbenchContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={pollingPauseReason !== null}>
-        <AlertDialogContent
-          className="overflow-hidden p-0"
-          size="sm"
-          style={{ height: 286, maxWidth: 520, width: 520 }}
-        >
-          <div className="relative h-full overflow-hidden px-10 py-9">
-            <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
-              <AlertDialogTitle>
-                {getPollingPausedDialogCopy(pollingPauseReason).title}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {getPollingPausedDialogCopy(pollingPauseReason).description}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <img
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-2 left-2 w-[250px] select-none"
-              data-testid="polling-paused-illustration"
-              src="https://b5.bokr.com.cn/dist/pause_poll.png"
-            />
-            <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
-              <AlertDialogAction onClick={() => {
-                window.location.reload();
-              }}>
-                刷新页面
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PollingPausedDialog
+        onRefresh={() => {
+          window.location.reload();
+        }}
+        reason={pollingPauseReason}
+      />
       <AlertDialog
         open={sendFailureDialog !== null}
         onOpenChange={(open) => {
@@ -3250,27 +3230,6 @@ function WorkbenchSectionLoading() {
       <span>正在加载</span>
     </div>
   );
-}
-
-function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
-  if (reason === "sync-gap") {
-    return {
-      description: "消息同步遇到了问题，请刷新页面后继续使用",
-      title: "消息同步已暂停",
-    };
-  }
-
-  if (reason === "background-timeout") {
-    return {
-      description: "检测到你已离开页面一段时间，已暂停消息同步。",
-      title: "已暂停新消息同步",
-    };
-  }
-
-  return {
-    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面",
-    title: "实时同步已被其他页面占用",
-  };
 }
 
 function buildQuotedMessagePreview(

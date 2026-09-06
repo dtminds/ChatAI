@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/pages/chat/chat-types";
 import { useVisibleUnreadConversationRead } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 type IntersectionObserverEntryInit = {
   isIntersecting: boolean;
@@ -124,7 +125,10 @@ function UnreadReadHarness({
     <div data-testid="message-viewport" ref={messageViewportRef}>
       {messages.map((message) =>
         message ? (
-          <div data-ui-message-key={message.uiMessageKey} key={message.uiMessageKey}>
+          <div
+            data-ui-message-key={message.uiMessageKey}
+            key={getMessageFeedItemKey(message)}
+          >
             {message.uiMessageKey}
           </div>
         ) : null,
@@ -283,9 +287,14 @@ describe("useVisibleUnreadConversationRead", () => {
       expect(getObserveCallCount(intersectionObserver.instances)).toBeGreaterThan(0);
     });
 
+    const previousUnreadElement = document.querySelector(
+      '[data-ui-message-key="8"]',
+    );
     const observeCallCountBeforeMessageUpdate = getObserveCallCount(
       intersectionObserver.instances,
     );
+
+    expect(previousUnreadElement).not.toBeNull();
 
     act(() => {
       screen.getByRole("button", { name: "remount" }).click();
@@ -301,6 +310,7 @@ describe("useVisibleUnreadConversationRead", () => {
       .calls.at(-1)?.[0] as Element;
     const currentUnreadElement = document.querySelector('[data-ui-message-key="8"]');
 
+    expect(currentUnreadElement).not.toBe(previousUnreadElement);
     expect(nextObservedTarget).toHaveAttribute("data-ui-message-key", "8");
     expect(nextObservedTarget).toBe(currentUnreadElement);
   });

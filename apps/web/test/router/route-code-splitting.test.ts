@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";

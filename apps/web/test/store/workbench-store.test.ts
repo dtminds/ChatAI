@@ -59,7 +59,7 @@ async function waitForStoreAssertion(assertion: () => void) {
       return;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
     }
   }
 
@@ -3900,7 +3900,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
     observedAutoRequests.length = 0;
 
     await useWorkbenchStore.getState().pollWorkbench();
@@ -4068,7 +4068,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(observedAutoRequests).toEqual([]);
 
@@ -4076,7 +4076,7 @@ describe("useWorkbenchStore", () => {
       downloadStatus: "finished",
     });
 
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(observedAutoRequests).toEqual([
       {
@@ -4133,7 +4133,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
     observedAutoRequests.length = 0;
 
     await useWorkbenchStore.getState().pollWorkbench();
@@ -4185,7 +4185,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
@@ -4966,7 +4966,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
@@ -5208,7 +5208,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
     observedAutoRequests.length = 0;
     observedGeneralAnswerRequests.length = 0;
 
@@ -5238,7 +5238,7 @@ describe("useWorkbenchStore", () => {
     }));
 
     await useWorkbenchStore.getState().pollWorkbench();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
     await Promise.resolve();
     await Promise.resolve();
 
@@ -5332,7 +5332,7 @@ describe("useWorkbenchStore", () => {
 
     expect(message).toBeDefined();
     await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(observedGeneralAnswerRequests).toEqual([
       expect.objectContaining({
@@ -5425,7 +5425,7 @@ describe("useWorkbenchStore", () => {
 
     expect(message).toBeDefined();
     await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     expect(observedGeneralAnswerRequests).toEqual([]);
     expect(
@@ -12385,7 +12385,7 @@ describe("useWorkbenchStore", () => {
 
     staleGate.resolve();
     await staleResponsesReturned.promise;
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
 
     const state = useWorkbenchStore.getState();
     expect(state.sinceVersion).toBe(1_778_840_020_000);

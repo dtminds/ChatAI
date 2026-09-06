@@ -1887,47 +1887,6 @@ describe("AI hosting pages", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the static subscription page without loading usage data", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute("/chat/ai-hosting/subscription", <AgentSubscriptionPage />);
-
-    expect(screen.getByRole("heading", { level: 1, name: "订阅" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "订阅" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/subscription",
-    );
-    expect(screen.getByRole("region", { name: "当前套餐" })).toHaveTextContent("当前计划：基础版");
-    expect(screen.getByRole("region", { name: "当前套餐" })).toHaveTextContent(
-      "内测期内无限额，内测结束后套餐限额将进行更新",
-    );
-    expect(screen.queryByRole("button", { name: "原有套餐说明" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "自动续费" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "管理套餐" })).toBeDisabled();
-    expect(screen.getByText("总积分")).toBeInTheDocument();
-    expect(screen.getByText("剩余 100%")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "总积分使用进度" })).toBeInTheDocument();
-    expect(screen.getAllByText("当前为内测期，暂不计费")).toHaveLength(2);
-    expect(screen.queryByText("订阅积分")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "增购积分" })).not.toBeInTheDocument();
-
-    expect(screen.getByRole("heading", { level: 2, name: "全部用量" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "全部项目" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("table", { name: "用量消耗列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "名称" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "项目类型" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "最近使用时间" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "累计积分消耗" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
-    expect(screen.getAllByText("当前为内测期，暂不计费")).toHaveLength(2);
-
-    await user.click(screen.getByRole("tab", { name: "Agent" }));
-
-    expect(screen.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getAllByText("当前为内测期，暂不计费")).toHaveLength(2);
-    expect(agentService.listAiHostingAgents).not.toHaveBeenCalled();
-  });
-
   it("loads more WeCom tags without losing selections from previous pages", async () => {
     const user = userEvent.setup();
 

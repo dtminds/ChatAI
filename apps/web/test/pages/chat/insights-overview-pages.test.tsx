@@ -2007,9 +2007,7 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
 
-    expect(
-      await screen.findByRole("columnheader", { name: "客户" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("客户反馈物流异常")).toBeInTheDocument();
     expect(serviceMocks.getInsightQualityResults).toHaveBeenCalledTimes(
       callsBeforeQualityResults + 1,
     );
@@ -2039,7 +2037,6 @@ describe("conversation insights pages", () => {
       screen.getByRole("columnheader", { name: "操作" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
-    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getByText("-")).toBeInTheDocument();
     expect(screen.queryByText("回复质量")).not.toBeInTheDocument();
     expect(

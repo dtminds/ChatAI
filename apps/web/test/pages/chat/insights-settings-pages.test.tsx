@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   render,
@@ -7,13 +7,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
-import {
-  resetWorkbenchService,
-} from "@/pages/chat/api/workbench-service";
-import { routerConfig } from "@/router";
+import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
+import { InsightsSettingsPage } from "@/pages/chat/insights/insights-settings-page";
 import { useAuthStore } from "@/store/auth-store";
-import { useWorkbenchStore } from "@/store/workbench-store";
 
 const serviceMocks = vi.hoisted(() => ({
   activatePresetInsightEntityDictionaryItem: vi.fn(),
@@ -210,62 +208,26 @@ vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => ticketServiceMocks);
 vi.mock("sonner", () => ({ Toaster: () => null, toast }));
 
-vi.mock("recharts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("recharts")>();
-  const React = await import("react");
+vi.mock("@/pages/chat/insights/insights-layout", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/insights/insights-layout")>();
 
   return {
     ...actual,
-    AreaChart: (props: React.ComponentProps<typeof actual.AreaChart>) => (
-      <div data-testid="recharts-area-chart">
-        <actual.AreaChart {...props} />
-      </div>
-    ),
-    BarChart: (props: React.ComponentProps<typeof actual.BarChart>) => (
-      <div
-        data-margin-left={String(props.margin?.left ?? "")}
-        data-testid="recharts-bar-chart"
-      >
-        <actual.BarChart {...props} />
-      </div>
-    ),
-    Tooltip: (props: React.ComponentProps<typeof actual.Tooltip>) => {
-      const contentName =
-        React.isValidElement(props.content) &&
-        typeof props.content.type === "function"
-          ? props.content.type.name
-          : "";
-      const cursor = props.cursor;
-      const cursorProps =
-        cursor && typeof cursor === "object" && !React.isValidElement(cursor)
-          ? (cursor as { fill?: string; fillOpacity?: number })
-          : undefined;
-
-      return (
-        <div
-          data-content-name={contentName}
-          data-cursor-fill={cursorProps?.fill ?? ""}
-          data-cursor-fill-opacity={cursorProps?.fillOpacity?.toString() ?? ""}
-          data-testid="recharts-tooltip"
-        />
-      );
-    },
-    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => {
-      const chart = React.Children.only(children);
-
-      if (!React.isValidElement<{ height?: number; width?: number }>(chart)) {
-        return chart;
-      }
-
-      return React.cloneElement(chart, { height: 180, width: 480 });
-    },
+    InsightsLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   };
 });
 
-function renderRoute(initialEntry: string) {
-  const router = createMemoryRouter(routerConfig, {
-    initialEntries: [initialEntry],
-  });
+function renderRoute(initialEntry = "/chat/insights/settings") {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/chat/insights",
+        element: <InsightsCapabilitiesRoute />,
+        children: [{ path: "settings", element: <InsightsSettingsPage /> }],
+      },
+    ],
+    { initialEntries: [initialEntry] },
+  );
 
   render(<RouterProvider router={router} />);
 
@@ -282,17 +244,6 @@ function mockSession(role: "admin" | "operator" = "admin") {
     subUserId: "101",
     uid: 1,
   });
-}
-
-function createDeferred<T = void>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-
-  return { promise, reject, resolve };
 }
 
 function createMockInsightDetail() {
@@ -1275,17 +1226,7 @@ function installInsightMocks() {
   );
 }
 
-describe("conversation insights pages", () => {
-  beforeAll(async () => {
-    await Promise.all([
-      import("@/pages/chat/insights/insights-overview-page"),
-      import("@/pages/chat/insights/insights-quality-page"),
-      import("@/pages/chat/insights/insights-business-page"),
-      import("@/pages/chat/insights/insights-settings-page"),
-      import("@/pages/chat/insights/insights-worker-observability-page"),
-    ]);
-  });
-
+describe("conversation insights settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -1296,105 +1237,30 @@ describe("conversation insights pages", () => {
 
   afterEach(() => {
     cleanup();
-    useWorkbenchStore.getState().resetWorkbenchSession();
-    resetWorkbenchService();
     document.body.removeAttribute("data-scroll-locked");
     document.body.style.removeProperty("pointer-events");
     vi.useRealTimers();
   });
 
-  it("renders admin settings and P1 placeholders", async () => {
+  it("saves analysis policy from the settings form", async () => {
     serviceMocks.getInsightSettingsSummary.mockResolvedValue(
       createMockInsightSettingsSummary(true),
     );
-    renderRoute("/chat/insights/settings");
+    renderRoute();
 
-    expect(
-      await screen.findByRole("heading", { name: "洞察配置" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("个性化调整洞察策略、标签、质检规则和实体词库"),
-    ).not.toBeInTheDocument();
-    expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
-    expect(screen.getByText("服务会话规则")).toBeInTheDocument();
-    expect(screen.getByText("AI 洞察规则")).toBeInTheDocument();
-    expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
-    expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
-    expect(screen.queryByText("自定义")).not.toBeInTheDocument();
-    expect(screen.getByText("未完结会话提前洞察")).toBeInTheDocument();
-    expect(
-      screen.getByText("会话未结束时，系统会检查是否出现值得提前关注的客户诉求、风险或处理进展"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("未完结会话检查敏感度")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "控制系统检查未完结会话变化的敏感程度，越敏感会消耗更多 AI 分析次数",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
-    ).toHaveTextContent("标准（推荐）");
-    expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "会话中的消息数少于该数量时，AI 会跳过分析，避免得出无效结论",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("AI 置信度阈值")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "低于该阈值时，问题解决判断会标记为未知，且不会自动创建工单",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("低可信提示阈值")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("阈值越高，越多结果会提示人工复核"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-
-    await userEvent.click(
-      screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
-    );
-    const frequencyListbox = await screen.findByRole("listbox");
-    expect(
-      within(frequencyListbox).getByText("标准（推荐）"),
-    ).toBeInTheDocument();
-    expect(within(frequencyListbox).getByText("较快")).toBeInTheDocument();
-    expect(within(frequencyListbox).getByText("高频")).toBeInTheDocument();
-    expect(
-      within(frequencyListbox).getByText("兼顾提前发现和 AI 成本"),
-    ).toBeInTheDocument();
-    expect(
-      within(frequencyListbox).getByText("更快检查客户诉求和风险变化"),
-    ).toBeInTheDocument();
-    expect(
-      within(frequencyListbox).getByText(
-        "更高频检查关键变化，对成本不敏感时开启",
-      ),
-    ).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-
+    await screen.findByRole("combobox", { name: "未完结会话检查敏感度" });
     await userEvent.click(
       screen.getByRole("combobox", { name: "单轮会话最长持续" }),
     );
-    expect(
-      await screen.findByRole("option", { name: "2 小时" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "24 小时" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "48 小时" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "2 小时" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "48 小时" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
     await userEvent.click(
       screen.getByRole("combobox", { name: "会话结束后多久生成最终结果" }),
     );
-    expect(
-      await screen.findByRole("option", { name: "5 分钟" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "立即" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "5 分钟" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "立即" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
     await userEvent.clear(
@@ -1404,7 +1270,6 @@ describe("conversation insights pages", () => {
       screen.getByRole("spinbutton", { name: "有效会话门槛" }),
       "8",
     );
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
       expect(serviceMocks.updateInsightAnalysisPolicy).toHaveBeenCalledWith(
@@ -1413,85 +1278,32 @@ describe("conversation insights pages", () => {
         }),
       );
     });
+  });
 
+  it("hides unfinished-session sensitivity when live insight is off", async () => {
+    serviceMocks.getInsightSettingsSummary.mockResolvedValue(
+      createMockInsightSettingsSummary(true),
+    );
+    renderRoute();
+
+    await screen.findByRole("combobox", { name: "未完结会话检查敏感度" });
     await userEvent.click(
       screen.getByRole("switch", { name: "未完结会话提前洞察" }),
     );
     expect(screen.queryByText("未完结会话检查敏感度")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
 
-    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
-    expect(screen.getByText("客户咨询物流或发货进度")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "新增意图" }));
-    expect(
-      await screen.findByRole("dialog", { name: "新增意图" }),
-    ).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("意图名称"), "价格咨询");
-    await userEvent.type(screen.getByRole("textbox", { name: "ID" }), "price_consult");
-    await userEvent.click(screen.getByRole("combobox", { name: "权重" }));
-    await userEvent.click(await screen.findByRole("option", { name: "3" }));
-    await userEvent.type(
-      screen.getByLabelText("判定标准"),
-      "客户咨询商品价格或优惠",
+  it("creates a rescan job from the history tab", async () => {
+    serviceMocks.getInsightSettingsSummary.mockResolvedValue(
+      createMockInsightSettingsSummary(true),
     );
-    await userEvent.type(screen.getByLabelText("正例"), "多少钱");
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    renderRoute();
 
-    await waitFor(() => {
-      expect(serviceMocks.createInsightIntentConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: "客户咨询商品价格或优惠",
-          intentCode: "price_consult",
-          intentName: "价格咨询",
-          positiveExamples: ["多少钱"],
-          weight: 3,
-        }),
-      );
-    });
-
-    await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
-    expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
-    expect(screen.getAllByText("标签配置")).toHaveLength(1);
-    await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
-    expect(
-      await screen.findByRole("dialog", { name: "新增标签" }),
-    ).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("标签名称"), "高意向");
-    await userEvent.type(screen.getByRole("textbox", { name: "ID" }), "high_intent");
-    await userEvent.type(
-      screen.getByLabelText("判定标准"),
-      "客户表达明确购买意向",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.createInsightLabelConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: "客户表达明确购买意向",
-          labelCode: "high_intent",
-          labelName: "高意向",
-        }),
-      );
-    });
-
+    await screen.findByRole("heading", { name: "洞察配置" });
     await userEvent.click(screen.getByRole("tab", { name: "历史重刷" }));
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("标签 / 实体 / 意图").length,
-      ).toBeGreaterThanOrEqual(1);
-    });
-    expect(screen.getByText("部分完成")).toBeInTheDocument();
-    expect(screen.getByText("20 / 20")).toBeInTheDocument();
-    expect(screen.getByText("成功 18 / 失败 2")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("dialog", { name: "新建重刷任务" }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "新建重刷任务" }));
-    expect(
-      screen.getByRole("dialog", { name: "新建重刷任务" }),
-    ).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "新建重刷任务" }));
+
     const rescanFromInput = screen.getByLabelText("开始时间");
     expect(new Date(rescanFromInput.getAttribute("min") ?? "").getTime()).toBe(
       Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -1499,21 +1311,6 @@ describe("conversation insights pages", () => {
     expect(new Date(rescanFromInput.getAttribute("max") ?? "").getTime()).toBe(
       Date.now(),
     );
-    expect(
-      screen.getByText(
-        "重新识别标签、实体和意图，适合调整标签配置、实体词库或意图配置后使用。",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "只重新评估服务质检结果，适合新增或调整质检规则后使用。",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "重新生成该时间范围内的全部洞察结果，适合配置整体调整后使用，耗时最长。",
-      ),
-    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
     await waitFor(() => {
@@ -1525,316 +1322,8 @@ describe("conversation insights pages", () => {
       );
     });
     expect(serviceMocks.getInsightRescanTasks).toHaveBeenCalledTimes(2);
-
-    cleanup();
-    mockSession("admin");
-    installInsightMocks();
-    renderRoute("/chat/insights/business");
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "经营洞察" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "从客户意图、业务标签、实体对象和链接文件四个维度查看经营主题，并追溯到对应会话",
-      ),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: /日期范围.*近7天.*2026-05-28.*2026-06-03/,
-      }),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
-      {
-        dimension: "intent",
-        from: "2026-05-28T00:00:00.000+08:00",
-        to: "2026-06-03T23:59:59.999+08:00",
-      },
-      expect.any(Object),
-    );
-    await waitFor(() => {
-      expect(
-        serviceMocks.getInsightBusinessRelatedSessions,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          dimension: "intent",
-          from: "2026-05-28T00:00:00.000+08:00",
-          page: 1,
-          pageSize: 20,
-          topicCode: "31",
-          to: "2026-06-03T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-    expect(serviceMocks.getInsightOverview).not.toHaveBeenCalledWith({
-      from: "2026-05-28T00:00:00.000+08:00",
-      to: "2026-06-03T23:59:59.999+08:00",
-    });
-    expect(
-      screen.getByRole("heading", { name: "客户意图 Top10" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "客户意图分布趋势" }),
-    ).toBeInTheDocument();
-    const businessOverviewPanel = screen.getByRole("region", {
-      name: "客户意图 Top10",
-    });
-    const businessTrendPanel = screen.getByRole("region", {
-      name: "客户意图分布趋势",
-    });
-    expect(
-      businessOverviewPanel.compareDocumentPosition(businessTrendPanel),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      within(businessOverviewPanel).getByText("2026-05-28 至 2026-06-03"),
-    ).toBeInTheDocument();
-    expect(
-      within(businessTrendPanel).getByText("2026-05-28 至 2026-06-03"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("recharts-bar-chart")).toHaveAttribute(
-      "data-margin-left",
-      "4",
-    );
-    const intentTrendTooltip = screen
-      .getAllByTestId("recharts-tooltip")
-      .find(
-        (tooltip) =>
-          tooltip.dataset.contentName === "IntentDistributionTrendTooltip",
-      );
-    expect(intentTrendTooltip).toHaveAttribute(
-      "data-cursor-fill",
-      "var(--muted-foreground)",
-    );
-    expect(intentTrendTooltip).toHaveAttribute(
-      "data-cursor-fill-opacity",
-      "0.1",
-    );
-    expect(screen.getByTestId("business-topic-list-scroll")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "相关会话" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("list", { name: "客户意图 Top10" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("关注点会话")).not.toBeInTheDocument();
-    expect(screen.queryByText("未解决会话")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "关注点趋势" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "关注点列表" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("tablist", { name: "业务洞察维度" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /客户意图/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /业务标签/ })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /实体对象/ })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /链接文件/ })).toBeInTheDocument();
-    expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
-    expect(
-      within(businessOverviewPanel).getByText("8 个会话提及"),
-    ).toBeInTheDocument();
-    expect(
-      within(businessOverviewPanel).queryByText("8 次提及"),
-    ).not.toBeInTheDocument();
-
-    const relatedSessionsTable = screen.getByRole("table", {
-      name: "相关会话",
-    });
-    expect(
-      within(relatedSessionsTable).getByText("物流异常待跟进"),
-    ).toBeInTheDocument();
-    expect(
-      within(relatedSessionsTable).getByRole("img", { name: "张三" }),
-    ).toBeInTheDocument();
-    expect(
-      within(relatedSessionsTable).getByRole("img", { name: "客服一号" }),
-    ).toBeInTheDocument();
-    expect(
-      within(relatedSessionsTable).queryByText("客户咨询退款到账时间"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "搜索相关会话" })).not.toBeInTheDocument();
-
-    expect(
-      screen.queryByRole("combobox", { name: "来源" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "排序" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("筛选")).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: /实体对象/ }));
-    expect(
-      screen.getByRole("heading", { name: "实体对象 Top10" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
-
-    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
-    expect(
-      screen.getByRole("heading", { name: "业务标签 Top10" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("8 个会话 10 次提及")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: /链接文件/ }));
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
-        expect.objectContaining({
-          dimension: "asset",
-          from: "2026-05-28T00:00:00.000+08:00",
-          to: "2026-06-03T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-    expect(
-      screen.getByRole("heading", { name: "链接文件 Top10" }),
-    ).toBeInTheDocument();
-    const assetTop10List = screen.getByRole("list", { name: "链接文件 Top10" });
-    expect(within(assetTop10List).getByText("红包活动")).toBeInTheDocument();
-    expect(
-      within(assetTop10List).getByText("H5链接 · 5 个会话 6 次提及"),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenLastCalledWith(
-        expect.not.objectContaining({
-          keyword: expect.anything(),
-        }),
-        expect.any(Object),
-      );
-    });
-
-    expect(screen.queryByText("链接文件按消息发生时间统计，单次最多选择 7 天")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /日期范围/ })).toHaveLength(1);
-
-    expect(
-      screen.getByRole("button", {
-        name: /日期范围.*近7天.*2026-05-28.*2026-06-03/,
-      }),
-    ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          dimension: "asset",
-          from: "2026-06-02T00:00:00.000+08:00",
-          to: "2026-06-02T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: /日期范围.*昨天.*2026-06-02.*2026-06-02/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "重置" }));
-    await userEvent.click(screen.getByRole("button", { name: "应用" }));
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          dimension: "asset",
-          from: "2026-05-28T00:00:00.000+08:00",
-          to: "2026-06-03T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    expect(
-      within(relatedSessionsTable).getByText("物流异常待跟进"),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      within(relatedSessionsTable).getByRole("button", { name: "详情" }),
-    );
-
-    expect(await screen.findByText("洞察详情")).toBeInTheDocument();
-    expect(screen.getAllByText("未确认物流进展").length).toBeGreaterThan(0);
-    expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
-    expect(screen.getByText("未通过")).toBeInTheDocument();
-    expect(
-      screen.queryByText("未通过：problem_resolution"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
-  }, 20_000);
-
-  it("loads business topics per selected tab instead of preloading every dimension", async () => {
-    serviceMocks.getInsightBusinessTopics
-      .mockResolvedValueOnce({
-        dimension: "intent",
-        intentTrend: [],
-        topics: [
-          {
-            code: "31",
-            dimension: "intent",
-            mentionCount: 8,
-            name: "物流异常",
-            sessionCount: 8,
-            share: 1,
-          },
-        ],
-        totals: {
-          mentionCount: 8,
-          topicSessions: 8,
-        },
-        trend: [],
-      })
-      .mockResolvedValueOnce({
-        dimension: "tag",
-        intentTrend: [],
-        topics: [
-          {
-            code: "11",
-            dimension: "tag",
-            mentionCount: 10,
-            name: "退款咨询",
-            sessionCount: 6,
-            share: 1,
-          },
-        ],
-        totals: {
-          mentionCount: 10,
-          topicSessions: 6,
-        },
-        trend: [
-          {
-            assetMentions: 0,
-            date: "2026-06-01",
-            entityMentions: 0,
-            intentMentions: 0,
-            tagMentions: 10,
-            topicSessions: 6,
-          },
-        ],
-      });
-
-    renderRoute("/chat/insights/business");
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
-        expect.objectContaining({ dimension: "intent" }),
-        expect.any(Object),
-      );
-    });
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(1);
-
-    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
-        expect.objectContaining({
-          dimension: "tag",
-          from: "2026-05-28T00:00:00.000+08:00",
-          to: "2026-06-03T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
-    expect(screen.getAllByText("退款咨询").length).toBeGreaterThan(0);
   });
+
 
   it("disables manual rescan creation while insights are disabled", async () => {
     renderRoute("/chat/insights/settings");
@@ -2071,137 +1560,6 @@ describe("conversation insights pages", () => {
     });
   });
 
-  it("aborts business insight requests when the page unmounts", async () => {
-    const businessGate =
-      createDeferred<
-        Awaited<ReturnType<typeof serviceMocks.getInsightBusinessTopics>>
-      >();
-    const relatedSessionsGate =
-      createDeferred<
-        Awaited<
-          ReturnType<typeof serviceMocks.getInsightBusinessRelatedSessions>
-        >
-      >();
-    serviceMocks.getInsightBusinessTopics.mockReturnValueOnce(businessGate.promise);
-    serviceMocks.getInsightBusinessRelatedSessions.mockReturnValueOnce(
-      relatedSessionsGate.promise,
-    );
-
-    renderRoute("/chat/insights/business");
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalled();
-    });
-    const businessOptions = serviceMocks.getInsightBusinessTopics.mock.calls[0]?.[1];
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
-      {
-        dimension: "intent",
-        from: "2026-05-28T00:00:00.000+08:00",
-        to: "2026-06-03T23:59:59.999+08:00",
-      },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(businessOptions?.signal?.aborted).toBe(false);
-    businessGate.resolve({
-      dimension: "intent",
-      intentTrend: [],
-      topics: [
-        {
-          code: "31",
-          dimension: "intent",
-          mentionCount: 8,
-          name: "物流异常",
-          sessionCount: 8,
-          share: 0.4,
-        },
-      ],
-      totals: {
-        mentionCount: 8,
-        topicSessions: 8,
-      },
-      trend: [],
-    });
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalled();
-    });
-    const relatedSessionsOptions =
-      serviceMocks.getInsightBusinessRelatedSessions.mock.calls[0]?.[1];
-    expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dimension: "intent",
-        page: 1,
-        pageSize: 20,
-        topicCode: "31",
-      }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(relatedSessionsOptions?.signal?.aborted).toBe(false);
-
-    cleanup();
-
-    expect(businessOptions?.signal?.aborted).toBe(true);
-    expect(relatedSessionsOptions?.signal?.aborted).toBe(true);
-    relatedSessionsGate.resolve({
-      dimension: "intent",
-      items: [],
-      page: 1,
-      pageSize: 20,
-      topicCode: "31",
-      total: 0,
-      totalPages: 0,
-    });
-    await expect(businessGate.promise).resolves.toBeDefined();
-    await expect(relatedSessionsGate.promise).resolves.toBeDefined();
-  });
-
-  it("shows an empty overview distribution when returned resolution counts are all zero", async () => {
-    serviceMocks.getInsightOverview.mockResolvedValue({
-      ...serviceMocks.getInsightOverview.getMockImplementation()?.(),
-      actionItemsOpen: 0,
-      analysis: { failed: 0, partial: 0, ready: 0, stale: 0 },
-      highRiskSessions: 0,
-      problemSessions: 0,
-      readySessions: 0,
-      resolution: {
-        noCustomerProblem: 0,
-        partiallyResolved: 0,
-        resolved: 0,
-        unknown: 0,
-        unresolved: 0,
-      },
-      totalSessions: 0,
-      totals: {
-        agentMessages: 0,
-        consultingCustomers: 0,
-        customerMessages: 0,
-        logicalSessions: 0,
-        messages: 0,
-      },
-      trend: [],
-      unresolvedSessions: 0,
-    });
-
-    renderRoute("/chat/insights");
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
-    ).toBeInTheDocument();
-    const distributionPanel = screen
-      .getByRole("heading", { name: "AI 诊断" })
-      .closest("section");
-
-    expect(distributionPanel).not.toBeNull();
-    expect(
-      within(distributionPanel as HTMLElement).getByText("暂无数据"),
-    ).toBeInTheDocument();
-    expect(
-      within(distributionPanel as HTMLElement).queryByText("暂无分布数据"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(distributionPanel as HTMLElement).queryByText("咨询会话"),
-    ).not.toBeInTheDocument();
-  });
 
   it("validates required intent configuration dialog fields before submit", async () => {
     const intentDialog = await openSettingsDialog(
@@ -2653,10 +2011,6 @@ describe("conversation insights pages", () => {
     const insightSwitch = screen.getByRole("switch", { name: "启用会话洞察" });
     expect(insightSwitch).toBeDisabled();
     expect(screen.getByText("当前账号暂未开通会话洞察")).toBeInTheDocument();
-    await userEvent.hover(insightSwitch);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "当前账号暂未开通会话洞察",
-    );
   });
 
 

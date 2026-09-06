@@ -2235,4 +2235,95 @@ describe("conversation insights pages", () => {
 
   });
 
+  it("loads business topics per selected tab instead of preloading every dimension", async () => {
+    renderRoute("/chat/insights/business");
+
+    expect(await screen.findByRole("heading", { name: "客户意图 Top10" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: "intent" }),
+      expect.any(Object),
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
+
+    expect(await screen.findByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        dimension: "tag",
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("aborts business insight requests when the page unmounts", async () => {
+    const businessGate =
+      createDeferred<
+        Awaited<ReturnType<typeof serviceMocks.getInsightBusinessTopics>>
+      >();
+    const relatedSessionsGate =
+      createDeferred<
+        Awaited<
+          ReturnType<typeof serviceMocks.getInsightBusinessRelatedSessions>
+        >
+      >();
+    serviceMocks.getInsightBusinessTopics.mockReturnValueOnce(businessGate.promise);
+    serviceMocks.getInsightBusinessRelatedSessions.mockReturnValueOnce(
+      relatedSessionsGate.promise,
+    );
+
+    renderRoute("/chat/insights/business");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalled();
+    });
+    const businessOptions = serviceMocks.getInsightBusinessTopics.mock.calls[0]?.[1];
+    expect(businessOptions?.signal?.aborted).toBe(false);
+    businessGate.resolve({
+      dimension: "intent",
+      intentTrend: [],
+      topics: [
+        {
+          code: "31",
+          dimension: "intent",
+          mentionCount: 8,
+          name: "物流异常",
+          sessionCount: 8,
+          share: 0.4,
+        },
+      ],
+      totals: {
+        mentionCount: 8,
+        topicSessions: 8,
+      },
+      trend: [],
+    });
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalled();
+    });
+    const relatedSessionsOptions =
+      serviceMocks.getInsightBusinessRelatedSessions.mock.calls[0]?.[1];
+    expect(relatedSessionsOptions?.signal?.aborted).toBe(false);
+
+    cleanup();
+
+    expect(businessOptions?.signal?.aborted).toBe(true);
+    expect(relatedSessionsOptions?.signal?.aborted).toBe(true);
+    relatedSessionsGate.resolve({
+      dimension: "intent",
+      items: [],
+      page: 1,
+      pageSize: 20,
+      topicCode: "31",
+      total: 0,
+      totalPages: 0,
+    });
+    await expect(businessGate.promise).resolves.toBeDefined();
+    await expect(relatedSessionsGate.promise).resolves.toBeDefined();
+  });
+
 });

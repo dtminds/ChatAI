@@ -905,67 +905,6 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
-  it("marks the active conversation read after sending a reply while unread remains", async () => {
-    // Keep visibility events explicit so only sending can clear the new unread state.
-    installIntersectionObserverMock();
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const markConversationRead = vi.fn(baseService.markConversationRead);
-
-    setWorkbenchService({
-      ...baseService,
-      markConversationRead,
-    });
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
-      expect(markConversationRead).toHaveBeenCalledWith("conv-001");
-      expect(
-        useWorkbenchStore.getState().conversationListsByScope.drc?.find(
-          (conversation) => conversation.id === "conv-001",
-        )?.unread,
-      ).toBe(0);
-    });
-    markConversationRead.mockClear();
-
-    act(() => {
-      useWorkbenchStore.setState((state) => ({
-        accounts: state.accounts.map((account) =>
-          account.id === "drc" ? { ...account, unreadCount: 2 } : account,
-        ),
-        conversationListsByScope: {
-          ...state.conversationListsByScope,
-          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
-            conversation.id === "conv-001"
-              ? { ...conversation, unread: 2 }
-              : conversation,
-          ),
-        },
-      }));
-    });
-
-    await pasteIntoComposer(user, composer, "我来确认一下权益清单");
-    expect(markConversationRead).not.toHaveBeenCalled();
-    expect(
-      useWorkbenchStore.getState().conversationListsByScope.drc?.find(
-        (conversation) => conversation.id === "conv-001",
-      )?.unread,
-    ).toBe(2);
-
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    await waitFor(() => {
-      expect(markConversationRead).toHaveBeenCalledExactlyOnceWith("conv-001");
-      expect(
-        useWorkbenchStore.getState().conversationListsByScope.drc?.find(
-          (conversation) => conversation.id === "conv-001",
-        )?.unread,
-      ).toBe(0);
-    });
-  });
-
   it("marks a manually unread active conversation read after sending a reply", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

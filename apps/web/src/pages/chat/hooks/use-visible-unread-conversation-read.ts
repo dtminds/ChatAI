@@ -92,12 +92,11 @@ export function useVisibleUnreadConversationRead({
         !conversationId ||
         context.activeView !== "chat" ||
         !context.canUseConversationActions ||
-        (!options.force && context.isConversationLoading) ||
-        (!options.force && context.unreadCount <= 0) ||
+        context.isConversationLoading ||
+        context.unreadCount <= 0 ||
         (!options.force &&
           shouldSuppressAutoRead?.(conversationId, context.unreadCount)) ||
-        (!options.force &&
-          inFlightReadConversationIdsRef.current.has(conversationId))
+        inFlightReadConversationIdsRef.current.has(conversationId)
       ) {
         return;
       }
@@ -106,10 +105,7 @@ export function useVisibleUnreadConversationRead({
       const lastRequestedAt =
         lastReadRequestedAtByConversationIdRef.current[conversationId] ?? 0;
 
-      if (
-        !options.force &&
-        now - lastRequestedAt < ACTIVE_CONVERSATION_READ_THROTTLE_MS
-      ) {
+      if (now - lastRequestedAt < ACTIVE_CONVERSATION_READ_THROTTLE_MS) {
         return;
       }
 

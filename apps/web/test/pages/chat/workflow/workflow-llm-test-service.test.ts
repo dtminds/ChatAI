@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowLlmTestAttempt } from "@chatai/contracts";
 import { http } from "@/lib/request";

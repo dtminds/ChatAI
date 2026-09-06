@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { formatStorageSize } from "@/pages/chat/ai-hosting/ai-hosting-layout";
 

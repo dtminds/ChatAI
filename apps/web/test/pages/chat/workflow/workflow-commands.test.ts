@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { createWorkflowClipboardData } from "@/pages/chat/workflow/workflow-clipboard";
 import { getWorkflowConnectionPolicyViolation } from "@/pages/chat/workflow/connection-policy";

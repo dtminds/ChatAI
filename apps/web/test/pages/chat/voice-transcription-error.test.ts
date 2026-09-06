@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { RequestNormalizedError } from "@/lib/request";
 import { resolveVoiceTranscriptionErrorMessage } from "@/pages/chat/lib/voice-transcription-error";

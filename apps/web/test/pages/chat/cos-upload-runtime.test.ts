@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
 import { uploadCosFile } from "@/pages/chat/lib/cos-upload-runtime";
 

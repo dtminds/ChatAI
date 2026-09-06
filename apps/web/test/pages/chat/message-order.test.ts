@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 

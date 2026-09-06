@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getBroadcastProtectionStatus } from "@/pages/chat/api/broadcast-protection-service";
 

@@ -4,10 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
+import { AgentManagementPage, AgentManagementContent } from "@/pages/chat/ai-hosting/agent-management-page";
+import { SingleChatHostingSettingsTab } from "@/pages/chat/ai-hosting/single-chat-hosting-settings-tab";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
-import { AgentOptimizationSuggestionsPage } from "@/pages/chat/ai-hosting/agent-optimization-suggestions-page";
-import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
+import { AgentOptimizationSuggestionsPage, AgentOptimizationSuggestionsContent } from "@/pages/chat/ai-hosting/agent-optimization-suggestions-page";
+import { AgentSettingsPage, AgentSettingsEditor } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { AiSkillSettingsPage } from "@/pages/chat/ai-hosting/ai-skill-settings-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
 import { resetAiHostingQuotaCacheForTest } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
@@ -1071,7 +1072,7 @@ describe("AI hosting pages", () => {
         },
       });
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       const trigger = await screen.findByLabelText("查看 护肤小助理 的全部关联知识库");
 
@@ -1110,7 +1111,7 @@ describe("AI hosting pages", () => {
     it("opens the AI self-learning dialog from an agent card", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await user.click(
         await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
@@ -1140,7 +1141,7 @@ describe("AI hosting pages", () => {
 
       try {
         await act(async () => {
-          renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+          renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
           await Promise.resolve();
           await Promise.resolve();
         });
@@ -1171,7 +1172,7 @@ describe("AI hosting pages", () => {
     });
 
     it("shows pending suggestion count and enabled self-learning on agent cards", async () => {
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       expect(await screen.findByText("未开启")).toBeInTheDocument();
       expect(
@@ -1194,7 +1195,7 @@ describe("AI hosting pages", () => {
         },
       });
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       expect(await screen.findByRole("link", { name: "已开启" })).toHaveAttribute(
         "href",
@@ -1211,7 +1212,7 @@ describe("AI hosting pages", () => {
     it("enables AI self-learning directly from the agent dialog", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await user.click(
         await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
@@ -1240,7 +1241,7 @@ describe("AI hosting pages", () => {
         pendingSuggestionCount: 0,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await user.click(
         await screen.findByRole("button", { name: "售后小助理 自主进化" }),
@@ -1556,7 +1557,7 @@ describe("AI hosting pages", () => {
         new Promise(() => undefined),
       );
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       expect(screen.getByRole("status", { name: "正在加载" })).toBeInTheDocument();
     });
@@ -1566,7 +1567,7 @@ describe("AI hosting pages", () => {
         new Error("timeout of 15000ms exceeded"),
       );
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith("Agent 列表加载失败，请稍后重试");
@@ -1577,7 +1578,7 @@ describe("AI hosting pages", () => {
     it("filters agents by search query", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await screen.findByRole("heading", { level: 1, name: "Agent" });
 
@@ -1596,7 +1597,7 @@ describe("AI hosting pages", () => {
       const user = userEvent.setup();
       mockSession("operator");
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
@@ -1609,7 +1610,7 @@ describe("AI hosting pages", () => {
     it("removes agents from the management page after confirmation", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await screen.findByRole("link", { name: "护肤小助理" });
       await user.click(screen.getAllByRole("button", { name: /更多操作/ })[0]);
@@ -1627,7 +1628,7 @@ describe("AI hosting pages", () => {
     it("reports a list refresh failure separately after an agent is deleted", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await screen.findByRole("link", { name: "护肤小助理" });
       vi.mocked(agentService.listAiHostingAgents).mockRejectedValueOnce(
@@ -1656,7 +1657,7 @@ describe("AI hosting pages", () => {
         },
       );
 
-      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+      renderWithRoute("/chat/ai-hosting/agents", <AgentManagementContent />);
 
       await screen.findByRole("link", { name: "护肤小助理" });
       await user.click(screen.getAllByRole("button", { name: /更多操作/ })[0]);
@@ -1818,7 +1819,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1841,7 +1842,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1855,7 +1856,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1910,7 +1911,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1931,7 +1932,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1976,7 +1977,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -1999,7 +2000,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -2094,7 +2095,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -2166,7 +2167,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301/optimization-suggestions",
-        <AgentOptimizationSuggestionsPage />,
+        <AgentOptimizationSuggestionsContent />,
         "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
       );
 
@@ -2494,9 +2495,9 @@ describe("AI hosting pages", () => {
     it("opens the group chat settings dialog from row action", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理2 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "群聊设置" }));
 
@@ -2521,9 +2522,9 @@ describe("AI hosting pages", () => {
     it("saves group chat settings from the dialog", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理2 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "群聊设置" }));
 
@@ -2551,9 +2552,9 @@ describe("AI hosting pages", () => {
         new Error("保存失败"),
       );
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理2 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "群聊设置" }));
       await user.click(screen.getByRole("button", { name: "保存设置" }));
@@ -2570,7 +2571,7 @@ describe("AI hosting pages", () => {
         new Promise(() => undefined),
       );
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
       expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
       expect(screen.getAllByRole("columnheader")).toHaveLength(5);
@@ -2586,9 +2587,9 @@ describe("AI hosting pages", () => {
     it("filters application scope accounts by search query", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.type(screen.getByRole("textbox", { name: "搜索托管账号" }), "小助理2");
 
       expect(screen.getByText("小助理2")).toBeInTheDocument();
@@ -2599,9 +2600,9 @@ describe("AI hosting pages", () => {
     it("opens the settings dialog from row settings", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理2 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
 
@@ -2630,9 +2631,9 @@ describe("AI hosting pages", () => {
     it("opens the batch settings dialog from batch action", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("checkbox", { name: "选择小助理2" }));
       await user.click(screen.getByRole("checkbox", { name: "选择小助理3" }));
       await user.click(screen.getByRole("button", { name: "批量设置" }));
@@ -2648,9 +2649,9 @@ describe("AI hosting pages", () => {
     it("saves application scope settings from the dialog", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理1 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
       await user.click(screen.getByRole("switch", { name: "允许开启 AI 回复" }));
@@ -2683,9 +2684,9 @@ describe("AI hosting pages", () => {
         fullAutoAuthAvailable: false,
       });
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理1 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
 
@@ -2714,9 +2715,9 @@ describe("AI hosting pages", () => {
         new Error("保存失败，请稍后重试"),
       );
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理1 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
       await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
@@ -2737,9 +2738,9 @@ describe("AI hosting pages", () => {
       const saveRequest = new Promise<AiHostingSettingsResponse>(() => undefined);
       vi.mocked(agentService.updateAiHostingSettings).mockReturnValueOnce(saveRequest);
 
-      renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/hosting-settings", <SingleChatHostingSettingsTab />);
 
-      await screen.findByRole("heading", { level: 1, name: "托管设置" });
+      await screen.findByRole("button", { name: "打开 小助理2 托管设置菜单" });
       await user.click(screen.getByRole("button", { name: "打开 小助理1 托管设置菜单" }));
       await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
       await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
@@ -2769,7 +2770,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -2820,7 +2821,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -2850,7 +2851,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -2901,7 +2902,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -2964,7 +2965,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -2999,7 +3000,7 @@ describe("AI hosting pages", () => {
 
       const { router } = renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -3026,7 +3027,7 @@ describe("AI hosting pages", () => {
       try {
         renderWithRoute(
           "/chat/ai-hosting/agents/301",
-          <AgentSettingsPage />,
+          <AgentSettingsEditor />,
           "/chat/ai-hosting/agents/:agentId",
         );
 
@@ -3090,7 +3091,7 @@ describe("AI hosting pages", () => {
     it("clears Agent field errors when the related field changes", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "保存" }));
@@ -3107,7 +3108,7 @@ describe("AI hosting pages", () => {
     it("clears preview chat messages and input draft", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await openAgentPreview(user);
@@ -3143,7 +3144,7 @@ describe("AI hosting pages", () => {
         }),
       );
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await openAgentPreview(user);
@@ -3169,7 +3170,7 @@ describe("AI hosting pages", () => {
         url: "https://cdn.example.com/kb-docs/demo/preview.png",
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await openAgentPreview(user);
@@ -3212,7 +3213,7 @@ describe("AI hosting pages", () => {
         ],
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await openAgentPreview(user);
@@ -3230,7 +3231,7 @@ describe("AI hosting pages", () => {
         reply: [],
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await openAgentPreview(user);
@@ -3246,7 +3247,7 @@ describe("AI hosting pages", () => {
     it("fills communication style from the template menu", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "查看模板" }));
@@ -3258,7 +3259,7 @@ describe("AI hosting pages", () => {
     });
 
     it("uses the frontend name length limit for agent names", async () => {
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
 
@@ -3266,7 +3267,7 @@ describe("AI hosting pages", () => {
     });
 
     it("uses the field-specific agent settings character limits", async () => {
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
 
@@ -3282,7 +3283,7 @@ describe("AI hosting pages", () => {
     it("trims conditional logic input at 8000 visible characters", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       const editor = await screen.findByLabelText("行为指引描述");
       await user.click(editor);
@@ -3315,7 +3316,7 @@ describe("AI hosting pages", () => {
         },
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       const editor = await screen.findByLabelText("行为指引描述");
       await user.click(editor);
@@ -3344,7 +3345,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -3359,7 +3360,7 @@ describe("AI hosting pages", () => {
     it("renders model icons in the model selector options", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await screen.findByTitle("模型图标：默认模型");
@@ -3374,7 +3375,7 @@ describe("AI hosting pages", () => {
     it("defaults user memory off and saves the enabled setting", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       const userMemorySwitch = screen.getByRole("switch", { name: "客户记忆" });
@@ -3402,7 +3403,7 @@ describe("AI hosting pages", () => {
 
       vi.mocked(agentService.createAiHostingAgent).mockReturnValueOnce(create.promise);
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await screen.findByTitle("模型图标：默认模型");
@@ -3448,7 +3449,7 @@ describe("AI hosting pages", () => {
         [
           {
             path: "/chat/ai-hosting/agents/new",
-            element: <AgentSettingsPage />,
+            element: <AgentSettingsEditor />,
           },
           {
             path: "/chat/ai-hosting/agents",
@@ -3476,7 +3477,7 @@ describe("AI hosting pages", () => {
 
       vi.mocked(agentService.publishAiHostingAgent).mockReturnValueOnce(publish.promise);
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await screen.findByTitle("模型图标：默认模型");
@@ -3508,7 +3509,7 @@ describe("AI hosting pages", () => {
     it("opens restore draft dialog from the draft banner", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       expect(await screen.findByText(/有尚未发布的修改，你也可以/)).toBeInTheDocument();
 
@@ -3525,7 +3526,7 @@ describe("AI hosting pages", () => {
     it("keeps the preview chat title generic on the agent detail page", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
 
@@ -3541,7 +3542,7 @@ describe("AI hosting pages", () => {
         publishedAt: undefined,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       expect(await screen.findByText("有尚未发布的修改")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "还原为正式版" })).not.toBeInTheDocument();
@@ -3553,7 +3554,7 @@ describe("AI hosting pages", () => {
 
       vi.mocked(agentService.publishAiHostingAgent).mockReturnValueOnce(publish.promise);
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByDisplayValue("护肤小助理");
       expect(screen.getByRole("heading", { level: 1, name: "护肤小助理" })).toBeInTheDocument();
@@ -3604,7 +3605,7 @@ describe("AI hosting pages", () => {
 
       vi.mocked(agentService.renameAiHostingAgent).mockReturnValueOnce(rename.promise);
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
       await user.click(screen.getByRole("button", { name: "编辑 Agent 名称" }));
@@ -3638,7 +3639,7 @@ describe("AI hosting pages", () => {
 
       vi.mocked(agentService.updateAiHostingAgent).mockRejectedValueOnce(new Error("save failed"));
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByDisplayValue("护肤小助理");
       await user.clear(screen.getByLabelText("角色描述"));
@@ -3669,7 +3670,7 @@ describe("AI hosting pages", () => {
         status: 400,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByDisplayValue("护肤小助理");
       await user.clear(screen.getByLabelText("角色描述"));
@@ -3691,7 +3692,7 @@ describe("AI hosting pages", () => {
         status: 400,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByDisplayValue("护肤小助理");
       await user.clear(screen.getByLabelText("角色描述"));
@@ -3714,7 +3715,7 @@ describe("AI hosting pages", () => {
         status: 400,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
       await user.click(screen.getByRole("button", { name: "编辑 Agent 名称" }));
@@ -3740,7 +3741,7 @@ describe("AI hosting pages", () => {
         status: 400,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       expect(await screen.findByText(/有尚未发布的修改，你也可以/)).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "还原为正式版" }));
@@ -3760,7 +3761,7 @@ describe("AI hosting pages", () => {
         hasUnpublishedChanges: false,
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       await screen.findByDisplayValue("护肤小助理");
 
@@ -3775,7 +3776,7 @@ describe("AI hosting pages", () => {
     it("renders agent settings as read-only for non-manage roles", async () => {
       mockSession("operator");
 
-      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+      renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsEditor />, "/chat/ai-hosting/agents/:agentId");
 
       expect(await screen.findByRole("heading", { level: 1, name: "护肤小助理" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
@@ -3813,7 +3814,7 @@ describe("AI hosting pages", () => {
         pagination: { page: params.page ?? 1, pageSize: 10, total: 11 },
       }));
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "添加知识库" }));
@@ -3865,7 +3866,7 @@ describe("AI hosting pages", () => {
         },
       }));
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "添加知识库" }));
@@ -3943,7 +3944,7 @@ describe("AI hosting pages", () => {
 
       renderWithRoute(
         "/chat/ai-hosting/agents/301",
-        <AgentSettingsPage />,
+        <AgentSettingsEditor />,
         "/chat/ai-hosting/agents/:agentId",
       );
 
@@ -3971,7 +3972,7 @@ describe("AI hosting pages", () => {
         new Error("timeout of 15000ms exceeded"),
       );
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "添加知识库" }));
@@ -3999,7 +4000,7 @@ describe("AI hosting pages", () => {
         pagination: { page: 1, pageSize: 10, total: 1 },
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await addAgentKnowledgeBases(user, ["真实彩妆知识库"]);
@@ -4024,7 +4025,7 @@ describe("AI hosting pages", () => {
     it("omits empty conditional logic groups and closes the list when clicking outside", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await addAgentSkills(user, ["订单与物流场景查询"]);
@@ -4056,7 +4057,7 @@ describe("AI hosting pages", () => {
         pagination: { page: 1, pageSize: 10, total: 1 },
       });
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await addAgentKnowledgeBases(user, ["真实彩妆知识库"]);
@@ -4075,7 +4076,7 @@ describe("AI hosting pages", () => {
     it("adds enabled skills through the dialog and saves them independently", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.click(screen.getByRole("button", { name: "添加技能" }));
@@ -4117,7 +4118,7 @@ describe("AI hosting pages", () => {
     it("collapses and expands agent settings sections", async () => {
       const user = userEvent.setup();
 
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       expect(screen.getByLabelText("角色描述")).toBeInTheDocument();

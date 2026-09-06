@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
 import { RequestNormalizedError } from "@/lib/request";
 import { createWorkflowTemplateRepository } from "@/pages/chat/workflow/workflow-template-repository";

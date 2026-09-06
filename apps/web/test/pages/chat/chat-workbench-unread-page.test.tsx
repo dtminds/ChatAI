@@ -1806,44 +1806,49 @@ describe("ChatWorkbenchPage", () => {
 
     // Advance the relation lookup delay without spending real CI wall time.
     vi.useFakeTimers();
-    fireEvent.click(
-      screen.getByRole("button", { name: "查看 丹阳草莓 的好友关系" }),
-    );
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    expect(
-      screen.getByRole("button", { name: "向 德瑞可 继续会话" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "向 德瑞可 继续会话" }));
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(router.state.location.pathname).toBe("/chat");
-    expect(useWorkbenchStore.getState().activeConversationId).toBe(
-      "conv-group-member-customer",
-    );
-    expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
-    expect(screen.getByTestId("message-loading-overlay")).toBeInTheDocument();
-    expect(getCustomerSeatRelations).toHaveBeenCalledWith("member-003");
-    expect(getOrCreateConversation).toHaveBeenCalledWith({
-      chatType: 1,
-      seatId: "drc",
-      thirdExternalUserId: "member-003",
-      thirdGroupId: undefined,
-    });
-
-    await act(async () => {
-      targetMessagePage.resolve({
-        filteredCount: 0,
-        hasMore: false,
-        messages: [],
-        scannedCount: 0,
+    try {
+      fireEvent.click(
+        screen.getByRole("button", { name: "查看 丹阳草莓 的好友关系" }),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
       });
-      await Promise.resolve();
-    });
-    vi.useRealTimers();
+      expect(
+        screen.getByRole("button", { name: "向 德瑞可 继续会话" }),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "向 德瑞可 继续会话" }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(router.state.location.pathname).toBe("/chat");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        "conv-group-member-customer",
+      );
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
+      expect(screen.getByTestId("message-loading-overlay")).toBeInTheDocument();
+      expect(getCustomerSeatRelations).toHaveBeenCalledWith("member-003");
+      expect(getOrCreateConversation).toHaveBeenCalledWith({
+        chatType: 1,
+        seatId: "drc",
+        thirdExternalUserId: "member-003",
+        thirdGroupId: undefined,
+      });
+
+      await act(async () => {
+        targetMessagePage.resolve({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        });
+        await Promise.resolve();
+      });
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+      expect(screen.queryByTestId("message-loading-overlay")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
 

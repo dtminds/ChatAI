@@ -171,6 +171,24 @@ describe("ConversationListPanel", () => {
     expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
   });
 
+  it("keeps the conversation list scrollbar on hover", () => {
+    render(
+      <ConversationListPanel
+        activeConversation={conversations[0]}
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-list-scroll-area")).toHaveAttribute(
+      "data-scrollbar-visibility",
+      "hover",
+    );
+  });
+
   it("highlights the clicked conversation before selection finishes", async () => {
     const user = userEvent.setup();
     let resolveSelect!: (accepted: boolean) => void;

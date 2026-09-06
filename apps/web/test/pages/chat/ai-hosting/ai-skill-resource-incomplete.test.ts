@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
+import { AGENT_SKILL_CONTENT_MAX_LENGTH } from "@chatai/contracts";
 import {
   buildSkillVariableResourceItem,
   collectAutoSelectedToolsFromRecommendations,
@@ -14,6 +15,7 @@ import {
   replaceSkillContentResource,
   resolveTemplateVariableType,
   toSkillContentResourceSegment,
+  trimSkillContentSegmentsToMaxLength,
 } from "@/pages/chat/ai-hosting/ai-skill-resource";
 
 describe("ai skill incomplete resources", () => {
@@ -321,5 +323,33 @@ describe("ai skill incomplete resources", () => {
     const resources = collectCompleteSkillResourcesFromContent(updated);
     expect(resources["knowledge-bases"]).toHaveLength(1);
     expect(resources["knowledge-bases"][0]?.kbId).toBe(21);
+  });
+
+  it("trims skill content segments to the visible character budget", () => {
+    const allowed = "a".repeat(AGENT_SKILL_CONTENT_MAX_LENGTH);
+
+    expect(
+      trimSkillContentSegmentsToMaxLength(
+        [{ type: "text", value: `${allowed}多` }],
+        AGENT_SKILL_CONTENT_MAX_LENGTH,
+      ),
+    ).toEqual([{ type: "text", value: allowed }]);
+
+    expect(
+      trimSkillContentSegmentsToMaxLength(
+        [
+          { type: "text", value: "ab" },
+          {
+            id: "kb:1",
+            kind: "knowledge_base",
+            name: "知识库",
+            placeholder:
+              '<resource type="knowledge_base" kbId="1" name="知识库" />',
+            type: "resource",
+          },
+        ],
+        4,
+      ),
+    ).toEqual([{ type: "text", value: "ab" }]);
   });
 });

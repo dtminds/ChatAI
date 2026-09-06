@@ -138,8 +138,7 @@ import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
-import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
-import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
+import { startMessageFileDownload } from "@/pages/chat/lib/message-download";
 import {
   findViewportAnchor,
   scrollToAndHighlightViewportAnchor,
@@ -2139,54 +2138,15 @@ function ChatWorkbenchContent({
   };
 
   const handleDownloadMessageFile = (message: ChatMessage) => {
-    if (
-      message.content.type !== "file" &&
-      message.content.type !== "video" &&
-      message.content.type !== "image"
-    ) {
-      return;
-    }
-
-    const url = getMessageDownloadUrl(message);
-
-    if (isMessageDownloadUrlReady(message, url)) {
-      openMessageDownloadUrl(message, url);
-      return;
-    }
-
-    if (!message.content.fileSerialNo || !message.seq || !activeConversation) {
-      return;
-    }
-
-    if (message.conversationId !== activeConversation.id) {
-      return;
-    }
-
-    updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
-      downloadStatus: "ing",
-      updatedAtMs: Date.now(),
-    });
-
-    void downloadMessageFile({
-      conversationId: message.conversationId,
-      msgInfoId: message.seq,
-    })
-      .then(() => {
-        if (!isMountedRef.current) {
-          return;
-        }
-
-      })
-      .catch(() => {
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
-          downloadStatus: "failed",
-        });
+    void startMessageFileDownload(message, {
+      activeConversationId: activeConversation?.id,
+      downloadMessageFile,
+      isMounted: () => isMountedRef.current,
+      onTransferError: () => {
         toast.warning("下载失败，请稍后重试");
-      });
+      },
+      updateDownloadContent: updateMessageDownloadContent,
+    });
   };
 
   const handleVoicePlaybackReady = (
@@ -3311,37 +3271,6 @@ function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
     description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面",
     title: "实时同步已被其他页面占用",
   };
-}
-
-function getMessageDownloadUrl(message: ChatMessage) {
-  if (message.content.type === "file") {
-    return message.content.fileUrl?.trim() ?? "";
-  }
-
-  if (message.content.type === "video") {
-    return message.content.videoUrl?.trim() ?? "";
-  }
-
-  if (message.content.type === "image") {
-    return message.content.imageUrl.trim();
-  }
-
-  return "";
-}
-
-function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
-  if (message.content.type === "video") {
-    return (
-      message.content.downloadStatus === "finished" &&
-      canUseExpiringUrl(url, message.content.fileUrlExpireTime)
-    );
-  }
-
-  return (
-    message.content.type === "file" &&
-    message.content.downloadStatus === "finished" &&
-    url
-  );
 }
 
 function buildQuotedMessagePreview(

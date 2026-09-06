@@ -10,7 +10,7 @@ import {
   Brain02Icon,
   RoboticIcon,
   TokenCircleIcon,
-  UserAiIcon,
+  AiCoEditingIcon,
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -55,7 +55,7 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/user-memory",
   },
   {
-    icon: UserAiIcon,
+    icon: AiCoEditingIcon,
     label: "托管设置",
     to: "/chat/ai-hosting/hosting-settings",
   },

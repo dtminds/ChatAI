@@ -15,7 +15,9 @@ function isDirectEndpointPath(pathname: string, search: string) {
 }
 
 function isPublicPath(pathname: string, search: string) {
-  return pathname === "/login" || isDirectEndpointPath(pathname, search);
+  return pathname === "/login"
+    || pathname === "/e2e_login"
+    || isDirectEndpointPath(pathname, search);
 }
 
 export function RootLayout() {

@@ -7,12 +7,13 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { vi } from "vitest";
-import { type ReactElement } from "react";
+import { StrictMode, type ReactElement } from "react";
 import { requestInstance } from "@/lib/request";
 import {
   ChatWorkbenchPage,
   ChatWorkbenchRoutePage,
 } from "@/pages/chat/chat-workbench-page";
+import { OpenConversationLink } from "@/pages/chat/components/open-conversation-link";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -123,6 +124,39 @@ export function renderChatWorkbenchRoutePage(
 
   return {
     ...render(<RouterProvider router={router} />),
+    router,
+  };
+}
+
+export function renderConversationOpenFromOutsideRoute(
+  conversationId: string,
+) {
+  const router = createMemoryRouter(
+    [
+      {
+        element: <OpenConversationLink conversationId={conversationId} />,
+        path: "/chat/insights",
+      },
+      {
+        children: [
+          {
+            element: <></>,
+            path: "conversations/:conversationId",
+          },
+        ],
+        element: <ChatWorkbenchRoutePage />,
+        path: "/chat",
+      },
+    ],
+    { initialEntries: ["/chat"] },
+  );
+
+  return {
+    ...render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>,
+    ),
     router,
   };
 }

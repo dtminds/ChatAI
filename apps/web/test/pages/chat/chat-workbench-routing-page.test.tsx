@@ -15,6 +15,7 @@ import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   renderChatWorkbenchRoutePage,
+  renderConversationOpenFromOutsideRoute,
   resetChatWorkbenchTestState,
 } from "./workbench-test-utils";
 
@@ -87,6 +88,50 @@ describe("ChatWorkbenchPage routed conversation opens", () => {
       expect(router.state.location.pathname).toBe("/chat");
     });
     expect(getConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a routed conversation from OpenConversationLink outside the workbench route tree", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const targetConversation = await baseService.getConversation("conv-002");
+    const conversationRequest = createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn(() => conversationRequest.promise);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderConversationOpenFromOutsideRoute("conv-002");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await act(async () => {
+      await router.navigate("/chat/insights");
+    });
+
+    await user.click(screen.getByRole("link", { name: "打开会话" }));
+
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+    expect(router.state.location.state).toEqual({ openConversation: true });
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+
+    conversationRequest.resolve(targetConversation);
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-002",
+    );
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
   });
 
   it("cancels a pending routed open after leaving the conversation route", async () => {

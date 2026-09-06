@@ -19,7 +19,7 @@ import {
   FolderFavouriteIcon,
   Image01Icon,
   Link01Icon,
-  PlayListIcon,
+  PlaySquareIcon,
   ShapeCollectionIcon,
   SmileIcon,
   Upload05Icon,
@@ -896,7 +896,7 @@ export function ChatComposer({
                     }
                   >
                     <HugeiconsIcon
-                      icon={PlayListIcon}
+                      icon={PlaySquareIcon}
                       size={16}
                       strokeWidth={1.8}
                     />
@@ -1149,7 +1149,7 @@ export function ChatComposer({
                   variant="ghost"
                 >
                   <HugeiconsIcon
-                    icon={PlayListIcon}
+                    icon={PlaySquareIcon}
                     size={18}
                     strokeWidth={2}
                   />

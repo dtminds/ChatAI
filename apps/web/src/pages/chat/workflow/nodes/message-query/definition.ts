@@ -1,4 +1,4 @@
-import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
+import { ChatSearchIcon } from "@hugeicons/core-free-icons";
 import { isValidWorkflowLocalDateTime, WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
@@ -118,7 +118,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
   visual: {
     accentClassName: "bg-orange-500 text-white",
     accentRgb: "249 115 22",
-    icon: MessageSearch01Icon,
+    icon: ChatSearchIcon,
     label: "消息查询",
   },
 };

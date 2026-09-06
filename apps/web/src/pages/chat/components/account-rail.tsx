@@ -9,7 +9,7 @@ import {
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
   PanelLeftIcon,
-  StickyNote02Icon,
+  ListTodoIcon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
@@ -43,7 +43,7 @@ const railItems = [
   { label: "聊天", icon: ChatIcon },
   {
     label: "工单",
-    icon: StickyNote02Icon,
+    icon: ListTodoIcon,
     to: "/chat/tickets",
     ticketCount: true,
   },

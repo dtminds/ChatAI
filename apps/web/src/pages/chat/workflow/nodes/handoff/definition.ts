@@ -1,4 +1,4 @@
-import { UserSwitchIcon } from "@hugeicons/core-free-icons";
+import { AiCoEditingIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import {
@@ -10,7 +10,7 @@ const baseHandoffNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-cyan-600 text-white",
   accentRgb: "8 145 178",
   description: "遇到复杂、个性化或需人工介入的问题时，将客户转接至人工客服，可向接管客服说明客户需求和当前背景便于处理",
-  icon: UserSwitchIcon,
+  icon: AiCoEditingIcon,
   kind: "handoff",
   label: "转人工",
   metric: "待配置客服提示",

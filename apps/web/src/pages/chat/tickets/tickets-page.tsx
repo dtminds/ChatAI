@@ -7,7 +7,7 @@ import {
   Male02Icon,
   Notification01Icon,
   Search01Icon,
-  StickyNote02Icon,
+  ListTodoIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -541,7 +541,7 @@ function TicketReminderPreview({ mode }: { mode: TicketReminderDisplayMode }) {
         <div className="mx-auto flex h-9 max-w-[220px] items-center gap-2 rounded-[8px] bg-sidebar px-3 text-sm text-sidebar-foreground">
           <HugeiconsIcon
             aria-hidden="true"
-            icon={StickyNote02Icon}
+            icon={ListTodoIcon}
             size={16}
             strokeWidth={1.6}
           />

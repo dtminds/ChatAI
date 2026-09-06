@@ -417,6 +417,17 @@ function setupCanvasUser() {
   });
 }
 
+async function insertGlobalCustomerIdVariable(section: HTMLElement) {
+  const insertButton = within(section).getByRole("button", { name: "插入变量" });
+  fireEvent.pointerDown(insertButton);
+  fireEvent.click(insertButton);
+  fireEvent.click(await screen.findByRole("menuitem", { name: "全局变量" }));
+  fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
+  await waitFor(() => {
+    expect(within(section).getByText("全局变量.客户 ID")).toBeInTheDocument();
+  });
+}
+
 function getUndoButton(canvas: HTMLElement) {
   return within(canvas).getByRole("button", { name: /^撤销/ });
 }
@@ -656,23 +667,14 @@ describe("Agent workflow page", () => {
     expect(within(panel).getAllByText("0/100")).toHaveLength(2);
 
     const operatorSection = operatorMessage.closest("section")!;
-    await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
-    fireEvent.pointerDown(
-      (await screen.findAllByRole("menuitem", { name: /^客户 ID文本$/ })).at(-1)!,
-    );
-
-    const customerSection = customerMessage.closest("section")!;
+    await insertGlobalCustomerIdVariable(operatorSection);
     await waitFor(() => {
       expect(within(canvas).getByRole("button", { name: "转人工" }))
         .toHaveTextContent("客服提示：全局变量.客户 ID");
     });
-    await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
-    fireEvent.pointerDown(
-      (await screen.findAllByRole("menuitem", { name: /^客户 ID文本$/ })).at(-1)!,
-    );
 
+    const customerSection = customerMessage.closest("section")!;
+    await insertGlobalCustomerIdVariable(customerSection);
     await waitFor(() => {
       expect(within(canvas).getByRole("button", { name: "转人工" }))
         .toHaveTextContent("客服提示：全局变量.客户 ID");

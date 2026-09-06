@@ -101,6 +101,56 @@ describe("workflowHistoryReducer", () => {
     expect(nextState.pastStates).toHaveLength(0);
   });
 
+  it("does not record canvas selection flags, so undo still reverts the last graph edit", () => {
+    const initialState = createWorkflowHistoryInitialState(createDraft(0));
+    const addedDraft: WorkflowDraft = {
+      ...initialState.currentDraft,
+      nodes: [
+        ...initialState.currentDraft.nodes,
+        {
+          ...initialState.currentDraft.nodes[0],
+          data: {
+            ...initialState.currentDraft.nodes[0].data,
+            title: "转人工",
+          },
+          id: "handoff-1",
+        },
+      ],
+    };
+    const addedState = workflowHistoryReducer(initialState, {
+      event: "node:add",
+      nextDraft: addedDraft,
+      previousDraft: initialState.currentDraft,
+      type: "commit-from-drafts",
+    });
+
+    expect(addedState.currentDraft.nodes.map((node) => node.id)).toEqual([
+      "message-welcome",
+      "handoff-1",
+    ]);
+    expect(addedState.pastStates).toHaveLength(1);
+
+    const selectionOnlyState = workflowHistoryReducer(addedState, {
+      event: "node:move",
+      type: "commit",
+      updateDraft: (draft) => ({
+        ...draft,
+        nodes: draft.nodes.map((node) => ({
+          ...node,
+          selected: node.id === "message-welcome",
+        })),
+      }),
+    });
+
+    expect(selectionOnlyState).toBe(addedState);
+    expect(selectionOnlyState.pastStates).toHaveLength(1);
+
+    const undoneState = workflowHistoryReducer(selectionOnlyState, { type: "undo" });
+    expect(undoneState.currentDraft.nodes.map((node) => node.id)).toEqual([
+      "message-welcome",
+    ]);
+  });
+
   it("supports undo, redo, and clears redo after a new commit", () => {
     const initialState = createWorkflowHistoryInitialState(createDraft(0));
     const movedState = workflowHistoryReducer(initialState, {

@@ -33,6 +33,25 @@ describe("workflow selection", () => {
     });
   });
 
+  it("keeps the current node selected when a different node leaves the graph", () => {
+    const nodes = createInitialNodes();
+
+    expect(normalizeWorkflowSelection({
+      defaultNodeId: "message-welcome",
+      edges: createInitialEdges().filter((edge) => (
+        edge.source !== "message-welcome" && edge.target !== "message-welcome"
+      )),
+      nodes: nodes.filter((node) => node.id !== "message-welcome"),
+      selection: {
+        selectedEdgeId: null,
+        selectedNodeIds: ["wait-2d"],
+      },
+    })).toEqual({
+      selectedEdgeId: null,
+      selectedNodeIds: ["wait-2d"],
+    });
+  });
+
   it("normalizes stale selection against the current graph", () => {
     const nodes = createInitialNodes();
     const edges = [

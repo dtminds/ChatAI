@@ -241,6 +241,4 @@ describe("material library group interactions", () => {
     });
     expect(await screen.findByText("暂无数据")).toBeInTheDocument();
   });
-
 });
-

@@ -82,6 +82,27 @@ const miniProgramMessage = {
   uiMessageKey: "7002",
 } satisfies ChatMessage;
 
+const expressionMessage = {
+  author: "客户",
+  content: {
+    alt: "收藏表情",
+    imageUrl: "https://example.com/emotion.gif",
+    type: "image",
+    variant: "emotion",
+  },
+  conversationId: "conv-001",
+  msgid: "msg-emotion-001",
+  role: "customer",
+  sender: {
+    id: "customer-001",
+    name: "客户",
+  },
+  sentAt: "2026-06-14 10:02:00",
+  seq: 1,
+  status: "sent",
+  uiMessageKey: "1",
+} satisfies ChatMessage;
+
 function createDefaultOptions(
   overrides: Partial<MaterialCollectionOptions> = {},
 ): MaterialCollectionOptions {
@@ -826,6 +847,80 @@ describe("useMaterialCollection", () => {
       pageSize: 100,
     });
     expect(result.current.pendingMaterialCollection).toBeNull();
+  });
+
+  it("collects expression messages without asking for a material group", async () => {
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(baseService.collectMaterial);
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(expressionMessage);
+    });
+
+    expect(collectMaterial).toHaveBeenCalledWith({
+      bizType: 1,
+      groupId: 0,
+      msgInfoId: "1",
+    });
+    expect(toast.success).toHaveBeenCalledWith("已收录");
+    expect(result.current.pendingMaterialCollection).toBeNull();
+  });
+
+  it("creates a material group before submitting a pending file collection", async () => {
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(baseService.collectMaterial);
+    const createMaterialGroup = vi.fn(async () => ({
+      bizType: 2 as const,
+      id: "group-created",
+      sort: 1_781_244_000_000,
+      title: "售后文件",
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+      createMaterialGroup,
+      listMaterialGroups: vi.fn(async () => ({ groups: [] })),
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(fileMessage);
+    });
+    await act(async () => {
+      await result.current.handleCreatePendingMaterialGroup("售后文件");
+    });
+    await act(async () => {
+      await result.current.handleSubmitMaterialCollection({
+        fileName: "报价单.pdf",
+        groupId: "group-created",
+      });
+    });
+
+    expect(createMaterialGroup).toHaveBeenCalledWith({
+      bizType: 2,
+      title: "售后文件",
+    });
+    expect(collectMaterial).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: 2,
+        fileName: "报价单.pdf",
+        groupId: "group-created",
+        msgInfoId: "7001",
+      }),
+    );
   });
 
   it("shows a success toast after saving edited material", async () => {

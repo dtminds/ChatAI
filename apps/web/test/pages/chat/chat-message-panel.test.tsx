@@ -435,3 +435,11 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 });
+
+describe("ChatMessagePanel history loader", () => {
+  it("does not show a history loader when the current page covers all messages", () => {
+    renderPanel();
+
+    expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
+  });
+});

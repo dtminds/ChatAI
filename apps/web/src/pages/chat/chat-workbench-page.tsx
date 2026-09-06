@@ -58,6 +58,7 @@ import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/me
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
+import { getSendFailureDialogCopy } from "@/pages/chat/lib/send-failure-dialog-copy";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
   MaterialGroupSelectDialog,
@@ -93,10 +94,6 @@ import type {
   FileUploadQueueItem,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
-import {
-  MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
-  MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
-} from "@/pages/chat/api/media-upload-errors";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -3292,92 +3289,6 @@ function WorkbenchSectionLoading() {
       <DotMatrixLoader ariaLabel="正在加载" dotSize={3} size={22} />
       <span>正在加载</span>
     </div>
-  );
-}
-
-function getSendFailureDialogCopy(
-  reason: "file-upload" | "image-upload" | "send" | "unavailable",
-  errorCode: string,
-  errorMessage?: string,
-) {
-  const description = resolveSendFailureDescription(reason, errorCode, errorMessage);
-
-  if (
-    (reason === "file-upload" || reason === "image-upload") &&
-    errorCode === MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE
-  ) {
-    return {
-      title: MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
-      description: undefined,
-    };
-  }
-
-  if (reason === "file-upload") {
-    return {
-      title: "文件上传失败，请稍后重试",
-      description,
-    };
-  }
-
-  if (reason === "image-upload") {
-    return {
-      title: "图片上传失败，请稍后重试",
-      description,
-    };
-  }
-
-  if (reason === "unavailable") {
-    return {
-      title: "当前无法发送消息，请稍后重试",
-      description,
-    };
-  }
-
-  return {
-    title: "发送失败，请稍后重试",
-    description,
-  };
-}
-
-function resolveSendFailureDescription(
-  reason: "file-upload" | "image-upload" | "send" | "unavailable",
-  errorCode: string,
-  errorMessage?: string,
-) {
-  const message = errorMessage?.trim();
-
-  if (reason === "file-upload" || reason === "image-upload") {
-    if (message && containsChineseText(message)) {
-      return message;
-    }
-
-    return undefined;
-  }
-
-  if (message && containsChineseText(message)) {
-    return message;
-  }
-
-  if (message && isTransportFailureMessage(message)) {
-    return "网络异常，请稍后重试";
-  }
-
-  return `错误码：${errorCode}`;
-}
-
-function containsChineseText(text: string) {
-  return /[\u4e00-\u9fff]/.test(text);
-}
-
-function isTransportFailureMessage(message: string) {
-  const normalized = message.toLowerCase();
-
-  return (
-    normalized.includes("cors") ||
-    normalized.includes("network error") ||
-    normalized.includes("network") ||
-    normalized.includes("timeout") ||
-    normalized.includes("failed to fetch")
   );
 }
 

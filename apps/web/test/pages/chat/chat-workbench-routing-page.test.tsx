@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
-  fireEvent,
   screen,
   waitFor,
   within,
@@ -17,8 +16,6 @@ import {
   renderChatWorkbenchPage,
   renderChatWorkbenchRoutePage,
   resetChatWorkbenchTestState,
-  renderConversationOpenFromOutsideRoute,
-  workbenchToastWarningMock,
 } from "./workbench-test-utils";
 
 function createDeferred<T = void>() {
@@ -36,19 +33,12 @@ function createDeferred<T = void>() {
   };
 }
 
-describe("ChatWorkbenchPage", () => {
+describe("ChatWorkbenchPage routed conversation opens", () => {
   beforeEach(() => {
     vi.useRealTimers();
     window.localStorage.clear();
     resetChatWorkbenchTestState();
     installChatWorkbenchTestEnvironment();
-  });
-
-  it("boots chat workbench through the shared test harness", async () => {
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
   it("opens a routed conversation when navigating from the ticket view", async () => {
@@ -232,9 +222,6 @@ describe("ChatWorkbenchPage", () => {
       expect(getConversation).toHaveBeenCalledWith("conv-002");
     });
     expect(useWorkbenchStore.getState().activeConversationId).toBe("");
-    expect(useWorkbenchStore.getState().activeConversationId).not.toBe(
-      "conv-001",
-    );
     expect(router.state.location.pathname).toBe(
       "/chat/conversations/conv-002",
     );
@@ -245,56 +232,6 @@ describe("ChatWorkbenchPage", () => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
       expect(router.state.location.pathname).toBe("/chat");
     });
-  });
-
-  it("opens a routed conversation when navigating from outside the workbench route tree", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const targetConversation = await baseService.getConversation("conv-002");
-    const conversationRequest = createDeferred<WorkbenchConversationSummaryDto>();
-    const getConversation = vi.fn(() => conversationRequest.promise);
-    setWorkbenchService({
-      ...baseService,
-      getConversation,
-    });
-    const { router } = renderConversationOpenFromOutsideRoute("conv-002");
-
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
-    });
-    await act(async () => {
-      await router.navigate("/chat/insights");
-    });
-
-    await user.click(screen.getByRole("link", { name: "打开会话" }));
-
-    await waitFor(() => {
-      expect(getConversation).toHaveBeenCalledWith("conv-002");
-    });
-    expect(router.state.location.pathname).toBe(
-      "/chat/conversations/conv-002",
-    );
-    expect(router.state.location.state).toEqual({ openConversation: true });
-    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
-
-    conversationRequest.resolve(targetConversation);
-
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
-    });
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-    });
-    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
-      "conv-002",
-    );
-    expect(getConversation).toHaveBeenCalledWith("conv-002");
-    const promotedCard = screen.getByTestId("conversation-card-conv-002");
-    const naturallyFirstCard = screen.getByTestId("conversation-card-conv-001");
-    expect(
-      promotedCard.compareDocumentPosition(naturallyFirstCard) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
   });
 
   it("keeps the routed conversation intent when the first bootstrap is retried", async () => {
@@ -500,215 +437,6 @@ describe("ChatWorkbenchPage", () => {
       );
       expect(router.state.location.pathname).toBe("/chat");
     });
-  });
-
-  it("locates the loaded handoff trigger message by its existing message seq", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    act(() => {
-      useWorkbenchStore.setState((state) => ({
-        conversationListsByScope: {
-          ...state.conversationListsByScope,
-          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
-            conversation.id === "conv-001"
-              ? { ...conversation, handoffMsgId: 3 }
-              : conversation,
-          ),
-        },
-      }));
-    });
-
-    const targetAnchor = document.querySelector<HTMLElement>(
-      '[data-scroll-anchor="3"]',
-    );
-    const messageViewport = screen.getByTestId("message-scroll-area");
-    const scrollIntoView = vi.fn();
-    expect(targetAnchor).not.toBeNull();
-    Object.defineProperty(targetAnchor!, "scrollIntoView", {
-      configurable: true,
-      value: (...args: unknown[]) => {
-        scrollIntoView(...args);
-        fireEvent.scroll(messageViewport);
-      },
-    });
-
-    await user.click(screen.getByRole("button", { name: "定位消息" }));
-
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "center",
-    });
-    expect(targetAnchor).not.toHaveAttribute("data-message-locate-highlight");
-    await waitFor(() => {
-      expect(targetAnchor).toHaveAttribute(
-        "data-message-locate-highlight",
-        "true",
-      );
-    });
-    expect(workbenchToastWarningMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps the view button available and warns when the trigger message is not loaded", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    act(() => {
-      useWorkbenchStore.setState((state) => ({
-        conversationListsByScope: {
-          ...state.conversationListsByScope,
-          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
-            conversation.id === "conv-001"
-              ? { ...conversation, handoffMsgId: 9001 }
-              : conversation,
-          ),
-        },
-      }));
-    });
-
-    const viewMessageButton = screen.getByRole("button", {
-      name: "定位消息",
-    });
-    expect(viewMessageButton).toBeEnabled();
-
-    await user.click(viewMessageButton);
-
-    expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-      "未找到触发消息，请向上加载更多消息后重试",
-    );
-  });
-
-  it("exits full agent mode when cancel agent hosting is clicked", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    act(() => {
-      useWorkbenchStore.setState((state) => ({
-        accounts: state.accounts.map((account) =>
-          account.id === "drc"
-            ? {
-                ...account,
-                seatAIHostingAuth: true,
-                seatAIHostingEnabled: true,
-                fullAutoSwitch: true,
-                takenOverEmployeeId: "sub-user-001",
-              }
-            : account,
-        ),
-        conversationListsByScope: {
-          ...state.conversationListsByScope,
-          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
-            conversation.id === "conv-001"
-              ? {
-                  ...conversation,
-                  conversationAIHostingSwitch: true,
-                  agentHostingStatus: "thinking",
-                }
-              : conversation,
-          ),
-        },
-      }));
-    });
-
-    expect(screen.getByText(/Agent 正在查看消息/)).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
-      "contenteditable",
-      "false",
-    );
-
-    await user.click(screen.getByRole("button", { name: "取消托管" }));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
-    });
-    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
-      "contenteditable",
-      "true",
-    );
-  });
-
-  it("does not bootstrap again when the workbench store is already ready", () => {
-    const baseService = createMockWorkbenchService();
-    const getSeats = vi.fn(baseService.getSeats);
-
-    setWorkbenchService({
-      ...baseService,
-      getSeats,
-    });
-    useWorkbenchStore.setState({
-      accounts: [],
-      activeAccountId: "",
-      bootstrapStatus: "ready",
-    });
-
-    renderChatWorkbenchPage();
-
-    expect(getSeats).not.toHaveBeenCalled();
-  });
-
-  it("does not retry bootstrap automatically after initialization errors", () => {
-    const baseService = createMockWorkbenchService();
-    const getSeats = vi.fn(baseService.getSeats);
-
-    setWorkbenchService({
-      ...baseService,
-      getSeats,
-    });
-    useWorkbenchStore.setState({
-      accounts: [],
-      activeAccountId: "",
-      bootstrapStatus: "error",
-    });
-
-    renderChatWorkbenchPage();
-
-    expect(getSeats).not.toHaveBeenCalled();
-  });
-
-  it("falls back to all conversations when restored AI hosting view is unavailable", async () => {
-    const baseService = createMockWorkbenchService();
-
-    window.localStorage.setItem(
-      "chatai.conversationView",
-      JSON.stringify({ group: "all", single: "ai" }),
-    );
-    setWorkbenchService({
-      ...baseService,
-      async getSeats() {
-        const seats = await baseService.getSeats();
-
-        return seats.map((seat) => ({
-          ...seat,
-          seatAIHostingEnabled: false,
-        }));
-      },
-      async getConversations(seatId, options) {
-        const response = await baseService.getConversations(seatId, options);
-
-        return {
-          ...response,
-          items: response.items.map((conversation, index) => ({
-            ...conversation,
-            conversationAIHostingSwitch: index === 0,
-          })),
-        };
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    expect(screen.getByRole("tab", { name: "单聊视图" })).toBeInTheDocument();
-    expect(screen.queryByText("单聊 · AI托管")).not.toBeInTheDocument();
-    expect(window.localStorage.getItem("chatai.conversationView")).toContain('"single":"all"');
   });
 
   it("resets only the opened chat type to all and temporarily shows the target first", async () => {

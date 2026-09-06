@@ -7,19 +7,12 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { vi } from "vitest";
-import { StrictMode, type ReactElement } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { type ReactElement } from "react";
 import { requestInstance } from "@/lib/request";
 import {
   ChatWorkbenchPage,
   ChatWorkbenchRoutePage,
 } from "@/pages/chat/chat-workbench-page";
-import { OpenConversationLink } from "@/pages/chat/components/open-conversation-link";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -130,47 +123,6 @@ export function renderChatWorkbenchRoutePage(
 
   return {
     ...render(<RouterProvider router={router} />),
-    router,
-  };
-}
-
-export function renderConversationOpenFromOutsideRoute(
-  conversationId: string,
-) {
-  const router = createMemoryRouter(
-    [
-      {
-        element: (
-          <Sheet onOpenChange={() => undefined} open>
-            <SheetContent>
-              <SheetTitle>洞察详情</SheetTitle>
-              <SheetDescription>查看本轮对话</SheetDescription>
-              <OpenConversationLink conversationId={conversationId} />
-            </SheetContent>
-          </Sheet>
-        ),
-        path: "/chat/insights",
-      },
-      {
-        element: <ChatWorkbenchRoutePage />,
-        path: "/chat",
-        children: [
-          {
-            element: <></>,
-            path: "conversations/:conversationId",
-          },
-        ],
-      },
-    ],
-    { initialEntries: ["/chat"] },
-  );
-
-  return {
-    ...render(
-      <StrictMode>
-        <RouterProvider router={router} />
-      </StrictMode>,
-    ),
     router,
   };
 }

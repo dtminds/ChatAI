@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_HANDOFF_TAKEOVER_PREVIEW_PREFIX,

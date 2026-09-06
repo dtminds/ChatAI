@@ -31,7 +31,7 @@ export default mergeConfig(
       include: testInclude,
       clearMocks: true,
       css: true,
-      maxWorkers: isCi ? 2 : undefined,
+      maxWorkers: isCi ? 4 : undefined,
       testTimeout,
     },
   }),

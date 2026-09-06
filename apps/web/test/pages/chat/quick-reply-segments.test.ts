@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import type { WorkbenchQuickReplyDto } from "@chatai/contracts";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";

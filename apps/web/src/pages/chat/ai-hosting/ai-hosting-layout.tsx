@@ -255,7 +255,7 @@ function formatStorageQuota(quota: AiHostingQuota) {
   return `${formatStorageSize(quota.used)}/${formatStorageSize(quota.limit)}`;
 }
 
-function formatStorageSize(bytes: number) {
+export function formatStorageSize(bytes: number) {
   const megabytes = bytes / 1024 / 1024;
 
   if (bytes >= 1024 * 1024 * 1024) {

@@ -543,6 +543,67 @@ describe("useMaterialCollection", () => {
     expect(toast.warning).toHaveBeenCalledWith("文件素材数据异常");
   });
 
+  it("refreshes only the active group items after deleting a material", async () => {
+    const baseService = createMockWorkbenchService();
+    const item = createFileMaterialItem({ groupId: "group-second" });
+    const listMaterialGroups = vi.fn(async () => ({
+      groups: [
+        { bizType: 2 as const, id: "group-first", sort: 1, title: "第一分组" },
+        { bizType: 2 as const, id: "group-second", sort: 2, title: "第二分组" },
+      ],
+    }));
+    const listMaterialCollections = vi.fn(async (request) => ({
+      items: request.groupId === "group-second" ? [item] : [],
+      pagination: {
+        hasMore: false,
+        page: request.page ?? 1,
+        pageSize: request.pageSize ?? 100,
+        total: request.groupId === "group-second" ? 1 : 0,
+      },
+    }));
+    const deleteMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe("group-first");
+    });
+
+    await act(async () => {
+      await result.current.handleSelectMaterialLibraryGroup("group-second");
+    });
+    listMaterialGroups.mockClear();
+    listMaterialCollections.mockClear();
+
+    act(() => {
+      result.current.handleDeleteMaterial(item);
+    });
+
+    await waitFor(() => {
+      expect(deleteMaterialCollection).toHaveBeenCalledWith(item.id);
+      expect(listMaterialCollections).toHaveBeenLastCalledWith({
+        bizType: 2,
+        groupId: "group-second",
+        page: 1,
+        pageSize: 100,
+      });
+    });
+    expect(result.current.activeMaterialLibraryGroupId).toBe("group-second");
+    expect(listMaterialGroups).not.toHaveBeenCalled();
+  });
+
   it("does not refresh collected expressions after expression mutation resolves when unmounted", async () => {
     const baseService = createMockWorkbenchService();
     const isMountedRef = { current: true };

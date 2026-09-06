@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { formatBroadcastProtectionEta } from "@/pages/chat/lib/broadcast-protection";
 

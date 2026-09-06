@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "@/pages/chat/chat-types";
 import {

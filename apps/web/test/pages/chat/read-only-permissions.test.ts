@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import type { AuthSubUser } from "@chatai/contracts";
 import { describe, expect, it } from "vitest";
 import {

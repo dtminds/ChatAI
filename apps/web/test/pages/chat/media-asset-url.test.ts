@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 

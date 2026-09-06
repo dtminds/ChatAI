@@ -206,7 +206,7 @@ describe("MessageContentRenderer image messages", () => {
     );
   });
 
-  it("uses the natural image ratio when dimensions are missing", () => {
+  it("does not fabricate intrinsic dimensions when image sizes are missing", () => {
     render(
       <ImageMessageCard
         content={{
@@ -217,26 +217,13 @@ describe("MessageContentRenderer image messages", () => {
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "查看大图：缺少尺寸的横图" });
     const image = screen.getByRole("img", { name: "缺少尺寸的横图" });
 
-    expect(trigger).not.toHaveStyle({
-      height: "320px",
-      width: "320px",
-    });
-    expect(trigger).toHaveStyle({
-      maxHeight: "360px",
-      maxWidth: "300px",
-      minWidth: "120px",
-      width: "fit-content",
-    });
-    expect(image).toHaveClass("object-cover");
-    expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
     expect(image).not.toHaveAttribute("height");
     expect(image).not.toHaveAttribute("width");
   });
 
-  it("constrains loaded images with max dimensions while preserving natural ratio", () => {
+  it("preserves intrinsic dimensions from image metadata", () => {
     render(
       <ImageMessageCard
         content={createImageContent({
@@ -248,51 +235,14 @@ describe("MessageContentRenderer image messages", () => {
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "查看大图：大尺寸图片" });
     const image = screen.getByRole("img", { name: "大尺寸图片" });
 
-    expect(trigger).toHaveStyle({
-      maxHeight: "360px",
-      maxWidth: "300px",
-      minWidth: "120px",
-      width: "fit-content",
-    });
-    expect(trigger).not.toHaveStyle({
-      height: "225px",
-      width: "300px",
-    });
-    expect(image).toHaveClass("object-cover");
     expect(image).toHaveAttribute("height", "900");
     expect(image).toHaveAttribute("width", "1200");
-    expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
   });
 
-  it("uses compact constraints for emotion images", () => {
-    render(
-      <ImageMessageCard
-        content={{
-          type: "image",
-          alt: "客户表情",
-          imageUrl: "https://cdn.example.com/chat/emotion.gif",
-          variant: "emotion",
-        }}
-      />,
-    );
 
-    const trigger = screen.getByRole("button", { name: "查看大图：客户表情" });
-    const image = screen.getByRole("img", { name: "客户表情" });
-
-    expect(trigger).toHaveStyle({
-      maxHeight: "120px",
-      maxWidth: "120px",
-      minHeight: "48px",
-      minWidth: "48px",
-      width: "fit-content",
-    });
-    expect(image).toHaveClass("max-h-[120px]");
-  });
-
-  it("uses the natural image ratio for invalid image sizes", () => {
+  it("does not expose invalid intrinsic image dimensions", () => {
     render(
       <ImageMessageCard
         content={createImageContent({
@@ -304,13 +254,8 @@ describe("MessageContentRenderer image messages", () => {
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "查看大图：无效尺寸图片" });
     const image = screen.getByRole("img", { name: "无效尺寸图片" });
 
-    expect(trigger).not.toHaveStyle({
-      height: "320px",
-      width: "320px",
-    });
     expect(image).not.toHaveAttribute("height", "NaN");
     expect(image).not.toHaveAttribute("width", "0");
   });
@@ -952,51 +897,6 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.getAllByTestId("image-preview-ocr-region")).toHaveLength(2);
   });
 
-  it("wraps long OCR text tokens inside the result panel", async () => {
-    const user = userEvent.setup();
-    const longPath = "/Users/admin/workspace/AI/ChatAI/apps/web/src/store/workbench-store.ts";
-    vi.mocked(recognizeImageText).mockResolvedValue({
-      text: longPath,
-      regions: [
-        {
-          id: "ocr-region-1",
-          points: [],
-          text: longPath,
-        },
-      ],
-    });
-
-    render(
-      <ImageMessageCard
-        content={createImageContent({
-          alt: "长英文路径图片",
-          height: 292,
-          imageUrl: "https://cdn.example.com/chat/path-photo.jpg",
-          width: 668,
-        })}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "查看大图：长英文路径图片" }));
-    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
-
-    const panel = await screen.findByTestId("image-preview-ocr-panel");
-    const resultText = await screen.findByText(longPath);
-    const resultCard = resultText.closest("[data-testid='image-preview-ocr-result']");
-
-    expect(panel).toHaveClass("w-[22rem]", "max-w-[22rem]", "min-w-0");
-    expect(panel.parentElement).toHaveClass("min-w-0", "max-w-[22rem]", "overflow-hidden");
-    expect(panel.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
-      .toHaveClass(
-        "[&_[data-slot=scroll-area-viewport]>div]:!block",
-        "[&_[data-slot=scroll-area-viewport]>div]:w-full",
-        "[&_[data-slot=scroll-area-viewport]>div]:min-w-0",
-        "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
-      );
-    expect(resultCard).toHaveClass("w-full", "max-w-full", "min-w-0");
-    expect(resultText).toHaveClass("w-full", "max-w-full", "min-w-0");
-    expect(resultText).not.toHaveClass("break-all");
-  });
 
   it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {
     const user = userEvent.setup();

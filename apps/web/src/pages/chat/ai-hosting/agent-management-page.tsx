@@ -166,6 +166,14 @@ const agentIntroSteps = [
 ] as const;
 
 export function AgentManagementPage() {
+  return (
+    <AiHostingLayout title="Agent 管理">
+      <AgentManagementContent />
+    </AiHostingLayout>
+  );
+}
+
+export function AgentManagementContent() {
   const subUser = useAuthStore((state) => state.subUser);
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
@@ -328,7 +336,7 @@ export function AgentManagementPage() {
   }
 
   return (
-    <AiHostingLayout title="Agent 管理">
+    <>
       <div className="space-y-6">
         <AiHostingPageHeader
           description="创建和管理负责客户接待的智能体"
@@ -482,7 +490,7 @@ export function AgentManagementPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </AiHostingLayout>
+    </>
   );
 }
 

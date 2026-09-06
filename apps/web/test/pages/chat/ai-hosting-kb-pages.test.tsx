@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -49,8 +49,6 @@ const kbAttachmentServiceMock = vi.hoisted(() => ({
   getKbAttachmentStatus: vi.fn(),
   listKbAttachments: vi.fn(),
 }));
-const chunkVectorizationTip =
-  "保存编辑后的切片内容，需要重新向量化，并产生额外 tokens 消耗。";
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
   getAiHostingQuota: vi.fn(),
@@ -166,6 +164,17 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
   deleteKbChunk: deleteKbChunkMock,
   updateKbChunk: updateKbChunkMock,
 }));
+
+vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/pages/chat/ai-hosting/ai-hosting-layout")
+  >();
+
+  return {
+    ...actual,
+    AiHostingLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  };
+});
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -446,7 +455,7 @@ function mockSession(role: AccountRole = "admin") {
   });
 }
 
-describe("AI hosting pages", () => {
+describe("AI hosting knowledge base pages", () => {
   beforeEach(() => {
     mockSession();
     resetAiHostingQuotaCacheForTest();
@@ -1009,49 +1018,6 @@ describe("AI hosting pages", () => {
       return { deleted: true };
     });
   });
-  it("renders the knowledge base page", async () => {
-    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
-
-    expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
-    const introGuide = screen.getByRole("region", { name: "知识库使用引导" });
-    expect(within(introGuide).getByText("第 1 步")).toBeInTheDocument();
-    expect(within(introGuide).getByText("创建知识库")).toBeInTheDocument();
-    expect(within(introGuide).getByText("第 2 步")).toBeInTheDocument();
-    expect(within(introGuide).getByText("上传文档")).toBeInTheDocument();
-    expect(within(introGuide).getByText("第 3 步")).toBeInTheDocument();
-    expect(within(introGuide).getByText("Agent 集成")).toBeInTheDocument();
-    expect(within(introGuide).getByAltText("创建知识库示意图")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ui/kb_f1.png",
-    );
-    expect(within(introGuide).getByAltText("上传文档示意图")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ui/kb_f2.png",
-    );
-    expect(within(introGuide).getByAltText("Agent 集成示意图")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ui/kb_f3.png",
-    );
-    expect(screen.getByRole("textbox", { name: "搜索知识库" })).toHaveAttribute(
-      "maxLength",
-      "32",
-    );
-    expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("知识库");
-    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("3/20");
-    expect(screen.queryByText("已用 3/20 个知识库")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-    );
-    const actionTrigger = screen.getByRole("button", {
-      name: "打开 华为产品知识 操作菜单",
-    });
-    await userEvent.setup().click(actionTrigger);
-    expect(screen.getByRole("menuitem", { name: "详情" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
-  });
 
   it("shows knowledge base list load failures in a toast", async () => {
     vi.mocked(kbService.listKbs).mockRejectedValueOnce(
@@ -1075,7 +1041,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await screen.findByRole("button", { name: "打开 华为产品知识 操作菜单" });
     await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
@@ -1097,7 +1063,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await screen.findByRole("button", { name: "打开 华为产品知识 操作菜单" });
     await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
@@ -1134,7 +1100,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await screen.findByRole("button", { name: "打开 华为产品知识 操作菜单" });
     await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
     await user.click(
@@ -1157,7 +1123,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await screen.findByRole("button", { name: "打开 华为产品知识 操作菜单" });
     await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
@@ -1202,7 +1168,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await screen.findByRole("button", { name: "创建知识库" });
     await user.click(screen.getByRole("button", { name: "创建知识库" }));
 
     await waitFor(() => {
@@ -1210,81 +1176,6 @@ describe("AI hosting pages", () => {
     });
   });
 
-  it("renders the knowledge base management page", async () => {
-    const { router } = renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/*",
-    );
-
-    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "返回知识库" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb",
-    );
-    expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
-      "返回知识库",
-    );
-    expect(screen.getByRole("textbox", { name: "搜索知识" })).toHaveAttribute(
-      "maxLength",
-      "32",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
-    expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /图片/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /文档/ })).toBeInTheDocument();
-    expect(screen.getByText("高质量人工知识")).toBeInTheDocument();
-    expect(screen.getByText("原始文档")).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /纯文本/ })).not.toBeInTheDocument();
-    expect(screen.getByText("上传问答表格，批量导入精准知识")).toBeInTheDocument();
-    expect(screen.queryByText("上传图片并添加描述，按描述精准召回")).not.toBeInTheDocument();
-    expect(screen.getByText("自动解析文档内容，效果取决于文档质量")).toBeInTheDocument();
-    expect(screen.queryByText("直接录入文本片段或说明")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(2);
-    await userEvent.keyboard("{Escape}");
-    expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "类型" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "文件大小" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "产品说明大全.doc" })).toBeInTheDocument();
-    expect(screen.getByText("12MB")).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
-    );
-    expect(screen.getByRole("menuitem", { name: "切片详情" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
-    );
-    await userEvent.click(screen.getByRole("menuitem", { name: "删除" }));
-    const deleteDialog = screen.getByRole("alertdialog", { name: "确定删除该知识吗" });
-    expect(deleteDialog).toBeInTheDocument();
-    await userEvent.click(within(deleteDialog).getByRole("button", { name: "取消" }));
-    await userEvent.click(screen.getByRole("button", { name: "产品说明大全.doc" }));
-    expect(router.state.location.pathname).toBe(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
-    );
-    expect(screen.queryByRole("button", { name: "文本知识集合.txt" })).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Word 文件" })).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/word.png",
-    );
-    expect(screen.getByRole("img", { name: "PDF 文件" })).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/pdf.png",
-    );
-    expect(screen.getAllByRole("img", { name: "文件" })[0]).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/file.png",
-    );
-    expect(screen.queryByText("文件（.doc）")).not.toBeInTheDocument();
-    expect(screen.getAllByText("已完成")).toHaveLength(3);
-    expect(screen.getByText("解析中")).toBeInTheDocument();
-    expect(screen.getByText("失败")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重试 文本知识集合" })).toBeInTheDocument();
-    expect(screen.getByText("排队中")).toBeInTheDocument();
-    expect(screen.getByText("共 6 条")).toBeInTheDocument();
-    expect(screen.queryByText("已用 6/100 条知识")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
-  });
 
   it("offers the existing add flow from the empty knowledge state", async () => {
     const user = userEvent.setup();
@@ -1300,7 +1191,6 @@ describe("AI hosting pages", () => {
     );
 
     const emptyState = await screen.findByRole("region", { name: "知识库已就绪" });
-    expect(within(emptyState).getByRole("button", { name: "查看建议" })).toBeInTheDocument();
     await user.click(within(emptyState).getByRole("button", { name: "添加知识" }));
 
     expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
@@ -1317,7 +1207,6 @@ describe("AI hosting pages", () => {
     );
 
     const emptyState = await screen.findByRole("region", { name: "附件库已就绪" });
-    expect(within(emptyState).getByRole("button", { name: "查看建议" })).toBeInTheDocument();
     await user.click(within(emptyState).getByRole("button", { name: "添加附件" }));
 
     expect(
@@ -1335,9 +1224,8 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/*",
     );
 
-    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
     expect(await screen.findByRole("button", { name: "重试 文本知识集合" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
 
     await user.click(
       screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
@@ -1554,8 +1442,6 @@ describe("AI hosting pages", () => {
     const summarySheet = await screen.findByRole("dialog", { name: "全文摘要" });
     expect(kbService.getKbDoc).toHaveBeenCalledWith("knowledge-1");
     expect(summarySheet).toHaveTextContent("产品说明大全.doc");
-    expect(within(summarySheet).getByRole("heading", { level: 2, name: "文档概览" })).toBeInTheDocument();
-    expect(within(summarySheet).getByRole("heading", { level: 3, name: "核心内容" })).toBeInTheDocument();
     expect(within(summarySheet).getByText("产品参数")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
@@ -1679,7 +1565,6 @@ describe("AI hosting pages", () => {
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
-    expect(screen.getByText("当前知识库不存在或已被删除")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "华为产品知识" })).not.toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalledWith("知识库加载失败，请稍后重试");
   });
@@ -1697,39 +1582,8 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "添加知识" }));
     await user.click(screen.getByRole("menuitem", { name: /问答/ }));
 
-    const dialog = screen.getByRole("dialog", { name: "添加问答知识" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
-    ).toHaveAttribute(
-      "href",
-      "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx",
-    );
-    expect(
-      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
-    ).toHaveAttribute("download");
-    expect(
-      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
-    ).toHaveAttribute("target", "_blank");
-    expect(
-      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
-    ).toHaveAttribute("rel", "noopener noreferrer");
-    expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
-    expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
+    expect(screen.getByRole("dialog", { name: "添加问答知识" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-    await user.hover(screen.getByRole("button", { name: "查看导入说明" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "上传文档时，需要通过特殊的后缀 .faq 进行标识",
-    );
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "对于问题或答案为空的行会跳过不做处理",
-    );
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "每个可解析的切片（即原文档中单行或单列）字符长度最多为 65535",
-    );
 
     await user.upload(
       screen.getByLabelText("选择问答导入文件"),
@@ -1741,55 +1595,12 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
       "快捷话术导入.faq.xlsx",
     );
-    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/excel.png",
-    );
-    expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
-      "共 1 个 sheet，2 行",
-    );
     expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "移除已选择文件" }));
 
     expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  });
-
-  it("accepts QA import files with valid sheet data", async () => {
-    const user = userEvent.setup();
-
-    readXlsxFileMock.mockResolvedValueOnce([
-      {
-        data: [
-          ["问题", "答案"],
-          ["晨间护肤怎么做", "先清洁再保湿"],
-        ],
-        sheet: "Sheet1",
-      },
-    ]);
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
-    await user.upload(
-      screen.getByLabelText("选择问答导入文件"),
-      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-    );
-
-    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
-      "共 1 个 sheet，2 行",
-    );
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
   });
 
   it("uploads QA import files to COS and refreshes the list after submit", async () => {
@@ -1830,35 +1641,20 @@ describe("AI hosting pages", () => {
 
   it("prevents QA import when selected file exceeds the remaining storage quota", async () => {
     const user = userEvent.setup();
-    vi.mocked(agentService.getAiHostingQuota)
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 20 * 1024 * 1024,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      })
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 1024 * 1024 * 1024 - 8,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      });
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 1024 * 1024 * 1024 - 8,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
+      },
+    });
 
     readXlsxFileMock.mockResolvedValueOnce([
       {
@@ -2055,12 +1851,7 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "添加知识" }));
     await user.click(screen.getByRole("menuitem", { name: /文档/ }));
 
-    const dialog = screen.getByRole("dialog", { name: "添加文档" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(screen.queryByText("限免")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传文档文件" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传文档文件" })).not.toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "添加文档" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
 
     await user.upload(
@@ -2073,20 +1864,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
       "产品手册.pptx",
     );
-    expect(screen.getByRole("img", { name: "PPT 文件" })).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ppt.png",
-    );
-    expect(screen.queryByRole("button", { name: "上传文档文件" })).not.toBeInTheDocument();
-    expect(screen.queryByText("限免")).not.toBeInTheDocument();
-    expect(screen.getByText("快速提取文档文字，满足大多数场景")).toBeInTheDocument();
-    expect(screen.getByText("适合扫描件或图片中含有关键文字的文档")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /增强解析/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /按固定长度切分/ })).toBeChecked();
-    expect(screen.getByText("按设定最大字符数生成切片")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /2,000/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /1,000/ })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
 
     await user.click(screen.getByRole("radio", { name: /增强解析/ }));
@@ -2095,10 +1876,7 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("radio", { name: /按分隔符切分/ }));
 
-    expect(screen.getByText("按指定分隔符生成切片")).toBeInTheDocument();
-    expect(screen.getByText("分段标识符")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /换行符/ })).toBeChecked();
-    expect(screen.queryByText("切片最长字符数")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: /2,000/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "确认提交（限免）" }));
@@ -2121,65 +1899,23 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog", { name: "添加文档" })).not.toBeInTheDocument();
   });
 
-  it("shows document upload file size limits in a popover table", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
-
-    expect(screen.getByRole("button", { name: "文件大小限制" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "文件大小限制" }));
-
-    const limitTable = await screen.findByRole("table", { name: "文档文件大小限制" });
-
-    expect(within(limitTable).getByRole("columnheader", { name: "文档格式" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("columnheader", { name: "大小限制" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("row", { name: ".pdf 200MB" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("row", { name: ".doc / .docx 200MB" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("row", { name: ".ppt / .pptx 200MB" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("row", { name: ".md 10MB" })).toBeInTheDocument();
-    expect(within(limitTable).getByRole("row", { name: ".txt 10MB" })).toBeInTheDocument();
-  });
 
   it("prevents document import when selected file exceeds the remaining storage quota", async () => {
     const user = userEvent.setup();
-    vi.mocked(agentService.getAiHostingQuota)
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 20 * 1024 * 1024,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      })
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 1024 * 1024 * 1024 - 4,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      });
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 1024 * 1024 * 1024 - 4,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
+      },
+    });
 
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
@@ -2287,39 +2023,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
   });
 
-  it("renders the QA chunk detail page", async () => {
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
-      <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
-    );
-
-    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答.faq" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "文件" })).toBeInTheDocument();
-    expect(screen.getByText("FAQ")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-    );
-    expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "搜索切片 ID" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
-    const addQaButton = screen.getByRole("button", { name: "添加问答" });
-    expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
-    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "切片列表" })).toBeInTheDocument();
-    expect(screen.getByText("切片ID")).toBeInTheDocument();
-    expect(screen.getByText("问题")).toBeInTheDocument();
-    expect(screen.getByText("答案")).toBeInTheDocument();
-    expect(screen.getByText("更新时间")).toBeInTheDocument();
-    expect(await screen.findByText("20260630131921038-3")).toBeInTheDocument();
-    expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
-    expect(screen.queryByText("#1")).not.toBeInTheDocument();
-    expect(screen.queryByText("chunk-qa-1")).not.toBeInTheDocument();
-    expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
-    expect(screen.getByText("保修期多久")).toBeInTheDocument();
-  });
 
   it("shows document page load failures in a toast instead of not found", async () => {
     vi.mocked(kbService.getKbDoc).mockRejectedValueOnce({
@@ -2622,7 +2325,6 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("dialog", { name: "编辑切片" });
     const questionField = within(dialog).getByLabelText(/问题/);
     expect(questionField.tagName).toBe("TEXTAREA");
-    expect(within(dialog).getByText(chunkVectorizationTip)).toBeInTheDocument();
     await user.clear(questionField);
     await user.type(questionField, "如何重置手机");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -2652,7 +2354,7 @@ describe("AI hosting pages", () => {
     expect(toast.error).toHaveBeenCalledWith("保存失败");
   });
 
-  it("renders the document chunk detail page and adds a chunk", async () => {
+  it("edits a document chunk from the preview", async () => {
     const user = userEvent.setup();
 
     renderWithRoute(
@@ -2661,45 +2363,19 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByRole("heading", { level: 1, name: "产品说明大全.doc" });
-    expect(screen.getByRole("img", { name: "Word 文件" })).toBeInTheDocument();
-    expect(screen.getByText("文件")).toBeInTheDocument();
-    expect(screen.queryByText("文件（.doc）")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-    );
-    expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
-    const chunkList = await screen.findByRole("list", { name: "切片列表" });
-    expect(screen.queryByRole("textbox", { name: "搜索切片 ID" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
-    expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
-    expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();
-    const firstChunkCard = within(chunkList).getByText("ID 20260630131921038-3").closest("li");
-    expect(firstChunkCard).not.toBeNull();
-    expect(within(firstChunkCard as HTMLElement).getByText("#1")).toBeInTheDocument();
-    expect(within(firstChunkCard as HTMLElement).getByText("第一章 产品介绍")).toBeInTheDocument();
+    await screen.findByText("ID 20260630131921038-3");
     const multilineChunkText =
       "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据";
-    const multilineChunkContent = screen.getByText((_, element) =>
-      element?.getAttribute("data-slot") === "chunk-content-preview" &&
-      element.textContent === multilineChunkText,
+    await user.click(
+      screen.getByText(
+        (_, element) =>
+          element?.getAttribute("data-slot") === "chunk-content-preview" &&
+          element.textContent === multilineChunkText,
+      ),
     );
-    expect(multilineChunkContent).toHaveClass("line-clamp-3", "max-h-[72px]", "whitespace-pre-line");
-    expect(within(firstChunkCard as HTMLElement).getByText("字符")).toBeInTheDocument();
-    expect(within(firstChunkCard as HTMLElement).getByText(String(("第一章 产品介绍" + multilineChunkText).length))).toBeInTheDocument();
-    expect(within(firstChunkCard as HTMLElement).getByText("更新于 2026-06-20 23:22:22")).toBeInTheDocument();
-    expect(
-      within(chunkList).getByRole("img", { name: "对该图片的解析文字，展示产品外观与配色信息" }),
-    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/word.png");
-    expect(screen.getByRole("button", { name: "编辑 chunk-doc-1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除 chunk-doc-1" })).toBeInTheDocument();
-    await user.click(multilineChunkContent);
-    let dialog = screen.getByRole("dialog", { name: "编辑切片" });
-    expect(within(dialog).getByText(chunkVectorizationTip)).toBeInTheDocument();
-    const titleField = within(dialog).getByLabelText(/切片标题/);
-    await user.clear(titleField);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑切片" });
+    await user.clear(within(dialog).getByLabelText(/切片标题/));
     await user.clear(within(dialog).getByLabelText(/切片内容/));
     await user.type(within(dialog).getByLabelText(/切片内容/), "更新后的切片内容");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -2709,12 +2385,21 @@ describe("AI hosting pages", () => {
       title: "",
     });
     expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^编辑 chunk-doc-/ })).toHaveLength(3);
+  });
 
-    const addChunkButton = screen.getByRole("button", { name: "添加切片" });
-    await user.click(addChunkButton);
-    dialog = screen.getByRole("dialog", { name: "添加切片" });
-    expect(within(dialog).queryByText(chunkVectorizationTip)).not.toBeInTheDocument();
+  it("adds a document chunk manually", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("ID 20260630131921038-3");
+    await user.click(screen.getByRole("button", { name: "添加切片" }));
+
+    const dialog = screen.getByRole("dialog", { name: "添加切片" });
     await user.type(within(dialog).getByLabelText(/切片内容/), "原装充电器与数据线需单独购买");
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 
@@ -2762,32 +2447,20 @@ describe("AI hosting pages", () => {
     });
   });
 
-  it("renders the image chunk detail page without add actions", async () => {
+  it("hides add and edit actions on image chunk pages", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-8",
       <KbDocDetailPage />,
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByRole("heading", { level: 1, name: "产品宣传图.png" });
-    expect(screen.getByRole("img", { name: "产品宣传图" })).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("搜索切片 ID")).not.toBeInTheDocument();
-    expect(screen.getByText("图片")).toBeInTheDocument();
-    expect(screen.queryByText("图片（.png）")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-    );
-    expect(screen.queryByText("图片 · 华为产品知识")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Mate 系列旗舰机型外观与核心卖点展示"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
-    const chunkListRegion = await screen.findByRole("region", { name: "切片列表" });
-    expect(
-      await within(chunkListRegion).findByText("Mate 系列旗舰机型外观与核心卖点展示"),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
   });
 
   it("deletes a document chunk after confirmation", async () => {

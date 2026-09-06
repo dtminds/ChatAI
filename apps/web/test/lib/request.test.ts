@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountPermission } from "@chatai/contracts";

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { QUICK_REPLY_SCOPE_TYPE } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

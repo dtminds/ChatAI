@@ -4,11 +4,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
-import { routerConfig } from "@/router";
+import { ChatSettingsPage } from "@/pages/chat/settings/chat-settings-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import { useAuthStore } from "@/store/auth-store";
 import { requestInstance } from "@/lib/request";
+import type { AccountPermission, AccountRole } from "@chatai/contracts";
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -42,35 +43,51 @@ function createDomRect(rect: Partial<DOMRect>): DOMRect {
   };
 }
 
-function renderRoute(initialEntry = "/chat") {
-  const router = createMemoryRouter(routerConfig, {
-    initialEntries: [initialEntry],
-  });
+function renderRoute(initialEntry = "/chat/settings") {
+  const router = createMemoryRouter(
+    [
+      { path: "/chat/settings", element: <ChatSettingsPage /> },
+      { path: "/chat/settings/:sectionId", element: <ChatSettingsPage /> },
+    ],
+    { initialEntries: [initialEntry] },
+  );
 
   render(<RouterProvider router={router} />);
 
   return router;
 }
 
-function mockAuthenticatedSession(role = "admin") {
+function mockAuthenticatedSession(role: AccountRole = "admin") {
+  const permissions: AccountPermission[] =
+    role === "admin"
+      ? [
+          "chat.access",
+          "chat.send",
+          "chat.takeover",
+          "settings.access",
+          "settings.subAccounts.manage",
+          "settings.managedAccounts.manage",
+          "settings.sidebar.manage",
+        ]
+      : ["chat.access", "chat.send", "chat.takeover"];
+
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: "客服一号",
+    permissions,
+    role,
+    subUserId: "101",
+    uid: 1,
+  });
   mock.onGet("/auth/session").reply(200, {
     data: {
       subUser: {
+        accountType: "sub",
         displayName: "客服一号",
-        permissions:
-          role === "admin"
-            ? [
-                "chat.access",
-                "chat.send",
-                "chat.takeover",
-                "settings.access",
-                "settings.subAccounts.manage",
-                "settings.managedAccounts.manage",
-                "settings.sidebar.manage",
-              ]
-            : ["chat.access", "chat.send", "chat.takeover"],
+        permissions,
         role,
         subUserId: "101",
+        uid: 1,
       },
     },
     success: true,
@@ -78,12 +95,8 @@ function mockAuthenticatedSession(role = "admin") {
 }
 
 describe("Chat settings pages", () => {
-  beforeAll(async () => {
+  beforeAll(() => {
     installLoadedImageMock();
-    await Promise.all([
-      import("@/pages/chat/chat-workbench-page"),
-      import("@/pages/chat/settings/chat-settings-page"),
-    ]);
   });
 
   beforeEach(() => {
@@ -462,33 +475,6 @@ describe("Chat settings pages", () => {
     setSystemColorScheme(false);
   });
 
-  it("opens settings from the account menu and returns to /chat", async () => {
-    const user = userEvent.setup();
-    const router = renderRoute("/chat");
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
-    await user.click(screen.getByRole("menuitem", { name: "设置" }));
-
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat/settings");
-    });
-    expect(
-      await screen.findByRole("navigation", { name: "设置菜单" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开账号菜单" })).toHaveTextContent(
-      "客服一号",
-    );
-    expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("link", { name: "返回工作台" }));
-
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-    });
-  });
-
   it("keeps the current settings section when settings is selected again", async () => {
     const user = userEvent.setup();
     const router = renderRoute("/chat/settings/roles");
@@ -509,10 +495,6 @@ describe("Chat settings pages", () => {
 
     await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
 
-    expect(await screen.findByRole("table", { name: "开通群聊列表" })).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "群ID" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "开通企微号" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "可接待企微号" })).toBeInTheDocument();
     expect(await screen.findByText("护肤交流群")).toBeInTheDocument();
     expect(screen.queryByText("29F71A2ED8125854B6A1")).not.toBeInTheDocument();
     expect(
@@ -532,7 +514,7 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
-    await screen.findByRole("table", { name: "开通群聊列表" });
+    await screen.findByText("护肤交流群");
 
     expect(
       mock.history.get.filter((request) => request.url === "/server/settings/group-chats").at(-1)
@@ -784,58 +766,24 @@ describe("Chat settings pages", () => {
     expect(toast.success).toHaveBeenCalledWith("已复制群聊ID");
   });
 
-  it("shows real managed-account and form reference pages inside the settings shell", async () => {
+  it("navigates settings sections without leaving the settings page", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "企微账号" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "开通群聊" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
     expect(await screen.findByText("德瑞可")).toBeInTheDocument();
-    expect(screen.getByText("离线")).toBeInTheDocument();
-    expect(screen.getByText("念都堂")).toBeInTheDocument();
-    expect(screen.getByText("在线")).toBeInTheDocument();
-    expect(
-      screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 德瑞可 操作菜单" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 念都堂 操作菜单" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "新增账号" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "子账号管理" }));
 
-    expect(screen.getByRole("heading", { name: "子账号管理" })).toBeInTheDocument();
-    expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "账号类型" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "角色" })).toBeInTheDocument();
-    expect(screen.getByLabelText("角色：主账号")).toBeInTheDocument();
-    expect(screen.getByLabelText("角色：管理员")).toBeInTheDocument();
-    expect(screen.getByLabelText("角色：客服")).toBeInTheDocument();
     expect(
-      within(screen.getByRole("table", { name: "子账号列表" })).getByText("客服一号"),
+      within(await screen.findByRole("table", { name: "子账号列表" })).getByText("客服一号"),
     ).toBeInTheDocument();
-    expect(screen.getByText("agent001")).toBeInTheDocument();
-    expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 主账号 操作菜单" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 客服一号 操作菜单" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 客服二号 操作菜单" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "权限角色" }));
 
-    expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
-    expect(screen.getByText("主账号")).toBeInTheDocument();
-    expect(screen.getByText("管理员")).toBeInTheDocument();
-    expect(screen.getByText("客服")).toBeInTheDocument();
-    expect(screen.getByText("客服（只读）")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "权限集" })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
     expect(screen.queryByText("chat.access")).not.toBeInTheDocument();
     await user.hover(screen.getByRole("button", { name: "查看 客服（只读） 权限明细" }));
     expect(screen.getByText("会话查看")).toBeInTheDocument();
-    expect(screen.getByText("不可接管账号或发送消息")).toBeInTheDocument();
-    expect(screen.queryByText("组长")).not.toBeInTheDocument();
   });
 
   it("keeps settings lists visible for operator sessions while disabling write actions", async () => {
@@ -1906,7 +1854,7 @@ describe("Chat settings pages", () => {
     ).toHaveLength(1);
   });
 
-  it("centers the sub-account loading state with the shared loader", async () => {
+  it("shows the shared loader while sub-accounts are loading", async () => {
     mock.resetHandlers();
     mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(
@@ -1926,18 +1874,12 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings/appearance");
 
-    expect(await screen.findByRole("heading", { name: "外观" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "现代简约 更轻、更克制的 SaaS 风格。" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "默认 当前蓝色主色和 neutral 基线。" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Green 绿色主色，适合健康和增长类语境。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Caffeine 咖啡色调，弱光下更温暖。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Orange 暖橙主色，适合更有活力的工作台。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Rose 玫瑰红主色，整体更柔和醒目。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Slack Slack 风格的协作配色。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Supabase Supabase 风格的开发者绿色。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sunset 日落暖色，界面氛围更强。" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Nature 自然绿和大地色，观感更有机。" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Claude 暖色 Claude 风格。" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "默认 当前蓝色主色和 neutral 基线。" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" }));
 

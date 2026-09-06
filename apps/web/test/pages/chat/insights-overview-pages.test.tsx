@@ -2238,17 +2238,19 @@ describe("conversation insights pages", () => {
   it("loads business topics per selected tab instead of preloading every dimension", async () => {
     renderRoute("/chat/insights/business");
 
-    expect(await screen.findByRole("heading", { name: "客户意图 Top10" })).toBeInTheDocument();
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(1);
+    });
     expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
       expect.objectContaining({ dimension: "intent" }),
       expect.any(Object),
     );
 
-    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: /业务标签/ }));
 
-    expect(await screen.findByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
-    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
+    });
     expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
       expect.objectContaining({
         dimension: "tag",

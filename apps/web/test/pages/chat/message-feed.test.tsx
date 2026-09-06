@@ -1206,6 +1206,27 @@ describe("message feed row actions", () => {
     expect(onRevokeMessage).not.toHaveBeenCalled();
   });
 
+  it("does not expose revoke action when no handler is provided", async () => {
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("刚发送的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+  });
+
   it("does not expose revoke action when seq is invalid", async () => {
     const user = userEvent.setup();
     const onRevokeMessage = vi.fn();

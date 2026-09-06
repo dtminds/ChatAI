@@ -17,6 +17,10 @@ const conversationListHarness = vi.hoisted(() => ({
     | undefined,
 }));
 
+vi.mock("@/pages/chat/components/chat-panel", () => ({
+  ChatPanel: () => <div data-testid="mock-chat-panel" />,
+}));
+
 vi.mock("@/pages/chat/components/conversation-list-panel", () => ({
   ConversationListPanel: ({
     onSelectConversation,
@@ -26,7 +30,7 @@ vi.mock("@/pages/chat/components/conversation-list-panel", () => ({
     ) => boolean | void | Promise<boolean | void>;
   }) => {
     conversationListHarness.onSelectConversation = onSelectConversation;
-    return null;
+    return <div data-testid="mock-conversation-list-panel" />;
   },
 }));
 
@@ -41,12 +45,13 @@ function createDeferred() {
 
 describe("ChatWorkbenchPage conversation selection races", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     resetChatWorkbenchTestState();
     installChatWorkbenchTestEnvironment();
     conversationListHarness.onSelectConversation = undefined;
   });
 
-  it("switches back to the previous conversation before the selection effect syncs", async () => {
+  it("keeps the later conversation when the earlier selection load finishes last", async () => {
     const baseService = createMockWorkbenchService();
     const releaseSecondConversation = createDeferred();
 
@@ -63,6 +68,9 @@ describe("ChatWorkbenchPage conversation selection races", () => {
 
     renderChatWorkbenchPage();
 
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
     await waitFor(() => {
       expect(conversationListHarness.onSelectConversation).toBeDefined();
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");

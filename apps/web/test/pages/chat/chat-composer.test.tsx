@@ -9,9 +9,19 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { mediaUploadMocks, resetChatWorkbenchTestState } from "./workbench-test-utils";
 
-function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: GroupMember[]; currentSeatThirdUserId?: string; isGroupConversation?: boolean; quotedMessage?: QuotedMessagePreviewContent | null; onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void } = {}) {
+function renderComposer(options: {
+  isMobileLayout?: boolean;
+  groupMembers?: GroupMember[];
+  currentSeatThirdUserId?: string;
+  isGroupConversation?: boolean;
+  isSending?: boolean;
+  quotedMessage?: QuotedMessagePreviewContent | null;
+  onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void;
+  onSendDraft?: (segments: ComposerSegment[]) => void;
+} = {}) {
   resetChatWorkbenchTestState();
   return render(
     <ChatComposer
@@ -26,7 +36,7 @@ function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: Grou
       inputEnterBehavior="send"
       isGroupConversation={options.isGroupConversation ?? false}
       isEmojiPickerOpen={false}
-      isSending={false}
+      isSending={options.isSending ?? false}
       isHistoryPanelOpen={false}
       isMobileLayout={options.isMobileLayout}
       historyKey="composer-test"
@@ -40,7 +50,7 @@ function renderComposer(options: { isMobileLayout?: boolean; groupMembers?: Grou
       onOpenMaterialLibrary={options.onOpenMaterialLibrary ?? vi.fn()}
       onOpenHistory={vi.fn()}
       onSegmentsChange={vi.fn()}
-      onSendDraft={vi.fn()}
+      onSendDraft={options.onSendDraft ?? vi.fn()}
       placeholder="请输入消息……"
       quotedMessage={options.quotedMessage ?? null}
       composerRef={createRef<LexicalEditor>()}
@@ -479,5 +489,51 @@ describe("ChatComposer", () => {
     await userEvent.keyboard("@");
 
     expect(await screen.findByRole("option", { name: "客户" })).toBeInTheDocument();
+  });
+
+  it("keeps Enter behavior help in the menu without a persistent footer hint", () => {
+    renderComposer();
+
+    expect(screen.queryByText("Enter 发送，Shift + Enter 换行。")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择 Enter 键行为" })).toHaveTextContent(
+      "Enter 发送",
+    );
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "选择 Enter 键行为" }), {
+      key: "ArrowDown",
+    });
+
+    expect(screen.getByText("Enter 发送，Shift + Enter 换行")).toBeInTheDocument();
+    expect(screen.getByText("Enter 换行，Shift + Enter 发送")).toBeInTheDocument();
+  });
+
+  it("does not send when using the newline shortcut", async () => {
+    const onSendDraft = vi.fn();
+
+    renderComposer({ onSendDraft });
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("第一行");
+    const wasPrevented = !fireEvent.keyDown(composer, {
+      key: "Enter",
+      shiftKey: true,
+    });
+
+    expect(wasPrevented).toBe(true);
+    expect(onSendDraft).not.toHaveBeenCalled();
+  });
+
+  it("locks the editor while a send request is pending", () => {
+    renderComposer({ isSending: true });
+
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
+      "aria-readonly",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送消息" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
   });
 });

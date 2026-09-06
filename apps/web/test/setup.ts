@@ -1,10 +1,6 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
-import {
-  createMockWorkbenchService,
-  setWorkbenchService,
-} from "../src/pages/chat/api/workbench-service";
 
 expect.extend(matchers);
 
@@ -125,15 +121,43 @@ beforeAll(() => {
   });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  let workbenchService: typeof import("../src/pages/chat/api/workbench-service");
+  try {
+    workbenchService = await import("../src/pages/chat/api/workbench-service");
+  } catch {
+    return;
+  }
+  let createMockWorkbenchService: typeof workbenchService.createMockWorkbenchService;
+  let setWorkbenchService: typeof workbenchService.setWorkbenchService;
+  try {
+    createMockWorkbenchService = workbenchService.createMockWorkbenchService;
+    setWorkbenchService = workbenchService.setWorkbenchService;
+  } catch {
+    return;
+  }
   setWorkbenchService(createMockWorkbenchService());
 });
 
-afterEach(() => {
+afterEach(async () => {
   if (typeof window !== "undefined") {
     cleanup();
   }
 
+  let workbenchService: typeof import("../src/pages/chat/api/workbench-service");
+  try {
+    workbenchService = await import("../src/pages/chat/api/workbench-service");
+  } catch {
+    return;
+  }
+  let createMockWorkbenchService: typeof workbenchService.createMockWorkbenchService;
+  let setWorkbenchService: typeof workbenchService.setWorkbenchService;
+  try {
+    createMockWorkbenchService = workbenchService.createMockWorkbenchService;
+    setWorkbenchService = workbenchService.setWorkbenchService;
+  } catch {
+    return;
+  }
   setWorkbenchService(createMockWorkbenchService());
 });
 

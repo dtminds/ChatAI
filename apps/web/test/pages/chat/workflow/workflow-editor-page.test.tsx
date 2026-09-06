@@ -399,17 +399,16 @@ function workflowNodeX(nodeId: string) {
   return Number(screen.getByTestId(`workflow-node-${nodeId}`).dataset.positionX);
 }
 
-function workflowNodeYByButtonName(canvas: HTMLElement, name: RegExp) {
-  const node = within(canvas).getByRole("button", { name });
-  const wrapper = node.closest("[data-testid^='workflow-node-']");
-
-  return Number((wrapper as HTMLElement | null)?.dataset.positionY);
-}
-
 function closestWorkflowNodeX(element: HTMLElement) {
   const wrapper = element.closest("[data-testid^='workflow-node-']");
 
   return Number((wrapper as HTMLElement | null)?.dataset.positionX);
+}
+
+function closestWorkflowNodeY(element: HTMLElement) {
+  const wrapper = element.closest("[data-testid^='workflow-node-']");
+
+  return Number((wrapper as HTMLElement | null)?.dataset.positionY);
 }
 
 function setupCanvasUser() {
@@ -627,7 +626,7 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
 
-    const handoffNode = within(canvas).getByRole("button", { name: "转人工" });
+    const handoffNode = await within(canvas).findByRole("button", { name: "转人工" });
     expect(handoffNode).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
 
@@ -648,7 +647,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
-    await user.click(within(canvas).getByRole("button", { name: "转人工" }));
+    await user.click(await within(canvas).findByRole("button", { name: "转人工" }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     const operatorMessage = within(panel).getByRole("textbox", { name: "给客服的转发提示" });
@@ -744,7 +743,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /转人工/ }));
 
-    const handoffNode = within(canvas).getByRole("button", { name: "转人工" });
+    const handoffNode = await within(canvas).findByRole("button", { name: "转人工" });
     expect(workflowNodeX("message-welcome")).toBeLessThan(closestWorkflowNodeX(handoffNode));
     expect(closestWorkflowNodeX(handoffNode)).toBeLessThan(workflowNodeX("end"));
     expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent(
@@ -766,7 +765,7 @@ describe("Agent workflow page", () => {
       }),
     );
 
-    const handoffNode = within(canvas).getByRole("button", { name: "转人工" });
+    const handoffNode = await within(canvas).findByRole("button", { name: "转人工" });
     const handoffNodeWrapper = handoffNode.closest("[data-testid^='workflow-node-']");
 
     expect(handoffNodeWrapper).toHaveAttribute("data-selected", "true");
@@ -1216,6 +1215,8 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
 
+    await within(canvas).findByRole("button", { name: "转人工" });
+
     await user.click(getUndoButton(canvas));
     expect(getRedoButton(canvas)).toBeEnabled();
 
@@ -1257,7 +1258,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = within(canvas).getByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
-    expect(within(canvas).getByRole("button", { name: "转人工" })).toBeInTheDocument();
+    expect(await within(canvas).findByRole("button", { name: "转人工" })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
     expect(getUndoButton(canvas)).toBeEnabled();
@@ -1302,15 +1303,17 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     await user.click(screen.getByRole("menuitem", { name: /转人工/ }));
+    const handoffNode = await within(canvas).findByRole("button", { name: "转人工" });
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
-    const branchX = workflowNodeX("branch-intent");
-    const handoffNode = within(canvas).getByRole("button", { name: "转人工" });
-    const handoffX = closestWorkflowNodeX(handoffNode);
-    const messageX = workflowNodeX("message-welcome");
+    await waitFor(() => {
+      const branchX = workflowNodeX("branch-intent");
+      const handoffX = closestWorkflowNodeX(handoffNode);
+      const messageX = workflowNodeX("message-welcome");
 
-    expect(branchX).toBeLessThan(handoffX);
-    expect(handoffX).toBeLessThan(messageX);
+      expect(branchX).toBeLessThan(handoffX);
+      expect(handoffX).toBeLessThan(messageX);
+    });
   });
 
   it("arranges branch paths by handle order instead of insertion order", async () => {
@@ -1321,14 +1324,15 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application");
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的否则分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /转人工/ }));
+    const defaultNode = await within(canvas).findByRole("button", { name: /^转人工$/ });
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的如果分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /发券/ }));
+    const highNode = await within(canvas).findByRole("button", { name: /^发券$/ });
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
-    const highY = workflowNodeYByButtonName(canvas, /^发券$/);
-    const defaultY = workflowNodeYByButtonName(canvas, /^转人工$/);
-
-    expect(highY).toBeLessThan(defaultY);
+    await waitFor(() => {
+      expect(closestWorkflowNodeY(highNode)).toBeLessThan(closestWorkflowNodeY(defaultNode));
+    });
   });
 
   it("highlights incoming and outgoing edges when hovering a workflow node", async () => {
@@ -1544,7 +1548,7 @@ describe("Agent workflow page", () => {
     const actionMenu = await screen.findByRole("menu");
     await user.click(within(actionMenu).getByRole("menuitem", { name: "复制节点" }));
 
-    const duplicatedNode = within(canvas).getByRole("button", { name: "发送欢迎消息 (1)" });
+    const duplicatedNode = await within(canvas).findByRole("button", { name: "发送欢迎消息 (1)" });
     const duplicatedNodeWrapper = duplicatedNode.closest("[data-testid^='workflow-node-']");
 
     expect(duplicatedNode).toBeInTheDocument();
